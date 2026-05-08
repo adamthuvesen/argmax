@@ -1,11 +1,22 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   DashboardSnapshot,
+  ChangedFileSummary,
+  CommitPreparation,
+  CreateCheckpointInput,
   CreateCurrentWorkspaceInput,
   CreateWorkspaceInput,
+  LaunchProviderSessionInput,
   MaestroApi,
+  PrepareCommitInput,
+  ProviderSessionInput,
+  ProviderSessionResizeInput,
   ProjectSummary,
   RegisterProjectInput,
+  ResolveApprovalInput,
+  RunCheckInput,
+  SelectPreferredAttemptInput,
+  WorkspaceDiff,
   UpdateProjectSettingsInput
 } from "../shared/types.js";
 
@@ -32,7 +43,38 @@ const api: MaestroApi = {
       ipcRenderer.invoke("workspaces:archive", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>
   },
   providers: {
-    discover: () => ipcRenderer.invoke("providers:discover") as Promise<unknown[]>
+    discover: () => ipcRenderer.invoke("providers:discover") as Promise<unknown[]>,
+    launch: (input: LaunchProviderSessionInput) =>
+      ipcRenderer.invoke("providers:launch", input) as Promise<DashboardSnapshot["sessions"][number]>,
+    sendInput: (input: ProviderSessionInput) =>
+      ipcRenderer.invoke("providers:send-input", input) as Promise<{ ok: true }>,
+    resize: (input: ProviderSessionResizeInput) =>
+      ipcRenderer.invoke("providers:resize", input) as Promise<{ ok: true }>,
+    terminate: (sessionId: string) => ipcRenderer.invoke("providers:terminate", sessionId) as Promise<{ ok: true }>
+  },
+  approvals: {
+    resolve: (input: ResolveApprovalInput) =>
+      ipcRenderer.invoke("approvals:resolve", input) as Promise<DashboardSnapshot["approvals"][number]>
+  },
+  review: {
+    listChangedFiles: (workspaceId: string) =>
+      ipcRenderer.invoke("review:list-changed-files", workspaceId) as Promise<ChangedFileSummary[]>,
+    loadDiff: (workspaceId: string, filePath?: string) =>
+      ipcRenderer.invoke("review:load-diff", workspaceId, filePath) as Promise<WorkspaceDiff>
+  },
+  checks: {
+    run: (input: RunCheckInput) => ipcRenderer.invoke("checks:run", input) as Promise<DashboardSnapshot["checks"][number]>
+  },
+  checkpoints: {
+    create: (input: CreateCheckpointInput) =>
+      ipcRenderer.invoke("checkpoints:create", input) as Promise<DashboardSnapshot["checkpoints"][number]>
+  },
+  attempts: {
+    selectPreferred: (input: SelectPreferredAttemptInput) =>
+      ipcRenderer.invoke("attempts:select-preferred", input) as Promise<DashboardSnapshot["sessions"][number]>
+  },
+  commits: {
+    prepare: (input: PrepareCommitInput) => ipcRenderer.invoke("commits:prepare", input) as Promise<CommitPreparation>
   },
   health: {
     ping: () => ipcRenderer.invoke("health:ping") as Promise<{ ok: true; timestamp: string }>

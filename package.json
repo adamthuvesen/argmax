@@ -6,10 +6,12 @@
   "type": "module",
   "main": "dist/main/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"wait-on dist/main/main.js tcp:5173 && electron .\"",
+    "dev": "npm run rebuild:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"wait-on dist/main/main.js tcp:5173 && electron .\"",
     "build": "tsc -p tsconfig.main.json && vite build",
     "lint": "eslint .",
-    "test": "vitest run",
+    "rebuild:electron": "npm_config_runtime=electron npm_config_target=35.7.5 npm_config_disturl=https://electronjs.org/headers npm rebuild better-sqlite3 node-pty",
+    "rebuild:node": "npm rebuild better-sqlite3 node-pty",
+    "test": "npm run rebuild:node && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit"
   },
@@ -18,6 +20,7 @@
     "better-sqlite3": "^11.8.1",
     "electron": "^35.0.0",
     "lucide-react": "^0.468.0",
+    "node-pty": "^1.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^3.24.1"

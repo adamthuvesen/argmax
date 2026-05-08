@@ -1,10 +1,12 @@
 import { app, BrowserWindow } from "electron";
 import { is } from "@electron-toolkit/utils";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { createDatabase } from "./persistence/database.js";
 import { registerIpcHandlers } from "./ipc.js";
 
 let mainWindow: BrowserWindow | null = null;
+const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
@@ -18,7 +20,7 @@ async function createWindow(): Promise<void> {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {
-      preload: join(__dirname, "preload.js"),
+      preload: join(currentDirectory, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
@@ -34,7 +36,7 @@ async function createWindow(): Promise<void> {
   } else if (is.dev) {
     await mainWindow.loadURL("http://127.0.0.1:5173");
   } else {
-    await mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    await mainWindow.loadFile(join(currentDirectory, "../renderer/index.html"));
   }
 }
 

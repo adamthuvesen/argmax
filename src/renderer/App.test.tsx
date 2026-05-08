@@ -53,7 +53,8 @@ const snapshot: DashboardSnapshot = {
       attention: "normal",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T15:54:00.000Z"
+      lastActivityAt: "2026-05-08T15:54:00.000Z",
+      preferred: false
     }
   ],
   events: [
@@ -66,6 +67,7 @@ const snapshot: DashboardSnapshot = {
       createdAt: "2026-05-08T15:54:00.000Z"
     }
   ],
+  rawOutputs: [],
   approvals: [],
   checks: [],
   checkpoints: []
@@ -90,7 +92,37 @@ describe("App", () => {
         archive: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace())
       },
       providers: {
-        discover: () => Promise.resolve([])
+        discover: () => Promise.resolve([]),
+        launch: () => Promise.resolve(snapshot.sessions[0] ?? missingSession()),
+        sendInput: () => Promise.resolve({ ok: true }),
+        resize: () => Promise.resolve({ ok: true }),
+        terminate: () => Promise.resolve({ ok: true })
+      },
+      approvals: {
+        resolve: () => Promise.resolve(missingApproval())
+      },
+      review: {
+        listChangedFiles: () => Promise.resolve([]),
+        loadDiff: () => Promise.resolve({ workspaceId: "workspace-1", filePath: null, content: "" })
+      },
+      checks: {
+        run: () => Promise.resolve(missingCheck())
+      },
+      checkpoints: {
+        create: () => Promise.resolve(missingCheckpoint())
+      },
+      attempts: {
+        selectPreferred: () => Promise.resolve(snapshot.sessions[0] ?? missingSession())
+      },
+      commits: {
+        prepare: () =>
+          Promise.resolve({
+            workspaceId: "workspace-1",
+            branch: "maestro/dashboard",
+            selectedFiles: ["src/renderer/App.tsx"],
+            message: "feat: test",
+            commands: ["git add -- 'src/renderer/App.tsx'", "git commit -m 'feat: test'"]
+          })
       },
       health: {
         ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" })
@@ -104,6 +136,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Project dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Maestro" })).toBeInTheDocument();
     expect(screen.getByText("/tmp/maestro")).toBeInTheDocument();
+    expect(screen.getByText("maestro/dashboard")).toBeInTheDocument();
     expect(screen.getByText("Dashboard ready.")).toBeInTheDocument();
   });
 });
@@ -118,4 +151,20 @@ function primaryProject() {
 
 function missingWorkspace(): never {
   throw new Error("Test snapshot must include a workspace");
+}
+
+function missingSession(): never {
+  throw new Error("Test snapshot must include a session");
+}
+
+function missingApproval(): never {
+  throw new Error("Test snapshot must include an approval");
+}
+
+function missingCheck(): never {
+  throw new Error("Test snapshot must include a check");
+}
+
+function missingCheckpoint(): never {
+  throw new Error("Test snapshot must include a checkpoint");
 }

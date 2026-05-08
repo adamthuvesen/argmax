@@ -57,6 +57,70 @@ export interface CreateCurrentWorkspaceInput {
   taskLabel: string;
 }
 
+export interface LaunchProviderSessionInput {
+  workspaceId: string;
+  provider: ProviderId;
+  prompt: string;
+  modelLabel: string;
+  cols: number;
+  rows: number;
+}
+
+export interface ProviderSessionInput {
+  sessionId: string;
+  input: string;
+}
+
+export interface ProviderSessionResizeInput {
+  sessionId: string;
+  cols: number;
+  rows: number;
+}
+
+export interface ResolveApprovalInput {
+  approvalId: string;
+  status: "approved" | "rejected";
+}
+
+export interface ChangedFileSummary {
+  path: string;
+  status: string;
+}
+
+export interface WorkspaceDiff {
+  workspaceId: string;
+  filePath: string | null;
+  content: string;
+}
+
+export interface RunCheckInput {
+  workspaceId: string;
+  command: string;
+}
+
+export interface CreateCheckpointInput {
+  workspaceId: string;
+  label: string;
+}
+
+export interface SelectPreferredAttemptInput {
+  sessionId: string;
+}
+
+export interface PrepareCommitInput {
+  workspaceId: string;
+  selectedFiles: string[];
+  message: string;
+}
+
+export interface CommitPreparation {
+  workspaceId: string;
+  branch: string;
+  selectedFiles: string[];
+  message: string;
+  commands: string[];
+}
+
 export interface ProjectSummary {
   id: string;
   name: string;
@@ -98,6 +162,7 @@ export interface SessionSummary {
   startedAt: string;
   completedAt: string | null;
   lastActivityAt: string;
+  preferred: boolean;
 }
 
 export interface TimelineEvent {
@@ -106,6 +171,14 @@ export interface TimelineEvent {
   type: EventType;
   message: string;
   payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface RawProviderOutput {
+  id: string;
+  sessionId: string;
+  stream: "stdout" | "stderr" | "pty" | "system";
+  content: string;
   createdAt: string;
 }
 
@@ -147,6 +220,7 @@ export interface DashboardSnapshot {
   workspaces: WorkspaceSummary[];
   sessions: SessionSummary[];
   events: TimelineEvent[];
+  rawOutputs: RawProviderOutput[];
   approvals: ApprovalRequest[];
   checks: CheckRun[];
   checkpoints: Checkpoint[];
@@ -170,6 +244,29 @@ export interface MaestroApi {
   };
   providers: {
     discover: () => Promise<unknown[]>;
+    launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
+    sendInput: (input: ProviderSessionInput) => Promise<{ ok: true }>;
+    resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
+    terminate: (sessionId: string) => Promise<{ ok: true }>;
+  };
+  approvals: {
+    resolve: (input: ResolveApprovalInput) => Promise<ApprovalRequest>;
+  };
+  review: {
+    listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;
+    loadDiff: (workspaceId: string, filePath?: string) => Promise<WorkspaceDiff>;
+  };
+  checks: {
+    run: (input: RunCheckInput) => Promise<CheckRun>;
+  };
+  checkpoints: {
+    create: (input: CreateCheckpointInput) => Promise<Checkpoint>;
+  };
+  attempts: {
+    selectPreferred: (input: SelectPreferredAttemptInput) => Promise<SessionSummary>;
+  };
+  commits: {
+    prepare: (input: PrepareCommitInput) => Promise<CommitPreparation>;
   };
   health: {
     ping: () => Promise<{ ok: true; timestamp: string }>;

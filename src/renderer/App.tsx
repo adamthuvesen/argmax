@@ -29,6 +29,7 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   ApprovalRequest,
   DashboardSnapshot,
+  RawProviderOutput,
   SessionSummary,
   TimelineEvent,
   WorkspaceSummary
@@ -42,6 +43,7 @@ const emptySnapshot: DashboardSnapshot = {
   workspaces: [],
   sessions: [],
   events: [],
+  rawOutputs: [],
   approvals: [],
   checks: [],
   checkpoints: []
@@ -83,10 +85,58 @@ export function App(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if ((!event.metaKey && !event.ctrlKey) || event.altKey || event.shiftKey || isTypingTarget(event.target)) {
+        return;
+      }
+
+      const index = Number(event.key) - 1;
+      const item = navItems[index];
+      if (!item) {
+        return;
+      }
+
+      event.preventDefault();
+      setViewMode(item.mode);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const selectedSession = snapshot.sessions[0] ?? null;
   const selectedWorkspace = selectedSession
     ? snapshot.workspaces.find((workspace) => workspace.id === selectedSession.workspaceId) ?? null
     : null;
+
+  const resolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
+    if (!window.maestro?.approvals.resolve) {
+      setSnapshot((current) => ({
+        ...current,
+        approvals: current.approvals.map((approval) =>
+          approval.id === approvalId ? { ...approval, status, resolvedAt: new Date().toISOString() } : approval
+        )
+      }));
+      return;
+    }
+
+    await window.maestro.approvals.resolve({ approvalId, status });
+    setSnapshot(await window.maestro.dashboard.load());
+  };
+
+  const selectPreferredAttempt = async (sessionId: string): Promise<void> => {
+    if (!window.maestro?.attempts.selectPreferred) {
+      setSnapshot((current) => ({
+        ...current,
+        sessions: current.sessions.map((session) => ({ ...session, preferred: session.id === sessionId }))
+      }));
+      return;
+    }
+
+    await window.maestro.attempts.selectPreferred({ sessionId });
+    setSnapshot(await window.maestro.dashboard.load());
+  };
 
   return (
     <main className="app-shell">
@@ -122,6 +172,9 @@ export function App(): JSX.Element {
               approvals={snapshot.approvals}
               events={snapshot.events}
               mode={viewMode}
+              onResolveApproval={resolveApproval}
+              onSelectPreferredAttempt={selectPreferredAttempt}
+              rawOutputs={snapshot.rawOutputs}
               selectedSession={selectedSession}
               selectedWorkspace={selectedWorkspace}
               snapshot={snapshot}
@@ -227,6 +280,9 @@ function View({
   approvals,
   events,
   mode,
+  onResolveApproval,
+  onSelectPreferredAttempt,
+  rawOutputs,
   selectedSession,
   selectedWorkspace,
   snapshot
@@ -234,6 +290,9 @@ function View({
   approvals: ApprovalRequest[];
   events: TimelineEvent[];
   mode: ViewMode;
+  onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
+  onSelectPreferredAttempt: (sessionId: string) => Promise<void>;
+  rawOutputs: RawProviderOutput[];
   selectedSession: SessionSummary | null;
   selectedWorkspace: WorkspaceSummary | null;
   snapshot: DashboardSnapshot;
@@ -243,7 +302,16 @@ function View({
   }
 
   if (mode === "cockpit") {
-    return <SessionCockpit approvals={approvals} events={events} session={selectedSession} workspace={selectedWorkspace} />;
+    return (
+      <SessionCockpit
+        approvals={approvals}
+        events={events}
+        onResolveApproval={onResolveApproval}
+        rawOutputs={rawOutputs}
+        session={selectedSession}
+        workspace={selectedWorkspace}
+      />
+    );
   }
 
   if (mode === "review") {
@@ -251,7 +319,7 @@ function View({
   }
 
   if (mode === "compare") {
-    return <AttemptComparison sessions={snapshot.sessions} workspaces={snapshot.workspaces} />;
+    return <AttemptComparison onSelectPreferredAttempt={onSelectPreferredAttempt} snapshot={snapshot} />;
   }
 
   return <Dashboard snapshot={snapshot} />;
@@ -259,6 +327,9 @@ function View({
 
 function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
   const project = snapshot.projects[0] ?? null;
+  const activeWorkspaces = snapshot.workspaces.filter((workspace) =>
+    ["created", "running", "waiting", "blocked"].includes(workspace.state)
+  );
   const totals = useMemo(
     () => ({
       active: snapshot.sessions.filter((session) => ["running", "waiting"].includes(session.state)).length,
@@ -273,7 +344,7 @@ function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
     <div className="dashboard-grid">
       <section className="summary-band">
         <Metric label="Active" value={totals.active} tone="mint" />
-        <Metric label="Needs Review" value={totals.review} tone="gold" />
+        <Metric label="Review" value={totals.review} tone="gold" />
         <Metric label="Blocked" value={totals.blocked} tone="rose" />
         <Metric label="Failed" value={totals.failed} tone="blue" />
       </section>
@@ -287,20 +358,23 @@ function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
           <ChevronRight size={20} />
         </div>
         {project ? (
-          <dl className="project-details">
-            <div>
-              <dt>Repository</dt>
-              <dd>{project.repoPath}</dd>
+          <>
+            <div className="project-strip">
+              <span>{project.repoPath}</span>
+              <span>{project.settings.defaultProvider}</span>
             </div>
-            <div>
-              <dt>Default provider</dt>
-              <dd>{project.settings.defaultProvider}</dd>
+            <div className="workspace-list">
+              {activeWorkspaces.slice(0, 5).map((workspace) => (
+                <div className="workspace-row" key={workspace.id}>
+                  <div>
+                    <strong>{workspace.taskLabel}</strong>
+                    <span>{workspace.branch}</span>
+                  </div>
+                  <span>{workspace.changedFiles} files</span>
+                </div>
+              ))}
             </div>
-            <div>
-              <dt>Checks</dt>
-              <dd>{project.settings.checkCommands.join(", ")}</dd>
-            </div>
-          </dl>
+          </>
         ) : null}
       </section>
 
@@ -308,7 +382,7 @@ function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Recent activity</p>
-            <h2>Timeline</h2>
+            <h2>Recent</h2>
           </div>
           <Activity size={20} />
         </div>
@@ -321,6 +395,10 @@ function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
 function AgentBoard({ sessions, workspaces }: { sessions: SessionSummary[]; workspaces: WorkspaceSummary[] }): JSX.Element {
   return (
     <div className="lane-grid">
+      <div className="board-strip">
+        <strong>{sessions.length} sessions</strong>
+        <span>{sessions.filter((session) => session.attention !== "normal").length} need attention</span>
+      </div>
       {sessions.map((session) => {
         const workspace = workspaces.find((item) => item.id === session.workspaceId);
         return <SessionLane key={session.id} session={session} workspace={workspace ?? null} />;
@@ -339,16 +417,17 @@ function SessionLane({
   return (
     <article className={`lane ${session.attention}`}>
       <div className="lane-topline">
+        <span className={`attention-dot ${session.attention}`} />
         <span className="provider-pill">{session.provider}</span>
         <StatusPill state={session.attention} />
       </div>
       <h2>{workspace?.taskLabel ?? session.prompt}</h2>
-      <p>{session.prompt}</p>
       <div className="lane-meta">
         <span>
           <GitBranch size={14} /> {workspace?.branch ?? "unknown"}
         </span>
         <span>{workspace?.changedFiles ?? 0} files</span>
+        <span>{formatTime(session.lastActivityAt)}</span>
       </div>
     </article>
   );
@@ -357,14 +436,22 @@ function SessionLane({
 function SessionCockpit({
   approvals,
   events,
+  onResolveApproval,
+  rawOutputs,
   session,
   workspace
 }: {
   approvals: ApprovalRequest[];
   events: TimelineEvent[];
+  onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
+  rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
+  const visibleApprovals = session ? approvals.filter((approval) => approval.sessionId === session.id) : approvals;
+  const visibleEvents = session ? events.filter((event) => event.sessionId === session.id) : events;
+  const visibleRawOutputs = session ? rawOutputs.filter((output) => output.sessionId === session.id) : rawOutputs;
+
   return (
     <div className="cockpit-grid">
       <section className="timeline-surface">
@@ -375,7 +462,13 @@ function SessionCockpit({
           </div>
           <StatusPill state={session?.attention ?? "normal"} />
         </div>
-        <Timeline events={events} />
+        <div className="cockpit-meta">
+          <span>{session?.modelLabel ?? "No model"}</span>
+          <span>{workspace?.branch ?? "No branch"}</span>
+          <span>{workspace?.changedFiles ?? 0} files</span>
+          <span>{workspace?.path ?? "No workspace"}</span>
+        </div>
+        <Timeline events={visibleEvents} />
       </section>
 
       <section className="terminal-surface" aria-label="Raw terminal output">
@@ -383,7 +476,7 @@ function SessionCockpit({
           <TerminalSquare size={18} />
           <span>{workspace?.path ?? "No workspace"}</span>
         </div>
-        <pre>{terminalPreview(events)}</pre>
+        <pre>{terminalPreview(visibleRawOutputs)}</pre>
       </section>
 
       <section className="approval-surface">
@@ -394,10 +487,34 @@ function SessionCockpit({
           </div>
           <ShieldAlert size={20} />
         </div>
-        {approvals.map((approval) => (
+        {visibleApprovals.map((approval) => (
           <div className="approval-row" key={approval.id}>
-            <strong>{approval.riskLevel}</strong>
-            <code>{approval.command}</code>
+            <div className="approval-risk">
+              <strong>{approval.riskLevel}</strong>
+              <span>{approval.status}</span>
+            </div>
+            <div className="approval-command">
+              <code>{approval.command}</code>
+              <span>
+                {approval.provider} / {approval.cwd}
+              </span>
+            </div>
+            <div className="approval-actions">
+              <button
+                disabled={approval.status !== "pending"}
+                type="button"
+                onClick={() => void onResolveApproval(approval.id, "rejected")}
+              >
+                Reject
+              </button>
+              <button
+                disabled={approval.status !== "pending"}
+                type="button"
+                onClick={() => void onResolveApproval(approval.id, "approved")}
+              >
+                Approve
+              </button>
+            </div>
           </div>
         ))}
       </section>
@@ -453,30 +570,41 @@ function ReviewStudio({
           <CheckCircle2 size={20} />
         </div>
         <p>{check?.summary ?? "Configured checks will stream here."}</p>
+        <div className="review-actions">
+          <button type="button">Checkpoint</button>
+          <button type="button">Keep</button>
+          <button type="button">Archive</button>
+        </div>
       </section>
     </div>
   );
 }
 
 function AttemptComparison({
-  sessions,
-  workspaces
+  onSelectPreferredAttempt,
+  snapshot
 }: {
-  sessions: SessionSummary[];
-  workspaces: WorkspaceSummary[];
+  onSelectPreferredAttempt: (sessionId: string) => Promise<void>;
+  snapshot: DashboardSnapshot;
 }): JSX.Element {
   return (
     <div className="comparison-grid">
-      {sessions.map((session) => {
-        const workspace = workspaces.find((item) => item.id === session.workspaceId);
+      {snapshot.sessions.map((session) => {
+        const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
+        const check = workspace ? snapshot.checks.find((item) => item.workspaceId === workspace.id) : null;
         return (
           <article className="attempt-row" key={session.id}>
             <div>
               <span className="provider-pill">{session.provider}</span>
               <h2>{workspace?.taskLabel ?? session.prompt}</h2>
+              <p>{workspace?.branch ?? "No branch"}</p>
             </div>
-            <span>{workspace?.changedFiles ?? 0} files</span>
+            <span>{workspace?.changedFiles ?? 0} files changed</span>
+            <span>{check?.status ?? "No checks"}</span>
             <StatusPill state={session.attention} />
+            <button className={session.preferred ? "preferred-action active" : "preferred-action"} type="button" onClick={() => void onSelectPreferredAttempt(session.id)}>
+              {session.preferred ? "Preferred" : "Select"}
+            </button>
           </article>
         );
       })}
@@ -634,11 +762,18 @@ function EmptyState(): JSX.Element {
   );
 }
 
-function terminalPreview(events: TimelineEvent[]): string {
-  return events
+function terminalPreview(outputs: RawProviderOutput[]): string {
+  return outputs
     .slice(0, 6)
-    .map((event) => `[${event.createdAt}] ${event.type}: ${event.message}`)
+    .map((output) => `[${output.createdAt}] ${output.stream}: ${output.content.trim()}`)
     .join("\n");
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 function titleForView(mode: ViewMode): string {
@@ -651,4 +786,8 @@ function titleForView(mode: ViewMode): string {
   };
 
   return titles[mode];
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }

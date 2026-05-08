@@ -4,10 +4,12 @@ import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
 import type {
   ApprovalRequest,
+  Checkpoint,
   CheckRun,
   DashboardSnapshot,
   ProjectSettings,
   ProjectSummary,
+  RawProviderOutput,
   SessionSummary,
   TimelineEvent,
   WorkspaceSummary
@@ -40,6 +42,76 @@ export interface WorkspaceStatusInput {
   dirty: boolean;
   changedFiles: number;
   lastActivityAt?: string;
+}
+
+export interface PersistSessionInput {
+  id: string;
+  workspaceId: string;
+  provider: SessionSummary["provider"];
+  modelLabel: string;
+  prompt: string;
+  state: SessionSummary["state"];
+  attention: SessionSummary["attention"];
+}
+
+export interface SessionStateInput {
+  state: SessionSummary["state"];
+  attention: SessionSummary["attention"];
+  completedAt?: string | null;
+  lastActivityAt?: string;
+}
+
+export interface PersistTimelineEventInput {
+  id: string;
+  sessionId: string;
+  type: TimelineEvent["type"];
+  message: string;
+  payload: Record<string, unknown>;
+  createdAt?: string;
+}
+
+export interface PersistRawOutputInput {
+  id: string;
+  sessionId: string;
+  stream: "stdout" | "stderr" | "pty" | "system";
+  content: string;
+  createdAt?: string;
+}
+
+export interface PersistApprovalInput {
+  id: string;
+  sessionId: string;
+  command: string;
+  cwd: string;
+  provider: ApprovalRequest["provider"];
+  riskLevel: ApprovalRequest["riskLevel"];
+  status: ApprovalRequest["status"];
+  createdAt?: string;
+}
+
+export interface PersistCheckInput {
+  id: string;
+  workspaceId: string;
+  command: string;
+  status: CheckRun["status"];
+  startedAt?: string;
+}
+
+export interface UpdateCheckInput {
+  status: CheckRun["status"];
+  exitCode: number | null;
+  summary: string | null;
+  completedAt?: string | null;
+}
+
+export interface PersistCheckpointInput {
+  id: string;
+  workspaceId: string;
+  label: string;
+  branch: string;
+  gitRef: string | null;
+  patchPath: string | null;
+  createdAt?: string;
 }
 
 interface ProjectRow {
@@ -96,6 +168,14 @@ interface EventRow {
   created_at: string;
 }
 
+interface RawOutputRow {
+  id: string;
+  session_id: string;
+  stream: RawProviderOutput["stream"];
+  content: string;
+  created_at: string;
+}
+
 interface ApprovalRow {
   id: string;
   session_id: string;
@@ -140,6 +220,16 @@ export interface MaestroDatabase {
   persistWorkspace: (input: PersistWorkspaceInput) => WorkspaceSummary;
   updateWorkspaceState: (workspaceId: string, state: WorkspaceSummary["state"]) => WorkspaceSummary;
   updateWorkspaceStatus: (workspaceId: string, status: WorkspaceStatusInput) => WorkspaceSummary;
+  persistApproval: (input: PersistApprovalInput) => ApprovalRequest;
+  resolveApproval: (approvalId: string, status: Extract<ApprovalRequest["status"], "approved" | "rejected">) => ApprovalRequest;
+  persistCheck: (input: PersistCheckInput) => CheckRun;
+  updateCheck: (checkId: string, input: UpdateCheckInput) => CheckRun;
+  persistCheckpoint: (input: PersistCheckpointInput) => Checkpoint;
+  selectPreferredAttempt: (sessionId: string) => SessionSummary;
+  persistSession: (input: PersistSessionInput) => SessionSummary;
+  updateSessionState: (sessionId: string, input: SessionStateInput) => SessionSummary;
+  persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
+  persistRawOutput: (input: PersistRawOutputInput) => void;
 }
 
 export function createDatabase(databasePath = getDatabasePath(), options: { seed?: boolean } = {}): MaestroDatabase {
@@ -159,7 +249,17 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     getWorkspace: (workspaceId) => findWorkspaceById(connection, workspaceId),
     persistWorkspace: (input) => persistWorkspace(connection, input),
     updateWorkspaceState: (workspaceId, state) => updateWorkspaceState(connection, workspaceId, state),
-    updateWorkspaceStatus: (workspaceId, status) => updateWorkspaceStatus(connection, workspaceId, status)
+    updateWorkspaceStatus: (workspaceId, status) => updateWorkspaceStatus(connection, workspaceId, status),
+    persistApproval: (input) => persistApproval(connection, input),
+    resolveApproval: (approvalId, status) => resolveApproval(connection, approvalId, status),
+    persistCheck: (input) => persistCheck(connection, input),
+    updateCheck: (checkId, input) => updateCheck(connection, checkId, input),
+    persistCheckpoint: (input) => persistCheckpoint(connection, input),
+    selectPreferredAttempt: (sessionId) => selectPreferredAttempt(connection, sessionId),
+    persistSession: (input) => persistSession(connection, input),
+    updateSessionState: (sessionId, input) => updateSessionState(connection, sessionId, input),
+    persistTimelineEvent: (input) => persistTimelineEvent(connection, input),
+    persistRawOutput: (input) => persistRawOutput(connection, input)
   };
 }
 
@@ -373,6 +473,190 @@ function updateWorkspaceStatus(
   return findWorkspaceById(connection, workspaceId);
 }
 
+function persistSession(connection: Database.Database, input: PersistSessionInput): SessionSummary {
+  const timestamp = new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO sessions (
+          id, workspace_id, provider, model_label, prompt, state, attention,
+          started_at, completed_at, last_activity_at
+        ) VALUES (
+          @id, @workspaceId, @provider, @modelLabel, @prompt, @state, @attention,
+          @startedAt, NULL, @lastActivityAt
+        )
+      `
+    )
+    .run({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      provider: input.provider,
+      modelLabel: input.modelLabel,
+      prompt: input.prompt,
+      state: input.state,
+      attention: input.attention,
+      startedAt: timestamp,
+      lastActivityAt: timestamp
+    });
+
+  return findSessionById(connection, input.id);
+}
+
+function updateSessionState(
+  connection: Database.Database,
+  sessionId: string,
+  input: SessionStateInput
+): SessionSummary {
+  const timestamp = input.lastActivityAt ?? new Date().toISOString();
+  connection
+    .prepare(
+      `
+        UPDATE sessions
+        SET state = ?, attention = ?, completed_at = ?, last_activity_at = ?
+        WHERE id = ?
+      `
+    )
+    .run(input.state, input.attention, input.completedAt ?? null, timestamp, sessionId);
+
+  return findSessionById(connection, sessionId);
+}
+
+function persistTimelineEvent(connection: Database.Database, input: PersistTimelineEventInput): TimelineEvent {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO events (id, session_id, type, message, payload_json, created_at)
+        VALUES (@id, @sessionId, @type, @message, @payloadJson, @createdAt)
+      `
+    )
+    .run({
+      id: input.id,
+      sessionId: input.sessionId,
+      type: input.type,
+      message: input.message,
+      payloadJson: JSON.stringify(input.payload),
+      createdAt
+    });
+
+  return {
+    id: input.id,
+    sessionId: input.sessionId,
+    type: input.type,
+    message: input.message,
+    payload: input.payload,
+    createdAt
+  };
+}
+
+function persistRawOutput(connection: Database.Database, input: PersistRawOutputInput): void {
+  connection
+    .prepare(
+      `
+        INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
+        VALUES (@id, @sessionId, @stream, @content, @createdAt)
+      `
+    )
+    .run({
+      id: input.id,
+      sessionId: input.sessionId,
+      stream: input.stream,
+      content: input.content,
+      createdAt: input.createdAt ?? new Date().toISOString()
+    });
+}
+
+function persistApproval(connection: Database.Database, input: PersistApprovalInput): ApprovalRequest {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at)
+        VALUES (@id, @sessionId, @command, @cwd, @provider, @riskLevel, @status, @createdAt, NULL)
+      `
+    )
+    .run({
+      id: input.id,
+      sessionId: input.sessionId,
+      command: input.command,
+      cwd: input.cwd,
+      provider: input.provider,
+      riskLevel: input.riskLevel,
+      status: input.status,
+      createdAt
+    });
+
+  return findApprovalById(connection, input.id);
+}
+
+function resolveApproval(
+  connection: Database.Database,
+  approvalId: string,
+  status: Extract<ApprovalRequest["status"], "approved" | "rejected">
+): ApprovalRequest {
+  connection
+    .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?")
+    .run(status, new Date().toISOString(), approvalId);
+
+  return findApprovalById(connection, approvalId);
+}
+
+function persistCheck(connection: Database.Database, input: PersistCheckInput): CheckRun {
+  const startedAt = input.startedAt ?? new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO checks (id, workspace_id, command, status, exit_code, summary, started_at, completed_at)
+        VALUES (@id, @workspaceId, @command, @status, NULL, NULL, @startedAt, NULL)
+      `
+    )
+    .run({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      command: input.command,
+      status: input.status,
+      startedAt
+    });
+
+  return findCheckById(connection, input.id);
+}
+
+function updateCheck(connection: Database.Database, checkId: string, input: UpdateCheckInput): CheckRun {
+  connection
+    .prepare(
+      `
+        UPDATE checks
+        SET status = ?, exit_code = ?, summary = ?, completed_at = ?
+        WHERE id = ?
+      `
+    )
+    .run(input.status, input.exitCode, input.summary, input.completedAt ?? new Date().toISOString(), checkId);
+
+  return findCheckById(connection, checkId);
+}
+
+function persistCheckpoint(connection: Database.Database, input: PersistCheckpointInput): Checkpoint {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
+        VALUES (@id, @workspaceId, @label, @branch, @gitRef, @patchPath, @createdAt)
+      `
+    )
+    .run({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      label: input.label,
+      branch: input.branch,
+      gitRef: input.gitRef,
+      patchPath: input.patchPath,
+      createdAt
+    });
+
+  return findCheckpointById(connection, input.id);
+}
+
 function findWorkspaceById(connection: Database.Database, workspaceId: string): WorkspaceSummary {
   const row = connection.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as WorkspaceRow | undefined;
   if (!row) {
@@ -394,8 +678,84 @@ function findWorkspaceById(connection: Database.Database, workspaceId: string): 
   };
 }
 
+function findCheckpointById(connection: Database.Database, checkpointId: string): Checkpoint {
+  const row = connection.prepare("SELECT * FROM checkpoints WHERE id = ?").get(checkpointId) as CheckpointRow | undefined;
+  if (!row) {
+    throw new Error(`Checkpoint not found: ${checkpointId}`);
+  }
+
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    label: row.label,
+    branch: row.branch,
+    gitRef: row.git_ref,
+    patchPath: row.patch_path,
+    createdAt: row.created_at
+  };
+}
+
+function findCheckById(connection: Database.Database, checkId: string): CheckRun {
+  const row = connection.prepare("SELECT * FROM checks WHERE id = ?").get(checkId) as CheckRow | undefined;
+  if (!row) {
+    throw new Error(`Check not found: ${checkId}`);
+  }
+
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    command: row.command,
+    status: row.status,
+    exitCode: row.exit_code,
+    summary: row.summary,
+    startedAt: row.started_at,
+    completedAt: row.completed_at
+  };
+}
+
+function findApprovalById(connection: Database.Database, approvalId: string): ApprovalRequest {
+  const row = connection.prepare("SELECT * FROM approvals WHERE id = ?").get(approvalId) as ApprovalRow | undefined;
+  if (!row) {
+    throw new Error(`Approval not found: ${approvalId}`);
+  }
+
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    command: row.command,
+    cwd: row.cwd,
+    provider: row.provider,
+    riskLevel: row.risk_level,
+    status: row.status,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at
+  };
+}
+
+function findSessionById(connection: Database.Database, sessionId: string): SessionSummary {
+  const row = connection.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as SessionRow | undefined;
+  if (!row) {
+    throw new Error(`Session not found: ${sessionId}`);
+  }
+
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    provider: row.provider,
+    modelLabel: row.model_label,
+    prompt: row.prompt,
+    state: row.state,
+    attention: row.attention,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    lastActivityAt: row.last_activity_at,
+    preferred: isPreferredSession(connection, row.id)
+  };
+}
+
 function loadDashboard(connection: Database.Database): DashboardSnapshot {
   const projects = listProjects(connection);
+  const preferredSessionIds = loadPreferredSessionIds(connection);
   const workspaces = (connection.prepare("SELECT * FROM workspaces ORDER BY last_activity_at DESC").all() as WorkspaceRow[]).map(
     (row) => ({
       id: row.id,
@@ -423,7 +783,8 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
       attention: row.attention,
       startedAt: row.started_at,
       completedAt: row.completed_at,
-      lastActivityAt: row.last_activity_at
+      lastActivityAt: row.last_activity_at,
+      preferred: preferredSessionIds.has(row.id)
     })
   );
 
@@ -435,6 +796,16 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     type: row.type,
     message: row.message,
     payload: parseJsonRecord(row.payload_json),
+    createdAt: row.created_at
+  }));
+
+  const rawOutputs = (
+    connection.prepare("SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT 100").all() as RawOutputRow[]
+  ).map((row) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    stream: row.stream,
+    content: row.content,
     createdAt: row.created_at
   }));
 
@@ -480,8 +851,46 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     workspaces,
     sessions,
     events,
+    rawOutputs,
     approvals,
     checks,
     checkpoints
   };
+}
+
+function selectPreferredAttempt(connection: Database.Database, sessionId: string): SessionSummary {
+  const session = findSessionById(connection, sessionId);
+  const workspace = findWorkspaceById(connection, session.workspaceId);
+  const key = preferredAttemptKey(workspace.projectId, workspace.taskLabel);
+  connection
+    .prepare(
+      `
+        INSERT INTO ui_state (key, value_json, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
+      `
+    )
+    .run(key, JSON.stringify({ sessionId }), new Date().toISOString());
+
+  return { ...session, preferred: true };
+}
+
+function loadPreferredSessionIds(connection: Database.Database): Set<string> {
+  const rows = connection
+    .prepare("SELECT value_json FROM ui_state WHERE key LIKE 'preferred-attempt:%'")
+    .all() as Array<{ value_json: string }>;
+
+  return new Set(
+    rows
+      .map((row) => parseJsonRecord(row.value_json).sessionId)
+      .filter((value): value is string => typeof value === "string")
+  );
+}
+
+function isPreferredSession(connection: Database.Database, sessionId: string): boolean {
+  return loadPreferredSessionIds(connection).has(sessionId);
+}
+
+function preferredAttemptKey(projectId: string, taskLabel: string): string {
+  return `preferred-attempt:${projectId}:${taskLabel}`;
 }

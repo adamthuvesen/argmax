@@ -76,7 +76,8 @@ export const demoSnapshot: DashboardSnapshot = {
       attention: "normal",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T15:54:00.000Z"
+      lastActivityAt: "2026-05-08T15:54:00.000Z",
+      preferred: false
     },
     {
       id: "session-review-studio",
@@ -88,7 +89,8 @@ export const demoSnapshot: DashboardSnapshot = {
       attention: "review-ready",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T15:48:00.000Z",
-      lastActivityAt: "2026-05-08T15:48:00.000Z"
+      lastActivityAt: "2026-05-08T15:48:00.000Z",
+      preferred: true
     },
     {
       id: "session-approval-gate",
@@ -100,7 +102,8 @@ export const demoSnapshot: DashboardSnapshot = {
       attention: "approval-needed",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T15:42:00.000Z"
+      lastActivityAt: "2026-05-08T15:42:00.000Z",
+      preferred: false
     }
   ],
   events: [
@@ -127,6 +130,15 @@ export const demoSnapshot: DashboardSnapshot = {
       message: "Approval needed before deleting a generated worktree.",
       payload: { riskLevel: "high" },
       createdAt: "2026-05-08T15:42:00.000Z"
+    }
+  ],
+  rawOutputs: [
+    {
+      id: "raw-board-output",
+      sessionId: "session-ui-board",
+      stream: "pty",
+      content: "Running layout pass...\n",
+      createdAt: "2026-05-08T15:54:00.000Z"
     }
   ],
   approvals: [

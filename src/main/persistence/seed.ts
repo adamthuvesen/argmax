@@ -1,6 +1,17 @@
+/**
+ * Seed data for tests and demo snapshots only. NEVER call from production
+ * code — `createDatabase` defaults `seed: false` so the developer's real
+ * local SQLite file is never overwritten with demo rows on launch
+ * (audit H4, H5). Test callers opt in with `{ seed: true }`.
+ *
+ * Paths in this file are placeholders, not the maintainer's machine paths
+ * (the previous seed leaked `/Users/adamthuvesen/...`).
+ */
 import type Database from "better-sqlite3";
 
 const now = "2026-05-08T15:30:00.000Z";
+const SAMPLE_REPO_PATH = "/tmp/maestro-seed/sample-project";
+const SAMPLE_WORKTREE_ROOT = "/tmp/maestro-seed/worktrees";
 
 export function seedDemoData(database: Database.Database): void {
   const projectCount = (database.prepare("SELECT COUNT(*) AS count FROM projects").get() as { count: number }).count;
@@ -70,12 +81,12 @@ export function seedDemoData(database: Database.Database): void {
     insertProject.run({
       id: "project-maestro",
       name: "Maestro",
-      repoPath: "/Users/adamthuvesen/dev/menti/maestro",
+      repoPath: SAMPLE_REPO_PATH,
       currentBranch: "main",
       defaultBranch: "main",
       defaultProvider: "codex",
       defaultModelLabel: "GPT-5 Codex",
-      worktreeLocation: "/Users/adamthuvesen/dev/menti/.maestro/worktrees",
+      worktreeLocation: SAMPLE_WORKTREE_ROOT,
       setupCommand: "npm install",
       checkCommandsJson: JSON.stringify(["npm run lint", "npm test", "npm run build"]),
       uiPreferencesJson: JSON.stringify({ density: "comfortable", accent: "mint" }),
@@ -129,7 +140,7 @@ export function seedDemoData(database: Database.Database): void {
         taskLabel: workspace.taskLabel,
         branch: workspace.branch,
         baseRef: "main",
-        path: `/Users/adamthuvesen/dev/menti/.maestro/worktrees/${workspace.branch.replace("/", "-")}`,
+        path: `${SAMPLE_WORKTREE_ROOT}/${workspace.branch.replace(/\//g, "-")}`,
         state: workspace.state,
         sharedWorkspace: 0,
         dirty: workspace.dirty,
@@ -230,8 +241,8 @@ export function seedDemoData(database: Database.Database): void {
     insertApproval.run({
       id: "approval-delete-worktree",
       sessionId: "session-approval-gate",
-      command: "git worktree remove /Users/adamthuvesen/dev/menti/.maestro/worktrees/old-attempt",
-      cwd: "/Users/adamthuvesen/dev/menti/maestro",
+      command: `git worktree remove ${SAMPLE_WORKTREE_ROOT}/old-attempt`,
+      cwd: SAMPLE_REPO_PATH,
       provider: "codex",
       riskLevel: "high",
       status: "pending",

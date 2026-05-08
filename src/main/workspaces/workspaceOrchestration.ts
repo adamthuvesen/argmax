@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { watch } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { watch, type FSWatcher } from "node:fs";
+import { mkdir, realpath } from "node:fs/promises";
+import { isAbsolute, join, sep } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { MaestroDatabase } from "../persistence/database.js";
@@ -43,18 +43,55 @@ export class WorkspaceError extends Error {
 }
 
 export class WorkspaceService {
+  private readonly watchers = new Map<string, FSWatcher>();
+
   constructor(private readonly database: MaestroDatabase) {}
 
   async createIsolatedWorkspace(rawInput: CreateWorkspaceInput): Promise<WorkspaceSummary> {
     const input = createWorkspaceInput.parse(rawInput);
     const project = this.database.getProject(input.projectId);
     const baseRef = input.baseRef ?? project.defaultBranch ?? project.currentBranch;
-    const branch = `maestro/${slugify(input.taskLabel)}-${randomUUID().slice(0, 8)}`;
-    const worktreePath = join(project.settings.worktreeLocation, branch.replace("/", "-"));
 
+    if (baseRef.startsWith("-")) {
+      throw new WorkspaceError(
+        `Invalid base ref ${baseRef}: cannot start with '-'`,
+        "Choose a valid base ref and retry."
+      );
+    }
+    // Belt-and-suspenders: zod blocks leading "-" but check-ref-format
+    // catches other malformed refs (whitespace, control chars, "..", "@{").
+    await assertValidRef(project.repoPath, baseRef);
+
+    const branch = `maestro/${slugify(input.taskLabel)}-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    // 16 hex chars = 64 bits of entropy. Birthday-paradox 50% collision after
+    // ~5.1B branches; at 100 branches/day a single user reaches 1% collision
+    // probability after ~6M years. The previous 8-hex slice (32 bits) hit 1%
+    // around 9,000 branches — too narrow for power users.
+    const worktreePath = join(project.settings.worktreeLocation, branch.replace(/\//g, "-"));
+
+    // Validate worktreeLocation lies inside repoPath (or under it). We resolve
+    // both via realpath after creating the directory so symlinks cannot
+    // smuggle the worktree outside the repo. Also requires the project's
+    // repoPath to remain readable on disk.
     await mkdir(project.settings.worktreeLocation, { recursive: true });
+    await assertWorktreeLocationContained(project.repoPath, project.settings.worktreeLocation);
+
+    // Pre-flight: detect branch-name collision early so the error message
+    // tells the user what to retry instead of relying on git's terse output.
+    const branchExists = await git(project.repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`])
+      .then(() => true)
+      .catch(() => false);
+    if (branchExists) {
+      throw new WorkspaceError(
+        `Branch ${branch} already exists`,
+        "Retry with a different task label."
+      );
+    }
 
     try {
+      // `--` separates flags from positional pathspec/ref args. `worktree add`
+      // does not strictly require it, but we keep the convention so a future
+      // refactor cannot accidentally let a `-`-prefixed argument become a flag.
       await git(project.repoPath, ["worktree", "add", "-b", branch, worktreePath, baseRef]);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unknown git error";
@@ -104,17 +141,33 @@ export class WorkspaceService {
   async archiveWorkspace(workspaceId: string): Promise<WorkspaceSummary> {
     const workspace = await this.refreshGitStatus(workspaceId);
     if (workspace.dirty) {
+      this.closeWatcher(workspaceId);
       return this.database.updateWorkspaceState(workspaceId, "kept");
     }
 
     if (!workspace.sharedWorkspace) {
       const project = this.database.getProject(workspace.projectId);
+      // Re-check porcelain immediately before remove to close the TOCTOU
+      // window between refreshGitStatus and worktree remove. A file added
+      // between the two calls would otherwise be lost.
+      const recheck = await git(workspace.path, ["status", "--porcelain"]);
+      if (recheck.trim().length > 0) {
+        this.closeWatcher(workspaceId);
+        return this.database.updateWorkspaceState(workspaceId, "kept");
+      }
+
+      // Close the watcher before remove so file events from the disappearing
+      // worktree don't fire ENOENT-spam refresh attempts during teardown.
+      this.closeWatcher(workspaceId);
+
       try {
         await git(project.repoPath, ["worktree", "remove", workspace.path]);
       } catch (error) {
         const detail = error instanceof Error ? error.message : "Unknown git error";
         throw new WorkspaceError(`Could not archive clean worktree. ${detail}`, "Review the worktree and retry archive.");
       }
+    } else {
+      this.closeWatcher(workspaceId);
     }
 
     return this.database.updateWorkspaceState(workspaceId, "archived");
@@ -129,6 +182,32 @@ export class WorkspaceService {
       .map((line) => line.trim())
       .filter(Boolean).length;
 
+    if (branch !== workspace.branch) {
+      // Persist a timeline event when the workspace's HEAD branch moves out
+      // from under us (e.g. the user manually checked out a different branch
+      // inside the worktree). The session id is the workspace id as a stable
+      // session-less anchor; consumers filter by payload.kind. Re-using the
+      // `file.changed` EventType keeps this addition non-breaking until a
+      // dedicated `branch-changed` type lands in shared/types.
+      try {
+        this.database.persistTimelineEvent({
+          id: randomUUID(),
+          sessionId: workspaceId,
+          type: "file.changed",
+          message: `Branch changed from ${workspace.branch} to ${branch}`,
+          payload: {
+            kind: "branch-changed",
+            workspaceId,
+            previousBranch: workspace.branch,
+            currentBranch: branch
+          }
+        });
+      } catch {
+        // Timeline event persistence is best-effort. A failure should not
+        // block the status refresh itself.
+      }
+    }
+
     return this.database.updateWorkspaceStatus(workspaceId, {
       branch,
       dirty: changedFiles > 0,
@@ -138,20 +217,110 @@ export class WorkspaceService {
 
   watchWorkspace(workspaceId: string): () => void {
     const workspace = this.database.getWorkspace(workspaceId);
-    const watcher = watch(workspace.path, { persistent: false }, () => {
-      void this.refreshGitStatus(workspaceId);
+    // recursive: true is the macOS/Windows hot path. On Linux this is a no-op
+    // (Node falls back to the directory-only watch); if a Linux user reports
+    // missed updates the documented fallback is chokidar (see design.md
+    // "Open Questions"). persistent: false keeps Node from holding the event
+    // loop open just because of the watcher.
+    const watcher = watch(workspace.path, { persistent: false, recursive: true }, () => {
+      this.refreshGitStatus(workspaceId).catch(() => {
+        // Best-effort refresh: ENOENT during teardown, transient git lock
+        // contention, or removed-worktree races are expected. We swallow
+        // here rather than throwing into a closure with no caller.
+      });
     });
+    watcher.on("error", () => {
+      // fs.watch surfaces errors via the EventEmitter; if we don't listen,
+      // an unhandled "error" event crashes the process.
+      this.closeWatcher(workspaceId);
+    });
+    this.watchers.set(workspaceId, watcher);
 
-    return () => watcher.close();
+    return () => this.closeWatcher(workspaceId);
+  }
+
+  private closeWatcher(workspaceId: string): void {
+    const watcher = this.watchers.get(workspaceId);
+    if (!watcher) return;
+    try {
+      watcher.close();
+    } catch {
+      // Already closed.
+    }
+    this.watchers.delete(workspaceId);
   }
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout, stderr } = await execFileAsync("git", ["-C", cwd, ...args], { encoding: "utf8" });
-  if (stderr.trim()) {
+/**
+ * Run a git invocation with a bounded timeout and buffer ceiling. Exported
+ * for unit tests that exercise the timeout / maxBuffer / stderr-surfacing
+ * contract directly. Production callers stay inside this module.
+ */
+export async function git(cwd: string, args: string[]): Promise<string> {
+  // Bounded so a runaway git invocation cannot stall the IPC handler
+  // indefinitely. 64 MiB matches the largest realistic `git diff` we expect
+  // to see for review; checkpointService uses 256 MiB for binary diffs.
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+      timeout: 30_000,
+      maxBuffer: 64 * 1024 * 1024,
+      encoding: "utf8"
+    });
     return stdout;
+  } catch (error) {
+    const stderrText = extractStderr(error);
+    throw new Error(`git failed: ${stderrText.slice(0, 4096)}`);
   }
-  return stdout;
+}
+
+function extractStderr(error: unknown): string {
+  if (error && typeof error === "object" && "stderr" in error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    if (typeof stderr === "string") return stderr;
+    if (Buffer.isBuffer(stderr)) return stderr.toString("utf8");
+  }
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+async function assertWorktreeLocationContained(repoPath: string, worktreeLocation: string): Promise<void> {
+  if (!isAbsolute(worktreeLocation)) {
+    throw new WorkspaceError(
+      `worktreeLocation must be absolute, got ${worktreeLocation}`,
+      "Configure project.worktreeLocation to an absolute path inside the repo."
+    );
+  }
+  const repoResolved = await realpath(repoPath);
+  const worktreeResolved = await realpath(worktreeLocation);
+  const repoPrefix = repoResolved.endsWith(sep) ? repoResolved : repoResolved + sep;
+  if (worktreeResolved !== repoResolved && !worktreeResolved.startsWith(repoPrefix)) {
+    throw new WorkspaceError(
+      `worktreeLocation ${worktreeResolved} must be inside repoPath ${repoResolved}`,
+      "Choose a worktree location inside the project's repo and retry."
+    );
+  }
+}
+
+async function assertValidRef(repoPath: string, ref: string): Promise<void> {
+  // `--allow-onelevel` lets us accept short branch names like "main" or
+  // "feature-x"; without it `check-ref-format` requires a slash. We never
+  // pass user input to `--branch` because that flag does DWIM expansion
+  // (e.g. `@{-1}` resolves to a previous branch) which we want to refuse.
+  try {
+    await execFileAsync(
+      "git",
+      ["-C", repoPath, "check-ref-format", "--allow-onelevel", ref],
+      {
+        timeout: 5_000,
+        encoding: "utf8"
+      }
+    );
+  } catch {
+    throw new WorkspaceError(
+      `Invalid git ref ${ref}`,
+      "Pick a base ref that conforms to git's ref-format rules."
+    );
+  }
 }
 
 function slugify(value: string): string {

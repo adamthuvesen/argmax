@@ -1,3 +1,24 @@
+/**
+ * IPC-input types are inferred from the zod schemas in `./ipcSchemas.ts`
+ * via `import type` so the renderer never pulls zod into its bundle. The
+ * `import type` form erases at runtime; only the type signatures cross
+ * this boundary.
+ */
+import type {
+  CreateCheckpointInputParsed,
+  CreateCurrentWorkspaceInputParsed,
+  CreateWorkspaceInputParsed,
+  LaunchProviderSessionInputParsed,
+  PrepareCommitInputParsed,
+  ProviderSessionInputParsed,
+  ProviderSessionResizeInputParsed,
+  RegisterProjectInputParsed,
+  ResolveApprovalInputParsed,
+  RunCheckInputParsed,
+  SelectPreferredAttemptInputParsed,
+  UpdateProjectSettingsInputParsed
+} from "./ipcSchemas.js";
+
 export type ProviderId = "claude" | "codex";
 
 export type WorkspaceState =
@@ -16,6 +37,7 @@ export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelle
 
 export type EventType =
   | "session.started"
+  | "user.message"
   | "message.delta"
   | "message.completed"
   | "command.started"
@@ -37,50 +59,14 @@ export interface ProjectSettings {
   checkCommands: string[];
 }
 
-export interface RegisterProjectInput {
-  repoPath: string;
-}
-
-export interface UpdateProjectSettingsInput {
-  projectId: string;
-  settings: ProjectSettings;
-}
-
-export interface CreateWorkspaceInput {
-  projectId: string;
-  taskLabel: string;
-  baseRef?: string;
-}
-
-export interface CreateCurrentWorkspaceInput {
-  projectId: string;
-  taskLabel: string;
-}
-
-export interface LaunchProviderSessionInput {
-  workspaceId: string;
-  provider: ProviderId;
-  prompt: string;
-  modelLabel: string;
-  cols: number;
-  rows: number;
-}
-
-export interface ProviderSessionInput {
-  sessionId: string;
-  input: string;
-}
-
-export interface ProviderSessionResizeInput {
-  sessionId: string;
-  cols: number;
-  rows: number;
-}
-
-export interface ResolveApprovalInput {
-  approvalId: string;
-  status: "approved" | "rejected";
-}
+export type RegisterProjectInput = RegisterProjectInputParsed;
+export type UpdateProjectSettingsInput = UpdateProjectSettingsInputParsed;
+export type CreateWorkspaceInput = CreateWorkspaceInputParsed;
+export type CreateCurrentWorkspaceInput = CreateCurrentWorkspaceInputParsed;
+export type LaunchProviderSessionInput = LaunchProviderSessionInputParsed;
+export type ProviderSessionInput = ProviderSessionInputParsed;
+export type ProviderSessionResizeInput = ProviderSessionResizeInputParsed;
+export type ResolveApprovalInput = ResolveApprovalInputParsed;
 
 export interface ChangedFileSummary {
   path: string;
@@ -93,25 +79,10 @@ export interface WorkspaceDiff {
   content: string;
 }
 
-export interface RunCheckInput {
-  workspaceId: string;
-  command: string;
-}
-
-export interface CreateCheckpointInput {
-  workspaceId: string;
-  label: string;
-}
-
-export interface SelectPreferredAttemptInput {
-  sessionId: string;
-}
-
-export interface PrepareCommitInput {
-  workspaceId: string;
-  selectedFiles: string[];
-  message: string;
-}
+export type RunCheckInput = RunCheckInputParsed;
+export type CreateCheckpointInput = CreateCheckpointInputParsed;
+export type SelectPreferredAttemptInput = SelectPreferredAttemptInputParsed;
+export type PrepareCommitInput = PrepareCommitInputParsed;
 
 export interface CommitPreparation {
   workspaceId: string;

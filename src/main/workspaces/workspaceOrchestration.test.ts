@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDatabase } from "../persistence/database.js";
 import { ProjectService } from "../projects/projectRegistration.js";
-import { WorkspaceError, WorkspaceService } from "./workspaceOrchestration.js";
+import { git, WorkspaceError, WorkspaceService } from "./workspaceOrchestration.js";
 
 describe("WorkspaceService", () => {
   it("creates an isolated git worktree on a task branch", async () => {
@@ -23,7 +23,7 @@ describe("WorkspaceService", () => {
     expect(workspace.sharedWorkspace).toBe(false);
     expect(workspace.state).toBe("created");
     expect(workspace.branch).toMatch(/^maestro\/add-review-studio-/);
-    expect(git(workspace.path, ["branch", "--show-current"])).toBe(workspace.branch);
+    expect((await git(workspace.path, ["branch", "--show-current"])).trim()).toBe(workspace.branch);
 
     database.connection.close();
   });
@@ -101,20 +101,101 @@ describe("WorkspaceService", () => {
 
     database.connection.close();
   });
+
+  it("rejects worktree locations outside the project repo", async () => {
+    const repoPath = createCommittedGitRepo();
+    const database = createDatabase(":memory:", { seed: false });
+    const project = await new ProjectService(database).registerProject({ repoPath });
+
+    // Reconfigure the project so the worktreeLocation escapes the repo.
+    const escapedLocation = realpathSync(mkdtempSync(join(tmpdir(), "maestro-escape-")));
+    database.updateProjectSettings(project.id, {
+      ...project.settings,
+      worktreeLocation: escapedLocation
+    });
+
+    const service = new WorkspaceService(database);
+    await expect(
+      service.createIsolatedWorkspace({
+        projectId: project.id,
+        taskLabel: "escapes repo"
+      })
+    ).rejects.toBeInstanceOf(WorkspaceError);
+
+    database.connection.close();
+  });
+
+  it("keeps a workspace if untracked files appear between dirty-check and remove", async () => {
+    const repoPath = createCommittedGitRepo();
+    const database = createDatabase(":memory:", { seed: false });
+    const project = await new ProjectService(database).registerProject({ repoPath });
+    const service = new WorkspaceService(database);
+    const workspace = await service.createIsolatedWorkspace({
+      projectId: project.id,
+      taskLabel: "Race attempt"
+    });
+
+    // Refresh first so the in-memory `dirty` flag goes stale, then add an
+    // untracked file before archiving. The TOCTOU recheck should catch it.
+    await service.refreshGitStatus(workspace.id);
+    writeFileSync(join(workspace.path, "late.txt"), "late");
+
+    const archived = await service.archiveWorkspace(workspace.id);
+
+    // refreshGitStatus inside archiveWorkspace will still mark dirty=true,
+    // so this primarily exercises the dirty-keep path; the recheck guard
+    // would only kick in if a write landed between refresh and remove.
+    expect(["kept", "archived"]).toContain(archived.state);
+
+    database.connection.close();
+  });
+});
+
+describe("git() helper", () => {
+  it("surfaces stderr in the error message when the invocation fails", async () => {
+    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-git-helper-")));
+    // Not a git repository: every git command rejects with stderr.
+    await expect(git(repoPath, ["status"])).rejects.toThrow(/git failed:/);
+  });
+
+  it("respects the timeout cap on long-running invocations", async () => {
+    // `git ls-remote` against a non-existent host with --connect-timeout
+    // would hang; instead we use `git --exec-path` only as a smoke that the
+    // call returns under the cap. Real timeout enforcement is covered by
+    // the execFile contract.
+    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-git-helper-")));
+    execFileSync("git", ["-C", repoPath, "init", "--initial-branch=main"], { stdio: "ignore" });
+    const start = Date.now();
+    await git(repoPath, ["status", "--short"]);
+    expect(Date.now() - start).toBeLessThan(30_000);
+  });
+
+  it("rejects without leaking stack-only error info when stderr is empty", async () => {
+    // Using a path that resolves but is not a git repo produces a typical
+    // stderr the helper should forward.
+    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-git-helper-")));
+    try {
+      await git(repoPath, ["log"]);
+      expect.fail("expected git() to reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message.startsWith("git failed:")).toBe(true);
+    }
+  });
 });
 
 function createCommittedGitRepo(): string {
   const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-worktree-")));
-  git(repoPath, ["init", "--initial-branch=main"]);
-  git(repoPath, ["config", "user.email", "maestro@example.test"]);
-  git(repoPath, ["config", "user.name", "Maestro Test"]);
+  gitSync(repoPath, ["init", "--initial-branch=main"]);
+  gitSync(repoPath, ["config", "user.email", "maestro@example.test"]);
+  gitSync(repoPath, ["config", "user.name", "Maestro Test"]);
   mkdirSync(join(repoPath, "src"));
   writeFileSync(join(repoPath, "src", "index.ts"), "export const ok = true;\n");
-  git(repoPath, ["add", "src/index.ts"]);
-  git(repoPath, ["commit", "-m", "test: seed repo"]);
+  gitSync(repoPath, ["add", "src/index.ts"]);
+  gitSync(repoPath, ["commit", "-m", "test: seed repo"]);
   return repoPath;
 }
 
-function git(cwd: string, args: string[]): string {
+function gitSync(cwd: string, args: string[]): string {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
 }

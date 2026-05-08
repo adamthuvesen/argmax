@@ -1,0 +1,205 @@
+import { z } from "zod";
+
+/**
+ * Zod schemas for every payload-bearing `ipcMain.handle` channel.
+ *
+ * IMPORTANT: This module is main-process only at runtime. It re-exports
+ * `z.infer` types so other shared modules can keep their TypeScript-only
+ * surface, but `zod` itself MUST NOT be imported into the renderer bundle.
+ * Renderer code should continue to import the existing TS interfaces from
+ * `./types.ts`; those interfaces will be migrated to `z.infer` aliases by
+ * a later wave (Section 1, task 1.5).
+ *
+ * Failure mode: when a handler calls `schema.parse(input)` and the input
+ * does not conform, zod throws `ZodError`. The IPC adapter rethrows as
+ * `Error("ipc:invalid-input:" + channel + ":" + zodError.issues[0].path)`
+ * (the BOOT/ipc agent owns wiring this).
+ */
+
+// ---------------------------------------------------------------------------
+// Shared building blocks
+// ---------------------------------------------------------------------------
+
+const providerIdSchema = z.enum(["claude", "codex"]);
+
+const projectSettingsSchema = z.object({
+  defaultProvider: providerIdSchema,
+  defaultModelLabel: z.string().min(1),
+  worktreeLocation: z.string().min(1),
+  setupCommand: z.string(),
+  checkCommands: z.array(z.string())
+});
+
+/**
+ * filePath rules: must be relative (no leading "/"), no parent traversal,
+ * cannot start with `-` (would be parsed as a flag by git argv).
+ */
+const relativeFilePathSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.startsWith("/"), { message: "filePath must be relative" })
+  .refine((value) => !value.startsWith("-"), { message: "filePath cannot start with '-'" })
+  .refine(
+    (value) => !value.split(/[\\/]/).some((segment) => segment === ".."),
+    { message: "filePath cannot contain '..' segments" }
+  );
+
+/**
+ * baseRef rules: cannot start with `-` so it does not collide with git flag
+ * parsing when forwarded as a positional argument.
+ */
+const baseRefSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.startsWith("-"), { message: "baseRef cannot start with '-'" });
+
+/**
+ * Prompt rules: no embedded \r or \n (PTYs interpret newlines as submission)
+ * and cannot start with `-` (would be parsed as a CLI flag by some providers).
+ */
+const promptSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !/[\r\n]/.test(value), { message: "prompt cannot contain newlines" })
+  .refine((value) => !value.startsWith("-"), { message: "prompt cannot start with '-'" });
+
+const workspaceIdSchema = z.string().min(1);
+const sessionIdSchema = z.string().min(1);
+const projectIdSchema = z.string().min(1);
+const approvalIdSchema = z.string().min(1);
+
+// ---------------------------------------------------------------------------
+// Per-channel input schemas
+// ---------------------------------------------------------------------------
+
+export const healthPingInputSchema = z.void();
+export const projectsListInputSchema = z.void();
+export const providersDiscoverInputSchema = z.void();
+export const dashboardLoadInputSchema = z.void();
+
+export const registerProjectInputSchema = z.object({
+  repoPath: z.string().min(1)
+});
+
+export const updateProjectSettingsInputSchema = z.object({
+  projectId: projectIdSchema,
+  settings: projectSettingsSchema
+});
+
+export const createWorkspaceInputSchema = z.object({
+  projectId: projectIdSchema,
+  taskLabel: z.string().min(1),
+  baseRef: baseRefSchema.optional()
+});
+
+export const createCurrentWorkspaceInputSchema = z.object({
+  projectId: projectIdSchema,
+  taskLabel: z.string().min(1)
+});
+
+export const workspaceIdInputSchema = workspaceIdSchema;
+
+export const launchProviderSessionInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  provider: providerIdSchema,
+  prompt: promptSchema,
+  modelLabel: z.string().min(1),
+  cols: z.number().int().min(20).max(400),
+  rows: z.number().int().min(5).max(200)
+});
+
+export const providerSessionInputSchema = z.object({
+  sessionId: sessionIdSchema,
+  input: z.string()
+});
+
+export const providerSessionResizeInputSchema = z.object({
+  sessionId: sessionIdSchema,
+  cols: z.number().int().min(20).max(400),
+  rows: z.number().int().min(5).max(200)
+});
+
+export const providerSessionTerminateInputSchema = sessionIdSchema;
+
+export const resolveApprovalInputSchema = z.object({
+  approvalId: approvalIdSchema,
+  status: z.enum(["approved", "rejected"])
+});
+
+export const reviewListChangedFilesInputSchema = workspaceIdSchema;
+
+/**
+ * `review:load-diff` is invoked positionally as `(workspaceId, filePath?)`.
+ * Modeled as a tuple so the boot-side adapter can spread invocation args
+ * into a parse call.
+ */
+export const loadDiffInputSchema = z.tuple([workspaceIdSchema, relativeFilePathSchema.optional()]);
+
+export const runCheckInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  command: z.string().min(1)
+});
+
+export const createCheckpointInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  label: z.string().min(1)
+});
+
+export const selectPreferredAttemptInputSchema = z.object({
+  sessionId: sessionIdSchema
+});
+
+export const prepareCommitInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  selectedFiles: z.array(relativeFilePathSchema),
+  message: z.string().min(1)
+});
+
+// ---------------------------------------------------------------------------
+// Channel → schema map
+// ---------------------------------------------------------------------------
+
+export const ipcSchemas = {
+  "health:ping": healthPingInputSchema,
+  "projects:list": projectsListInputSchema,
+  "projects:register": registerProjectInputSchema,
+  "projects:update-settings": updateProjectSettingsInputSchema,
+  "workspaces:create-isolated": createWorkspaceInputSchema,
+  "workspaces:create-current": createCurrentWorkspaceInputSchema,
+  "workspaces:refresh-status": workspaceIdInputSchema,
+  "workspaces:keep": workspaceIdInputSchema,
+  "workspaces:archive": workspaceIdInputSchema,
+  "providers:discover": providersDiscoverInputSchema,
+  "providers:launch": launchProviderSessionInputSchema,
+  "providers:send-input": providerSessionInputSchema,
+  "providers:resize": providerSessionResizeInputSchema,
+  "providers:terminate": providerSessionTerminateInputSchema,
+  "approvals:resolve": resolveApprovalInputSchema,
+  "review:list-changed-files": reviewListChangedFilesInputSchema,
+  "review:load-diff": loadDiffInputSchema,
+  "checks:run": runCheckInputSchema,
+  "checkpoints:create": createCheckpointInputSchema,
+  "attempts:select-preferred": selectPreferredAttemptInputSchema,
+  "commits:prepare": prepareCommitInputSchema,
+  "dashboard:load": dashboardLoadInputSchema
+} as const;
+
+export type IpcChannel = keyof typeof ipcSchemas;
+export type IpcSchemaMap = typeof ipcSchemas;
+
+export type IpcInput<C extends IpcChannel> = z.infer<IpcSchemaMap[C]>;
+
+// Inferred input type aliases — convenient for handler signatures.
+export type RegisterProjectInputParsed = z.infer<typeof registerProjectInputSchema>;
+export type UpdateProjectSettingsInputParsed = z.infer<typeof updateProjectSettingsInputSchema>;
+export type CreateWorkspaceInputParsed = z.infer<typeof createWorkspaceInputSchema>;
+export type CreateCurrentWorkspaceInputParsed = z.infer<typeof createCurrentWorkspaceInputSchema>;
+export type LaunchProviderSessionInputParsed = z.infer<typeof launchProviderSessionInputSchema>;
+export type ProviderSessionInputParsed = z.infer<typeof providerSessionInputSchema>;
+export type ProviderSessionResizeInputParsed = z.infer<typeof providerSessionResizeInputSchema>;
+export type ResolveApprovalInputParsed = z.infer<typeof resolveApprovalInputSchema>;
+export type RunCheckInputParsed = z.infer<typeof runCheckInputSchema>;
+export type CreateCheckpointInputParsed = z.infer<typeof createCheckpointInputSchema>;
+export type SelectPreferredAttemptInputParsed = z.infer<typeof selectPreferredAttemptInputSchema>;
+export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
+export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;

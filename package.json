@@ -9,8 +9,8 @@
     "dev": "npm run rebuild:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"wait-on dist/main/main.js tcp:5173 && electron .\"",
     "build": "tsc -p tsconfig.main.json && vite build",
     "lint": "eslint .",
-    "rebuild:electron": "npm_config_runtime=electron npm_config_target=35.7.5 npm_config_disturl=https://electronjs.org/headers npm rebuild better-sqlite3 node-pty",
-    "rebuild:node": "npm rebuild better-sqlite3 node-pty",
+    "rebuild:electron": "npm_config_runtime=electron npm_config_target=35.7.5 npm_config_disturl=https://electronjs.org/headers npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
+    "rebuild:node": "npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
     "test": "npm run rebuild:node && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit"

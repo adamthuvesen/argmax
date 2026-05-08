@@ -6,6 +6,7 @@ import type { IDisposable, IPty, IPtyForkOptions } from "node-pty";
 import { describe, expect, it } from "vitest";
 import { createProviderAdapters, type ProcessSpawner, type PtySpawner } from "./providerAdapters.js";
 import type { ProviderDiscoveryRunner } from "./providerDiscovery.js";
+import { providerShell } from "./providerEnvironment.js";
 import type { ProviderEvent, ProviderLaunchInput } from "./providerTypes.js";
 
 class FakePty implements IPty {
@@ -62,7 +63,7 @@ class FakePty implements IPty {
     this.writes.push(data.toString());
   }
 
-  kill(): void {
+  kill(_signal?: string): void {
     this.killed = true;
   }
 
@@ -77,7 +78,7 @@ class FakeProcess extends EventEmitter {
   readonly stdin = new PassThrough();
   killed = false;
 
-  kill(): boolean {
+  kill(_signal?: NodeJS.Signals | number): boolean {
     this.killed = true;
     return true;
   }
@@ -93,8 +94,8 @@ describe("provider PTY adapters", () => {
 
     expect(handle?.provider).toBe("claude");
     expect(spawnCalls[0]).toMatchObject({
-      file: "/usr/local/bin/claude",
-      args: [],
+      file: providerShell(),
+      args: ["-lc", "exec '/usr/local/bin/claude'"],
       cwd: "/repo/worktree",
       cols: 100,
       rows: 30
@@ -103,14 +104,38 @@ describe("provider PTY adapters", () => {
 
     pty.emitData("hello from claude");
     handle?.resize(120, 40);
-    handle?.terminate();
     pty.emitExit(0);
 
     expect(pty.resizeCalls).toEqual([{ cols: 120, rows: 40 }]);
-    expect(pty.killed).toBe(true);
     expect(events.map((event) => event.type)).toEqual(["output", "exit"]);
     expect(events[0]).toMatchObject({ sessionId: "session-1", stream: "pty", message: "hello from claude" });
     expect(events[1]).toMatchObject({ sessionId: "session-1", stream: "system", exitCode: 0 });
+
+    // Natural exit already disposed the handle; subsequent terminate() is a no-op.
+    handle?.terminate();
+    expect(handle?.disposed).toBe(true);
+  });
+
+  it("is idempotent on terminate and drops events after disposal", async () => {
+    const { adapters, ptys } = createTestAdapters();
+    const events: ProviderEvent[] = [];
+
+    const handle = await adapters.get("claude")?.launch(launchInput("claude"), (event) => events.push(event));
+    const pty = ptys[0];
+    expect(handle).toBeDefined();
+    if (!handle) return;
+
+    handle.terminate();
+    expect(handle.disposed).toBe(true);
+    expect(pty.killed).toBe(true);
+
+    // Second terminate is a no-op; should not throw or re-kill.
+    handle.terminate();
+
+    // Racing emissions after disposal are dropped.
+    pty.emitData("late data");
+    pty.emitExit(0);
+    expect(events.length).toBe(0);
   });
 
   it("launches Codex in a PTY from the selected workspace", async () => {
@@ -119,7 +144,8 @@ describe("provider PTY adapters", () => {
     await adapters.get("codex")?.launch(launchInput("codex"), () => undefined);
 
     expect(spawnCalls[0]).toMatchObject({
-      file: "/usr/local/bin/codex",
+      file: providerShell(),
+      args: ["-lc", "exec '/usr/local/bin/codex'"],
       cwd: "/repo/worktree"
     });
   });
@@ -165,6 +191,7 @@ describe("provider PTY adapters", () => {
       args: ["-p", "--output-format", "stream-json", "--verbose", "Implement the task"],
       cwd: "/repo/worktree"
     });
+    expect(processes[0].stdin.writableEnded).toBe(true);
     expect(events.map((event) => event.stream)).toEqual(["stdout", "system"]);
     expect(events[1]).toMatchObject({ type: "exit", exitCode: 0 });
   });
@@ -181,9 +208,11 @@ describe("provider PTY adapters", () => {
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/codex",
-      args: ["exec", "--json", "Implement the task"],
+      args: ["exec", "--json", "--ignore-user-config", "-"],
       cwd: "/repo/worktree"
     });
+    expect(String(processes[0].stdin.read())).toBe("Implement the task");
+    expect(processes[0].stdin.writableEnded).toBe(true);
     expect(events[0]).toMatchObject({ type: "output", stream: "stderr", message: "warning\n" });
     expect(events[1]).toMatchObject({ type: "error", exitCode: 1 });
   });

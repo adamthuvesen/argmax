@@ -35,9 +35,11 @@ export interface ProviderEvent {
 export interface ProviderSessionHandle {
   sessionId: string;
   provider: ProviderId;
+  acceptsInput: boolean;
+  disposed: boolean;
   sendInput: (input: string) => void;
   resize: (cols: number, rows: number) => void;
-  terminate: () => void;
+  terminate: () => Promise<void> | void;
 }
 
 export interface ProviderAdapter {

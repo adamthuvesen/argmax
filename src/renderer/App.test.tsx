@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import type { DashboardSnapshot } from "../shared/types.js";
+import type { DashboardSnapshot, MaestroApi } from "../shared/types.js";
 
 const snapshot: DashboardSnapshot = {
   projects: [
@@ -74,10 +74,22 @@ const snapshot: DashboardSnapshot = {
 };
 
 describe("App", () => {
+  let createCurrentWorkspace: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["createCurrent"]>>;
+  let dashboardLoad: ReturnType<typeof vi.fn<MaestroApi["dashboard"]["load"]>>;
+  let launchProvider: ReturnType<typeof vi.fn<MaestroApi["providers"]["launch"]>>;
+  let sendProviderInput: ReturnType<typeof vi.fn<MaestroApi["providers"]["sendInput"]>>;
+
   beforeEach(() => {
+    createCurrentWorkspace = vi.fn<MaestroApi["workspaces"]["createCurrent"]>().mockResolvedValue(
+      snapshot.workspaces[0] ?? missingWorkspace()
+    );
+    dashboardLoad = vi.fn<MaestroApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
+    launchProvider = vi.fn<MaestroApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
+    sendProviderInput = vi.fn<MaestroApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
+
     window.maestro = {
       dashboard: {
-        load: () => Promise.resolve(snapshot)
+        load: dashboardLoad
       },
       projects: {
         list: () => Promise.resolve(snapshot.projects),
@@ -86,15 +98,15 @@ describe("App", () => {
       },
       workspaces: {
         createIsolated: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
-        createCurrent: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
+        createCurrent: createCurrentWorkspace,
         refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
         keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
         archive: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace())
       },
       providers: {
         discover: () => Promise.resolve([]),
-        launch: () => Promise.resolve(snapshot.sessions[0] ?? missingSession()),
-        sendInput: () => Promise.resolve({ ok: true }),
+        launch: launchProvider,
+        sendInput: sendProviderInput,
         resize: () => Promise.resolve({ ok: true }),
         terminate: () => Promise.resolve({ ok: true })
       },
@@ -133,11 +145,426 @@ describe("App", () => {
   it("renders the local project dashboard from IPC data", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Project dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chat" })).not.toBeInTheDocument();
     expect(screen.getByText("/tmp/maestro")).toBeInTheDocument();
     expect(screen.getByText("maestro/dashboard")).toBeInTheDocument();
     expect(screen.getByText("Dashboard ready.")).toBeInTheDocument();
+  });
+
+  it("starts the default provider from the composer", async () => {
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Codex" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Implement PTY launch" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(createCurrentWorkspace).toHaveBeenCalledWith({
+        projectId: "project-1",
+        taskLabel: "Implement PTY launch"
+      })
+    );
+    expect(launchProvider).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      provider: "codex",
+      prompt: "Implement PTY launch",
+      modelLabel: "GPT-5 Codex",
+      cols: 120,
+      rows: 32
+    });
+    expect(await screen.findByRole("heading", { name: "Live prompt" })).toBeInTheDocument();
+  });
+
+  it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {
+    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-new",
+      projectId: "project-1",
+      taskLabel: "New chat",
+      branch: "main",
+      baseRef: "main",
+      path: "/tmp/maestro",
+      state: "running",
+      sharedWorkspace: true,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    };
+    const newSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-new",
+      workspaceId: "workspace-new",
+      provider: "codex",
+      modelLabel: "GPT-5 Codex",
+      prompt: "New chat",
+      state: "running",
+      attention: "normal",
+      startedAt: "2026-05-08T16:10:00.000Z",
+      completedAt: null,
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
+      preferred: false
+    };
+    const refreshedSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: [snapshot.workspaces[0] ?? missingWorkspace(), newWorkspace],
+      sessions: [snapshot.sessions[0] ?? missingSession(), newSession],
+      events: [
+        snapshot.events[0] ?? missingEvent(),
+        {
+          id: "event-new",
+          sessionId: "session-new",
+          type: "message.completed",
+          message: "New chat answer.",
+          payload: {},
+          createdAt: "2026-05-08T16:10:01.000Z"
+        }
+      ]
+    };
+
+    let resolveRefresh: ((data: DashboardSnapshot) => void) | null = null;
+    let loadCount = 0;
+    dashboardLoad.mockImplementation(() => {
+      loadCount += 1;
+      if (loadCount === 1) {
+        return Promise.resolve(snapshot);
+      }
+      return new Promise<DashboardSnapshot>((resolve) => {
+        resolveRefresh = resolve;
+      });
+    });
+    createCurrentWorkspace.mockResolvedValue(newWorkspace);
+    launchProvider.mockResolvedValue(newSession);
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "New chat" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() => expect(loadCount).toBe(2));
+    (resolveRefresh as ((data: DashboardSnapshot) => void) | null)?.(refreshedSnapshot);
+
+    expect(await screen.findByText("New chat answer.")).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New chat" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("starts Claude when selected in the composer", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Claude" }));
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Review this change" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        provider: "claude",
+        prompt: "Review this change",
+        modelLabel: "Claude Code",
+        cols: 120,
+        rows: 32
+      })
+    );
+  });
+
+  it("starts a new chat from the cockpit sidebar", async () => {
+    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-new",
+      projectId: "project-1",
+      taskLabel: "Fresh cockpit chat",
+      branch: "main",
+      baseRef: "main",
+      path: "/tmp/maestro",
+      state: "running",
+      sharedWorkspace: true,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:14:00.000Z"
+    };
+    const newSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-new",
+      workspaceId: "workspace-new",
+      provider: "codex",
+      modelLabel: "GPT-5 Codex",
+      prompt: "Fresh cockpit chat",
+      state: "running",
+      attention: "normal",
+      startedAt: "2026-05-08T16:14:00.000Z",
+      completedAt: null,
+      lastActivityAt: "2026-05-08T16:14:00.000Z",
+      preferred: false
+    };
+    createCurrentWorkspace.mockResolvedValue(newWorkspace);
+    launchProvider.mockResolvedValue(newSession);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cockpit" }));
+    fireEvent.change(await screen.findByLabelText("New chat prompt"), {
+      target: { value: "Fresh cockpit chat" }
+    });
+    fireEvent.click(screen.getByTitle("Start new chat"));
+
+    await waitFor(() =>
+      expect(createCurrentWorkspace).toHaveBeenCalledWith({
+        projectId: "project-1",
+        taskLabel: "Fresh cockpit chat"
+      })
+    );
+    expect(launchProvider).toHaveBeenCalledWith({
+      workspaceId: "workspace-new",
+      provider: "codex",
+      prompt: "Fresh cockpit chat",
+      modelLabel: "GPT-5 Codex",
+      cols: 120,
+      rows: 32
+    });
+  });
+
+  it("opens a sidebar chat in cockpit", async () => {
+    dashboardLoad.mockResolvedValue({
+      ...snapshot,
+      workspaces: [
+        ...(snapshot.workspaces[0] ? [snapshot.workspaces[0]] : []),
+        {
+          id: "workspace-2",
+          projectId: "project-1",
+          taskLabel: "Second chat",
+          branch: "maestro/second-chat",
+          baseRef: "main",
+          path: "/tmp/worktrees/second-chat",
+          state: "complete",
+          sharedWorkspace: false,
+          dirty: false,
+          changedFiles: 0,
+          lastActivityAt: "2026-05-08T16:04:00.000Z"
+        }
+      ],
+      sessions: [
+        ...(snapshot.sessions[0] ? [snapshot.sessions[0]] : []),
+        {
+          id: "session-2",
+          workspaceId: "workspace-2",
+          provider: "claude",
+          modelLabel: "Claude Code",
+          prompt: "Second chat",
+          state: "complete",
+          attention: "review-ready",
+          startedAt: "2026-05-08T16:00:00.000Z",
+          completedAt: "2026-05-08T16:04:00.000Z",
+          lastActivityAt: "2026-05-08T16:04:00.000Z",
+          preferred: false
+        }
+      ],
+      events: [
+        ...(snapshot.events[0] ? [snapshot.events[0]] : []),
+        {
+          id: "event-2",
+          sessionId: "session-2",
+          type: "message.completed",
+          message: "Second answer.",
+          payload: {},
+          createdAt: "2026-05-08T16:04:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
+
+    expect(await screen.findByRole("heading", { name: "Live prompt" })).toBeInTheDocument();
+    expect(screen.getByText("Second answer.")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
+  });
+
+  it("sends follow-up prompts to the selected live session", async () => {
+    dashboardLoad.mockResolvedValue({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cockpit" }));
+    fireEvent.change(await screen.findByLabelText("Session prompt"), {
+      target: { value: "continue with tests" }
+    });
+    fireEvent.click(screen.getByTitle("Send follow-up"));
+
+    await waitFor(() =>
+      expect(sendProviderInput).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        input: "continue with tests\r"
+      })
+    );
+  });
+
+  it("submits the composer on Enter without reloading the page", async () => {
+    render(<App />);
+
+    const input = await screen.findByLabelText("Task prompt");
+    fireEvent.change(input, { target: { value: "Implement PTY launch" } });
+
+    const form = input.closest("form");
+    if (!form) {
+      throw new Error("Composer form not found");
+    }
+
+    // Dispatch a real submit event so we can read defaultPrevented after the
+    // React onSubmit handler runs (a target-phase listener would observe the
+    // pre-React state).
+    const submitEvent = new Event("submit", { bubbles: true, cancelable: true });
+    form.dispatchEvent(submitEvent);
+
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
+    expect(launchProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "Implement PTY launch", provider: "codex" })
+    );
+    expect(submitEvent.defaultPrevented).toBe(true);
+  });
+
+  it("does not navigate on Cmd+1 inside a contenteditable element", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maestro" });
+
+    // Switch to a different view first to detect a wrong navigation.
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+
+    // Append contenteditable inside the app shell so the bubbled keydown reaches the scoped listener.
+    const appShell = document.querySelector("main.app-shell");
+    if (!appShell) {
+      throw new Error("App shell not found");
+    }
+    const editable = document.createElement("div");
+    editable.setAttribute("contenteditable", "true");
+    appShell.appendChild(editable);
+    editable.focus();
+
+    const event = new KeyboardEvent("keydown", {
+      key: "1",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    let preventDefaultCalled = false;
+    const originalPreventDefault = event.preventDefault.bind(event);
+    event.preventDefault = () => {
+      preventDefaultCalled = true;
+      originalPreventDefault();
+    };
+    editable.dispatchEvent(event);
+
+    expect(preventDefaultCalled).toBe(false);
+    // Should remain on the Board view; the Dashboard's project heading should not be present.
+    expect(screen.queryByRole("heading", { name: "Maestro" })).not.toBeInTheDocument();
+    appShell.removeChild(editable);
+  });
+
+  it("discards a stale dashboard load when a newer load completes first", async () => {
+    let resolveSlow: ((data: DashboardSnapshot) => void) | null = null;
+    const slowSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      projects: [
+        {
+          ...primaryProject(),
+          name: "Stale-Project"
+        }
+      ]
+    };
+    const fastSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      projects: [
+        {
+          ...primaryProject(),
+          name: "Fresh-Project"
+        }
+      ]
+    };
+
+    let callCount = 0;
+    dashboardLoad.mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Promise<DashboardSnapshot>((resolve) => {
+          resolveSlow = resolve;
+        });
+      }
+      return Promise.resolve(fastSnapshot);
+    });
+
+    render(<App />);
+
+    // Wait for the first invocation to be in flight.
+    await waitFor(() => expect(callCount).toBe(1));
+
+    // Trigger a second load via visibility change.
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2));
+
+    // Now resolve the first (slow) load with stale data.
+    (resolveSlow as ((data: DashboardSnapshot) => void) | null)?.(slowSnapshot);
+
+    // Snapshot should reflect the second (fast) load result, not the stale first.
+    expect(await screen.findByRole("heading", { name: "Fresh-Project" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Stale-Project" })).not.toBeInTheDocument();
+  });
+
+  it("renders the dashboard error state with a Retry button and reloads on click", async () => {
+    let attempts = 0;
+    dashboardLoad.mockImplementation(() => {
+      attempts += 1;
+      if (attempts === 1) {
+        return Promise.reject(new Error("backend-fault"));
+      }
+      return Promise.resolve(snapshot);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(/backend-fault/)).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+  });
+});
+
+describe("App without preload bridge", () => {
+  it("renders the bridge-missing banner when window.maestro is undefined", async () => {
+    const previousMaestro = window.maestro;
+    delete (window as { maestro?: MaestroApi }).maestro;
+
+    // jsdom marks Location.prototype.hostname non-configurable, so swap the
+    // entire `window.location` with a plain stub for the duration of the test.
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, hostname: "example.test", host: "example.test" }
+    });
+
+    try {
+      render(<App />);
+      expect(
+        await screen.findByText(/Preload bridge unavailable; running on demo data/)
+      ).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: originalLocation
+      });
+      window.maestro = previousMaestro;
+    }
   });
 });
 
@@ -155,6 +582,10 @@ function missingWorkspace(): never {
 
 function missingSession(): never {
   throw new Error("Test snapshot must include a session");
+}
+
+function missingEvent(): never {
+  throw new Error("Test snapshot must include an event");
 }
 
 function missingApproval(): never {

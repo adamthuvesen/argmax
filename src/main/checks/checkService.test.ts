@@ -49,6 +49,72 @@ describe("CheckService", () => {
 
     database.connection.close();
   });
+
+  it("kills the process tree and records cancelled when aborted", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CheckService(database);
+    const controller = new AbortController();
+
+    // Start a long-running command and abort within ~100 ms. The detached
+    // process-group kill should bring it down well before the test timeout.
+    setTimeout(() => controller.abort(), 100);
+    const start = Date.now();
+    const check = await service.runWorkspaceCheck({
+      workspaceId,
+      command: "node -e \"setTimeout(() => {}, 60000)\"",
+      signal: controller.signal
+    });
+    const elapsed = Date.now() - start;
+
+    expect(check.status).toBe("cancelled");
+    expect(check.summary?.startsWith("[cancelled]")).toBe(true);
+    expect(elapsed).toBeLessThan(10_000);
+
+    database.connection.close();
+  });
+
+  it("times out long-running commands and records timed-out", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CheckService(database);
+
+    const start = Date.now();
+    const check = await service.runWorkspaceCheck({
+      workspaceId,
+      command: "node -e \"setTimeout(() => {}, 60000)\"",
+      timeoutMs: 200
+    });
+    const elapsed = Date.now() - start;
+
+    expect(check.status).toBe("cancelled");
+    expect(check.summary?.startsWith("[timed-out]")).toBe(true);
+    expect(elapsed).toBeLessThan(10_000);
+
+    database.connection.close();
+  });
+
+  it("cancels every running child for a workspace via cancelWorkspaceChecks", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CheckService(database);
+
+    const inflight = service.runWorkspaceCheck({
+      workspaceId,
+      command: "node -e \"setTimeout(() => {}, 60000)\""
+    });
+    // Give the child a moment to register before cancelling.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    service.cancelWorkspaceChecks(workspaceId);
+
+    const result = await inflight;
+    // SIGTERM produces a non-zero exit; we don't assert exact status because
+    // the kill races with the natural process group teardown, but the
+    // process must terminate quickly.
+    expect(["failed", "cancelled"]).toContain(result.status);
+
+    database.connection.close();
+  });
 });
 
 function persistWorkspaceFixture(database: MaestroDatabase): string {

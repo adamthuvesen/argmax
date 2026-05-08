@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { MaestroDatabase, PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import type { LaunchProviderSessionInput, ProviderId, SessionSummary } from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
@@ -16,8 +16,66 @@ const launchProviderSessionInput = z.object({
   rows: z.number().int().min(5).max(200)
 });
 
+interface PendingOp {
+  kind: "send" | "resize" | "terminate";
+  payload?: unknown;
+}
+
+interface SessionBuffer {
+  /**
+   * Per-stream line buffers. Each stream (stdout/stderr/pty) is reassembled
+   * independently so that a partial JSON object on stdout never gets glued to
+   * an unrelated PTY chunk. Trailing partial lines are flushed on terminate.
+   */
+  streamBuffers: Map<ProviderEvent["stream"], string>;
+  sequence: number;
+  lastFlushAt: number;
+  flushTimer: NodeJS.Timeout | null;
+  /** Coalesced events accumulated during the current micro-batch window. */
+  pendingEvents: PersistTimelineEventInput[];
+  /** Coalesced raw outputs for the current micro-batch window. */
+  pendingRawOutputs: Array<{
+    id: string;
+    sessionId: string;
+    stream: ProviderEvent["stream"];
+    content: string;
+    createdAt: string;
+  }>;
+  /** Latest output createdAt seen, used for throttled lastActivityAt updates. */
+  lastActivityWriteAt: number;
+  workspaceId: string;
+  provider: ProviderId;
+}
+
+interface PendingHandleEntry {
+  kind: "pending";
+  ops: PendingOp[];
+  rejected: boolean;
+}
+
+interface ResolvedHandleEntry {
+  kind: "resolved";
+  handle: ProviderSessionHandle;
+}
+
+type HandleEntry = PendingHandleEntry | ResolvedHandleEntry;
+
+/** 16 ms micro-batch coalescing window — one frame at 60Hz. */
+const MICRO_BATCH_MS = 16;
+/** 2 s minimum interval between lastActivityAt writes per session. */
+const ACTIVITY_THROTTLE_MS = 2_000;
+/** 256 KB cap on raw_outputs.content per row. */
+const RAW_OUTPUT_CAP = 256 * 1024;
+/** 64 KB cap on per-event payload_json. */
+const EVENT_PAYLOAD_CAP = 64 * 1024;
+/** 4 KB preview window in truncated payload markers. */
+const EVENT_PAYLOAD_PREVIEW = 4 * 1024;
+/** Timeout to wait for natural exit during disposeAll before resolving. */
+const DISPOSE_GRACE_MS = 2_500;
+
 export class ProviderSessionService {
-  private readonly handles = new Map<string, ProviderSessionHandle>();
+  private readonly handles = new Map<string, HandleEntry>();
+  private readonly buffers = new Map<string, SessionBuffer>();
 
   constructor(
     private readonly database: MaestroDatabase,
@@ -43,6 +101,15 @@ export class ProviderSessionService {
     this.database.persistTimelineEvent({
       id: randomUUID(),
       sessionId,
+      type: "user.message",
+      message: input.prompt,
+      payload: {
+        source: "composer"
+      }
+    });
+    this.database.persistTimelineEvent({
+      id: randomUUID(),
+      sessionId,
       type: "session.started",
       message: `${input.provider} session started.`,
       payload: {
@@ -52,6 +119,12 @@ export class ProviderSessionService {
       }
     });
 
+    this.initializeBuffer(sessionId, workspace.id, input.provider);
+    // Register a pending placeholder synchronously so any racing operations are
+    // queued into arrival order against the real handle once launch resolves.
+    const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false };
+    this.handles.set(sessionId, pending);
+
     const adapter = this.adapterFactory(input.provider);
     try {
       const handle = await adapter.launch(
@@ -60,15 +133,34 @@ export class ProviderSessionService {
           workspacePath: workspace.path,
           prompt: input.prompt,
           modelLabel: input.modelLabel,
-          mode: "interactive-pty",
+          mode: "structured-json",
           cols: input.cols,
           rows: input.rows
         },
-        (event) => this.handleProviderEvent(workspace.id, event)
+        (event) => this.handleProviderEvent(workspace.id, input.provider, event)
       );
-      this.handles.set(sessionId, handle);
+      // If the placeholder was rejected (e.g., a concurrent launch failure path
+      // ran), drop the resolved handle and terminate the freshly spawned child.
+      if (pending.rejected) {
+        try {
+          handle.terminate();
+        } catch {
+          /* ignore */
+        }
+        throw new Error("Provider launch was cancelled before handle registration.");
+      }
+      this.handles.set(sessionId, { kind: "resolved", handle });
+      // Replay queued operations in arrival order.
+      for (const op of pending.ops) {
+        this.applyOpToHandle(handle, op);
+      }
+      pending.ops.length = 0;
       return session;
     } catch (error) {
+      this.handles.delete(sessionId);
+      pending.rejected = true;
+      pending.ops.length = 0;
+      this.deleteBuffer(sessionId);
       const message = error instanceof Error ? error.message : "Provider launch failed.";
       this.database.updateSessionState(sessionId, {
         state: "failed",
@@ -89,37 +181,258 @@ export class ProviderSessionService {
     }
   }
 
-  sendInput(sessionId: string, input: string): void {
-    this.getHandle(sessionId).sendInput(input);
+  async sendInput(sessionId: string, input: string): Promise<void> {
+    const message = input.replace(/\r?\n$/, "").trim();
+    if (!message) {
+      return;
+    }
+
+    const session = this.database.getSession(sessionId);
+    const workspace = this.database.getWorkspace(session.workspaceId);
+    const liveHandle = this.getLiveHandle(sessionId);
+    if (liveHandle) {
+      if (!liveHandle.acceptsInput) {
+        throw new Error("Wait for the current response before sending another prompt.");
+      }
+      liveHandle.sendInput(`${message}\r`);
+    }
+
+    this.database.persistTimelineEvent({
+      id: randomUUID(),
+      sessionId,
+      type: "user.message",
+      message,
+      payload: {
+        source: "composer"
+      }
+    });
+    if (liveHandle) {
+      return;
+    }
+
+    this.database.updateSessionState(sessionId, {
+      state: "running",
+      attention: computeSessionAttention({ state: "running" }),
+      completedAt: null
+    });
+    this.database.updateWorkspaceState(workspace.id, "running");
+
+    this.initializeBuffer(sessionId, workspace.id, session.provider);
+    const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false };
+    this.handles.set(sessionId, pending);
+
+    try {
+      const handle = await this.adapterFactory(session.provider).launch(
+        {
+          sessionId,
+          workspacePath: workspace.path,
+          prompt: message,
+          modelLabel: session.modelLabel,
+          mode: "structured-json",
+          cols: 120,
+          rows: 32
+        },
+        (event) => this.handleProviderEvent(workspace.id, session.provider, event)
+      );
+      if (pending.rejected) {
+        try {
+          handle.terminate();
+        } catch {
+          /* ignore */
+        }
+        throw new Error("Provider launch was cancelled before handle registration.");
+      }
+      this.handles.set(sessionId, { kind: "resolved", handle });
+      for (const op of pending.ops) {
+        this.applyOpToHandle(handle, op);
+      }
+      pending.ops.length = 0;
+    } catch (error) {
+      this.handles.delete(sessionId);
+      pending.rejected = true;
+      pending.ops.length = 0;
+      this.deleteBuffer(sessionId);
+      const detail = error instanceof Error ? error.message : "Provider input failed.";
+      this.database.updateSessionState(sessionId, {
+        state: "failed",
+        attention: computeSessionAttention({ state: "failed" }),
+        completedAt: new Date().toISOString()
+      });
+      this.database.updateWorkspaceState(workspace.id, "failed");
+      this.database.persistTimelineEvent({
+        id: randomUUID(),
+        sessionId,
+        type: "error",
+        message: detail,
+        payload: {
+          provider: session.provider
+        }
+      });
+      throw error;
+    }
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
-    this.getHandle(sessionId).resize(cols, rows);
+    const entry = this.handles.get(sessionId);
+    if (!entry) {
+      return;
+    }
+    if (entry.kind === "pending") {
+      entry.ops.push({ kind: "resize", payload: { cols, rows } });
+      return;
+    }
+    if (entry.handle.disposed) {
+      return;
+    }
+    entry.handle.resize(cols, rows);
   }
 
-  terminate(sessionId: string): void {
-    this.getHandle(sessionId).terminate();
+  async terminate(sessionId: string): Promise<void> {
+    const entry = this.handles.get(sessionId);
+    if (!entry) {
+      return;
+    }
+    if (entry.kind === "pending") {
+      entry.ops.push({ kind: "terminate" });
+      return;
+    }
+    if (entry.handle.disposed) {
+      return;
+    }
+    // Flush any buffered partial line so the trailing fragment surfaces before
+    // termination tears down the per-session state.
+    this.flushTrailingFragment(sessionId);
+    this.flushBatch(sessionId);
+    await Promise.resolve(entry.handle.terminate());
   }
 
-  private handleProviderEvent(workspaceId: string, event: ProviderEvent): void {
-    this.database.persistRawOutput({
-      id: randomUUID(),
-      sessionId: event.sessionId,
-      stream: event.stream,
-      content: event.message,
-      createdAt: event.createdAt
+  async disposeAll(): Promise<void> {
+    const sessions = [...this.handles.keys()];
+    await Promise.allSettled(
+      sessions.map(async (sessionId) => {
+        const entry = this.handles.get(sessionId);
+        if (!entry) {
+          return;
+        }
+        if (entry.kind === "pending") {
+          entry.rejected = true;
+          this.handles.delete(sessionId);
+          this.deleteBuffer(sessionId);
+          return;
+        }
+        if (entry.handle.disposed) {
+          return;
+        }
+        this.flushTrailingFragment(sessionId);
+        this.flushBatch(sessionId);
+        await Promise.race([
+          Promise.resolve(entry.handle.terminate()),
+          new Promise<void>((resolve) => setTimeout(resolve, DISPOSE_GRACE_MS))
+        ]);
+      })
+    );
+  }
+
+  /** Internal helper exposed via test surface; returns null when disposed/missing. */
+  private getLiveHandle(sessionId: string): ProviderSessionHandle | null {
+    const entry = this.handles.get(sessionId);
+    if (!entry || entry.kind !== "resolved") {
+      return null;
+    }
+    return entry.handle.disposed ? null : entry.handle;
+  }
+
+  private applyOpToHandle(handle: ProviderSessionHandle, op: PendingOp): void {
+    if (handle.disposed) {
+      return;
+    }
+    if (op.kind === "send") {
+      const data = (op.payload as { data: string }).data;
+      handle.sendInput(data);
+      return;
+    }
+    if (op.kind === "resize") {
+      const { cols, rows } = op.payload as { cols: number; rows: number };
+      handle.resize(cols, rows);
+      return;
+    }
+    if (op.kind === "terminate") {
+      handle.terminate();
+    }
+  }
+
+  private initializeBuffer(sessionId: string, workspaceId: string, provider: ProviderId): void {
+    this.buffers.set(sessionId, {
+      streamBuffers: new Map(),
+      sequence: 0,
+      lastFlushAt: 0,
+      flushTimer: null,
+      pendingEvents: [],
+      pendingRawOutputs: [],
+      lastActivityWriteAt: 0,
+      workspaceId,
+      provider
     });
+  }
+
+  private deleteBuffer(sessionId: string): void {
+    const entry = this.buffers.get(sessionId);
+    if (entry?.flushTimer) {
+      clearTimeout(entry.flushTimer);
+    }
+    this.buffers.delete(sessionId);
+  }
+
+  private handleProviderEvent(
+    workspaceId: string,
+    provider: ProviderId,
+    event: ProviderEvent
+  ): void {
+    const sessionState = this.buffers.get(event.sessionId);
 
     if (event.type === "output") {
-      for (const normalizedEvent of normalizeProviderEvent(event)) {
-        this.database.persistTimelineEvent(normalizedEvent);
+      // Persist raw output (with truncation) directly into the pending batch.
+      this.queueRawOutput(event);
+
+      // Append into the per-stream line buffer for this session; only feed
+      // completed lines into the normalizer. Trailing partial line is held
+      // for the next chunk on the same stream.
+      if (sessionState) {
+        const previous = sessionState.streamBuffers.get(event.stream) ?? "";
+        const combined = previous + event.message;
+        const newlineIndex = combined.lastIndexOf("\n");
+        if (newlineIndex >= 0) {
+          const completed = combined.slice(0, newlineIndex + 1);
+          sessionState.streamBuffers.set(event.stream, combined.slice(newlineIndex + 1));
+          const syntheticEvent: ProviderEvent = { ...event, message: completed };
+          const normalized = normalizeProviderEvent(syntheticEvent, { provider });
+          for (const ev of normalized) {
+            this.queueTimelineEvent(event.sessionId, ev);
+          }
+        } else {
+          sessionState.streamBuffers.set(event.stream, combined);
+        }
+        this.maybeUpdateLastActivity(event);
+        this.scheduleFlush(event.sessionId);
       }
       return;
     }
 
+    // Lifecycle event: flush any held partial line and any pending batch
+    // synchronously, then update state and remove the handle.
+    this.flushTrailingFragment(event.sessionId);
+    this.flushBatch(event.sessionId);
+
     const completedAt = event.createdAt;
     const succeeded = event.type === "exit" && event.exitCode === 0;
     const state = succeeded ? "complete" : "failed";
+    this.database.persistRawOutput({
+      id: randomUUID(),
+      sessionId: event.sessionId,
+      stream: event.stream,
+      content: capRawContent(event.message).content,
+      createdAt: event.createdAt
+    });
     this.database.updateSessionState(event.sessionId, {
       state,
       attention: computeSessionAttention({ state }),
@@ -132,19 +445,232 @@ export class ProviderSessionService {
       sessionId: event.sessionId,
       type: succeeded ? "session.completed" : "error",
       message: event.message,
-      payload: {
+      payload: capEventPayload({
         exitCode: event.exitCode
-      },
+      }).payload,
       createdAt: event.createdAt
     });
     this.handles.delete(event.sessionId);
+    this.deleteBuffer(event.sessionId);
   }
 
-  private getHandle(sessionId: string): ProviderSessionHandle {
-    const handle = this.handles.get(sessionId);
-    if (!handle) {
-      throw new Error(`No running provider session found for ${sessionId}`);
+  private queueRawOutput(event: ProviderEvent): void {
+    const sessionState = this.buffers.get(event.sessionId);
+    const { content } = capRawContent(event.message);
+    const truncatedDelta = capRawTruncationMarker(event);
+    const id = randomUUID();
+    if (sessionState) {
+      sessionState.pendingRawOutputs.push({
+        id,
+        sessionId: event.sessionId,
+        stream: event.stream,
+        content,
+        createdAt: event.createdAt
+      });
+      if (truncatedDelta) {
+        this.queueTimelineEvent(event.sessionId, truncatedDelta);
+      }
+    } else {
+      // Defensive: persist directly when no buffer exists.
+      this.database.persistRawOutput({
+        id,
+        sessionId: event.sessionId,
+        stream: event.stream,
+        content,
+        createdAt: event.createdAt
+      });
+      if (truncatedDelta) {
+        this.database.persistTimelineEvent(truncatedDelta);
+      }
     }
-    return handle;
   }
+
+  private queueTimelineEvent(sessionId: string, event: PersistTimelineEventInput): void {
+    const sessionState = this.buffers.get(sessionId);
+    const { payload, sibling } = capEventPayload(event.payload);
+    const stamped: PersistTimelineEventInput & { sequence?: number } = {
+      ...event,
+      payload
+    };
+    if (sessionState) {
+      sessionState.sequence += 1;
+      (stamped as PersistTimelineEventInput & { sequence: number }).sequence = sessionState.sequence;
+      sessionState.pendingEvents.push(stamped);
+      if (sibling) {
+        sessionState.sequence += 1;
+        const stampedSibling: PersistTimelineEventInput & { sequence: number } = {
+          ...sibling,
+          sessionId,
+          sequence: sessionState.sequence
+        };
+        sessionState.pendingEvents.push(stampedSibling);
+      }
+    } else {
+      this.database.persistTimelineEvent(stamped);
+      if (sibling) {
+        this.database.persistTimelineEvent({ ...sibling, sessionId });
+      }
+    }
+  }
+
+  private maybeUpdateLastActivity(event: ProviderEvent): void {
+    const sessionState = this.buffers.get(event.sessionId);
+    if (!sessionState) {
+      return;
+    }
+    const now = Date.parse(event.createdAt);
+    if (Number.isNaN(now)) {
+      return;
+    }
+    if (now - sessionState.lastActivityWriteAt < ACTIVITY_THROTTLE_MS) {
+      return;
+    }
+    sessionState.lastActivityWriteAt = now;
+    try {
+      const session = this.database.getSession(event.sessionId);
+      this.database.updateSessionState(event.sessionId, {
+        state: session.state,
+        attention: session.attention,
+        completedAt: session.completedAt ?? null,
+        lastActivityAt: event.createdAt
+      });
+    } catch {
+      /* session row vanished — ignore */
+    }
+  }
+
+  private scheduleFlush(sessionId: string): void {
+    const sessionState = this.buffers.get(sessionId);
+    if (!sessionState) {
+      return;
+    }
+    if (sessionState.flushTimer) {
+      return;
+    }
+    sessionState.flushTimer = setTimeout(() => {
+      sessionState.flushTimer = null;
+      this.flushBatch(sessionId);
+    }, MICRO_BATCH_MS);
+    // Allow Node.js process to exit even when the timer is pending.
+    if (typeof sessionState.flushTimer.unref === "function") {
+      sessionState.flushTimer.unref();
+    }
+  }
+
+  private flushTrailingFragment(sessionId: string): void {
+    const sessionState = this.buffers.get(sessionId);
+    if (!sessionState) {
+      return;
+    }
+    for (const [stream, trailing] of sessionState.streamBuffers) {
+      if (!trailing) continue;
+      sessionState.streamBuffers.set(stream, "");
+      const synthetic: ProviderEvent = {
+        sessionId,
+        type: "output",
+        stream,
+        message: `${trailing}\n`,
+        createdAt: new Date().toISOString()
+      };
+      const normalized = normalizeProviderEvent(synthetic, { provider: sessionState.provider });
+      for (const ev of normalized) {
+        this.queueTimelineEvent(sessionId, ev);
+      }
+    }
+  }
+
+  private flushBatch(sessionId: string): void {
+    const sessionState = this.buffers.get(sessionId);
+    if (!sessionState) {
+      return;
+    }
+    if (sessionState.flushTimer) {
+      clearTimeout(sessionState.flushTimer);
+      sessionState.flushTimer = null;
+    }
+    if (sessionState.pendingRawOutputs.length === 0 && sessionState.pendingEvents.length === 0) {
+      return;
+    }
+
+    const rawOutputs = sessionState.pendingRawOutputs.splice(0);
+    const events = sessionState.pendingEvents.splice(0);
+
+    // Wrap the whole micro-batch in one transaction so the renderer never
+    // observes a half-applied state between persistRawOutput and the timeline.
+    const persist = this.database.connection.transaction(() => {
+      for (const raw of rawOutputs) {
+        this.database.persistRawOutput(raw);
+      }
+      for (const event of events) {
+        this.database.persistTimelineEvent(event);
+      }
+    });
+    persist();
+    sessionState.lastFlushAt = Date.now();
+  }
+}
+
+function capRawContent(content: string): { content: string; droppedBytes: number } {
+  if (content.length <= RAW_OUTPUT_CAP) {
+    return { content, droppedBytes: 0 };
+  }
+  const droppedBytes = content.length - RAW_OUTPUT_CAP;
+  return {
+    content: `${content.slice(0, RAW_OUTPUT_CAP)}[truncated ${droppedBytes} bytes]`,
+    droppedBytes
+  };
+}
+
+function capRawTruncationMarker(event: ProviderEvent): PersistTimelineEventInput | null {
+  if (event.message.length <= RAW_OUTPUT_CAP) {
+    return null;
+  }
+  const droppedBytes = event.message.length - RAW_OUTPUT_CAP;
+  return {
+    id: randomUUID(),
+    sessionId: event.sessionId,
+    type: "message.delta",
+    message: `Output truncated: ${droppedBytes} bytes dropped`,
+    payload: {
+      truncated: true,
+      droppedBytes,
+      stream: event.stream
+    },
+    createdAt: event.createdAt
+  };
+}
+
+interface CappedPayload {
+  payload: Record<string, unknown>;
+  sibling: Omit<PersistTimelineEventInput, "sessionId"> | null;
+}
+
+function capEventPayload(payload: Record<string, unknown>): CappedPayload {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(payload);
+  } catch {
+    return { payload: { truncated: true, originalSize: 0, preview: "" }, sibling: null };
+  }
+  if (serialized.length <= EVENT_PAYLOAD_CAP) {
+    return { payload, sibling: null };
+  }
+  const truncatedEventId = randomUUID();
+  return {
+    payload: {
+      truncated: true,
+      originalSize: serialized.length,
+      preview: serialized.slice(0, EVENT_PAYLOAD_PREVIEW),
+      truncatedEventId
+    },
+    sibling: {
+      id: randomUUID(),
+      type: "error",
+      message: "event payload truncated",
+      payload: {
+        truncatedEventId,
+        originalSize: serialized.length
+      }
+    }
+  };
 }

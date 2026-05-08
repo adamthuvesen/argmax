@@ -1,19 +1,25 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { createDatabase } from "./persistence/database.js";
+import { createDatabase, type MaestroDatabase } from "./persistence/database.js";
 import { registerIpcHandlers } from "./ipc.js";
+let registeredChannels: readonly string[] = [];
+import { ProviderSessionService } from "./providers/providerSessionService.js";
 
 let mainWindow: BrowserWindow | null = null;
+let database: MaestroDatabase | null = null;
+let providerSessions: ProviderSessionService | null = null;
+let shutdownInProgress = false;
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
-    minWidth: 1040,
-    minHeight: 720,
+    minWidth: 900,
+    minHeight: 620,
+    resizable: true,
     title: "Maestro",
     backgroundColor: "#101418",
     show: false,
@@ -41,8 +47,9 @@ async function createWindow(): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
-  const database = createDatabase();
-  registerIpcHandlers(database);
+  database = createDatabase();
+  providerSessions = new ProviderSessionService(database);
+  registeredChannels = registerIpcHandlers(database, providerSessions);
 
   await createWindow();
 
@@ -58,3 +65,42 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+
+app.on("before-quit", (event) => {
+  if (shutdownInProgress) {
+    return;
+  }
+  shutdownInProgress = true;
+  event.preventDefault();
+  void shutdown();
+});
+
+async function shutdown(): Promise<void> {
+  try {
+    if (providerSessions) {
+      await providerSessions.disposeAll();
+    }
+    for (const channel of registeredChannels) {
+      try {
+        ipcMain.removeHandler(channel);
+      } catch {
+        /* handler not registered or already removed */
+      }
+    }
+    if (database) {
+      try {
+        database.clearPruneInterval?.();
+      } catch {
+        /* not configured or already cleared */
+      }
+      try {
+        database.connection.close();
+      } catch {
+        /* already closed */
+      }
+      database = null;
+    }
+  } finally {
+    app.exit(0);
+  }
+}

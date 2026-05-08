@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ProviderId } from "../../shared/types.js";
 import type { ProviderCapabilityReport, ProviderMode } from "./providerTypes.js";
+import { buildProviderEnvironment } from "./providerEnvironment.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -80,7 +81,12 @@ async function discoverProvider(
 export const defaultDiscoveryRunner: ProviderDiscoveryRunner = {
   resolveBinary: async (binaryName) => {
     try {
-      const { stdout } = await execFileAsync("which", [binaryName], { encoding: "utf8" });
+      const { stdout } = await execFileAsync("which", [binaryName], {
+        encoding: "utf8",
+        env: buildProviderEnvironment(),
+        timeout: 30_000,
+        maxBuffer: 8 * 1024 * 1024
+      });
       return stdout.trim() || null;
     } catch {
       return null;
@@ -88,7 +94,12 @@ export const defaultDiscoveryRunner: ProviderDiscoveryRunner = {
   },
   readVersion: async (binaryPath, versionArgs) => {
     try {
-      const { stdout, stderr } = await execFileAsync(binaryPath, versionArgs, { encoding: "utf8" });
+      const { stdout, stderr } = await execFileAsync(binaryPath, versionArgs, {
+        encoding: "utf8",
+        env: buildProviderEnvironment(),
+        timeout: 30_000,
+        maxBuffer: 8 * 1024 * 1024
+      });
       return (stdout || stderr).trim() || null;
     } catch {
       return null;

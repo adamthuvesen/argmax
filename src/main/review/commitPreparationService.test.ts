@@ -20,8 +20,31 @@ describe("CommitPreparationService", () => {
       branch: "maestro/review",
       selectedFiles: ["src/a.ts", "src/b.ts"],
       message: "feat: add review",
-      commands: ["git add -- 'src/a.ts' 'src/b.ts'", "git commit -m 'feat: add review'"]
+      // Display strings are derived from argv arrays; safe characters render
+      // unquoted, the commit message is quoted because it contains whitespace
+      // and a colon. Execution callers should use `preparePlan` to receive
+      // the underlying argv arrays directly and never re-parse this output.
+      commands: ["git add -- src/a.ts src/b.ts", "git commit -m 'feat: add review'"]
     });
+
+    database.connection.close();
+  });
+
+  it("exposes argv-shaped steps so execution callers can spawn without a shell", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CommitPreparationService(database);
+
+    const plan = service.preparePlan({
+      workspaceId,
+      selectedFiles: ["src/has space.ts", "src/-leading-dash.ts"],
+      message: "fix: tricky"
+    });
+
+    expect(plan.steps).toEqual([
+      { argv: ["git", "add", "--", "src/has space.ts", "src/-leading-dash.ts"] },
+      { argv: ["git", "commit", "-m", "fix: tricky"] }
+    ]);
 
     database.connection.close();
   });

@@ -1,15 +1,54 @@
+import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
 export interface Migration {
   version: number;
   name: string;
   up: string;
+  /**
+   * Tables this migration creates or alters. After the migration applies,
+   * the runner verifies that each named table's column set matches the
+   * `expectedColumns` manifest below for that version. Drift fails fast.
+   */
+  affectedTables?: string[];
+  /**
+   * Set when the migration uses the destructive 12-step recipe (DROP TABLE +
+   * RENAME) and references would cascade-delete dependent rows. The runner
+   * toggles `PRAGMA foreign_keys = OFF` *before* the wrapping transaction
+   * begins (the pragma is a no-op mid-transaction) and restores it after.
+   */
+  requiresForeignKeysOff?: boolean;
+}
+
+/**
+ * Thrown by the migration runner when it detects schema drift. Two paths:
+ *  1. A previously-applied migration's stored checksum no longer matches
+ *     the source SQL (someone edited an applied migration).
+ *  2. A just-applied migration's resulting `PRAGMA table_info` does not
+ *     match the in-source expected column manifest.
+ */
+export class MigrationDriftError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MigrationDriftError";
+  }
 }
 
 export const migrations: Migration[] = [
   {
     version: 1,
     name: "initial_local_product_state",
+    affectedTables: [
+      "projects",
+      "workspaces",
+      "sessions",
+      "raw_outputs",
+      "events",
+      "approvals",
+      "checks",
+      "checkpoints",
+      "ui_state"
+    ],
     up: `
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY,
@@ -119,11 +158,194 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_approvals_session_status ON approvals(session_id, status);
       CREATE INDEX IF NOT EXISTS idx_checks_workspace_started ON checks(workspace_id, started_at);
     `
+  },
+  {
+    version: 2,
+    name: "schema_migrations_checksum",
+    // No table reshape: the column is added directly by ensureSchemaMigrationsShape
+    // before this row even gets to apply. This migration is purely a marker so
+    // the v2-and-up checksum verification path activates.
+    affectedTables: ["schema_migrations"],
+    up: `
+      -- Adds a checksum column on schema_migrations for drift detection.
+      -- ensureSchemaMigrationsShape() runs the actual ALTER TABLE before any
+      -- migration applies, so this body is intentionally a no-op SELECT.
+      SELECT 1;
+    `
+  },
+  {
+    version: 3,
+    name: "workspaces_check_constraints",
+    affectedTables: ["workspaces"],
+    // SQLite cannot ALTER TABLE to add a CHECK constraint, so we follow the
+    // canonical destructive-migration recipe (https://sqlite.org/lang_altertable.html#otheralter):
+    //
+    //   1. PRAGMA foreign_keys = OFF       (outside any transaction)
+    //   2. BEGIN                           (handled by the outer applyMigration transaction)
+    //   3. CREATE TABLE workspaces_new (... with new constraints ...)
+    //   4. INSERT INTO workspaces_new SELECT * FROM workspaces
+    //   5. DROP TABLE workspaces
+    //   6. ALTER TABLE workspaces_new RENAME TO workspaces
+    //   7. (recreate indexes, triggers, views referring to the table)
+    //   8. PRAGMA foreign_key_check        (validate before commit)
+    //   9. COMMIT
+    //  10. PRAGMA foreign_keys = ON        (outside the transaction)
+    //
+    // The runner toggles `foreign_keys` around the transaction (it's a no-op
+    // when issued mid-transaction). Future destructive migrations should
+    // follow the same shape and mark themselves with `requiresForeignKeysOff`.
+    up: `
+      CREATE TABLE workspaces_new (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        task_label TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        base_ref TEXT NOT NULL,
+        path TEXT NOT NULL,
+        state TEXT NOT NULL,
+        shared_workspace INTEGER NOT NULL DEFAULT 0 CHECK (shared_workspace IN (0, 1)),
+        dirty INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)),
+        changed_files INTEGER NOT NULL DEFAULT 0,
+        last_activity_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT INTO workspaces_new (
+        id, project_id, task_label, branch, base_ref, path, state,
+        shared_workspace, dirty, changed_files, last_activity_at,
+        created_at, updated_at
+      )
+      SELECT
+        id, project_id, task_label, branch, base_ref, path, state,
+        CASE WHEN shared_workspace IN (0, 1) THEN shared_workspace ELSE 0 END,
+        CASE WHEN dirty IN (0, 1) THEN dirty ELSE 0 END,
+        changed_files, last_activity_at, created_at, updated_at
+      FROM workspaces;
+
+      DROP TABLE workspaces;
+      ALTER TABLE workspaces_new RENAME TO workspaces;
+
+      CREATE INDEX IF NOT EXISTS idx_workspaces_project_id ON workspaces(project_id);
+
+      PRAGMA foreign_key_check;
+    `,
+    requiresForeignKeysOff: true
   }
 ];
 
-export function runMigrations(database: Database.Database): void {
-  database.pragma("foreign_keys = ON");
+/**
+ * Expected column-name set per table after each migration applies. The runner
+ * compares this against `PRAGMA table_info(<table>)` and throws
+ * `MigrationDriftError` on drift, catching cases where a migration's DDL
+ * silently no-ops or produces an unexpected shape.
+ *
+ * Keys are table names; values are the sorted column-name list as of the
+ * latest migration that touches the table. When a future migration alters a
+ * table, update this manifest.
+ */
+const expectedColumns: Record<string, string[]> = {
+  projects: [
+    "check_commands_json",
+    "created_at",
+    "current_branch",
+    "default_branch",
+    "default_model_label",
+    "default_provider",
+    "id",
+    "name",
+    "repo_path",
+    "setup_command",
+    "ui_preferences_json",
+    "updated_at",
+    "worktree_location"
+  ],
+  workspaces: [
+    "base_ref",
+    "branch",
+    "changed_files",
+    "created_at",
+    "dirty",
+    "id",
+    "last_activity_at",
+    "path",
+    "project_id",
+    "shared_workspace",
+    "state",
+    "task_label",
+    "updated_at"
+  ],
+  sessions: [
+    "attention",
+    "completed_at",
+    "id",
+    "last_activity_at",
+    "model_label",
+    "prompt",
+    "provider",
+    "started_at",
+    "state",
+    "workspace_id"
+  ],
+  raw_outputs: ["content", "created_at", "id", "session_id", "stream"],
+  events: ["created_at", "id", "message", "payload_json", "session_id", "type"],
+  approvals: [
+    "command",
+    "created_at",
+    "cwd",
+    "id",
+    "provider",
+    "resolved_at",
+    "risk_level",
+    "session_id",
+    "status"
+  ],
+  checks: [
+    "command",
+    "completed_at",
+    "exit_code",
+    "id",
+    "started_at",
+    "status",
+    "summary",
+    "workspace_id"
+  ],
+  checkpoints: [
+    "branch",
+    "created_at",
+    "git_ref",
+    "id",
+    "label",
+    "patch_path",
+    "workspace_id"
+  ],
+  ui_state: ["key", "updated_at", "value_json"],
+  schema_migrations: ["applied_at", "checksum", "name", "version"]
+};
+
+/**
+ * Computes a sha256 of the migration's `up` SQL. Used to detect drift
+ * between an applied migration and the current source. Stored in full hex
+ * (64 chars) on `schema_migrations.checksum` from v2 onwards. The v1 row
+ * keeps `checksum = NULL` (legacy untracked) and is intentionally not
+ * backfilled — backfilling would mask drift.
+ */
+function computeMigrationChecksum(up: string): string {
+  return createHash("sha256").update(up).digest("hex");
+}
+
+interface SchemaMigrationRow {
+  version: number;
+  checksum: string | null;
+}
+
+/**
+ * Ensures `schema_migrations` exists and has the `checksum` column.
+ * Idempotent across launches: the v1 row created before the column existed
+ * keeps `checksum = NULL` (treated as "legacy, untracked"); migrations
+ * recorded after this column landed always store a non-null checksum.
+ */
+function ensureSchemaMigrationsShape(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
@@ -132,23 +354,108 @@ export function runMigrations(database: Database.Database): void {
     );
   `);
 
-  const applied = new Set(
-    database
-      .prepare("SELECT version FROM schema_migrations")
-      .all()
-      .map((row) => (row as { version: number }).version)
-  );
+  const columns = database
+    .prepare("PRAGMA table_info(schema_migrations)")
+    .all() as Array<{ name: string }>;
+  const hasChecksum = columns.some((column) => column.name === "checksum");
+  if (!hasChecksum) {
+    database.exec("ALTER TABLE schema_migrations ADD COLUMN checksum TEXT");
+  }
+}
+
+function verifyTableColumns(database: Database.Database, table: string): void {
+  const expected = expectedColumns[table];
+  if (!expected) {
+    return;
+  }
+  const rows = database
+    .prepare(`PRAGMA table_info(${table})`)
+    .all() as Array<{ name: string }>;
+  const actual = rows.map((row) => row.name).sort();
+  const expectedSorted = [...expected].sort();
+  if (actual.length !== expectedSorted.length || actual.some((name, i) => name !== expectedSorted[i])) {
+    throw new MigrationDriftError(
+      `Schema drift on table "${table}": expected columns [${expectedSorted.join(", ")}], ` +
+        `got [${actual.join(", ")}]`
+    );
+  }
+}
+
+export function runMigrations(database: Database.Database): void {
+  database.pragma("foreign_keys = ON");
+  ensureSchemaMigrationsShape(database);
+
+  const appliedRows = database
+    .prepare("SELECT version, checksum FROM schema_migrations")
+    .all() as SchemaMigrationRow[];
+  const appliedByVersion = new Map<number, SchemaMigrationRow>();
+  for (const row of appliedRows) {
+    appliedByVersion.set(row.version, row);
+  }
 
   const applyMigration = database.transaction((migration: Migration) => {
+    const checksum = computeMigrationChecksum(migration.up);
     database.exec(migration.up);
     database
-      .prepare("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)")
-      .run(migration.version, migration.name, new Date().toISOString());
+      .prepare(
+        "INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES (?, ?, ?, ?)"
+      )
+      .run(migration.version, migration.name, new Date().toISOString(), checksum);
+
+    // Post-migration verification: re-query schema_migrations to confirm the
+    // row was actually persisted with the expected checksum. A discrepancy
+    // here means something raced or the DDL silently failed; fail fast.
+    const recorded = database
+      .prepare("SELECT version, checksum FROM schema_migrations WHERE version = ?")
+      .get(migration.version) as SchemaMigrationRow | undefined;
+    if (!recorded || recorded.checksum !== checksum) {
+      throw new MigrationDriftError(
+        `Migration v${migration.version} (${migration.name}) failed post-apply verification`
+      );
+    }
+
+    // Verify the resulting column manifest for each table this migration
+    // touched. Drift fails the migration before the surrounding transaction
+    // commits.
+    for (const table of migration.affectedTables ?? []) {
+      verifyTableColumns(database, table);
+    }
   });
 
   for (const migration of migrations) {
-    if (!applied.has(migration.version)) {
-      applyMigration(migration);
+    const applied = appliedByVersion.get(migration.version);
+    if (!applied) {
+      // PRAGMA foreign_keys is a no-op while a transaction is open, so it
+      // must be toggled around the wrapping transaction for the destructive
+      // recipe to work. A `PRAGMA foreign_key_check` inside the migration
+      // verifies referential integrity before the transaction commits.
+      const restoreForeignKeys = migration.requiresForeignKeysOff
+        ? (() => {
+            database.pragma("foreign_keys = OFF");
+            return () => database.pragma("foreign_keys = ON");
+          })()
+        : () => {};
+      try {
+        applyMigration(migration);
+      } finally {
+        restoreForeignKeys();
+      }
+      continue;
+    }
+
+    // Already applied: verify the stored checksum still matches the source.
+    // A null stored checksum means the row was inserted before this column
+    // existed (legacy v1) — accept it as untracked.
+    if (applied.checksum === null) continue;
+
+    const expected = computeMigrationChecksum(migration.up);
+    if (applied.checksum !== expected) {
+      throw new MigrationDriftError(
+        `Migration v${migration.version} (${migration.name}) checksum drift: ` +
+          `stored=${applied.checksum} expected=${expected}. ` +
+          `The migration source has changed since it was applied; restore the original SQL ` +
+          `or write a new migration instead of editing an applied one.`
+      );
     }
   }
 }

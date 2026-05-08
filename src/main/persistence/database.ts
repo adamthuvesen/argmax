@@ -1,7 +1,32 @@
+/**
+ * Persistence layer for Maestro.
+ *
+ * `findSessionById` returns a `SessionSummary` whose `preferred` flag is
+ * computed by `loadPreferredSessionIds`. That helper scans every
+ * `ui_state` row matching `LIKE 'preferred-attempt:%'`, which would be an
+ * N×M cost when called inside a loop (e.g. building dashboard summaries).
+ *
+ * Two complementary footgun mitigations:
+ *
+ *   1. Hot-path callers that don't need the preferred bit (e.g. callers
+ *      that just persisted the row) should use `findSessionByIdNoPreferred`
+ *      below. It's a single-row SELECT and never hits `ui_state`.
+ *
+ *   2. Bulk callers that do need preferred go through a request-scoped
+ *      `WeakMap<connection, …>` cache populated on first call within a
+ *      transaction. `selectPreferredAttempt` bumps a per-connection version
+ *      number to invalidate the cache when it writes a new preference.
+ *
+ * Future maintainers: do NOT call `findSessionById` from a loop without
+ * confirming you're inside a transaction (so the cache is in effect). If
+ * you're not, prefer `findSessionByIdNoPreferred` plus a precomputed
+ * `Set<string>` of preferred ids.
+ */
 import Database from "better-sqlite3";
 import { getDatabasePath } from "../paths.js";
 import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
+import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type {
   ApprovalRequest,
   Checkpoint,
@@ -114,7 +139,7 @@ export interface PersistCheckpointInput {
   createdAt?: string;
 }
 
-interface ProjectRow {
+interface ProjectAggregateRow {
   id: string;
   name: string;
   repo_path: string;
@@ -125,11 +150,30 @@ interface ProjectRow {
   worktree_location: string;
   setup_command: string;
   check_commands_json: string;
-  active_count: number;
-  blocked_count: number;
-  failed_count: number;
-  review_ready_count: number;
-  latest_activity_at: string | null;
+  updated_at: string | null;
+  active_count: number | null;
+  workspace_blocked: number | null;
+  workspace_failed: number | null;
+  workspace_complete: number | null;
+  session_blocked: number | null;
+  session_failed: number | null;
+  session_review_ready: number | null;
+  workspace_latest: string | null;
+  session_latest: string | null;
+}
+
+interface BareProjectRow {
+  id: string;
+  name: string;
+  repo_path: string;
+  current_branch: string;
+  default_branch: string | null;
+  default_provider: ProjectSettings["defaultProvider"];
+  default_model_label: string;
+  worktree_location: string;
+  setup_command: string;
+  check_commands_json: string;
+  updated_at: string;
 }
 
 interface WorkspaceRow {
@@ -209,6 +253,13 @@ interface CheckpointRow {
   created_at: string;
 }
 
+export interface FindPendingApprovalInput {
+  sessionId: string;
+  command: string;
+  cwd: string;
+  provider: ApprovalRequest["provider"];
+}
+
 export interface MaestroDatabase {
   connection: Database.Database;
   listProjects: () => ProjectSummary[];
@@ -216,11 +267,15 @@ export interface MaestroDatabase {
   persistProject: (input: PersistProjectInput) => ProjectSummary;
   updateProjectSettings: (projectId: string, settings: ProjectSettings) => ProjectSummary;
   getProject: (projectId: string) => ProjectSummary;
+  findProjectById: (projectId: string) => ProjectSummary | null;
+  findProjectByRepoPath: (repoPath: string) => ProjectSummary | null;
   getWorkspace: (workspaceId: string) => WorkspaceSummary;
+  getSession: (sessionId: string) => SessionSummary;
   persistWorkspace: (input: PersistWorkspaceInput) => WorkspaceSummary;
   updateWorkspaceState: (workspaceId: string, state: WorkspaceSummary["state"]) => WorkspaceSummary;
   updateWorkspaceStatus: (workspaceId: string, status: WorkspaceStatusInput) => WorkspaceSummary;
   persistApproval: (input: PersistApprovalInput) => ApprovalRequest;
+  findPendingApproval: (input: FindPendingApprovalInput) => ApprovalRequest | null;
   resolveApproval: (approvalId: string, status: Extract<ApprovalRequest["status"], "approved" | "rejected">) => ApprovalRequest;
   persistCheck: (input: PersistCheckInput) => CheckRun;
   updateCheck: (checkId: string, input: UpdateCheckInput) => CheckRun;
@@ -230,13 +285,54 @@ export interface MaestroDatabase {
   updateSessionState: (sessionId: string, input: SessionStateInput) => SessionSummary;
   persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
   persistRawOutput: (input: PersistRawOutputInput) => void;
+  /** Cancels the periodic raw_outputs prune timer. Call before close. */
+  clearPruneInterval: () => void;
 }
 
 export function createDatabase(databasePath = getDatabasePath(), options: { seed?: boolean } = {}): MaestroDatabase {
   const connection = new Database(databasePath);
+  // Pragmas must be set before migrations run so the migration writes
+  // themselves use the configured journal/durability/locking behavior.
+  // - journal_mode = WAL: concurrent reader during writer, durability across
+  //   crashes, sticky on the file (sidecar -wal/-shm files appear next to it).
+  // - synchronous = NORMAL: balances fsync cost against durability for a
+  //   single-user local app; combined with WAL, no data loss outside a power cut.
+  // - busy_timeout = 5000: retry briefly when another connection holds the
+  //   write lock (dev hot-reload, multi-window) instead of failing immediately.
+  // foreign_keys is set per-connection inside runMigrations.
+  connection.pragma("journal_mode = WAL");
+  connection.pragma("synchronous = NORMAL");
+  connection.pragma("busy_timeout = 5000");
   runMigrations(connection);
-  if (options.seed ?? true) {
+  // Default `seed` to false: the developer's existing local DB at
+  // getDatabasePath() must not be repopulated with demo rows on every
+  // launch (audit H4). Test callers that need seeded data pass
+  // `{ seed: true }` explicitly.
+  if (options.seed ?? false) {
     seedDemoData(connection);
+  }
+
+  // One-shot + daily prune of `raw_outputs` rows older than 7 days. The
+  // dashboard read path slices the latest 100 rows; older rows are dead
+  // weight and grow unboundedly without this (audit H34, H16).
+  const pruneRawOutputs = (): void => {
+    try {
+      connection
+        .prepare("DELETE FROM raw_outputs WHERE created_at < datetime('now', '-7 days')")
+        .run();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn("database.pruneRawOutputs.failed", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  };
+  pruneRawOutputs();
+  const pruneIntervalMs = 24 * 60 * 60 * 1000;
+  const pruneTimer: NodeJS.Timeout = setInterval(pruneRawOutputs, pruneIntervalMs);
+  // Don't keep the event loop alive solely for the prune timer.
+  if (typeof pruneTimer.unref === "function") {
+    pruneTimer.unref();
   }
 
   return {
@@ -245,12 +341,16 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     loadDashboard: () => loadDashboard(connection),
     persistProject: (input) => persistProject(connection, input),
     updateProjectSettings: (projectId, settings) => updateProjectSettings(connection, projectId, settings),
-    getProject: (projectId) => findProjectById(connection, projectId),
+    getProject: (projectId) => requireProject(connection, projectId),
+    findProjectById: (projectId) => findProjectById(connection, projectId),
+    findProjectByRepoPath: (repoPath) => findProjectByRepoPath(connection, repoPath),
     getWorkspace: (workspaceId) => findWorkspaceById(connection, workspaceId),
+    getSession: (sessionId) => findSessionById(connection, sessionId),
     persistWorkspace: (input) => persistWorkspace(connection, input),
     updateWorkspaceState: (workspaceId, state) => updateWorkspaceState(connection, workspaceId, state),
     updateWorkspaceStatus: (workspaceId, status) => updateWorkspaceStatus(connection, workspaceId, status),
     persistApproval: (input) => persistApproval(connection, input),
+    findPendingApproval: (input) => findPendingApproval(connection, input),
     resolveApproval: (approvalId, status) => resolveApproval(connection, approvalId, status),
     persistCheck: (input) => persistCheck(connection, input),
     updateCheck: (checkId, input) => updateCheck(connection, checkId, input),
@@ -259,61 +359,106 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     persistSession: (input) => persistSession(connection, input),
     updateSessionState: (sessionId, input) => updateSessionState(connection, sessionId, input),
     persistTimelineEvent: (input) => persistTimelineEvent(connection, input),
-    persistRawOutput: (input) => persistRawOutput(connection, input)
+    persistRawOutput: (input) => persistRawOutput(connection, input),
+    clearPruneInterval: () => clearInterval(pruneTimer)
   };
 }
 
-function parseJsonArray(value: string): string[] {
-  const parsed = JSON.parse(value) as unknown;
-  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+function parseJsonArray(value: string, context = "database.parseJsonArray"): string[] {
+  return safeJsonParseArray(value, (item): item is string => typeof item === "string", context);
 }
 
-function parseJsonRecord(value: string): Record<string, unknown> {
-  const parsed = JSON.parse(value) as unknown;
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+function parseJsonRecord(value: string, context = "database.parseJsonRecord"): Record<string, unknown> {
+  return safeJsonParseRecord(value, context);
 }
 
 function listProjects(connection: Database.Database): ProjectSummary[] {
+  // Two LEFT JOIN subqueries — one over `workspaces`, one over `sessions
+  // JOIN workspaces` — so workspace counts are not multiplied by the
+  // number of sessions per workspace (audit H9). Each subquery is grouped
+  // independently and the planner can pick its own index.
   const rows = connection
     .prepare(
       `
         SELECT
           p.*,
-          SUM(CASE WHEN w.state IN ('created', 'running', 'waiting', 'blocked') THEN 1 ELSE 0 END) AS active_count,
-          SUM(CASE WHEN s.attention = 'blocked' OR w.state = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
-          SUM(CASE WHEN s.attention = 'failed' OR w.state = 'failed' THEN 1 ELSE 0 END) AS failed_count,
-          SUM(CASE WHEN s.attention = 'review-ready' OR w.state = 'complete' THEN 1 ELSE 0 END) AS review_ready_count,
-          MAX(COALESCE(s.last_activity_at, w.last_activity_at, p.updated_at)) AS latest_activity_at
+          COALESCE(ws.active_count,         0) AS active_count,
+          COALESCE(ws.workspace_blocked,    0) AS workspace_blocked,
+          COALESCE(ws.workspace_failed,     0) AS workspace_failed,
+          COALESCE(ws.workspace_complete,   0) AS workspace_complete,
+          COALESCE(ss.session_blocked,      0) AS session_blocked,
+          COALESCE(ss.session_failed,       0) AS session_failed,
+          COALESCE(ss.session_review_ready, 0) AS session_review_ready,
+          ws.workspace_latest               AS workspace_latest,
+          ss.session_latest                 AS session_latest
         FROM projects p
-        LEFT JOIN workspaces w ON w.project_id = p.id
-        LEFT JOIN sessions s ON s.workspace_id = w.id
-        GROUP BY p.id
-        ORDER BY latest_activity_at DESC
+        LEFT JOIN (
+          SELECT
+            project_id,
+            SUM(CASE WHEN state IN ('created', 'running', 'waiting', 'blocked') THEN 1 ELSE 0 END) AS active_count,
+            SUM(CASE WHEN state = 'blocked'  THEN 1 ELSE 0 END) AS workspace_blocked,
+            SUM(CASE WHEN state = 'failed'   THEN 1 ELSE 0 END) AS workspace_failed,
+            SUM(CASE WHEN state = 'complete' THEN 1 ELSE 0 END) AS workspace_complete,
+            MAX(last_activity_at) AS workspace_latest
+          FROM workspaces
+          GROUP BY project_id
+        ) ws ON ws.project_id = p.id
+        LEFT JOIN (
+          SELECT
+            w.project_id AS project_id,
+            SUM(CASE WHEN s.attention = 'blocked'      THEN 1 ELSE 0 END) AS session_blocked,
+            SUM(CASE WHEN s.attention = 'failed'       THEN 1 ELSE 0 END) AS session_failed,
+            SUM(CASE WHEN s.attention = 'review-ready' THEN 1 ELSE 0 END) AS session_review_ready,
+            MAX(s.last_activity_at) AS session_latest
+          FROM sessions s
+          JOIN workspaces w ON w.id = s.workspace_id
+          GROUP BY w.project_id
+        ) ss ON ss.project_id = p.id
+        ORDER BY COALESCE(
+          MAX(ws.workspace_latest, COALESCE(ss.session_latest, '')),
+          p.updated_at
+        ) DESC
       `
     )
-    .all() as ProjectRow[];
+    .all() as ProjectAggregateRow[];
 
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    repoPath: row.repo_path,
-    currentBranch: row.current_branch,
-    defaultBranch: row.default_branch,
-    settings: {
-      defaultProvider: row.default_provider,
-      defaultModelLabel: row.default_model_label,
-      worktreeLocation: row.worktree_location,
-      setupCommand: row.setup_command,
-      checkCommands: parseJsonArray(row.check_commands_json)
-    },
-    counts: {
-      active: row.active_count ?? 0,
-      blocked: row.blocked_count ?? 0,
-      failed: row.failed_count ?? 0,
-      reviewReady: row.review_ready_count ?? 0
-    },
-    latestActivityAt: row.latest_activity_at
-  }));
+  return rows.map((row) => {
+    const blocked = (row.workspace_blocked ?? 0) + (row.session_blocked ?? 0);
+    const failed = (row.workspace_failed ?? 0) + (row.session_failed ?? 0);
+    const reviewReady = (row.workspace_complete ?? 0) + (row.session_review_ready ?? 0);
+    const latestActivityAt =
+      maxNullableIso(row.workspace_latest, row.session_latest) ?? row.updated_at ?? null;
+    return {
+      id: row.id,
+      name: row.name,
+      repoPath: row.repo_path,
+      currentBranch: row.current_branch,
+      defaultBranch: row.default_branch,
+      settings: {
+        defaultProvider: row.default_provider,
+        defaultModelLabel: row.default_model_label,
+        worktreeLocation: row.worktree_location,
+        setupCommand: row.setup_command,
+        checkCommands: parseJsonArray(row.check_commands_json)
+      },
+      counts: {
+        active: row.active_count ?? 0,
+        blocked,
+        failed,
+        reviewReady
+      },
+      latestActivityAt
+    };
+  });
+}
+
+function maxNullableIso(...values: Array<string | null | undefined>): string | null {
+  let max: string | null = null;
+  for (const value of values) {
+    if (!value) continue;
+    if (!max || value > max) max = value;
+  }
+  return max;
 }
 
 function persistProject(connection: Database.Database, input: PersistProjectInput): ProjectSummary {
@@ -357,7 +502,7 @@ function persistProject(connection: Database.Database, input: PersistProjectInpu
       updatedAt: timestamp
     });
 
-  return findProjectByRepoPath(connection, input.repoPath);
+  return requireProjectByRepoPath(connection, input.repoPath);
 }
 
 function updateProjectSettings(
@@ -389,56 +534,103 @@ function updateProjectSettings(
       updatedAt: new Date().toISOString()
     });
 
-  return findProjectById(connection, projectId);
+  return requireProject(connection, projectId);
 }
 
-function findProjectByRepoPath(connection: Database.Database, repoPath: string): ProjectSummary {
-  const project = listProjects(connection).find((item) => item.repoPath === repoPath);
-  if (!project) {
-    throw new Error(`Project was not persisted for repository: ${repoPath}`);
-  }
-  return project;
+/**
+ * Lightweight single-row lookup by repoPath. Use this when you only need
+ * the project's static fields (id, name, repo path, settings) and not the
+ * dashboard aggregation counts. Returns `null` when no row matches —
+ * callers that want to throw should use `requireProjectByRepoPath` (only
+ * the persistProject post-write reuses that contract).
+ */
+function findProjectByRepoPath(connection: Database.Database, repoPath: string): ProjectSummary | null {
+  const row = connection
+    .prepare("SELECT * FROM projects WHERE repo_path = ?")
+    .get(repoPath) as BareProjectRow | undefined;
+  return row ? bareProjectRowToSummary(row) : null;
 }
 
-function findProjectById(connection: Database.Database, projectId: string): ProjectSummary {
-  const project = listProjects(connection).find((item) => item.id === projectId);
+/**
+ * Lightweight single-row lookup by project id. Returns `null` when the row
+ * is missing. Counts default to zero on this path — fetch via `listProjects`
+ * or `loadDashboard` if you need the aggregate counts.
+ */
+function findProjectById(connection: Database.Database, projectId: string): ProjectSummary | null {
+  const row = connection
+    .prepare("SELECT * FROM projects WHERE id = ?")
+    .get(projectId) as BareProjectRow | undefined;
+  return row ? bareProjectRowToSummary(row) : null;
+}
+
+function requireProject(connection: Database.Database, projectId: string): ProjectSummary {
+  const project = findProjectById(connection, projectId);
   if (!project) {
     throw new Error(`Project not found: ${projectId}`);
   }
   return project;
 }
 
-function persistWorkspace(connection: Database.Database, input: PersistWorkspaceInput): WorkspaceSummary {
-  const timestamp = new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO workspaces (
-          id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
-          dirty, changed_files, last_activity_at, created_at, updated_at
-        ) VALUES (
-          @id, @projectId, @taskLabel, @branch, @baseRef, @path, @state, @sharedWorkspace,
-          @dirty, @changedFiles, @lastActivityAt, @createdAt, @updatedAt
-        )
-      `
-    )
-    .run({
-      id: input.id,
-      projectId: input.projectId,
-      taskLabel: input.taskLabel,
-      branch: input.branch,
-      baseRef: input.baseRef,
-      path: input.path,
-      state: input.state,
-      sharedWorkspace: input.sharedWorkspace ? 1 : 0,
-      dirty: input.dirty ? 1 : 0,
-      changedFiles: input.changedFiles,
-      lastActivityAt: timestamp,
-      createdAt: timestamp,
-      updatedAt: timestamp
-    });
+function requireProjectByRepoPath(connection: Database.Database, repoPath: string): ProjectSummary {
+  const project = findProjectByRepoPath(connection, repoPath);
+  if (!project) {
+    throw new Error(`Project was not persisted for repository: ${repoPath}`);
+  }
+  return project;
+}
 
-  return findWorkspaceById(connection, input.id);
+function bareProjectRowToSummary(row: BareProjectRow): ProjectSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    repoPath: row.repo_path,
+    currentBranch: row.current_branch,
+    defaultBranch: row.default_branch,
+    settings: {
+      defaultProvider: row.default_provider,
+      defaultModelLabel: row.default_model_label,
+      worktreeLocation: row.worktree_location,
+      setupCommand: row.setup_command,
+      checkCommands: parseJsonArray(row.check_commands_json)
+    },
+    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
+    latestActivityAt: row.updated_at
+  };
+}
+
+function persistWorkspace(connection: Database.Database, input: PersistWorkspaceInput): WorkspaceSummary {
+  return connection.transaction(() => {
+    const timestamp = new Date().toISOString();
+    connection
+      .prepare(
+        `
+          INSERT INTO workspaces (
+            id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+            dirty, changed_files, last_activity_at, created_at, updated_at
+          ) VALUES (
+            @id, @projectId, @taskLabel, @branch, @baseRef, @path, @state, @sharedWorkspace,
+            @dirty, @changedFiles, @lastActivityAt, @createdAt, @updatedAt
+          )
+        `
+      )
+      .run({
+        id: input.id,
+        projectId: input.projectId,
+        taskLabel: input.taskLabel,
+        branch: input.branch,
+        baseRef: input.baseRef,
+        path: input.path,
+        state: input.state,
+        sharedWorkspace: input.sharedWorkspace ? 1 : 0,
+        dirty: input.dirty ? 1 : 0,
+        changedFiles: input.changedFiles,
+        lastActivityAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      });
+
+    return findWorkspaceById(connection, input.id);
+  })();
 }
 
 function updateWorkspaceState(
@@ -474,32 +666,38 @@ function updateWorkspaceStatus(
 }
 
 function persistSession(connection: Database.Database, input: PersistSessionInput): SessionSummary {
-  const timestamp = new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO sessions (
-          id, workspace_id, provider, model_label, prompt, state, attention,
-          started_at, completed_at, last_activity_at
-        ) VALUES (
-          @id, @workspaceId, @provider, @modelLabel, @prompt, @state, @attention,
-          @startedAt, NULL, @lastActivityAt
-        )
-      `
-    )
-    .run({
-      id: input.id,
-      workspaceId: input.workspaceId,
-      provider: input.provider,
-      modelLabel: input.modelLabel,
-      prompt: input.prompt,
-      state: input.state,
-      attention: input.attention,
-      startedAt: timestamp,
-      lastActivityAt: timestamp
-    });
+  return connection.transaction(() => {
+    const timestamp = new Date().toISOString();
+    connection
+      .prepare(
+        `
+          INSERT INTO sessions (
+            id, workspace_id, provider, model_label, prompt, state, attention,
+            started_at, completed_at, last_activity_at
+          ) VALUES (
+            @id, @workspaceId, @provider, @modelLabel, @prompt, @state, @attention,
+            @startedAt, NULL, @lastActivityAt
+          )
+        `
+      )
+      .run({
+        id: input.id,
+        workspaceId: input.workspaceId,
+        provider: input.provider,
+        modelLabel: input.modelLabel,
+        prompt: input.prompt,
+        state: input.state,
+        attention: input.attention,
+        startedAt: timestamp,
+        lastActivityAt: timestamp
+      });
 
-  return findSessionById(connection, input.id);
+    // Just-persisted row: no need to scan ui_state for the preferred bit.
+    // The row is brand new, so `preferred` is necessarily `false` here.
+    // (selectPreferredAttempt is the only writer to ui_state and it has
+    // its own re-read path.)
+    return findSessionByIdNoPreferred(connection, input.id);
+  })();
 }
 
 function updateSessionState(
@@ -518,7 +716,10 @@ function updateSessionState(
     )
     .run(input.state, input.attention, input.completedAt ?? null, timestamp, sessionId);
 
-  return findSessionById(connection, sessionId);
+  // The preferred bit is decoupled from session state; reuse the
+  // NoPreferred fast path. If a caller specifically needs the preferred
+  // flag after a state update they should call findSessionById/getSession.
+  return findSessionByIdNoPreferred(connection, sessionId);
 }
 
 function persistTimelineEvent(connection: Database.Database, input: PersistTimelineEventInput): TimelineEvent {
@@ -567,26 +768,57 @@ function persistRawOutput(connection: Database.Database, input: PersistRawOutput
 }
 
 function persistApproval(connection: Database.Database, input: PersistApprovalInput): ApprovalRequest {
-  const createdAt = input.createdAt ?? new Date().toISOString();
-  connection
+  return connection.transaction(() => {
+    const createdAt = input.createdAt ?? new Date().toISOString();
+    connection
+      .prepare(
+        `
+          INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at)
+          VALUES (@id, @sessionId, @command, @cwd, @provider, @riskLevel, @status, @createdAt, NULL)
+        `
+      )
+      .run({
+        id: input.id,
+        sessionId: input.sessionId,
+        command: input.command,
+        cwd: input.cwd,
+        provider: input.provider,
+        riskLevel: input.riskLevel,
+        status: input.status,
+        createdAt
+      });
+
+    return findApprovalById(connection, input.id);
+  })();
+}
+
+function findPendingApproval(
+  connection: Database.Database,
+  input: FindPendingApprovalInput
+): ApprovalRequest | null {
+  const row = connection
     .prepare(
       `
-        INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at)
-        VALUES (@id, @sessionId, @command, @cwd, @provider, @riskLevel, @status, @createdAt, NULL)
+        SELECT * FROM approvals
+        WHERE session_id = ? AND command = ? AND cwd = ? AND provider = ? AND status = 'pending'
+        LIMIT 1
       `
     )
-    .run({
-      id: input.id,
-      sessionId: input.sessionId,
-      command: input.command,
-      cwd: input.cwd,
-      provider: input.provider,
-      riskLevel: input.riskLevel,
-      status: input.status,
-      createdAt
-    });
-
-  return findApprovalById(connection, input.id);
+    .get(input.sessionId, input.command, input.cwd, input.provider) as ApprovalRow | undefined;
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    command: row.command,
+    cwd: row.cwd,
+    provider: row.provider,
+    riskLevel: row.risk_level,
+    status: row.status,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at
+  };
 }
 
 function resolveApproval(
@@ -594,11 +826,13 @@ function resolveApproval(
   approvalId: string,
   status: Extract<ApprovalRequest["status"], "approved" | "rejected">
 ): ApprovalRequest {
-  connection
-    .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?")
-    .run(status, new Date().toISOString(), approvalId);
+  return connection.transaction(() => {
+    connection
+      .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?")
+      .run(status, new Date().toISOString(), approvalId);
 
-  return findApprovalById(connection, approvalId);
+    return findApprovalById(connection, approvalId);
+  })();
 }
 
 function persistCheck(connection: Database.Database, input: PersistCheckInput): CheckRun {
@@ -636,25 +870,27 @@ function updateCheck(connection: Database.Database, checkId: string, input: Upda
 }
 
 function persistCheckpoint(connection: Database.Database, input: PersistCheckpointInput): Checkpoint {
-  const createdAt = input.createdAt ?? new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
-        VALUES (@id, @workspaceId, @label, @branch, @gitRef, @patchPath, @createdAt)
-      `
-    )
-    .run({
-      id: input.id,
-      workspaceId: input.workspaceId,
-      label: input.label,
-      branch: input.branch,
-      gitRef: input.gitRef,
-      patchPath: input.patchPath,
-      createdAt
-    });
+  return connection.transaction(() => {
+    const createdAt = input.createdAt ?? new Date().toISOString();
+    connection
+      .prepare(
+        `
+          INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
+          VALUES (@id, @workspaceId, @label, @branch, @gitRef, @patchPath, @createdAt)
+        `
+      )
+      .run({
+        id: input.id,
+        workspaceId: input.workspaceId,
+        label: input.label,
+        branch: input.branch,
+        gitRef: input.gitRef,
+        patchPath: input.patchPath,
+        createdAt
+      });
 
-  return findCheckpointById(connection, input.id);
+    return findCheckpointById(connection, input.id);
+  })();
 }
 
 function findWorkspaceById(connection: Database.Database, workspaceId: string): WorkspaceSummary {
@@ -663,6 +899,10 @@ function findWorkspaceById(connection: Database.Database, workspaceId: string): 
     throw new Error(`Workspace not found: ${workspaceId}`);
   }
 
+  return workspaceRowToSummary(row);
+}
+
+function workspaceRowToSummary(row: WorkspaceRow): WorkspaceSummary {
   return {
     id: row.id,
     projectId: row.project_id,
@@ -671,8 +911,11 @@ function findWorkspaceById(connection: Database.Database, workspaceId: string): 
     baseRef: row.base_ref,
     path: row.path,
     state: row.state,
-    sharedWorkspace: Boolean(row.shared_workspace),
-    dirty: Boolean(row.dirty),
+    // Strict equality on the 0/1 tinyint column (audit M5). The v3 migration
+    // adds CHECK (col IN (0,1)) but historic rows might still hold 2 — refuse
+    // to coerce a stray value into `true`.
+    sharedWorkspace: row.shared_workspace === 1,
+    dirty: row.dirty === 1,
     changedFiles: row.changed_files,
     lastActivityAt: row.last_activity_at
   };
@@ -738,6 +981,28 @@ function findSessionById(connection: Database.Database, sessionId: string): Sess
     throw new Error(`Session not found: ${sessionId}`);
   }
 
+  return sessionRowToSummary(row, isPreferredSession(connection, row.id));
+}
+
+/**
+ * Single-row session SELECT that does NOT consult `ui_state` for the
+ * preferred bit; returns `preferred: false`. Use from hot paths and from
+ * post-write callers that just inserted/updated the row (`persistSession`,
+ * `updateSessionState`) where the preferred flag has not changed and
+ * cannot be true anyway.
+ */
+function findSessionByIdNoPreferred(
+  connection: Database.Database,
+  sessionId: string
+): SessionSummary {
+  const row = connection.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as SessionRow | undefined;
+  if (!row) {
+    throw new Error(`Session not found: ${sessionId}`);
+  }
+  return sessionRowToSummary(row, false);
+}
+
+function sessionRowToSummary(row: SessionRow, preferred: boolean): SessionSummary {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
@@ -749,7 +1014,7 @@ function findSessionById(connection: Database.Database, sessionId: string): Sess
     startedAt: row.started_at,
     completedAt: row.completed_at,
     lastActivityAt: row.last_activity_at,
-    preferred: isPreferredSession(connection, row.id)
+    preferred
   };
 }
 
@@ -757,35 +1022,11 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
   const projects = listProjects(connection);
   const preferredSessionIds = loadPreferredSessionIds(connection);
   const workspaces = (connection.prepare("SELECT * FROM workspaces ORDER BY last_activity_at DESC").all() as WorkspaceRow[]).map(
-    (row) => ({
-      id: row.id,
-      projectId: row.project_id,
-      taskLabel: row.task_label,
-      branch: row.branch,
-      baseRef: row.base_ref,
-      path: row.path,
-      state: row.state,
-      sharedWorkspace: Boolean(row.shared_workspace),
-      dirty: Boolean(row.dirty),
-      changedFiles: row.changed_files,
-      lastActivityAt: row.last_activity_at
-    })
+    (row) => workspaceRowToSummary(row)
   );
 
   const sessions = (connection.prepare("SELECT * FROM sessions ORDER BY last_activity_at DESC").all() as SessionRow[]).map(
-    (row) => ({
-      id: row.id,
-      workspaceId: row.workspace_id,
-      provider: row.provider,
-      modelLabel: row.model_label,
-      prompt: row.prompt,
-      state: row.state,
-      attention: row.attention,
-      startedAt: row.started_at,
-      completedAt: row.completed_at,
-      lastActivityAt: row.last_activity_at,
-      preferred: preferredSessionIds.has(row.id)
-    })
+    (row) => sessionRowToSummary(row, preferredSessionIds.has(row.id))
   );
 
   const events = (
@@ -795,7 +1036,7 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     sessionId: row.session_id,
     type: row.type,
     message: row.message,
-    payload: parseJsonRecord(row.payload_json),
+    payload: parseJsonRecord(row.payload_json, "database.eventPayload"),
     createdAt: row.created_at
   }));
 
@@ -809,21 +1050,26 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     createdAt: row.created_at
   }));
 
-  const approvals = (connection.prepare("SELECT * FROM approvals ORDER BY created_at DESC").all() as ApprovalRow[]).map(
-    (row) => ({
-      id: row.id,
-      sessionId: row.session_id,
-      command: row.command,
-      cwd: row.cwd,
-      provider: row.provider,
-      riskLevel: row.risk_level,
-      status: row.status,
-      createdAt: row.created_at,
-      resolvedAt: row.resolved_at
-    })
-  );
+  // Cap dashboard reads at 200 rows for approvals/checks/checkpoints
+  // (audit M6). Older rows remain in storage; pagination ships separately
+  // via dedicated handlers when needed.
+  const approvals = (
+    connection.prepare("SELECT * FROM approvals ORDER BY created_at DESC LIMIT 200").all() as ApprovalRow[]
+  ).map((row) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    command: row.command,
+    cwd: row.cwd,
+    provider: row.provider,
+    riskLevel: row.risk_level,
+    status: row.status,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at
+  }));
 
-  const checks = (connection.prepare("SELECT * FROM checks ORDER BY started_at DESC").all() as CheckRow[]).map((row) => ({
+  const checks = (
+    connection.prepare("SELECT * FROM checks ORDER BY started_at DESC LIMIT 200").all() as CheckRow[]
+  ).map((row) => ({
     id: row.id,
     workspaceId: row.workspace_id,
     command: row.command,
@@ -835,7 +1081,9 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
   }));
 
   const checkpoints = (
-    connection.prepare("SELECT * FROM checkpoints ORDER BY created_at DESC").all() as CheckpointRow[]
+    connection
+      .prepare("SELECT * FROM checkpoints ORDER BY created_at DESC LIMIT 200")
+      .all() as CheckpointRow[]
   ).map((row) => ({
     id: row.id,
     workspaceId: row.workspace_id,
@@ -858,33 +1106,79 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
   };
 }
 
-function selectPreferredAttempt(connection: Database.Database, sessionId: string): SessionSummary {
-  const session = findSessionById(connection, sessionId);
-  const workspace = findWorkspaceById(connection, session.workspaceId);
-  const key = preferredAttemptKey(workspace.projectId, workspace.taskLabel);
-  connection
-    .prepare(
-      `
-        INSERT INTO ui_state (key, value_json, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
-      `
-    )
-    .run(key, JSON.stringify({ sessionId }), new Date().toISOString());
+/**
+ * Per-connection request-scoped cache for `loadPreferredSessionIds`. The
+ * cache is keyed by the better-sqlite3 connection object via WeakMap so
+ * it is GC'd when the connection is closed. The version counter is bumped
+ * by `selectPreferredAttempt` after it writes a new preference; cache
+ * consumers compare against the latest version before returning the
+ * memoized set. See file-level docstring for context (audit H11).
+ */
+interface PreferredCacheEntry {
+  version: number;
+  ids: Set<string> | null;
+}
+const preferredCache = new WeakMap<Database.Database, PreferredCacheEntry>();
 
-  return { ...session, preferred: true };
+function getOrInitPreferredCache(connection: Database.Database): PreferredCacheEntry {
+  let entry = preferredCache.get(connection);
+  if (!entry) {
+    entry = { version: 0, ids: null };
+    preferredCache.set(connection, entry);
+  }
+  return entry;
+}
+
+function bumpPreferredVersion(connection: Database.Database): void {
+  const entry = getOrInitPreferredCache(connection);
+  entry.version += 1;
+  entry.ids = null;
+}
+
+function selectPreferredAttempt(connection: Database.Database, sessionId: string): SessionSummary {
+  return connection.transaction(() => {
+    // Read first via the no-preferred fast path so the workspace lookup is
+    // available without polluting the preferred cache.
+    const session = findSessionByIdNoPreferred(connection, sessionId);
+    const workspace = findWorkspaceById(connection, session.workspaceId);
+    const key = preferredAttemptKey(workspace.projectId, workspace.taskLabel);
+    connection
+      .prepare(
+        `
+          INSERT INTO ui_state (key, value_json, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
+        `
+      )
+      .run(key, JSON.stringify({ sessionId }), new Date().toISOString());
+
+    // Invalidate the cache so the re-read below sees the just-written row.
+    bumpPreferredVersion(connection);
+
+    // Re-read with preferred recomputed; returned session reflects the
+    // just-written preferred state without relying on a `{ ...session,
+    // preferred: true }` overlay (audit H12 — concurrent calls would
+    // otherwise interleave and produce stale snapshots).
+    return findSessionById(connection, sessionId);
+  })();
 }
 
 function loadPreferredSessionIds(connection: Database.Database): Set<string> {
+  const entry = getOrInitPreferredCache(connection);
+  if (entry.ids) {
+    return entry.ids;
+  }
   const rows = connection
     .prepare("SELECT value_json FROM ui_state WHERE key LIKE 'preferred-attempt:%'")
     .all() as Array<{ value_json: string }>;
 
-  return new Set(
+  const ids = new Set(
     rows
-      .map((row) => parseJsonRecord(row.value_json).sessionId)
+      .map((row) => parseJsonRecord(row.value_json, "database.preferredAttempt").sessionId)
       .filter((value): value is string => typeof value === "string")
   );
+  entry.ids = ids;
+  return ids;
 }
 
 function isPreferredSession(connection: Database.Database, sessionId: string): boolean {

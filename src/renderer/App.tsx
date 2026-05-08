@@ -1,12 +1,9 @@
 import {
   Activity,
   AlertTriangle,
-  Archive,
-  Bot,
   CheckCircle2,
   ChevronRight,
   Circle,
-  Code2,
   Command,
   FileText,
   Folder,
@@ -16,19 +13,18 @@ import {
   LayoutDashboard,
   Mic,
   MoreHorizontal,
-  PanelRight,
-  Play,
   Plus,
   Search,
   Settings,
   ShieldAlert,
   TerminalSquare
 } from "lucide-react";
-import type { JSX } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { FormEvent, JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ApprovalRequest,
   DashboardSnapshot,
+  ProviderId,
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
@@ -49,6 +45,17 @@ const emptySnapshot: DashboardSnapshot = {
   checkpoints: []
 };
 
+const escapeCharacter = String.fromCharCode(27);
+const bellCharacter = String.fromCharCode(7);
+const oscSequencePattern = new RegExp(`${escapeCharacter}\\][^${bellCharacter}]*(?:${bellCharacter}|${escapeCharacter}\\\\)`, "g");
+const csiSequencePattern = new RegExp(`${escapeCharacter}\\[[0-?]*[ -/]*[@-~]`, "g");
+const escapeSequencePattern = new RegExp(`${escapeCharacter}[@-Z\\\\-_]`, "g");
+
+const TERMINAL_PREVIEW_LINES = 6;
+const RAW_OUTPUT_CAP = 500;
+
+type ToastMessage = { kind: "error" | "info"; message: string };
+
 const navItems: Array<{ mode: ViewMode; label: string; icon: typeof LayoutDashboard }> = [
   { mode: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { mode: "board", label: "Board", icon: Layers3 },
@@ -57,122 +64,335 @@ const navItems: Array<{ mode: ViewMode; label: string; icon: typeof LayoutDashbo
   { mode: "compare", label: "Compare", icon: GitBranch }
 ];
 
+const providerOptions: Array<{ id: ProviderId; label: string }> = [
+  { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude" }
+];
+
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [providerOverride, setProviderOverride] = useState<ProviderId | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.maestro);
 
-  useEffect(() => {
-    let isMounted = true;
+  const dashboardLoadToken = useRef(0);
+  const resolveApprovalToken = useRef(0);
+  const selectPreferredToken = useRef(0);
+  const appShellRef = useRef<HTMLElement | null>(null);
+  const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
 
-    const loadDashboard = window.maestro?.dashboard.load ?? (() => Promise.resolve(demoSnapshot));
-
-    loadDashboard()
-      .then((data) => {
-        if (isMounted) {
-          setSnapshot(data);
-          setLoadState("ready");
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setLoadState("error");
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
+  const loadDashboard = useCallback(async (): Promise<void> => {
+    const token = ++dashboardLoadToken.current;
+    const loader = window.maestro?.dashboard.load ?? (() => Promise.resolve(demoSnapshot));
+    try {
+      const data = await loader();
+      if (token !== dashboardLoadToken.current) {
+        return;
+      }
+      setSnapshot(capRawOutputs(data));
+      setLoadState("ready");
+      setLoadError(null);
+    } catch (error) {
+      if (token !== dashboardLoadToken.current) {
+        return;
+      }
+      setLoadState("error");
+      setLoadError(error instanceof Error ? error.message : "Dashboard load failed");
+    }
   }, []);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if ((!event.metaKey && !event.ctrlKey) || event.altKey || event.shiftKey || isTypingTarget(event.target)) {
+    void loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    if (loadState !== "ready" || !window.maestro?.dashboard.load || !hasActiveWork(snapshot)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadDashboard();
+    }, 1200);
+
+    return () => window.clearInterval(timer);
+  }, [loadState, snapshot, loadDashboard]);
+
+  useEffect(() => {
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      void loadDashboard();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    const shell = appShellRef.current;
+    if (!shell) {
+      return;
+    }
+
+    const handleKeyDown = (event: Event): void => {
+      const keyEvent = event as KeyboardEvent;
+      if ((!keyEvent.metaKey && !keyEvent.ctrlKey) || keyEvent.altKey || keyEvent.shiftKey || isTypingTarget(keyEvent.target)) {
         return;
       }
 
-      const index = Number(event.key) - 1;
+      const index = Number(keyEvent.key) - 1;
       const item = navItems[index];
       if (!item) {
         return;
       }
 
-      event.preventDefault();
+      keyEvent.preventDefault();
       setViewMode(item.mode);
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    shell.addEventListener("keydown", handleKeyDown);
+    return () => shell.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const selectedSession = snapshot.sessions[0] ?? null;
-  const selectedWorkspace = selectedSession
-    ? snapshot.workspaces.find((workspace) => workspace.id === selectedSession.workspaceId) ?? null
-    : null;
+  // Reconcile selectedSessionId against the snapshot without clobbering a
+  // just-launched session while its dashboard refresh is still in flight.
+  useEffect(() => {
+    if (selectedSessionId) {
+      const selectedSession = snapshot.sessions.find((session) => session.id === selectedSessionId);
+      if (selectedSession) {
+        if (pendingSelectionRef.current?.sessionId === selectedSessionId) {
+          pendingSelectionRef.current = null;
+        }
+        if (selectedWorkspaceId !== selectedSession.workspaceId) {
+          setSelectedWorkspaceId(selectedSession.workspaceId);
+        }
+        return;
+      }
 
-  const resolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
-    if (!window.maestro?.approvals.resolve) {
+      if (pendingSelectionRef.current?.sessionId === selectedSessionId) {
+        if (selectedWorkspaceId !== pendingSelectionRef.current.workspaceId) {
+          setSelectedWorkspaceId(pendingSelectionRef.current.workspaceId);
+        }
+        return;
+      }
+
+      const fallbackSession = snapshot.sessions[0] ?? null;
+      setSelectedSessionId(fallbackSession?.id ?? null);
+      setSelectedWorkspaceId(fallbackSession?.workspaceId ?? null);
+    } else if (snapshot.sessions.length > 0) {
+      setSelectedSessionId(snapshot.sessions[0].id);
+      setSelectedWorkspaceId(snapshot.sessions[0].workspaceId);
+    }
+  }, [snapshot.sessions, selectedSessionId, selectedWorkspaceId]);
+
+  const selectedSession = useMemo(
+    () =>
+      (selectedSessionId ? snapshot.sessions.find((session) => session.id === selectedSessionId) : null) ??
+      (selectedWorkspaceId ? snapshot.sessions.find((session) => session.workspaceId === selectedWorkspaceId) : null) ??
+      null,
+    [snapshot.sessions, selectedSessionId, selectedWorkspaceId]
+  );
+  const selectedWorkspace = useMemo(
+    () =>
+      (selectedSession ? snapshot.workspaces.find((workspace) => workspace.id === selectedSession.workspaceId) : null) ??
+      (selectedWorkspaceId ? snapshot.workspaces.find((workspace) => workspace.id === selectedWorkspaceId) : null) ??
+      null,
+    [snapshot.workspaces, selectedWorkspaceId, selectedSession]
+  );
+  const selectedProvider = providerOverride ?? snapshot.projects[0]?.settings.defaultProvider ?? "codex";
+
+  const openWorkspaceChat = useCallback(
+    (workspaceId: string): void => {
+      const session = snapshot.sessions.find((item) => item.workspaceId === workspaceId) ?? null;
+      setSelectedWorkspaceId(workspaceId);
+      setSelectedSessionId(session?.id ?? null);
+      setViewMode("cockpit");
+    },
+    [snapshot.sessions]
+  );
+
+  const handleSelectSession = useCallback(
+    (sessionId: string): void => {
+      setSelectedSessionId(sessionId);
+      const session = snapshot.sessions.find((item) => item.id === sessionId) ?? null;
+      if (session) {
+        setSelectedWorkspaceId(session.workspaceId);
+      }
+    },
+    [snapshot.sessions]
+  );
+
+  const resolveApproval = useCallback(
+    async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
+      const token = ++resolveApprovalToken.current;
+      const previousSnapshot = snapshot;
+
+      // Optimistic update.
       setSnapshot((current) => ({
         ...current,
         approvals: current.approvals.map((approval) =>
-          approval.id === approvalId ? { ...approval, status, resolvedAt: new Date().toISOString() } : approval
+          approval.id === approvalId && approval.status === "pending"
+            ? { ...approval, status, resolvedAt: new Date().toISOString() }
+            : approval
         )
       }));
-      return;
-    }
 
-    await window.maestro.approvals.resolve({ approvalId, status });
-    setSnapshot(await window.maestro.dashboard.load());
-  };
+      if (!window.maestro?.approvals.resolve) {
+        return;
+      }
 
-  const selectPreferredAttempt = async (sessionId: string): Promise<void> => {
-    if (!window.maestro?.attempts.selectPreferred) {
+      try {
+        await window.maestro.approvals.resolve({ approvalId, status });
+        if (token !== resolveApprovalToken.current) {
+          return;
+        }
+        await loadDashboard();
+      } catch (error) {
+        if (token !== resolveApprovalToken.current) {
+          return;
+        }
+        setSnapshot(previousSnapshot);
+        setToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not resolve approval."
+        });
+      }
+    },
+    [snapshot, loadDashboard]
+  );
+
+  const selectPreferredAttempt = useCallback(
+    async (sessionId: string): Promise<void> => {
+      const token = ++selectPreferredToken.current;
+      const previousSnapshot = snapshot;
+
       setSnapshot((current) => ({
         ...current,
         sessions: current.sessions.map((session) => ({ ...session, preferred: session.id === sessionId }))
       }));
-      return;
-    }
 
-    await window.maestro.attempts.selectPreferred({ sessionId });
-    setSnapshot(await window.maestro.dashboard.load());
-  };
+      if (!window.maestro?.attempts.selectPreferred) {
+        return;
+      }
+
+      try {
+        await window.maestro.attempts.selectPreferred({ sessionId });
+        if (token !== selectPreferredToken.current) {
+          return;
+        }
+        await loadDashboard();
+      } catch (error) {
+        if (token !== selectPreferredToken.current) {
+          return;
+        }
+        setSnapshot(previousSnapshot);
+        setToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not update preferred attempt."
+        });
+      }
+    },
+    [snapshot, loadDashboard]
+  );
+
+  const sendSessionInput = useCallback(
+    async (sessionId: string, input: string): Promise<void> => {
+      if (!window.maestro?.providers.sendInput) {
+        throw new Error("Open the Electron app window to send input to a live session.");
+      }
+
+      await window.maestro.providers.sendInput({
+        sessionId,
+        input: `${input}\r`
+      });
+      await loadDashboard();
+    },
+    [loadDashboard]
+  );
+
+  const launchTask = useCallback(
+    async (prompt: string, provider: ProviderId): Promise<void> => {
+      if (!window.maestro) {
+        throw new Error("Open the Electron app window to launch local agents.");
+      }
+
+      const project = snapshot.projects[0];
+      if (!project) {
+        throw new Error("Register a project before launching an agent.");
+      }
+
+      const workspace = await window.maestro.workspaces.createCurrent({
+        projectId: project.id,
+        taskLabel: titleFromPrompt(prompt)
+      });
+
+      const launchedSession = await window.maestro.providers.launch({
+        workspaceId: workspace.id,
+        provider,
+        prompt,
+        modelLabel: modelLabelForProvider(provider, project.settings.defaultModelLabel),
+        cols: 120,
+        rows: 32
+      });
+
+      pendingSelectionRef.current = {
+        sessionId: launchedSession.id,
+        workspaceId: workspace.id
+      };
+      setSelectedWorkspaceId(workspace.id);
+      setSelectedSessionId(launchedSession.id);
+      setViewMode("cockpit");
+      await loadDashboard();
+    },
+    [snapshot.projects, loadDashboard]
+  );
 
   return (
-    <main className="app-shell">
-      <Sidebar loadState={loadState} setViewMode={setViewMode} snapshot={snapshot} viewMode={viewMode} />
+    <main
+      className={viewMode === "cockpit" ? "app-shell focus-mode" : "app-shell"}
+      ref={appShellRef}
+      tabIndex={-1}
+    >
+      {bridgeMissing && !isBrowserPreview() ? (
+        <div className="bridge-banner" role="alert">
+          Preload bridge unavailable; running on demo data.
+        </div>
+      ) : null}
+      {toast ? (
+        <div className={`toast toast-${toast.kind}`} role="status">
+          <span>{toast.message}</span>
+          <button type="button" onClick={() => setToast(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      ) : null}
+      <Sidebar
+        loadState={loadState}
+        onOpenWorkspaceChat={openWorkspaceChat}
+        selectedWorkspaceId={selectedWorkspace?.id ?? null}
+        setViewMode={setViewMode}
+        snapshot={snapshot}
+        viewMode={viewMode}
+      />
 
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <p className="breadcrumb">
-              <Folder size={18} />
-              {snapshot.projects[0]?.name ?? "maestro"} / {selectedWorkspace?.taskLabel ?? titleForView(viewMode)}
-            </p>
-            <h1>{titleForView(viewMode)}</h1>
-          </div>
-          <div className="topbar-actions">
-            <button className="icon-button" type="button" title="Run selected checks">
-              <Play size={18} />
-            </button>
-            <button className="icon-button" type="button" title="Toggle details">
-              <PanelRight size={18} />
-            </button>
-            <button className="icon-button" type="button" title="Archive clean workspace">
-              <Archive size={18} />
-            </button>
-          </div>
-        </header>
-
-        <div className="work-scroll">
+      <section className={viewMode === "cockpit" ? "workspace cockpit-workspace" : "workspace"}>
+        <div className={viewMode === "cockpit" ? "work-scroll cockpit-scroll" : "work-scroll"}>
           {loadState === "error" ? (
-            <EmptyState />
+            <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
           ) : (
             <View
               approvals={snapshot.approvals}
               events={snapshot.events}
               mode={viewMode}
               onResolveApproval={resolveApproval}
+              onSelectSession={handleSelectSession}
+              onSendSessionInput={sendSessionInput}
               onSelectPreferredAttempt={selectPreferredAttempt}
               rawOutputs={snapshot.rawOutputs}
               selectedSession={selectedSession}
@@ -182,48 +402,36 @@ export function App(): JSX.Element {
           )}
         </div>
 
-        <Composer />
+        {viewMode === "cockpit" ? null : (
+          <Composer onLaunchTask={launchTask} onProviderChange={setProviderOverride} provider={selectedProvider} />
+        )}
       </section>
 
-      <RightRail snapshot={snapshot} />
+      {viewMode === "cockpit" ? null : <RightRail snapshot={snapshot} />}
     </main>
   );
 }
 
 function Sidebar({
   loadState,
+  onOpenWorkspaceChat,
+  selectedWorkspaceId,
   setViewMode,
   snapshot,
   viewMode
 }: {
   loadState: "loading" | "ready" | "error";
+  onOpenWorkspaceChat: (workspaceId: string) => void;
+  selectedWorkspaceId: string | null;
   setViewMode: (mode: ViewMode) => void;
   snapshot: DashboardSnapshot;
   viewMode: ViewMode;
 }): JSX.Element {
   return (
     <aside className="sidebar">
-      <div className="window-controls" aria-hidden="true">
-        <span className="traffic red" />
-        <span className="traffic yellow" />
-        <span className="traffic green" />
+      <div className="window-controls">
         <button className="small-icon" type="button" title="Search">
           <Search size={16} />
-        </button>
-      </div>
-
-      <div className="mode-switch">
-        <button type="button">
-          <Bot size={16} />
-          Chat
-        </button>
-        <button type="button">
-          <Layers3 size={16} />
-          Cowork
-        </button>
-        <button className="active" type="button">
-          <Code2 size={16} />
-          Code
         </button>
       </div>
 
@@ -253,12 +461,21 @@ function Sidebar({
               <Folder size={16} />
               <span>{project.name}</span>
             </div>
-            {snapshot.workspaces.slice(0, 7).map((workspace) => (
-              <button className="session-link" key={workspace.id} type="button">
-                <Circle size={8} />
-                <span>{workspace.taskLabel}</span>
-              </button>
-            ))}
+            {snapshot.workspaces
+              .filter((workspace) => workspace.projectId === project.id)
+              .slice(0, 7)
+              .map((workspace) => (
+                <button
+                  aria-pressed={selectedWorkspaceId === workspace.id}
+                  className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
+                  key={workspace.id}
+                  type="button"
+                  onClick={() => onOpenWorkspaceChat(workspace.id)}
+                >
+                  <Circle size={8} />
+                  <span>{workspace.taskLabel}</span>
+                </button>
+              ))}
           </div>
         ))}
       </div>
@@ -281,6 +498,8 @@ function View({
   events,
   mode,
   onResolveApproval,
+  onSelectSession,
+  onSendSessionInput,
   onSelectPreferredAttempt,
   rawOutputs,
   selectedSession,
@@ -291,6 +510,8 @@ function View({
   events: TimelineEvent[];
   mode: ViewMode;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
+  onSelectSession: (sessionId: string) => void;
+  onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
   onSelectPreferredAttempt: (sessionId: string) => Promise<void>;
   rawOutputs: RawProviderOutput[];
   selectedSession: SessionSummary | null;
@@ -298,7 +519,14 @@ function View({
   snapshot: DashboardSnapshot;
 }): JSX.Element {
   if (mode === "board") {
-    return <AgentBoard sessions={snapshot.sessions} workspaces={snapshot.workspaces} />;
+    return (
+      <AgentBoard
+        onSelectSession={onSelectSession}
+        selectedSessionId={selectedSession?.id ?? null}
+        sessions={snapshot.sessions}
+        workspaces={snapshot.workspaces}
+      />
+    );
   }
 
   if (mode === "cockpit") {
@@ -307,6 +535,7 @@ function View({
         approvals={approvals}
         events={events}
         onResolveApproval={onResolveApproval}
+        onSendSessionInput={onSendSessionInput}
         rawOutputs={rawOutputs}
         session={selectedSession}
         workspace={selectedWorkspace}
@@ -330,25 +559,9 @@ function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
   const activeWorkspaces = snapshot.workspaces.filter((workspace) =>
     ["created", "running", "waiting", "blocked"].includes(workspace.state)
   );
-  const totals = useMemo(
-    () => ({
-      active: snapshot.sessions.filter((session) => ["running", "waiting"].includes(session.state)).length,
-      review: snapshot.sessions.filter((session) => session.attention === "review-ready").length,
-      blocked: snapshot.sessions.filter((session) => ["blocked", "approval-needed"].includes(session.attention)).length,
-      failed: snapshot.sessions.filter((session) => session.attention === "failed").length
-    }),
-    [snapshot.sessions]
-  );
 
   return (
     <div className="dashboard-grid">
-      <section className="summary-band">
-        <Metric label="Active" value={totals.active} tone="mint" />
-        <Metric label="Review" value={totals.review} tone="gold" />
-        <Metric label="Blocked" value={totals.blocked} tone="rose" />
-        <Metric label="Failed" value={totals.failed} tone="blue" />
-      </section>
-
       <section className="project-panel">
         <div className="section-heading">
           <div>
@@ -392,7 +605,17 @@ function Dashboard({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
   );
 }
 
-function AgentBoard({ sessions, workspaces }: { sessions: SessionSummary[]; workspaces: WorkspaceSummary[] }): JSX.Element {
+function AgentBoard({
+  onSelectSession,
+  selectedSessionId,
+  sessions,
+  workspaces
+}: {
+  onSelectSession: (sessionId: string) => void;
+  selectedSessionId: string | null;
+  sessions: SessionSummary[];
+  workspaces: WorkspaceSummary[];
+}): JSX.Element {
   return (
     <div className="lane-grid">
       <div className="board-strip">
@@ -401,21 +624,45 @@ function AgentBoard({ sessions, workspaces }: { sessions: SessionSummary[]; work
       </div>
       {sessions.map((session) => {
         const workspace = workspaces.find((item) => item.id === session.workspaceId);
-        return <SessionLane key={session.id} session={session} workspace={workspace ?? null} />;
+        return (
+          <SessionLane
+            key={session.id}
+            isSelected={session.id === selectedSessionId}
+            onSelect={() => onSelectSession(session.id)}
+            session={session}
+            workspace={workspace ?? null}
+          />
+        );
       })}
     </div>
   );
 }
 
 function SessionLane({
+  isSelected,
+  onSelect,
   session,
   workspace
 }: {
+  isSelected: boolean;
+  onSelect: () => void;
   session: SessionSummary;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   return (
-    <article className={`lane ${session.attention}`}>
+    <article
+      aria-pressed={isSelected}
+      className={`lane ${session.attention}${isSelected ? " selected" : ""}`}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
       <div className="lane-topline">
         <span className={`attention-dot ${session.attention}`} />
         <span className="provider-pill">{session.provider}</span>
@@ -437,6 +684,7 @@ function SessionCockpit({
   approvals,
   events,
   onResolveApproval,
+  onSendSessionInput,
   rawOutputs,
   session,
   workspace
@@ -444,42 +692,45 @@ function SessionCockpit({
   approvals: ApprovalRequest[];
   events: TimelineEvent[];
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
+  onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
-  const visibleApprovals = session ? approvals.filter((approval) => approval.sessionId === session.id) : approvals;
-  const visibleEvents = session ? events.filter((event) => event.sessionId === session.id) : events;
-  const visibleRawOutputs = session ? rawOutputs.filter((output) => output.sessionId === session.id) : rawOutputs;
+  const sessionId = session?.id ?? null;
+  const visibleApprovals = useMemo(
+    () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
+    [approvals, sessionId]
+  );
+  const visibleEvents = useMemo(
+    () => (sessionId ? events.filter((event) => event.sessionId === sessionId) : events),
+    [events, sessionId]
+  );
+  const visibleRawOutputs = useMemo(
+    () => (sessionId ? rawOutputs.filter((output) => output.sessionId === sessionId) : rawOutputs),
+    [rawOutputs, sessionId]
+  );
+
+  const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
+    try {
+      await onResolveApproval(approvalId, status);
+    } catch {
+      // Errors are surfaced through the parent toast system.
+    }
+  };
 
   return (
     <div className="cockpit-grid">
-      <section className="timeline-surface">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">{session?.provider ?? "Provider"}</p>
-            <h2>{workspace?.taskLabel ?? "No session selected"}</h2>
-          </div>
-          <StatusPill state={session?.attention ?? "normal"} />
-        </div>
-        <div className="cockpit-meta">
-          <span>{session?.modelLabel ?? "No model"}</span>
-          <span>{workspace?.branch ?? "No branch"}</span>
-          <span>{workspace?.changedFiles ?? 0} files</span>
-          <span>{workspace?.path ?? "No workspace"}</span>
-        </div>
-        <Timeline events={visibleEvents} />
-      </section>
+      <SessionConversation
+        events={visibleEvents}
+        onSendSessionInput={onSendSessionInput}
+        rawOutputs={visibleRawOutputs}
+        session={session}
+        workspace={workspace}
+      />
 
-      <section className="terminal-surface" aria-label="Raw terminal output">
-        <div className="terminal-header">
-          <TerminalSquare size={18} />
-          <span>{workspace?.path ?? "No workspace"}</span>
-        </div>
-        <pre>{terminalPreview(visibleRawOutputs)}</pre>
-      </section>
-
-      <section className="approval-surface">
+      {visibleApprovals.length > 0 ? (
+        <section className="approval-surface">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Approvals</p>
@@ -503,22 +754,130 @@ function SessionCockpit({
               <button
                 disabled={approval.status !== "pending"}
                 type="button"
-                onClick={() => void onResolveApproval(approval.id, "rejected")}
+                onClick={() => {
+                  void handleResolveApproval(approval.id, "rejected");
+                }}
               >
                 Reject
               </button>
               <button
                 disabled={approval.status !== "pending"}
                 type="button"
-                onClick={() => void onResolveApproval(approval.id, "approved")}
+                onClick={() => {
+                  void handleResolveApproval(approval.id, "approved");
+                }}
               >
                 Approve
               </button>
             </div>
           </div>
         ))}
-      </section>
+        </section>
+      ) : null}
     </div>
+  );
+}
+
+function SessionConversation({
+  events,
+  onSendSessionInput,
+  rawOutputs,
+  session,
+  workspace
+}: {
+  events: TimelineEvent[];
+  onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
+  rawOutputs: RawProviderOutput[];
+  session: SessionSummary | null;
+  workspace: WorkspaceSummary | null;
+}): JSX.Element {
+  const [input, setInput] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const conversationEvents = useMemo(
+    () =>
+      events
+        .filter(
+          (event) =>
+            event.payload.raw !== true &&
+            ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
+            event.message !== "turn.completed"
+        )
+        .slice()
+        .reverse(),
+    [events]
+  );
+  const canSend = Boolean(session && ["complete", "waiting"].includes(session.state));
+
+  const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    const trimmedInput = input.trim();
+    if (!session || !trimmedInput || isSending) {
+      return;
+    }
+
+    setIsSending(true);
+    setStatus(null);
+    try {
+      await onSendSessionInput(session.id, trimmedInput);
+      setInput("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not send input.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <section className="conversation-surface" aria-label="Session conversation">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Conversation</p>
+          <h2>{session ? "Live prompt" : "No live session"}</h2>
+        </div>
+        <StatusPill state={session?.attention ?? "normal"} />
+      </div>
+      <div className="conversation-meta">
+        <span>{session?.provider ?? "provider"}</span>
+        <span>{session?.modelLabel ?? "model"}</span>
+        <span>{workspace?.branch ?? "branch"}</span>
+        <span>{session?.state ?? "idle"}</span>
+      </div>
+      <div className="conversation-list">
+        {conversationEvents.length > 0 ? (
+          conversationEvents.map((event) => (
+            <article className={event.type === "user.message" ? "chat-bubble user" : "chat-bubble assistant"} key={event.id}>
+              <p>{event.message}</p>
+            </article>
+          ))
+        ) : (
+          <p className="conversation-empty">Agent replies will appear here.</p>
+        )}
+      </div>
+      <form className="session-input" onSubmit={(event) => void submitInput(event)}>
+        <input
+          aria-label="Session prompt"
+          disabled={!canSend || isSending}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={session?.state === "running" ? "Waiting for agent" : canSend ? "Send a follow-up" : "Session is not accepting input"}
+          value={input}
+        />
+        <button disabled={!canSend || isSending || !input.trim()} type="submit" title="Send follow-up">
+          <ChevronRight size={18} />
+        </button>
+      </form>
+      {status ? (
+        <p className="composer-status" role="status">
+          {status}
+        </p>
+      ) : null}
+      {rawOutputs.length > 0 ? (
+        <details className="diagnostics">
+          <summary>Diagnostics</summary>
+          <pre>{terminalPreview(rawOutputs)}</pre>
+        </details>
+      ) : null}
+    </section>
   );
 }
 
@@ -587,27 +946,73 @@ function AttemptComparison({
   onSelectPreferredAttempt: (sessionId: string) => Promise<void>;
   snapshot: DashboardSnapshot;
 }): JSX.Element {
+  // Group sessions by task label (workspace family); only show groups with siblings.
+  const groups = useMemo(() => {
+    const byKey = new Map<string, SessionSummary[]>();
+    for (const session of snapshot.sessions) {
+      const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
+      const key = workspace?.taskLabel ?? "ungrouped";
+      const list = byKey.get(key);
+      if (list) {
+        list.push(session);
+      } else {
+        byKey.set(key, [session]);
+      }
+    }
+    return Array.from(byKey.entries()).filter(([, sessions]) => sessions.length > 1);
+  }, [snapshot.sessions, snapshot.workspaces]);
+
+  const handleSelect = async (sessionId: string): Promise<void> => {
+    try {
+      await onSelectPreferredAttempt(sessionId);
+    } catch {
+      // Errors surface via the parent's toast system.
+    }
+  };
+
+  if (groups.length === 0) {
+    return (
+      <div className="comparison-grid">
+        <p className="comparison-empty">Multiple attempts for the same task will appear here.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="comparison-grid">
-      {snapshot.sessions.map((session) => {
-        const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
-        const check = workspace ? snapshot.checks.find((item) => item.workspaceId === workspace.id) : null;
-        return (
-          <article className="attempt-row" key={session.id}>
-            <div>
-              <span className="provider-pill">{session.provider}</span>
-              <h2>{workspace?.taskLabel ?? session.prompt}</h2>
-              <p>{workspace?.branch ?? "No branch"}</p>
-            </div>
-            <span>{workspace?.changedFiles ?? 0} files changed</span>
-            <span>{check?.status ?? "No checks"}</span>
-            <StatusPill state={session.attention} />
-            <button className={session.preferred ? "preferred-action active" : "preferred-action"} type="button" onClick={() => void onSelectPreferredAttempt(session.id)}>
-              {session.preferred ? "Preferred" : "Select"}
-            </button>
-          </article>
-        );
-      })}
+      {groups.map(([groupKey, groupSessions]) => (
+        <section className="comparison-group" key={groupKey}>
+          <header className="comparison-group-heading">
+            <p className="eyebrow">Task</p>
+            <h2>{groupKey}</h2>
+          </header>
+          {groupSessions.map((session) => {
+            const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
+            const check = workspace ? snapshot.checks.find((item) => item.workspaceId === workspace.id) : null;
+            return (
+              <article className="attempt-row" key={session.id}>
+                <div>
+                  <span className="provider-pill">{session.provider}</span>
+                  <h3>{workspace?.taskLabel ?? session.prompt}</h3>
+                  <p>{workspace?.branch ?? "No branch"}</p>
+                </div>
+                <span>{workspace?.changedFiles ?? 0} files changed</span>
+                <span>{check?.status ?? "No checks"}</span>
+                <StatusPill state={session.attention} />
+                <button
+                  className={session.preferred ? "preferred-action active" : "preferred-action"}
+                  type="button"
+                  onClick={() => {
+                    void handleSelect(session.id);
+                  }}
+                >
+                  {session.preferred ? "Preferred" : "Select"}
+                </button>
+              </article>
+            );
+          })}
+        </section>
+      ))}
     </div>
   );
 }
@@ -688,18 +1093,68 @@ function RightRail({ snapshot }: { snapshot: DashboardSnapshot }): JSX.Element {
   );
 }
 
-function Composer(): JSX.Element {
+function Composer({
+  onLaunchTask,
+  onProviderChange,
+  provider
+}: {
+  onLaunchTask: (prompt: string, provider: ProviderId) => Promise<void>;
+  onProviderChange: (provider: ProviderId) => void;
+  provider: ProviderId;
+}): JSX.Element {
+  const [prompt, setPrompt] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt || isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      await onLaunchTask(trimmedPrompt, provider);
+      setPrompt("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not start agent.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <form className="composer">
+    <form className="composer" onSubmit={(event) => void submitPrompt(event)}>
       <div className="composer-context">
         <span>
           <GitBranch size={16} />
           main
         </span>
         <span>Work locally</span>
+        <div className="provider-toggle" aria-label="Provider">
+          {providerOptions.map((option) => (
+            <button
+              aria-pressed={provider === option.id}
+              className={provider === option.id ? "active" : ""}
+              key={option.id}
+              type="button"
+              onClick={() => onProviderChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="composer-input">
-        <input aria-label="Task prompt" placeholder="Type / for commands" />
+        <input
+          aria-label="Task prompt"
+          disabled={isSubmitting}
+          onChange={(event) => setPrompt(event.target.value)}
+          placeholder="Ask an agent to work locally"
+          value={prompt}
+        />
         <button className="composer-tool" type="button" title="Add context">
           <Plus size={18} />
         </button>
@@ -709,18 +1164,25 @@ function Composer(): JSX.Element {
         <button className="composer-tool" type="button" title="Voice input">
           <Mic size={18} />
         </button>
-        <button className="send-button" type="submit" title="Start agent">
+        <button className="send-button" disabled={isSubmitting || !prompt.trim()} type="submit" title="Start agent">
           <ChevronRight size={20} />
         </button>
       </div>
+      {status ? (
+        <p className="composer-status" role="status">
+          {status}
+        </p>
+      ) : null}
     </form>
   );
 }
 
 function Timeline({ events }: { events: TimelineEvent[] }): JSX.Element {
+  const visibleEvents = events.filter((event) => isVisibleTimelineEvent(event));
+
   return (
     <div className="timeline-list">
-      {events.map((event) => (
+      {visibleEvents.map((event) => (
         <article className="timeline-item" key={event.id}>
           <span className="event-dot" />
           <div>
@@ -729,15 +1191,6 @@ function Timeline({ events }: { events: TimelineEvent[] }): JSX.Element {
           </div>
         </article>
       ))}
-    </div>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value: number; tone: string }): JSX.Element {
-  return (
-    <div className={`metric ${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -752,42 +1205,112 @@ function StatusPill({ state }: { state: SessionSummary["attention"] }): JSX.Elem
   );
 }
 
-function EmptyState(): JSX.Element {
+function EmptyState({ message, onRetry }: { message?: string | null; onRetry?: () => void }): JSX.Element {
   return (
     <section className="empty-state">
       <AlertTriangle size={24} />
       <h2>Local state could not be loaded</h2>
-      <p>Maestro keeps working from local storage, but the database needs attention before the dashboard can render.</p>
+      <p>
+        {message ??
+          "Maestro keeps working from local storage, but the database needs attention before the dashboard can render."}
+      </p>
+      {onRetry ? (
+        <button className="empty-state-retry" type="button" onClick={onRetry}>
+          Retry
+        </button>
+      ) : null}
     </section>
   );
 }
 
 function terminalPreview(outputs: RawProviderOutput[]): string {
   return outputs
-    .slice(0, 6)
-    .map((output) => `[${output.createdAt}] ${output.stream}: ${output.content.trim()}`)
+    .slice(-TERMINAL_PREVIEW_LINES)
+    .map((output) => `[${output.createdAt}] ${output.stream}: ${stripTerminalControls(output.content).trim()}`)
+    .filter((line) => !line.endsWith(":"))
     .join("\n");
 }
 
+function capRawOutputs(snapshot: DashboardSnapshot): DashboardSnapshot {
+  if (snapshot.rawOutputs.length <= RAW_OUTPUT_CAP) {
+    return snapshot;
+  }
+  return {
+    ...snapshot,
+    rawOutputs: snapshot.rawOutputs.slice(-RAW_OUTPUT_CAP)
+  };
+}
+
+function stripTerminalControls(value: string): string {
+  return value
+    .replace(oscSequencePattern, "")
+    .replace(csiSequencePattern, "")
+    .replace(escapeSequencePattern, "")
+    .replaceAll(/./gs, (character) => (isDisplayControlCharacter(character) ? "" : character));
+}
+
+function isDisplayControlCharacter(character: string): boolean {
+  const code = character.charCodeAt(0);
+  return code === 127 || (code < 32 && code !== 9 && code !== 10 && code !== 13);
+}
+
 function formatTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
   return new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit"
-  }).format(new Date(value));
+  }).format(date);
 }
 
-function titleForView(mode: ViewMode): string {
-  const titles: Record<ViewMode, string> = {
-    dashboard: "Project dashboard",
-    board: "Parallel agent board",
-    cockpit: "Session cockpit",
-    review: "Review studio",
-    compare: "Attempt comparison"
-  };
+function titleFromPrompt(prompt: string): string {
+  const firstLine = prompt.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  return firstLine.length > 64 ? `${firstLine.slice(0, 61)}...` : firstLine || "Local agent task";
+}
 
-  return titles[mode];
+function modelLabelForProvider(provider: ProviderId, defaultModelLabel: string): string {
+  return provider === "claude" ? "Claude Code" : defaultModelLabel;
+}
+
+function isBrowserPreview(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return ["127.0.0.1", "localhost"].includes(window.location.hostname);
+}
+
+function hasActiveWork(snapshot: DashboardSnapshot): boolean {
+  return (
+    snapshot.sessions.some((session) => ["running", "waiting"].includes(session.state)) ||
+    snapshot.checks.some((check) => ["queued", "running"].includes(check.status))
+  );
+}
+
+function isVisibleTimelineEvent(event: TimelineEvent): boolean {
+  return (
+    event.payload.raw !== true &&
+    event.message !== "turn.completed" &&
+    ["user.message", "message.delta", "message.completed", "error"].includes(event.type)
+  );
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target instanceof HTMLInputElement) return true;
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLSelectElement) return true;
+  if (target.getAttribute("role") === "textbox") return true;
+  // jsdom does not always implement `isContentEditable`, so also walk the ancestor
+  // chain checking for `contenteditable="true"` (or empty string, which means true).
+  if (target.isContentEditable) return true;
+  for (let node: HTMLElement | null = target; node; node = node.parentElement) {
+    const value = node.getAttribute?.("contenteditable");
+    if (value === "" || value === "true") return true;
+  }
+  return false;
 }

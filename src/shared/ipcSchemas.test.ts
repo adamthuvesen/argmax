@@ -32,13 +32,13 @@ describe("ipcSchemas", () => {
       workspaceId: "ws-1",
       provider: "claude",
       prompt: "build a thing",
-      modelLabel: "Claude Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Claude Haiku",
+      modelId: "haiku",
       cols: 120,
       rows: 30
     });
     expect(parsed.provider).toBe("claude");
-    expect(parsed.modelId).toBe("claude-sonnet-4-6");
+    expect(parsed.modelId).toBe("haiku");
     expect(parsed.cols).toBe(120);
   });
 
@@ -47,13 +47,13 @@ describe("ipcSchemas", () => {
       workspaceId: "ws-1",
       provider: "codex",
       prompt: "build a thing",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 120,
       rows: 30
     });
-    expect(parsed.reasoningEffort).toBe("medium");
+    expect(parsed.reasoningEffort).toBe("low");
   });
 
   it("accepts createWorkspace without baseRef (optional field)", () => {

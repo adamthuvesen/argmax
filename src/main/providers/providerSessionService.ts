@@ -3,7 +3,13 @@ import { z } from "zod";
 import type { MaestroDatabase, PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
-import type { LaunchProviderSessionInput, ProviderId, SessionSummary } from "../../shared/types.js";
+import type {
+  DashboardDelta,
+  LaunchProviderSessionInput,
+  ProviderId,
+  SessionSummary,
+  TimelineEvent
+} from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
 import { normalizeProviderEvent } from "./providerEventNormalizer.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
@@ -44,6 +50,7 @@ interface SessionBuffer {
     content: string;
     createdAt: string;
   }>;
+  pendingSessionUpdate: SessionSummary | null;
   /** Latest output createdAt seen, used for throttled lastActivityAt updates. */
   lastActivityWriteAt: number;
   workspaceId: string;
@@ -82,7 +89,8 @@ export class ProviderSessionService {
 
   constructor(
     private readonly database: MaestroDatabase,
-    private readonly adapterFactory: (provider: ProviderId) => ProviderAdapter = getProviderAdapter
+    private readonly adapterFactory: (provider: ProviderId) => ProviderAdapter = getProviderAdapter,
+    private readonly publishDelta: (delta: DashboardDelta) => void = () => undefined
   ) {}
 
   async launch(rawInput: LaunchProviderSessionInput): Promise<SessionSummary> {
@@ -100,8 +108,8 @@ export class ProviderSessionService {
       attention: computeSessionAttention({ state: "running" })
     });
 
-    this.database.updateWorkspaceState(workspace.id, "running");
-    this.database.persistTimelineEvent({
+    const runningWorkspace = this.database.updateWorkspaceState(workspace.id, "running");
+    const userMessage = this.database.persistTimelineEvent({
       id: randomUUID(),
       sessionId,
       type: "user.message",
@@ -110,7 +118,7 @@ export class ProviderSessionService {
         source: "composer"
       }
     });
-    this.database.persistTimelineEvent({
+    const sessionStarted = this.database.persistTimelineEvent({
       id: randomUUID(),
       sessionId,
       type: "session.started",
@@ -120,6 +128,12 @@ export class ProviderSessionService {
         workspacePath: workspace.path,
         modelLabel: input.modelLabel
       }
+    });
+    this.publishDashboardDelta({
+      projects: this.database.listProjects(),
+      workspaces: [runningWorkspace],
+      sessions: [session],
+      events: [userMessage, sessionStarted]
     });
 
     this.initializeBuffer(sessionId, workspace.id, input.provider);
@@ -138,7 +152,7 @@ export class ProviderSessionService {
           modelLabel: input.modelLabel,
           modelId: input.modelId,
           reasoningEffort: input.reasoningEffort,
-          mode: "structured-json",
+          mode: PROVIDER_MODEL_DEFAULTS[input.provider].launchMode,
           cols: input.cols,
           rows: input.rows
         },
@@ -167,13 +181,13 @@ export class ProviderSessionService {
       pending.ops.length = 0;
       this.deleteBuffer(sessionId);
       const message = error instanceof Error ? error.message : "Provider launch failed.";
-      this.database.updateSessionState(sessionId, {
+      const failedSession = this.database.updateSessionState(sessionId, {
         state: "failed",
         attention: computeSessionAttention({ state: "failed" }),
         completedAt: new Date().toISOString()
       });
-      this.database.updateWorkspaceState(workspace.id, "failed");
-      this.database.persistTimelineEvent({
+      const failedWorkspace = this.database.updateWorkspaceState(workspace.id, "failed");
+      const errorEvent = this.database.persistTimelineEvent({
         id: randomUUID(),
         sessionId,
         type: "error",
@@ -181,6 +195,12 @@ export class ProviderSessionService {
         payload: {
           provider: input.provider
         }
+      });
+      this.publishDashboardDelta({
+        projects: this.database.listProjects(),
+        workspaces: [failedWorkspace],
+        sessions: [failedSession],
+        events: [errorEvent]
       });
       throw error;
     }
@@ -202,7 +222,7 @@ export class ProviderSessionService {
       liveHandle.sendInput(`${message}\r`);
     }
 
-    this.database.persistTimelineEvent({
+    const userMessage = this.database.persistTimelineEvent({
       id: randomUUID(),
       sessionId,
       type: "user.message",
@@ -212,15 +232,25 @@ export class ProviderSessionService {
       }
     });
     if (liveHandle) {
+      this.publishDashboardDelta({
+        projects: this.database.listProjects(),
+        events: [userMessage]
+      });
       return;
     }
 
-    this.database.updateSessionState(sessionId, {
+    const runningSession = this.database.updateSessionState(sessionId, {
       state: "running",
       attention: computeSessionAttention({ state: "running" }),
       completedAt: null
     });
-    this.database.updateWorkspaceState(workspace.id, "running");
+    const runningWorkspace = this.database.updateWorkspaceState(workspace.id, "running");
+    this.publishDashboardDelta({
+      projects: this.database.listProjects(),
+      workspaces: [runningWorkspace],
+      sessions: [runningSession],
+      events: [userMessage]
+    });
 
     this.initializeBuffer(sessionId, workspace.id, session.provider);
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false };
@@ -236,7 +266,7 @@ export class ProviderSessionService {
           modelLabel: session.modelLabel,
           modelId: modelDefault.modelId,
           reasoningEffort: modelDefault.reasoningEffort,
-          mode: "structured-json",
+          mode: modelDefault.launchMode,
           cols: 120,
           rows: 32
         },
@@ -261,13 +291,13 @@ export class ProviderSessionService {
       pending.ops.length = 0;
       this.deleteBuffer(sessionId);
       const detail = error instanceof Error ? error.message : "Provider input failed.";
-      this.database.updateSessionState(sessionId, {
+      const failedSession = this.database.updateSessionState(sessionId, {
         state: "failed",
         attention: computeSessionAttention({ state: "failed" }),
         completedAt: new Date().toISOString()
       });
-      this.database.updateWorkspaceState(workspace.id, "failed");
-      this.database.persistTimelineEvent({
+      const failedWorkspace = this.database.updateWorkspaceState(workspace.id, "failed");
+      const errorEvent = this.database.persistTimelineEvent({
         id: randomUUID(),
         sessionId,
         type: "error",
@@ -275,6 +305,12 @@ export class ProviderSessionService {
         payload: {
           provider: session.provider
         }
+      });
+      this.publishDashboardDelta({
+        projects: this.database.listProjects(),
+        workspaces: [failedWorkspace],
+        sessions: [failedSession],
+        events: [errorEvent]
       });
       throw error;
     }
@@ -377,6 +413,7 @@ export class ProviderSessionService {
       flushTimer: null,
       pendingEvents: [],
       pendingRawOutputs: [],
+      pendingSessionUpdate: null,
       lastActivityWriteAt: 0,
       workspaceId,
       provider
@@ -434,21 +471,22 @@ export class ProviderSessionService {
     const completedAt = event.createdAt;
     const succeeded = event.type === "exit" && event.exitCode === 0;
     const state = succeeded ? "complete" : "failed";
-    this.database.persistRawOutput({
+    const rawOutput = {
       id: randomUUID(),
       sessionId: event.sessionId,
       stream: event.stream,
       content: capRawContent(event.message).content,
       createdAt: event.createdAt
-    });
-    this.database.updateSessionState(event.sessionId, {
+    };
+    this.database.persistRawOutput(rawOutput);
+    const session = this.database.updateSessionState(event.sessionId, {
       state,
       attention: computeSessionAttention({ state }),
       completedAt,
       lastActivityAt: completedAt
     });
-    this.database.updateWorkspaceState(workspaceId, state);
-    this.database.persistTimelineEvent({
+    const workspace = this.database.updateWorkspaceState(workspaceId, state);
+    const timelineEvent = this.database.persistTimelineEvent({
       id: randomUUID(),
       sessionId: event.sessionId,
       type: succeeded ? "session.completed" : "error",
@@ -457,6 +495,13 @@ export class ProviderSessionService {
         exitCode: event.exitCode
       }).payload,
       createdAt: event.createdAt
+    });
+    this.publishDashboardDelta({
+      projects: this.database.listProjects(),
+      workspaces: [workspace],
+      sessions: [session],
+      events: [timelineEvent],
+      rawOutputs: [rawOutput]
     });
     this.handles.delete(event.sessionId);
     this.deleteBuffer(event.sessionId);
@@ -480,15 +525,18 @@ export class ProviderSessionService {
       }
     } else {
       // Defensive: persist directly when no buffer exists.
-      this.database.persistRawOutput({
+      const rawOutput = {
         id,
         sessionId: event.sessionId,
         stream: event.stream,
         content,
         createdAt: event.createdAt
-      });
+      };
+      this.database.persistRawOutput(rawOutput);
+      this.publishDashboardDelta({ rawOutputs: [rawOutput] });
       if (truncatedDelta) {
-        this.database.persistTimelineEvent(truncatedDelta);
+        const persisted = this.database.persistTimelineEvent(truncatedDelta);
+        this.publishDashboardDelta({ events: [persisted] });
       }
     }
   }
@@ -514,10 +562,12 @@ export class ProviderSessionService {
         sessionState.pendingEvents.push(stampedSibling);
       }
     } else {
-      this.database.persistTimelineEvent(stamped);
+      const persisted = this.database.persistTimelineEvent(stamped);
+      const events = [persisted];
       if (sibling) {
-        this.database.persistTimelineEvent({ ...sibling, sessionId });
+        events.push(this.database.persistTimelineEvent({ ...sibling, sessionId }));
       }
+      this.publishDashboardDelta({ events });
     }
   }
 
@@ -536,7 +586,7 @@ export class ProviderSessionService {
     sessionState.lastActivityWriteAt = now;
     try {
       const session = this.database.getSession(event.sessionId);
-      this.database.updateSessionState(event.sessionId, {
+      sessionState.pendingSessionUpdate = this.database.updateSessionState(event.sessionId, {
         state: session.state,
         attention: session.attention,
         completedAt: session.completedAt ?? null,
@@ -596,12 +646,19 @@ export class ProviderSessionService {
       clearTimeout(sessionState.flushTimer);
       sessionState.flushTimer = null;
     }
-    if (sessionState.pendingRawOutputs.length === 0 && sessionState.pendingEvents.length === 0) {
+    if (
+      sessionState.pendingRawOutputs.length === 0 &&
+      sessionState.pendingEvents.length === 0 &&
+      !sessionState.pendingSessionUpdate
+    ) {
       return;
     }
 
     const rawOutputs = sessionState.pendingRawOutputs.splice(0);
     const events = sessionState.pendingEvents.splice(0);
+    const sessionUpdate = sessionState.pendingSessionUpdate;
+    sessionState.pendingSessionUpdate = null;
+    const persistedEvents: TimelineEvent[] = [];
 
     // Wrap the whole micro-batch in one transaction so the renderer never
     // observes a half-applied state between persistRawOutput and the timeline.
@@ -610,11 +667,21 @@ export class ProviderSessionService {
         this.database.persistRawOutput(raw);
       }
       for (const event of events) {
-        this.database.persistTimelineEvent(event);
+        persistedEvents.push(this.database.persistTimelineEvent(event));
       }
     });
     persist();
     sessionState.lastFlushAt = Date.now();
+    this.publishDashboardDelta({
+      projects: this.database.listProjects(),
+      ...(sessionUpdate ? { sessions: [sessionUpdate] } : {}),
+      ...(persistedEvents.length > 0 ? { events: persistedEvents } : {}),
+      ...(rawOutputs.length > 0 ? { rawOutputs } : {})
+    });
+  }
+
+  private publishDashboardDelta(delta: DashboardDelta): void {
+    this.publishDelta(delta);
   }
 }
 

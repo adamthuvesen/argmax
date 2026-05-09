@@ -6,6 +6,7 @@ import { createDatabase, type MaestroDatabase } from "./persistence/database.js"
 import { registerIpcHandlers } from "./ipc.js";
 let registeredChannels: readonly string[] = [];
 import { ProviderSessionService } from "./providers/providerSessionService.js";
+import type { DashboardDelta } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
 let database: MaestroDatabase | null = null;
@@ -48,7 +49,7 @@ async function createWindow(): Promise<void> {
 
 void app.whenReady().then(async () => {
   database = createDatabase();
-  providerSessions = new ProviderSessionService(database);
+  providerSessions = new ProviderSessionService(database, undefined, publishDashboardDelta);
   registeredChannels = registerIpcHandlers(database, providerSessions);
 
   await createWindow();
@@ -59,6 +60,14 @@ void app.whenReady().then(async () => {
     }
   });
 });
+
+function publishDashboardDelta(delta: DashboardDelta): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("dashboard:delta", delta);
+    }
+  }
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

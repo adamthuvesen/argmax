@@ -5,7 +5,7 @@ import type { ProjectSettings } from "../../shared/types.js";
 
 const settings: ProjectSettings = {
   defaultProvider: "codex",
-  defaultModelLabel: "GPT-5.5 Medium",
+  defaultModelLabel: "GPT-5.3 Codex Spark Low",
   worktreeLocation: "/tmp/wt",
   setupCommand: "",
   checkCommands: []

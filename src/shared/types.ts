@@ -197,9 +197,14 @@ export interface DashboardSnapshot {
   checkpoints: Checkpoint[];
 }
 
+export type DashboardDelta = {
+  [K in keyof DashboardSnapshot]?: DashboardSnapshot[K];
+};
+
 export interface MaestroApi {
   dashboard: {
     load: () => Promise<DashboardSnapshot>;
+    onDelta: (listener: (delta: DashboardDelta) => void) => () => void;
   };
   projects: {
     list: () => Promise<ProjectSummary[]>;

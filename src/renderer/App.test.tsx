@@ -13,7 +13,7 @@ const snapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: {
         defaultProvider: "codex",
-        defaultModelLabel: "GPT-5.5 Medium",
+        defaultModelLabel: "GPT-5.3 Codex Spark Low",
         worktreeLocation: "/tmp/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm test"]
@@ -47,7 +47,7 @@ const snapshot: DashboardSnapshot = {
       id: "session-1",
       workspaceId: "workspace-1",
       provider: "codex",
-      modelLabel: "GPT-5.5 Medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
       prompt: "Build dashboard",
       state: "running",
       attention: "normal",
@@ -89,7 +89,8 @@ describe("App", () => {
 
     window.maestro = {
       dashboard: {
-        load: dashboardLoad
+        load: dashboardLoad,
+        onDelta: () => () => undefined
       },
       projects: {
         list: () => Promise.resolve(snapshot.projects),
@@ -176,9 +177,9 @@ describe("App", () => {
       workspaceId: "workspace-1",
       provider: "codex",
       prompt: "Implement PTY launch",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 120,
       rows: 32
     });
@@ -203,7 +204,7 @@ describe("App", () => {
       id: "session-new",
       workspaceId: "workspace-new",
       provider: "codex",
-      modelLabel: "GPT-5.5 Medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
       prompt: "New chat",
       state: "running",
       attention: "normal",
@@ -272,8 +273,8 @@ describe("App", () => {
         workspaceId: "workspace-1",
         provider: "claude",
         prompt: "Review this change",
-        modelLabel: "Claude Sonnet 4.6",
-        modelId: "claude-sonnet-4-6",
+        modelLabel: "Claude Haiku",
+        modelId: "haiku",
         cols: 120,
         rows: 32
       })
@@ -305,7 +306,7 @@ describe("App", () => {
           id: "session-2",
           workspaceId: "workspace-2",
           provider: "claude",
-          modelLabel: "Claude Sonnet 4.6",
+          modelLabel: "Claude Haiku",
           prompt: "Second chat",
           state: "complete",
           attention: "review-ready",
@@ -334,7 +335,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
+    expect(screen.getByText("Claude Haiku")).toBeInTheDocument();
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-pressed", "true");

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import type { DashboardSnapshot, MaestroApi } from "../shared/types.js";
+import type { DashboardDelta, DashboardSnapshot, MaestroApi } from "../shared/types.js";
 
 const snapshot: DashboardSnapshot = {
   projects: [
@@ -76,6 +76,8 @@ const snapshot: DashboardSnapshot = {
 describe("App", () => {
   let createCurrentWorkspace: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["createCurrent"]>>;
   let dashboardLoad: ReturnType<typeof vi.fn<MaestroApi["dashboard"]["load"]>>;
+  let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null;
+  let dashboardDeltaUnsubscribe: ReturnType<typeof vi.fn<() => void>>;
   let launchProvider: ReturnType<typeof vi.fn<MaestroApi["providers"]["launch"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<MaestroApi["providers"]["sendInput"]>>;
 
@@ -84,13 +86,18 @@ describe("App", () => {
       snapshot.workspaces[0] ?? missingWorkspace()
     );
     dashboardLoad = vi.fn<MaestroApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
+    dashboardDeltaListener = null;
+    dashboardDeltaUnsubscribe = vi.fn<() => void>();
     launchProvider = vi.fn<MaestroApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
     sendProviderInput = vi.fn<MaestroApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
 
     window.maestro = {
       dashboard: {
         load: dashboardLoad,
-        onDelta: () => () => undefined
+        onDelta: (listener) => {
+          dashboardDeltaListener = listener;
+          return dashboardDeltaUnsubscribe;
+        }
       },
       projects: {
         list: () => Promise.resolve(snapshot.projects),
@@ -156,6 +163,54 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Compare" })).not.toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
+  });
+
+  it("renders streamed dashboard deltas without reloading the full dashboard", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(dashboardLoad).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      dashboardDeltaListener?.({
+        events: [
+          {
+            id: "event-streamed",
+            sessionId: "session-1",
+            type: "message.delta",
+            message: "Streaming now.",
+            payload: {},
+            createdAt: "2026-05-08T15:54:01.000Z"
+          }
+        ]
+      });
+    });
+
+    expect(await screen.findByText("Streaming now.")).toBeInTheDocument();
+    expect(dashboardLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it("unsubscribes from dashboard deltas on unmount", async () => {
+    const rendered = render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    rendered.unmount();
+
+    expect(dashboardDeltaUnsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not schedule dashboard polling while work is active", async () => {
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+
+    try {
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+      expect(setIntervalSpy).not.toHaveBeenCalled();
+    } finally {
+      setIntervalSpy.mockRestore();
+    }
   });
 
   it("starts the default provider from the composer", async () => {

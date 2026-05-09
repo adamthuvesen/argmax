@@ -77,6 +77,21 @@ export const healthPingInputSchema = z.void();
 export const projectsListInputSchema = z.void();
 export const providersDiscoverInputSchema = z.void();
 export const dashboardLoadInputSchema = z.void();
+export const dashboardListInputSchema = z.void();
+
+export const sessionEventsSinceInputSchema = z.object({
+  sessionId: sessionIdSchema,
+  eventCursor: z.number().int().nonnegative().optional(),
+  rawOutputCursor: z.number().int().nonnegative().optional()
+});
+
+export const workspaceStatusInputSchema = z
+  .object({
+    workspaceIds: z.array(workspaceIdSchema).optional()
+  })
+  .optional();
+
+export const approvalsPendingInputSchema = z.void();
 
 export const registerProjectInputSchema = z.object({
   repoPath: z.string().min(1)
@@ -165,6 +180,7 @@ export const prepareCommitInputSchema = z.object({
 export const ipcSchemas = {
   "health:ping": healthPingInputSchema,
   "projects:list": projectsListInputSchema,
+  "dashboard:list": dashboardListInputSchema,
   "projects:register": registerProjectInputSchema,
   "projects:update-settings": updateProjectSettingsInputSchema,
   "workspaces:create-isolated": createWorkspaceInputSchema,
@@ -172,12 +188,15 @@ export const ipcSchemas = {
   "workspaces:refresh-status": workspaceIdInputSchema,
   "workspaces:keep": workspaceIdInputSchema,
   "workspaces:archive": workspaceIdInputSchema,
+  "workspace:status": workspaceStatusInputSchema,
   "providers:discover": providersDiscoverInputSchema,
   "providers:launch": launchProviderSessionInputSchema,
   "providers:send-input": providerSessionInputSchema,
   "providers:resize": providerSessionResizeInputSchema,
   "providers:terminate": providerSessionTerminateInputSchema,
   "approvals:resolve": resolveApprovalInputSchema,
+  "approvals:pending": approvalsPendingInputSchema,
+  "session:eventsSince": sessionEventsSinceInputSchema,
   "review:list-changed-files": reviewListChangedFilesInputSchema,
   "review:load-diff": loadDiffInputSchema,
   "checks:run": runCheckInputSchema,
@@ -201,6 +220,8 @@ export type LaunchProviderSessionInputParsed = z.infer<typeof launchProviderSess
 export type ProviderSessionInputParsed = z.infer<typeof providerSessionInputSchema>;
 export type ProviderSessionResizeInputParsed = z.infer<typeof providerSessionResizeInputSchema>;
 export type ResolveApprovalInputParsed = z.infer<typeof resolveApprovalInputSchema>;
+export type SessionEventsSinceInputParsed = z.infer<typeof sessionEventsSinceInputSchema>;
+export type WorkspaceStatusInputParsed = z.infer<typeof workspaceStatusInputSchema>;
 export type RunCheckInputParsed = z.infer<typeof runCheckInputSchema>;
 export type CreateCheckpointInputParsed = z.infer<typeof createCheckpointInputSchema>;
 export type SelectPreferredAttemptInputParsed = z.infer<typeof selectPreferredAttemptInputSchema>;

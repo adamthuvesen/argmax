@@ -64,7 +64,7 @@ describe("withValidation", () => {
   });
 
   it("preserves zod issues on the thrown error so the renderer can render them", async () => {
-    const handler = withValidation(ipcSchemas["providers:send-input"], async () => ({ ok: true }) as const);
+    const handler = withValidation(ipcSchemas["providers:send-input"], () => ({ ok: true }) as const);
     try {
       await handler(null, { sessionId: "", input: "" });
       expect.fail("expected validation rejection");

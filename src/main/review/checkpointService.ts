@@ -63,5 +63,5 @@ async function gitBuffer(cwd: string, args: string[]): Promise<Buffer> {
     maxBuffer: 256 * 1024 * 1024,
     encoding: "buffer"
   });
-  return stdout as Buffer;
+  return stdout;
 }

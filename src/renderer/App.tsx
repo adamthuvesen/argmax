@@ -38,6 +38,14 @@ const emptySnapshot: DashboardSnapshot = {
 };
 
 type ToastMessage = { kind: "error" | "info"; message: string };
+type SessionCursor = { eventCursor?: number; rawOutputCursor?: number };
+
+/* eslint-disable no-control-regex */
+const oscSequencePattern = new RegExp("\\u001B\\][^\\u0007]*(?:\\u0007|\\u001B\\\\)", "g");
+const csiSequencePattern = new RegExp("\\u001B\\[[0-?]*[ -/]*[@-~]", "g");
+const escapeSequencePattern = new RegExp("\\u001B[@-Z\\\\-_]", "g");
+const controlCharacterPattern = new RegExp("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]", "g");
+/* eslint-enable no-control-regex */
 
 const providerOptions: Array<{ id: ProviderId; label: string }> = [
   { id: "codex", label: "Codex" },
@@ -62,18 +70,42 @@ export function App(): JSX.Element {
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.maestro);
 
   const dashboardLoadToken = useRef(0);
+  const dashboardDeltaRevision = useRef(0);
+  const sessionCursorsRef = useRef(new Map<string, SessionCursor>());
   const resolveApprovalToken = useRef(0);
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
 
+  const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
+    if (!window.maestro?.session?.eventsSince) {
+      return;
+    }
+
+    const cursor = sessionCursorsRef.current.get(sessionId);
+    const data = await window.maestro.session.eventsSince({
+      sessionId,
+      ...(cursor?.eventCursor !== undefined ? { eventCursor: cursor.eventCursor } : {}),
+      ...(cursor?.rawOutputCursor !== undefined ? { rawOutputCursor: cursor.rawOutputCursor } : {})
+    });
+    sessionCursorsRef.current.set(sessionId, {
+      eventCursor: data.eventCursor,
+      rawOutputCursor: data.rawOutputCursor
+    });
+    setSnapshot((current) => ({
+      ...current,
+      events: mergeByCreatedAt(current.events, data.events, 50, "asc"),
+      rawOutputs: mergeByCreatedAt(current.rawOutputs, data.rawOutputs, 100, "asc")
+    }));
+  }, []);
+
   const loadDashboard = useCallback(async (): Promise<void> => {
     const token = ++dashboardLoadToken.current;
-    const loader = window.maestro?.dashboard.load ?? (() => Promise.resolve(demoSnapshot));
+    const deltaRevision = dashboardDeltaRevision.current;
     try {
-      const data = await loader();
+      const data = await loadDashboardSnapshot();
       if (token !== dashboardLoadToken.current) {
         return;
       }
-      setSnapshot(data);
+      setSnapshot((current) => (deltaRevision === dashboardDeltaRevision.current ? data : mergeDashboardDelta(data, current)));
       setLoadState("ready");
       setLoadError(null);
     } catch (error) {
@@ -85,12 +117,43 @@ export function App(): JSX.Element {
     }
   }, []);
 
+  const refreshDashboardStatus = useCallback(async (): Promise<void> => {
+    const token = ++dashboardLoadToken.current;
+    try {
+      const statusLoader = window.maestro?.workspaces.status;
+      const approvalsLoader = window.maestro?.approvals.pending;
+      if (!statusLoader || !approvalsLoader) {
+        await loadDashboard();
+        return;
+      }
+
+      const [status, approvals] = await Promise.all([statusLoader(), approvalsLoader()]);
+      if (token !== dashboardLoadToken.current) {
+        return;
+      }
+      setSnapshot((current) => ({
+        ...current,
+        ...status,
+        approvals
+      }));
+      setLoadState("ready");
+      setLoadError(null);
+    } catch (error) {
+      if (token !== dashboardLoadToken.current) {
+        return;
+      }
+      setLoadState("error");
+      setLoadError(error instanceof Error ? error.message : "Dashboard refresh failed");
+    }
+  }, [loadDashboard]);
+
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
 
   useEffect(() => {
     const unsubscribe = window.maestro?.dashboard.onDelta?.((delta) => {
+      dashboardDeltaRevision.current += 1;
       setSnapshot((current) => mergeDashboardDelta(current, delta));
       setLoadState("ready");
       setLoadError(null);
@@ -107,11 +170,14 @@ export function App(): JSX.Element {
         return;
       }
       void loadDashboard();
+      if (selectedSessionId) {
+        void loadSessionEvents(selectedSessionId);
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [loadDashboard]);
+  }, [loadDashboard, selectedSessionId, loadSessionEvents]);
 
   // Reconcile selectedSessionId against the snapshot without clobbering a
   // just-launched session while its dashboard refresh is still in flight.
@@ -158,6 +224,13 @@ export function App(): JSX.Element {
   );
   const selectedProvider = providerOverride ?? snapshot.projects[0]?.settings.defaultProvider ?? "codex";
 
+  useEffect(() => {
+    if (!selectedSession?.id) {
+      return;
+    }
+    void loadSessionEvents(selectedSession.id);
+  }, [selectedSession?.id, loadSessionEvents]);
+
   const openWorkspaceChat = useCallback(
     (workspaceId: string): void => {
       const session = snapshot.sessions.find((item) => item.workspaceId === workspaceId) ?? null;
@@ -191,7 +264,7 @@ export function App(): JSX.Element {
         if (token !== resolveApprovalToken.current) {
           return;
         }
-        await loadDashboard();
+        await refreshDashboardStatus();
       } catch (error) {
         if (token !== resolveApprovalToken.current) {
           return;
@@ -203,7 +276,7 @@ export function App(): JSX.Element {
         });
       }
     },
-    [snapshot, loadDashboard]
+    [snapshot, refreshDashboardStatus]
   );
 
   const sendSessionInput = useCallback(
@@ -216,9 +289,9 @@ export function App(): JSX.Element {
         sessionId,
         input: `${input}\r`
       });
-      await loadDashboard();
+      await Promise.all([loadDashboard(), loadSessionEvents(sessionId)]);
     },
-    [loadDashboard]
+    [loadDashboard, loadSessionEvents]
   );
 
   const launchTask = useCallback(
@@ -255,9 +328,9 @@ export function App(): JSX.Element {
       };
       setSelectedWorkspaceId(workspace.id);
       setSelectedSessionId(launchedSession.id);
-      await loadDashboard();
+      await Promise.all([loadDashboard(), loadSessionEvents(launchedSession.id)]);
     },
-    [snapshot.projects, loadDashboard]
+    [snapshot.projects, loadDashboard, loadSessionEvents]
   );
 
   return (
@@ -491,8 +564,7 @@ function SessionConversation({
             ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
             event.message !== "turn.completed"
         )
-        .slice()
-        .reverse(),
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
     [events]
   );
   const terminalTranscript = useMemo(
@@ -505,7 +577,7 @@ function SessionConversation({
       (["complete", "waiting"].includes(session.state) ||
         (session.provider === "codex" && session.state === "running"))
   );
-  const isThinking = session?.state === "running";
+  const isThinking = session?.state === "running" && !hasAssistantEvents && !terminalTranscript;
   const sessionTitle = workspace?.taskLabel ?? session?.prompt ?? "No session selected";
   const sessionDetails = [
     session ? providerLabel(session.provider) : null,
@@ -725,6 +797,14 @@ function EmptyState({ message, onRetry }: { message?: string | null; onRetry?: (
   );
 }
 
+async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
+  if (!window.maestro) {
+    return demoSnapshot;
+  }
+
+  return window.maestro.dashboard.load();
+}
+
 function titleFromPrompt(prompt: string): string {
   const firstLine = prompt.split(/\r?\n/, 1)[0]?.trim() ?? "";
   return firstLine.length > 64 ? `${firstLine.slice(0, 61)}...` : firstLine || "Local agent task";
@@ -744,22 +824,44 @@ function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: str
   }
 
   const transcript = rawOutputs
-    .filter((output) => output.sessionId === sessionId && ["pty", "stdout", "stderr"].includes(output.stream))
-    .slice()
-    .reverse()
-    .map((output) => stripTerminalControls(output.content))
+    .filter((output) => output.sessionId === sessionId && ["stdout", "stderr"].includes(output.stream))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .flatMap((output) => visibleRawProviderLines(stripTerminalControls(output.content)))
     .join("")
     .trim();
 
   return transcript.length > 8_000 ? transcript.slice(-8_000) : transcript;
 }
 
+function visibleRawProviderLines(content: string): string[] {
+  return content
+    .split(/(\r?\n)/)
+    .filter((part) => part === "\n" || part === "\r\n" || !isHiddenRawProviderLine(part.trim()));
+}
+
+function isHiddenRawProviderLine(line: string): boolean {
+  if (!line.startsWith("{")) {
+    return false;
+  }
+
+  try {
+    const payload = JSON.parse(line) as unknown;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return false;
+    }
+
+    return typeof (payload as { type?: unknown }).type === "string";
+  } catch {
+    return false;
+  }
+}
+
 function stripTerminalControls(value: string): string {
   return value
-    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\x1b[@-Z\\-_]/g, "")
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+    .replace(oscSequencePattern, "")
+    .replace(csiSequencePattern, "")
+    .replace(escapeSequencePattern, "")
+    .replace(controlCharacterPattern, "");
 }
 
 function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
@@ -795,6 +897,17 @@ function upsertById<T extends { id: string }>(current: T[], updates: T[]): T[] {
     byId.set(item.id, item);
   }
   return [...byId.values()];
+}
+
+function mergeByCreatedAt<T extends { id: string; createdAt: string }>(
+  current: T[],
+  updates: T[],
+  limit: number,
+  direction: "asc" | "desc"
+): T[] {
+  const sorted = upsertById(current, updates).sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const limited = sorted.slice(-limit);
+  return direction === "asc" ? limited : limited.reverse();
 }
 
 function sortProjects(projects: DashboardSnapshot["projects"]): DashboardSnapshot["projects"] {

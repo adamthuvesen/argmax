@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardDelta, DashboardSnapshot, MaestroApi } from "../shared/types.js";
 
@@ -73,27 +73,64 @@ const snapshot: DashboardSnapshot = {
   checkpoints: []
 };
 
+function dashboardListSnapshot(data: DashboardSnapshot): Awaited<ReturnType<MaestroApi["dashboard"]["list"]>> {
+  return {
+    projects: data.projects,
+    workspaces: data.workspaces,
+    sessions: data.sessions,
+    checks: data.checks,
+    checkpoints: data.checkpoints
+  };
+}
+
+function workspaceStatusSnapshot(data: DashboardSnapshot): Awaited<ReturnType<MaestroApi["workspaces"]["status"]>> {
+  return {
+    workspaces: data.workspaces,
+    sessions: data.sessions,
+    checks: data.checks,
+    checkpoints: data.checkpoints
+  };
+}
+
 describe("App", () => {
   let createCurrentWorkspace: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["createCurrent"]>>;
   let dashboardLoad: ReturnType<typeof vi.fn<MaestroApi["dashboard"]["load"]>>;
+  let dashboardList: ReturnType<typeof vi.fn<MaestroApi["dashboard"]["list"]>>;
   let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null;
   let dashboardDeltaUnsubscribe: ReturnType<typeof vi.fn<() => void>>;
   let launchProvider: ReturnType<typeof vi.fn<MaestroApi["providers"]["launch"]>>;
+  let approvalsPending: ReturnType<typeof vi.fn<MaestroApi["approvals"]["pending"]>>;
+  let sessionEventsSince: ReturnType<typeof vi.fn<MaestroApi["session"]["eventsSince"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<MaestroApi["providers"]["sendInput"]>>;
+  let workspaceStatus: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["status"]>>;
+
+  afterEach(() => {
+    cleanup();
+  });
 
   beforeEach(() => {
     createCurrentWorkspace = vi.fn<MaestroApi["workspaces"]["createCurrent"]>().mockResolvedValue(
       snapshot.workspaces[0] ?? missingWorkspace()
     );
     dashboardLoad = vi.fn<MaestroApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
+    dashboardList = vi.fn<MaestroApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
     dashboardDeltaListener = null;
     dashboardDeltaUnsubscribe = vi.fn<() => void>();
     launchProvider = vi.fn<MaestroApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
+    approvalsPending = vi.fn<MaestroApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
+    sessionEventsSince = vi.fn<MaestroApi["session"]["eventsSince"]>().mockResolvedValue({
+      events: snapshot.events,
+      rawOutputs: snapshot.rawOutputs,
+      eventCursor: 0,
+      rawOutputCursor: 0
+    });
     sendProviderInput = vi.fn<MaestroApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
+    workspaceStatus = vi.fn<MaestroApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
 
     window.maestro = {
       dashboard: {
         load: dashboardLoad,
+        list: dashboardList,
         onDelta: (listener) => {
           dashboardDeltaListener = listener;
           return dashboardDeltaUnsubscribe;
@@ -108,6 +145,7 @@ describe("App", () => {
         createIsolated: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
         createCurrent: createCurrentWorkspace,
         refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
+        status: workspaceStatus,
         keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
         archive: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace())
       },
@@ -119,7 +157,11 @@ describe("App", () => {
         terminate: () => Promise.resolve({ ok: true })
       },
       approvals: {
+        pending: approvalsPending,
         resolve: () => Promise.resolve(missingApproval())
+      },
+      session: {
+        eventsSince: sessionEventsSince
       },
       review: {
         listChangedFiles: () => Promise.resolve([]),
@@ -191,6 +233,40 @@ describe("App", () => {
     expect(dashboardLoad).toHaveBeenCalledTimes(1);
   });
 
+  it("hides provider protocol JSON from the first-turn raw transcript fallback", async () => {
+    const lifecycleSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      events: [],
+      rawOutputs: [
+        {
+          id: "raw-lifecycle",
+          sessionId: "session-1",
+          stream: "stdout",
+          content:
+            '{"type":"thread.started","thread_id":"019e0bd0-7694-7032-85cd-f670d78ac282"}\n{"type":"turn.started"}\n{"type":"init","cwd":"/tmp/maestro","session_id":"claude-session","tools":["Task","Bash"]}\n',
+          createdAt: "2026-05-08T15:54:01.000Z"
+        }
+      ]
+    };
+    dashboardLoad.mockResolvedValue(lifecycleSnapshot);
+    sessionEventsSince.mockResolvedValue({
+      events: [],
+      rawOutputs: lifecycleSnapshot.rawOutputs,
+      eventCursor: 0,
+      rawOutputCursor: 1
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(screen.queryByText(/thread\.started/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/turn\.started/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/"tools"/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
   it("unsubscribes from dashboard deltas on unmount", async () => {
     const rendered = render(<App />);
 
@@ -200,14 +276,14 @@ describe("App", () => {
     expect(dashboardDeltaUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("does not schedule dashboard polling while work is active", async () => {
+  it("does not schedule focused dashboard polling while work is active", async () => {
     const setIntervalSpy = vi.spyOn(window, "setInterval");
 
     try {
       render(<App />);
 
       expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
-      expect(setIntervalSpy).not.toHaveBeenCalled();
+      expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 1200);
     } finally {
       setIntervalSpy.mockRestore();
     }
@@ -268,33 +344,20 @@ describe("App", () => {
       lastActivityAt: "2026-05-08T16:10:00.000Z",
       preferred: false
     };
-    const refreshedSnapshot: DashboardSnapshot = {
-      ...snapshot,
-      workspaces: [snapshot.workspaces[0] ?? missingWorkspace(), newWorkspace],
-      sessions: [snapshot.sessions[0] ?? missingSession(), newSession],
-      events: [
-        snapshot.events[0] ?? missingEvent(),
-        {
-          id: "event-new",
-          sessionId: "session-new",
-          type: "message.completed",
-          message: "New chat answer.",
-          payload: {},
-          createdAt: "2026-05-08T16:10:01.000Z"
-        }
-      ]
+    const newEvent: DashboardSnapshot["events"][number] = {
+      id: "event-new",
+      sessionId: "session-new",
+      type: "message.completed",
+      message: "New chat answer.",
+      payload: {},
+      createdAt: "2026-05-08T16:10:01.000Z"
     };
-
-    let resolveRefresh: ((data: DashboardSnapshot) => void) | null = null;
-    let loadCount = 0;
-    dashboardLoad.mockImplementation(() => {
-      loadCount += 1;
-      if (loadCount === 1) {
-        return Promise.resolve(snapshot);
+    dashboardLoad.mockResolvedValue(snapshot);
+    sessionEventsSince.mockImplementation((input) => {
+      if (input.sessionId === "session-new") {
+        return Promise.resolve({ events: [newEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0 });
       }
-      return new Promise<DashboardSnapshot>((resolve) => {
-        resolveRefresh = resolve;
-      });
+      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0 });
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
@@ -306,8 +369,14 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
-    await waitFor(() => expect(loadCount).toBe(2));
-    (resolveRefresh as ((data: DashboardSnapshot) => void) | null)?.(refreshedSnapshot);
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
+    act(() => {
+      dashboardDeltaListener?.({
+        workspaces: [newWorkspace],
+        sessions: [newSession],
+        events: [newEvent]
+      });
+    });
 
     expect(await screen.findByText("New chat answer.")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
@@ -337,51 +406,50 @@ describe("App", () => {
   });
 
   it("opens a sidebar session", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Second chat",
+      branch: "maestro/second-chat",
+      baseRef: "main",
+      path: "/tmp/worktrees/second-chat",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z"
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Claude Haiku",
+      prompt: "Second chat",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      preferred: false
+    };
+    const secondEvent: DashboardSnapshot["events"][number] = {
+      id: "event-2",
+      sessionId: "session-2",
+      type: "message.completed",
+      message: "Second answer.",
+      payload: {},
+      createdAt: "2026-05-08T16:04:00.000Z"
+    };
     dashboardLoad.mockResolvedValue({
       ...snapshot,
-      workspaces: [
-        ...(snapshot.workspaces[0] ? [snapshot.workspaces[0]] : []),
-        {
-          id: "workspace-2",
-          projectId: "project-1",
-          taskLabel: "Second chat",
-          branch: "maestro/second-chat",
-          baseRef: "main",
-          path: "/tmp/worktrees/second-chat",
-          state: "complete",
-          sharedWorkspace: false,
-          dirty: false,
-          changedFiles: 0,
-          lastActivityAt: "2026-05-08T16:04:00.000Z"
-        }
-      ],
-      sessions: [
-        ...(snapshot.sessions[0] ? [snapshot.sessions[0]] : []),
-        {
-          id: "session-2",
-          workspaceId: "workspace-2",
-          provider: "claude",
-          modelLabel: "Claude Haiku",
-          prompt: "Second chat",
-          state: "complete",
-          attention: "review-ready",
-          startedAt: "2026-05-08T16:00:00.000Z",
-          completedAt: "2026-05-08T16:04:00.000Z",
-          lastActivityAt: "2026-05-08T16:04:00.000Z",
-          preferred: false
-        }
-      ],
-      events: [
-        ...(snapshot.events[0] ? [snapshot.events[0]] : []),
-        {
-          id: "event-2",
-          sessionId: "session-2",
-          type: "message.completed",
-          message: "Second answer.",
-          payload: {},
-          createdAt: "2026-05-08T16:04:00.000Z"
-        }
-      ]
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+    sessionEventsSince.mockImplementation((input) => {
+      if (input.sessionId === "session-2") {
+        return Promise.resolve({ events: [secondEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0 });
+      }
+      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0 });
     });
 
     render(<App />);
@@ -398,6 +466,17 @@ describe("App", () => {
   });
 
   it("shows a thinking indicator while a session is running", async () => {
+    dashboardLoad.mockResolvedValue({
+      ...snapshot,
+      events: []
+    });
+    sessionEventsSince.mockResolvedValue({
+      events: [],
+      rawOutputs: [],
+      eventCursor: 0,
+      rawOutputCursor: 0
+    });
+
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -407,10 +486,20 @@ describe("App", () => {
     expect(screen.queryByPlaceholderText("Send a follow-up")).not.toBeInTheDocument();
   });
 
+  it("does not show a thinking indicator after assistant output is visible", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByText("Dashboard ready.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
   it("sends follow-up prompts to the selected live session", async () => {
+    const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
     dashboardLoad.mockResolvedValue({
       ...snapshot,
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+      sessions: completeSessions
     });
     render(<App />);
 
@@ -504,11 +593,9 @@ describe("App", () => {
     // Wait for the first invocation to be in flight.
     await waitFor(() => expect(callCount).toBe(1));
 
-    // Trigger a second load via visibility change.
-    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
-    document.dispatchEvent(new Event("visibilitychange"));
-
-    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2));
+    act(() => {
+      dashboardDeltaListener?.({ projects: fastSnapshot.projects });
+    });
 
     // Now resolve the first (slow) load with stale data.
     (resolveSlow as ((data: DashboardSnapshot) => void) | null)?.(slowSnapshot);
@@ -583,10 +670,6 @@ function missingWorkspace(): never {
 
 function missingSession(): never {
   throw new Error("Test snapshot must include a session");
-}
-
-function missingEvent(): never {
-  throw new Error("Test snapshot must include an event");
 }
 
 function missingApproval(): never {

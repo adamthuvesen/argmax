@@ -95,7 +95,7 @@ describe("provider PTY adapters", () => {
     expect(handle?.provider).toBe("claude");
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/claude' '--model' 'claude-sonnet-4-6'"],
+      args: ["-lc", "exec '/usr/local/bin/claude' '--model' 'haiku'"],
       cwd: "/repo/worktree",
       cols: 100,
       rows: 30
@@ -145,7 +145,7 @@ describe("provider PTY adapters", () => {
 
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/codex' '--model' 'gpt-5.5' '-c' 'model_reasoning_effort=\"medium\"'"],
+      args: ["-lc", "exec '/usr/local/bin/codex' '--model' 'gpt-5.3-codex-spark' '-c' 'model_reasoning_effort=\"medium\"'"],
       cwd: "/repo/worktree"
     });
   });
@@ -188,7 +188,7 @@ describe("provider PTY adapters", () => {
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/claude",
-      args: ["-p", "--model", "claude-sonnet-4-6", "--output-format", "stream-json", "--verbose", "Implement the task"],
+      args: ["-p", "--model", "haiku", "--output-format", "stream-json", "--verbose", "Implement the task"],
       cwd: "/repo/worktree"
     });
     expect(processes[0].stdin.writableEnded).toBe(true);
@@ -213,7 +213,7 @@ describe("provider PTY adapters", () => {
         "--json",
         "--ignore-user-config",
         "--model",
-        "gpt-5.5",
+        "gpt-5.3-codex-spark",
         "-c",
         "model_reasoning_effort=\"medium\"",
         "-"
@@ -269,8 +269,8 @@ function launchInput(provider: "claude" | "codex"): ProviderLaunchInput {
     sessionId: "session-1",
     workspacePath: "/repo/worktree",
     prompt: "Implement the task",
-    modelLabel: provider === "claude" ? "Claude Sonnet 4.6" : "GPT-5.5 Medium",
-    modelId: provider === "claude" ? "claude-sonnet-4-6" : "gpt-5.5",
+    modelLabel: provider === "claude" ? "Claude Haiku" : "GPT-5.3 Codex Spark Low",
+    modelId: provider === "claude" ? "haiku" : "gpt-5.3-codex-spark",
     reasoningEffort: provider === "codex" ? "medium" : undefined,
     mode: "interactive-pty",
     cols: 100,

@@ -6,6 +6,7 @@ import type {
   CreateCheckpointInput,
   CreateCurrentWorkspaceInput,
   CreateWorkspaceInput,
+  DashboardDelta,
   LaunchProviderSessionInput,
   MaestroApi,
   PrepareCommitInput,
@@ -22,7 +23,12 @@ import type {
 
 const api: MaestroApi = {
   dashboard: {
-    load: () => ipcRenderer.invoke("dashboard:load") as Promise<DashboardSnapshot>
+    load: () => ipcRenderer.invoke("dashboard:load") as Promise<DashboardSnapshot>,
+    onDelta: (listener: (delta: DashboardDelta) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, delta: DashboardDelta): void => listener(delta);
+      ipcRenderer.on("dashboard:delta", handler);
+      return () => ipcRenderer.removeListener("dashboard:delta", handler);
+    }
   },
   projects: {
     list: () => ipcRenderer.invoke("projects:list") as Promise<ProjectSummary[]>,

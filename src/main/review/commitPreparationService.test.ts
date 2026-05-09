@@ -74,7 +74,7 @@ function persistWorkspaceFixture(database: MaestroDatabase): string {
     defaultBranch: "main",
     settings: {
       defaultProvider: "codex",
-      defaultModelLabel: "GPT-5.5 Medium",
+      defaultModelLabel: "GPT-5.3 Codex Spark Low",
       worktreeLocation: "/repo/.worktrees",
       setupCommand: "",
       checkCommands: []

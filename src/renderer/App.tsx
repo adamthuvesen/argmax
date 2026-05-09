@@ -15,8 +15,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
   ApprovalRequest,
+  DashboardDelta,
   DashboardSnapshot,
   ProviderId,
+  RawProviderOutput,
   SessionSummary,
   TimelineEvent,
   WorkspaceSummary
@@ -88,16 +90,16 @@ export function App(): JSX.Element {
   }, [loadDashboard]);
 
   useEffect(() => {
-    if (loadState !== "ready" || !window.maestro?.dashboard.load || !hasActiveWork(snapshot)) {
+    const unsubscribe = window.maestro?.dashboard.onDelta?.((delta) => {
+      setSnapshot((current) => mergeDashboardDelta(current, delta));
+      setLoadState("ready");
+      setLoadError(null);
+    });
+    if (!unsubscribe) {
       return;
     }
-
-    const timer = window.setInterval(() => {
-      void loadDashboard();
-    }, 1200);
-
-    return () => window.clearInterval(timer);
-  }, [loadState, snapshot, loadDashboard]);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const handleVisibilityChange = (): void => {
@@ -294,6 +296,7 @@ export function App(): JSX.Element {
               events={snapshot.events}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
+              rawOutputs={snapshot.rawOutputs}
               session={selectedSession}
               workspace={selectedWorkspace}
             />
@@ -375,6 +378,7 @@ function SessionPane({
   events,
   onResolveApproval,
   onSendSessionInput,
+  rawOutputs,
   session,
   workspace
 }: {
@@ -382,6 +386,7 @@ function SessionPane({
   events: TimelineEvent[];
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
+  rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
@@ -407,6 +412,7 @@ function SessionPane({
       <SessionConversation
         events={visibleEvents}
         onSendSessionInput={onSendSessionInput}
+        rawOutputs={rawOutputs}
         session={session}
         workspace={workspace}
       />
@@ -463,11 +469,13 @@ function SessionPane({
 function SessionConversation({
   events,
   onSendSessionInput,
+  rawOutputs,
   session,
   workspace
 }: {
   events: TimelineEvent[];
   onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
+  rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
@@ -487,7 +495,16 @@ function SessionConversation({
         .reverse(),
     [events]
   );
-  const canSend = Boolean(session && ["complete", "waiting"].includes(session.state));
+  const terminalTranscript = useMemo(
+    () => buildTerminalTranscript(rawOutputs, session?.id ?? null),
+    [rawOutputs, session?.id]
+  );
+  const hasAssistantEvents = conversationEvents.some((event) => event.type !== "user.message");
+  const canSend = Boolean(
+    session &&
+      (["complete", "waiting"].includes(session.state) ||
+        (session.provider === "codex" && session.state === "running"))
+  );
   const isThinking = session?.state === "running";
   const sessionTitle = workspace?.taskLabel ?? session?.prompt ?? "No session selected";
   const sessionDetails = [
@@ -543,9 +560,18 @@ function SessionConversation({
               </article>
             )
           )
+        ) : terminalTranscript ? (
+          <article className="chat-bubble assistant terminal-transcript">
+            <pre>{terminalTranscript}</pre>
+          </article>
         ) : (
           <p className="conversation-empty">Agent replies will appear here.</p>
         )}
+        {terminalTranscript && !hasAssistantEvents && conversationEvents.length > 0 ? (
+          <article className="chat-bubble assistant terminal-transcript">
+            <pre>{terminalTranscript}</pre>
+          </article>
+        ) : null}
         {isThinking ? (
           <article className="chat-bubble assistant thinking-indicator" aria-live="polite" aria-label="Thinking">
             <p>
@@ -712,17 +738,77 @@ function modelDefaultForProvider(provider: ProviderId) {
   return PROVIDER_MODEL_DEFAULTS[provider];
 }
 
+function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: string | null): string {
+  if (!sessionId) {
+    return "";
+  }
+
+  const transcript = rawOutputs
+    .filter((output) => output.sessionId === sessionId && ["pty", "stdout", "stderr"].includes(output.stream))
+    .slice()
+    .reverse()
+    .map((output) => stripTerminalControls(output.content))
+    .join("")
+    .trim();
+
+  return transcript.length > 8_000 ? transcript.slice(-8_000) : transcript;
+}
+
+function stripTerminalControls(value: string): string {
+  return value
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1b[@-Z\\-_]/g, "")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+
+function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
+  return {
+    projects: delta.projects ? sortProjects(upsertById(snapshot.projects, delta.projects)) : snapshot.projects,
+    workspaces: delta.workspaces
+      ? sortByTimestamp(upsertById(snapshot.workspaces, delta.workspaces), (workspace) => workspace.lastActivityAt)
+      : snapshot.workspaces,
+    sessions: delta.sessions
+      ? sortByTimestamp(upsertById(snapshot.sessions, delta.sessions), (session) => session.lastActivityAt)
+      : snapshot.sessions,
+    events: delta.events
+      ? sortByTimestamp(upsertById(snapshot.events, delta.events), (event) => event.createdAt).slice(0, 50)
+      : snapshot.events,
+    rawOutputs: delta.rawOutputs
+      ? sortByTimestamp(upsertById(snapshot.rawOutputs, delta.rawOutputs), (output) => output.createdAt).slice(0, 100)
+      : snapshot.rawOutputs,
+    approvals: delta.approvals
+      ? sortByTimestamp(upsertById(snapshot.approvals, delta.approvals), (approval) => approval.createdAt).slice(0, 200)
+      : snapshot.approvals,
+    checks: delta.checks
+      ? sortByTimestamp(upsertById(snapshot.checks, delta.checks), (check) => check.startedAt).slice(0, 200)
+      : snapshot.checks,
+    checkpoints: delta.checkpoints
+      ? sortByTimestamp(upsertById(snapshot.checkpoints, delta.checkpoints), (checkpoint) => checkpoint.createdAt).slice(0, 200)
+      : snapshot.checkpoints
+  };
+}
+
+function upsertById<T extends { id: string }>(current: T[], updates: T[]): T[] {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  for (const item of updates) {
+    byId.set(item.id, item);
+  }
+  return [...byId.values()];
+}
+
+function sortProjects(projects: DashboardSnapshot["projects"]): DashboardSnapshot["projects"] {
+  return sortByTimestamp(projects, (project) => project.latestActivityAt ?? "");
+}
+
+function sortByTimestamp<T>(items: T[], getTimestamp: (item: T) => string): T[] {
+  return [...items].sort((left, right) => getTimestamp(right).localeCompare(getTimestamp(left)));
+}
+
 function isBrowserPreview(): boolean {
   if (typeof window === "undefined") {
     return false;
   }
 
   return ["127.0.0.1", "localhost"].includes(window.location.hostname);
-}
-
-function hasActiveWork(snapshot: DashboardSnapshot): boolean {
-  return (
-    snapshot.sessions.some((session) => ["running", "waiting"].includes(session.state)) ||
-    snapshot.checks.some((check) => ["queued", "running"].includes(check.status))
-  );
 }

@@ -17,8 +17,8 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "claude",
       prompt: "Ship the cockpit",
-      modelLabel: "Claude Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Claude Haiku",
+      modelId: "haiku",
       cols: 100,
       rows: 30
     });
@@ -27,7 +27,7 @@ describe("ProviderSessionService", () => {
       sessionId: session.id,
       workspacePath: workspace.path,
       prompt: "Ship the cockpit",
-      modelId: "claude-sonnet-4-6",
+      modelId: "haiku",
       mode: "structured-json"
     });
     expect(database.getWorkspace(workspace.id).state).toBe("running");
@@ -81,7 +81,7 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
-  it("runs follow-up prompts as new structured provider turns", async () => {
+  it("keeps Codex follow-up prompts on the persistent PTY handle", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
     const fakeProvider = createFakeProvider("codex");
@@ -91,30 +91,21 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship the board",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 80,
       rows: 24
     });
 
-    await expect(service.sendInput(session.id, "too soon\r")).rejects.toThrow("Wait for the current response");
-    fakeProvider.emit({
-      sessionId: session.id,
-      type: "exit",
-      stream: "system",
-      message: "Codex structured probe exited with code 0.",
-      exitCode: 0,
-      createdAt: "2026-05-08T16:01:00.000Z"
-    });
     await service.sendInput(session.id, "yes\r");
 
-    expect(fakeProvider.sentInput).toEqual([]);
+    expect(fakeProvider.sentInput).toEqual(["yes\r"]);
     expect(fakeProvider.launchInput).toMatchObject({
-      prompt: "yes",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
-      mode: "structured-json"
+      prompt: "Ship the board",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      mode: "interactive-pty"
     });
     expect(database.loadDashboard().events).toContainEqual(
       expect.objectContaining({
@@ -137,9 +128,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 80,
       rows: 24
     });
@@ -191,9 +182,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 80,
       rows: 24
     });
@@ -238,9 +229,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 80,
       rows: 24
     });
@@ -285,9 +276,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 80,
       rows: 24
     });
@@ -330,9 +321,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 80,
       rows: 24
     });
@@ -356,9 +347,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5.5 Medium",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
       cols: 80,
       rows: 24
     });
@@ -432,7 +423,7 @@ function createFakeProvider(provider: ProviderId): {
         const handle: ProviderSessionHandle = {
           sessionId: input.sessionId,
           provider,
-          acceptsInput: false,
+          acceptsInput: input.mode === "interactive-pty",
           disposed: false,
           sendInput: (data) => {
             fake.sentInput.push(data);
@@ -482,7 +473,7 @@ function persistWorkspaceFixture(database: MaestroDatabase): ReturnType<MaestroD
     defaultBranch: "main",
     settings: {
       defaultProvider: "codex",
-      defaultModelLabel: "GPT-5.5 Medium",
+      defaultModelLabel: "GPT-5.3 Codex Spark Low",
       worktreeLocation: "/repo/.worktrees",
       setupCommand: "",
       checkCommands: []

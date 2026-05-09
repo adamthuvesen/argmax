@@ -204,6 +204,7 @@ interface SessionRow {
 }
 
 interface EventRow {
+  row_cursor?: number;
   id: string;
   session_id: string;
   type: TimelineEvent["type"];
@@ -213,6 +214,7 @@ interface EventRow {
 }
 
 interface RawOutputRow {
+  row_cursor?: number;
   id: string;
   session_id: string;
   stream: RawProviderOutput["stream"];
@@ -260,9 +262,40 @@ export interface FindPendingApprovalInput {
   provider: ApprovalRequest["provider"];
 }
 
+export interface SessionEventsSinceInput {
+  sessionId: string;
+  eventCursor?: number;
+  rawOutputCursor?: number;
+}
+
+export interface SessionEventsSinceResult {
+  events: TimelineEvent[];
+  rawOutputs: RawProviderOutput[];
+  eventCursor: number;
+  rawOutputCursor: number;
+}
+
+export interface WorkspaceStatusInputFilter {
+  workspaceIds?: string[];
+}
+
+export type DashboardListSnapshot = Pick<
+  DashboardSnapshot,
+  "projects" | "workspaces" | "sessions" | "checks" | "checkpoints"
+>;
+
+export type WorkspaceStatusSnapshot = Pick<
+  DashboardSnapshot,
+  "workspaces" | "sessions" | "checks" | "checkpoints"
+>;
+
 export interface MaestroDatabase {
   connection: Database.Database;
   listProjects: () => ProjectSummary[];
+  listDashboard: () => DashboardListSnapshot;
+  listSessionEventsSince: (input: SessionEventsSinceInput) => SessionEventsSinceResult;
+  listWorkspaceStatus: (input?: WorkspaceStatusInputFilter) => WorkspaceStatusSnapshot;
+  listPendingApprovals: () => ApprovalRequest[];
   loadDashboard: () => DashboardSnapshot;
   persistProject: (input: PersistProjectInput) => ProjectSummary;
   updateProjectSettings: (projectId: string, settings: ProjectSettings) => ProjectSummary;
@@ -338,6 +371,10 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
   return {
     connection,
     listProjects: () => listProjects(connection),
+    listDashboard: () => listDashboard(connection),
+    listSessionEventsSince: (input) => listSessionEventsSince(connection, input),
+    listWorkspaceStatus: (input) => listWorkspaceStatus(connection, input),
+    listPendingApprovals: () => listPendingApprovals(connection),
     loadDashboard: () => loadDashboard(connection),
     persistProject: (input) => persistProject(connection, input),
     updateProjectSettings: (projectId, settings) => updateProjectSettings(connection, projectId, settings),

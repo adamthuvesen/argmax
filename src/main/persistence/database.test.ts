@@ -110,6 +110,134 @@ describe("createDatabase", () => {
   });
 });
 
+describe("focused dashboard reads", () => {
+  it("lists dashboard chrome without session events, raw outputs, or approvals", () => {
+    const database = createDatabase(":memory:", { seed: true });
+
+    const snapshot = database.listDashboard();
+
+    expect(snapshot.projects).toHaveLength(1);
+    expect(snapshot.workspaces.length).toBeGreaterThan(0);
+    expect(snapshot.sessions.length).toBeGreaterThan(0);
+    expect(snapshot.checks.length).toBeGreaterThan(0);
+    expect(snapshot.checkpoints.length).toBeGreaterThan(0);
+    expect("events" in snapshot).toBe(false);
+    expect("rawOutputs" in snapshot).toBe(false);
+    expect("approvals" in snapshot).toBe(false);
+
+    database.connection.close();
+  });
+
+  it("returns only pending approvals from the focused approvals read", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "pending");
+    seedWorkspace(database, "ws-pending", projectId, "running");
+    seedSession(database, "session-pending", "ws-pending");
+    const resolved = database.persistApproval({
+      id: "approval-resolved",
+      sessionId: "session-pending",
+      command: "git push",
+      cwd: "/tmp",
+      provider: "codex",
+      riskLevel: "medium",
+      status: "pending"
+    });
+    database.persistApproval({
+      id: "approval-pending",
+      sessionId: "session-pending",
+      command: "rm -rf dist",
+      cwd: "/tmp",
+      provider: "codex",
+      riskLevel: "high",
+      status: "pending"
+    });
+    database.resolveApproval(resolved.id, "approved");
+
+    const approvals = database.listPendingApprovals();
+
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0]?.id).toBe("approval-pending");
+
+    database.connection.close();
+  });
+
+  it("loads a workspace status slice when workspace ids are provided", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "status");
+    seedWorkspace(database, "ws-a", projectId, "running");
+    seedWorkspace(database, "ws-b", projectId, "complete");
+    seedSession(database, "session-a", "ws-a");
+    seedSession(database, "session-b", "ws-b");
+    database.persistCheck({ id: "check-a", workspaceId: "ws-a", command: "npm test", status: "running" });
+    database.persistCheck({ id: "check-b", workspaceId: "ws-b", command: "npm lint", status: "passed" });
+
+    const status = database.listWorkspaceStatus({ workspaceIds: ["ws-b"] });
+
+    expect(status.workspaces.map((workspace) => workspace.id)).toEqual(["ws-b"]);
+    expect(status.sessions.map((session) => session.id)).toEqual(["session-b"]);
+    expect(status.checks.map((check) => check.id)).toEqual(["check-b"]);
+
+    database.connection.close();
+  });
+
+  it("uses rowid cursors for session events and raw outputs", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "cursor");
+    seedWorkspace(database, "ws-cursor", projectId, "running");
+    seedSession(database, "session-cursor", "ws-cursor");
+    database.persistTimelineEvent({
+      id: "event-1",
+      sessionId: "session-cursor",
+      type: "message.delta",
+      message: "one",
+      payload: {}
+    });
+    database.persistRawOutput({
+      id: "raw-1",
+      sessionId: "session-cursor",
+      stream: "stdout",
+      content: "one"
+    });
+
+    const initial = database.listSessionEventsSince({ sessionId: "session-cursor" });
+    database.persistTimelineEvent({
+      id: "event-2",
+      sessionId: "session-cursor",
+      type: "message.delta",
+      message: "two",
+      payload: {}
+    });
+    database.persistRawOutput({
+      id: "raw-2",
+      sessionId: "session-cursor",
+      stream: "stderr",
+      content: "two"
+    });
+
+    const next = database.listSessionEventsSince({
+      sessionId: "session-cursor",
+      eventCursor: initial.eventCursor,
+      rawOutputCursor: initial.rawOutputCursor
+    });
+    const empty = database.listSessionEventsSince({
+      sessionId: "session-cursor",
+      eventCursor: next.eventCursor,
+      rawOutputCursor: next.rawOutputCursor
+    });
+
+    expect(initial.events.map((event) => event.id)).toEqual(["event-1"]);
+    expect(initial.rawOutputs.map((output) => output.id)).toEqual(["raw-1"]);
+    expect(next.events.map((event) => event.id)).toEqual(["event-2"]);
+    expect(next.rawOutputs.map((output) => output.id)).toEqual(["raw-2"]);
+    expect(empty.events).toEqual([]);
+    expect(empty.rawOutputs).toEqual([]);
+    expect(empty.eventCursor).toBe(next.eventCursor);
+    expect(empty.rawOutputCursor).toBe(next.rawOutputCursor);
+
+    database.connection.close();
+  });
+});
+
 describe("listProjects aggregation (audit H9)", () => {
   it("returns all-zero counts for an empty project", () => {
     const database = createDatabase(":memory:", { seed: false });

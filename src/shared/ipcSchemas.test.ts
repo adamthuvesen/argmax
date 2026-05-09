@@ -17,6 +17,10 @@ describe("ipcSchemas", () => {
     expect(channels).toContain("providers:launch");
     expect(channels).toContain("review:load-diff");
     expect(channels).toContain("dashboard:load");
+    expect(channels).toContain("dashboard:list");
+    expect(channels).toContain("session:eventsSince");
+    expect(channels).toContain("workspace:status");
+    expect(channels).toContain("approvals:pending");
   });
 
   // -------------------------- valid payloads --------------------------
@@ -72,6 +76,20 @@ describe("ipcSchemas", () => {
       approvalId: "a-1",
       status: "approved"
     });
+  });
+
+  it("accepts focused dashboard read payloads", () => {
+    expect(ipcSchemas["dashboard:list"].parse(undefined)).toBeUndefined();
+    expect(ipcSchemas["approvals:pending"].parse(undefined)).toBeUndefined();
+    expect(ipcSchemas["workspace:status"].parse(undefined)).toBeUndefined();
+    expect(ipcSchemas["workspace:status"].parse({ workspaceIds: ["ws-1"] })).toEqual({ workspaceIds: ["ws-1"] });
+    expect(
+      ipcSchemas["session:eventsSince"].parse({
+        sessionId: "session-1",
+        eventCursor: 1,
+        rawOutputCursor: 2
+      })
+    ).toEqual({ sessionId: "session-1", eventCursor: 1, rawOutputCursor: 2 });
   });
 
   // -------------------------- invalid payloads --------------------------
@@ -171,5 +189,14 @@ describe("ipcSchemas", () => {
 
   it("rejects resolveApproval with an unknown status", () => {
     expect(() => resolveApprovalInputSchema.parse({ approvalId: "a-1", status: "maybe" })).toThrow();
+  });
+
+  it("rejects negative session event cursors", () => {
+    expect(() =>
+      ipcSchemas["session:eventsSince"].parse({
+        sessionId: "session-1",
+        eventCursor: -1
+      })
+    ).toThrow();
   });
 });

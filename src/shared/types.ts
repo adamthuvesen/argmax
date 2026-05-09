@@ -15,8 +15,10 @@ import type {
   RegisterProjectInputParsed,
   ResolveApprovalInputParsed,
   RunCheckInputParsed,
+  SessionEventsSinceInputParsed,
   SelectPreferredAttemptInputParsed,
-  UpdateProjectSettingsInputParsed
+  UpdateProjectSettingsInputParsed,
+  WorkspaceStatusInputParsed
 } from "./ipcSchemas.js";
 
 export type ProviderId = "claude" | "codex";
@@ -67,6 +69,8 @@ export type LaunchProviderSessionInput = LaunchProviderSessionInputParsed;
 export type ProviderSessionInput = ProviderSessionInputParsed;
 export type ProviderSessionResizeInput = ProviderSessionResizeInputParsed;
 export type ResolveApprovalInput = ResolveApprovalInputParsed;
+export type SessionEventsSinceInput = SessionEventsSinceInputParsed;
+export type WorkspaceStatusInput = WorkspaceStatusInputParsed;
 
 export interface ChangedFileSummary {
   path: string;
@@ -197,6 +201,23 @@ export interface DashboardSnapshot {
   checkpoints: Checkpoint[];
 }
 
+export type DashboardListSnapshot = Pick<
+  DashboardSnapshot,
+  "projects" | "workspaces" | "sessions" | "checks" | "checkpoints"
+>;
+
+export type WorkspaceStatusSnapshot = Pick<
+  DashboardSnapshot,
+  "workspaces" | "sessions" | "checks" | "checkpoints"
+>;
+
+export interface SessionEventsSinceResult {
+  events: TimelineEvent[];
+  rawOutputs: RawProviderOutput[];
+  eventCursor: number;
+  rawOutputCursor: number;
+}
+
 export type DashboardDelta = {
   [K in keyof DashboardSnapshot]?: DashboardSnapshot[K];
 };
@@ -204,6 +225,7 @@ export type DashboardDelta = {
 export interface MaestroApi {
   dashboard: {
     load: () => Promise<DashboardSnapshot>;
+    list: () => Promise<DashboardListSnapshot>;
     onDelta: (listener: (delta: DashboardDelta) => void) => () => void;
   };
   projects: {
@@ -215,6 +237,7 @@ export interface MaestroApi {
     createIsolated: (input: CreateWorkspaceInput) => Promise<WorkspaceSummary>;
     createCurrent: (input: CreateCurrentWorkspaceInput) => Promise<WorkspaceSummary>;
     refreshStatus: (workspaceId: string) => Promise<WorkspaceSummary>;
+    status: (input?: WorkspaceStatusInput) => Promise<WorkspaceStatusSnapshot>;
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;
     archive: (workspaceId: string) => Promise<WorkspaceSummary>;
   };
@@ -226,7 +249,11 @@ export interface MaestroApi {
     terminate: (sessionId: string) => Promise<{ ok: true }>;
   };
   approvals: {
+    pending: () => Promise<ApprovalRequest[]>;
     resolve: (input: ResolveApprovalInput) => Promise<ApprovalRequest>;
+  };
+  session: {
+    eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
   };
   review: {
     listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;

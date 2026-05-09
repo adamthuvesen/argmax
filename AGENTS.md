@@ -33,11 +33,14 @@ Two TS configs: [tsconfig.json](tsconfig.json) for renderer/shared, [tsconfig.ma
 ## Critical conventions
 
 - **Imports inside `src/`** end in `.js` (NodeNext): `import { foo } from "./foo.js"` even though the file is `foo.ts`. ESLint enforces this.
-- **All IPC** flows through `window.maestro.*`. Schemas in [src/shared/ipcSchemas.ts](src/shared/ipcSchemas.ts) validate every payload via `withValidation()` in [src/main/ipc.ts](src/main/ipc.ts). The `REGISTERED_IPC_CHANNELS` constant is enforced by a regression test — keep it in sync when adding channels.
+- **All IPC** flows through `window.maestro.*`. Request/response channels use schemas in [src/shared/ipcSchemas.ts](src/shared/ipcSchemas.ts) and `withValidation()` in [src/main/ipc.ts](src/main/ipc.ts). The `REGISTERED_IPC_CHANNELS` constant is enforced by a regression test — keep it in sync when adding `ipcMain.handle` channels. Push-only event channels, such as `dashboard:delta`, are exposed from preload but do **not** belong in `REGISTERED_IPC_CHANNELS`.
 - **Native modules** (`better-sqlite3`, `node-pty`) compile per-runtime. `npm run dev` runs `rebuild:electron`; `npm test` runs `rebuild:node`. A `NODE_MODULE_VERSION` mismatch means you skipped one of those — re-run, don't reinstall.
 - **Renderer tests** query by **role / aria-label / title**, never by `className`. Visual changes must not break tests; `aria-pressed`, `aria-label`, and `title` are part of the contract.
 - **Light theme + Lilex font are non-negotiable.** No dark mode, no font swaps. See [agents/docs/styling.md](agents/docs/styling.md).
-- **Shared values, not duplicates.** Model labels/ids live in [src/shared/providerModels.ts](src/shared/providerModels.ts) — `PROVIDER_MODEL_DEFAULTS` is the single source of truth.
+- **Shared values, not duplicates.** Model labels/ids/reasoning/launch mode live in [src/shared/providerModels.ts](src/shared/providerModels.ts) — `PROVIDER_MODEL_DEFAULTS` is the single source of truth. Current fast path: Claude Haiku, Codex Spark Low, structured JSON launch.
+- **Provider protocol output is not chat.** Raw JSONL provider events (`type: "init"`, `thread.started`, `turn.started`, etc.) may be persisted for debugging, but the renderer must not show them as assistant bubbles. Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
+- **Dashboard state is SQLite-first and read-focused.** `dashboard:load` stays public as a compatibility wrapper, but normal renderer refresh uses focused reads: `dashboard.list()` + `approvals.pending()` for initial state, `workspaces.status()` + `approvals.pending()` for status polling, and `session.eventsSince()` rowid cursors for the selected session's event/raw-output tail. Do not reread the whole dashboard just because one token streamed.
+- **Thinking state yields to content.** The chat "Thinking" bubble is a pre-answer affordance only. Hide it as soon as any visible assistant event arrives, even if the session is still marked `running`.
 - **Never commit secrets, `.env`, or AI-attribution lines.** Match recent commit style: `type(scope): lowercase imperative` (run `git log --oneline -10`).
 
 ## Index

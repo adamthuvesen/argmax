@@ -26,6 +26,7 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 - **Status-driven coloring** — components carry `data-status` / `data-state` / `data-risk` attributes; CSS picks the color via attribute selectors. Don't conditionally swap classes in JSX.
 - **Motion is purposeful** — `surface-in` / `fade-in` on mount, `msg-in` (and `msg-in-right` for user bubbles) on chat additions, `status-pulse` on running indicators, `stream-shimmer` under the thinking indicator. New animations: define a keyframe, reuse `--ease`, and respect the `prefers-reduced-motion` block at the bottom of the file.
 - **Markdown rendering** — assistant bubbles render via `react-markdown` inside a `.markdown` wrapper. Style markdown elements through `.markdown <selector>` rules (already defined for `p`, `ul/ol`, `code`, `pre`, `a`, `blockquote`, `hr`, `table`, `h1-h4`).
+- **Thinking indicator timing** — the thinking bubble is not a transcript item. Render it only while a session is running and no visible assistant output exists; remove it immediately once a `message.delta`, `message.completed`, or `error` event is visible.
 
 ## Background atmosphere
 

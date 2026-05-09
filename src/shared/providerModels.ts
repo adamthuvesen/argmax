@@ -20,6 +20,6 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     label: "GPT-5.3 Codex Spark Low",
     modelId: "gpt-5.3-codex-spark",
     reasoningEffort: "low",
-    launchMode: "interactive-pty"
+    launchMode: "structured-json"
   }
 };

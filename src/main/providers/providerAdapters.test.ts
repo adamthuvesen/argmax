@@ -145,7 +145,7 @@ describe("provider PTY adapters", () => {
 
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/codex' '--model' 'gpt-5.3-codex-spark' '-c' 'model_reasoning_effort=\"medium\"'"],
+      args: ["-lc", "exec '/usr/local/bin/codex' '--model' 'gpt-5.3-codex-spark' '-c' 'model_reasoning_effort=\"low\"'"],
       cwd: "/repo/worktree"
     });
   });
@@ -215,7 +215,7 @@ describe("provider PTY adapters", () => {
         "--model",
         "gpt-5.3-codex-spark",
         "-c",
-        "model_reasoning_effort=\"medium\"",
+        "model_reasoning_effort=\"low\"",
         "-"
       ],
       cwd: "/repo/worktree"
@@ -271,7 +271,7 @@ function launchInput(provider: "claude" | "codex"): ProviderLaunchInput {
     prompt: "Implement the task",
     modelLabel: provider === "claude" ? "Claude Haiku" : "GPT-5.3 Codex Spark Low",
     modelId: provider === "claude" ? "haiku" : "gpt-5.3-codex-spark",
-    reasoningEffort: provider === "codex" ? "medium" : undefined,
+    reasoningEffort: provider === "codex" ? "low" : undefined,
     mode: "interactive-pty",
     cols: 100,
     rows: 30

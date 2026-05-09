@@ -1,6 +1,17 @@
 # Providers
 
-Claude Code and Codex are the two adapters today. Sessions are either PTY-based (interactive) or stdin/stdout JSON (structured). Both adapters live in [src/main/providers/providerAdapters.ts](../../src/main/providers/providerAdapters.ts).
+Claude Code and Codex are the two adapters today. Sessions can be PTY-based (interactive) or stdin/stdout JSON (structured), but the default path is structured JSON for speed and cleaner event parsing. Both adapters live in [src/main/providers/providerAdapters.ts](../../src/main/providers/providerAdapters.ts).
+
+## Default models
+
+`PROVIDER_MODEL_DEFAULTS` in [src/shared/providerModels.ts](../../src/shared/providerModels.ts) is the source of truth for launch defaults:
+
+| Provider | Default | Launch mode |
+|---|---|---|
+| Claude | `Claude Haiku` (`haiku`) | `structured-json` |
+| Codex | `GPT-5.3 Codex Spark Low` (`gpt-5.3-codex-spark`, `low` reasoning) | `structured-json` |
+
+Do not duplicate these labels, ids, reasoning values, or launch modes in renderer fixtures, seed data, or docs examples.
 
 ## Launch flow
 
@@ -8,10 +19,11 @@ Claude Code and Codex are the two adapters today. Sessions are either PTY-based 
 2. IPC handler validates via `launchProviderSessionInputSchema` in [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts)
 3. [providerSessionService.ts](../../src/main/providers/providerSessionService.ts) `launch()`:
    - Resolves the workspace's `path` and `branch`
+   - Resolves launch mode from `PROVIDER_MODEL_DEFAULTS[input.provider].launchMode`
    - Builds CLI args via the adapter's `interactiveArgs(input)` or `structuredArgs(input)`
    - Spawns either a PTY (`node-pty`) or a stdio child
    - Buffers output per stream, coalesces events, tracks activity timestamp
-4. Output flows into the events table; the next `dashboard:load` surfaces it to the renderer
+4. Output is persisted as raw output and normalized timeline events; committed rows are pushed to the renderer as `dashboard:delta` events, and `session:eventsSince` provides selected-session cursor reconciliation
 
 ## Adding a provider
 
@@ -28,16 +40,25 @@ Append a `ProviderLaunchDefinition` to `providerDefinitions[]` in `providerAdapt
 }
 ```
 
-Then register a model in `PROVIDER_MODEL_DEFAULTS` in [src/shared/providerModels.ts](../../src/shared/providerModels.ts) and extend `ProviderId` in `src/shared/types.ts`.
+Then register a model in `PROVIDER_MODEL_DEFAULTS` in [src/shared/providerModels.ts](../../src/shared/providerModels.ts), choose the launch mode there, and extend `ProviderId` in `src/shared/types.ts`.
 
 ## Model + reasoning effort
 
 `modelId` is always passed via `--model`. Codex also accepts a reasoning-effort flag — `codexReasoningArgs(input)` builds it. Reasoning-effort union: `"low" | "medium" | "high" | "xhigh"` (matches the Codex CLI; do not invent values).
 
-`PROVIDER_MODEL_DEFAULTS` is the single source of truth — both the renderer launcher and the seed/demo data import it. Don't hardcode `"GPT-5.5 Medium"` or `"Claude Sonnet 4.6"` anywhere; reference the constant.
+`PROVIDER_MODEL_DEFAULTS` is the single source of truth — both the renderer launcher and seed/demo data should import it. Don't hardcode model labels like `"GPT-5.5 Medium"` or `"Claude Sonnet 4.6"` anywhere; reference the constant.
+
+## Rendering provider output
+
+- Normalized events (`message.delta`, `message.completed`, `error`, etc.) are the chat source of truth.
+- Raw output is still persisted for audit/debugging, but renderer chat fallback must filter provider protocol JSON lines with a `type` field. Examples: Claude `{"type":"init", ...}` and Codex `{"type":"thread.started"}` / `{"type":"turn.started"}`.
+- PTY streams are not rendered in chat fallback; they are too noisy for the conversation surface.
+- The "Thinking" bubble appears only before visible assistant output. Once a non-user conversation event exists, hide the indicator even if the session state still says `running`.
 
 ## Session lifecycle
 
 - Sessions are tracked in-memory in `ProviderSessionService` and persisted to SQLite
 - `disposeAll()` is wired to Electron's `before-quit` event — kills any spawned PTYs gracefully
-- A renderer-side `dashboard.load` poll runs every 1.2s while at least one session is `running` or `waiting`, or a check is `queued`/`running` (see `hasActiveWork()` in `App.tsx`)
+- `ProviderSessionService` publishes dashboard deltas only after persistence succeeds. Launch deltas include the session, workspace, `user.message`, `session.started`, and refreshed projects. Micro-batch deltas include persisted timeline events, raw outputs, any changed session activity, and refreshed projects. Exit/failure deltas include final raw output, session/workspace state, final event, and refreshed projects.
+- The renderer uses `dashboard.list()` plus `approvals.pending()` for initial state, `dashboard.onDelta()` for pushed provider-session updates, `workspaces.status()` plus `approvals.pending()` for active-work status polling, and `session.eventsSince()` rowid cursors for selected-session event/raw-output tails.
+- `dashboard.load()` remains a compatibility full snapshot wrapper, not the normal active-session refresh path. SQLite remains the source of truth; focused reads and cursor tails are the recovery path for missed deltas, renderer refreshes, and future multi-window quirks.

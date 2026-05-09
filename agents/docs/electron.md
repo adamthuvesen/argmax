@@ -16,6 +16,7 @@
 ## Lifecycle
 
 - `app.whenReady()` instantiates the database + `ProviderSessionService`, registers all IPC handlers, opens the `BrowserWindow`
+- `ProviderSessionService` receives a dashboard delta publisher from `main.ts`; it broadcasts committed provider-session changes to every open, non-destroyed `BrowserWindow` with `webContents.send("dashboard:delta", delta)`
 - `before-quit` calls `ProviderSessionService.disposeAll()` to terminate any spawned PTYs gracefully
 - IPC teardown iterates `REGISTERED_IPC_CHANNELS` to remove handlers cleanly
 
@@ -27,6 +28,8 @@ Hard rules in [src/main/main.ts](../../src/main/main.ts) BrowserWindow config:
 - `nodeIntegration: false`
 
 The renderer talks to main **only** through `window.maestro` (defined in [src/main/preload.ts](../../src/main/preload.ts)). Never reach for `require()`, `process`, or `ipcRenderer` directly from renderer code — they don't exist there. The preload bridge is the only place where main and renderer share a runtime.
+
+Request/response methods call `ipcRenderer.invoke()`. The dashboard surface is split into focused request/response reads (`dashboard:list`, `session:eventsSince`, `workspace:status`, `approvals:pending`) plus the compatibility `dashboard:load` wrapper. Live dashboard updates use `dashboard.onDelta(listener)`, which wraps `ipcRenderer.on("dashboard:delta", ...)` and returns an unsubscribe function. Keep that listener cleanup path intact in renderer components and tests.
 
 ## Browser-preview fallback
 

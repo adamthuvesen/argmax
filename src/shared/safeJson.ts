@@ -27,7 +27,6 @@ function warnRateLimited(context: string | undefined, error: unknown): void {
   }
   lastWarnedAt.set(context, now);
   const message = error instanceof Error ? error.message : String(error);
-  // eslint-disable-next-line no-console
   console.warn("safeJson.parseError", { context, error: message });
 }
 

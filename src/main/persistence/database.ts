@@ -354,7 +354,6 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
         .prepare("DELETE FROM raw_outputs WHERE created_at < datetime('now', '-7 days')")
         .run();
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.warn("database.pruneRawOutputs.failed", {
         error: error instanceof Error ? error.message : String(error)
       });
@@ -1055,44 +1054,191 @@ function sessionRowToSummary(row: SessionRow, preferred: boolean): SessionSummar
   };
 }
 
-function loadDashboard(connection: Database.Database): DashboardSnapshot {
-  const projects = listProjects(connection);
-  const preferredSessionIds = loadPreferredSessionIds(connection);
-  const workspaces = (connection.prepare("SELECT * FROM workspaces ORDER BY last_activity_at DESC").all() as WorkspaceRow[]).map(
-    (row) => workspaceRowToSummary(row)
-  );
+function listDashboard(connection: Database.Database): DashboardListSnapshot {
+  return {
+    projects: listProjects(connection),
+    ...listWorkspaceStatus(connection)
+  };
+}
 
-  const sessions = (connection.prepare("SELECT * FROM sessions ORDER BY last_activity_at DESC").all() as SessionRow[]).map(
-    (row) => sessionRowToSummary(row, preferredSessionIds.has(row.id))
-  );
+function listWorkspaceStatus(
+  connection: Database.Database,
+  input?: WorkspaceStatusInputFilter
+): WorkspaceStatusSnapshot {
+  const preferredSessionIds = loadPreferredSessionIds(connection);
+  const workspaceIds = input?.workspaceIds;
+  const workspaceFilter = buildWorkspaceFilter(workspaceIds, "id");
+  const sessionFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
+  const checkFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
+  const checkpointFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
+
+  const workspaces = (
+    connection
+      .prepare(`SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC`)
+      .all(...workspaceFilter.params) as WorkspaceRow[]
+  ).map((row) => workspaceRowToSummary(row));
+
+  const sessions = (
+    connection
+      .prepare(`SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC`)
+      .all(...sessionFilter.params) as SessionRow[]
+  ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
+
+  const checks = (
+    connection
+      .prepare(`SELECT * FROM checks${checkFilter.where} ORDER BY started_at DESC LIMIT 200`)
+      .all(...checkFilter.params) as CheckRow[]
+  ).map(checkRowToRun);
+
+  const checkpoints = (
+    connection
+      .prepare(`SELECT * FROM checkpoints${checkpointFilter.where} ORDER BY created_at DESC LIMIT 200`)
+      .all(...checkpointFilter.params) as CheckpointRow[]
+  ).map(checkpointRowToSummary);
+
+  return {
+    workspaces,
+    sessions,
+    checks,
+    checkpoints
+  };
+}
+
+function listSessionEventsSince(
+  connection: Database.Database,
+  input: SessionEventsSinceInput
+): SessionEventsSinceResult {
+  const eventRows = input.eventCursor === undefined
+    ? (connection
+        .prepare(
+          `
+            SELECT * FROM (
+              SELECT rowid AS row_cursor, * FROM events
+              WHERE session_id = ?
+              ORDER BY rowid DESC
+              LIMIT 50
+            )
+            ORDER BY row_cursor ASC
+          `
+        )
+        .all(input.sessionId) as EventRow[])
+    : (connection
+        .prepare(
+          `
+            SELECT rowid AS row_cursor, * FROM events
+            WHERE session_id = ? AND rowid > ?
+            ORDER BY rowid ASC
+          `
+        )
+        .all(input.sessionId, input.eventCursor) as EventRow[]);
+
+  const rawOutputRows = input.rawOutputCursor === undefined
+    ? (connection
+        .prepare(
+          `
+            SELECT * FROM (
+              SELECT rowid AS row_cursor, * FROM raw_outputs
+              WHERE session_id = ?
+              ORDER BY rowid DESC
+              LIMIT 100
+            )
+            ORDER BY row_cursor ASC
+          `
+        )
+        .all(input.sessionId) as RawOutputRow[])
+    : (connection
+        .prepare(
+          `
+            SELECT rowid AS row_cursor, * FROM raw_outputs
+            WHERE session_id = ? AND rowid > ?
+            ORDER BY rowid ASC
+          `
+        )
+        .all(input.sessionId, input.rawOutputCursor) as RawOutputRow[]);
+
+  return {
+    events: eventRows.map(eventRowToTimelineEvent),
+    rawOutputs: rawOutputRows.map(rawOutputRowToProviderOutput),
+    eventCursor: maxRowCursor(eventRows, input.eventCursor ?? 0),
+    rawOutputCursor: maxRowCursor(rawOutputRows, input.rawOutputCursor ?? 0)
+  };
+}
+
+function loadDashboard(connection: Database.Database): DashboardSnapshot {
+  const dashboard = listDashboard(connection);
 
   const events = (
     connection.prepare("SELECT * FROM events ORDER BY created_at DESC LIMIT 50").all() as EventRow[]
-  ).map((row) => ({
+  ).map(eventRowToTimelineEvent);
+
+  const rawOutputs = (
+    connection.prepare("SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT 100").all() as RawOutputRow[]
+  ).map(rawOutputRowToProviderOutput);
+
+  // Cap dashboard reads at 200 rows for approvals/checks/checkpoints
+  // (audit M6). Older rows remain in storage; pagination ships separately
+  // via dedicated handlers when needed.
+  const approvals = listApprovals(connection);
+
+  return {
+    ...dashboard,
+    events,
+    rawOutputs,
+    approvals
+  };
+}
+
+function listApprovals(connection: Database.Database): ApprovalRequest[] {
+  return (
+    connection.prepare("SELECT * FROM approvals ORDER BY created_at DESC LIMIT 200").all() as ApprovalRow[]
+  ).map(approvalRowToRequest);
+}
+
+function listPendingApprovals(connection: Database.Database): ApprovalRequest[] {
+  return (
+    connection
+      .prepare("SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT 200")
+      .all() as ApprovalRow[]
+  ).map(approvalRowToRequest);
+}
+
+function buildWorkspaceFilter(
+  workspaceIds: string[] | undefined,
+  columnName: "id" | "workspace_id"
+): { where: string; params: string[] } {
+  if (!workspaceIds || workspaceIds.length === 0) {
+    return { where: "", params: [] };
+  }
+
+  return {
+    where: ` WHERE ${columnName} IN (${workspaceIds.map(() => "?").join(", ")})`,
+    params: workspaceIds
+  };
+}
+
+function eventRowToTimelineEvent(row: EventRow): TimelineEvent {
+  return {
     id: row.id,
     sessionId: row.session_id,
     type: row.type,
     message: row.message,
     payload: parseJsonRecord(row.payload_json, "database.eventPayload"),
     createdAt: row.created_at
-  }));
+  };
+}
 
-  const rawOutputs = (
-    connection.prepare("SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT 100").all() as RawOutputRow[]
-  ).map((row) => ({
+function rawOutputRowToProviderOutput(row: RawOutputRow): RawProviderOutput {
+  return {
     id: row.id,
     sessionId: row.session_id,
     stream: row.stream,
     content: row.content,
     createdAt: row.created_at
-  }));
+  };
+}
 
-  // Cap dashboard reads at 200 rows for approvals/checks/checkpoints
-  // (audit M6). Older rows remain in storage; pagination ships separately
-  // via dedicated handlers when needed.
-  const approvals = (
-    connection.prepare("SELECT * FROM approvals ORDER BY created_at DESC LIMIT 200").all() as ApprovalRow[]
-  ).map((row) => ({
+function approvalRowToRequest(row: ApprovalRow): ApprovalRequest {
+  return {
     id: row.id,
     sessionId: row.session_id,
     command: row.command,
@@ -1102,11 +1248,11 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     status: row.status,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at
-  }));
+  };
+}
 
-  const checks = (
-    connection.prepare("SELECT * FROM checks ORDER BY started_at DESC LIMIT 200").all() as CheckRow[]
-  ).map((row) => ({
+function checkRowToRun(row: CheckRow): CheckRun {
+  return {
     id: row.id,
     workspaceId: row.workspace_id,
     command: row.command,
@@ -1115,13 +1261,11 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     summary: row.summary,
     startedAt: row.started_at,
     completedAt: row.completed_at
-  }));
+  };
+}
 
-  const checkpoints = (
-    connection
-      .prepare("SELECT * FROM checkpoints ORDER BY created_at DESC LIMIT 200")
-      .all() as CheckpointRow[]
-  ).map((row) => ({
+function checkpointRowToSummary(row: CheckpointRow): Checkpoint {
+  return {
     id: row.id,
     workspaceId: row.workspace_id,
     label: row.label,
@@ -1129,18 +1273,11 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     gitRef: row.git_ref,
     patchPath: row.patch_path,
     createdAt: row.created_at
-  }));
-
-  return {
-    projects,
-    workspaces,
-    sessions,
-    events,
-    rawOutputs,
-    approvals,
-    checks,
-    checkpoints
   };
+}
+
+function maxRowCursor(rows: Array<{ row_cursor?: number }>, fallback: number): number {
+  return rows.reduce((max, row) => Math.max(max, row.row_cursor ?? max), fallback);
 }
 
 /**

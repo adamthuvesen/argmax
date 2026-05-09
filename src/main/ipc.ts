@@ -4,6 +4,8 @@ import {
   createCheckpointInputSchema,
   createCurrentWorkspaceInputSchema,
   createWorkspaceInputSchema,
+  approvalsPendingInputSchema,
+  dashboardListInputSchema,
   launchProviderSessionInputSchema,
   loadDiffInputSchema,
   prepareCommitInputSchema,
@@ -14,14 +16,16 @@ import {
   resolveApprovalInputSchema,
   runCheckInputSchema,
   selectPreferredAttemptInputSchema,
+  sessionEventsSinceInputSchema,
   updateProjectSettingsInputSchema,
+  workspaceStatusInputSchema,
   workspaceIdInputSchema
 } from "../shared/ipcSchemas.js";
 import type { MaestroDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
 import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
 import { discoverProviders } from "./providers/providerDiscovery.js";
-import { ProviderSessionService } from "./providers/providerSessionService.js";
+import type { ProviderSessionService } from "./providers/providerSessionService.js";
 import { GitReviewService } from "./review/gitReviewService.js";
 import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
@@ -51,10 +55,10 @@ export function withValidation<TIn, TOut>(
       parsed = schema.parse(rawInput);
     } catch (error) {
       if (error instanceof ZodError) {
-        const wrapped = Object.assign(new Error("INVALID_INPUT"), {
+        const wrapped: IpcInvalidInputError = Object.assign(new Error("INVALID_INPUT"), {
           code: "INVALID_INPUT" as const,
           issues: error.issues
-        }) as IpcInvalidInputError;
+        });
         throw wrapped;
       }
       throw error;
@@ -91,6 +95,7 @@ export function registerIpcHandlers(
     timestamp: new Date().toISOString()
   }));
   ipcMain.handle("projects:list", () => database.listProjects());
+  ipcMain.handle("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
   ipcMain.handle("dashboard:load", () => database.loadDashboard());
   ipcMain.handle("providers:discover", () => discoverProviders());
 
@@ -123,6 +128,10 @@ export function registerIpcHandlers(
     withValidation(workspaceIdInputSchema, (workspaceId) => workspaces.archiveWorkspace(workspaceId))
   );
   ipcMain.handle(
+    "workspace:status",
+    withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
+  );
+  ipcMain.handle(
     "providers:launch",
     withValidation(launchProviderSessionInputSchema, (input) => providerSessions.launch(input))
   );
@@ -135,8 +144,8 @@ export function registerIpcHandlers(
   );
   ipcMain.handle(
     "providers:resize",
-    withValidation(providerSessionResizeInputSchema, async (input) => {
-      await providerSessions.resize(input.sessionId, input.cols, input.rows);
+    withValidation(providerSessionResizeInputSchema, (input) => {
+      providerSessions.resize(input.sessionId, input.cols, input.rows);
       return { ok: true } as const;
     })
   );
@@ -150,6 +159,11 @@ export function registerIpcHandlers(
   ipcMain.handle(
     "approvals:resolve",
     withValidation(resolveApprovalInputSchema, (input) => database.resolveApproval(input.approvalId, input.status))
+  );
+  ipcMain.handle("approvals:pending", withValidation(approvalsPendingInputSchema, () => database.listPendingApprovals()));
+  ipcMain.handle(
+    "session:eventsSince",
+    withValidation(sessionEventsSinceInputSchema, (input) => database.listSessionEventsSince(input))
   );
   ipcMain.handle(
     "review:list-changed-files",
@@ -200,6 +214,7 @@ export function registerIpcHandlers(
 export const REGISTERED_IPC_CHANNELS: readonly string[] = [
   "health:ping",
   "projects:list",
+  "dashboard:list",
   "projects:register",
   "projects:update-settings",
   "workspaces:create-isolated",
@@ -207,12 +222,15 @@ export const REGISTERED_IPC_CHANNELS: readonly string[] = [
   "workspaces:refresh-status",
   "workspaces:keep",
   "workspaces:archive",
+  "workspace:status",
   "providers:discover",
   "providers:launch",
   "providers:send-input",
   "providers:resize",
   "providers:terminate",
   "approvals:resolve",
+  "approvals:pending",
+  "session:eventsSince",
   "review:list-changed-files",
   "review:load-diff",
   "checks:run",

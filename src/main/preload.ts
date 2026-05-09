@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { IpcRendererEvent } from "electron";
 import type {
   DashboardSnapshot,
   ChangedFileSummary,
@@ -7,6 +8,7 @@ import type {
   CreateCurrentWorkspaceInput,
   CreateWorkspaceInput,
   DashboardDelta,
+  DashboardListSnapshot,
   LaunchProviderSessionInput,
   MaestroApi,
   PrepareCommitInput,
@@ -17,15 +19,20 @@ import type {
   ResolveApprovalInput,
   RunCheckInput,
   SelectPreferredAttemptInput,
+  SessionEventsSinceInput,
+  SessionEventsSinceResult,
   WorkspaceDiff,
+  WorkspaceStatusInput,
+  WorkspaceStatusSnapshot,
   UpdateProjectSettingsInput
 } from "../shared/types.js";
 
 const api: MaestroApi = {
   dashboard: {
     load: () => ipcRenderer.invoke("dashboard:load") as Promise<DashboardSnapshot>,
+    list: () => ipcRenderer.invoke("dashboard:list") as Promise<DashboardListSnapshot>,
     onDelta: (listener: (delta: DashboardDelta) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, delta: DashboardDelta): void => listener(delta);
+      const handler = (_event: IpcRendererEvent, delta: DashboardDelta): void => listener(delta);
       ipcRenderer.on("dashboard:delta", handler);
       return () => ipcRenderer.removeListener("dashboard:delta", handler);
     }
@@ -43,6 +50,8 @@ const api: MaestroApi = {
       ipcRenderer.invoke("workspaces:create-current", input) as Promise<DashboardSnapshot["workspaces"][number]>,
     refreshStatus: (workspaceId: string) =>
       ipcRenderer.invoke("workspaces:refresh-status", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>,
+    status: (input?: WorkspaceStatusInput) =>
+      ipcRenderer.invoke("workspace:status", input) as Promise<WorkspaceStatusSnapshot>,
     keep: (workspaceId: string) =>
       ipcRenderer.invoke("workspaces:keep", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>,
     archive: (workspaceId: string) =>
@@ -59,8 +68,13 @@ const api: MaestroApi = {
     terminate: (sessionId: string) => ipcRenderer.invoke("providers:terminate", sessionId) as Promise<{ ok: true }>
   },
   approvals: {
+    pending: () => ipcRenderer.invoke("approvals:pending") as Promise<DashboardSnapshot["approvals"]>,
     resolve: (input: ResolveApprovalInput) =>
       ipcRenderer.invoke("approvals:resolve", input) as Promise<DashboardSnapshot["approvals"][number]>
+  },
+  session: {
+    eventsSince: (input: SessionEventsSinceInput) =>
+      ipcRenderer.invoke("session:eventsSince", input) as Promise<SessionEventsSinceResult>
   },
   review: {
     listChangedFiles: (workspaceId: string) =>

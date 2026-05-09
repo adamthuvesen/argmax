@@ -2,11 +2,169 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDatabase, type MaestroDatabase } from "../persistence/database.js";
 import type { PersistProjectInput, PersistWorkspaceInput } from "../persistence/database.js";
-import type { ProviderId } from "../../shared/types.js";
+import type { DashboardDelta, ProviderId } from "../../shared/types.js";
 import type { ProviderAdapter, ProviderEvent, ProviderLaunchInput, ProviderSessionHandle } from "./providerTypes.js";
 import { ProviderSessionService } from "./providerSessionService.js";
 
 describe("ProviderSessionService", () => {
+  it("publishes initial dashboard rows after launching a provider session", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("claude");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "claude",
+      prompt: "Ship the cockpit",
+      modelLabel: "Claude Haiku",
+      modelId: "haiku",
+      cols: 100,
+      rows: 30
+    });
+
+    expect(deltas).toContainEqual(
+      expect.objectContaining({
+        projects: expect.any(Array) as unknown,
+        workspaces: [expect.objectContaining({ id: workspace.id, state: "running" })],
+        sessions: [expect.objectContaining({ id: session.id, state: "running" })],
+        events: [
+          expect.objectContaining({ sessionId: session.id, type: "user.message" }),
+          expect.objectContaining({ sessionId: session.id, type: "session.started" })
+        ]
+      })
+    );
+
+    database.connection.close();
+  });
+
+  it("publishes output micro-batches as dashboard deltas", async () => {
+    vi.useFakeTimers();
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    try {
+      const session = await service.launch({
+        workspaceId: workspace.id,
+        provider: "codex",
+        prompt: "Ship",
+        modelLabel: "GPT-5.3 Codex Spark Low",
+        modelId: "gpt-5.3-codex-spark",
+        reasoningEffort: "low",
+        cols: 80,
+        rows: 24
+      });
+      deltas.length = 0;
+
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: '{"type":"message.delta","message":"Streaming now."}\n',
+        createdAt: "2026-05-08T16:00:00.000Z"
+      });
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(deltas).toContainEqual(
+        expect.objectContaining({
+          rawOutputs: [expect.objectContaining({ sessionId: session.id, stream: "stdout" })],
+          events: [expect.objectContaining({ sessionId: session.id, message: "Streaming now." })],
+          sessions: [expect.objectContaining({ id: session.id, lastActivityAt: "2026-05-08T16:00:00.000Z" })]
+        })
+      );
+    } finally {
+      database.clearPruneInterval();
+      vi.useRealTimers();
+      database.connection.close();
+    }
+  });
+
+  it("publishes final lifecycle state as a dashboard delta", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+
+    expect(deltas).toContainEqual(
+      expect.objectContaining({
+        workspaces: [expect.objectContaining({ id: workspace.id, state: "complete" })],
+        sessions: [expect.objectContaining({ id: session.id, state: "complete" })],
+        events: [expect.objectContaining({ sessionId: session.id, type: "session.completed" })],
+        rawOutputs: [expect.objectContaining({ sessionId: session.id, stream: "system" })]
+      })
+    );
+
+    database.connection.close();
+  });
+
+  it("does not publish a micro-batch delta when persistence fails", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+    const persistRawOutput = vi.spyOn(database, "persistRawOutput").mockImplementation(() => {
+      throw new Error("write failed");
+    });
+
+    try {
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: "plain log line\n",
+        createdAt: "2026-05-08T16:00:00.000Z"
+      });
+
+      expect(() =>
+        (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id)
+      ).toThrow("write failed");
+      expect(deltas).toEqual([]);
+    } finally {
+      persistRawOutput.mockRestore();
+      await service.terminate(session.id);
+      database.connection.close();
+    }
+  });
+
   it("launches a provider from a selected workspace and completes successful exits for review", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
@@ -81,7 +239,7 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
-  it("keeps Codex follow-up prompts on the persistent PTY handle", async () => {
+  it("runs Codex follow-up prompts as fast structured provider turns", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
     const fakeProvider = createFakeProvider("codex");
@@ -98,14 +256,23 @@ describe("ProviderSessionService", () => {
       rows: 24
     });
 
+    await expect(service.sendInput(session.id, "too soon\r")).rejects.toThrow("Wait for the current response");
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex structured probe exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:01:00.000Z"
+    });
     await service.sendInput(session.id, "yes\r");
 
-    expect(fakeProvider.sentInput).toEqual(["yes\r"]);
+    expect(fakeProvider.sentInput).toEqual([]);
     expect(fakeProvider.launchInput).toMatchObject({
-      prompt: "Ship the board",
+      prompt: "yes",
       modelId: "gpt-5.3-codex-spark",
       reasoningEffort: "low",
-      mode: "interactive-pty"
+      mode: "structured-json"
     });
     expect(database.loadDashboard().events).toContainEqual(
       expect.objectContaining({

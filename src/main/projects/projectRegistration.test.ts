@@ -19,6 +19,7 @@ describe("ProjectService", () => {
     expect(project.currentBranch).toBe("main");
     expect(project.defaultBranch).toBe("main");
     expect(project.settings.defaultProvider).toBe("codex");
+    expect(project.settings.defaultModelLabel).toBe("GPT-5.5 Medium");
 
     database.connection.close();
   });
@@ -43,7 +44,7 @@ describe("ProjectService", () => {
       projectId: project.id,
       settings: {
         defaultProvider: "claude",
-        defaultModelLabel: "Claude Sonnet",
+        defaultModelLabel: "Claude Sonnet 4.6",
         worktreeLocation: join(repoPath, ".worktrees"),
         setupCommand: "npm install",
         checkCommands: ["npm run lint", "npm test"]
@@ -52,7 +53,7 @@ describe("ProjectService", () => {
 
     expect(updated.settings.defaultProvider).toBe("claude");
     expect(updated.settings.checkCommands).toEqual(["npm run lint", "npm test"]);
-    expect(database.listProjects()[0]?.settings.defaultModelLabel).toBe("Claude Sonnet");
+    expect(database.listProjects()[0]?.settings.defaultModelLabel).toBe("Claude Sonnet 4.6");
 
     database.connection.close();
   });

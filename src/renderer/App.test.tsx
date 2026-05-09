@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot, MaestroApi } from "../shared/types.js";
@@ -13,7 +13,7 @@ const snapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: {
         defaultProvider: "codex",
-        defaultModelLabel: "GPT-5 Codex",
+        defaultModelLabel: "GPT-5.5 Medium",
         worktreeLocation: "/tmp/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm test"]
@@ -47,7 +47,7 @@ const snapshot: DashboardSnapshot = {
       id: "session-1",
       workspaceId: "workspace-1",
       provider: "codex",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
       prompt: "Build dashboard",
       state: "running",
       attention: "normal",
@@ -142,14 +142,19 @@ describe("App", () => {
     };
   });
 
-  it("renders the local project dashboard from IPC data", async () => {
+  it("renders the local project launcher from IPC data", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Chat" })).not.toBeInTheDocument();
-    expect(screen.getByText("/tmp/maestro")).toBeInTheDocument();
-    expect(screen.getByText("maestro/dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Dashboard ready.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Maestro" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compare" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
   });
 
   it("starts the default provider from the composer", async () => {
@@ -171,11 +176,13 @@ describe("App", () => {
       workspaceId: "workspace-1",
       provider: "codex",
       prompt: "Implement PTY launch",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 120,
       rows: 32
     });
-    expect(await screen.findByRole("heading", { name: "Live prompt" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {
@@ -196,7 +203,7 @@ describe("App", () => {
       id: "session-new",
       workspaceId: "workspace-new",
       provider: "codex",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
       prompt: "New chat",
       state: "running",
       attention: "normal",
@@ -265,67 +272,15 @@ describe("App", () => {
         workspaceId: "workspace-1",
         provider: "claude",
         prompt: "Review this change",
-        modelLabel: "Claude Code",
+        modelLabel: "Claude Sonnet 4.6",
+        modelId: "claude-sonnet-4-6",
         cols: 120,
         rows: 32
       })
     );
   });
 
-  it("starts a new chat from the cockpit sidebar", async () => {
-    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-new",
-      projectId: "project-1",
-      taskLabel: "Fresh cockpit chat",
-      branch: "main",
-      baseRef: "main",
-      path: "/tmp/maestro",
-      state: "running",
-      sharedWorkspace: true,
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:14:00.000Z"
-    };
-    const newSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-new",
-      workspaceId: "workspace-new",
-      provider: "codex",
-      modelLabel: "GPT-5 Codex",
-      prompt: "Fresh cockpit chat",
-      state: "running",
-      attention: "normal",
-      startedAt: "2026-05-08T16:14:00.000Z",
-      completedAt: null,
-      lastActivityAt: "2026-05-08T16:14:00.000Z",
-      preferred: false
-    };
-    createCurrentWorkspace.mockResolvedValue(newWorkspace);
-    launchProvider.mockResolvedValue(newSession);
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Cockpit" }));
-    fireEvent.change(await screen.findByLabelText("New chat prompt"), {
-      target: { value: "Fresh cockpit chat" }
-    });
-    fireEvent.click(screen.getByTitle("Start new chat"));
-
-    await waitFor(() =>
-      expect(createCurrentWorkspace).toHaveBeenCalledWith({
-        projectId: "project-1",
-        taskLabel: "Fresh cockpit chat"
-      })
-    );
-    expect(launchProvider).toHaveBeenCalledWith({
-      workspaceId: "workspace-new",
-      provider: "codex",
-      prompt: "Fresh cockpit chat",
-      modelLabel: "GPT-5 Codex",
-      cols: 120,
-      rows: 32
-    });
-  });
-
-  it("opens a sidebar chat in cockpit", async () => {
+  it("opens a sidebar session", async () => {
     dashboardLoad.mockResolvedValue({
       ...snapshot,
       workspaces: [
@@ -350,7 +305,7 @@ describe("App", () => {
           id: "session-2",
           workspaceId: "workspace-2",
           provider: "claude",
-          modelLabel: "Claude Code",
+          modelLabel: "Claude Sonnet 4.6",
           prompt: "Second chat",
           state: "complete",
           attention: "review-ready",
@@ -377,11 +332,23 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
 
-    expect(await screen.findByRole("heading", { name: "Live prompt" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
+    expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
+    expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
+  });
+
+  it("shows a thinking indicator while a session is running", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByLabelText("Thinking")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Waiting for agent")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Send a follow-up")).not.toBeInTheDocument();
   });
 
   it("sends follow-up prompts to the selected live session", async () => {
@@ -391,7 +358,8 @@ describe("App", () => {
     });
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Cockpit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("Session prompt"), {
       target: { value: "continue with tests" }
     });
@@ -420,7 +388,9 @@ describe("App", () => {
     // React onSubmit handler runs (a target-phase listener would observe the
     // pre-React state).
     const submitEvent = new Event("submit", { bubbles: true, cancelable: true });
-    form.dispatchEvent(submitEvent);
+    act(() => {
+      form.dispatchEvent(submitEvent);
+    });
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
     expect(launchProvider).toHaveBeenCalledWith(
@@ -429,41 +399,16 @@ describe("App", () => {
     expect(submitEvent.defaultPrevented).toBe(true);
   });
 
-  it("does not navigate on Cmd+1 inside a contenteditable element", async () => {
+  it("returns to the composer from an open session via the project row", async () => {
     render(<App />);
-    await screen.findByRole("heading", { name: "Maestro" });
 
-    // Switch to a different view first to detect a wrong navigation.
-    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
 
-    // Append contenteditable inside the app shell so the bubbled keydown reaches the scoped listener.
-    const appShell = document.querySelector("main.app-shell");
-    if (!appShell) {
-      throw new Error("App shell not found");
-    }
-    const editable = document.createElement("div");
-    editable.setAttribute("contenteditable", "true");
-    appShell.appendChild(editable);
-    editable.focus();
+    fireEvent.click(screen.getByRole("button", { name: "Maestro" }));
 
-    const event = new KeyboardEvent("keydown", {
-      key: "1",
-      metaKey: true,
-      bubbles: true,
-      cancelable: true
-    });
-    let preventDefaultCalled = false;
-    const originalPreventDefault = event.preventDefault.bind(event);
-    event.preventDefault = () => {
-      preventDefaultCalled = true;
-      originalPreventDefault();
-    };
-    editable.dispatchEvent(event);
-
-    expect(preventDefaultCalled).toBe(false);
-    // Should remain on the Board view; the Dashboard's project heading should not be present.
-    expect(screen.queryByRole("heading", { name: "Maestro" })).not.toBeInTheDocument();
-    appShell.removeChild(editable);
+    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
   });
 
   it("discards a stale dashboard load when a newer load completes first", async () => {
@@ -513,8 +458,8 @@ describe("App", () => {
     (resolveSlow as ((data: DashboardSnapshot) => void) | null)?.(slowSnapshot);
 
     // Snapshot should reflect the second (fast) load result, not the stale first.
-    expect(await screen.findByRole("heading", { name: "Fresh-Project" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Stale-Project" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Fresh-Project" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stale-Project" })).not.toBeInTheDocument();
   });
 
   it("renders the dashboard error state with a Retry button and reloads on click", async () => {
@@ -534,7 +479,7 @@ describe("App", () => {
     fireEvent.click(retry);
 
     await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2));
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
   });
 });
 

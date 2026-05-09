@@ -17,7 +17,8 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "claude",
       prompt: "Ship the cockpit",
-      modelLabel: "Claude Sonnet",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
       cols: 100,
       rows: 30
     });
@@ -26,6 +27,7 @@ describe("ProviderSessionService", () => {
       sessionId: session.id,
       workspacePath: workspace.path,
       prompt: "Ship the cockpit",
+      modelId: "claude-sonnet-4-6",
       mode: "structured-json"
     });
     expect(database.getWorkspace(workspace.id).state).toBe("running");
@@ -89,7 +91,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship the board",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 80,
       rows: 24
     });
@@ -108,6 +112,8 @@ describe("ProviderSessionService", () => {
     expect(fakeProvider.sentInput).toEqual([]);
     expect(fakeProvider.launchInput).toMatchObject({
       prompt: "yes",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       mode: "structured-json"
     });
     expect(database.loadDashboard().events).toContainEqual(
@@ -131,7 +137,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 80,
       rows: 24
     });
@@ -183,7 +191,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 80,
       rows: 24
     });
@@ -228,7 +238,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 80,
       rows: 24
     });
@@ -273,7 +285,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 80,
       rows: 24
     });
@@ -316,7 +330,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 80,
       rows: 24
     });
@@ -340,7 +356,9 @@ describe("ProviderSessionService", () => {
       workspaceId: workspace.id,
       provider: "codex",
       prompt: "Ship",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
       cols: 80,
       rows: 24
     });
@@ -464,7 +482,7 @@ function persistWorkspaceFixture(database: MaestroDatabase): ReturnType<MaestroD
     defaultBranch: "main",
     settings: {
       defaultProvider: "codex",
-      defaultModelLabel: "GPT-5 Codex",
+      defaultModelLabel: "GPT-5.5 Medium",
       worktreeLocation: "/repo/.worktrees",
       setupCommand: "",
       checkCommands: []

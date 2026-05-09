@@ -32,6 +32,7 @@ interface ProviderLaunchDefinition {
   displayName: string;
   binaryName: string;
   structuredArgs: (input: ProviderLaunchInput) => string[];
+  interactiveArgs: (input: ProviderLaunchInput) => string[];
   structuredStdin?: (input: ProviderLaunchInput) => string | null;
 }
 
@@ -40,14 +41,24 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
     id: "claude",
     displayName: "Claude Code",
     binaryName: "claude",
-    structuredArgs: (input) => ["-p", "--output-format", "stream-json", "--verbose", input.prompt],
+    structuredArgs: (input) => ["-p", "--model", input.modelId, "--output-format", "stream-json", "--verbose", input.prompt],
+    interactiveArgs: (input) => ["--model", input.modelId],
     structuredStdin: () => null
   },
   {
     id: "codex",
     displayName: "Codex",
     binaryName: "codex",
-    structuredArgs: () => ["exec", "--json", "--ignore-user-config", "-"],
+    structuredArgs: (input) => [
+      "exec",
+      "--json",
+      "--ignore-user-config",
+      "--model",
+      input.modelId,
+      ...codexReasoningArgs(input),
+      "-"
+    ],
+    interactiveArgs: (input) => ["--model", input.modelId, ...codexReasoningArgs(input)],
     structuredStdin: (input) => input.prompt
   }
 ];
@@ -124,7 +135,7 @@ async function launchInteractivePty(
 
   let ptyProcess: IPty;
   try {
-    ptyProcess = spawnPty(providerShell(), ["-lc", `exec ${shellQuote(capability.binaryPath)}`], {
+    ptyProcess = spawnPty(providerShell(), ["-lc", buildProviderShellCommand(capability.binaryPath, definition.interactiveArgs(input))], {
       name: "xterm-256color",
       cols: input.cols,
       rows: input.rows,
@@ -245,7 +256,7 @@ async function launchInteractivePty(
   } catch (error) {
     // Post-spawn wiring failed: ensure the child is killed before re-throwing.
     try {
-      handle.terminate();
+      void handle.terminate();
     } catch {
       /* ignore */
     }
@@ -257,6 +268,17 @@ async function launchInteractivePty(
   }
 
   return handle;
+}
+
+function buildProviderShellCommand(binaryPath: string, args: string[]): string {
+  return ["exec", shellQuote(binaryPath), ...args.map((arg) => shellQuote(arg))].join(" ");
+}
+
+function codexReasoningArgs(input: ProviderLaunchInput): string[] {
+  if (!input.reasoningEffort) {
+    return [];
+  }
+  return ["-c", `model_reasoning_effort="${input.reasoningEffort}"`];
 }
 
 function missingBinaryMessage(capability: ProviderCapabilityReport): string {
@@ -391,7 +413,7 @@ async function launchStructuredProcess(
     childProcess.stdin.end(definition.structuredStdin?.(input) ?? undefined);
   } catch (error) {
     try {
-      handle.terminate();
+      void handle.terminate();
     } catch {
       /* ignore */
     }

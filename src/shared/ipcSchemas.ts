@@ -21,6 +21,7 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 const providerIdSchema = z.enum(["claude", "codex"]);
+const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
 
 const projectSettingsSchema = z.object({
   defaultProvider: providerIdSchema,
@@ -104,6 +105,8 @@ export const launchProviderSessionInputSchema = z.object({
   provider: providerIdSchema,
   prompt: promptSchema,
   modelLabel: z.string().min(1),
+  modelId: z.string().min(1),
+  reasoningEffort: reasoningEffortSchema.optional(),
   cols: z.number().int().min(20).max(400),
   rows: z.number().int().min(5).max(200)
 });

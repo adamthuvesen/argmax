@@ -1,4 +1,5 @@
 import type { DashboardSnapshot } from "../shared/types.js";
+import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 
 export const demoSnapshot: DashboardSnapshot = {
   projects: [
@@ -10,7 +11,7 @@ export const demoSnapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: {
         defaultProvider: "codex",
-        defaultModelLabel: "GPT-5 Codex",
+        defaultModelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
         worktreeLocation: "~/code/.maestro/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm run lint", "npm test", "npm run build"]
@@ -70,7 +71,7 @@ export const demoSnapshot: DashboardSnapshot = {
       id: "session-ui-board",
       workspaceId: "workspace-ui-board",
       provider: "codex",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
       prompt: "Create compact session lanes for parallel monitoring.",
       state: "running",
       attention: "normal",
@@ -83,7 +84,7 @@ export const demoSnapshot: DashboardSnapshot = {
       id: "session-review-studio",
       workspaceId: "workspace-review-studio",
       provider: "claude",
-      modelLabel: "Claude Sonnet",
+      modelLabel: PROVIDER_MODEL_DEFAULTS.claude.label,
       prompt: "Build the first review studio shell.",
       state: "complete",
       attention: "review-ready",
@@ -96,7 +97,7 @@ export const demoSnapshot: DashboardSnapshot = {
       id: "session-approval-gate",
       workspaceId: "workspace-approval-gate",
       provider: "codex",
-      modelLabel: "GPT-5 Codex",
+      modelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
       prompt: "Add deterministic dangerous-action detection.",
       state: "waiting",
       attention: "approval-needed",

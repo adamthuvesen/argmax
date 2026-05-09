@@ -63,7 +63,7 @@ class FakePty implements IPty {
     this.writes.push(data.toString());
   }
 
-  kill(_signal?: string): void {
+  kill(): void {
     this.killed = true;
   }
 
@@ -78,7 +78,7 @@ class FakeProcess extends EventEmitter {
   readonly stdin = new PassThrough();
   killed = false;
 
-  kill(_signal?: NodeJS.Signals | number): boolean {
+  kill(): boolean {
     this.killed = true;
     return true;
   }
@@ -95,7 +95,7 @@ describe("provider PTY adapters", () => {
     expect(handle?.provider).toBe("claude");
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/claude'"],
+      args: ["-lc", "exec '/usr/local/bin/claude' '--model' 'claude-sonnet-4-6'"],
       cwd: "/repo/worktree",
       cols: 100,
       rows: 30
@@ -112,7 +112,7 @@ describe("provider PTY adapters", () => {
     expect(events[1]).toMatchObject({ sessionId: "session-1", stream: "system", exitCode: 0 });
 
     // Natural exit already disposed the handle; subsequent terminate() is a no-op.
-    handle?.terminate();
+    void handle?.terminate();
     expect(handle?.disposed).toBe(true);
   });
 
@@ -125,12 +125,12 @@ describe("provider PTY adapters", () => {
     expect(handle).toBeDefined();
     if (!handle) return;
 
-    handle.terminate();
+    void handle.terminate();
     expect(handle.disposed).toBe(true);
     expect(pty.killed).toBe(true);
 
     // Second terminate is a no-op; should not throw or re-kill.
-    handle.terminate();
+    void handle.terminate();
 
     // Racing emissions after disposal are dropped.
     pty.emitData("late data");
@@ -145,7 +145,7 @@ describe("provider PTY adapters", () => {
 
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/codex'"],
+      args: ["-lc", "exec '/usr/local/bin/codex' '--model' 'gpt-5.5' '-c' 'model_reasoning_effort=\"medium\"'"],
       cwd: "/repo/worktree"
     });
   });
@@ -188,7 +188,7 @@ describe("provider PTY adapters", () => {
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/claude",
-      args: ["-p", "--output-format", "stream-json", "--verbose", "Implement the task"],
+      args: ["-p", "--model", "claude-sonnet-4-6", "--output-format", "stream-json", "--verbose", "Implement the task"],
       cwd: "/repo/worktree"
     });
     expect(processes[0].stdin.writableEnded).toBe(true);
@@ -208,7 +208,16 @@ describe("provider PTY adapters", () => {
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/codex",
-      args: ["exec", "--json", "--ignore-user-config", "-"],
+      args: [
+        "exec",
+        "--json",
+        "--ignore-user-config",
+        "--model",
+        "gpt-5.5",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "-"
+      ],
       cwd: "/repo/worktree"
     });
     expect(String(processes[0].stdin.read())).toBe("Implement the task");
@@ -260,7 +269,9 @@ function launchInput(provider: "claude" | "codex"): ProviderLaunchInput {
     sessionId: "session-1",
     workspacePath: "/repo/worktree",
     prompt: "Implement the task",
-    modelLabel: provider === "claude" ? "Claude Sonnet" : "GPT-5 Codex",
+    modelLabel: provider === "claude" ? "Claude Sonnet 4.6" : "GPT-5.5 Medium",
+    modelId: provider === "claude" ? "claude-sonnet-4-6" : "gpt-5.5",
+    reasoningEffort: provider === "codex" ? "medium" : undefined,
     mode: "interactive-pty",
     cols: 100,
     rows: 30

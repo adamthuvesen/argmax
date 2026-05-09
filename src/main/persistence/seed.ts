@@ -8,6 +8,7 @@
  * (the previous seed leaked `/Users/adamthuvesen/...`).
  */
 import type Database from "better-sqlite3";
+import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
 
 const now = "2026-05-08T15:30:00.000Z";
 const SAMPLE_REPO_PATH = "/tmp/maestro-seed/sample-project";
@@ -85,7 +86,7 @@ export function seedDemoData(database: Database.Database): void {
       currentBranch: "main",
       defaultBranch: "main",
       defaultProvider: "codex",
-      defaultModelLabel: "GPT-5 Codex",
+      defaultModelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
       worktreeLocation: SAMPLE_WORKTREE_ROOT,
       setupCommand: "npm install",
       checkCommandsJson: JSON.stringify(["npm run lint", "npm test", "npm run build"]),
@@ -156,7 +157,7 @@ export function seedDemoData(database: Database.Database): void {
         id: "session-ui-board",
         workspaceId: "workspace-ui-board",
         provider: "codex",
-        modelLabel: "GPT-5 Codex",
+        modelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
         prompt: "Create compact session lanes for parallel monitoring.",
         state: "running",
         attention: "normal",
@@ -167,7 +168,7 @@ export function seedDemoData(database: Database.Database): void {
         id: "session-review-studio",
         workspaceId: "workspace-review-studio",
         provider: "claude",
-        modelLabel: "Claude Sonnet",
+        modelLabel: PROVIDER_MODEL_DEFAULTS.claude.label,
         prompt: "Build the first review studio shell.",
         state: "complete",
         attention: "review-ready",
@@ -178,7 +179,7 @@ export function seedDemoData(database: Database.Database): void {
         id: "session-approval-gate",
         workspaceId: "workspace-approval-gate",
         provider: "codex",
-        modelLabel: "GPT-5 Codex",
+        modelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
         prompt: "Add deterministic dangerous-action detection.",
         state: "waiting",
         attention: "approval-needed",
@@ -189,7 +190,7 @@ export function seedDemoData(database: Database.Database): void {
         id: "session-provider-probe",
         workspaceId: "workspace-provider-probe",
         provider: "claude",
-        modelLabel: "Claude Sonnet",
+        modelLabel: PROVIDER_MODEL_DEFAULTS.claude.label,
         prompt: "Evaluate provider structured-mode launch probes.",
         state: "failed",
         attention: "failed",

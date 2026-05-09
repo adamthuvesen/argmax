@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { MaestroDatabase, PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
+import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
 import type { LaunchProviderSessionInput, ProviderId, SessionSummary } from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
 import { normalizeProviderEvent } from "./providerEventNormalizer.js";
@@ -12,6 +13,8 @@ const launchProviderSessionInput = z.object({
   provider: z.enum(["claude", "codex"]),
   prompt: z.string().min(1),
   modelLabel: z.string().min(1),
+  modelId: z.string().min(1),
+  reasoningEffort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
   cols: z.number().int().min(20).max(400),
   rows: z.number().int().min(5).max(200)
 });
@@ -133,6 +136,8 @@ export class ProviderSessionService {
           workspacePath: workspace.path,
           prompt: input.prompt,
           modelLabel: input.modelLabel,
+          modelId: input.modelId,
+          reasoningEffort: input.reasoningEffort,
           mode: "structured-json",
           cols: input.cols,
           rows: input.rows
@@ -143,7 +148,7 @@ export class ProviderSessionService {
       // ran), drop the resolved handle and terminate the freshly spawned child.
       if (pending.rejected) {
         try {
-          handle.terminate();
+          void handle.terminate();
         } catch {
           /* ignore */
         }
@@ -220,6 +225,7 @@ export class ProviderSessionService {
     this.initializeBuffer(sessionId, workspace.id, session.provider);
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false };
     this.handles.set(sessionId, pending);
+    const modelDefault = PROVIDER_MODEL_DEFAULTS[session.provider];
 
     try {
       const handle = await this.adapterFactory(session.provider).launch(
@@ -228,6 +234,8 @@ export class ProviderSessionService {
           workspacePath: workspace.path,
           prompt: message,
           modelLabel: session.modelLabel,
+          modelId: modelDefault.modelId,
+          reasoningEffort: modelDefault.reasoningEffort,
           mode: "structured-json",
           cols: 120,
           rows: 32
@@ -236,7 +244,7 @@ export class ProviderSessionService {
       );
       if (pending.rejected) {
         try {
-          handle.terminate();
+          void handle.terminate();
         } catch {
           /* ignore */
         }
@@ -357,7 +365,7 @@ export class ProviderSessionService {
       return;
     }
     if (op.kind === "terminate") {
-      handle.terminate();
+      void handle.terminate();
     }
   }
 

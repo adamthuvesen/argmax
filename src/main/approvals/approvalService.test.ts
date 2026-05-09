@@ -210,7 +210,7 @@ function persistSessionFixture(database: MaestroDatabase): string {
     defaultBranch: "main",
     settings: {
       defaultProvider: "codex",
-      defaultModelLabel: "GPT-5 Codex",
+      defaultModelLabel: "GPT-5.5 Medium",
       worktreeLocation: "/repo/.worktrees",
       setupCommand: "",
       checkCommands: []
@@ -232,7 +232,7 @@ function persistSessionFixture(database: MaestroDatabase): string {
     id: "session-1",
     workspaceId: "workspace-1",
     provider: "codex",
-    modelLabel: "GPT-5 Codex",
+    modelLabel: "GPT-5.5 Medium",
     prompt: "Run commands",
     state: "running",
     attention: "normal"

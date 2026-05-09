@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { MaestroDatabase } from "../persistence/database.js";
+import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
 import type { ProjectSettings, ProjectSummary, RegisterProjectInput, UpdateProjectSettingsInput } from "../../shared/types.js";
 
 const execFileAsync = promisify(execFile);
@@ -161,7 +162,7 @@ async function gitMaybe(repoPath: string, args: string[]): Promise<string | null
 function defaultSettings(repoPath: string): ProjectSettings {
   return {
     defaultProvider: "codex",
-    defaultModelLabel: "GPT-5 Codex",
+    defaultModelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
     worktreeLocation: join(repoPath, ".maestro", "worktrees"),
     setupCommand: "",
     checkCommands: []

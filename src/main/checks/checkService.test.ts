@@ -127,7 +127,7 @@ function persistWorkspaceFixture(database: MaestroDatabase): string {
     defaultBranch: "main",
     settings: {
       defaultProvider: "codex",
-      defaultModelLabel: "GPT-5 Codex",
+      defaultModelLabel: "GPT-5.5 Medium",
       worktreeLocation: join(repoPath, ".worktrees"),
       setupCommand: "",
       checkCommands: []

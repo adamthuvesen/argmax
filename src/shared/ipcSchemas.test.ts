@@ -32,12 +32,28 @@ describe("ipcSchemas", () => {
       workspaceId: "ws-1",
       provider: "claude",
       prompt: "build a thing",
-      modelLabel: "claude-3.5-sonnet",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
       cols: 120,
       rows: 30
     });
     expect(parsed.provider).toBe("claude");
+    expect(parsed.modelId).toBe("claude-sonnet-4-6");
     expect(parsed.cols).toBe(120);
+  });
+
+  it("accepts a valid launchProviderSession payload with reasoning effort", () => {
+    const parsed = launchProviderSessionInputSchema.parse({
+      workspaceId: "ws-1",
+      provider: "codex",
+      prompt: "build a thing",
+      modelLabel: "GPT-5.5 Medium",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
+      cols: 120,
+      rows: 30
+    });
+    expect(parsed.reasoningEffort).toBe("medium");
   });
 
   it("accepts createWorkspace without baseRef (optional field)", () => {
@@ -72,6 +88,7 @@ describe("ipcSchemas", () => {
         provider: "claude",
         prompt: "line1\nline2",
         modelLabel: "claude-3.5",
+        modelId: "claude-3.5",
         cols: 120,
         rows: 30
       })
@@ -85,6 +102,7 @@ describe("ipcSchemas", () => {
         provider: "claude",
         prompt: "-rf .",
         modelLabel: "claude-3.5",
+        modelId: "claude-3.5",
         cols: 120,
         rows: 30
       })
@@ -98,6 +116,7 @@ describe("ipcSchemas", () => {
         provider: "claude",
         prompt: "ok",
         modelLabel: "claude-3.5",
+        modelId: "claude-3.5",
         cols: 12.5,
         rows: 30
       })
@@ -111,6 +130,7 @@ describe("ipcSchemas", () => {
         provider: "gemini",
         prompt: "ok",
         modelLabel: "x",
+        modelId: "x",
         cols: 80,
         rows: 24
       })

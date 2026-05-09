@@ -1,4 +1,5 @@
 import type { ProviderId } from "../../shared/types.js";
+import type { ReasoningEffort } from "../../shared/providerModels.js";
 
 export type ProviderMode = "interactive-pty" | "structured-json";
 
@@ -18,6 +19,8 @@ export interface ProviderLaunchInput {
   workspacePath: string;
   prompt: string;
   modelLabel: string;
+  modelId: string;
+  reasoningEffort?: ReasoningEffort;
   mode: ProviderMode;
   cols: number;
   rows: number;

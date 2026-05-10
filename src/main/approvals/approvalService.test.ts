@@ -91,35 +91,9 @@ describe("ApprovalService", () => {
     database.connection.close();
   });
 
-  it("falls back to non-deduplicated behavior when findPendingApproval is unavailable", () => {
-    // Foundation agent is responsible for adding `findPendingApproval` to
-    // MaestroDatabase. This test exercises the bridge: the service must
-    // remain usable even before the helper lands. Once the helper is
-    // present this assertion can be tightened to require dedup.
-    const database = createDatabase(":memory:", { seed: false });
-    const sessionId = persistSessionFixture(database);
-    // Strip the helper if foundations already added it, so we exercise the
-    // legacy path explicitly.
-    delete (database as unknown as { findPendingApproval?: unknown }).findPendingApproval;
-    const service = new ApprovalService(database);
-
-    const decision = service.requestCommandApproval({
-      sessionId,
-      command: "git reset --hard HEAD~1",
-      cwd: "/repo",
-      provider: "claude"
-    });
-
-    expect(decision.allowed).toBe(false);
-    expect(decision.approval).not.toBeNull();
-
-    database.connection.close();
-  });
-
-  it("returns the existing pending row when foundations findPendingApproval is wired", () => {
-    // 10.8: validates the contract the foundations agent is adding to
-    // MaestroDatabase. We stub the helper here so the test is self-
-    // contained; the production helper will replace this stub.
+  it("returns the existing pending row when findPendingApproval matches an inflight request", () => {
+    // Validates the dedup contract: a duplicate request observes the existing
+    // pending row instead of inserting a second one.
     const database = createDatabase(":memory:", { seed: false });
     const sessionId = persistSessionFixture(database);
     const service = new ApprovalService(database);

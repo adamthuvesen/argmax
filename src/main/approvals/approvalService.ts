@@ -30,10 +30,6 @@ export class ApprovalService {
    * the transaction sees a fresh snapshot, so the second caller observes the
    * first caller's row and returns the existing approval rather than
    * creating a duplicate.
-   *
-   * `findPendingApproval` is provided by the persistence layer (added by the
-   * foundations agent in this change wave). If absent at runtime, we fall
-   * back to non-deduplicated behavior so the service remains usable.
    */
   requestCommandApproval(input: RequestCommandApprovalInput): CommandApprovalDecision {
     const risk = classifyCommandRisk(input.command);
@@ -46,7 +42,7 @@ export class ApprovalService {
     }
 
     return this.database.connection.transaction((): CommandApprovalDecision => {
-      const existing = findPendingApproval(this.database, {
+      const existing = this.database.findPendingApproval({
         sessionId: input.sessionId,
         command: input.command,
         cwd: input.cwd,
@@ -127,27 +123,3 @@ export class ApprovalService {
   }
 }
 
-interface PendingApprovalQuery {
-  sessionId: string;
-  command: string;
-  cwd: string;
-  provider: ProviderId;
-}
-
-/**
- * Bridge to the persistence-layer helper. Foundations agent adds
- * `findPendingApproval` to `MaestroDatabase`; until that lands at runtime
- * we treat its absence as "no dedup" rather than crashing the service.
- */
-function findPendingApproval(
-  database: MaestroDatabase,
-  query: PendingApprovalQuery
-): ApprovalRequest | null {
-  const candidate = (database as unknown as {
-    findPendingApproval?: (q: PendingApprovalQuery) => ApprovalRequest | null;
-  }).findPendingApproval;
-  if (typeof candidate === "function") {
-    return candidate.call(database, query);
-  }
-  return null;
-}

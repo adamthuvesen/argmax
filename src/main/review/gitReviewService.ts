@@ -1,11 +1,11 @@
-import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { isAbsolute, resolve, sep } from "node:path";
-import { promisify } from "node:util";
+import { resolve, sep } from "node:path";
 import type { MaestroDatabase } from "../persistence/database.js";
 import type { ChangedFileSummary, WorkspaceDiff } from "../../shared/types.js";
+import { runGitText } from "../git/exec.js";
 
-const execFileAsync = promisify(execFile);
+/** Cap on parallel `git diff` invocations when fetching all-files diff. */
+const DIFF_FANOUT_LIMIT = 8;
 
 export class GitReviewService {
   constructor(private readonly database: MaestroDatabase) {}
@@ -15,15 +15,13 @@ export class GitReviewService {
     // `--porcelain=v1 -z` emits NUL-delimited records with literal paths
     // (no quoting, no octal escapes), so we don't have to unquote git's
     // human-readable form. The byte after each path is NUL, not LF.
-    const porcelain = await git(workspace.path, ["status", "--porcelain=v1", "-z"]);
+    const porcelain = await runGitText(workspace.path, ["status", "--porcelain=v1", "-z"]);
     const files = parsePorcelainZ(porcelain);
-    return Promise.all(
-      files.map(async (file) => {
-        const content = await this.loadFileDiff(workspace.path, file);
-        const counts = countDiffLines(content);
-        return { ...file, ...counts };
-      })
-    );
+    return mapWithConcurrency(files, DIFF_FANOUT_LIMIT, async (file) => {
+      const content = await this.loadFileDiff(workspace.path, file);
+      const counts = countDiffLines(content);
+      return { ...file, ...counts };
+    });
   }
 
   async loadDiff(workspaceId: string, filePath?: string): Promise<WorkspaceDiff> {
@@ -31,13 +29,15 @@ export class GitReviewService {
     let content: string;
     if (filePath !== undefined) {
       assertSafeRelativePath(workspace.path, filePath);
-      const file = parsePorcelainZ(await git(workspace.path, ["status", "--porcelain=v1", "-z", "--", filePath])).find(
-        (item) => item.path === filePath
-      );
-      content = file ? await this.loadFileDiff(workspace.path, file) : await git(workspace.path, ["diff", "HEAD", "--", filePath]);
+      const file = parsePorcelainZ(
+        await runGitText(workspace.path, ["status", "--porcelain=v1", "-z", "--", filePath])
+      ).find((item) => item.path === filePath);
+      content = file
+        ? await this.loadFileDiff(workspace.path, file)
+        : await runGitText(workspace.path, ["diff", "HEAD", "--", filePath]);
     } else {
-      const files = parsePorcelainZ(await git(workspace.path, ["status", "--porcelain=v1", "-z"]));
-      const diffs = await Promise.all(files.map((file) => this.loadFileDiff(workspace.path, file)));
+      const files = parsePorcelainZ(await runGitText(workspace.path, ["status", "--porcelain=v1", "-z"]));
+      const diffs = await mapWithConcurrency(files, DIFF_FANOUT_LIMIT, (file) => this.loadFileDiff(workspace.path, file));
       content = diffs.filter(Boolean).join("\n");
     }
 
@@ -52,20 +52,26 @@ export class GitReviewService {
     if (file.status === "??") {
       return synthesizeUntrackedDiff(workspacePath, file.path);
     }
-    return git(workspacePath, ["diff", "HEAD", "--", file.path]);
+    return runGitText(workspacePath, ["diff", "HEAD", "--", file.path]);
   }
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  // Match the workspace git() helper: bounded timeout and a buffer large
-  // enough for typical review diffs but not unboundedly so. Larger binary
-  // diffs go through checkpointService with its own 256 MiB cap.
-  const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
-    timeout: 30_000,
-    maxBuffer: 64 * 1024 * 1024,
-    encoding: "utf8"
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index]);
+    }
   });
-  return stdout;
+  await Promise.all(workers);
+  return results;
 }
 
 /**
@@ -114,8 +120,9 @@ function countDiffLines(content: string): { additions: number; deletions: number
 }
 
 async function synthesizeUntrackedDiff(workspacePath: string, filePath: string): Promise<string> {
+  const safeAbsolutePath = resolve(workspacePath, filePath);
   assertSafeRelativePath(workspacePath, filePath);
-  const content = await readFile(resolve(workspacePath, filePath), "utf8");
+  const content = await readFile(safeAbsolutePath, "utf8");
   const lines = content.split("\n");
   const hasTrailingNewline = content.endsWith("\n");
   if (hasTrailingNewline) {
@@ -135,27 +142,13 @@ async function synthesizeUntrackedDiff(workspacePath: string, filePath: string):
 }
 
 /**
- * Assert filePath is a safe relative pathspec for a git worktree.
- *
- * Validation matches the `relativeFilePathSchema` in shared/ipcSchemas.ts
- * so a renderer-side type-checker drift can't smuggle in absolute paths,
- * `..`, or leading `-`. We additionally resolve the path against the
- * workspace root and require the canonical result to stay inside —
- * defense against symlinks crafted to redirect the diff into another tree.
+ * Resolve filePath against the workspace root and assert the canonical result
+ * stays inside it — defense against symlinks or constructed paths that would
+ * redirect the diff into another tree. Shape validation (no absolute paths,
+ * no `..`, no leading `-`) is already enforced by `relativeFilePathSchema`
+ * at the IPC boundary.
  */
 function assertSafeRelativePath(workspaceRoot: string, filePath: string): void {
-  if (filePath.length === 0) {
-    throw new Error("filePath must not be empty");
-  }
-  if (filePath.startsWith("-")) {
-    throw new Error("filePath cannot start with '-'");
-  }
-  if (isAbsolute(filePath) || filePath.startsWith("/")) {
-    throw new Error("filePath must be relative");
-  }
-  if (filePath.split(/[\\/]/).some((segment) => segment === "..")) {
-    throw new Error("filePath cannot contain '..' segments");
-  }
   const resolved = resolve(workspaceRoot, filePath);
   const rootPrefix = workspaceRoot.endsWith(sep) ? workspaceRoot : workspaceRoot + sep;
   if (resolved !== workspaceRoot && !resolved.startsWith(rootPrefix)) {

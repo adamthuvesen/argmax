@@ -32,6 +32,8 @@ import type {
 } from "../shared/types.js";
 import { PROVIDER_MODEL_DEFAULTS, PROVIDER_MODELS } from "../shared/providerModels.js";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
+import { tryParseJsonObject } from "../shared/safeJson.js";
+import { stripTerminalControls } from "../shared/terminalControls.js";
 import { demoSnapshot } from "./demoSnapshot.js";
 
 const emptySnapshot: DashboardSnapshot = {
@@ -75,13 +77,6 @@ type ParsedDiffBlock =
   | { kind: "hunk"; id: string; header: string; lines: ParsedDiffLine[] }
   | { kind: "omitted"; id: string; count: number };
 
-/* eslint-disable no-control-regex */
-const oscSequencePattern = new RegExp("\\u001B\\][^\\u0007]*(?:\\u0007|\\u001B\\\\)", "g");
-const csiSequencePattern = new RegExp("\\u001B\\[[0-?]*[ -/]*[@-~]", "g");
-const escapeSequencePattern = new RegExp("\\u001B[@-Z\\\\-_]", "g");
-const controlCharacterPattern = new RegExp("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]", "g");
-/* eslint-enable no-control-regex */
-
 type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId };
 
 const allModelOptions: ModelPickerSelection[] = (Object.entries(PROVIDER_MODELS) as Array<[ProviderId, typeof PROVIDER_MODELS[ProviderId]]>)
@@ -124,7 +119,7 @@ export function App(): JSX.Element {
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
 
   const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
-    if (!window.maestro?.session?.eventsSince) {
+    if (!window.maestro) {
       return;
     }
 
@@ -168,14 +163,15 @@ export function App(): JSX.Element {
   const refreshDashboardStatus = useCallback(async (): Promise<void> => {
     const token = ++dashboardLoadToken.current;
     try {
-      const statusLoader = window.maestro?.workspaces.status;
-      const approvalsLoader = window.maestro?.approvals.pending;
-      if (!statusLoader || !approvalsLoader) {
+      if (!window.maestro) {
         await loadDashboard();
         return;
       }
 
-      const [status, approvals] = await Promise.all([statusLoader(), approvalsLoader()]);
+      const [status, approvals] = await Promise.all([
+        window.maestro.workspaces.status(),
+        window.maestro.approvals.pending()
+      ]);
       if (token !== dashboardLoadToken.current) {
         return;
       }
@@ -200,16 +196,15 @@ export function App(): JSX.Element {
   }, [loadDashboard]);
 
   useEffect(() => {
-    const unsubscribe = window.maestro?.dashboard.onDelta?.((delta) => {
+    if (!window.maestro) {
+      return;
+    }
+    return window.maestro.dashboard.onDelta((delta) => {
       dashboardDeltaRevision.current += 1;
       setSnapshot((current) => mergeDashboardDelta(current, delta));
       setLoadState("ready");
       setLoadError(null);
     });
-    if (!unsubscribe) {
-      return;
-    }
-    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -217,7 +212,7 @@ export function App(): JSX.Element {
       if (document.visibilityState !== "visible") {
         return;
       }
-      void loadDashboard();
+      void refreshDashboardStatus();
       if (selectedSessionId) {
         void loadSessionEvents(selectedSessionId);
       }
@@ -225,7 +220,19 @@ export function App(): JSX.Element {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [loadDashboard, selectedSessionId, loadSessionEvents]);
+  }, [refreshDashboardStatus, selectedSessionId, loadSessionEvents]);
+
+  // Drop session-cursor entries for sessions that have left the snapshot
+  // (archived workspace, restart) so the Map doesn't grow without bound.
+  useEffect(() => {
+    const sessionIds = new Set(snapshot.sessions.map((session) => session.id));
+    const cursors = sessionCursorsRef.current;
+    for (const id of cursors.keys()) {
+      if (!sessionIds.has(id)) {
+        cursors.delete(id);
+      }
+    }
+  }, [snapshot.sessions]);
 
   // Reconcile selectedSessionId against the snapshot without clobbering a
   // just-launched session while its dashboard refresh is still in flight.
@@ -319,7 +326,7 @@ export function App(): JSX.Element {
   }, []);
 
   const addProject = useCallback(async (): Promise<void> => {
-    if (!window.maestro?.projects.pickFolder) {
+    if (!window.maestro) {
       setToast({ kind: "error", message: "Open the Electron app window to add a project." });
       return;
     }
@@ -333,7 +340,6 @@ export function App(): JSX.Element {
       setSelectedProjectId(result.project.id);
       setSelectedSessionId(null);
       setSelectedWorkspaceId(null);
-      await loadDashboard();
       setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
       setToast({ kind: "info", message: `Added ${result.project.name}.` });
     } catch (error) {
@@ -342,7 +348,7 @@ export function App(): JSX.Element {
         message: error instanceof Error ? error.message : "Maestro requires a local git repository."
       });
     }
-  }, [loadDashboard]);
+  }, []);
 
   const resolveApproval = useCallback(
     async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
@@ -359,7 +365,7 @@ export function App(): JSX.Element {
         )
       }));
 
-      if (!window.maestro?.approvals.resolve) {
+      if (!window.maestro) {
         return;
       }
 
@@ -385,7 +391,7 @@ export function App(): JSX.Element {
 
   const sendSessionInput = useCallback(
     async (sessionId: string, input: string, model: ProviderModelSelection): Promise<void> => {
-      if (!window.maestro?.providers.sendInput) {
+      if (!window.maestro) {
         throw new Error("Open the Electron app window to send input to a live session.");
       }
 
@@ -396,9 +402,9 @@ export function App(): JSX.Element {
         modelId: model.modelId,
         ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
       });
-      await Promise.all([loadDashboard(), loadSessionEvents(sessionId)]);
+      await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
-    [loadDashboard, loadSessionEvents]
+    [refreshDashboardStatus, loadSessionEvents]
   );
 
   const launchTask = useCallback(
@@ -433,9 +439,9 @@ export function App(): JSX.Element {
       };
       setSelectedWorkspaceId(workspace.id);
       setSelectedSessionId(launchedSession.id);
-      await Promise.all([loadDashboard(), loadSessionEvents(launchedSession.id)]);
+      await Promise.all([refreshDashboardStatus(), loadSessionEvents(launchedSession.id)]);
     },
-    [selectedProject, loadDashboard, loadSessionEvents]
+    [selectedProject, refreshDashboardStatus, loadSessionEvents]
   );
 
   return (
@@ -518,10 +524,6 @@ function Sidebar({
 }): JSX.Element {
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
 
-  useEffect(() => {
-    saveCollapsedProjectIds(collapsedProjectIds);
-  }, [collapsedProjectIds]);
-
   const toggleProjectVisibility = useCallback((projectId: string): void => {
     setCollapsedProjectIds((current) => {
       const next = new Set(current);
@@ -530,6 +532,7 @@ function Sidebar({
       } else {
         next.add(projectId);
       }
+      saveCollapsedProjectIds(next);
       return next;
     });
   }, []);
@@ -637,12 +640,7 @@ function saveCollapsedProjectIds(projectIds: Set<string>): void {
   if (typeof window === "undefined") {
     return;
   }
-
-  try {
-    window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([...projectIds]));
-  } catch {
-    // Sidebar disclosure state is a convenience only.
-  }
+  window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([...projectIds]));
 }
 
 function SessionPane({
@@ -769,6 +767,8 @@ function SessionConversation({
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
   const inputRef = useRef<HTMLInputElement | null>(null);
   const shouldRefocusInput = useRef(false);
+  // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
+  // gives ascending order for free without a per-tick string comparator pass.
   const conversationEvents = useMemo(
     () =>
       events
@@ -778,14 +778,14 @@ function SessionConversation({
             ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
             event.message !== "turn.completed"
         )
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+        .reverse(),
     [events]
   );
-  const terminalTranscript = useMemo(
-    () => buildTerminalTranscript(rawOutputs, session?.id ?? null),
-    [rawOutputs, session?.id]
-  );
   const hasAssistantEvents = conversationEvents.some((event) => event.type !== "user.message");
+  const terminalTranscript = useMemo(
+    () => (hasAssistantEvents ? "" : buildTerminalTranscript(rawOutputs, session?.id ?? null)),
+    [rawOutputs, session?.id, hasAssistantEvents]
+  );
   const latestUserMessageAt = conversationEvents
     .filter((event) => event.type === "user.message")
     .at(-1)?.createdAt ?? null;
@@ -975,7 +975,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
       setIsSummaryCollapsed(false);
     }
 
-    if (!workspace?.id || !window.maestro?.review?.listChangedFiles) {
+    if (!workspace?.id || !window.maestro) {
       setFiles([]);
       setFilesState("idle");
       setFilesError(null);
@@ -1017,7 +1017,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
 
   useEffect(() => {
     const token = ++diffLoadToken.current;
-    if (!workspace?.id || !selectedFilePath || !window.maestro?.review?.loadDiff) {
+    if (!workspace?.id || !selectedFilePath || !window.maestro) {
       setDiff(null);
       setDiffState("idle");
       setDiffError(null);
@@ -1828,63 +1828,71 @@ function visibleRawProviderLines(content: string): string[] {
 }
 
 function isHiddenRawProviderLine(line: string): boolean {
-  if (!line.startsWith("{")) {
-    return false;
-  }
-
-  try {
-    const payload = JSON.parse(line) as unknown;
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-      return false;
-    }
-
-    return typeof (payload as { type?: unknown }).type === "string";
-  } catch {
-    return false;
-  }
+  const record = tryParseJsonObject(line);
+  return record !== null && typeof record.type === "string";
 }
 
-function stripTerminalControls(value: string): string {
-  return value
-    .replace(oscSequencePattern, "")
-    .replace(csiSequencePattern, "")
-    .replace(escapeSequencePattern, "")
-    .replace(controlCharacterPattern, "");
+function mergeSlice<T extends { id: string }>(
+  current: T[],
+  updates: T[] | undefined,
+  sortBy: (item: T) => string,
+  limit?: number
+): T[] {
+  if (!updates) {
+    return current;
+  }
+  const merged = upsertById(current, updates);
+  if (merged === current) {
+    return current;
+  }
+  const sorted = sortByTimestamp(merged, sortBy);
+  return limit !== undefined ? sorted.slice(0, limit) : sorted;
 }
 
 function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
-  return {
-    projects: delta.projects ? sortProjects(upsertById(snapshot.projects, delta.projects)) : snapshot.projects,
-    workspaces: delta.workspaces
-      ? sortByTimestamp(upsertById(snapshot.workspaces, delta.workspaces), (workspace) => workspace.lastActivityAt)
-      : snapshot.workspaces,
-    sessions: delta.sessions
-      ? sortByTimestamp(upsertById(snapshot.sessions, delta.sessions), (session) => session.lastActivityAt)
-      : snapshot.sessions,
-    events: delta.events
-      ? sortByTimestamp(upsertById(snapshot.events, delta.events), (event) => event.createdAt).slice(0, 50)
-      : snapshot.events,
-    rawOutputs: delta.rawOutputs
-      ? sortByTimestamp(upsertById(snapshot.rawOutputs, delta.rawOutputs), (output) => output.createdAt).slice(0, 100)
-      : snapshot.rawOutputs,
-    approvals: delta.approvals
-      ? sortByTimestamp(upsertById(snapshot.approvals, delta.approvals), (approval) => approval.createdAt).slice(0, 200)
-      : snapshot.approvals,
-    checks: delta.checks
-      ? sortByTimestamp(upsertById(snapshot.checks, delta.checks), (check) => check.startedAt).slice(0, 200)
-      : snapshot.checks,
-    checkpoints: delta.checkpoints
-      ? sortByTimestamp(upsertById(snapshot.checkpoints, delta.checkpoints), (checkpoint) => checkpoint.createdAt).slice(0, 200)
-      : snapshot.checkpoints
-  };
+  const projects = delta.projects
+    ? (() => {
+        const merged = upsertById(snapshot.projects, delta.projects);
+        return merged === snapshot.projects ? snapshot.projects : sortProjects(merged);
+      })()
+    : snapshot.projects;
+  const workspaces = mergeSlice(snapshot.workspaces, delta.workspaces, (workspace) => workspace.lastActivityAt);
+  const sessions = mergeSlice(snapshot.sessions, delta.sessions, (session) => session.lastActivityAt);
+  const events = mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 50);
+  const rawOutputs = mergeSlice(snapshot.rawOutputs, delta.rawOutputs, (output) => output.createdAt, 100);
+  const approvals = mergeSlice(snapshot.approvals, delta.approvals, (approval) => approval.createdAt, 200);
+  const checks = mergeSlice(snapshot.checks, delta.checks, (check) => check.startedAt, 200);
+  const checkpoints = mergeSlice(snapshot.checkpoints, delta.checkpoints, (checkpoint) => checkpoint.createdAt, 200);
+
+  if (
+    projects === snapshot.projects &&
+    workspaces === snapshot.workspaces &&
+    sessions === snapshot.sessions &&
+    events === snapshot.events &&
+    rawOutputs === snapshot.rawOutputs &&
+    approvals === snapshot.approvals &&
+    checks === snapshot.checks &&
+    checkpoints === snapshot.checkpoints
+  ) {
+    return snapshot;
+  }
+
+  return { projects, workspaces, sessions, events, rawOutputs, approvals, checks, checkpoints };
 }
 
 function upsertById<T extends { id: string }>(current: T[], updates: T[]): T[] {
-  const byId = new Map(current.map((item) => [item.id, item]));
-  for (const item of updates) {
-    byId.set(item.id, item);
+  if (updates.length === 0) {
+    return current;
   }
-  return [...byId.values()];
+  const byId = new Map(current.map((item) => [item.id, item]));
+  let changed = false;
+  for (const item of updates) {
+    if (byId.get(item.id) !== item) {
+      changed = true;
+      byId.set(item.id, item);
+    }
+  }
+  return changed ? [...byId.values()] : current;
 }
 
 function mergeByCreatedAt<T extends { id: string; createdAt: string }>(

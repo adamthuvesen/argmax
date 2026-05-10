@@ -4,22 +4,14 @@ import { watch, type FSWatcher } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, sep } from "node:path";
 import { promisify } from "node:util";
-import { z } from "zod";
 import type { MaestroDatabase } from "../persistence/database.js";
 import type { WorkspaceSummary } from "../../shared/types.js";
+import { runGitText } from "../git/exec.js";
 
 const execFileAsync = promisify(execFile);
 
-const createWorkspaceInput = z.object({
-  projectId: z.string().min(1),
-  taskLabel: z.string().min(1),
-  baseRef: z.string().min(1).optional()
-});
-
-const currentWorkspaceInput = z.object({
-  projectId: z.string().min(1),
-  taskLabel: z.string().min(1)
-});
+/** Re-export for tests that exercise the timeout / maxBuffer / stderr-surfacing contract. */
+export const git = runGitText;
 
 export interface CreateWorkspaceInput {
   projectId: string;
@@ -47,8 +39,7 @@ export class WorkspaceService {
 
   constructor(private readonly database: MaestroDatabase) {}
 
-  async createIsolatedWorkspace(rawInput: CreateWorkspaceInput): Promise<WorkspaceSummary> {
-    const input = createWorkspaceInput.parse(rawInput);
+  async createIsolatedWorkspace(input: CreateWorkspaceInput): Promise<WorkspaceSummary> {
     const project = this.database.getProject(input.projectId);
     const baseRef = input.baseRef ?? project.defaultBranch ?? project.currentBranch;
 
@@ -78,7 +69,7 @@ export class WorkspaceService {
 
     // Pre-flight: detect branch-name collision early so the error message
     // tells the user what to retry instead of relying on git's terse output.
-    const branchExists = await git(project.repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`])
+    const branchExists = await runGitText(project.repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`])
       .then(() => true)
       .catch(() => false);
     if (branchExists) {
@@ -92,7 +83,7 @@ export class WorkspaceService {
       // `--` separates flags from positional pathspec/ref args. `worktree add`
       // does not strictly require it, but we keep the convention so a future
       // refactor cannot accidentally let a `-`-prefixed argument become a flag.
-      await git(project.repoPath, ["worktree", "add", "-b", branch, worktreePath, baseRef]);
+      await runGitText(project.repoPath, ["worktree", "add", "-b", branch, worktreePath, baseRef]);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unknown git error";
       throw new WorkspaceError(`Could not create worktree for ${branch}. ${detail}`, "Choose another base ref or branch name and retry.");
@@ -112,8 +103,7 @@ export class WorkspaceService {
     });
   }
 
-  createCurrentWorkspaceSession(rawInput: CurrentWorkspaceInput): WorkspaceSummary {
-    const input = currentWorkspaceInput.parse(rawInput);
+  createCurrentWorkspaceSession(input: CurrentWorkspaceInput): WorkspaceSummary {
     const project = this.database.getProject(input.projectId);
 
     return this.database.persistWorkspace({
@@ -150,7 +140,7 @@ export class WorkspaceService {
       // Re-check porcelain immediately before remove to close the TOCTOU
       // window between refreshGitStatus and worktree remove. A file added
       // between the two calls would otherwise be lost.
-      const recheck = await git(workspace.path, ["status", "--porcelain"]);
+      const recheck = await runGitText(workspace.path, ["status", "--porcelain"]);
       if (recheck.trim().length > 0) {
         this.closeWatcher(workspaceId);
         return this.database.updateWorkspaceState(workspaceId, "kept");
@@ -161,7 +151,7 @@ export class WorkspaceService {
       this.closeWatcher(workspaceId);
 
       try {
-        await git(project.repoPath, ["worktree", "remove", workspace.path]);
+        await runGitText(project.repoPath, ["worktree", "remove", workspace.path]);
       } catch (error) {
         const detail = error instanceof Error ? error.message : "Unknown git error";
         throw new WorkspaceError(`Could not archive clean worktree. ${detail}`, "Review the worktree and retry archive.");
@@ -175,8 +165,8 @@ export class WorkspaceService {
 
   async refreshGitStatus(workspaceId: string): Promise<WorkspaceSummary> {
     const workspace = this.database.getWorkspace(workspaceId);
-    const branch = (await git(workspace.path, ["branch", "--show-current"])).trim() || workspace.branch;
-    const porcelain = await git(workspace.path, ["status", "--porcelain"]);
+    const branch = (await runGitText(workspace.path, ["branch", "--show-current"])).trim() || workspace.branch;
+    const porcelain = await runGitText(workspace.path, ["status", "--porcelain"]);
     const changedFiles = porcelain
       .split("\n")
       .map((line) => line.trim())
@@ -251,37 +241,6 @@ export class WorkspaceService {
   }
 }
 
-/**
- * Run a git invocation with a bounded timeout and buffer ceiling. Exported
- * for unit tests that exercise the timeout / maxBuffer / stderr-surfacing
- * contract directly. Production callers stay inside this module.
- */
-export async function git(cwd: string, args: string[]): Promise<string> {
-  // Bounded so a runaway git invocation cannot stall the IPC handler
-  // indefinitely. 64 MiB matches the largest realistic `git diff` we expect
-  // to see for review; checkpointService uses 256 MiB for binary diffs.
-  try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
-      timeout: 30_000,
-      maxBuffer: 64 * 1024 * 1024,
-      encoding: "utf8"
-    });
-    return stdout;
-  } catch (error) {
-    const stderrText = extractStderr(error);
-    throw new Error(`git failed: ${stderrText.slice(0, 4096)}`);
-  }
-}
-
-function extractStderr(error: unknown): string {
-  if (error && typeof error === "object" && "stderr" in error) {
-    const stderr = (error as { stderr?: unknown }).stderr;
-    if (typeof stderr === "string") return stderr;
-    if (Buffer.isBuffer(stderr)) return stderr.toString("utf8");
-  }
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 async function assertWorktreeLocationContained(repoPath: string, worktreeLocation: string): Promise<void> {
   if (!isAbsolute(worktreeLocation)) {

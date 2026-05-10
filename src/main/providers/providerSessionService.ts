@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import type { MaestroDatabase, PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
-import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
+import { PROVIDER_MODEL_DEFAULTS, type ReasoningEffort } from "../../shared/providerModels.js";
+import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type {
   DashboardDelta,
   LaunchProviderSessionInput,
@@ -14,24 +14,11 @@ import { getProviderAdapter } from "./providerAdapters.js";
 import { normalizeProviderEvent } from "./providerEventNormalizer.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 
-const launchProviderSessionInput = z.object({
-  workspaceId: z.string().min(1),
-  provider: z.enum(["claude", "codex"]),
-  prompt: z.string().min(1),
-  modelLabel: z.string().min(1),
-  modelId: z.string().min(1),
-  reasoningEffort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
-  cols: z.number().int().min(20).max(400),
-  rows: z.number().int().min(5).max(200)
-});
-
-const providerModelSelectionInput = z.object({
-  modelLabel: z.string().min(1),
-  modelId: z.string().min(1),
-  reasoningEffort: z.enum(["low", "medium", "high", "xhigh"]).optional()
-});
-
-type FollowUpModelSelection = z.infer<typeof providerModelSelectionInput>;
+interface FollowUpModelSelection {
+  modelLabel: string;
+  modelId: string;
+  reasoningEffort?: ReasoningEffort;
+}
 
 interface PendingOp {
   kind: "send" | "resize" | "terminate";
@@ -101,8 +88,7 @@ export class ProviderSessionService {
     private readonly publishDelta: (delta: DashboardDelta) => void = () => undefined
   ) {}
 
-  async launch(rawInput: LaunchProviderSessionInput): Promise<SessionSummary> {
-    const input = launchProviderSessionInput.parse(rawInput);
+  async launch(input: LaunchProviderSessionInput): Promise<SessionSummary> {
     const workspace = this.database.getWorkspace(input.workspaceId);
     const sessionId = randomUUID();
 
@@ -198,41 +184,24 @@ export class ProviderSessionService {
       this.handles.delete(sessionId);
       pending.rejected = true;
       pending.ops.length = 0;
-      this.deleteBuffer(sessionId);
-      const message = error instanceof Error ? error.message : "Provider launch failed.";
-      const failedSession = this.database.updateSessionState(sessionId, {
-        state: "failed",
-        attention: computeSessionAttention({ state: "failed" }),
-        completedAt: new Date().toISOString()
-      });
-      const failedWorkspace = this.database.updateWorkspaceState(workspace.id, "failed");
-      const errorEvent = this.database.persistTimelineEvent({
-        id: randomUUID(),
+      this.recordLaunchFailure({
         sessionId,
-        type: "error",
-        message,
-        payload: {
-          provider: input.provider
-        }
-      });
-      this.publishDashboardDelta({
-        projects: this.database.listProjects(),
-        workspaces: [failedWorkspace],
-        sessions: [failedSession],
-        events: [errorEvent]
+        workspaceId: workspace.id,
+        provider: input.provider,
+        error,
+        fallbackMessage: "Provider launch failed."
       });
       throw error;
     }
   }
 
-  async sendInput(sessionId: string, input: string, rawModelSelection?: FollowUpModelSelection): Promise<void> {
+  async sendInput(sessionId: string, input: string, modelSelection?: FollowUpModelSelection): Promise<void> {
     const message = input.replace(/\r?\n$/, "").trim();
     if (!message) {
       return;
     }
 
     let session = this.database.getSession(sessionId);
-    const modelSelection = rawModelSelection ? providerModelSelectionInput.parse(rawModelSelection) : null;
     const workspace = this.database.getWorkspace(session.workspaceId);
     const liveHandle = this.getLiveHandle(sessionId);
     if (liveHandle) {
@@ -252,10 +221,7 @@ export class ProviderSessionService {
       }
     });
     if (liveHandle) {
-      this.publishDashboardDelta({
-        projects: this.database.listProjects(),
-        events: [userMessage]
-      });
+      this.publishDashboardDelta({ events: [userMessage] });
       return;
     }
 
@@ -314,31 +280,47 @@ export class ProviderSessionService {
       this.handles.delete(sessionId);
       pending.rejected = true;
       pending.ops.length = 0;
-      this.deleteBuffer(sessionId);
-      const detail = error instanceof Error ? error.message : "Provider input failed.";
-      const failedSession = this.database.updateSessionState(sessionId, {
-        state: "failed",
-        attention: computeSessionAttention({ state: "failed" }),
-        completedAt: new Date().toISOString()
-      });
-      const failedWorkspace = this.database.updateWorkspaceState(workspace.id, "failed");
-      const errorEvent = this.database.persistTimelineEvent({
-        id: randomUUID(),
+      this.recordLaunchFailure({
         sessionId,
-        type: "error",
-        message: detail,
-        payload: {
-          provider: session.provider
-        }
-      });
-      this.publishDashboardDelta({
-        projects: this.database.listProjects(),
-        workspaces: [failedWorkspace],
-        sessions: [failedSession],
-        events: [errorEvent]
+        workspaceId: workspace.id,
+        provider: session.provider,
+        error,
+        fallbackMessage: "Provider input failed."
       });
       throw error;
     }
+  }
+
+  private recordLaunchFailure(args: {
+    sessionId: string;
+    workspaceId: string;
+    provider: ProviderId;
+    error: unknown;
+    fallbackMessage: string;
+  }): void {
+    this.deleteBuffer(args.sessionId);
+    const message = args.error instanceof Error ? args.error.message : args.fallbackMessage;
+    const failedSession = this.database.updateSessionState(args.sessionId, {
+      state: "failed",
+      attention: computeSessionAttention({ state: "failed" }),
+      completedAt: new Date().toISOString()
+    });
+    const failedWorkspace = this.database.updateWorkspaceState(args.workspaceId, "failed");
+    const errorEvent = this.database.persistTimelineEvent({
+      id: randomUUID(),
+      sessionId: args.sessionId,
+      type: "error",
+      message,
+      payload: {
+        provider: args.provider
+      }
+    });
+    this.publishDashboardDelta({
+      projects: this.database.listProjects(),
+      workspaces: [failedWorkspace],
+      sessions: [failedSession],
+      events: [errorEvent]
+    });
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
@@ -720,7 +702,6 @@ export class ProviderSessionService {
     persist();
     sessionState.lastFlushAt = Date.now();
     this.publishDashboardDelta({
-      projects: this.database.listProjects(),
       ...(sessionUpdate ? { sessions: [sessionUpdate] } : {}),
       ...(persistedEvents.length > 0 ? { events: persistedEvents } : {}),
       ...(rawOutputs.length > 0 ? { rawOutputs } : {})
@@ -768,21 +749,12 @@ function extractProviderConversationId(content: string, provider: ProviderId): s
   }
 
   for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line.startsWith("{")) {
+    const record = tryParseJsonObject(rawLine.trim());
+    if (!record) {
       continue;
     }
-    try {
-      const payload = JSON.parse(line) as unknown;
-      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-        continue;
-      }
-      const record = payload as Record<string, unknown>;
-      if (record.type === "thread.started" && typeof record.thread_id === "string" && record.thread_id.length > 0) {
-        return record.thread_id;
-      }
-    } catch {
-      /* not JSON */
+    if (record.type === "thread.started" && typeof record.thread_id === "string" && record.thread_id.length > 0) {
+      return record.thread_id;
     }
   }
 

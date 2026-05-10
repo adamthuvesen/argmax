@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { MaestroDatabase } from "../persistence/database.js";
 import type { CheckRun } from "../../shared/types.js";
+import { scheduleSigkillEscalation } from "../processControl.js";
 
 export interface RunWorkspaceCheckInput {
   workspaceId: string;
@@ -82,22 +83,13 @@ export class CheckService {
 
       const killTree = (): void => {
         if (typeof child.pid !== "number") return;
-        try {
-          // Negative pid signals the entire process group created by
-          // detached: true. SIGTERM first; if the tree is still alive 2 s
-          // later, escalate to SIGKILL to defeat children that ignore TERM.
-          process.kill(-child.pid, "SIGTERM");
-        } catch {
-          /* group already gone */
-        }
-        setTimeout(() => {
-          if (typeof child.pid !== "number") return;
-          try {
-            process.kill(-child.pid, "SIGKILL");
-          } catch {
-            /* group already gone */
-          }
-        }, 2_000).unref();
+        const pid = child.pid;
+        // Negative pid signals the entire process group created by detached: true.
+        // SIGTERM first; SIGKILL after a 2s grace period to defeat children that ignore TERM.
+        scheduleSigkillEscalation(
+          () => process.kill(-pid, "SIGTERM"),
+          () => process.kill(-pid, "SIGKILL")
+        );
       };
 
       const onAbort = (): void => {

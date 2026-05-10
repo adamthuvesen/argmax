@@ -20,8 +20,8 @@ import { z } from "zod";
 // Shared building blocks
 // ---------------------------------------------------------------------------
 
-const providerIdSchema = z.enum(["claude", "codex"]);
-const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
+export const providerIdSchema = z.enum(["claude", "codex"]);
+export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
 
 const projectSettingsSchema = z.object({
   defaultProvider: providerIdSchema,
@@ -221,6 +221,8 @@ export type IpcChannel = keyof typeof ipcSchemas;
 export type IpcSchemaMap = typeof ipcSchemas;
 
 export type IpcInput<C extends IpcChannel> = z.infer<IpcSchemaMap[C]>;
+
+export const IPC_CHANNELS: readonly IpcChannel[] = Object.keys(ipcSchemas) as IpcChannel[];
 
 // Inferred input type aliases — convenient for handler signatures.
 export type RegisterProjectInputParsed = z.infer<typeof registerProjectInputSchema>;

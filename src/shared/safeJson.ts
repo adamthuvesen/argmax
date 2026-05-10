@@ -2,7 +2,7 @@
  * Safe JSON parsing helpers used to tolerate malformed JSON in stored DB
  * columns and other untrusted strings without crashing the surrounding
  * pipeline. Designed for the dashboard read path where one corrupt row
- * should not blow up the whole snapshot (audit refs H13, M7).
+ * should not blow up the whole snapshot.
  *
  * Shape narrowing is the caller's responsibility: `safeJsonParse` does not
  * validate that the parsed value matches T. Use `safeJsonParseArray` /
@@ -78,4 +78,24 @@ export function safeJsonParseRecord(
     return parsed as Record<string, unknown>;
   }
   return {};
+}
+
+/**
+ * Tries to parse a single line as a JSON object without warning on failure.
+ * Returns null when the line isn't `{`-prefixed, fails to parse, or parses
+ * to a non-object value. Used by streaming parsers that mix JSON and plain
+ * text lines and don't want warnings on every non-JSON line.
+ */
+export function tryParseJsonObject(line: string): Record<string, unknown> | null {
+  if (!line.startsWith("{")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(line) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }

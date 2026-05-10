@@ -353,15 +353,14 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
   runMigrations(connection);
   // Default `seed` to false: the developer's existing local DB at
   // getDatabasePath() must not be repopulated with demo rows on every
-  // launch (audit H4). Test callers that need seeded data pass
-  // `{ seed: true }` explicitly.
+  // launch. Test callers that need seeded data pass `{ seed: true }` explicitly.
   if (options.seed ?? false) {
     seedDemoData(connection);
   }
 
   // One-shot + daily prune of `raw_outputs` rows older than 7 days. The
   // dashboard read path slices the latest 100 rows; older rows are dead
-  // weight and grow unboundedly without this (audit H34, H16).
+  // weight and grow unboundedly without this.
   const pruneRawOutputs = (): void => {
     try {
       connection
@@ -428,7 +427,7 @@ function parseJsonRecord(value: string, context = "database.parseJsonRecord"): R
 function listProjects(connection: Database.Database): ProjectSummary[] {
   // Two LEFT JOIN subqueries — one over `workspaces`, one over `sessions
   // JOIN workspaces` — so workspace counts are not multiplied by the
-  // number of sessions per workspace (audit H9). Each subquery is grouped
+  // number of sessions per workspace. Each subquery is grouped
   // independently and the planner can pick its own index.
   const rows = connection
     .prepare(
@@ -993,8 +992,8 @@ function workspaceRowToSummary(row: WorkspaceRow): WorkspaceSummary {
     baseRef: row.base_ref,
     path: row.path,
     state: row.state,
-    // Strict equality on the 0/1 tinyint column (audit M5). The v3 migration
-    // adds CHECK (col IN (0,1)) but historic rows might still hold 2 — refuse
+    // Strict equality on the 0/1 tinyint column. The v3 migration adds
+    // CHECK (col IN (0,1)) but historic rows might still hold 2 — refuse
     // to coerce a stray value into `true`.
     sharedWorkspace: row.shared_workspace === 1,
     dirty: row.dirty === 1,
@@ -1224,9 +1223,9 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     connection.prepare("SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT 100").all() as RawOutputRow[]
   ).map(rawOutputRowToProviderOutput);
 
-  // Cap dashboard reads at 200 rows for approvals/checks/checkpoints
-  // (audit M6). Older rows remain in storage; pagination ships separately
-  // via dedicated handlers when needed.
+  // Cap dashboard reads at 200 rows for approvals/checks/checkpoints.
+  // Older rows remain in storage; pagination ships separately via dedicated
+  // handlers when needed.
   const approvals = listApprovals(connection);
 
   return {
@@ -1335,7 +1334,7 @@ function maxRowCursor(rows: Array<{ row_cursor?: number }>, fallback: number): n
  * it is GC'd when the connection is closed. The version counter is bumped
  * by `selectPreferredAttempt` after it writes a new preference; cache
  * consumers compare against the latest version before returning the
- * memoized set. See file-level docstring for context (audit H11).
+ * memoized set. See file-level docstring for context.
  */
 interface PreferredCacheEntry {
   version: number;
@@ -1380,8 +1379,8 @@ function selectPreferredAttempt(connection: Database.Database, sessionId: string
 
     // Re-read with preferred recomputed; returned session reflects the
     // just-written preferred state without relying on a `{ ...session,
-    // preferred: true }` overlay (audit H12 — concurrent calls would
-    // otherwise interleave and produce stale snapshots).
+    // preferred: true }` overlay — concurrent calls would otherwise
+    // interleave and produce stale snapshots.
     return findSessionById(connection, sessionId);
   })();
 }

@@ -3,29 +3,12 @@ import { randomUUID } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { z } from "zod";
 import type { MaestroDatabase } from "../persistence/database.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
 import type { ProjectSettings, ProjectSummary, RegisterProjectInput, UpdateProjectSettingsInput } from "../../shared/types.js";
+import { runGitMaybe, runGitText } from "../git/exec.js";
 
 const execFileAsync = promisify(execFile);
-
-const registerProjectInput = z.object({
-  repoPath: z.string().min(1)
-});
-
-const projectSettingsInput = z.object({
-  defaultProvider: z.enum(["claude", "codex"]),
-  defaultModelLabel: z.string().min(1),
-  worktreeLocation: z.string().min(1),
-  setupCommand: z.string(),
-  checkCommands: z.array(z.string().min(1))
-});
-
-const updateProjectSettingsInput = z.object({
-  projectId: z.string().min(1),
-  settings: projectSettingsInput
-});
 
 interface GitMetadata {
   repoPath: string;
@@ -43,8 +26,7 @@ export class ProjectRegistrationError extends Error {
 export class ProjectService {
   constructor(private readonly database: MaestroDatabase) {}
 
-  async registerProject(rawInput: RegisterProjectInput): Promise<ProjectSummary> {
-    const input = registerProjectInput.parse(rawInput);
+  async registerProject(input: RegisterProjectInput): Promise<ProjectSummary> {
     const canonicalPath = await canonicalizeRepoPath(input.repoPath);
     const metadata = await readGitMetadata(canonicalPath);
     // Validate baseRef-style refs at registration: catches ref strings the
@@ -65,8 +47,7 @@ export class ProjectService {
     });
   }
 
-  updateSettings(rawInput: UpdateProjectSettingsInput): ProjectSummary {
-    const input = updateProjectSettingsInput.parse(rawInput);
+  updateSettings(input: UpdateProjectSettingsInput): ProjectSummary {
     return this.database.updateProjectSettings(input.projectId, input.settings);
   }
 }
@@ -115,8 +96,8 @@ async function assertValidRefName(repoPath: string, ref: string): Promise<void> 
 
 async function readGitMetadata(candidatePath: string): Promise<GitMetadata> {
   try {
-    const root = (await git(candidatePath, ["rev-parse", "--show-toplevel"])).trim();
-    const currentBranch = (await git(root, ["branch", "--show-current"])).trim() || "HEAD";
+    const root = (await runGitText(candidatePath, ["rev-parse", "--show-toplevel"])).trim();
+    const currentBranch = (await runGitText(root, ["branch", "--show-current"])).trim() || "HEAD";
     const defaultBranch = await discoverDefaultBranch(root, currentBranch);
 
     return {
@@ -131,32 +112,19 @@ async function readGitMetadata(candidatePath: string): Promise<GitMetadata> {
 }
 
 async function discoverDefaultBranch(repoPath: string, currentBranch: string): Promise<string | null> {
-  const originHead = await gitMaybe(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+  const originHead = await runGitMaybe(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
   if (originHead) {
     return originHead.replace(/^origin\//, "");
   }
 
   for (const branch of ["main", "master", "trunk"]) {
-    const exists = await gitMaybe(repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
+    const exists = await runGitMaybe(repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
     if (exists !== null) {
       return branch;
     }
   }
 
   return currentBranch === "HEAD" ? null : currentBranch;
-}
-
-async function git(repoPath: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", ["-C", repoPath, ...args]);
-  return stdout;
-}
-
-async function gitMaybe(repoPath: string, args: string[]): Promise<string | null> {
-  try {
-    return await git(repoPath, args);
-  } catch {
-    return null;
-  }
 }
 
 function defaultSettings(repoPath: string): ProjectSettings {

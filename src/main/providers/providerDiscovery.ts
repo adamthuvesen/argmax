@@ -41,10 +41,14 @@ const providerDefinitions: ProviderDefinition[] = [
   }
 ];
 
+const discoveryCache = new WeakMap<ProviderDiscoveryRunner, Map<ProviderId, Promise<ProviderCapabilityReport>>>();
+
 export async function discoverProviders(
   runner: ProviderDiscoveryRunner = defaultDiscoveryRunner
 ): Promise<ProviderCapabilityReport[]> {
-  return Promise.all(providerDefinitions.map((definition) => discoverProvider(definition, runner)));
+  // Explicit-discovery entry point (used by the providers:discover IPC) refreshes the cache.
+  discoveryCache.delete(runner);
+  return Promise.all(providerDefinitions.map((definition) => discoverProviderById(definition.id, runner)));
 }
 
 export async function discoverProviderById(
@@ -56,7 +60,22 @@ export async function discoverProviderById(
     throw new Error(`Unknown provider: ${providerId}`);
   }
 
-  return discoverProvider(definition, runner);
+  let cache = discoveryCache.get(runner);
+  if (!cache) {
+    cache = new Map();
+    discoveryCache.set(runner, cache);
+  }
+  const cached = cache.get(providerId);
+  if (cached) {
+    return cached;
+  }
+  const cacheRef = cache;
+  const inflight = discoverProvider(definition, runner).catch((error) => {
+    cacheRef.delete(providerId);
+    throw error;
+  });
+  cacheRef.set(providerId, inflight);
+  return inflight;
 }
 
 async function discoverProvider(

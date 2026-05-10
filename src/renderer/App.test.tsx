@@ -562,6 +562,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     expect(await screen.findByLabelText("Thinking")).toBeInTheDocument();
+    expect(screen.getByTestId("command-stream")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Waiting for agent")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Send a follow-up")).not.toBeInTheDocument();
   });
@@ -573,6 +574,52 @@ describe("App", () => {
 
     expect(await screen.findByText("Dashboard ready.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-stream")).not.toBeInTheDocument();
+  });
+
+  it("shows a thinking indicator for a follow-up turn after earlier assistant output", async () => {
+    const followUpEvent: DashboardSnapshot["events"][number] = {
+      id: "event-follow-up",
+      sessionId: "session-1",
+      type: "user.message",
+      message: "very good!",
+      payload: { source: "composer" },
+      createdAt: "2026-05-08T15:55:00.000Z"
+    };
+    const oldRawOutput: DashboardSnapshot["rawOutputs"][number] = {
+      id: "raw-old",
+      sessionId: "session-1",
+      stream: "stdout",
+      content: "old output\n",
+      createdAt: "2026-05-08T15:54:30.000Z"
+    };
+    const rawOutputAfterFollowUp: DashboardSnapshot["rawOutputs"][number] = {
+      id: "raw-after-follow-up",
+      sessionId: "session-1",
+      stream: "stdout",
+      content: '{"type":"turn.started"}\n',
+      createdAt: "2026-05-08T15:55:01.000Z"
+    };
+    dashboardLoad.mockResolvedValue({
+      ...snapshot,
+      rawOutputs: [oldRawOutput, rawOutputAfterFollowUp],
+      events: [...snapshot.events, followUpEvent]
+    });
+    sessionEventsSince.mockResolvedValue({
+      events: [...snapshot.events, followUpEvent],
+      rawOutputs: [oldRawOutput, rawOutputAfterFollowUp],
+      eventCursor: 2,
+      rawOutputCursor: 2
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByText("Dashboard ready.")).toBeInTheDocument();
+    expect(screen.getByText("very good!")).toBeInTheDocument();
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    expect(screen.getByTestId("command-stream")).toBeInTheDocument();
   });
 
   it("sends follow-up prompts to the selected live session", async () => {

@@ -22,6 +22,8 @@ import type {
   SelectPreferredAttemptInput,
   SessionEventsSinceInput,
   SessionEventsSinceResult,
+  SkillsListInput,
+  SkillSummary,
   WorkspaceDiff,
   WorkspaceStatusInput,
   WorkspaceStatusSnapshot,
@@ -100,6 +102,9 @@ const api: MaestroApi = {
   },
   health: {
     ping: () => ipcRenderer.invoke("health:ping") as Promise<{ ok: true; timestamp: string }>
+  },
+  skills: {
+    list: (input: SkillsListInput) => ipcRenderer.invoke("skills:list", input) as Promise<SkillSummary[]>
   }
 };
 

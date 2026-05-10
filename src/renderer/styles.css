@@ -1312,6 +1312,64 @@ button {
   font-size: 14px;
 }
 
+.session-input-field {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.session-input-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.skill-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  z-index: 30;
+}
+
+.skill-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.skill-option.is-selected,
+.skill-option[aria-selected="true"] {
+  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+}
+
+.skill-option-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.skill-option-description {
+  color: var(--text-soft, #6a6a6a);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .session-input input::placeholder {
   color: #a9a59a;
 }

@@ -632,7 +632,8 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
-    fireEvent.change(await screen.findByLabelText("Session prompt"), {
+    const input = await screen.findByLabelText("Session prompt");
+    fireEvent.change(input, {
       target: { value: "continue with tests" }
     });
     fireEvent.click(screen.getByTitle("Send follow-up"));
@@ -643,6 +644,9 @@ describe("App", () => {
         input: "continue with tests\r"
       })
     );
+    expect(createCurrentWorkspace).not.toHaveBeenCalled();
+    expect(launchProvider).not.toHaveBeenCalled();
+    await waitFor(() => expect(input).toHaveFocus());
   });
 
   it("submits the composer on Enter without reloading the page", async () => {

@@ -95,7 +95,7 @@ describe("provider PTY adapters", () => {
     expect(handle?.provider).toBe("claude");
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/claude' '--model' 'haiku'"],
+      args: ["-lc", "exec '/usr/local/bin/claude' '--model' 'haiku' '--permission-mode' 'bypassPermissions'"],
       cwd: "/repo/worktree",
       cols: 100,
       rows: 30
@@ -145,7 +145,10 @@ describe("provider PTY adapters", () => {
 
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/codex' '--model' 'gpt-5.3-codex-spark' '-c' 'model_reasoning_effort=\"low\"'"],
+      args: [
+        "-lc",
+        "exec '/usr/local/bin/codex' '--model' 'gpt-5.3-codex-spark' '-c' 'model_reasoning_effort=\"low\"' '--dangerously-bypass-approvals-and-sandbox'"
+      ],
       cwd: "/repo/worktree"
     });
   });
@@ -188,7 +191,19 @@ describe("provider PTY adapters", () => {
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/claude",
-      args: ["-p", "--model", "haiku", "--output-format", "stream-json", "--verbose", "Implement the task"],
+      args: [
+        "-p",
+        "--permission-mode",
+        "bypassPermissions",
+        "--model",
+        "haiku",
+        "--session-id",
+        "session-1",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "Implement the task"
+      ],
       cwd: "/repo/worktree"
     });
     expect(processes[0].stdin.writableEnded).toBe(true);
@@ -212,6 +227,7 @@ describe("provider PTY adapters", () => {
         "exec",
         "--json",
         "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
         "--model",
         "gpt-5.3-codex-spark",
         "-c",
@@ -224,6 +240,61 @@ describe("provider PTY adapters", () => {
     expect(processes[0].stdin.writableEnded).toBe(true);
     expect(events[0]).toMatchObject({ type: "output", stream: "stderr", message: "warning\n" });
     expect(events[1]).toMatchObject({ type: "error", exitCode: 1 });
+  });
+
+  it("resumes Claude structured sessions with the provider conversation id", async () => {
+    const { adapters, processSpawnCalls } = createTestAdapters();
+
+    await adapters.get("claude")?.launch(
+      { ...launchInput("claude"), mode: "structured-json", resumeConversationId: "claude-session-1" },
+      () => undefined
+    );
+
+    expect(processSpawnCalls[0]).toMatchObject({
+      file: "/usr/local/bin/claude",
+      args: [
+        "-p",
+        "--resume",
+        "claude-session-1",
+        "--permission-mode",
+        "bypassPermissions",
+        "--model",
+        "haiku",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "Implement the task"
+      ],
+      cwd: "/repo/worktree"
+    });
+  });
+
+  it("resumes Codex structured sessions with the provider conversation id", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+
+    await adapters.get("codex")?.launch(
+      { ...launchInput("codex"), mode: "structured-json", resumeConversationId: "thread-1" },
+      () => undefined
+    );
+
+    expect(processSpawnCalls[0]).toMatchObject({
+      file: "/usr/local/bin/codex",
+      args: [
+        "exec",
+        "resume",
+        "--json",
+        "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.3-codex-spark",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        "thread-1",
+        "-"
+      ],
+      cwd: "/repo/worktree"
+    });
+    expect(String(processes[0].stdin.read())).toBe("Implement the task");
   });
 });
 

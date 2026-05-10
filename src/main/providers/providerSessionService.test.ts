@@ -259,12 +259,21 @@ describe("ProviderSessionService", () => {
     await expect(service.sendInput(session.id, "too soon\r")).rejects.toThrow("Wait for the current response");
     fakeProvider.emit({
       sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: '{"type":"thread.started","thread_id":"thread-1"}\n',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
       type: "exit",
       stream: "system",
       message: "Codex structured probe exited with code 0.",
       exitCode: 0,
       createdAt: "2026-05-08T16:01:00.000Z"
     });
+    expect(database.getSession(session.id).providerConversationId).toBe("thread-1");
+
     await service.sendInput(session.id, "yes\r");
 
     expect(fakeProvider.sentInput).toEqual([]);
@@ -272,6 +281,7 @@ describe("ProviderSessionService", () => {
       prompt: "yes",
       modelId: "gpt-5.3-codex-spark",
       reasoningEffort: "low",
+      resumeConversationId: "thread-1",
       mode: "structured-json"
     });
     expect(database.loadDashboard().events).toContainEqual(
@@ -281,6 +291,48 @@ describe("ProviderSessionService", () => {
         message: "yes"
       })
     );
+
+    database.connection.close();
+  });
+
+  it("resumes Claude follow-up prompts using the Maestro session id", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("claude");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "claude",
+      prompt: "Ship the board",
+      modelLabel: "Claude Haiku",
+      modelId: "haiku",
+      cols: 80,
+      rows: 24
+    });
+
+    expect(session.providerConversationId).toBe(session.id);
+    expect(fakeProvider.launchInput).toMatchObject({
+      resumeConversationId: undefined,
+      mode: "structured-json"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Claude Code structured probe exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:01:00.000Z"
+    });
+
+    await service.sendInput(session.id, "what did you write?\r");
+
+    expect(fakeProvider.launchInput).toMatchObject({
+      prompt: "what did you write?",
+      modelId: "haiku",
+      resumeConversationId: session.id,
+      mode: "structured-json"
+    });
 
     database.connection.close();
   });

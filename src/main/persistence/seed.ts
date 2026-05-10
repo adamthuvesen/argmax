@@ -44,10 +44,10 @@ export function seedDemoData(database: Database.Database): void {
 
   const insertSession = database.prepare(`
     INSERT INTO sessions (
-      id, workspace_id, provider, model_label, prompt, state, attention,
+      id, workspace_id, provider, model_label, provider_conversation_id, prompt, state, attention,
       started_at, completed_at, last_activity_at
     ) VALUES (
-      @id, @workspaceId, @provider, @modelLabel, @prompt, @state, @attention,
+      @id, @workspaceId, @provider, @modelLabel, @providerConversationId, @prompt, @state, @attention,
       @startedAt, @completedAt, @lastActivityAt
     )
   `);
@@ -202,6 +202,7 @@ export function seedDemoData(database: Database.Database): void {
     for (const session of sessions) {
       insertSession.run({
         ...session,
+        providerConversationId: null,
         startedAt: "2026-05-08T15:30:00.000Z"
       });
     }

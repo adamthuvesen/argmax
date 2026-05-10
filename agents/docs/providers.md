@@ -20,10 +20,14 @@ Do not duplicate these labels, ids, reasoning values, or launch modes in rendere
 3. [providerSessionService.ts](../../src/main/providers/providerSessionService.ts) `launch()`:
    - Resolves the workspace's `path` and `branch`
    - Resolves launch mode from `PROVIDER_MODEL_DEFAULTS[input.provider].launchMode`
-   - Builds CLI args via the adapter's `interactiveArgs(input)` or `structuredArgs(input)`
+   - Builds CLI args via the adapter's `interactiveArgs(input)`, `structuredArgs(input)`, or `structuredResumeArgs(input, providerConversationId)`
    - Spawns either a PTY (`node-pty`) or a stdio child
    - Buffers output per stream, coalesces events, tracks activity timestamp
 4. Output is persisted as raw output and normalized timeline events; committed rows are pushed to the renderer as `dashboard:delta` events, and `session:eventsSince` provides selected-session cursor reconciliation
+
+## Follow-up turns
+
+Maestro chats are durable UI sessions; structured provider processes may still be one process per turn. To keep follow-up prompts inside the same native provider conversation, `sessions.provider_conversation_id` stores the provider's resume id. Claude structured launches set `--session-id <maestro session id>` and resume with `--resume <provider_conversation_id>`. Codex structured launches capture `thread.started.thread_id` from JSONL and resume with `codex exec resume <provider_conversation_id> --json`.
 
 ## Adding a provider
 
@@ -35,6 +39,7 @@ Append a `ProviderLaunchDefinition` to `providerDefinitions[]` in `providerAdapt
   displayName: "New Provider",
   binaryName: "new-provider-cli",
   structuredArgs: (input) => [...],   // for --json-style invocations
+  structuredResumeArgs: (input, resumeId) => [...], // for follow-up turns
   interactiveArgs: (input) => [...],  // for PTY-attached interactive runs
   structuredStdin: (input) => input.prompt   // optional, only if the binary reads prompt from stdin
 }
@@ -47,6 +52,10 @@ Then register a model in `PROVIDER_MODEL_DEFAULTS` in [src/shared/providerModels
 `modelId` is always passed via `--model`. Codex also accepts a reasoning-effort flag — `codexReasoningArgs(input)` builds it. Reasoning-effort union: `"low" | "medium" | "high" | "xhigh"` (matches the Codex CLI; do not invent values).
 
 `PROVIDER_MODEL_DEFAULTS` is the single source of truth — both the renderer launcher and seed/demo data should import it. Don't hardcode model labels like `"GPT-5.5 Medium"` or `"Claude Sonnet 4.6"` anywhere; reference the constant.
+
+## Permission defaults
+
+Maestro is a trusted, single-user local app, so provider sessions intentionally launch with full write and command permissions by default. Claude launches with `--permission-mode bypassPermissions`; Codex launches with `--dangerously-bypass-approvals-and-sandbox`. Keep these flags centralized in `providerAdapters.ts` so composer launches, follow-up launches, structured JSON runs, and PTY runs stay consistent.
 
 ## Rendering provider output
 

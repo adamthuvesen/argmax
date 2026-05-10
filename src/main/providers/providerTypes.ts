@@ -21,6 +21,7 @@ export interface ProviderLaunchInput {
   modelLabel: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+  resumeConversationId?: string;
   mode: ProviderMode;
   cols: number;
   rows: number;

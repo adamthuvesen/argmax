@@ -61,6 +61,8 @@ const SUGGESTION_CHIPS = [
   "Debug a test"
 ] as const;
 
+const collapsedProjectsStorageKey = "maestro.sidebar.collapsedProjects";
+
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
@@ -431,6 +433,7 @@ export function App(): JSX.Element {
               events={snapshot.events}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
+              project={selectedProject}
               rawOutputs={snapshot.rawOutputs}
               session={selectedSession}
               workspace={selectedWorkspace}
@@ -469,6 +472,24 @@ function Sidebar({
   selectedWorkspaceId: string | null;
   snapshot: DashboardSnapshot;
 }): JSX.Element {
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
+
+  useEffect(() => {
+    saveCollapsedProjectIds(collapsedProjectIds);
+  }, [collapsedProjectIds]);
+
+  const toggleProjectVisibility = useCallback((projectId: string): void => {
+    setCollapsedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }, []);
+
   return (
     <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
       <div className="window-controls">
@@ -487,38 +508,57 @@ function Sidebar({
             <Plus size={16} />
           </button>
         </div>
-        {snapshot.projects.map((project) => (
-          <div className="project-group" key={project.id}>
-            <button
-              aria-pressed={selectedProjectId === project.id && !selectedWorkspaceId}
-              className={selectedProjectId === project.id && !selectedWorkspaceId ? "project-name active" : "project-name"}
-              type="button"
-              onClick={() => {
-                onOpenProject(project.id);
-                onOpenLauncher();
-              }}
-            >
-              <Folder size={16} />
-              <span>{project.name}</span>
-            </button>
-            {snapshot.workspaces
-              .filter((workspace) => workspace.projectId === project.id)
-              .slice(0, 7)
-              .map((workspace) => (
+        {snapshot.projects.map((project) => {
+          const projectWorkspaces = snapshot.workspaces
+            .filter((workspace) => workspace.projectId === project.id)
+            .slice(0, 7);
+          const isCollapsed = collapsedProjectIds.has(project.id);
+          return (
+            <div className="project-group" data-collapsed={isCollapsed ? "true" : undefined} key={project.id}>
+              <div className="project-row">
                 <button
-                  aria-pressed={selectedWorkspaceId === workspace.id}
-                  className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
-                  data-status={workspace.state}
-                  key={workspace.id}
+                  aria-pressed={selectedProjectId === project.id && !selectedWorkspaceId}
+                  className={
+                    selectedProjectId === project.id && !selectedWorkspaceId ? "project-name active" : "project-name"
+                  }
                   type="button"
-                  onClick={() => onOpenWorkspaceChat(workspace.id)}
+                  onClick={() => {
+                    onOpenProject(project.id);
+                    onOpenLauncher();
+                  }}
                 >
-                  <span className="status-dot" aria-hidden="true" />
-                  <span>{workspace.taskLabel}</span>
+                  <Folder size={16} />
+                  <span>{project.name}</span>
                 </button>
-              ))}
-          </div>
-        ))}
+                <button
+                  aria-expanded={!isCollapsed}
+                  aria-label={`${isCollapsed ? "Show" : "Hide"} ${project.name} sessions`}
+                  className="project-visibility"
+                  title={`${isCollapsed ? "Show" : "Hide"} Sessions`}
+                  type="button"
+                  onClick={() => toggleProjectVisibility(project.id)}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+              {isCollapsed
+                ? null
+                : projectWorkspaces.map((workspace) => (
+                    <button
+                      aria-pressed={selectedWorkspaceId === workspace.id}
+                      className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
+                      data-status={workspace.state}
+                      key={workspace.id}
+                      type="button"
+                      onClick={() => onOpenWorkspaceChat(workspace.id)}
+                    >
+                      <span className="status-dot" aria-hidden="true" />
+                      <span>{workspace.taskLabel}</span>
+                    </button>
+                  ))}
+            </div>
+          );
+        })}
       </div>
 
       <div className="sidebar-footer">
@@ -533,11 +573,40 @@ function Sidebar({
   );
 }
 
+function loadCollapsedProjectIds(): Set<string> {
+  if (typeof window === "undefined") {
+    return new Set();
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(collapsedProjectsStorageKey);
+    const projectIds: unknown = rawValue ? JSON.parse(rawValue) : [];
+    return Array.isArray(projectIds) && projectIds.every((projectId) => typeof projectId === "string")
+      ? new Set(projectIds)
+      : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedProjectIds(projectIds: Set<string>): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([...projectIds]));
+  } catch {
+    // Sidebar disclosure state is a convenience only.
+  }
+}
+
 function SessionPane({
   approvals,
   events,
   onResolveApproval,
   onSendSessionInput,
+  project,
   rawOutputs,
   session,
   workspace
@@ -546,6 +615,7 @@ function SessionPane({
   events: TimelineEvent[];
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
+  project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
@@ -572,6 +642,7 @@ function SessionPane({
       <SessionConversation
         events={visibleEvents}
         onSendSessionInput={onSendSessionInput}
+        project={project}
         rawOutputs={rawOutputs}
         session={session}
         workspace={workspace}
@@ -629,12 +700,14 @@ function SessionPane({
 function SessionConversation({
   events,
   onSendSessionInput,
+  project,
   rawOutputs,
   session,
   workspace
 }: {
   events: TimelineEvent[];
   onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
+  project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
@@ -673,7 +746,7 @@ function SessionConversation({
         (session.provider === "codex" && session.state === "running"))
   );
   const isThinking = session?.state === "running" && !hasAssistantForLatestTurn;
-  const sessionTitle = workspace?.taskLabel ?? session?.prompt ?? "No session selected";
+  const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
   const sessionDetails = [
     session ? providerLabel(session.provider) : null,
     session?.modelLabel ?? null,
@@ -720,8 +793,8 @@ function SessionConversation({
     <section className="conversation-surface" aria-label="Session conversation">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Session</p>
-          <h2>{sessionTitle}</h2>
+          <p className="eyebrow">Repository</p>
+          <h2>{repositoryName}</h2>
           <div className="conversation-meta" aria-label="Session details">
             {sessionDetails.map((detail) => (
               <span key={detail}>{detail}</span>
@@ -968,6 +1041,11 @@ function titleFromPrompt(prompt: string): string {
 
 function providerLabel(provider: ProviderId): string {
   return provider === "codex" ? "Codex" : "Claude";
+}
+
+function repoNameFromPath(path: string | null | undefined): string | null {
+  const trimmedPath = path?.replace(/\/+$/, "") ?? "";
+  return trimmedPath.split("/").at(-1) || null;
 }
 
 /**

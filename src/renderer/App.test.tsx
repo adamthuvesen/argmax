@@ -100,6 +100,7 @@ describe("App", () => {
   let dashboardDeltaUnsubscribe: ReturnType<typeof vi.fn<() => void>>;
   let launchProvider: ReturnType<typeof vi.fn<MaestroApi["providers"]["launch"]>>;
   let approvalsPending: ReturnType<typeof vi.fn<MaestroApi["approvals"]["pending"]>>;
+  let pickProjectFolder: ReturnType<typeof vi.fn<MaestroApi["projects"]["pickFolder"]>>;
   let sessionEventsSince: ReturnType<typeof vi.fn<MaestroApi["session"]["eventsSince"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<MaestroApi["providers"]["sendInput"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["status"]>>;
@@ -118,6 +119,10 @@ describe("App", () => {
     dashboardDeltaUnsubscribe = vi.fn<() => void>();
     launchProvider = vi.fn<MaestroApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
     approvalsPending = vi.fn<MaestroApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
+    pickProjectFolder = vi.fn<MaestroApi["projects"]["pickFolder"]>().mockResolvedValue({
+      cancelled: false,
+      project: primaryProject()
+    });
     sessionEventsSince = vi.fn<MaestroApi["session"]["eventsSince"]>().mockResolvedValue({
       events: snapshot.events,
       rawOutputs: snapshot.rawOutputs,
@@ -138,6 +143,7 @@ describe("App", () => {
       },
       projects: {
         list: () => Promise.resolve(snapshot.projects),
+        pickFolder: pickProjectFolder,
         register: () => Promise.resolve(primaryProject()),
         updateSettings: () => Promise.resolve(primaryProject())
       },
@@ -405,6 +411,77 @@ describe("App", () => {
     );
   });
 
+  it("adds a second project, selects it, and launches from that project", async () => {
+    const dotfilesProject = secondProject();
+    const twoProjectSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      projects: [...snapshot.projects, dotfilesProject]
+    };
+    pickProjectFolder.mockResolvedValue({ cancelled: false, project: dotfilesProject });
+    dashboardLoad.mockResolvedValueOnce(snapshot).mockResolvedValue(twoProjectSnapshot);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
+
+    expect(await screen.findByRole("button", { name: "Dotfiles" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What should we build in dotfiles?" })).toBeInTheDocument();
+    expect(screen.getByText("Added Dotfiles.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Task prompt"), {
+      target: { value: "Update shell aliases" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(createCurrentWorkspace).toHaveBeenCalledWith({
+        projectId: "project-2",
+        taskLabel: "Update shell aliases"
+      })
+    );
+  });
+
+  it("leaves state unchanged when folder selection is cancelled", async () => {
+    pickProjectFolder.mockResolvedValue({ cancelled: true });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
+
+    await waitFor(() => expect(pickProjectFolder).toHaveBeenCalledTimes(1));
+    expect(dashboardLoad).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+  });
+
+  it("shows a clear error when folder registration fails", async () => {
+    pickProjectFolder.mockRejectedValue(new Error("Maestro requires a local git repository."));
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Maestro requires a local git repository.");
+    expect(screen.getByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+  });
+
+  it("offers Add Project before any projects are registered", async () => {
+    dashboardLoad.mockResolvedValue({
+      ...snapshot,
+      projects: [],
+      workspaces: [],
+      sessions: [],
+      events: []
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Add a project to start" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Add Project" })).toHaveLength(2);
+    expect(screen.queryByTitle("Start agent")).not.toBeInTheDocument();
+  });
+
   it("opens a sidebar session", async () => {
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",
@@ -662,6 +739,30 @@ function primaryProject() {
     throw new Error("Test snapshot must include a project");
   }
   return project;
+}
+
+function secondProject(): DashboardSnapshot["projects"][number] {
+  return {
+    id: "project-2",
+    name: "Dotfiles",
+    repoPath: "/tmp/dotfiles",
+    currentBranch: "main",
+    defaultBranch: "main",
+    settings: {
+      defaultProvider: "codex",
+      defaultModelLabel: "GPT-5.3 Codex Spark Low",
+      worktreeLocation: "/tmp/dotfiles-worktrees",
+      setupCommand: "",
+      checkCommands: []
+    },
+    counts: {
+      active: 0,
+      blocked: 0,
+      failed: 0,
+      reviewReady: 0
+    },
+    latestActivityAt: "2026-05-08T16:30:00.000Z"
+  };
 }
 
 function missingWorkspace(): never {

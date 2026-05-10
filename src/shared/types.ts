@@ -112,6 +112,15 @@ export interface ProjectSummary {
   latestActivityAt: string | null;
 }
 
+export type ProjectFolderPickResult =
+  | {
+      cancelled: true;
+    }
+  | {
+      cancelled: false;
+      project: ProjectSummary;
+    };
+
 export interface WorkspaceSummary {
   id: string;
   projectId: string;
@@ -230,6 +239,7 @@ export interface MaestroApi {
   };
   projects: {
     list: () => Promise<ProjectSummary[]>;
+    pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
   };

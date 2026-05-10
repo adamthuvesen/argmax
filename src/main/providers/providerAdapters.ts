@@ -32,17 +32,44 @@ interface ProviderLaunchDefinition {
   displayName: string;
   binaryName: string;
   structuredArgs: (input: ProviderLaunchInput) => string[];
+  structuredResumeArgs: (input: ProviderLaunchInput, resumeConversationId: string) => string[];
   interactiveArgs: (input: ProviderLaunchInput) => string[];
   structuredStdin?: (input: ProviderLaunchInput) => string | null;
 }
+
+const CLAUDE_FULL_PERMISSION_ARGS = ["--permission-mode", "bypassPermissions"];
+const CODEX_FULL_PERMISSION_ARGS = ["--dangerously-bypass-approvals-and-sandbox"];
 
 const providerDefinitions: ProviderLaunchDefinition[] = [
   {
     id: "claude",
     displayName: "Claude Code",
     binaryName: "claude",
-    structuredArgs: (input) => ["-p", "--model", input.modelId, "--output-format", "stream-json", "--verbose", input.prompt],
-    interactiveArgs: (input) => ["--model", input.modelId],
+    structuredArgs: (input) => [
+      "-p",
+      ...CLAUDE_FULL_PERMISSION_ARGS,
+      "--model",
+      input.modelId,
+      "--session-id",
+      input.sessionId,
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      input.prompt
+    ],
+    structuredResumeArgs: (input, resumeConversationId) => [
+      "-p",
+      "--resume",
+      resumeConversationId,
+      ...CLAUDE_FULL_PERMISSION_ARGS,
+      "--model",
+      input.modelId,
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      input.prompt
+    ],
+    interactiveArgs: (input) => ["--model", input.modelId, ...CLAUDE_FULL_PERMISSION_ARGS],
     structuredStdin: () => null
   },
   {
@@ -53,12 +80,25 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "exec",
       "--json",
       "--ignore-user-config",
+      ...CODEX_FULL_PERMISSION_ARGS,
       "--model",
       input.modelId,
       ...codexReasoningArgs(input),
       "-"
     ],
-    interactiveArgs: (input) => ["--model", input.modelId, ...codexReasoningArgs(input)],
+    structuredResumeArgs: (input, resumeConversationId) => [
+      "exec",
+      "resume",
+      "--json",
+      "--ignore-user-config",
+      ...CODEX_FULL_PERMISSION_ARGS,
+      "--model",
+      input.modelId,
+      ...codexReasoningArgs(input),
+      resumeConversationId,
+      "-"
+    ],
+    interactiveArgs: (input) => ["--model", input.modelId, ...codexReasoningArgs(input), ...CODEX_FULL_PERMISSION_ARGS],
     structuredStdin: (input) => input.prompt
   }
 ];
@@ -299,7 +339,10 @@ async function launchStructuredProcess(
 
   let childProcess: ChildProcessWithoutNullStreams;
   try {
-    childProcess = spawnStructuredProcess(capability.binaryPath, definition.structuredArgs(input), {
+    const args = input.resumeConversationId
+      ? definition.structuredResumeArgs(input, input.resumeConversationId)
+      : definition.structuredArgs(input);
+    childProcess = spawnStructuredProcess(capability.binaryPath, args, {
       cwd: input.workspacePath,
       env: buildProviderEnvironment({
         NO_COLOR: "1"

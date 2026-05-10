@@ -140,6 +140,7 @@ export interface SessionSummary {
   workspaceId: string;
   provider: ProviderId;
   modelLabel: string;
+  providerConversationId: string | null;
   prompt: string;
   state: WorkspaceState;
   attention: AttentionState;

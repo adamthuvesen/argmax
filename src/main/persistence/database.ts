@@ -195,6 +195,7 @@ interface SessionRow {
   workspace_id: string;
   provider: SessionSummary["provider"];
   model_label: string;
+  provider_conversation_id: string | null;
   prompt: string;
   state: SessionSummary["state"];
   attention: SessionSummary["attention"];
@@ -315,6 +316,7 @@ export interface MaestroDatabase {
   persistCheckpoint: (input: PersistCheckpointInput) => Checkpoint;
   selectPreferredAttempt: (sessionId: string) => SessionSummary;
   persistSession: (input: PersistSessionInput) => SessionSummary;
+  updateSessionProviderConversationId: (sessionId: string, providerConversationId: string) => SessionSummary;
   updateSessionState: (sessionId: string, input: SessionStateInput) => SessionSummary;
   persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
   persistRawOutput: (input: PersistRawOutputInput) => void;
@@ -393,6 +395,8 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     persistCheckpoint: (input) => persistCheckpoint(connection, input),
     selectPreferredAttempt: (sessionId) => selectPreferredAttempt(connection, sessionId),
     persistSession: (input) => persistSession(connection, input),
+    updateSessionProviderConversationId: (sessionId, providerConversationId) =>
+      updateSessionProviderConversationId(connection, sessionId, providerConversationId),
     updateSessionState: (sessionId, input) => updateSessionState(connection, sessionId, input),
     persistTimelineEvent: (input) => persistTimelineEvent(connection, input),
     persistRawOutput: (input) => persistRawOutput(connection, input),
@@ -515,11 +519,6 @@ function persistProject(connection: Database.Database, input: PersistProjectInpu
           name = excluded.name,
           current_branch = excluded.current_branch,
           default_branch = excluded.default_branch,
-          default_provider = excluded.default_provider,
-          default_model_label = excluded.default_model_label,
-          worktree_location = excluded.worktree_location,
-          setup_command = excluded.setup_command,
-          check_commands_json = excluded.check_commands_json,
           updated_at = excluded.updated_at
       `
     )
@@ -708,10 +707,10 @@ function persistSession(connection: Database.Database, input: PersistSessionInpu
       .prepare(
         `
           INSERT INTO sessions (
-            id, workspace_id, provider, model_label, prompt, state, attention,
+            id, workspace_id, provider, model_label, provider_conversation_id, prompt, state, attention,
             started_at, completed_at, last_activity_at
           ) VALUES (
-            @id, @workspaceId, @provider, @modelLabel, @prompt, @state, @attention,
+            @id, @workspaceId, @provider, @modelLabel, NULL, @prompt, @state, @attention,
             @startedAt, NULL, @lastActivityAt
           )
         `
@@ -755,6 +754,19 @@ function updateSessionState(
   // The preferred bit is decoupled from session state; reuse the
   // NoPreferred fast path. If a caller specifically needs the preferred
   // flag after a state update they should call findSessionById/getSession.
+  return findSessionByIdNoPreferred(connection, sessionId);
+}
+
+function updateSessionProviderConversationId(
+  connection: Database.Database,
+  sessionId: string,
+  providerConversationId: string
+): SessionSummary {
+  const timestamp = new Date().toISOString();
+  connection
+    .prepare("UPDATE sessions SET provider_conversation_id = ?, last_activity_at = ? WHERE id = ?")
+    .run(providerConversationId, timestamp, sessionId);
+
   return findSessionByIdNoPreferred(connection, sessionId);
 }
 
@@ -1044,6 +1056,7 @@ function sessionRowToSummary(row: SessionRow, preferred: boolean): SessionSummar
     workspaceId: row.workspace_id,
     provider: row.provider,
     modelLabel: row.model_label,
+    providerConversationId: row.provider_conversation_id,
     prompt: row.prompt,
     state: row.state,
     attention: row.attention,

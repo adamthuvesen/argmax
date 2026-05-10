@@ -98,7 +98,7 @@ export class ProviderSessionService {
     const workspace = this.database.getWorkspace(input.workspaceId);
     const sessionId = randomUUID();
 
-    const session = this.database.persistSession({
+    let session = this.database.persistSession({
       id: sessionId,
       workspaceId: workspace.id,
       provider: input.provider,
@@ -107,6 +107,9 @@ export class ProviderSessionService {
       state: "running",
       attention: computeSessionAttention({ state: "running" })
     });
+    if (input.provider === "claude") {
+      session = this.database.updateSessionProviderConversationId(sessionId, sessionId);
+    }
 
     const runningWorkspace = this.database.updateWorkspaceState(workspace.id, "running");
     const userMessage = this.database.persistTimelineEvent({
@@ -126,7 +129,12 @@ export class ProviderSessionService {
       payload: {
         provider: input.provider,
         workspacePath: workspace.path,
-        modelLabel: input.modelLabel
+        modelLabel: input.modelLabel,
+        ...(session.providerConversationId
+          ? {
+              providerConversationId: session.providerConversationId
+            }
+          : {})
       }
     });
     this.publishDashboardDelta({
@@ -152,6 +160,7 @@ export class ProviderSessionService {
           modelLabel: input.modelLabel,
           modelId: input.modelId,
           reasoningEffort: input.reasoningEffort,
+          resumeConversationId: undefined,
           mode: PROVIDER_MODEL_DEFAULTS[input.provider].launchMode,
           cols: input.cols,
           rows: input.rows
@@ -266,6 +275,7 @@ export class ProviderSessionService {
           modelLabel: session.modelLabel,
           modelId: modelDefault.modelId,
           reasoningEffort: modelDefault.reasoningEffort,
+          ...(session.providerConversationId ? { resumeConversationId: session.providerConversationId } : {}),
           mode: modelDefault.launchMode,
           cols: 120,
           rows: 32
@@ -449,6 +459,10 @@ export class ProviderSessionService {
         if (newlineIndex >= 0) {
           const completed = combined.slice(0, newlineIndex + 1);
           sessionState.streamBuffers.set(event.stream, combined.slice(newlineIndex + 1));
+          const providerConversationId = extractProviderConversationId(completed, provider);
+          if (providerConversationId) {
+            this.recordProviderConversationId(event.sessionId, providerConversationId);
+          }
           const syntheticEvent: ProviderEvent = { ...event, message: completed };
           const normalized = normalizeProviderEvent(syntheticEvent, { provider });
           for (const ev of normalized) {
@@ -597,6 +611,24 @@ export class ProviderSessionService {
     }
   }
 
+  private recordProviderConversationId(sessionId: string, providerConversationId: string): void {
+    try {
+      const session = this.database.getSession(sessionId);
+      if (session.providerConversationId === providerConversationId) {
+        return;
+      }
+      const updated = this.database.updateSessionProviderConversationId(sessionId, providerConversationId);
+      const sessionState = this.buffers.get(sessionId);
+      if (sessionState) {
+        sessionState.pendingSessionUpdate = updated;
+        return;
+      }
+      this.publishDashboardDelta({ sessions: [updated] });
+    } catch {
+      /* session row vanished — ignore */
+    }
+  }
+
   private scheduleFlush(sessionId: string): void {
     const sessionState = this.buffers.get(sessionId);
     if (!sessionState) {
@@ -713,6 +745,33 @@ function capRawTruncationMarker(event: ProviderEvent): PersistTimelineEventInput
     },
     createdAt: event.createdAt
   };
+}
+
+function extractProviderConversationId(content: string, provider: ProviderId): string | null {
+  if (provider !== "codex") {
+    return null;
+  }
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("{")) {
+      continue;
+    }
+    try {
+      const payload = JSON.parse(line) as unknown;
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        continue;
+      }
+      const record = payload as Record<string, unknown>;
+      if (record.type === "thread.started" && typeof record.thread_id === "string" && record.thread_id.length > 0) {
+        return record.thread_id;
+      }
+    } catch {
+      /* not JSON */
+    }
+  }
+
+  return null;
 }
 
 interface CappedPayload {

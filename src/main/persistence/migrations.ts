@@ -41,7 +41,6 @@ export const migrations: Migration[] = [
     affectedTables: [
       "projects",
       "workspaces",
-      "sessions",
       "raw_outputs",
       "events",
       "approvals",
@@ -231,6 +230,14 @@ export const migrations: Migration[] = [
       PRAGMA foreign_key_check;
     `,
     requiresForeignKeysOff: true
+  },
+  {
+    version: 4,
+    name: "sessions_provider_conversation_id",
+    affectedTables: ["sessions"],
+    up: `
+      ALTER TABLE sessions ADD COLUMN provider_conversation_id TEXT;
+    `
   }
 ];
 
@@ -283,6 +290,7 @@ const expectedColumns: Record<string, string[]> = {
     "model_label",
     "prompt",
     "provider",
+    "provider_conversation_id",
     "started_at",
     "state",
     "workspace_id"

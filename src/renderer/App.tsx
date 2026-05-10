@@ -641,6 +641,8 @@ function SessionConversation({
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const shouldRefocusInput = useRef(false);
   const conversationEvents = useMemo(
     () =>
       events
@@ -677,6 +679,15 @@ function SessionConversation({
     workspace?.branch ?? null
   ].filter((detail): detail is string => Boolean(detail));
 
+  useEffect(() => {
+    if (!shouldRefocusInput.current || isSending || !canSend) {
+      return;
+    }
+
+    shouldRefocusInput.current = false;
+    inputRef.current?.focus();
+  }, [canSend, isSending]);
+
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedInput = input.trim();
@@ -686,6 +697,7 @@ function SessionConversation({
 
     setIsSending(true);
     setStatus(null);
+    shouldRefocusInput.current = true;
     try {
       await onSendSessionInput(session.id, trimmedInput);
       setInput("");
@@ -762,6 +774,7 @@ function SessionConversation({
           disabled={!canSend || isSending}
           onChange={(event) => setInput(event.target.value)}
           placeholder=""
+          ref={inputRef}
           value={input}
         />
         <button disabled={!canSend || isSending || !input.trim()} type="submit" title="Send follow-up">

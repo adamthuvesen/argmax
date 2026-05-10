@@ -234,9 +234,30 @@ export const migrations: Migration[] = [
   {
     version: 4,
     name: "sessions_provider_conversation_id",
-    affectedTables: ["sessions"],
     up: `
       ALTER TABLE sessions ADD COLUMN provider_conversation_id TEXT;
+    `
+  },
+  {
+    version: 5,
+    name: "sessions_model_selection",
+    affectedTables: ["sessions"],
+    up: `
+      ALTER TABLE sessions ADD COLUMN model_id TEXT;
+      ALTER TABLE sessions ADD COLUMN reasoning_effort TEXT;
+
+      UPDATE sessions
+      SET
+        model_id = CASE provider
+          WHEN 'claude' THEN 'sonnet'
+          WHEN 'codex' THEN 'gpt-5.3-codex'
+          ELSE model_label
+        END,
+        reasoning_effort = CASE provider
+          WHEN 'codex' THEN 'medium'
+          ELSE NULL
+        END
+      WHERE model_id IS NULL;
     `
   }
 ];
@@ -287,10 +308,12 @@ const expectedColumns: Record<string, string[]> = {
     "completed_at",
     "id",
     "last_activity_at",
+    "model_id",
     "model_label",
     "prompt",
     "provider",
     "provider_conversation_id",
+    "reasoning_effort",
     "started_at",
     "state",
     "workspace_id"

@@ -39,6 +39,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { ReasoningEffort } from "../../shared/providerModels.js";
 
 export interface PersistProjectInput {
   id: string;
@@ -74,9 +75,17 @@ export interface PersistSessionInput {
   workspaceId: string;
   provider: SessionSummary["provider"];
   modelLabel: string;
+  modelId: string;
+  reasoningEffort?: ReasoningEffort;
   prompt: string;
   state: SessionSummary["state"];
   attention: SessionSummary["attention"];
+}
+
+export interface SessionModelInput {
+  modelLabel: string;
+  modelId: string;
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface SessionStateInput {
@@ -195,6 +204,8 @@ interface SessionRow {
   workspace_id: string;
   provider: SessionSummary["provider"];
   model_label: string;
+  model_id: string | null;
+  reasoning_effort: ReasoningEffort | null;
   provider_conversation_id: string | null;
   prompt: string;
   state: SessionSummary["state"];
@@ -316,6 +327,7 @@ export interface MaestroDatabase {
   persistCheckpoint: (input: PersistCheckpointInput) => Checkpoint;
   selectPreferredAttempt: (sessionId: string) => SessionSummary;
   persistSession: (input: PersistSessionInput) => SessionSummary;
+  updateSessionModel: (sessionId: string, input: SessionModelInput) => SessionSummary;
   updateSessionProviderConversationId: (sessionId: string, providerConversationId: string) => SessionSummary;
   updateSessionState: (sessionId: string, input: SessionStateInput) => SessionSummary;
   persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
@@ -395,6 +407,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     persistCheckpoint: (input) => persistCheckpoint(connection, input),
     selectPreferredAttempt: (sessionId) => selectPreferredAttempt(connection, sessionId),
     persistSession: (input) => persistSession(connection, input),
+    updateSessionModel: (sessionId, input) => updateSessionModel(connection, sessionId, input),
     updateSessionProviderConversationId: (sessionId, providerConversationId) =>
       updateSessionProviderConversationId(connection, sessionId, providerConversationId),
     updateSessionState: (sessionId, input) => updateSessionState(connection, sessionId, input),
@@ -707,10 +720,10 @@ function persistSession(connection: Database.Database, input: PersistSessionInpu
       .prepare(
         `
           INSERT INTO sessions (
-            id, workspace_id, provider, model_label, provider_conversation_id, prompt, state, attention,
+            id, workspace_id, provider, model_label, model_id, reasoning_effort, provider_conversation_id, prompt, state, attention,
             started_at, completed_at, last_activity_at
           ) VALUES (
-            @id, @workspaceId, @provider, @modelLabel, NULL, @prompt, @state, @attention,
+            @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, NULL, @prompt, @state, @attention,
             @startedAt, NULL, @lastActivityAt
           )
         `
@@ -720,6 +733,8 @@ function persistSession(connection: Database.Database, input: PersistSessionInpu
         workspaceId: input.workspaceId,
         provider: input.provider,
         modelLabel: input.modelLabel,
+        modelId: input.modelId,
+        reasoningEffort: input.reasoningEffort ?? null,
         prompt: input.prompt,
         state: input.state,
         attention: input.attention,
@@ -733,6 +748,25 @@ function persistSession(connection: Database.Database, input: PersistSessionInpu
     // its own re-read path.)
     return findSessionByIdNoPreferred(connection, input.id);
   })();
+}
+
+function updateSessionModel(
+  connection: Database.Database,
+  sessionId: string,
+  input: SessionModelInput
+): SessionSummary {
+  const timestamp = new Date().toISOString();
+  connection
+    .prepare(
+      `
+        UPDATE sessions
+        SET model_label = ?, model_id = ?, reasoning_effort = ?, last_activity_at = ?
+        WHERE id = ?
+      `
+    )
+    .run(input.modelLabel, input.modelId, input.reasoningEffort ?? null, timestamp, sessionId);
+
+  return findSessionByIdNoPreferred(connection, sessionId);
 }
 
 function updateSessionState(
@@ -1056,6 +1090,8 @@ function sessionRowToSummary(row: SessionRow, preferred: boolean): SessionSummar
     workspaceId: row.workspace_id,
     provider: row.provider,
     modelLabel: row.model_label,
+    modelId: row.model_id ?? row.model_label,
+    ...(row.reasoning_effort ? { reasoningEffort: row.reasoning_effort } : {}),
     providerConversationId: row.provider_conversation_id,
     prompt: row.prompt,
     state: row.state,

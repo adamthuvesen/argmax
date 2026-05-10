@@ -232,7 +232,9 @@ function persistSessionFixture(database: MaestroDatabase): string {
     id: "session-1",
     workspaceId: "workspace-1",
     provider: "codex",
-    modelLabel: "GPT-5.3 Codex Spark Low",
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.3-codex",
+    reasoningEffort: "medium",
     prompt: "Run commands",
     state: "running",
     attention: "normal"

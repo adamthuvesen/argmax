@@ -159,7 +159,17 @@ export function registerIpcHandlers(
   ipcMain.handle(
     "providers:send-input",
     withValidation(providerSessionInputSchema, async (input) => {
-      await providerSessions.sendInput(input.sessionId, input.input);
+      await providerSessions.sendInput(
+        input.sessionId,
+        input.input,
+        input.modelLabel && input.modelId
+          ? {
+              modelLabel: input.modelLabel,
+              modelId: input.modelId,
+              ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {})
+            }
+          : undefined
+      );
       return { ok: true } as const;
     })
   );

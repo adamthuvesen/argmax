@@ -44,10 +44,10 @@ export function seedDemoData(database: Database.Database): void {
 
   const insertSession = database.prepare(`
     INSERT INTO sessions (
-      id, workspace_id, provider, model_label, provider_conversation_id, prompt, state, attention,
+      id, workspace_id, provider, model_label, model_id, reasoning_effort, provider_conversation_id, prompt, state, attention,
       started_at, completed_at, last_activity_at
     ) VALUES (
-      @id, @workspaceId, @provider, @modelLabel, @providerConversationId, @prompt, @state, @attention,
+      @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, @providerConversationId, @prompt, @state, @attention,
       @startedAt, @completedAt, @lastActivityAt
     )
   `);
@@ -158,6 +158,8 @@ export function seedDemoData(database: Database.Database): void {
         workspaceId: "workspace-ui-board",
         provider: "codex",
         modelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
+        modelId: PROVIDER_MODEL_DEFAULTS.codex.modelId,
+        reasoningEffort: PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort ?? null,
         prompt: "Create compact session lanes for parallel monitoring.",
         state: "running",
         attention: "normal",
@@ -169,6 +171,8 @@ export function seedDemoData(database: Database.Database): void {
         workspaceId: "workspace-review-studio",
         provider: "claude",
         modelLabel: PROVIDER_MODEL_DEFAULTS.claude.label,
+        modelId: PROVIDER_MODEL_DEFAULTS.claude.modelId,
+        reasoningEffort: PROVIDER_MODEL_DEFAULTS.claude.reasoningEffort ?? null,
         prompt: "Build the first review studio shell.",
         state: "complete",
         attention: "review-ready",
@@ -180,6 +184,8 @@ export function seedDemoData(database: Database.Database): void {
         workspaceId: "workspace-approval-gate",
         provider: "codex",
         modelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
+        modelId: PROVIDER_MODEL_DEFAULTS.codex.modelId,
+        reasoningEffort: PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort ?? null,
         prompt: "Add deterministic dangerous-action detection.",
         state: "waiting",
         attention: "approval-needed",
@@ -191,6 +197,8 @@ export function seedDemoData(database: Database.Database): void {
         workspaceId: "workspace-provider-probe",
         provider: "claude",
         modelLabel: PROVIDER_MODEL_DEFAULTS.claude.label,
+        modelId: PROVIDER_MODEL_DEFAULTS.claude.modelId,
+        reasoningEffort: PROVIDER_MODEL_DEFAULTS.claude.reasoningEffort ?? null,
         prompt: "Evaluate provider structured-mode launch probes.",
         state: "failed",
         attention: "failed",

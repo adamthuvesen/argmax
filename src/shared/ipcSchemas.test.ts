@@ -6,6 +6,7 @@ import {
   launchProviderSessionInputSchema,
   loadDiffInputSchema,
   prepareCommitInputSchema,
+  providerSessionInputSchema,
   registerProjectInputSchema,
   resolveApprovalInputSchema
 } from "./ipcSchemas.js";
@@ -63,6 +64,18 @@ describe("ipcSchemas", () => {
       rows: 30
     });
     expect(parsed.reasoningEffort).toBe("low");
+  });
+
+  it("accepts a valid providerSession payload with a model switch", () => {
+    const parsed = providerSessionInputSchema.parse({
+      sessionId: "session-1",
+      input: "continue",
+      modelLabel: "GPT-5.5",
+      modelId: "gpt-5.5",
+      reasoningEffort: "high"
+    });
+    expect(parsed.modelId).toBe("gpt-5.5");
+    expect(parsed.reasoningEffort).toBe("high");
   });
 
   it("accepts createWorkspace without baseRef (optional field)", () => {

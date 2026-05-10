@@ -295,6 +295,61 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
+  it("persists model switches for the next structured follow-up turn", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship the board",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.3-codex",
+      reasoningEffort: "medium",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: '{"type":"thread.started","thread_id":"thread-1"}\n',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex structured probe exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:01:00.000Z"
+    });
+
+    await service.sendInput(session.id, "try harder\r", {
+      modelLabel: "GPT-5.5",
+      modelId: "gpt-5.5",
+      reasoningEffort: "high"
+    });
+
+    expect(fakeProvider.launchInput).toMatchObject({
+      prompt: "try harder",
+      modelLabel: "GPT-5.5",
+      modelId: "gpt-5.5",
+      reasoningEffort: "high",
+      resumeConversationId: "thread-1"
+    });
+    expect(database.getSession(session.id)).toMatchObject({
+      modelLabel: "GPT-5.5",
+      modelId: "gpt-5.5",
+      reasoningEffort: "high"
+    });
+
+    database.connection.close();
+  });
+
   it("resumes Claude follow-up prompts using the Maestro session id", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);

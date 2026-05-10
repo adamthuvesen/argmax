@@ -19,7 +19,7 @@ describe("ProjectService", () => {
     expect(project.currentBranch).toBe("main");
     expect(project.defaultBranch).toBe("main");
     expect(project.settings.defaultProvider).toBe("codex");
-    expect(project.settings.defaultModelLabel).toBe("GPT-5.3 Codex Spark Low");
+    expect(project.settings.defaultModelLabel).toBe("GPT-5.3 Codex");
 
     database.connection.close();
   });

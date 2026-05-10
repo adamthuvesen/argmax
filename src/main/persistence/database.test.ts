@@ -55,6 +55,8 @@ function seedSession(
     workspaceId,
     provider: "codex",
     modelLabel: "x",
+    modelId: "gpt-5.3-codex",
+    reasoningEffort: "medium",
     prompt: "p",
     state: "running",
     attention

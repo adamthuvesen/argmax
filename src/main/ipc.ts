@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { dialog, ipcMain } from "electron";
 import { ZodError, type ZodIssue, type ZodType } from "zod";
 import {
   createCheckpointInputSchema,
@@ -12,6 +12,7 @@ import {
   providerSessionInputSchema,
   providerSessionResizeInputSchema,
   providerSessionTerminateInputSchema,
+  projectsPickFolderInputSchema,
   registerProjectInputSchema,
   resolveApprovalInputSchema,
   runCheckInputSchema,
@@ -95,6 +96,24 @@ export function registerIpcHandlers(
     timestamp: new Date().toISOString()
   }));
   ipcMain.handle("projects:list", () => database.listProjects());
+  ipcMain.handle(
+    "projects:pick-folder",
+    withValidation(projectsPickFolderInputSchema, async () => {
+      const result = await dialog.showOpenDialog({
+        properties: ["openDirectory"],
+        title: "Add Project"
+      });
+      const [repoPath] = result.filePaths;
+      if (result.canceled || !repoPath) {
+        return { cancelled: true } as const;
+      }
+
+      return {
+        cancelled: false,
+        project: await projects.registerProject({ repoPath })
+      } as const;
+    })
+  );
   ipcMain.handle("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
   ipcMain.handle("dashboard:load", () => database.loadDashboard());
   ipcMain.handle("providers:discover", () => discoverProviders());
@@ -214,6 +233,7 @@ export function registerIpcHandlers(
 export const REGISTERED_IPC_CHANNELS: readonly string[] = [
   "health:ping",
   "projects:list",
+  "projects:pick-folder",
   "dashboard:list",
   "projects:register",
   "projects:update-settings",

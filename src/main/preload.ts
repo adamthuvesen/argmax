@@ -14,6 +14,7 @@ import type {
   PrepareCommitInput,
   ProviderSessionInput,
   ProviderSessionResizeInput,
+  ProjectFolderPickResult,
   ProjectSummary,
   RegisterProjectInput,
   ResolveApprovalInput,
@@ -39,6 +40,7 @@ const api: MaestroApi = {
   },
   projects: {
     list: () => ipcRenderer.invoke("projects:list") as Promise<ProjectSummary[]>,
+    pickFolder: () => ipcRenderer.invoke("projects:pick-folder") as Promise<ProjectFolderPickResult>,
     register: (input: RegisterProjectInput) => ipcRenderer.invoke("projects:register", input) as Promise<ProjectSummary>,
     updateSettings: (input: UpdateProjectSettingsInput) =>
       ipcRenderer.invoke("projects:update-settings", input) as Promise<ProjectSummary>

@@ -75,6 +75,7 @@ const approvalIdSchema = z.string().min(1);
 
 export const healthPingInputSchema = z.void();
 export const projectsListInputSchema = z.void();
+export const projectsPickFolderInputSchema = z.void();
 export const providersDiscoverInputSchema = z.void();
 export const dashboardLoadInputSchema = z.void();
 export const dashboardListInputSchema = z.void();
@@ -180,6 +181,7 @@ export const prepareCommitInputSchema = z.object({
 export const ipcSchemas = {
   "health:ping": healthPingInputSchema,
   "projects:list": projectsListInputSchema,
+  "projects:pick-folder": projectsPickFolderInputSchema,
   "dashboard:list": dashboardListInputSchema,
   "projects:register": registerProjectInputSchema,
   "projects:update-settings": updateProjectSettingsInputSchema,

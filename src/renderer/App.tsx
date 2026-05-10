@@ -18,6 +18,7 @@ import type {
   DashboardDelta,
   DashboardSnapshot,
   ProviderId,
+  ProjectSummary,
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
@@ -65,6 +66,7 @@ export function App(): JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [providerOverride, setProviderOverride] = useState<ProviderId | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.maestro);
@@ -222,7 +224,30 @@ export function App(): JSX.Element {
       null,
     [snapshot.workspaces, selectedWorkspaceId, selectedSession]
   );
-  const selectedProvider = providerOverride ?? snapshot.projects[0]?.settings.defaultProvider ?? "codex";
+  const selectedProject = useMemo(
+    () =>
+      (selectedProjectId ? snapshot.projects.find((project) => project.id === selectedProjectId) : null) ??
+      snapshot.projects[0] ??
+      null,
+    [snapshot.projects, selectedProjectId]
+  );
+  const selectedProvider = providerOverride ?? selectedProject?.settings.defaultProvider ?? "codex";
+
+  useEffect(() => {
+    if (selectedWorkspace) {
+      const workspaceProjectId = selectedWorkspace.projectId;
+      if (selectedProjectId !== workspaceProjectId) {
+        setSelectedProjectId(workspaceProjectId);
+      }
+      return;
+    }
+
+    if (selectedProjectId && snapshot.projects.some((project) => project.id === selectedProjectId)) {
+      return;
+    }
+
+    setSelectedProjectId(snapshot.projects[0]?.id ?? null);
+  }, [snapshot.projects, selectedProjectId, selectedWorkspace]);
 
   useEffect(() => {
     if (!selectedSession?.id) {
@@ -233,12 +258,46 @@ export function App(): JSX.Element {
 
   const openWorkspaceChat = useCallback(
     (workspaceId: string): void => {
+      const workspace = snapshot.workspaces.find((item) => item.id === workspaceId) ?? null;
       const session = snapshot.sessions.find((item) => item.workspaceId === workspaceId) ?? null;
+      setSelectedProjectId(workspace?.projectId ?? null);
       setSelectedWorkspaceId(workspaceId);
       setSelectedSessionId(session?.id ?? null);
     },
-    [snapshot.sessions]
+    [snapshot.sessions, snapshot.workspaces]
   );
+
+  const openProjectLauncher = useCallback((projectId: string): void => {
+    setSelectedProjectId(projectId);
+    setSelectedSessionId(null);
+    setSelectedWorkspaceId(null);
+  }, []);
+
+  const addProject = useCallback(async (): Promise<void> => {
+    if (!window.maestro?.projects.pickFolder) {
+      setToast({ kind: "error", message: "Open the Electron app window to add a project." });
+      return;
+    }
+
+    try {
+      const result = await window.maestro.projects.pickFolder();
+      if (result.cancelled) {
+        return;
+      }
+
+      setSelectedProjectId(result.project.id);
+      setSelectedSessionId(null);
+      setSelectedWorkspaceId(null);
+      await loadDashboard();
+      setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
+      setToast({ kind: "info", message: `Added ${result.project.name}.` });
+    } catch (error) {
+      setToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Maestro requires a local git repository."
+      });
+    }
+  }, [loadDashboard]);
 
   const resolveApproval = useCallback(
     async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
@@ -300,13 +359,12 @@ export function App(): JSX.Element {
         throw new Error("Open the Electron app window to launch local agents.");
       }
 
-      const project = snapshot.projects[0];
-      if (!project) {
+      if (!selectedProject) {
         throw new Error("Register a project before launching an agent.");
       }
 
       const workspace = await window.maestro.workspaces.createCurrent({
-        projectId: project.id,
+        projectId: selectedProject.id,
         taskLabel: titleFromPrompt(prompt)
       });
 
@@ -330,7 +388,7 @@ export function App(): JSX.Element {
       setSelectedSessionId(launchedSession.id);
       await Promise.all([loadDashboard(), loadSessionEvents(launchedSession.id)]);
     },
-    [snapshot.projects, loadDashboard, loadSessionEvents]
+    [selectedProject, loadDashboard, loadSessionEvents]
   );
 
   return (
@@ -354,7 +412,10 @@ export function App(): JSX.Element {
           setSelectedSessionId(null);
           setSelectedWorkspaceId(null);
         }}
+        onAddProject={() => void addProject()}
+        onOpenProject={openProjectLauncher}
         onOpenWorkspaceChat={openWorkspaceChat}
+        selectedProjectId={selectedProject?.id ?? null}
         selectedWorkspaceId={selectedWorkspace?.id ?? null}
         snapshot={snapshot}
       />
@@ -374,7 +435,13 @@ export function App(): JSX.Element {
               workspace={selectedWorkspace}
             />
           ) : (
-            <LaunchSurface onLaunchTask={launchTask} onProviderChange={setProviderOverride} provider={selectedProvider} />
+            <LaunchSurface
+              onAddProject={() => void addProject()}
+              onLaunchTask={launchTask}
+              onProviderChange={setProviderOverride}
+              project={selectedProject}
+              provider={selectedProvider}
+            />
           )}
         </div>
       </section>
@@ -384,14 +451,20 @@ export function App(): JSX.Element {
 
 function Sidebar({
   loadState,
+  onAddProject,
   onOpenLauncher,
+  onOpenProject,
   onOpenWorkspaceChat,
+  selectedProjectId,
   selectedWorkspaceId,
   snapshot
 }: {
   loadState: "loading" | "ready" | "error";
+  onAddProject: () => void;
   onOpenLauncher: () => void;
+  onOpenProject: (projectId: string) => void;
   onOpenWorkspaceChat: (workspaceId: string) => void;
+  selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
   snapshot: DashboardSnapshot;
 }): JSX.Element {
@@ -407,10 +480,23 @@ function Sidebar({
       </div>
 
       <div className="project-list">
-        <p className="rail-label">Projects</p>
+        <div className="rail-heading">
+          <p className="rail-label">Projects</p>
+          <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
+            <Plus size={16} />
+          </button>
+        </div>
         {snapshot.projects.map((project) => (
           <div className="project-group" key={project.id}>
-            <button className="project-name" type="button" onClick={onOpenLauncher}>
+            <button
+              aria-pressed={selectedProjectId === project.id && !selectedWorkspaceId}
+              className={selectedProjectId === project.id && !selectedWorkspaceId ? "project-name active" : "project-name"}
+              type="button"
+              onClick={() => {
+                onOpenProject(project.id);
+                onOpenLauncher();
+              }}
+            >
               <Folder size={16} />
               <span>{project.name}</span>
             </button>
@@ -680,12 +766,16 @@ function SessionConversation({
 }
 
 function LaunchSurface({
+  onAddProject,
   onLaunchTask,
   onProviderChange,
+  project,
   provider
 }: {
+  onAddProject: () => void;
   onLaunchTask: (prompt: string, provider: ProviderId) => Promise<void>;
   onProviderChange: (provider: ProviderId) => void;
+  project: ProjectSummary | null;
   provider: ProviderId;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
@@ -711,9 +801,21 @@ function LaunchSurface({
     }
   };
 
+  if (!project) {
+    return (
+      <div className="launcher-surface empty-project-launcher">
+        <h1>Add a project to start</h1>
+        <button className="primary-action" type="button" onClick={onAddProject}>
+          <Plus size={18} />
+          Add Project
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="launcher-surface">
-      <h1>What should we build in maestro?</h1>
+      <h1>What should we build in {project.name.toLowerCase()}?</h1>
       <form className="composer" onSubmit={(event) => void submitPrompt(event)}>
         <div className="composer-input">
           <input

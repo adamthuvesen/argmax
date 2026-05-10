@@ -57,6 +57,37 @@ describe("ProjectService", () => {
 
     database.connection.close();
   });
+
+  it("preserves local settings when re-registering an existing repository", async () => {
+    const repoPath = createGitRepo();
+    const database = createDatabase(":memory:", { seed: false });
+    const service = new ProjectService(database);
+    const project = await service.registerProject({ repoPath });
+
+    service.updateSettings({
+      projectId: project.id,
+      settings: {
+        defaultProvider: "claude",
+        defaultModelLabel: "Claude Haiku",
+        worktreeLocation: join(repoPath, ".custom-worktrees"),
+        setupCommand: "uv sync",
+        checkCommands: ["uv run pytest", "uv run ruff check"]
+      }
+    });
+
+    const reRegistered = await service.registerProject({ repoPath });
+
+    expect(reRegistered.id).toBe(project.id);
+    expect(reRegistered.settings).toEqual({
+      defaultProvider: "claude",
+      defaultModelLabel: "Claude Haiku",
+      worktreeLocation: join(repoPath, ".custom-worktrees"),
+      setupCommand: "uv sync",
+      checkCommands: ["uv run pytest", "uv run ruff check"]
+    });
+
+    database.connection.close();
+  });
 });
 
 function createGitRepo(): string {

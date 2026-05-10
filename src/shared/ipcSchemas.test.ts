@@ -14,6 +14,7 @@ describe("ipcSchemas", () => {
   it("exposes a schema for every payload-bearing IPC channel", () => {
     const channels = Object.keys(ipcSchemas);
     expect(channels).toContain("projects:register");
+    expect(channels).toContain("projects:pick-folder");
     expect(channels).toContain("providers:launch");
     expect(channels).toContain("review:load-diff");
     expect(channels).toContain("dashboard:load");
@@ -29,6 +30,10 @@ describe("ipcSchemas", () => {
     expect(registerProjectInputSchema.parse({ repoPath: "/Users/me/repo" })).toEqual({
       repoPath: "/Users/me/repo"
     });
+  });
+
+  it("accepts pickProjectFolder without input", () => {
+    expect(ipcSchemas["projects:pick-folder"].parse(undefined)).toBeUndefined();
   });
 
   it("accepts a valid launchProviderSession payload", () => {

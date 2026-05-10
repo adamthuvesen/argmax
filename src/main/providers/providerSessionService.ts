@@ -25,6 +25,14 @@ const launchProviderSessionInput = z.object({
   rows: z.number().int().min(5).max(200)
 });
 
+const providerModelSelectionInput = z.object({
+  modelLabel: z.string().min(1),
+  modelId: z.string().min(1),
+  reasoningEffort: z.enum(["low", "medium", "high", "xhigh"]).optional()
+});
+
+type FollowUpModelSelection = z.infer<typeof providerModelSelectionInput>;
+
 interface PendingOp {
   kind: "send" | "resize" | "terminate";
   payload?: unknown;
@@ -103,6 +111,8 @@ export class ProviderSessionService {
       workspaceId: workspace.id,
       provider: input.provider,
       modelLabel: input.modelLabel,
+      modelId: input.modelId,
+      reasoningEffort: input.reasoningEffort,
       prompt: input.prompt,
       state: "running",
       attention: computeSessionAttention({ state: "running" })
@@ -215,13 +225,14 @@ export class ProviderSessionService {
     }
   }
 
-  async sendInput(sessionId: string, input: string): Promise<void> {
+  async sendInput(sessionId: string, input: string, rawModelSelection?: FollowUpModelSelection): Promise<void> {
     const message = input.replace(/\r?\n$/, "").trim();
     if (!message) {
       return;
     }
 
-    const session = this.database.getSession(sessionId);
+    let session = this.database.getSession(sessionId);
+    const modelSelection = rawModelSelection ? providerModelSelectionInput.parse(rawModelSelection) : null;
     const workspace = this.database.getWorkspace(session.workspaceId);
     const liveHandle = this.getLiveHandle(sessionId);
     if (liveHandle) {
@@ -246,6 +257,10 @@ export class ProviderSessionService {
         events: [userMessage]
       });
       return;
+    }
+
+    if (modelSelection) {
+      session = this.database.updateSessionModel(sessionId, modelSelection);
     }
 
     const runningSession = this.database.updateSessionState(sessionId, {
@@ -273,8 +288,8 @@ export class ProviderSessionService {
           workspacePath: workspace.path,
           prompt: message,
           modelLabel: session.modelLabel,
-          modelId: modelDefault.modelId,
-          reasoningEffort: modelDefault.reasoningEffort,
+          modelId: session.modelId,
+          reasoningEffort: session.reasoningEffort,
           ...(session.providerConversationId ? { resumeConversationId: session.providerConversationId } : {}),
           mode: modelDefault.launchMode,
           cols: 120,

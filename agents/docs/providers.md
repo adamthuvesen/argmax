@@ -4,12 +4,12 @@ Claude Code and Codex are the two adapters today. Sessions can be PTY-based (int
 
 ## Default models
 
-`PROVIDER_MODEL_DEFAULTS` in [src/shared/providerModels.ts](../../src/shared/providerModels.ts) is the source of truth for launch defaults:
+`PROVIDER_MODELS` and `PROVIDER_MODEL_DEFAULTS` in [src/shared/providerModels.ts](../../src/shared/providerModels.ts) are the source of truth for picker options and launch defaults:
 
 | Provider | Default | Launch mode |
 |---|---|---|
-| Claude | `Claude Haiku` (`haiku`) | `structured-json` |
-| Codex | `GPT-5.3 Codex Spark Low` (`gpt-5.3-codex-spark`, `low` reasoning) | `structured-json` |
+| Claude | `Claude Sonnet` (`sonnet`) | `structured-json` |
+| Codex | `GPT-5.3 Codex` (`gpt-5.3-codex`, `medium` reasoning) | `structured-json` |
 
 Do not duplicate these labels, ids, reasoning values, or launch modes in renderer fixtures, seed data, or docs examples.
 
@@ -29,6 +29,8 @@ Do not duplicate these labels, ids, reasoning values, or launch modes in rendere
 
 Maestro chats are durable UI sessions; structured provider processes may still be one process per turn. To keep follow-up prompts inside the same native provider conversation, `sessions.provider_conversation_id` stores the provider's resume id. Claude structured launches set `--session-id <maestro session id>` and resume with `--resume <provider_conversation_id>`. Codex structured launches capture `thread.started.thread_id` from JSONL and resume with `codex exec resume <provider_conversation_id> --json`.
 
+The selected model is also durable session state: `sessions.model_id`, `sessions.model_label`, and `sessions.reasoning_effort` are passed to resumed turns. Changing the model in the renderer affects the next prompt in the same provider conversation; it does not send a live `/model` command to an already-running interactive process.
+
 ## Adding a provider
 
 Append a `ProviderLaunchDefinition` to `providerDefinitions[]` in `providerAdapters.ts`:
@@ -45,13 +47,13 @@ Append a `ProviderLaunchDefinition` to `providerDefinitions[]` in `providerAdapt
 }
 ```
 
-Then register a model in `PROVIDER_MODEL_DEFAULTS` in [src/shared/providerModels.ts](../../src/shared/providerModels.ts), choose the launch mode there, and extend `ProviderId` in `src/shared/types.ts`.
+Then register models in `PROVIDER_MODELS`, choose a default in `PROVIDER_MODEL_DEFAULTS`, and extend `ProviderId` in `src/shared/types.ts`.
 
 ## Model + reasoning effort
 
 `modelId` is always passed via `--model`. Codex also accepts a reasoning-effort flag — `codexReasoningArgs(input)` builds it. Reasoning-effort union: `"low" | "medium" | "high" | "xhigh"` (matches the Codex CLI; do not invent values).
 
-`PROVIDER_MODEL_DEFAULTS` is the single source of truth — both the renderer launcher and seed/demo data should import it. Don't hardcode model labels like `"GPT-5.5 Medium"` or `"Claude Sonnet 4.6"` anywhere; reference the constant.
+`PROVIDER_MODELS` / `PROVIDER_MODEL_DEFAULTS` are the single source of truth — both the renderer launcher and seed/demo data should import them. Don't hardcode model labels like `"GPT-5.5 Medium"` or `"Claude Sonnet 4.6"` anywhere; reference the registry.
 
 ## Permission defaults
 

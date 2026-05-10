@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { MaestroDatabase } from "../persistence/database.js";
@@ -15,25 +16,43 @@ export class GitReviewService {
     // (no quoting, no octal escapes), so we don't have to unquote git's
     // human-readable form. The byte after each path is NUL, not LF.
     const porcelain = await git(workspace.path, ["status", "--porcelain=v1", "-z"]);
-    return parsePorcelainZ(porcelain);
+    const files = parsePorcelainZ(porcelain);
+    return Promise.all(
+      files.map(async (file) => {
+        const content = await this.loadFileDiff(workspace.path, file);
+        const counts = countDiffLines(content);
+        return { ...file, ...counts };
+      })
+    );
   }
 
   async loadDiff(workspaceId: string, filePath?: string): Promise<WorkspaceDiff> {
     const workspace = this.database.getWorkspace(workspaceId);
-    let args: string[];
+    let content: string;
     if (filePath !== undefined) {
       assertSafeRelativePath(workspace.path, filePath);
-      args = ["diff", "--", filePath];
+      const file = parsePorcelainZ(await git(workspace.path, ["status", "--porcelain=v1", "-z", "--", filePath])).find(
+        (item) => item.path === filePath
+      );
+      content = file ? await this.loadFileDiff(workspace.path, file) : await git(workspace.path, ["diff", "HEAD", "--", filePath]);
     } else {
-      args = ["diff"];
+      const files = parsePorcelainZ(await git(workspace.path, ["status", "--porcelain=v1", "-z"]));
+      const diffs = await Promise.all(files.map((file) => this.loadFileDiff(workspace.path, file)));
+      content = diffs.filter(Boolean).join("\n");
     }
-    const content = await git(workspace.path, args);
 
     return {
       workspaceId,
       filePath: filePath ?? null,
       content
     };
+  }
+
+  private async loadFileDiff(workspacePath: string, file: ChangedFileSummary): Promise<string> {
+    if (file.status === "??") {
+      return synthesizeUntrackedDiff(workspacePath, file.path);
+    }
+    return git(workspacePath, ["diff", "HEAD", "--", file.path]);
   }
 }
 
@@ -51,9 +70,9 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 /**
  * Parse `git status --porcelain=v1 -z` output. Each entry is two status
- * bytes, a space, the path, then NUL. Renames/copies emit two paths
- * separated by their own NUL: `XY old\0new\0`. We surface the new path
- * only, matching the existing v1 behavior.
+ * bytes, a space, the path, then NUL. In `-z` mode renames/copies emit the
+ * destination path first, then the source path. We surface the destination
+ * path and keep the source as oldPath.
  */
 function parsePorcelainZ(value: string): ChangedFileSummary[] {
   if (!value) return [];
@@ -64,16 +83,55 @@ function parsePorcelainZ(value: string): ChangedFileSummary[] {
     if (record.length < 3) continue;
     const status = record.slice(0, 2).trim() || "?";
     const path = record.slice(3);
+    let oldPath: string | undefined;
     // Renames/copies: XY codes start with R or C and the next record is
     // the original path. Consume it and use the destination (current) path.
     const code = record.slice(0, 2);
     if (code.startsWith("R") || code.startsWith("C")) {
       // The destination path is what we already captured; skip the source.
+      oldPath = records[i + 1];
       i += 1;
     }
-    out.push({ status, path });
+    out.push({ status, path, additions: 0, deletions: 0, ...(oldPath ? { oldPath } : {}) });
   }
   return out;
+}
+
+function countDiffLines(content: string): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const line of content.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      continue;
+    }
+    if (line.startsWith("+")) {
+      additions += 1;
+    } else if (line.startsWith("-")) {
+      deletions += 1;
+    }
+  }
+  return { additions, deletions };
+}
+
+async function synthesizeUntrackedDiff(workspacePath: string, filePath: string): Promise<string> {
+  assertSafeRelativePath(workspacePath, filePath);
+  const content = await readFile(resolve(workspacePath, filePath), "utf8");
+  const lines = content.split("\n");
+  const hasTrailingNewline = content.endsWith("\n");
+  if (hasTrailingNewline) {
+    lines.pop();
+  }
+  const body = lines.map((line) => `+${line}`).join("\n");
+  const noNewlineMarker = hasTrailingNewline ? "" : "\n\\ No newline at end of file";
+  return [
+    `diff --git a/${filePath} b/${filePath}`,
+    "new file mode 100644",
+    "index 0000000..0000000",
+    "--- /dev/null",
+    `+++ b/${filePath}`,
+    `@@ -0,0 +1,${lines.length} @@`,
+    `${body}${noNewlineMarker}`
+  ].join("\n");
 }
 
 /**

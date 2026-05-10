@@ -129,7 +129,10 @@ export const launchProviderSessionInputSchema = z.object({
 
 export const providerSessionInputSchema = z.object({
   sessionId: sessionIdSchema,
-  input: z.string()
+  input: z.string(),
+  modelLabel: z.string().min(1).optional(),
+  modelId: z.string().min(1).optional(),
+  reasoningEffort: reasoningEffortSchema.optional()
 });
 
 export const providerSessionResizeInputSchema = z.object({

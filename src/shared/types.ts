@@ -21,6 +21,7 @@ import type {
   UpdateProjectSettingsInputParsed,
   WorkspaceStatusInputParsed
 } from "./ipcSchemas.js";
+import type { ReasoningEffort } from "./providerModels.js";
 
 export type ProviderId = "claude" | "codex";
 
@@ -76,6 +77,9 @@ export type WorkspaceStatusInput = WorkspaceStatusInputParsed;
 export interface ChangedFileSummary {
   path: string;
   status: string;
+  additions: number;
+  deletions: number;
+  oldPath?: string;
 }
 
 export interface WorkspaceDiff {
@@ -150,6 +154,8 @@ export interface SessionSummary {
   workspaceId: string;
   provider: ProviderId;
   modelLabel: string;
+  modelId: string;
+  reasoningEffort?: ReasoningEffort;
   providerConversationId: string | null;
   prompt: string;
   state: WorkspaceState;

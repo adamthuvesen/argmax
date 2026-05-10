@@ -2,19 +2,23 @@ import {
   AlertTriangle,
   ChevronRight,
   Command,
+  FileText,
   Folder,
   GitBranch,
   Mic,
+  PanelRightClose,
   Plus,
   Search,
   Settings,
   ShieldAlert,
+  X,
 } from "lucide-react";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
   ApprovalRequest,
+  ChangedFileSummary,
   DashboardDelta,
   DashboardSnapshot,
   ProviderId,
@@ -23,9 +27,11 @@ import type {
   SessionSummary,
   SkillSummary,
   TimelineEvent,
+  WorkspaceDiff,
   WorkspaceSummary
 } from "../shared/types.js";
-import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
+import { PROVIDER_MODEL_DEFAULTS, PROVIDER_MODELS } from "../shared/providerModels.js";
+import type { ProviderModelSelection } from "../shared/providerModels.js";
 import { demoSnapshot } from "./demoSnapshot.js";
 
 const emptySnapshot: DashboardSnapshot = {
@@ -41,6 +47,33 @@ const emptySnapshot: DashboardSnapshot = {
 
 type ToastMessage = { kind: "error" | "info"; message: string };
 type SessionCursor = { eventCursor?: number; rawOutputCursor?: number };
+type AsyncState = "idle" | "loading" | "ready" | "error";
+
+interface ReviewState {
+  files: ChangedFileSummary[];
+  filesState: AsyncState;
+  filesError: string | null;
+  selectedFilePath: string | null;
+  diff: WorkspaceDiff | null;
+  diffState: AsyncState;
+  diffError: string | null;
+  isPanelOpen: boolean;
+  isSummaryCollapsed: boolean;
+  openFile: (filePath: string) => void;
+  closePanel: () => void;
+  toggleSummary: () => void;
+}
+
+type ParsedDiffLine = {
+  kind: "addition" | "deletion" | "context";
+  oldLineNumber: number | null;
+  newLineNumber: number | null;
+  content: string;
+};
+
+type ParsedDiffBlock =
+  | { kind: "hunk"; id: string; header: string; lines: ParsedDiffLine[] }
+  | { kind: "omitted"; id: string; count: number };
 
 /* eslint-disable no-control-regex */
 const oscSequencePattern = new RegExp("\\u001B\\][^\\u0007]*(?:\\u0007|\\u001B\\\\)", "g");
@@ -49,10 +82,17 @@ const escapeSequencePattern = new RegExp("\\u001B[@-Z\\\\-_]", "g");
 const controlCharacterPattern = new RegExp("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]", "g");
 /* eslint-enable no-control-regex */
 
-const providerOptions: Array<{ id: ProviderId; label: string }> = [
-  { id: "codex", label: "Codex" },
-  { id: "claude", label: "Claude" }
-];
+type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId };
+
+const allModelOptions: ModelPickerSelection[] = (Object.entries(PROVIDER_MODELS) as Array<[ProviderId, typeof PROVIDER_MODELS[ProviderId]]>)
+  .flatMap(([provider, models]) =>
+    models.map((model) => ({
+      provider,
+      label: model.label,
+      modelId: model.modelId,
+      ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+    }))
+  );
 
 const SUGGESTION_CHIPS = [
   "Plan a feature",
@@ -67,7 +107,10 @@ export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [providerOverride, setProviderOverride] = useState<ProviderId | null>(null);
+  const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
+    provider: "codex",
+    ...modelDefaultForProvider("codex")
+  }));
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
@@ -234,7 +277,6 @@ export function App(): JSX.Element {
       null,
     [snapshot.projects, selectedProjectId]
   );
-  const selectedProvider = providerOverride ?? selectedProject?.settings.defaultProvider ?? "codex";
 
   useEffect(() => {
     if (selectedWorkspace) {
@@ -342,14 +384,17 @@ export function App(): JSX.Element {
   );
 
   const sendSessionInput = useCallback(
-    async (sessionId: string, input: string): Promise<void> => {
+    async (sessionId: string, input: string, model: ProviderModelSelection): Promise<void> => {
       if (!window.maestro?.providers.sendInput) {
         throw new Error("Open the Electron app window to send input to a live session.");
       }
 
       await window.maestro.providers.sendInput({
         sessionId,
-        input: `${input}\r`
+        input: `${input}\r`,
+        modelLabel: model.label,
+        modelId: model.modelId,
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
       });
       await Promise.all([loadDashboard(), loadSessionEvents(sessionId)]);
     },
@@ -357,7 +402,7 @@ export function App(): JSX.Element {
   );
 
   const launchTask = useCallback(
-    async (prompt: string, provider: ProviderId): Promise<void> => {
+    async (prompt: string, model: ModelPickerSelection): Promise<void> => {
       if (!window.maestro) {
         throw new Error("Open the Electron app window to launch local agents.");
       }
@@ -371,14 +416,13 @@ export function App(): JSX.Element {
         taskLabel: titleFromPrompt(prompt)
       });
 
-      const modelDefault = modelDefaultForProvider(provider);
       const launchedSession = await window.maestro.providers.launch({
         workspaceId: workspace.id,
-        provider,
+        provider: model.provider,
         prompt,
-        modelLabel: modelDefault.label,
-        modelId: modelDefault.modelId,
-        ...(modelDefault.reasoningEffort ? { reasoningEffort: modelDefault.reasoningEffort } : {}),
+        modelLabel: model.label,
+        modelId: model.modelId,
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
         cols: 120,
         rows: 32
       });
@@ -442,9 +486,9 @@ export function App(): JSX.Element {
             <LaunchSurface
               onAddProject={() => void addProject()}
               onLaunchTask={launchTask}
-              onProviderChange={setProviderOverride}
+              model={launchModel}
+              onModelChange={setLaunchModel}
               project={selectedProject}
-              provider={selectedProvider}
             />
           )}
         </div>
@@ -614,13 +658,14 @@ function SessionPane({
   approvals: ApprovalRequest[];
   events: TimelineEvent[];
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
-  onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
+  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
+  const reviewState = useReviewState(workspace);
   const visibleApprovals = useMemo(
     () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
     [approvals, sessionId]
@@ -638,61 +683,65 @@ function SessionPane({
   };
 
   return (
-    <div className="session-grid">
-      <SessionConversation
-        events={visibleEvents}
-        onSendSessionInput={onSendSessionInput}
-        project={project}
-        rawOutputs={rawOutputs}
-        session={session}
-        workspace={workspace}
-      />
+    <div className={reviewState.isPanelOpen ? "session-grid review-open" : "session-grid"}>
+      <div className="session-main-column">
+        <SessionConversation
+          events={visibleEvents}
+          onSendSessionInput={onSendSessionInput}
+          project={project}
+          rawOutputs={rawOutputs}
+          review={reviewState}
+          session={session}
+          workspace={workspace}
+        />
 
-      {visibleApprovals.length > 0 ? (
-        <section className="approval-surface">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Approvals</p>
-              <h2>Risk gate</h2>
+        {visibleApprovals.length > 0 ? (
+          <section className="approval-surface">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Approvals</p>
+                <h2>Risk gate</h2>
+              </div>
+              <ShieldAlert size={20} />
             </div>
-            <ShieldAlert size={20} />
-          </div>
-          {visibleApprovals.map((approval) => (
-            <div className="approval-row" data-risk={approval.riskLevel} key={approval.id}>
-              <div className="approval-risk">
-                <strong>{approval.riskLevel}</strong>
-                <span>{approval.status}</span>
+            {visibleApprovals.map((approval) => (
+              <div className="approval-row" data-risk={approval.riskLevel} key={approval.id}>
+                <div className="approval-risk">
+                  <strong>{approval.riskLevel}</strong>
+                  <span>{approval.status}</span>
+                </div>
+                <div className="approval-command">
+                  <code>{approval.command}</code>
+                  <span>
+                    {approval.provider} / {approval.cwd}
+                  </span>
+                </div>
+                <div className="approval-actions">
+                  <button
+                    disabled={approval.status !== "pending"}
+                    type="button"
+                    onClick={() => {
+                      void handleResolveApproval(approval.id, "rejected");
+                    }}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    disabled={approval.status !== "pending"}
+                    type="button"
+                    onClick={() => {
+                      void handleResolveApproval(approval.id, "approved");
+                    }}
+                  >
+                    Approve
+                  </button>
+                </div>
               </div>
-              <div className="approval-command">
-                <code>{approval.command}</code>
-                <span>
-                  {approval.provider} / {approval.cwd}
-                </span>
-              </div>
-              <div className="approval-actions">
-                <button
-                  disabled={approval.status !== "pending"}
-                  type="button"
-                  onClick={() => {
-                    void handleResolveApproval(approval.id, "rejected");
-                  }}
-                >
-                  Reject
-                </button>
-                <button
-                  disabled={approval.status !== "pending"}
-                  type="button"
-                  onClick={() => {
-                    void handleResolveApproval(approval.id, "approved");
-                  }}
-                >
-                  Approve
-                </button>
-              </div>
-            </div>
-          ))}
-        </section>
-      ) : null}
+            ))}
+          </section>
+        ) : null}
+      </div>
+      {reviewState.isPanelOpen ? <ReviewPanel review={reviewState} /> : null}
     </div>
   );
 }
@@ -702,19 +751,22 @@ function SessionConversation({
   onSendSessionInput,
   project,
   rawOutputs,
+  review,
   session,
   workspace
 }: {
   events: TimelineEvent[];
-  onSendSessionInput: (sessionId: string, input: string) => Promise<void>;
+  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
+  review: ReviewState;
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
   const inputRef = useRef<HTMLInputElement | null>(null);
   const shouldRefocusInput = useRef(false);
   const conversationEvents = useMemo(
@@ -749,9 +801,13 @@ function SessionConversation({
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
   const sessionDetails = [
     session ? providerLabel(session.provider) : null,
-    session?.modelLabel ?? null,
+    selectedModel.label,
     workspace?.branch ?? null
   ].filter((detail): detail is string => Boolean(detail));
+
+  useEffect(() => {
+    setSelectedModel(modelSelectionFromSession(session));
+  }, [session]);
 
   useEffect(() => {
     if (!shouldRefocusInput.current || isSending || !canSend) {
@@ -780,7 +836,7 @@ function SessionConversation({
     setStatus(null);
     shouldRefocusInput.current = true;
     try {
-      await onSendSessionInput(session.id, trimmedInput);
+      await onSendSessionInput(session.id, trimmedInput, selectedModel);
       setInput("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not send input.");
@@ -801,6 +857,14 @@ function SessionConversation({
             ))}
           </div>
         </div>
+        {session ? (
+          <ModelSelector
+            provider={session.provider}
+            value={selectedModel}
+            onChange={setSelectedModel}
+            ariaLabel="Session model"
+          />
+        ) : null}
       </div>
       <div className="conversation-list">
         {conversationEvents.length > 0 ? (
@@ -849,6 +913,7 @@ function SessionConversation({
           </article>
         ) : null}
       </div>
+      <ChangedFilesCard review={review} />
       <form className="session-input" onSubmit={(event) => void submitInput(event)}>
         <div className="session-input-field">
           <input
@@ -866,7 +931,6 @@ function SessionConversation({
           <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
         </div>
         <button disabled={!canSend || isSending || !input.trim()} type="submit" title="Send follow-up">
-          <kbd className="kbd kbd-hint" aria-hidden="true">⌘ ↵</kbd>
           <ChevronRight size={18} />
         </button>
       </form>
@@ -879,18 +943,396 @@ function SessionConversation({
   );
 }
 
+function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
+  const [files, setFiles] = useState<ChangedFileSummary[]>([]);
+  const [filesState, setFilesState] = useState<AsyncState>("idle");
+  const [filesError, setFilesError] = useState<string | null>(null);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [diff, setDiff] = useState<WorkspaceDiff | null>(null);
+  const [diffState, setDiffState] = useState<AsyncState>("idle");
+  const [diffError, setDiffError] = useState<string | null>(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
+  const fileLoadToken = useRef(0);
+  const diffLoadToken = useRef(0);
+  const previousWorkspaceId = useRef<string | null>(null);
+  const isPanelOpenRef = useRef(false);
+
+  useEffect(() => {
+    isPanelOpenRef.current = isPanelOpen;
+  }, [isPanelOpen]);
+
+  useEffect(() => {
+    const token = ++fileLoadToken.current;
+    const workspaceId = workspace?.id ?? null;
+    if (previousWorkspaceId.current !== workspaceId) {
+      previousWorkspaceId.current = workspaceId;
+      setSelectedFilePath(null);
+      setDiff(null);
+      setDiffState("idle");
+      setDiffError(null);
+      setIsPanelOpen(false);
+      setIsSummaryCollapsed(false);
+    }
+
+    if (!workspace?.id || !window.maestro?.review?.listChangedFiles) {
+      setFiles([]);
+      setFilesState("idle");
+      setFilesError(null);
+      setIsPanelOpen(false);
+      setIsSummaryCollapsed(false);
+      return;
+    }
+
+    setFilesState("loading");
+    setFilesError(null);
+    void window.maestro.review
+      .listChangedFiles(workspace.id)
+      .then((result) => {
+        if (token !== fileLoadToken.current) {
+          return;
+        }
+        const sorted = [...result].sort((left, right) => left.path.localeCompare(right.path));
+        setFiles(sorted);
+        setFilesState("ready");
+        setSelectedFilePath((currentPath) => {
+          if (currentPath && sorted.some((file) => file.path === currentPath)) {
+            return currentPath;
+          }
+          return isPanelOpenRef.current ? sorted[0]?.path ?? null : null;
+        });
+        if (sorted.length === 0) {
+          setIsPanelOpen(false);
+        }
+      })
+      .catch((error) => {
+        if (token !== fileLoadToken.current) {
+          return;
+        }
+        setFiles([]);
+        setFilesState("error");
+        setFilesError(error instanceof Error ? error.message : "Could not load changed files.");
+      });
+  }, [workspace?.id, workspace?.changedFiles, workspace?.lastActivityAt]);
+
+  useEffect(() => {
+    const token = ++diffLoadToken.current;
+    if (!workspace?.id || !selectedFilePath || !window.maestro?.review?.loadDiff) {
+      setDiff(null);
+      setDiffState("idle");
+      setDiffError(null);
+      return;
+    }
+
+    setDiffState("loading");
+    setDiffError(null);
+    void window.maestro.review
+      .loadDiff(workspace.id, selectedFilePath)
+      .then((result) => {
+        if (token !== diffLoadToken.current) {
+          return;
+        }
+        setDiff(result);
+        setDiffState("ready");
+      })
+      .catch((error) => {
+        if (token !== diffLoadToken.current) {
+          return;
+        }
+        setDiff(null);
+        setDiffState("error");
+        setDiffError(error instanceof Error ? error.message : "Could not load diff.");
+      });
+  }, [workspace?.id, selectedFilePath]);
+
+  const openFile = useCallback((filePath: string): void => {
+    setSelectedFilePath(filePath);
+    setIsPanelOpen(true);
+  }, []);
+
+  const closePanel = useCallback((): void => {
+    setIsPanelOpen(false);
+  }, []);
+
+  const toggleSummary = useCallback((): void => {
+    setIsSummaryCollapsed((current) => !current);
+  }, []);
+
+  return {
+    files,
+    filesState,
+    filesError,
+    selectedFilePath,
+    diff,
+    diffState,
+    diffError,
+    isPanelOpen,
+    isSummaryCollapsed,
+    openFile,
+    closePanel,
+    toggleSummary
+  };
+}
+
+function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | null {
+  if (review.filesState === "idle" || (review.filesState === "ready" && review.files.length === 0)) {
+    return null;
+  }
+
+  if (review.filesState === "loading") {
+    return (
+      <section className="changed-files-card" aria-label="Changed files">
+        <div className="changed-files-header">
+          <span>Loading changed files</span>
+        </div>
+      </section>
+    );
+  }
+
+  if (review.filesState === "error") {
+    return (
+      <section className="changed-files-card" aria-label="Changed files">
+        <div className="changed-files-header">
+          <span>Changed files unavailable</span>
+          <span className="review-error">{review.filesError}</span>
+        </div>
+      </section>
+    );
+  }
+
+  const totals = summarizeChangedFiles(review.files);
+  return (
+    <section className="changed-files-card" aria-label="Changed files" data-collapsed={review.isSummaryCollapsed ? "true" : undefined}>
+      <div className="changed-files-header">
+        <span>{review.files.length} files changed</span>
+        <span className="changed-files-actions">
+          <ChangeCount additions={totals.additions} deletions={totals.deletions} />
+          <button type="button" onClick={review.toggleSummary}>
+            {review.isSummaryCollapsed ? "Show diff" : "Hide diff"}
+          </button>
+        </span>
+      </div>
+      {review.isSummaryCollapsed ? null : (
+        <div className="changed-files-list">
+          {review.files.map((file) => (
+            <button
+              aria-pressed={review.selectedFilePath === file.path && review.isPanelOpen}
+              className="changed-file-row"
+              key={file.path}
+              type="button"
+              onClick={() => review.openFile(file.path)}
+            >
+              <span className="changed-file-status">{statusLabel(file.status)}</span>
+              <span className="changed-file-path">{file.path}</span>
+              <ChangeCount additions={file.additions} deletions={file.deletions} />
+              <ChevronRight size={16} />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReviewPanel({ review }: { review: ReviewState }): JSX.Element {
+  const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
+  const totals = summarizeChangedFiles(review.files);
+  const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
+
+  return (
+    <aside className="review-panel" aria-label="Review panel">
+      <div className="review-toolbar">
+        <div>
+          <p className="eyebrow">Review</p>
+          <h2>
+            {review.files.length} files changed <ChangeCount additions={totals.additions} deletions={totals.deletions} />
+          </h2>
+        </div>
+        <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
+          <PanelRightClose size={18} />
+        </button>
+      </div>
+      <div className="review-file-tabs" aria-label="Changed file list">
+        {review.files.map((file) => (
+          <button
+            aria-pressed={review.selectedFilePath === file.path}
+            key={file.path}
+            type="button"
+            onClick={() => review.openFile(file.path)}
+          >
+            <FileText size={15} />
+            <span>{file.path}</span>
+            <ChangeCount additions={file.additions} deletions={file.deletions} />
+          </button>
+        ))}
+      </div>
+      <div className="review-diff">
+        {selectedFile ? (
+          <div className="review-diff-heading">
+            <div>
+              <span className="changed-file-status">{statusLabel(selectedFile.status)}</span>
+              <strong>{selectedFile.path}</strong>
+              <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
+            </div>
+            <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
+              <X size={16} />
+            </button>
+          </div>
+        ) : null}
+        {review.diffState === "loading" ? <p className="review-empty">Loading diff...</p> : null}
+        {review.diffState === "error" ? <p className="review-empty review-error">{review.diffError}</p> : null}
+        {review.diffState === "ready" && diffBlocks.length === 0 ? <p className="review-empty">No textual diff.</p> : null}
+        {review.diffState === "ready" && diffBlocks.length > 0 ? <DiffBlocks blocks={diffBlocks} /> : null}
+      </div>
+    </aside>
+  );
+}
+
+function DiffBlocks({ blocks }: { blocks: ParsedDiffBlock[] }): JSX.Element {
+  return (
+    <div className="diff-blocks">
+      {blocks.map((block) =>
+        block.kind === "omitted" ? (
+          <div className="diff-omitted" key={block.id}>
+            {block.count} unmodified lines
+          </div>
+        ) : (
+          <div className="diff-hunk" key={block.id}>
+            <div className="diff-hunk-header">{block.header}</div>
+            {block.lines.map((line, index) => (
+              <div className={`diff-line ${line.kind}`} key={`${block.id}-${index}`}>
+                <span className="diff-line-number">{line.oldLineNumber ?? ""}</span>
+                <span className="diff-line-number">{line.newLineNumber ?? ""}</span>
+                <code>{line.content || " "}</code>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function ChangeCount({ additions, deletions }: { additions: number; deletions: number }): JSX.Element {
+  return (
+    <span className="change-count" aria-label={`${additions} additions, ${deletions} deletions`}>
+      <span className="additions">+{additions}</span>
+      <span className="deletions">-{deletions}</span>
+    </span>
+  );
+}
+
+function summarizeChangedFiles(files: ChangedFileSummary[]): { additions: number; deletions: number } {
+  return files.reduce(
+    (totals, file) => ({
+      additions: totals.additions + file.additions,
+      deletions: totals.deletions + file.deletions
+    }),
+    { additions: 0, deletions: 0 }
+  );
+}
+
+function statusLabel(status: string): string {
+  if (status === "??" || status.includes("A")) {
+    return "Added";
+  }
+  if (status.includes("D")) {
+    return "Deleted";
+  }
+  if (status.includes("R")) {
+    return "Renamed";
+  }
+  if (status.includes("C")) {
+    return "Copied";
+  }
+  return "Modified";
+}
+
+function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
+  const lines = content.split("\n");
+  const blocks: ParsedDiffBlock[] = [];
+  let index = 0;
+  let previousOldEnd: number | null = null;
+  let hunkIndex = 0;
+
+  while (index < lines.length) {
+    const header = lines[index];
+    const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(header);
+    if (!match) {
+      index += 1;
+      continue;
+    }
+
+    const oldStart = Number(match[1]);
+    let oldLineNumber = oldStart;
+    let newLineNumber = Number(match[2]);
+    if (previousOldEnd !== null) {
+      const omittedCount = oldStart - previousOldEnd - 1;
+      if (omittedCount > 0) {
+        blocks.push({ kind: "omitted", id: `omitted-${hunkIndex}`, count: omittedCount });
+      }
+    }
+
+    const hunkLines: ParsedDiffLine[] = [];
+    index += 1;
+    while (index < lines.length && !lines[index].startsWith("@@ ")) {
+      const line = lines[index];
+      if (line.startsWith("diff --git ")) {
+        break;
+      }
+      if (line.startsWith("\\ No newline")) {
+        index += 1;
+        continue;
+      }
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        hunkLines.push({
+          kind: "addition",
+          oldLineNumber: null,
+          newLineNumber,
+          content: line.slice(1)
+        });
+        newLineNumber += 1;
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        hunkLines.push({
+          kind: "deletion",
+          oldLineNumber,
+          newLineNumber: null,
+          content: line.slice(1)
+        });
+        oldLineNumber += 1;
+      } else if (line.startsWith(" ")) {
+        hunkLines.push({
+          kind: "context",
+          oldLineNumber,
+          newLineNumber,
+          content: line.slice(1)
+        });
+        oldLineNumber += 1;
+        newLineNumber += 1;
+      }
+      index += 1;
+    }
+
+    blocks.push({ kind: "hunk", id: `hunk-${hunkIndex}`, header, lines: hunkLines });
+    previousOldEnd = oldLineNumber - 1;
+    hunkIndex += 1;
+  }
+
+  return blocks;
+}
+
 function LaunchSurface({
+  model,
   onAddProject,
   onLaunchTask,
-  onProviderChange,
-  project,
-  provider
+  onModelChange,
+  project
 }: {
+  model: ModelPickerSelection;
   onAddProject: () => void;
-  onLaunchTask: (prompt: string, provider: ProviderId) => Promise<void>;
-  onProviderChange: (provider: ProviderId) => void;
+  onLaunchTask: (prompt: string, model: ModelPickerSelection) => Promise<void>;
+  onModelChange: (model: ModelPickerSelection) => void;
   project: ProjectSummary | null;
-  provider: ProviderId;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -899,7 +1341,7 @@ function LaunchSurface({
   const slashAutocomplete = useSlashAutocomplete({
     input: prompt,
     setInput: setPrompt,
-    provider,
+    provider: model.provider,
     workspaceId: null
   });
 
@@ -913,7 +1355,7 @@ function LaunchSurface({
     setIsSubmitting(true);
     setStatus(null);
     try {
-      await onLaunchTask(trimmedPrompt, provider);
+      await onLaunchTask(trimmedPrompt, model);
       setPrompt("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not start agent.");
@@ -972,19 +1414,7 @@ function LaunchSurface({
             main
           </span>
           <span>Work locally</span>
-          <div className="provider-toggle" aria-label="Provider">
-            {providerOptions.map((option) => (
-              <button
-                aria-pressed={provider === option.id}
-                className={provider === option.id ? "active" : ""}
-                key={option.id}
-                type="button"
-                onClick={() => onProviderChange(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <CombinedModelSelector value={model} onChange={onModelChange} ariaLabel="Launch model" />
         </div>
         <div className="suggestion-chips" aria-label="Suggestions">
           {SUGGESTION_CHIPS.map((chip) => (
@@ -1212,8 +1642,168 @@ function SkillPopover({
   );
 }
 
-function modelDefaultForProvider(provider: ProviderId) {
-  return PROVIDER_MODEL_DEFAULTS[provider];
+function ModelSelector({
+  ariaLabel,
+  onChange,
+  provider,
+  value
+}: {
+  ariaLabel: string;
+  onChange: (model: ProviderModelSelection) => void;
+  provider: ProviderId;
+  value: ProviderModelSelection;
+}): JSX.Element {
+  const models = PROVIDER_MODELS[provider];
+  const selectedValue = models.some((model) => model.modelId === value.modelId) ? value.modelId : "__custom";
+
+  return (
+    <span className="model-selector">
+      <select
+        aria-label={ariaLabel}
+        value={selectedValue}
+        onChange={(event) => {
+          const modelId = event.target.value;
+          if (modelId === "__custom") {
+            onChange({
+              label: value.modelId,
+              modelId: value.modelId,
+              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
+            });
+            return;
+          }
+          const model = models.find((option) => option.modelId === modelId);
+          if (model) {
+            onChange({
+              label: model.label,
+              modelId: model.modelId,
+              ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+            });
+          }
+        }}
+      >
+        {models.map((model) => (
+          <option key={model.modelId} value={model.modelId}>
+            {model.badge ? `${model.label} (${model.badge})` : model.label}
+          </option>
+        ))}
+        <option value="__custom">Custom model</option>
+      </select>
+      {selectedValue === "__custom" ? (
+        <input
+          aria-label={`${ariaLabel} custom id`}
+          value={value.modelId}
+          onChange={(event) => {
+            const modelId = event.target.value.trim();
+            onChange({
+              label: modelId || "Custom model",
+              modelId: modelId || value.modelId,
+              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
+            });
+          }}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function CombinedModelSelector({
+  ariaLabel,
+  onChange,
+  value
+}: {
+  ariaLabel: string;
+  onChange: (model: ModelPickerSelection) => void;
+  value: ModelPickerSelection;
+}): JSX.Element {
+  const selectedValue = allModelOptions.some(
+    (model) => model.provider === value.provider && model.modelId === value.modelId
+  )
+    ? modelValue(value)
+    : "__custom";
+
+  return (
+    <span className="model-selector model-selector-combined">
+      <select
+        aria-label={ariaLabel}
+        value={selectedValue}
+        onChange={(event) => {
+          const selected = event.target.value;
+          if (selected === "__custom") {
+            onChange({
+              provider: value.provider,
+              label: "custom-model",
+              modelId: "custom-model",
+              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
+            });
+            return;
+          }
+          const model = allModelOptions.find((option) => modelValue(option) === selected);
+          if (model) {
+            onChange(model);
+          }
+        }}
+      >
+        <optgroup label="Codex">
+          {PROVIDER_MODELS.codex.map((model) => (
+            <option key={model.modelId} value={modelValue({ provider: "codex", ...model })}>
+              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Claude">
+          {PROVIDER_MODELS.claude.map((model) => (
+            <option key={model.modelId} value={modelValue({ provider: "claude", ...model })}>
+              {model.label}
+            </option>
+          ))}
+        </optgroup>
+        <option value="__custom">Custom model</option>
+      </select>
+      {selectedValue === "__custom" ? (
+        <input
+          aria-label={`${ariaLabel} custom id`}
+          value={value.modelId}
+          onChange={(event) => {
+            const modelId = event.target.value.trim();
+            onChange({
+              provider: value.provider,
+              label: modelId || "Custom model",
+              modelId: modelId || value.modelId,
+              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
+            });
+          }}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function modelValue(model: Pick<ModelPickerSelection, "provider" | "modelId">): string {
+  return `${model.provider}:${model.modelId}`;
+}
+
+function effortLabel(reasoningEffort: NonNullable<ProviderModelSelection["reasoningEffort"]>): string {
+  return `${reasoningEffort[0]?.toUpperCase() ?? ""}${reasoningEffort.slice(1)}`;
+}
+
+function modelDefaultForProvider(provider: ProviderId): ProviderModelSelection {
+  const model = PROVIDER_MODEL_DEFAULTS[provider];
+  return {
+    label: model.label,
+    modelId: model.modelId,
+    ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+  };
+}
+
+function modelSelectionFromSession(session: SessionSummary | null): ProviderModelSelection {
+  if (!session) {
+    return modelDefaultForProvider("codex");
+  }
+  return {
+    label: session.modelLabel,
+    modelId: session.modelId,
+    ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {})
+  };
 }
 
 function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: string | null): string {

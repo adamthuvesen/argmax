@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardDelta, DashboardSnapshot, MaestroApi } from "../shared/types.js";
@@ -13,7 +13,7 @@ const snapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: {
         defaultProvider: "codex",
-        defaultModelLabel: "GPT-5.3 Codex Spark Low",
+        defaultModelLabel: "GPT-5.3 Codex",
         worktreeLocation: "/tmp/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm test"]
@@ -47,7 +47,9 @@ const snapshot: DashboardSnapshot = {
       id: "session-1",
       workspaceId: "workspace-1",
       provider: "codex",
-      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.3-codex",
+      reasoningEffort: "medium",
       providerConversationId: null,
       prompt: "Build dashboard",
       state: "running",
@@ -102,6 +104,8 @@ describe("App", () => {
   let launchProvider: ReturnType<typeof vi.fn<MaestroApi["providers"]["launch"]>>;
   let approvalsPending: ReturnType<typeof vi.fn<MaestroApi["approvals"]["pending"]>>;
   let pickProjectFolder: ReturnType<typeof vi.fn<MaestroApi["projects"]["pickFolder"]>>;
+  let listChangedFiles: ReturnType<typeof vi.fn<MaestroApi["review"]["listChangedFiles"]>>;
+  let loadDiff: ReturnType<typeof vi.fn<MaestroApi["review"]["loadDiff"]>>;
   let sessionEventsSince: ReturnType<typeof vi.fn<MaestroApi["session"]["eventsSince"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<MaestroApi["providers"]["sendInput"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["status"]>>;
@@ -134,6 +138,12 @@ describe("App", () => {
     });
     sendProviderInput = vi.fn<MaestroApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
     workspaceStatus = vi.fn<MaestroApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
+    listChangedFiles = vi.fn<MaestroApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
+    loadDiff = vi.fn<MaestroApi["review"]["loadDiff"]>().mockResolvedValue({
+      workspaceId: "workspace-1",
+      filePath: null,
+      content: ""
+    });
     skillsList = vi.fn<MaestroApi["skills"]["list"]>().mockResolvedValue([]);
 
     window.maestro = {
@@ -174,8 +184,8 @@ describe("App", () => {
         eventsSince: sessionEventsSince
       },
       review: {
-        listChangedFiles: () => Promise.resolve([]),
-        loadDiff: () => Promise.resolve({ workspaceId: "workspace-1", filePath: null, content: "" })
+        listChangedFiles,
+        loadDiff
       },
       checks: {
         run: () => Promise.resolve(missingCheck())
@@ -211,7 +221,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Maestro" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
@@ -325,7 +335,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Codex" })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -341,9 +351,9 @@ describe("App", () => {
       workspaceId: "workspace-1",
       provider: "codex",
       prompt: "Implement PTY launch",
-      modelLabel: "GPT-5.3 Codex Spark Low",
-      modelId: "gpt-5.3-codex-spark",
-      reasoningEffort: "low",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.3-codex",
+      reasoningEffort: "medium",
       cols: 120,
       rows: 32
     });
@@ -368,7 +378,9 @@ describe("App", () => {
       id: "session-new",
       workspaceId: "workspace-new",
       provider: "codex",
-      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.3-codex",
+      reasoningEffort: "medium",
       providerConversationId: null,
       prompt: "New chat",
       state: "running",
@@ -420,7 +432,9 @@ describe("App", () => {
   it("starts Claude when selected in the composer", async () => {
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Claude" }));
+    fireEvent.change(await screen.findByLabelText("Launch model"), {
+      target: { value: "claude:sonnet" }
+    });
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
     });
@@ -431,8 +445,36 @@ describe("App", () => {
         workspaceId: "workspace-1",
         provider: "claude",
         prompt: "Review this change",
-        modelLabel: "Claude Haiku",
-        modelId: "haiku",
+        modelLabel: "Claude Sonnet",
+        modelId: "sonnet",
+        cols: 120,
+        rows: 32
+      })
+    );
+  });
+
+  it("starts a custom model id from the unified picker", async () => {
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("Launch model"), {
+      target: { value: "__custom" }
+    });
+    fireEvent.change(await screen.findByLabelText("Launch model custom id"), {
+      target: { value: "gpt-custom-coder" }
+    });
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Try the custom model" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        provider: "codex",
+        prompt: "Try the custom model",
+        modelLabel: "gpt-custom-coder",
+        modelId: "gpt-custom-coder",
+        reasoningEffort: "medium",
         cols: 120,
         rows: 32
       })
@@ -528,7 +570,8 @@ describe("App", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Claude Haiku",
+      modelLabel: "Claude Sonnet",
+      modelId: "sonnet",
       providerConversationId: "session-2",
       prompt: "Second chat",
       state: "complete",
@@ -564,7 +607,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByText("Claude Haiku")).toBeInTheDocument();
+    expect(screen.getByLabelText("Session model")).toHaveValue("sonnet");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-pressed", "true");
@@ -667,12 +710,85 @@ describe("App", () => {
     await waitFor(() =>
       expect(sendProviderInput).toHaveBeenCalledWith({
         sessionId: "session-1",
-        input: "continue with tests\r"
+        input: "continue with tests\r",
+        modelLabel: "GPT-5.3 Codex",
+        modelId: "gpt-5.3-codex",
+        reasoningEffort: "medium"
       })
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(launchProvider).not.toHaveBeenCalled();
     await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("switches the session model for the next follow-up prompt", async () => {
+    const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
+    dashboardLoad.mockResolvedValue({
+      ...snapshot,
+      sessions: completeSessions
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.change(await screen.findByLabelText("Session model"), {
+      target: { value: "gpt-5.5" }
+    });
+    fireEvent.change(await screen.findByLabelText("Session prompt"), {
+      target: { value: "use the stronger model" }
+    });
+    fireEvent.click(screen.getByTitle("Send follow-up"));
+
+    await waitFor(() =>
+      expect(sendProviderInput).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        input: "use the stronger model\r",
+        modelLabel: "GPT-5.5",
+        modelId: "gpt-5.5",
+        reasoningEffort: "medium"
+      })
+    );
+  });
+
+  it("opens a changed file review panel with parsed diff lines", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/renderer/App.tsx", status: "M", additions: 2, deletions: 2 },
+      { path: "src/renderer/styles.css", status: "M", additions: 0, deletions: 15 }
+    ]);
+    loadDiff.mockResolvedValue({
+      workspaceId: "workspace-1",
+      filePath: "src/renderer/App.tsx",
+      content: [
+        "diff --git a/src/renderer/App.tsx b/src/renderer/App.tsx",
+        "--- a/src/renderer/App.tsx",
+        "+++ b/src/renderer/App.tsx",
+        "@@ -1,3 +1,3 @@",
+        " const before = true;",
+        "-const oldValue = true;",
+        "+const newValue = true;",
+        " const after = true;",
+        "@@ -20,2 +20,2 @@",
+        "-const stale = true;",
+        "+const fresh = true;"
+      ].join("\n")
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByText("2 files changed")).toBeInTheDocument();
+    expect(screen.getByLabelText("2 additions, 17 deletions")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide diff" }));
+    expect(screen.queryByRole("button", { name: /src\/renderer\/App\.tsx/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show diff" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /src\/renderer\/App\.tsx/ }));
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/renderer/App.tsx");
+    expect(await screen.findByText("16 unmodified lines")).toBeInTheDocument();
+    expect(screen.getByText("const oldValue = true;")).toBeInTheDocument();
+    expect(screen.getByText("const newValue = true;")).toBeInTheDocument();
   });
 
   it("opens slash autocomplete in the launcher composer without a workspace id", async () => {
@@ -683,7 +799,9 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Claude" }));
+    fireEvent.change(await screen.findByLabelText("Launch model"), {
+      target: { value: "claude:sonnet" }
+    });
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 
@@ -718,7 +836,7 @@ describe("App", () => {
     expect(listbox).toBeInTheDocument();
     expect(skillsList).toHaveBeenCalledWith({ provider: "codex", workspaceId: "workspace-1" });
 
-    const options = screen.getAllByRole("option");
+    const options = within(listbox).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       "/opsx-applyApply a change",
       "/opsx-archiveArchive a change"
@@ -888,7 +1006,7 @@ function secondProject(): DashboardSnapshot["projects"][number] {
     defaultBranch: "main",
     settings: {
       defaultProvider: "codex",
-      defaultModelLabel: "GPT-5.3 Codex Spark Low",
+      defaultModelLabel: "GPT-5.3 Codex",
       worktreeLocation: "/tmp/dotfiles-worktrees",
       setupCommand: "",
       checkCommands: []

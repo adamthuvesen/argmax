@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,6 +12,9 @@ describe("GitReviewService", () => {
     const repoPath = createCommittedGitRepo();
     writeFileSync(join(repoPath, "src/index.ts"), "export const ok = false;\n");
     writeFileSync(join(repoPath, "src/new.ts"), "export const added = true;\n");
+    writeFileSync(join(repoPath, "src/staged.ts"), "export const staged = true;\n");
+    git(repoPath, ["add", "src/staged.ts"]);
+    unlinkSync(join(repoPath, "src/delete-me.ts"));
     const database = createDatabase(":memory:", { seed: false });
     database.persistProject({
       id: "project-1",
@@ -37,16 +40,21 @@ describe("GitReviewService", () => {
       state: "complete",
       sharedWorkspace: true,
       dirty: true,
-      changedFiles: 2
+      changedFiles: 4
     });
     const service = new GitReviewService(database);
 
     const files = await service.listChangedFiles(workspace.id);
     const diff = await service.loadDiff(workspace.id, "src/index.ts");
+    const stagedDiff = await service.loadDiff(workspace.id, "src/staged.ts");
+    const untrackedDiff = await service.loadDiff(workspace.id, "src/new.ts");
+    const deletedDiff = await service.loadDiff(workspace.id, "src/delete-me.ts");
 
     expect(files).toEqual([
-      { status: "M", path: "src/index.ts" },
-      { status: "??", path: "src/new.ts" }
+      { status: "D", path: "src/delete-me.ts", additions: 0, deletions: 1 },
+      { status: "M", path: "src/index.ts", additions: 1, deletions: 1 },
+      { status: "A", path: "src/staged.ts", additions: 1, deletions: 0 },
+      { status: "??", path: "src/new.ts", additions: 1, deletions: 0 }
     ]);
     expect(diff).toMatchObject({
       workspaceId: workspace.id,
@@ -54,6 +62,10 @@ describe("GitReviewService", () => {
     });
     expect(diff.content).toContain("-export const ok = true;");
     expect(diff.content).toContain("+export const ok = false;");
+    expect(stagedDiff.content).toContain("+export const staged = true;");
+    expect(untrackedDiff.content).toContain("--- /dev/null");
+    expect(untrackedDiff.content).toContain("+export const added = true;");
+    expect(deletedDiff.content).toContain("-export const remove = true;");
 
     database.connection.close();
   });
@@ -66,7 +78,8 @@ function createCommittedGitRepo(): string {
   git(repoPath, ["config", "user.name", "Maestro Test"]);
   mkdirSync(join(repoPath, "src"));
   writeFileSync(join(repoPath, "src/index.ts"), "export const ok = true;\n");
-  git(repoPath, ["add", "src/index.ts"]);
+  writeFileSync(join(repoPath, "src/delete-me.ts"), "export const remove = true;\n");
+  git(repoPath, ["add", "src/index.ts", "src/delete-me.ts"]);
   git(repoPath, ["commit", "-m", "test: seed repo"]);
   return repoPath;
 }

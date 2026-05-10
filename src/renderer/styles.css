@@ -256,6 +256,11 @@ button {
   background: rgba(255, 255, 255, 0.5);
 }
 
+.project-name.active {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
 .project-name svg {
   color: var(--muted);
 }
@@ -285,21 +290,7 @@ button {
 
 .session-link.active {
   color: var(--text);
-  background: #ece8de;
-  box-shadow: inset 2px 0 0 var(--ink);
-}
-
-.session-link[data-status="running"].active {
-  box-shadow: inset 2px 0 0 var(--sage);
-}
-
-.session-link[data-status="waiting"].active {
-  box-shadow: inset 2px 0 0 var(--amber);
-}
-
-.session-link[data-status="failed"].active,
-.session-link[data-status="blocked"].active {
-  box-shadow: inset 2px 0 0 var(--rose);
+  background: var(--panel-soft);
 }
 
 .session-link span {

@@ -42,9 +42,9 @@ export async function listSkills(input: ListSkillsInput): Promise<SkillSummary[]
   // Highest precedence first; Map.set with skipIfPresent semantics retains it.
   const collected = new Map<string, SkillSummary>();
   const sources = resolveSources(input);
+  const perSource = await Promise.all(sources.map((source) => loadSource(source)));
 
-  for (const source of sources) {
-    const found = await loadSource(source);
+  for (const found of perSource) {
     for (const skill of found) {
       if (!collected.has(skill.name)) {
         collected.set(skill.name, skill);
@@ -158,39 +158,28 @@ async function loadSkillDir(
   excludeDotDirs: boolean
 ): Promise<SkillSummary[]> {
   const entries = await safeReaddir(root);
-  const summaries: SkillSummary[] = [];
-  for (const entry of entries) {
-    if (excludeDotDirs && entry.startsWith(".")) {
-      continue;
-    }
-    const dirPath = join(root, entry);
-    if (!(await isDirectory(dirPath))) {
-      continue;
-    }
-    const skillFile = join(dirPath, "SKILL.md");
-    const summary = await parseSkillFile(skillFile, entry, sourceKind);
-    if (summary) {
-      summaries.push(summary);
-    }
-  }
-  return summaries;
+  const candidates = excludeDotDirs ? entries.filter((entry) => !entry.startsWith(".")) : entries;
+  const results = await Promise.all(
+    candidates.map(async (entry) => {
+      const dirPath = join(root, entry);
+      if (!(await isDirectory(dirPath))) {
+        return null;
+      }
+      return parseSkillFile(join(dirPath, "SKILL.md"), entry, sourceKind);
+    })
+  );
+  return results.filter((summary): summary is SkillSummary => summary !== null);
 }
 
 async function loadPromptDir(root: string, sourceKind: SkillSource): Promise<SkillSummary[]> {
   const entries = await safeReaddir(root);
-  const summaries: SkillSummary[] = [];
-  for (const entry of entries) {
-    if (extname(entry).toLowerCase() !== ".md") {
-      continue;
-    }
-    const filePath = join(root, entry);
-    const fallbackName = basename(entry, extname(entry));
-    const summary = await parseSkillFile(filePath, fallbackName, sourceKind);
-    if (summary) {
-      summaries.push(summary);
-    }
-  }
-  return summaries;
+  const markdownEntries = entries.filter((entry) => extname(entry).toLowerCase() === ".md");
+  const results = await Promise.all(
+    markdownEntries.map((entry) =>
+      parseSkillFile(join(root, entry), basename(entry, extname(entry)), sourceKind)
+    )
+  );
+  return results.filter((summary): summary is SkillSummary => summary !== null);
 }
 
 /**
@@ -198,31 +187,37 @@ async function loadPromptDir(root: string, sourceKind: SkillSource): Promise<Ski
  * plugin cache root. Tolerates missing directories at any level.
  */
 async function loadPluginCache(root: string, sourceKind: SkillSource): Promise<SkillSummary[]> {
-  const summaries: SkillSummary[] = [];
   const distributions = await safeReaddir(root);
-  for (const dist of distributions) {
-    const distPath = join(root, dist);
-    if (!(await isDirectory(distPath))) {
-      continue;
-    }
-    const plugins = await safeReaddir(distPath);
-    for (const plugin of plugins) {
-      const pluginPath = join(distPath, plugin);
-      if (!(await isDirectory(pluginPath))) {
-        continue;
+  const distSummaries = await Promise.all(
+    distributions.map(async (dist) => {
+      const distPath = join(root, dist);
+      if (!(await isDirectory(distPath))) {
+        return [] as SkillSummary[];
       }
-      const versions = await safeReaddir(pluginPath);
-      for (const version of versions) {
-        const skillsRoot = join(pluginPath, version, "skills");
-        if (!(await isDirectory(skillsRoot))) {
-          continue;
-        }
-        const found = await loadSkillDir(skillsRoot, sourceKind, false);
-        summaries.push(...found);
-      }
-    }
-  }
-  return summaries;
+      const plugins = await safeReaddir(distPath);
+      const pluginSummaries = await Promise.all(
+        plugins.map(async (plugin) => {
+          const pluginPath = join(distPath, plugin);
+          if (!(await isDirectory(pluginPath))) {
+            return [] as SkillSummary[];
+          }
+          const versions = await safeReaddir(pluginPath);
+          const versionSummaries = await Promise.all(
+            versions.map(async (version) => {
+              const skillsRoot = join(pluginPath, version, "skills");
+              if (!(await isDirectory(skillsRoot))) {
+                return [] as SkillSummary[];
+              }
+              return loadSkillDir(skillsRoot, sourceKind, false);
+            })
+          );
+          return versionSummaries.flat();
+        })
+      );
+      return pluginSummaries.flat();
+    })
+  );
+  return distSummaries.flat();
 }
 
 async function parseSkillFile(

@@ -6,6 +6,7 @@ import type * as NodePty from "node-pty";
 import type { ProviderId } from "../../shared/types.js";
 import { defaultDiscoveryRunner, discoverProviderById, type ProviderDiscoveryRunner } from "./providerDiscovery.js";
 import { buildProviderEnvironment, providerShell, shellQuote } from "./providerEnvironment.js";
+import { scheduleSigkillEscalation } from "../processControl.js";
 import type {
   ProviderAdapter,
   ProviderCapabilityReport,
@@ -16,9 +17,6 @@ import type {
 
 const require = createRequire(import.meta.url);
 const nodePty = require("node-pty") as typeof NodePty;
-
-/** Grace period between SIGTERM and SIGKILL during teardown. */
-const KILL_GRACE_MS = 2_000;
 
 export type PtySpawner = (file: string, args: string[], options: IPtyForkOptions) => IPty;
 export type ProcessSpawner = (
@@ -126,13 +124,26 @@ export function createProviderAdapters(
   );
 }
 
+let defaultAdapterMap: Map<ProviderId, ProviderAdapter> | null = null;
+
 export function getProviderAdapter(
   providerId: ProviderId,
   runner: ProviderDiscoveryRunner = defaultDiscoveryRunner,
   spawnPty: PtySpawner = nodePty.spawn,
   spawnStructuredProcess: ProcessSpawner = spawnProcess
 ): ProviderAdapter {
-  const adapter = createProviderAdapters(runner, spawnPty, spawnStructuredProcess).get(providerId);
+  const isDefault =
+    runner === defaultDiscoveryRunner &&
+    spawnPty === nodePty.spawn &&
+    spawnStructuredProcess === spawnProcess;
+  let map: Map<ProviderId, ProviderAdapter>;
+  if (isDefault) {
+    defaultAdapterMap ??= createProviderAdapters(runner, spawnPty, spawnStructuredProcess);
+    map = defaultAdapterMap;
+  } else {
+    map = createProviderAdapters(runner, spawnPty, spawnStructuredProcess);
+  }
+  const adapter = map.get(providerId);
   if (!adapter) {
     throw new ProviderLaunchError(`Unknown provider: ${providerId}`, providerId);
   }
@@ -195,7 +206,7 @@ async function launchInteractivePty(
 
   // Mutable state shared between terminate/onExit. Declared up front so the
   // handle's terminate() closure can refer to them.
-  let killTimer: NodeJS.Timeout | null = null;
+  let killEscalation: { cancel: () => void } | null = null;
   let dataDisposable: { dispose: () => void } = { dispose: () => undefined };
   let exitDisposable: { dispose: () => void } = { dispose: () => undefined };
   const createdAt = () => new Date().toISOString();
@@ -228,21 +239,10 @@ async function launchInteractivePty(
       } catch {
         /* ignore */
       }
-      try {
-        ptyProcess.kill("SIGTERM");
-      } catch {
-        /* already gone */
-      }
-      killTimer = setTimeout(() => {
-        try {
-          ptyProcess.kill("SIGKILL");
-        } catch {
-          /* already gone */
-        }
-      }, KILL_GRACE_MS);
-      if (typeof killTimer.unref === "function") {
-        killTimer.unref();
-      }
+      killEscalation = scheduleSigkillEscalation(
+        () => ptyProcess.kill("SIGTERM"),
+        () => ptyProcess.kill("SIGKILL")
+      );
     }
   };
 
@@ -259,10 +259,8 @@ async function launchInteractivePty(
     });
 
     exitDisposable = ptyProcess.onExit(({ exitCode, signal }) => {
-      if (killTimer) {
-        clearTimeout(killTimer);
-        killTimer = null;
-      }
+      killEscalation?.cancel();
+      killEscalation = null;
       if (handle.disposed) {
         return;
       }
@@ -353,7 +351,7 @@ async function launchStructuredProcess(
     throw new ProviderLaunchError(`Could not launch ${definition.displayName} structured probe: ${detail}`, definition.id);
   }
 
-  let killTimer: NodeJS.Timeout | null = null;
+  let killEscalation: { cancel: () => void } | null = null;
   const handle: ProviderSessionHandle = {
     sessionId: input.sessionId,
     provider: definition.id,
@@ -376,21 +374,10 @@ async function launchStructuredProcess(
       } catch {
         /* already closed */
       }
-      try {
-        childProcess.kill("SIGTERM");
-      } catch {
-        /* already gone */
-      }
-      killTimer = setTimeout(() => {
-        try {
-          childProcess.kill("SIGKILL");
-        } catch {
-          /* already gone */
-        }
-      }, KILL_GRACE_MS);
-      if (typeof killTimer.unref === "function") {
-        killTimer.unref();
-      }
+      killEscalation = scheduleSigkillEscalation(
+        () => childProcess.kill("SIGTERM"),
+        () => childProcess.kill("SIGKILL")
+      );
     }
   };
 
@@ -434,10 +421,8 @@ async function launchStructuredProcess(
       });
     });
     childProcess.on("exit", (exitCode, signal) => {
-      if (killTimer) {
-        clearTimeout(killTimer);
-        killTimer = null;
-      }
+      killEscalation?.cancel();
+      killEscalation = null;
       if (handle.disposed) return;
       handle.disposed = true;
       const code = exitCode ?? 1;

@@ -1,13 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { PersistTimelineEventInput } from "../persistence/database.js";
 import type { EventType, ProviderId } from "../../shared/types.js";
+import { tryParseJsonObject } from "../../shared/safeJson.js";
+import { stripTerminalControls } from "../../shared/terminalControls.js";
 import type { ProviderEvent } from "./providerTypes.js";
-
-const escapeCharacter = String.fromCharCode(27);
-const bellCharacter = String.fromCharCode(7);
-const oscSequencePattern = new RegExp(`${escapeCharacter}\\][^${bellCharacter}]*(?:${bellCharacter}|${escapeCharacter}\\\\)`, "g");
-const csiSequencePattern = new RegExp(`${escapeCharacter}\\[[0-?]*[ -/]*[@-~]`, "g");
-const escapeSequencePattern = new RegExp(`${escapeCharacter}[@-Z\\\\-_]`, "g");
 
 export interface NormalizeProviderEventOptions {
   provider?: ProviderId;
@@ -94,33 +90,6 @@ export function normalizeProviderEvent(
       createdAt: event.createdAt
     }
   ];
-}
-
-function tryParseJsonObject(line: string): Record<string, unknown> | null {
-  if (!line.startsWith("{") && !line.startsWith("[")) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(line) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function stripTerminalControls(value: string): string {
-  return value
-    .replace(oscSequencePattern, "")
-    .replace(csiSequencePattern, "")
-    .replace(escapeSequencePattern, "")
-    .replaceAll(/./gs, (character) => (isDisplayControlCharacter(character) ? "" : character));
-}
-
-function isDisplayControlCharacter(character: string): boolean {
-  const code = character.charCodeAt(0);
-  return code === 127 || (code < 32 && code !== 9 && code !== 10 && code !== 13);
 }
 
 function normalizeJsonPayload(

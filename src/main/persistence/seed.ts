@@ -1,11 +1,8 @@
 /**
  * Seed data for tests and demo snapshots only. NEVER call from production
  * code — `createDatabase` defaults `seed: false` so the developer's real
- * local SQLite file is never overwritten with demo rows on launch
- * (audit H4, H5). Test callers opt in with `{ seed: true }`.
- *
- * Paths in this file are placeholders, not the maintainer's machine paths
- * (the previous seed leaked `/Users/adamthuvesen/...`).
+ * local SQLite file is never overwritten with demo rows on launch.
+ * Test callers opt in with `{ seed: true }`.
  */
 import type Database from "better-sqlite3";
 import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";

@@ -1,7 +1,7 @@
-import type { ApprovalRequest, AttentionState, WorkspaceState } from "../../shared/types.js";
+import type { ApprovalRequest, AttentionState, SessionState } from "../../shared/types.js";
 
 export interface SessionAttentionInput {
-  state: WorkspaceState;
+  state: SessionState;
   pendingApprovals?: Array<Pick<ApprovalRequest, "status">>;
 }
 
@@ -18,7 +18,7 @@ export function computeSessionAttention(input: SessionAttentionInput): Attention
     return "failed";
   }
 
-  if (input.state === "complete" || input.state === "kept") {
+  if (input.state === "complete") {
     return "review-ready";
   }
 

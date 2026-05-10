@@ -21,9 +21,8 @@ describe("computeSessionAttention", () => {
     expect(computeSessionAttention({ state: "failed" })).toBe("failed");
   });
 
-  it("marks complete and kept sessions as review-ready", () => {
+  it("marks complete sessions as review-ready", () => {
     expect(computeSessionAttention({ state: "complete" })).toBe("review-ready");
-    expect(computeSessionAttention({ state: "kept" })).toBe("review-ready");
   });
 
   it("leaves created and running sessions normal", () => {

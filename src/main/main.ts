@@ -97,11 +97,7 @@ async function shutdown(): Promise<void> {
       }
     }
     if (database) {
-      try {
-        database.clearPruneInterval?.();
-      } catch {
-        /* not configured or already cleared */
-      }
+      database.clearPruneInterval();
       try {
         database.connection.close();
       } catch {

@@ -6,9 +6,14 @@ import {
   createWorkspaceInputSchema,
   approvalsPendingInputSchema,
   dashboardListInputSchema,
+  dashboardLoadInputSchema,
+  healthPingInputSchema,
+  IPC_CHANNELS,
   launchProviderSessionInputSchema,
   loadDiffInputSchema,
   prepareCommitInputSchema,
+  projectsListInputSchema,
+  providersDiscoverInputSchema,
   providerSessionInputSchema,
   providerSessionResizeInputSchema,
   providerSessionTerminateInputSchema,
@@ -21,7 +26,8 @@ import {
   skillsListInputSchema,
   updateProjectSettingsInputSchema,
   workspaceStatusInputSchema,
-  workspaceIdInputSchema
+  workspaceIdInputSchema,
+  type IpcChannel
 } from "../shared/ipcSchemas.js";
 import type { MaestroDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
@@ -93,11 +99,14 @@ export function registerIpcHandlers(
   const checkpoints = new CheckpointService(database);
   const commits = new CommitPreparationService(database);
 
-  ipcMain.handle("health:ping", () => ({
-    ok: true,
-    timestamp: new Date().toISOString()
-  }));
-  ipcMain.handle("projects:list", () => database.listProjects());
+  ipcMain.handle(
+    "health:ping",
+    withValidation(healthPingInputSchema, () => ({
+      ok: true,
+      timestamp: new Date().toISOString()
+    }))
+  );
+  ipcMain.handle("projects:list", withValidation(projectsListInputSchema, () => database.listProjects()));
   ipcMain.handle(
     "projects:pick-folder",
     withValidation(projectsPickFolderInputSchema, async () => {
@@ -117,8 +126,8 @@ export function registerIpcHandlers(
     })
   );
   ipcMain.handle("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
-  ipcMain.handle("dashboard:load", () => database.loadDashboard());
-  ipcMain.handle("providers:discover", () => discoverProviders());
+  ipcMain.handle("dashboard:load", withValidation(dashboardLoadInputSchema, () => database.loadDashboard()));
+  ipcMain.handle("providers:discover", withValidation(providersDiscoverInputSchema, () => discoverProviders()));
 
   ipcMain.handle(
     "projects:register",
@@ -255,37 +264,7 @@ export function registerIpcHandlers(
 }
 
 /**
- * Channel names registered by `registerIpcHandlers`. New IPC channels MUST be
- * added here AND wired in `registerIpcHandlers`; the IPC handler regression
- * test asserts the two stay in sync.
+ * Channel names registered by `registerIpcHandlers`. Derived from `ipcSchemas`
+ * so adding a new channel only requires adding it to the schema map.
  */
-export const REGISTERED_IPC_CHANNELS: readonly string[] = [
-  "health:ping",
-  "projects:list",
-  "projects:pick-folder",
-  "dashboard:list",
-  "projects:register",
-  "projects:update-settings",
-  "workspaces:create-isolated",
-  "workspaces:create-current",
-  "workspaces:refresh-status",
-  "workspaces:keep",
-  "workspaces:archive",
-  "workspace:status",
-  "providers:discover",
-  "providers:launch",
-  "providers:send-input",
-  "providers:resize",
-  "providers:terminate",
-  "approvals:resolve",
-  "approvals:pending",
-  "session:eventsSince",
-  "review:list-changed-files",
-  "review:load-diff",
-  "checks:run",
-  "checkpoints:create",
-  "attempts:select-preferred",
-  "commits:prepare",
-  "dashboard:load",
-  "skills:list"
-];
+export const REGISTERED_IPC_CHANNELS: readonly IpcChannel[] = IPC_CHANNELS;

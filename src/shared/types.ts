@@ -35,6 +35,8 @@ export type WorkspaceState =
   | "kept"
   | "archived";
 
+export type SessionState = "created" | "running" | "waiting" | "blocked" | "complete" | "failed";
+
 export type AttentionState = "normal" | "approval-needed" | "blocked" | "failed" | "review-ready";
 
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
@@ -158,7 +160,7 @@ export interface SessionSummary {
   reasoningEffort?: ReasoningEffort;
   providerConversationId: string | null;
   prompt: string;
-  state: WorkspaceState;
+  state: SessionState;
   attention: AttentionState;
   startedAt: string;
   completedAt: string | null;

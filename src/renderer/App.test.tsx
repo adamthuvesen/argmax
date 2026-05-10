@@ -112,6 +112,7 @@ describe("App", () => {
   });
 
   beforeEach(() => {
+    window.localStorage.clear();
     createCurrentWorkspace = vi.fn<MaestroApi["workspaces"]["createCurrent"]>().mockResolvedValue(
       snapshot.workspaces[0] ?? missingWorkspace()
     );
@@ -219,11 +220,31 @@ describe("App", () => {
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
   });
 
+  it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
+    const { unmount } = render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
+    const hideProjectSessions = screen.getByRole("button", { name: "Hide Maestro sessions" });
+    fireEvent.click(hideProjectSessions);
+
+    expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Maestro sessions" })).toHaveAttribute("aria-expanded", "false");
+
+    unmount();
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Show Maestro sessions" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Maestro sessions" }));
+    expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
+  });
+
   it("renders streamed dashboard deltas without reloading the full dashboard", async () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
     expect(dashboardLoad).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -272,7 +293,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
     expect(screen.queryByText(/thread\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/turn\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/"tools"/)).not.toBeInTheDocument();
@@ -326,7 +347,7 @@ describe("App", () => {
       cols: 120,
       rows: 32
     });
-    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
   });
 
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {
@@ -541,7 +562,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
 
-    expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
     expect(screen.getByText("Claude Haiku")).toBeInTheDocument();
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
@@ -636,7 +657,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
     const input = await screen.findByLabelText("Session prompt");
     fireEvent.change(input, {
       target: { value: "continue with tests" }
@@ -742,7 +763,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Maestro" }));
 

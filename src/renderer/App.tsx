@@ -658,12 +658,18 @@ function SessionConversation({
     [rawOutputs, session?.id]
   );
   const hasAssistantEvents = conversationEvents.some((event) => event.type !== "user.message");
+  const latestUserMessageAt = conversationEvents
+    .filter((event) => event.type === "user.message")
+    .at(-1)?.createdAt ?? null;
+  const hasAssistantForLatestTurn = latestUserMessageAt
+    ? conversationEvents.some((event) => event.type !== "user.message" && event.createdAt > latestUserMessageAt)
+    : hasAssistantEvents;
   const canSend = Boolean(
     session &&
       (["complete", "waiting"].includes(session.state) ||
         (session.provider === "codex" && session.state === "running"))
   );
-  const isThinking = session?.state === "running" && !hasAssistantEvents && !terminalTranscript;
+  const isThinking = session?.state === "running" && !hasAssistantForLatestTurn;
   const sessionTitle = workspace?.taskLabel ?? session?.prompt ?? "No session selected";
   const sessionDetails = [
     session ? providerLabel(session.provider) : null,
@@ -732,14 +738,21 @@ function SessionConversation({
         ) : null}
         {isThinking ? (
           <article className="chat-bubble assistant thinking-indicator" aria-live="polite" aria-label="Thinking">
-            <p>
-              <span>Thinking</span>
-              <span className="thinking-dots" aria-hidden="true">
+            <div className="command-stream" data-testid="command-stream" aria-hidden="true">
+              <span className="command-stream-glyph" />
+              <span className="command-stream-line">
+                <span className="command-stream-prompt">$</span>
+                <span className="command-stream-text">maestro run --agent</span>
+                <span className="command-stream-caret" />
+              </span>
+              <span className="command-stream-ticks">
+                <span />
                 <span />
                 <span />
                 <span />
               </span>
-            </p>
+              <span className="command-stream-trace" />
+            </div>
           </article>
         ) : null}
       </div>

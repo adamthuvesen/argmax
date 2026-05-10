@@ -17,6 +17,7 @@ import type {
   RunCheckInputParsed,
   SessionEventsSinceInputParsed,
   SelectPreferredAttemptInputParsed,
+  SkillsListInputParsed,
   UpdateProjectSettingsInputParsed,
   WorkspaceStatusInputParsed
 } from "./ipcSchemas.js";
@@ -87,6 +88,15 @@ export type RunCheckInput = RunCheckInputParsed;
 export type CreateCheckpointInput = CreateCheckpointInputParsed;
 export type SelectPreferredAttemptInput = SelectPreferredAttemptInputParsed;
 export type PrepareCommitInput = PrepareCommitInputParsed;
+export type SkillsListInput = SkillsListInputParsed;
+
+export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system";
+
+export interface SkillSummary {
+  name: string;
+  description: string;
+  source: SkillSource;
+}
 
 export interface CommitPreparation {
   workspaceId: string;
@@ -284,6 +294,9 @@ export interface MaestroApi {
   };
   health: {
     ping: () => Promise<{ ok: true; timestamp: string }>;
+  };
+  skills: {
+    list: (input: SkillsListInput) => Promise<SkillSummary[]>;
   };
 }
 

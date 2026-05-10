@@ -105,6 +105,7 @@ describe("App", () => {
   let sessionEventsSince: ReturnType<typeof vi.fn<MaestroApi["session"]["eventsSince"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<MaestroApi["providers"]["sendInput"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["status"]>>;
+  let skillsList: ReturnType<typeof vi.fn<MaestroApi["skills"]["list"]>>;
 
   afterEach(() => {
     cleanup();
@@ -132,6 +133,7 @@ describe("App", () => {
     });
     sendProviderInput = vi.fn<MaestroApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
     workspaceStatus = vi.fn<MaestroApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
+    skillsList = vi.fn<MaestroApi["skills"]["list"]>().mockResolvedValue([]);
 
     window.maestro = {
       dashboard: {
@@ -195,6 +197,9 @@ describe("App", () => {
       },
       health: {
         ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" })
+      },
+      skills: {
+        list: skillsList
       }
     };
   });
@@ -647,6 +652,64 @@ describe("App", () => {
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(launchProvider).not.toHaveBeenCalled();
     await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("opens slash autocomplete in the launcher composer without a workspace id", async () => {
+    skillsList.mockResolvedValue([
+      { name: "plan", description: "Phased plan", source: "user" },
+      { name: "impl", description: "Implement code", source: "user" }
+    ]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Claude" }));
+    const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
+    fireEvent.change(input, { target: { value: "/" } });
+
+    expect(await screen.findByRole("listbox", { name: "Skill suggestions" })).toBeInTheDocument();
+    expect(skillsList).toHaveBeenCalledWith({ provider: "claude" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("/plan ");
+    expect(launchProvider).not.toHaveBeenCalled();
+  });
+
+  it("opens a slash autocomplete with provider-filtered skills and inserts the selected name", async () => {
+    skillsList.mockImplementation(({ provider, workspaceId }) => {
+      expect(workspaceId).toBe("workspace-1");
+      if (provider === "codex") {
+        return Promise.resolve([
+          { name: "opsx-apply", description: "Apply a change", source: "codex-prompt" },
+          { name: "opsx-archive", description: "Archive a change", source: "codex-prompt" }
+        ]);
+      }
+      return Promise.resolve([
+        { name: "impl", description: "Implement code from a plan", source: "user" }
+      ]);
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText<HTMLInputElement>("Session prompt");
+    fireEvent.change(input, { target: { value: "/o" } });
+
+    const listbox = await screen.findByRole("listbox", { name: "Skill suggestions" });
+    expect(listbox).toBeInTheDocument();
+    expect(skillsList).toHaveBeenCalledWith({ provider: "codex", workspaceId: "workspace-1" });
+
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "/opsx-applyApply a change",
+      "/opsx-archiveArchive a change"
+    ]);
+    // Claude-only skill must not be present in a Codex session.
+    expect(screen.queryByText("/impl")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(input.value).toBe("/opsx-archive ");
+    expect(sendProviderInput).not.toHaveBeenCalled();
   });
 
   it("submits the composer on Enter without reloading the page", async () => {

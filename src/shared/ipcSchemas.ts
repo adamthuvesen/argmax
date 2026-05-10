@@ -174,6 +174,11 @@ export const prepareCommitInputSchema = z.object({
   message: z.string().min(1)
 });
 
+export const skillsListInputSchema = z.object({
+  provider: providerIdSchema,
+  workspaceId: workspaceIdSchema.optional()
+});
+
 // ---------------------------------------------------------------------------
 // Channel → schema map
 // ---------------------------------------------------------------------------
@@ -205,7 +210,8 @@ export const ipcSchemas = {
   "checkpoints:create": createCheckpointInputSchema,
   "attempts:select-preferred": selectPreferredAttemptInputSchema,
   "commits:prepare": prepareCommitInputSchema,
-  "dashboard:load": dashboardLoadInputSchema
+  "dashboard:load": dashboardLoadInputSchema,
+  "skills:list": skillsListInputSchema
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -229,3 +235,4 @@ export type CreateCheckpointInputParsed = z.infer<typeof createCheckpointInputSc
 export type SelectPreferredAttemptInputParsed = z.infer<typeof selectPreferredAttemptInputSchema>;
 export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
+export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;

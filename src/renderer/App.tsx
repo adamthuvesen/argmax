@@ -10,7 +10,7 @@ import {
   Settings,
   ShieldAlert,
 } from "lucide-react";
-import type { FormEvent, JSX } from "react";
+import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
@@ -21,6 +21,7 @@ import type {
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
+  SkillSummary,
   TimelineEvent,
   WorkspaceSummary
 } from "../shared/types.js";
@@ -688,6 +689,13 @@ function SessionConversation({
     inputRef.current?.focus();
   }, [canSend, isSending]);
 
+  const slashAutocomplete = useSlashAutocomplete({
+    input,
+    setInput,
+    provider: session?.provider ?? null,
+    workspaceId: workspace?.id ?? null
+  });
+
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedInput = input.trim();
@@ -769,14 +777,21 @@ function SessionConversation({
         ) : null}
       </div>
       <form className="session-input" onSubmit={(event) => void submitInput(event)}>
-        <input
-          aria-label="Session prompt"
-          disabled={!canSend || isSending}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder=""
-          ref={inputRef}
-          value={input}
-        />
+        <div className="session-input-field">
+          <input
+            aria-label="Session prompt"
+            aria-autocomplete="list"
+            aria-expanded={slashAutocomplete.popoverOpen}
+            aria-controls={slashAutocomplete.popoverOpen ? "skill-popover" : undefined}
+            disabled={!canSend || isSending}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={slashAutocomplete.onKeyDown}
+            placeholder=""
+            ref={inputRef}
+            value={input}
+          />
+          <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
+        </div>
         <button disabled={!canSend || isSending || !input.trim()} type="submit" title="Send follow-up">
           <kbd className="kbd kbd-hint" aria-hidden="true">⌘ ↵</kbd>
           <ChevronRight size={18} />
@@ -807,6 +822,13 @@ function LaunchSurface({
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const promptInputRef = useRef<HTMLInputElement | null>(null);
+  const slashAutocomplete = useSlashAutocomplete({
+    input: prompt,
+    setInput: setPrompt,
+    provider,
+    workspaceId: null
+  });
 
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -846,11 +868,17 @@ function LaunchSurface({
         <div className="composer-input">
           <input
             aria-label="Task prompt"
+            aria-autocomplete="list"
+            aria-expanded={slashAutocomplete.popoverOpen}
+            aria-controls={slashAutocomplete.popoverOpen ? "skill-popover" : undefined}
             disabled={isSubmitting}
             onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={slashAutocomplete.onKeyDown}
             placeholder="Ask an agent to work locally"
+            ref={promptInputRef}
             value={prompt}
           />
+          <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
           <button className="composer-tool" type="button" title="Add context">
             <Plus size={18} />
           </button>
@@ -940,6 +968,170 @@ function titleFromPrompt(prompt: string): string {
 
 function providerLabel(provider: ProviderId): string {
   return provider === "codex" ? "Codex" : "Claude";
+}
+
+/**
+ * Returns the partial skill name when the input is a slash command being
+ * composed (no whitespace yet), otherwise null. The popover only opens on
+ * `/<name>` shapes; once the user adds a space (typing args) the popover
+ * stays closed.
+ */
+function parseSlashQuery(input: string): { query: string } | null {
+  if (!input.startsWith("/")) {
+    return null;
+  }
+  const rest = input.slice(1);
+  if (/\s/.test(rest)) {
+    return null;
+  }
+  return { query: rest };
+}
+
+interface UseSlashAutocompleteArgs {
+  input: string;
+  setInput: (value: string) => void;
+  provider: ProviderId | null;
+  workspaceId: string | null;
+}
+
+interface SlashAutocompleteState {
+  popoverOpen: boolean;
+  filteredSkills: SkillSummary[];
+  selectionIndex: number;
+  setSelectionIndex: (index: number) => void;
+  selectSkill: (name: string) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+}
+
+function useSlashAutocomplete({
+  input,
+  setInput,
+  provider,
+  workspaceId
+}: UseSlashAutocompleteArgs): SlashAutocompleteState {
+  const [skills, setSkills] = useState<SkillSummary[]>([]);
+  const [selectionIndex, setSelectionIndex] = useState(0);
+  const fetchedFor = useRef<string | null>(null);
+  const slashQuery = parseSlashQuery(input);
+
+  useEffect(() => {
+    if (!slashQuery || !provider) {
+      return;
+    }
+    const cacheKey = `${provider}::${workspaceId ?? ""}`;
+    if (fetchedFor.current === cacheKey) {
+      return;
+    }
+    fetchedFor.current = cacheKey;
+    let cancelled = false;
+    const api = window.maestro?.skills;
+    if (!api?.list) {
+      return;
+    }
+    void api
+      .list(workspaceId ? { provider, workspaceId } : { provider })
+      .then((result) => {
+        if (!cancelled) {
+          setSkills(result);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSkills([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slashQuery, provider, workspaceId]);
+
+  const filteredSkills = useMemo(() => {
+    if (!slashQuery) {
+      return [] as SkillSummary[];
+    }
+    const needle = slashQuery.query.toLowerCase();
+    if (!needle) {
+      return skills;
+    }
+    return skills.filter((skill) => skill.name.toLowerCase().includes(needle));
+  }, [skills, slashQuery]);
+
+  const popoverOpen = slashQuery !== null && filteredSkills.length > 0;
+
+  useEffect(() => {
+    if (selectionIndex >= filteredSkills.length) {
+      setSelectionIndex(0);
+    }
+  }, [filteredSkills.length, selectionIndex]);
+
+  const selectSkill = (name: string): void => {
+    setInput(`/${name} `);
+    setSelectionIndex(0);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (!popoverOpen) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSelectionIndex((selectionIndex + 1) % filteredSkills.length);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSelectionIndex((selectionIndex - 1 + filteredSkills.length) % filteredSkills.length);
+      return;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      const choice = filteredSkills[selectionIndex];
+      if (choice) {
+        event.preventDefault();
+        selectSkill(choice.name);
+      }
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setInput("");
+      setSelectionIndex(0);
+    }
+  };
+
+  return { popoverOpen, filteredSkills, selectionIndex, setSelectionIndex, selectSkill, onKeyDown };
+}
+
+function SkillPopover({
+  state,
+  inputRef
+}: {
+  state: SlashAutocompleteState;
+  inputRef: RefObject<HTMLInputElement | null>;
+}): JSX.Element | null {
+  if (!state.popoverOpen) {
+    return null;
+  }
+  return (
+    <ul className="skill-popover" id="skill-popover" role="listbox" aria-label="Skill suggestions">
+      {state.filteredSkills.map((skill, index) => (
+        <li
+          key={skill.name}
+          role="option"
+          aria-selected={index === state.selectionIndex}
+          className={`skill-option${index === state.selectionIndex ? " is-selected" : ""}`}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            state.setSelectionIndex(index);
+            state.selectSkill(skill.name);
+            inputRef.current?.focus();
+          }}
+        >
+          <span className="skill-option-name">/{skill.name}</span>
+          {skill.description ? <span className="skill-option-description">{skill.description}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function modelDefaultForProvider(provider: ProviderId) {

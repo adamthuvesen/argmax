@@ -18,6 +18,7 @@ import {
   runCheckInputSchema,
   selectPreferredAttemptInputSchema,
   sessionEventsSinceInputSchema,
+  skillsListInputSchema,
   updateProjectSettingsInputSchema,
   workspaceStatusInputSchema,
   workspaceIdInputSchema
@@ -31,6 +32,7 @@ import { GitReviewService } from "./review/gitReviewService.js";
 import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
 import { CommitPreparationService } from "./review/commitPreparationService.js";
+import { listSkills } from "./skills/skillRegistry.js";
 
 /**
  * Wraps an IPC handler body so its `input` is validated against a zod schema
@@ -221,6 +223,23 @@ export function registerIpcHandlers(
     "commits:prepare",
     withValidation(prepareCommitInputSchema, (input) => commits.prepareCommit(input))
   );
+  ipcMain.handle(
+    "skills:list",
+    withValidation(skillsListInputSchema, (input) => {
+      // Resolve workspace path so workspace-local .claude/.codex skill dirs
+      // are picked up. The launcher composer has no workspace yet — return
+      // user-level only in that case. Also tolerate just-archived workspaces.
+      let workspaceCwd: string | null = null;
+      if (input.workspaceId) {
+        try {
+          workspaceCwd = database.getWorkspace(input.workspaceId).path;
+        } catch {
+          workspaceCwd = null;
+        }
+      }
+      return listSkills({ provider: input.provider, workspaceCwd });
+    })
+  );
 
   return REGISTERED_IPC_CHANNELS;
 }
@@ -257,5 +276,6 @@ export const REGISTERED_IPC_CHANNELS: readonly string[] = [
   "checkpoints:create",
   "attempts:select-preferred",
   "commits:prepare",
-  "dashboard:load"
+  "dashboard:load",
+  "skills:list"
 ];

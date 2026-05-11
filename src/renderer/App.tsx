@@ -100,6 +100,18 @@ export function App(): JSX.Element {
     }
   }, [defaultIde]);
 
+  // Captures the listener-removal + body-style-reset for any drag currently
+  // in flight. Used by the unmount cleanup below so a mid-drag unmount
+  // doesn't leave document-level listeners or a frozen cursor behind.
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+    },
+    []
+  );
+
   const handleResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
     event.preventDefault();
     const startX = event.clientX;
@@ -112,15 +124,18 @@ export function App(): JSX.Element {
       const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + (e.clientX - startX)));
       setSidebarWidth(next);
     };
-    const onMouseUp = (): void => {
+    const cleanup = (): void => {
       setIsResizing(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      dragCleanupRef.current = null;
     };
+    const onMouseUp = (): void => cleanup();
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    dragCleanupRef.current = cleanup;
   }, [sidebarWidth]);
 
   const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {

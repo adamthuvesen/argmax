@@ -1,5 +1,5 @@
 import { FileText, Folder, GitBranch, PanelRightClose, X } from "lucide-react";
-import { useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
@@ -21,6 +21,18 @@ export function ReviewPanel({
   const [fileTabsHeight, setFileTabsHeight] = useState(168);
   const panelRef = useRef<HTMLElement>(null);
 
+  // Captures the listener-removal + body-style-reset for any drag currently
+  // in flight; the unmount cleanup below replays it so a mid-drag unmount
+  // doesn't leave document-level listeners or a frozen cursor behind.
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+    },
+    []
+  );
+
   const handleResizeMouseDown = (e: ReactMouseEvent): void => {
     e.preventDefault();
     const startY = e.clientY;
@@ -35,14 +47,17 @@ export function ReviewPanel({
       // Minimum of ~80px gives the user at least two file tabs to scan.
       setFileTabsHeight(Math.max(80, Math.min(startH + me.clientY - startY, maxH)));
     };
-    const onUp = () => {
+    const cleanup = () => {
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      dragCleanupRef.current = null;
     };
+    const onUp = () => cleanup();
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
+    dragCleanupRef.current = cleanup;
   };
 
   const isChanges = review.mode === "changes";

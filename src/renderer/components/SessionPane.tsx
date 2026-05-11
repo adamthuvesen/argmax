@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type JSX,
@@ -95,6 +96,18 @@ export function SessionPane({
     window.localStorage.setItem(SESSION_RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth));
   }, [rightPanelWidth]);
 
+  // Captures the listener-removal + body-style-reset for any drag currently
+  // in flight; the unmount cleanup below replays it so a mid-drag unmount
+  // doesn't leave document-level listeners or a frozen cursor behind.
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+    },
+    []
+  );
+
   const onRightPanelResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
     event.preventDefault();
     const startX = event.clientX;
@@ -111,15 +124,18 @@ export function SessionPane({
       );
       setRightPanelWidth(next);
     };
-    const onMouseUp = (): void => {
+    const cleanup = (): void => {
       setIsPanelResizing(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      dragCleanupRef.current = null;
     };
+    const onMouseUp = (): void => cleanup();
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    dragCleanupRef.current = cleanup;
   }, [rightPanelWidth]);
 
   return (

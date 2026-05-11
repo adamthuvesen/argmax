@@ -5,10 +5,28 @@ import {
   costOf,
   MODEL_PRICING,
   normalizeModelId,
+  PROVIDER_MODEL_DEFAULTS,
   type UsageCounts
 } from "./providerModels.js";
 
 const million: UsageCounts = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+describe("PROVIDER_MODEL_DEFAULTS", () => {
+  // The CLAUDE.md "Critical conventions" section documents these defaults. If
+  // a maintainer changes the constant they need to update the doc too — this
+  // test is the tripwire.
+  it("matches the documented launch defaults (Claude Haiku 4.5 / Codex Spark medium)", () => {
+    expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
+      modelId: "claude-haiku-4-5",
+      launchMode: "structured-json"
+    });
+    expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "medium",
+      launchMode: "structured-json"
+    });
+  });
+});
 
 describe("normalizeModelId", () => {
   it("strips a trailing -YYYYMMDD date suffix", () => {

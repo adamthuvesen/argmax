@@ -970,9 +970,8 @@ describe("App", () => {
 
     expect(await screen.findByText("2 files changed")).toBeInTheDocument();
     expect(screen.getByLabelText("2 additions, 17 deletions")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Hide diff" }));
     expect(screen.queryByRole("button", { name: /src\/renderer\/App\.tsx/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show diff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Toggle changed files" }));
 
     fireEvent.click(screen.getByRole("button", { name: /src\/renderer\/App\.tsx/ }));
 
@@ -1194,6 +1193,8 @@ describe("App", () => {
     await waitFor(() => {
       expect(within(panel).getByLabelText(/Total cost:/)).toHaveTextContent("$4.32");
     });
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Toggle cost breakdown" }));
 
     const inputRow = within(panel).getByRole("row", { name: "Input usage" });
     expect(within(inputRow).getByTitle("Input tokens: 1,200")).toBeInTheDocument();

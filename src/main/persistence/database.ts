@@ -38,7 +38,10 @@ import type { ReasoningEffort, UsageCounts } from "../../shared/providerModels.j
  * a real fault and should propagate.
  */
 export class RecordNotFoundError extends Error {
-  constructor(readonly kind: "session" | "workspace" | "project", readonly id: string) {
+  constructor(
+    readonly kind: "session" | "workspace" | "project" | "checkpoint" | "check" | "approval",
+    readonly id: string
+  ) {
     super(`${kind} not found: ${id}`);
     this.name = "RecordNotFoundError";
   }
@@ -1048,7 +1051,7 @@ function workspaceRowToSummary(row: WorkspaceRow): WorkspaceSummary {
 function findCheckpointById(connection: Database.Database, checkpointId: string): Checkpoint {
   const row = connection.prepare("SELECT * FROM checkpoints WHERE id = ?").get(checkpointId) as CheckpointRow | undefined;
   if (!row) {
-    throw new Error(`Checkpoint not found: ${checkpointId}`);
+    throw new RecordNotFoundError("checkpoint", checkpointId);
   }
 
   return {
@@ -1065,7 +1068,7 @@ function findCheckpointById(connection: Database.Database, checkpointId: string)
 function findCheckById(connection: Database.Database, checkId: string): CheckRun {
   const row = connection.prepare("SELECT * FROM checks WHERE id = ?").get(checkId) as CheckRow | undefined;
   if (!row) {
-    throw new Error(`Check not found: ${checkId}`);
+    throw new RecordNotFoundError("check", checkId);
   }
 
   return {
@@ -1083,7 +1086,7 @@ function findCheckById(connection: Database.Database, checkId: string): CheckRun
 function findApprovalById(connection: Database.Database, approvalId: string): ApprovalRequest {
   const row = connection.prepare("SELECT * FROM approvals WHERE id = ?").get(approvalId) as ApprovalRow | undefined;
   if (!row) {
-    throw new Error(`Approval not found: ${approvalId}`);
+    throw new RecordNotFoundError("approval", approvalId);
   }
 
   return {

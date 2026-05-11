@@ -87,6 +87,13 @@ const EVENT_PAYLOAD_CAP = 64 * 1024;
 const EVENT_PAYLOAD_PREVIEW = 4 * 1024;
 /** Timeout to wait for natural exit during disposeAll before resolving. */
 const DISPOSE_GRACE_MS = 2_500;
+/**
+ * Cap on the per-stream partial-line buffer. A provider emitting megabytes
+ * without a newline (misbehavior or stuck stream) would otherwise grow this
+ * buffer without bound. Raw bytes are still persisted via raw_outputs;
+ * crossing this cap drops the partial and surfaces a marker event.
+ */
+const STREAM_BUFFER_CAP = 1_048_576;
 
 const DEBUG = process.env.DEBUG_ARGMAX === "1";
 
@@ -541,6 +548,24 @@ export class ProviderSessionService {
             this.recordProviderConversationId(event.sessionId, providerConversationId);
           }
           const syntheticEvent: ProviderEvent = { ...event, message: completed };
+          const normalized = normalizeProviderEventWithUsage(syntheticEvent, {
+            provider,
+            context: sessionState.normalizerContext
+          });
+          for (const ev of normalized.events) {
+            this.queueTimelineEvent(event.sessionId, ev);
+          }
+          for (const usage of normalized.usages) {
+            this.queueUsage(event.sessionId, usage);
+          }
+        } else if (combined.length > STREAM_BUFFER_CAP) {
+          // Drop the partial-line buffer when it crosses the cap. Raw bytes
+          // are already in raw_outputs; surface a marker so the chat reflects
+          // the truncation rather than silently swallowing megabytes.
+          const droppedBytes = combined.length;
+          sessionState.streamBuffers.set(event.stream, "");
+          const marker = `\n[argmax: dropped ${droppedBytes} bytes of unparseable stream output (no newline)]\n`;
+          const syntheticEvent: ProviderEvent = { ...event, message: marker };
           const normalized = normalizeProviderEventWithUsage(syntheticEvent, {
             provider,
             context: sessionState.normalizerContext

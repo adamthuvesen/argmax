@@ -394,7 +394,7 @@ export class ProviderSessionService {
     // termination tears down the per-session state.
     this.flushTrailingFragment(sessionId);
     this.flushBatch(sessionId);
-    await Promise.resolve(entry.handle.terminate());
+    await entry.handle.terminate();
     this.cancelSession(sessionId);
   }
 
@@ -452,8 +452,10 @@ export class ProviderSessionService {
         }
         this.flushTrailingFragment(sessionId);
         this.flushBatch(sessionId);
+        // terminate() resolves on real child exit; the race is a safety net
+        // for the unkillable-child case so disposeAll can't hang shutdown.
         await Promise.race([
-          Promise.resolve(entry.handle.terminate()),
+          entry.handle.terminate(),
           new Promise<void>((resolve) => setTimeout(resolve, DISPOSE_GRACE_MS))
         ]);
       })

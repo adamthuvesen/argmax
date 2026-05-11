@@ -116,6 +116,31 @@ describe("provider PTY adapters", () => {
     expect(handle?.disposed).toBe(true);
   });
 
+  it("terminate() resolves only after the child actually exits", async () => {
+    const { adapters, ptys } = createTestAdapters();
+    const handle = await adapters.get("claude")?.launch(launchInput("claude"), () => undefined);
+    const pty = ptys[0];
+    expect(handle).toBeDefined();
+    if (!handle) return;
+
+    let resolved = false;
+    const termPromise = handle.terminate().then(() => {
+      resolved = true;
+    });
+
+    // SIGTERM has been requested but onExit hasn't fired yet — the promise
+    // must not resolve until the underlying process actually exits.
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    pty.emitExit(0);
+    await termPromise;
+    expect(resolved).toBe(true);
+
+    // Idempotent re-entry: a second terminate returns the same resolved promise.
+    await expect(handle.terminate()).resolves.toBeUndefined();
+  });
+
   it("is idempotent on terminate and drops events after disposal", async () => {
     const { adapters, ptys } = createTestAdapters();
     const events: ProviderEvent[] = [];

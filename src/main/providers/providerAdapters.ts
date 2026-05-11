@@ -209,6 +209,12 @@ async function launchInteractivePty(
   let dataDisposable: { dispose: () => void } = { dispose: () => undefined };
   let exitDisposable: { dispose: () => void } = { dispose: () => undefined };
   const createdAt = () => new Date().toISOString();
+  // Resolved by onExit (whether triggered by natural exit or SIGKILL fallback)
+  // so callers awaiting terminate() see the real teardown completion.
+  let resolveExit: () => void = () => undefined;
+  const exitPromise = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
 
   // Release the master PTY FD held by node-pty. Called from both the natural
   // exit path and after the SIGKILL fires, whichever comes first.
@@ -232,7 +238,7 @@ async function launchInteractivePty(
       ptyProcess?.resize(cols, rows);
     },
     terminate: () => {
-      if (handle.disposed) return;
+      if (handle.disposed) return exitPromise;
       handle.disposed = true;
       dataDisposable.dispose();
       // exitDisposable stays alive so onExit can cancel the SIGKILL escalation
@@ -244,6 +250,7 @@ async function launchInteractivePty(
           releasePty();
         }
       );
+      return exitPromise;
     }
   };
 
@@ -266,10 +273,12 @@ async function launchInteractivePty(
       releasePty();
       dataDisposable.dispose();
       exitDisposable.dispose();
-      if (handle.disposed) {
+      const wasAlreadyDisposed = handle.disposed;
+      handle.disposed = true;
+      resolveExit();
+      if (wasAlreadyDisposed) {
         return;
       }
-      handle.disposed = true;
       const wasCancelled = signal != null;
       onEvent({
         sessionId: input.sessionId,
@@ -354,6 +363,10 @@ async function launchStructuredProcess(
   }
 
   let killEscalation: { cancel: () => void } | null = null;
+  let resolveExit: () => void = () => undefined;
+  const exitPromise = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
   const handle: ProviderSessionHandle = {
     sessionId: input.sessionId,
     provider: definition.id,
@@ -367,7 +380,7 @@ async function launchStructuredProcess(
     },
     resize: () => undefined,
     terminate: () => {
-      if (handle.disposed) return;
+      if (handle.disposed) return exitPromise;
       handle.disposed = true;
       if (childProcess.stdin.writable) {
         childProcess.stdin.end();
@@ -376,6 +389,7 @@ async function launchStructuredProcess(
         () => childProcess.kill("SIGTERM"),
         () => childProcess.kill("SIGKILL")
       );
+      return exitPromise;
     }
   };
 
@@ -418,8 +432,10 @@ async function launchStructuredProcess(
     childProcess.on("exit", (exitCode, signal) => {
       killEscalation?.cancel();
       killEscalation = null;
-      if (handle.disposed) return;
+      const wasAlreadyDisposed = handle.disposed;
       handle.disposed = true;
+      resolveExit();
+      if (wasAlreadyDisposed) return;
       const code = exitCode ?? 1;
       const wasCancelled = signal != null;
       onEvent({

@@ -1,4 +1,5 @@
-import { dialog, ipcMain } from "electron";
+import { dialog, ipcMain, shell } from "electron";
+import { isAbsolute, resolve as resolvePath } from "node:path";
 import { ZodError, type ZodIssue, type ZodType } from "zod";
 import {
   createCheckpointInputSchema,
@@ -24,6 +25,7 @@ import {
   selectPreferredAttemptInputSchema,
   sessionEventsSinceInputSchema,
   skillsListInputSchema,
+  systemOpenPathInputSchema,
   updateProjectSettingsInputSchema,
   workspaceStatusInputSchema,
   workspaceIdInputSchema,
@@ -241,6 +243,19 @@ export function registerIpcHandlers(
   ipcMain.handle(
     "commits:prepare",
     withValidation(prepareCommitInputSchema, (input) => commits.prepareCommit(input))
+  );
+  ipcMain.handle(
+    "system:open-path",
+    withValidation(systemOpenPathInputSchema, async (input) => {
+      const target = isAbsolute(input.path)
+        ? input.path
+        : input.cwd
+          ? resolvePath(input.cwd, input.path)
+          : input.path;
+      const error = await shell.openPath(target);
+      if (error) throw new Error(error);
+      return { ok: true } as const;
+    })
   );
   ipcMain.handle(
     "skills:list",

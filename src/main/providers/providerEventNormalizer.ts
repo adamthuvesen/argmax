@@ -34,10 +34,7 @@ export function normalizeProviderEvent(
     const payload = tryParseJsonObject(line);
     if (payload) {
       parsedAny = true;
-      const normalized = normalizeJsonPayload(event, payload, options.provider);
-      if (normalized) {
-        results.push(normalized);
-      }
+      results.push(...normalizeJsonPayload(event, payload, options.provider));
       continue;
     }
 
@@ -96,38 +93,135 @@ function normalizeJsonPayload(
   event: ProviderEvent,
   payload: Record<string, unknown>,
   provider: ProviderId | undefined
-): PersistTimelineEventInput | null {
+): PersistTimelineEventInput[] {
   const providerType = stringValue(payload.type);
   const item = objectValue(payload.item);
   const itemType = stringValue(item?.type);
   const text = extractMessageText(payload, item);
 
   if (isLifecycleEvent(providerType, itemType)) {
-    return null;
+    return [];
+  }
+
+  const results: PersistTimelineEventInput[] = [];
+
+  if (provider === "codex") {
+    const codexToolEvent = normalizeCodexToolItem(event, payload, providerType, item, itemType);
+    if (codexToolEvent) {
+      return [codexToolEvent];
+    }
+  }
+
+  // Extract inline tool_use / tool_result blocks from Claude's structured output format.
+  // Claude Code (stream-json mode) sends complete turns as:
+  //   {"type":"assistant","message":{"content":[{"type":"tool_use","id":"...","name":"...","input":{...}}]}}
+  //   {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"...","content":"..."}]}}
+  // The outer types ("assistant", "user") are handled below for text; the inner blocks are extracted here.
+  const message = objectValue(payload.message);
+  const content = arrayValue(message?.content) ?? arrayValue(payload.content);
+  if (content) {
+    for (const block of content) {
+      const blockObj = objectValue(block);
+      if (!blockObj) continue;
+      const blockType = stringValue(blockObj.type);
+      if (blockType === "tool_use") {
+        results.push({
+          id: randomUUID(),
+          sessionId: event.sessionId,
+          type: "command.started",
+          message: stringValue(blockObj.name) ?? "tool_use",
+          payload: blockObj,
+          createdAt: event.createdAt
+        });
+      } else if (blockType === "tool_result") {
+        results.push({
+          id: randomUUID(),
+          sessionId: event.sessionId,
+          type: "command.completed",
+          message: "tool_result",
+          payload: blockObj,
+          createdAt: event.createdAt
+        });
+      }
+    }
   }
 
   const mappedType = mapProviderType(providerType, itemType, provider);
 
+  // Don't create a message event if there's nothing to say.
   if (isMessageEvent(mappedType) && !text) {
-    return null;
+    return results;
   }
-
   if (!mappedType && !text) {
-    return null;
+    return results;
   }
 
   const finalPayload = mappedType
     ? payload
     : { ...payload, unknownType: providerType };
 
-  return {
+  results.push({
     id: randomUUID(),
     sessionId: event.sessionId,
     type: mappedType ?? "message.delta",
     message: text ?? providerType ?? "Provider event",
     payload: finalPayload,
     createdAt: event.createdAt
+  });
+
+  return results;
+}
+
+function normalizeCodexToolItem(
+  event: ProviderEvent,
+  payload: Record<string, unknown>,
+  providerType: string | null,
+  item: Record<string, unknown> | null,
+  itemType: string | null
+): PersistTimelineEventInput | null {
+  if (!item || !itemType || itemType === "agent_message") {
+    return null;
+  }
+  if (providerType !== "item.started" && providerType !== "item.completed") {
+    return null;
+  }
+
+  const action = objectValue(item.action);
+  const toolName = stringValue(item.name) ?? itemType;
+  const toolPayload = {
+    ...item,
+    type: toolName,
+    name: toolName,
+    input: extractCodexToolInput(item, action),
+    providerEventType: providerType,
+    raw: payload
   };
+
+  return {
+    id: randomUUID(),
+    sessionId: event.sessionId,
+    type: providerType === "item.started" ? "command.started" : "command.completed",
+    message: toolName,
+    payload: toolPayload,
+    createdAt: event.createdAt
+  };
+}
+
+function extractCodexToolInput(
+  item: Record<string, unknown>,
+  action: Record<string, unknown> | null
+): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  for (const key of ["query", "queries", "url", "path", "file_path", "command", "cmd", "pattern"] as const) {
+    const value = item[key] ?? action?.[key];
+    if (value !== undefined && value !== "") {
+      input[key] = value;
+    }
+  }
+  if (Object.keys(input).length > 0) {
+    return input;
+  }
+  return {};
 }
 
 function extractMessageText(payload: Record<string, unknown>, item: Record<string, unknown> | null): string | null {

@@ -226,12 +226,13 @@ describe("provider PTY adapters", () => {
       args: [
         "exec",
         "--json",
-        "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
         "--model",
         "gpt-5.3-codex-spark",
         "-c",
         "model_reasoning_effort=\"low\"",
+        "-c",
+        "model_reasoning_summary=\"none\"",
         "-"
       ],
       cwd: "/repo/worktree"
@@ -283,12 +284,13 @@ describe("provider PTY adapters", () => {
         "exec",
         "resume",
         "--json",
-        "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
         "--model",
         "gpt-5.3-codex-spark",
         "-c",
         "model_reasoning_effort=\"low\"",
+        "-c",
+        "model_reasoning_summary=\"none\"",
         "thread-1",
         "-"
       ],

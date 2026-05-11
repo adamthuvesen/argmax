@@ -117,10 +117,90 @@ export const demoSnapshot: DashboardSnapshot = {
   ],
   events: [
     {
+      id: "event-board-user",
+      sessionId: "session-ui-board",
+      type: "user.message",
+      message: "Read the layout files and tell me how density is handled.",
+      payload: {},
+      createdAt: "2026-05-08T15:53:40.000Z"
+    },
+    {
+      id: "event-board-announce",
+      sessionId: "session-ui-board",
+      type: "message.completed",
+      message: "On it — let me read a few files first.",
+      payload: {},
+      createdAt: "2026-05-08T15:53:45.000Z"
+    },
+    {
+      id: "event-board-tool-1-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Read",
+      payload: { id: "tu_board_1", name: "Read", input: { file_path: "src/renderer/board/layout.ts" } },
+      createdAt: "2026-05-08T15:53:46.000Z"
+    },
+    {
+      id: "event-board-tool-1-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_board_1", content: "// layout pass\nexport function layout() { /* ... */ }" },
+      createdAt: "2026-05-08T15:53:47.000Z"
+    },
+    {
+      id: "event-board-tool-2-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Glob",
+      payload: { id: "tu_board_2", name: "Glob", input: { pattern: "src/renderer/board/*.ts" } },
+      createdAt: "2026-05-08T15:53:47.000Z"
+    },
+    {
+      id: "event-board-tool-2-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_board_2", content: "src/renderer/board/layout.ts\nsrc/renderer/board/density.ts\nsrc/renderer/board/markers.ts" },
+      createdAt: "2026-05-08T15:53:48.000Z"
+    },
+    {
+      id: "event-board-tool-3-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Read",
+      payload: { id: "tu_board_3", name: "Read", input: { file_path: "src/renderer/board" } },
+      createdAt: "2026-05-08T15:53:49.000Z"
+    },
+    {
+      id: "event-board-tool-3-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_board_3", is_error: true, content: "EISDIR: illegal operation on a directory" },
+      createdAt: "2026-05-08T15:53:50.000Z"
+    },
+    {
+      id: "event-board-tool-4-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Bash",
+      payload: { id: "tu_board_4", name: "Bash", input: { command: "wc -l src/renderer/board/*.ts" } },
+      createdAt: "2026-05-08T15:53:51.000Z"
+    },
+    {
+      id: "event-board-tool-4-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_board_4", content: " 142 src/renderer/board/layout.ts\n  88 src/renderer/board/density.ts\n  56 src/renderer/board/markers.ts\n 286 total" },
+      createdAt: "2026-05-08T15:53:53.000Z"
+    },
+    {
       id: "event-board-message",
       sessionId: "session-ui-board",
       type: "message.completed",
-      message: "Agent board skeleton is rendering; tuning density and attention markers.",
+      message: "Agent board skeleton is rendering; tuning density and attention markers.\n\n- **layout.ts** owns the column grid (12-col, snap to 8px).\n- **density.ts** maps attention level → row height.\n- **markers.ts** paints the gutter indicators.",
       payload: { surface: "agent-board" },
       createdAt: "2026-05-08T15:54:00.000Z"
     },

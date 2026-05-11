@@ -211,17 +211,37 @@ describe("App", () => {
       },
       skills: {
         list: skillsList
+      },
+      system: {
+        openPath: () => Promise.resolve({ ok: true })
       }
     };
+  });
+
+  it("opens the settings page from the sidebar and lets the user close it", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Account" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Defaults" })).toBeInTheDocument();
+    // The launcher prompt is hidden while the settings panel is showing.
+    expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
   it("renders the local project launcher from IPC data", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Maestro" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex");
+    expect(screen.getByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex-spark:medium");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
@@ -276,6 +296,168 @@ describe("App", () => {
     expect(dashboardLoad).toHaveBeenCalledTimes(1);
   });
 
+  it("renders normalized tool calls in the conversation timeline", async () => {
+    const toolStarted: DashboardSnapshot["events"][number] = {
+      id: "event-tool-started",
+      sessionId: "session-1",
+      type: "command.started",
+      message: "web_search",
+      payload: {
+        id: "ws_1",
+        type: "web_search",
+        name: "web_search",
+        input: {}
+      },
+      createdAt: "2026-05-08T15:53:58.000Z"
+    };
+    const toolCompleted: DashboardSnapshot["events"][number] = {
+      id: "event-tool-completed",
+      sessionId: "session-1",
+      type: "command.completed",
+      message: "web_search",
+      payload: {
+        id: "ws_1",
+        type: "web_search",
+        name: "web_search",
+        input: {
+          query: "pizza recipe"
+        }
+      },
+      createdAt: "2026-05-08T15:53:59.000Z"
+    };
+    dashboardLoad.mockResolvedValue({
+      ...snapshot,
+      events: [snapshot.events[0]!, toolCompleted, toolStarted]
+    });
+    sessionEventsSince.mockResolvedValue({
+      events: [snapshot.events[0]!, toolCompleted, toolStarted],
+      rawOutputs: [],
+      eventCursor: 3,
+      rawOutputCursor: 0
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByRole("button", { name: "web_search: pizza recipe" })).toBeInTheDocument();
+    expect(screen.getByText("Dashboard ready.")).toBeInTheDocument();
+  });
+
+  it("keeps tool calls visible after a streaming assistant response completes", async () => {
+    const toolStarted: DashboardSnapshot["events"][number] = {
+      id: "event-tool-started",
+      sessionId: "session-1",
+      type: "command.started",
+      message: "Read",
+      payload: { id: "tu_1", type: "Read", name: "Read", input: { file_path: "README.md" } },
+      createdAt: "2026-05-08T15:53:50.000Z"
+    };
+    const toolCompleted: DashboardSnapshot["events"][number] = {
+      id: "event-tool-completed",
+      sessionId: "session-1",
+      type: "command.completed",
+      message: "tool_result",
+      payload: { tool_use_id: "tu_1", content: "file body" },
+      createdAt: "2026-05-08T15:53:51.000Z"
+    };
+    const streamingDeltas: DashboardSnapshot["events"] = Array.from({ length: 120 }, (_, i) => ({
+      id: `event-delta-${i}`,
+      sessionId: "session-1",
+      type: "message.delta" as const,
+      message: `chunk ${i}`,
+      payload: {},
+      createdAt: new Date(Date.parse("2026-05-08T15:53:52.000Z") + i).toISOString()
+    }));
+    const messageCompleted: DashboardSnapshot["events"][number] = {
+      id: "event-msg-completed",
+      sessionId: "session-1",
+      type: "message.completed",
+      message: "All set.",
+      payload: {},
+      createdAt: "2026-05-08T15:54:00.000Z"
+    };
+
+    const firstEvent = snapshot.events[0];
+    if (!firstEvent) throw new Error("test fixture missing baseline event");
+    const eventsBundle = [firstEvent, toolStarted, toolCompleted, ...streamingDeltas, messageCompleted];
+    dashboardLoad.mockResolvedValue({ ...snapshot, events: eventsBundle });
+    sessionEventsSince.mockResolvedValue({
+      events: eventsBundle,
+      rawOutputs: [],
+      eventCursor: eventsBundle.length,
+      rawOutputCursor: 0
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByRole("button", { name: "Read: README.md" })).toBeInTheDocument();
+    expect(screen.getByText("All set.")).toBeInTheDocument();
+  });
+
+  it("renders a tool-call group between two assistant messages with overlapping timestamps", async () => {
+    const userMessage: DashboardSnapshot["events"][number] = {
+      id: "ev-user-explore",
+      sessionId: "session-1",
+      type: "user.message",
+      message: "yes explore the codebase",
+      payload: {},
+      createdAt: "2026-05-08T15:56:43.000Z"
+    };
+    const announce: DashboardSnapshot["events"][number] = {
+      id: "ev-msg-announce",
+      sessionId: "session-1",
+      type: "message.completed",
+      message: "I'll explore the codebase.",
+      payload: {},
+      createdAt: "2026-05-08T15:56:49.000Z"
+    };
+    // First two tool starts share the announce timestamp.
+    const toolEvents: DashboardSnapshot["events"] = [
+      { id: "ev-glob-1-s", sessionId: "session-1", type: "command.started", message: "Glob",
+        payload: { id: "tu1", name: "Glob", input: { pattern: "src/**/*.py" } },
+        createdAt: "2026-05-08T15:56:49.000Z" },
+      { id: "ev-glob-1-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
+        payload: { tool_use_id: "tu1", content: "match" }, createdAt: "2026-05-08T15:56:50.000Z" },
+      { id: "ev-glob-2-s", sessionId: "session-1", type: "command.started", message: "Glob",
+        payload: { id: "tu2", name: "Glob", input: { pattern: "src/**/*.ts" } },
+        createdAt: "2026-05-08T15:56:50.000Z" },
+      { id: "ev-glob-2-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
+        payload: { tool_use_id: "tu2", content: "match" }, createdAt: "2026-05-08T15:56:50.000Z" },
+      { id: "ev-read-1-s", sessionId: "session-1", type: "command.started", message: "Read",
+        payload: { id: "tu3", name: "Read", input: { file_path: "README.md" } },
+        createdAt: "2026-05-08T15:56:50.000Z" },
+      { id: "ev-read-1-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
+        payload: { tool_use_id: "tu3", content: "file" }, createdAt: "2026-05-08T15:56:52.000Z" }
+    ];
+    const finalAnswer: DashboardSnapshot["events"][number] = {
+      id: "ev-msg-final",
+      sessionId: "session-1",
+      type: "message.completed",
+      message: "I've explored.",
+      payload: {},
+      createdAt: "2026-05-08T15:57:25.000Z"
+    };
+
+    const eventsBundle = [userMessage, announce, ...toolEvents, finalAnswer];
+    dashboardLoad.mockResolvedValue({ ...snapshot, events: eventsBundle });
+    sessionEventsSince.mockResolvedValue({
+      events: eventsBundle,
+      rawOutputs: [],
+      eventCursor: eventsBundle.length,
+      rawOutputCursor: 0
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    expect(await screen.findByText("I'll explore the codebase.")).toBeInTheDocument();
+    expect(screen.getByText("I've explored.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /3 tool calls/ })).toBeInTheDocument();
+  });
+
   it("hides provider protocol JSON from the first-turn raw transcript fallback", async () => {
     const lifecycleSnapshot: DashboardSnapshot = {
       ...snapshot,
@@ -313,7 +495,7 @@ describe("App", () => {
   it("unsubscribes from dashboard deltas on unmount", async () => {
     const rendered = render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     rendered.unmount();
 
     expect(dashboardDeltaUnsubscribe).toHaveBeenCalledTimes(1);
@@ -325,7 +507,7 @@ describe("App", () => {
     try {
       render(<App />);
 
-      expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+      expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
       expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 1200);
     } finally {
       setIntervalSpy.mockRestore();
@@ -335,7 +517,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex");
+    expect(await screen.findByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex-spark:medium");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -351,8 +533,8 @@ describe("App", () => {
       workspaceId: "workspace-1",
       provider: "codex",
       prompt: "Implement PTY launch",
-      modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.3-codex",
+      modelLabel: "Codex Spark",
+      modelId: "gpt-5.3-codex-spark",
       reasoningEffort: "medium",
       cols: 120,
       rows: 32
@@ -433,7 +615,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(await screen.findByLabelText("Launch model"), {
-      target: { value: "claude:sonnet" }
+      target: { value: "claude:claude-sonnet-4-6" }
     });
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
@@ -445,36 +627,8 @@ describe("App", () => {
         workspaceId: "workspace-1",
         provider: "claude",
         prompt: "Review this change",
-        modelLabel: "Claude Sonnet",
-        modelId: "sonnet",
-        cols: 120,
-        rows: 32
-      })
-    );
-  });
-
-  it("starts a custom model id from the unified picker", async () => {
-    render(<App />);
-
-    fireEvent.change(await screen.findByLabelText("Launch model"), {
-      target: { value: "__custom" }
-    });
-    fireEvent.change(await screen.findByLabelText("Launch model custom id"), {
-      target: { value: "gpt-custom-coder" }
-    });
-    fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Try the custom model" }
-    });
-    fireEvent.click(screen.getByTitle("Start agent"));
-
-    await waitFor(() =>
-      expect(launchProvider).toHaveBeenCalledWith({
-        workspaceId: "workspace-1",
-        provider: "codex",
-        prompt: "Try the custom model",
-        modelLabel: "gpt-custom-coder",
-        modelId: "gpt-custom-coder",
-        reasoningEffort: "medium",
+        modelLabel: "Claude Sonnet 4.6",
+        modelId: "claude-sonnet-4-6",
         cols: 120,
         rows: 32
       })
@@ -495,7 +649,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
     expect(await screen.findByRole("button", { name: "Dotfiles" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "What should we build in dotfiles?" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.getByText("Added Dotfiles.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Task prompt"), {
@@ -516,13 +670,13 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
 
     await waitFor(() => expect(pickProjectFolder).toHaveBeenCalledTimes(1));
     expect(dashboardLoad).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
   it("shows a clear error when folder registration fails", async () => {
@@ -533,7 +687,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Maestro requires a local git repository.");
-    expect(screen.getByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
   it("offers Add Project before any projects are registered", async () => {
@@ -570,8 +724,8 @@ describe("App", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Claude Sonnet",
-      modelId: "sonnet",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
       providerConversationId: "session-2",
       prompt: "Second chat",
       state: "complete",
@@ -607,7 +761,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Session model")).toHaveValue("sonnet");
+    expect(screen.getByLabelText("Session model")).toHaveValue("claude-sonnet-4-6");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-pressed", "true");
@@ -731,7 +885,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.change(await screen.findByLabelText("Session model"), {
-      target: { value: "gpt-5.5" }
+      target: { value: "gpt-5.5:medium" }
     });
     fireEvent.change(await screen.findByLabelText("Session prompt"), {
       target: { value: "use the stronger model" }
@@ -800,7 +954,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(await screen.findByLabelText("Launch model"), {
-      target: { value: "claude:sonnet" }
+      target: { value: "claude:claude-sonnet-4-6" }
     });
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
@@ -885,7 +1039,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Maestro" }));
 
-    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
   });
 
@@ -955,7 +1109,7 @@ describe("App", () => {
     fireEvent.click(retry);
 
     await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2));
-    expect(await screen.findByRole("heading", { name: "What should we build in maestro?" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 });
 

@@ -105,6 +105,10 @@ const api: MaestroApi = {
   },
   skills: {
     list: (input: SkillsListInput) => ipcRenderer.invoke("skills:list", input) as Promise<SkillSummary[]>
+  },
+  system: {
+    openPath: (input: { path: string; cwd?: string }) =>
+      ipcRenderer.invoke("system:open-path", input) as Promise<{ ok: true }>
   }
 };
 

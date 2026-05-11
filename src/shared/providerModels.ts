@@ -7,6 +7,8 @@ export interface ProviderModelOption {
   label: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+  /** When true, explicitly disables model_reasoning_summary so global config can't inject it. */
+  disableReasoningSummary?: boolean;
   description?: string;
   badge?: string;
 }
@@ -19,44 +21,29 @@ export type ProviderModelSelection = Pick<ProviderModelOption, "label" | "modelI
 
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
-    { label: "Claude Sonnet", modelId: "sonnet", description: "Daily coding default" },
-    { label: "Claude Opus", modelId: "opus", description: "Deeper reasoning" },
-    { label: "Claude Best", modelId: "best", description: "Most capable available" },
-    { label: "Claude Haiku", modelId: "haiku", description: "Fast, simple tasks" },
-    { label: "Claude Opus Plan", modelId: "opusplan", description: "Opus for planning, Sonnet for execution" },
-    { label: "Claude Sonnet 1M", modelId: "sonnet[1m]", description: "Long context Sonnet" },
-    { label: "Claude Opus 1M", modelId: "opus[1m]", description: "Long context Opus" },
-    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7", description: "Pinned Opus 4.7" },
-    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", description: "Pinned Sonnet 4.6" },
-    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", description: "Pinned Haiku 4.5" },
-    { label: "Claude Default", modelId: "default", description: "Account default" }
+    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7" },
+    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6" },
+    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" }
   ],
   codex: [
-    { label: "GPT-5.3 Codex", modelId: "gpt-5.3-codex", reasoningEffort: "medium", description: "Agentic coding default" },
-    { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "medium", description: "Frontier professional work" },
-    { label: "GPT-5.4", modelId: "gpt-5.4", reasoningEffort: "medium", description: "Balanced coding and cost" },
-    { label: "GPT-5.4 Mini", modelId: "gpt-5.4-mini", reasoningEffort: "medium", description: "Lower latency and cost" },
-    { label: "GPT-5.4 Nano", modelId: "gpt-5.4-nano", reasoningEffort: "low", description: "Small, cheap tasks" },
-    { label: "GPT-5.2", modelId: "gpt-5.2", reasoningEffort: "medium", description: "Previous frontier model" },
-    {
-      label: "GPT-5.3 Codex Spark",
-      modelId: "gpt-5.3-codex-spark",
-      reasoningEffort: "low",
-      description: "Fast research preview",
-      badge: "Preview"
-    }
+    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", reasoningEffort: "low", disableReasoningSummary: true },
+    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", reasoningEffort: "medium", disableReasoningSummary: true },
+    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", reasoningEffort: "high", disableReasoningSummary: true },
+    { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "low" },
+    { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "medium" },
+    { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "high" }
   ]
 };
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
-    label: "Claude Sonnet",
-    modelId: "sonnet",
+    label: "Claude Sonnet 4.6",
+    modelId: "claude-sonnet-4-6",
     launchMode: "structured-json"
   },
   codex: {
-    label: "GPT-5.3 Codex",
-    modelId: "gpt-5.3-codex",
+    label: "Codex Spark",
+    modelId: "gpt-5.3-codex-spark",
     reasoningEffort: "medium",
     launchMode: "structured-json"
   }

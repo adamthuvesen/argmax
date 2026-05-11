@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import type { IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { ProviderId } from "../../shared/types.js";
+import { PROVIDER_MODELS } from "../../shared/providerModels.js";
 import { defaultDiscoveryRunner, discoverProviderById, type ProviderDiscoveryRunner } from "./providerDiscovery.js";
 import { buildProviderEnvironment, providerShell, shellQuote } from "./providerEnvironment.js";
 import { scheduleSigkillEscalation } from "../processControl.js";
@@ -77,22 +78,20 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
     structuredArgs: (input) => [
       "exec",
       "--json",
-      "--ignore-user-config",
       ...CODEX_FULL_PERMISSION_ARGS,
       "--model",
       input.modelId,
-      ...codexReasoningArgs(input),
+      ...codexReasoningArgs(input, true),
       "-"
     ],
     structuredResumeArgs: (input, resumeConversationId) => [
       "exec",
       "resume",
       "--json",
-      "--ignore-user-config",
       ...CODEX_FULL_PERMISSION_ARGS,
       "--model",
       input.modelId,
-      ...codexReasoningArgs(input),
+      ...codexReasoningArgs(input, true),
       resumeConversationId,
       "-"
     ],
@@ -184,7 +183,7 @@ async function launchInteractivePty(
     throw new ProviderLaunchError(missingBinaryMessage(capability), definition.id);
   }
 
-  let ptyProcess: IPty;
+  let ptyProcess: IPty | null;
   try {
     ptyProcess = spawnPty(providerShell(), ["-lc", buildProviderShellCommand(capability.binaryPath, definition.interactiveArgs(input))], {
       name: "xterm-256color",
@@ -211,6 +210,12 @@ async function launchInteractivePty(
   let exitDisposable: { dispose: () => void } = { dispose: () => undefined };
   const createdAt = () => new Date().toISOString();
 
+  // Release the master PTY FD held by node-pty. Called from both the natural
+  // exit path and after the SIGKILL fires, whichever comes first.
+  const releasePty = (): void => {
+    ptyProcess = null;
+  };
+
   // `disposed` on the handle is the source of truth: terminate() flips it
   // before any work; onData/onExit drop racing emissions when set.
   const handle: ProviderSessionHandle = {
@@ -220,11 +225,11 @@ async function launchInteractivePty(
     disposed: false,
     sendInput: (data) => {
       if (handle.disposed) return;
-      ptyProcess.write(data);
+      ptyProcess?.write(data);
     },
     resize: (cols, rows) => {
       if (handle.disposed) return;
-      ptyProcess.resize(cols, rows);
+      ptyProcess?.resize(cols, rows);
     },
     terminate: () => {
       if (handle.disposed) return;
@@ -234,14 +239,14 @@ async function launchInteractivePty(
       } catch {
         /* ignore */
       }
-      try {
-        exitDisposable.dispose();
-      } catch {
-        /* ignore */
-      }
+      // exitDisposable is intentionally NOT disposed here. It must stay alive so
+      // onExit can cancel the SIGKILL escalation timer if SIGTERM succeeds first.
       killEscalation = scheduleSigkillEscalation(
-        () => ptyProcess.kill("SIGTERM"),
-        () => ptyProcess.kill("SIGKILL")
+        () => ptyProcess?.kill("SIGTERM"),
+        () => {
+          ptyProcess?.kill("SIGKILL");
+          releasePty();
+        }
       );
     }
   };
@@ -261,6 +266,20 @@ async function launchInteractivePty(
     exitDisposable = ptyProcess.onExit(({ exitCode, signal }) => {
       killEscalation?.cancel();
       killEscalation = null;
+      // Release the PTY and clean up listeners unconditionally — both the
+      // terminate() path (handle.disposed already true) and the natural exit
+      // path need this. releasePty() is a no-op if SIGKILL already ran first.
+      releasePty();
+      try {
+        dataDisposable.dispose();
+      } catch {
+        /* ignore */
+      }
+      try {
+        exitDisposable.dispose();
+      } catch {
+        /* ignore */
+      }
       if (handle.disposed) {
         return;
       }
@@ -276,16 +295,6 @@ async function launchInteractivePty(
         exitCode,
         createdAt: createdAt()
       });
-      try {
-        dataDisposable.dispose();
-      } catch {
-        /* ignore */
-      }
-      try {
-        exitDisposable.dispose();
-      } catch {
-        /* ignore */
-      }
     });
 
     if (input.prompt.trim()) {
@@ -312,11 +321,22 @@ function buildProviderShellCommand(binaryPath: string, args: string[]): string {
   return ["exec", shellQuote(binaryPath), ...args.map((arg) => shellQuote(arg))].join(" ");
 }
 
-function codexReasoningArgs(input: ProviderLaunchInput): string[] {
+function codexReasoningArgs(input: ProviderLaunchInput, structured = false): string[] {
   if (!input.reasoningEffort) {
-    return [];
+    // No explicit effort — suppress user's global config in structured mode to avoid
+    // model_reasoning_summary leaking into API calls for models that don't support it.
+    return structured ? ["--ignore-user-config"] : [];
   }
-  return ["-c", `model_reasoning_effort="${input.reasoningEffort}"`];
+  const args = ["-c", `model_reasoning_effort="${input.reasoningEffort}"`];
+  if (structured) {
+    const modelDef = PROVIDER_MODELS.codex.find((m) => m.modelId === input.modelId);
+    if (modelDef?.disableReasoningSummary) {
+      // Explicitly disable reasoning summaries for models that don't support them (e.g. Codex Spark).
+      // Overrides any value the user's global Codex config might set.
+      args.push("-c", 'model_reasoning_summary="none"');
+    }
+  }
+  return args;
 }
 
 function missingBinaryMessage(capability: ProviderCapabilityReport): string {

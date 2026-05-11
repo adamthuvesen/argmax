@@ -9,8 +9,10 @@ import type {
   CreateWorkspaceInput,
   DashboardDelta,
   DashboardListSnapshot,
+  DetectedIde,
   LaunchProviderSessionInput,
   ArgmaxApi,
+  OpenInIdeInput,
   PrepareCommitInput,
   ProviderSessionInput,
   ProviderSessionResizeInput,
@@ -65,7 +67,9 @@ const api: ArgmaxApi = {
     keep: (workspaceId: string) =>
       ipcRenderer.invoke("workspaces:keep", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>,
     archive: (workspaceId: string) =>
-      ipcRenderer.invoke("workspaces:archive", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>
+      ipcRenderer.invoke("workspaces:archive", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>,
+    openInIde: (input: OpenInIdeInput) =>
+      ipcRenderer.invoke("workspaces:openInIde", input) as Promise<{ ok: true }>
   },
   providers: {
     discover: () => ipcRenderer.invoke("providers:discover") as Promise<unknown[]>,
@@ -116,7 +120,8 @@ const api: ArgmaxApi = {
   },
   system: {
     openPath: (input: { path: string; cwd?: string }) =>
-      ipcRenderer.invoke("system:open-path", input) as Promise<{ ok: true }>
+      ipcRenderer.invoke("system:open-path", input) as Promise<{ ok: true }>,
+    listDetectedIdes: () => ipcRenderer.invoke("system:listDetectedIdes") as Promise<DetectedIde[]>
   }
 };
 

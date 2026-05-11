@@ -440,7 +440,70 @@ button {
 }
 
 .session-row .session-link {
-  padding-right: 90px;
+  padding-right: 140px;
+}
+
+.session-ide-cluster {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.session-row:has(.session-archive-btn) .session-ide-cluster {
+  right: 28px;
+}
+
+.session-row-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0;
+  opacity: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.session-ide-btn {
+  width: 20px;
+}
+
+.session-ide-chevron {
+  width: 14px;
+}
+
+.session-row:hover .session-row-action {
+  opacity: 1;
+}
+
+.session-row-action:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.session-row-action:disabled {
+  cursor: not-allowed;
+  opacity: 0;
+}
+
+.session-row:hover .session-row-action:disabled {
+  opacity: 0.4;
+}
+
+.session-ide-popover {
+  bottom: auto;
+  top: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  min-width: 160px;
 }
 
 .session-archive-btn {
@@ -474,7 +537,7 @@ button {
 
 .session-cost {
   position: absolute;
-  right: 30px;
+  right: 70px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 11px;
@@ -952,6 +1015,22 @@ button {
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
+}
+
+.settings-row select {
+  min-height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.settings-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .primary-action {

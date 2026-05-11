@@ -32,6 +32,8 @@ import type {
   ChangedFileSummary,
   DashboardDelta,
   DashboardSnapshot,
+  DetectedIde,
+  IdeId,
   ProviderId,
   ProjectSummary,
   RawProviderOutput,
@@ -394,6 +396,18 @@ const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 const projectOrderStorageKey = "argmax.sidebar.projectOrder";
 const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
+const DEFAULT_IDE_KEY = "argmax.defaultIde";
+
+const ALL_IDE_IDS = new Set<IdeId>(["vscode", "cursor", "windsurf", "zed", "terminal", "iterm"]);
+
+function readStoredDefaultIde(): IdeId | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(DEFAULT_IDE_KEY);
+  if (raw && (ALL_IDE_IDS as Set<string>).has(raw)) {
+    return raw as IdeId;
+  }
+  return null;
+}
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
@@ -422,6 +436,8 @@ export function App(): JSX.Element {
     return raw === null ? true : raw === "true";
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
+  const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
 
   const dashboardLoadToken = useRef(0);
   const dashboardDeltaRevision = useRef(0);
@@ -442,6 +458,31 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
   }, [toolCallsExpanded]);
+
+  // Fetch detected IDEs once. Main caches detection across the app lifetime,
+  // so the second-mount cost is just one IPC round trip — but we still avoid
+  // refetching while the renderer is alive.
+  const ideListLoadedRef = useRef(false);
+  useEffect(() => {
+    if (ideListLoadedRef.current) return;
+    if (!window.argmax) return;
+    ideListLoadedRef.current = true;
+    void window.argmax.system
+      .listDetectedIdes()
+      .then((list) => setDetectedIdes(list))
+      .catch(() => {
+        // Detection failure leaves detectedIdes empty; the button disables.
+      });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (defaultIde === null) {
+      window.localStorage.removeItem(DEFAULT_IDE_KEY);
+    } else {
+      window.localStorage.setItem(DEFAULT_IDE_KEY, defaultIde);
+    }
+  }, [defaultIde]);
 
   const handleResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
     event.preventDefault();
@@ -686,6 +727,30 @@ export function App(): JSX.Element {
     }
   }, [selectedWorkspaceId]);
 
+  const handleOpenInIde = useCallback(
+    async (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Electron app window to launch an IDE." });
+        return;
+      }
+      try {
+        await window.argmax.workspaces.openInIde({ workspaceId, ide });
+        if (options?.pinAsDefault) {
+          setDefaultIde(ide);
+        }
+      } catch (error) {
+        const ideLabel = detectedIdes.find((entry) => entry.id === ide)?.label ?? ide;
+        setToast({
+          kind: "error",
+          message: error instanceof Error
+            ? `Couldn't launch ${ideLabel}. ${error.message}`
+            : `Couldn't launch ${ideLabel}.`
+        });
+      }
+    },
+    [detectedIdes]
+  );
+
   const addProject = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
       setToast({ kind: "error", message: "Open the Electron app window to add a project." });
@@ -834,6 +899,7 @@ export function App(): JSX.Element {
         }}
         onAddProject={() => void addProject()}
         onArchiveWorkspace={(id) => void handleArchiveWorkspace(id)}
+        onOpenInIde={(workspaceId, ide, options) => void handleOpenInIde(workspaceId, ide, options)}
         onOpenProject={(projectId) => {
           setIsSettingsOpen(false);
           openProjectLauncher(projectId);
@@ -848,6 +914,8 @@ export function App(): JSX.Element {
         selectedProjectId={selectedProject?.id ?? null}
         selectedWorkspaceId={selectedWorkspace?.id ?? null}
         snapshot={snapshot}
+        detectedIdes={detectedIdes}
+        defaultIde={defaultIde}
       />
 
       <section className="workspace">
@@ -866,6 +934,9 @@ export function App(): JSX.Element {
               onDefaultModelChange={setLaunchModel}
               toolCallsExpanded={toolCallsExpanded}
               onToolCallsExpandedChange={setToolCallsExpanded}
+              detectedIdes={detectedIdes}
+              defaultIde={defaultIde}
+              onDefaultIdeChange={setDefaultIde}
               onClose={() => setIsSettingsOpen(false)}
             />
           ) : selectedSession ? (
@@ -902,6 +973,7 @@ function Sidebar({
   loadState,
   onAddProject,
   onArchiveWorkspace,
+  onOpenInIde,
   onOpenLauncher,
   onOpenProject,
   onOpenSettings,
@@ -910,11 +982,14 @@ function Sidebar({
   isSettingsActive,
   selectedProjectId,
   selectedWorkspaceId,
-  snapshot
+  snapshot,
+  detectedIdes,
+  defaultIde
 }: {
   loadState: "loading" | "ready" | "error";
   onAddProject: () => void;
   onArchiveWorkspace: (workspaceId: string) => void;
+  onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onOpenLauncher: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenSettings: () => void;
@@ -924,6 +999,8 @@ function Sidebar({
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
   snapshot: DashboardSnapshot;
+  detectedIdes: DetectedIde[];
+  defaultIde: IdeId | null;
 }): JSX.Element {
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
@@ -1072,46 +1149,19 @@ function Sidebar({
               </div>
               {isCollapsed
                 ? null
-                : projectWorkspaces.map((workspace) => {
-                    const workspaceCost = workspaceCostMap.get(workspace.id) ?? 0;
-                    return (
-                      <div key={workspace.id} className="session-row">
-                        <button
-                          aria-pressed={selectedWorkspaceId === workspace.id}
-                          className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
-                          data-status={workspace.state}
-                          type="button"
-                          title={`${workspace.taskLabel} — ${workspace.state}`}
-                          onClick={() => onOpenWorkspaceChat(workspace.id)}
-                        >
-                          <span className="status-dot" aria-hidden="true" />
-                          <span>{workspace.taskLabel}</span>
-                        </button>
-                        <span
-                          className="session-cost"
-                          aria-label={`Cost: ${formatCostUsd(workspaceCost)}`}
-                          title={`Session cost so far: ${formatCostUsd(workspaceCost)}`}
-                          data-zero={workspaceCost === 0 ? "true" : undefined}
-                        >
-                          {formatCostUsd(workspaceCost)}
-                        </span>
-                        {(workspace.state === "complete" ||
-                          workspace.state === "failed" ||
-                          workspace.state === "cancelled" ||
-                          workspace.state === "kept") && (
-                          <button
-                            className="session-archive-btn"
-                            title="Archive session"
-                            aria-label="Archive session"
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
-                          >
-                            <Archive size={12} />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                : projectWorkspaces.map((workspace) => (
+                    <SidebarSessionRow
+                      key={workspace.id}
+                      workspace={workspace}
+                      workspaceCost={workspaceCostMap.get(workspace.id) ?? 0}
+                      isSelected={selectedWorkspaceId === workspace.id}
+                      onOpenWorkspaceChat={onOpenWorkspaceChat}
+                      onArchiveWorkspace={onArchiveWorkspace}
+                      onOpenInIde={onOpenInIde}
+                      detectedIdes={detectedIdes}
+                      defaultIde={defaultIde}
+                    />
+                  ))}
             </div>
           );
         })}
@@ -1140,6 +1190,157 @@ function Sidebar({
       </div>
       <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
     </aside>
+  );
+}
+
+function SidebarSessionRow({
+  workspace,
+  workspaceCost,
+  isSelected,
+  onOpenWorkspaceChat,
+  onArchiveWorkspace,
+  onOpenInIde,
+  detectedIdes,
+  defaultIde
+}: {
+  workspace: WorkspaceSummary;
+  workspaceCost: number;
+  isSelected: boolean;
+  onOpenWorkspaceChat: (workspaceId: string) => void;
+  onArchiveWorkspace: (workspaceId: string) => void;
+  onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
+  detectedIdes: DetectedIde[];
+  defaultIde: IdeId | null;
+}): JSX.Element {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  useCloseOnOutsideMouseDown(pickerRef, pickerOpen, () => setPickerOpen(false));
+
+  const showArchive =
+    workspace.state === "complete" ||
+    workspace.state === "failed" ||
+    workspace.state === "cancelled" ||
+    workspace.state === "kept";
+
+  const hasPath = Boolean(workspace.path);
+  const guiIdes = useMemo(
+    () => detectedIdes.filter((entry) => entry.id !== "terminal" && entry.id !== "iterm"),
+    [detectedIdes]
+  );
+  const hasIdes = detectedIdes.length > 0;
+  const effectiveDefault: IdeId | null =
+    defaultIde && detectedIdes.some((entry) => entry.id === defaultIde)
+      ? defaultIde
+      : guiIdes.length === 1 && guiIdes[0]
+        ? guiIdes[0].id
+        : null;
+
+  const buttonDisabled = !hasPath || !hasIdes;
+  const ideButtonTitle = !hasPath
+    ? "Worktree not ready yet"
+    : !hasIdes
+      ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
+      : effectiveDefault
+        ? `Open in ${detectedIdes.find((e) => e.id === effectiveDefault)?.label ?? effectiveDefault}`
+        : "Open in IDE";
+
+  const handleMainClick = (event: ReactMouseEvent): void => {
+    event.stopPropagation();
+    if (!hasPath || !hasIdes) return;
+    if (effectiveDefault) {
+      onOpenInIde(workspace.id, effectiveDefault);
+      return;
+    }
+    // No default and multiple options — open the picker so the user chooses.
+    setPickerOpen(true);
+  };
+
+  return (
+    <div className="session-row">
+      <button
+        aria-pressed={isSelected}
+        className={isSelected ? "session-link active" : "session-link"}
+        data-status={workspace.state}
+        type="button"
+        title={`${workspace.taskLabel} — ${workspace.state}`}
+        onClick={() => onOpenWorkspaceChat(workspace.id)}
+      >
+        <span className="status-dot" aria-hidden="true" />
+        <span>{workspace.taskLabel}</span>
+      </button>
+      <span
+        className="session-cost"
+        aria-label={`Cost: ${formatCostUsd(workspaceCost)}`}
+        title={`Session cost so far: ${formatCostUsd(workspaceCost)}`}
+        data-zero={workspaceCost === 0 ? "true" : undefined}
+      >
+        {formatCostUsd(workspaceCost)}
+      </span>
+      <div className="session-ide-cluster" ref={pickerRef}>
+        <button
+          className="session-row-action session-ide-btn"
+          aria-label="Open in IDE"
+          title={ideButtonTitle}
+          type="button"
+          disabled={buttonDisabled}
+          onClick={handleMainClick}
+        >
+          <ExternalLink size={12} />
+        </button>
+        <button
+          className="session-row-action session-ide-chevron"
+          aria-label="Choose IDE"
+          aria-haspopup="menu"
+          aria-expanded={pickerOpen}
+          title="Choose IDE"
+          type="button"
+          disabled={!hasPath || !hasIdes}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!hasPath || !hasIdes) return;
+            setPickerOpen((open) => !open);
+          }}
+        >
+          <ChevronDown size={10} />
+        </button>
+        {pickerOpen && (
+          <ul className="project-picker-popover session-ide-popover" role="menu" aria-label="Open this worktree in">
+            {detectedIdes.map((entry) => (
+              <li key={entry.id} role="none">
+                <button
+                  type="button"
+                  className="project-picker-item"
+                  role="menuitem"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPickerOpen(false);
+                    // Picking from the chevron menu launches that target but
+                    // does NOT change the persisted default — that's the
+                    // Settings panel's job (and the implicit pin-on-first-use).
+                    onOpenInIde(workspace.id, entry.id, {
+                      pinAsDefault: defaultIde === null && effectiveDefault === null
+                    });
+                  }}
+                >
+                  {entry.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {showArchive && (
+        <button
+          className="session-archive-btn"
+          title="Archive session"
+          aria-label="Archive session"
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
+        >
+          <Archive size={12} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -2782,12 +2983,18 @@ function SettingsPanel({
   onDefaultModelChange,
   toolCallsExpanded,
   onToolCallsExpandedChange,
+  detectedIdes,
+  defaultIde,
+  onDefaultIdeChange,
   onClose
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   toolCallsExpanded: boolean;
   onToolCallsExpandedChange: (v: boolean) => void;
+  detectedIdes: DetectedIde[];
+  defaultIde: IdeId | null;
+  onDefaultIdeChange: (ide: IdeId | null) => void;
   onClose: () => void;
 }): JSX.Element {
   return (
@@ -2898,6 +3105,38 @@ function SettingsPanel({
               <dd>Configured per project</dd>
             </div>
           </dl>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-tools">
+        <header className="settings-section-header">
+          <h2 id="settings-tools">Tools</h2>
+          <p>Pick the editor that opens when you click the "Open in IDE" button on a session.</p>
+        </header>
+        <div className="settings-card">
+          <div className="settings-row">
+            <label htmlFor="settings-default-ide">Default IDE</label>
+            <select
+              id="settings-default-ide"
+              aria-label="Default IDE"
+              value={defaultIde ?? ""}
+              onChange={(event) => {
+                const next = event.target.value;
+                onDefaultIdeChange(next === "" ? null : (next as IdeId));
+              }}
+              disabled={detectedIdes.length === 0}
+            >
+              <option value="">Ask each time</option>
+              {detectedIdes.map((entry) => (
+                <option key={entry.id} value={entry.id}>{entry.label}</option>
+              ))}
+            </select>
+          </div>
+          {detectedIdes.length === 0 ? (
+            <p className="settings-hint">
+              No supported IDEs detected. Install VS Code, Cursor, Windsurf, or Zed to enable this.
+            </p>
+          ) : null}
         </div>
       </section>
 

@@ -83,6 +83,61 @@ describe("ProviderSessionService", () => {
     }
   });
 
+  it("drops the partial-line buffer and emits a marker when stream output exceeds 1 MiB without a newline", async () => {
+    vi.useFakeTimers();
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    try {
+      const session = await service.launch({
+        workspaceId: workspace.id,
+        provider: "codex",
+        prompt: "Ship",
+        modelLabel: "GPT-5.3 Codex Spark Low",
+        modelId: "gpt-5.3-codex-spark",
+        reasoningEffort: "low",
+        cols: 80,
+        rows: 24
+      });
+      deltas.length = 0;
+
+      // Two ~600 KB chunks of pure text with no newline — together they push
+      // the per-stream buffer past the 1 MiB cap.
+      const chunk = "x".repeat(600_000);
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: chunk,
+        createdAt: "2026-05-08T16:00:00.000Z"
+      });
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: chunk,
+        createdAt: "2026-05-08T16:00:00.100Z"
+      });
+      await vi.advanceTimersByTimeAsync(20);
+
+      const buffers = (service as unknown as {
+        buffers: Map<string, { streamBuffers: Map<string, string> }>;
+      }).buffers;
+      expect(buffers.get(session.id)?.streamBuffers.get("stdout")).toBe("");
+      const truncationDelta = deltas.find((d) =>
+        d.events?.some((ev) => ev.message.includes("argmax: dropped"))
+      );
+      expect(truncationDelta).toBeDefined();
+    } finally {
+      database.clearPruneInterval();
+      vi.useRealTimers();
+      database.connection.close();
+    }
+  });
+
   it("publishes final lifecycle state as a dashboard delta", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);

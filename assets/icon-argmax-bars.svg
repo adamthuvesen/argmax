@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bgA" cx="50%" cy="30%" r="95%">
+      <stop offset="0%" stop-color="#3a3530"/>
+      <stop offset="55%" stop-color="#1c1b18"/>
+      <stop offset="100%" stop-color="#0a0908"/>
+    </radialGradient>
+    <linearGradient id="winner" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e6e2d8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bgA)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+        fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+
+  <!-- argmax visualized: five candidates, one wins.
+       Bar heights climb to a peak and fall — like a probability distribution.
+       The tallest bar is bright white; the others are dimmed. -->
+  <g>
+    <!-- Candidate 1 (shortest) -->
+    <rect x="232" y="600" width="96" height="120" rx="20" fill="#ffffff" opacity="0.18"/>
+    <!-- Candidate 2 -->
+    <rect x="360" y="496" width="96" height="224" rx="20" fill="#ffffff" opacity="0.28"/>
+    <!-- Candidate 3 — THE WINNER -->
+    <rect x="488" y="280" width="96" height="440" rx="20" fill="url(#winner)"/>
+    <!-- Candidate 4 -->
+    <rect x="616" y="384" width="96" height="336" rx="20" fill="#ffffff" opacity="0.34"/>
+    <!-- Candidate 5 -->
+    <rect x="744" y="552" width="96" height="168" rx="20" fill="#ffffff" opacity="0.22"/>
+  </g>
+
+  <!-- Tiny marker dot above the winner — the "selected" indicator -->
+  <circle cx="536" cy="232" r="22" fill="#5a8f72"/>
+</svg>

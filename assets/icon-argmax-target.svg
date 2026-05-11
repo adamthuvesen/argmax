@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bgD" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#2c2924"/>
+      <stop offset="100%" stop-color="#0a0908"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bgD)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+        fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+
+  <!-- Concentric rings — narrowing in on the maximum.
+       Reads as targeting / selecting the best outcome. -->
+  <g fill="none" stroke="#ffffff" stroke-width="14">
+    <circle cx="512" cy="512" r="320" opacity="0.18"/>
+    <circle cx="512" cy="512" r="220" opacity="0.32"/>
+    <circle cx="512" cy="512" r="120" opacity="0.55"/>
+  </g>
+
+  <!-- Crosshair ticks at the four cardinals — subtle, like a viewfinder -->
+  <g stroke="#ffffff" stroke-width="14" stroke-linecap="round" opacity="0.55">
+    <line x1="512" y1="160" x2="512" y2="232"/>
+    <line x1="512" y1="864" x2="512" y2="792"/>
+    <line x1="160" y1="512" x2="232" y2="512"/>
+    <line x1="864" y1="512" x2="792" y2="512"/>
+  </g>
+
+  <!-- The locked-in maximum — a confident, slightly off-white bullseye -->
+  <circle cx="512" cy="512" r="56" fill="#ffffff"/>
+  <circle cx="512" cy="512" r="26" fill="#5a8f72"/>
+</svg>

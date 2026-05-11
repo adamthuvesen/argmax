@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bg2" cx="35%" cy="30%" r="100%">
+      <stop offset="0%" stop-color="#403a32"/>
+      <stop offset="55%" stop-color="#1c1b18"/>
+      <stop offset="100%" stop-color="#080706"/>
+    </radialGradient>
+    <linearGradient id="mark2" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d8d3c6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bg2)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+        fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+
+  <!-- Bold geometric M — classic letterform with crisp diagonal cuts -->
+  <!-- Built as a single polygon for the clean angular look -->
+  <path d="
+    M 240 752
+    L 240 272
+    L 360 272
+    L 512 528
+    L 664 272
+    L 784 272
+    L 784 752
+    L 680 752
+    L 680 432
+    L 552 648
+    L 472 648
+    L 344 432
+    L 344 752
+    Z"
+    fill="url(#mark2)"/>
+
+  <!-- Tiny amber accent dot, top-right — like a notification or pulse -->
+  <circle cx="832" cy="232" r="20" fill="#b08039" opacity="0.85"/>
+</svg>

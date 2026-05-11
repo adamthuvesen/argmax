@@ -1,5 +1,8 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { execFile as ExecFileType } from "node:child_process";
+import type * as ChildProcess from "node:child_process";
+import type * as FsPromises from "node:fs/promises";
 
 /**
  * `ideDetection` wraps `execFile` via `util.promisify`. The real `execFile`
@@ -13,7 +16,8 @@ const { promisifiedExecFile, statMock, state } = vi.hoisted(() => ({
   promisifiedExecFile: vi.fn(),
   statMock: vi.fn(),
   state: {
-    mdfindHandler: ((_bundleId: string) => "") as (bundleId: string) => string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    mdfindHandler: (_bundleId: string): string => "",
     whichSet: new Set<string>()
   }
 }));
@@ -33,22 +37,23 @@ function defaultExecFile(command: string, args: readonly string[]): Promise<{ st
 }
 
 vi.mock("node:child_process", async () => {
-  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  const actual = await vi.importActual<typeof ChildProcess>("node:child_process");
   const { promisify } = await import("node:util");
 
   function execFile(): void {
     throw new Error("callback-style execFile should not be invoked in this test");
   }
   Object.defineProperty(execFile, promisify.custom, {
-    value: (command: string, args: readonly string[]) => promisifiedExecFile(command, args)
+    value: (command: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> =>
+      promisifiedExecFile(command, args) as Promise<{ stdout: string; stderr: string }>
   });
 
-  return { ...actual, execFile };
+  return { ...actual, execFile: execFile as unknown as typeof ExecFileType };
 });
 
 vi.mock("node:fs/promises", async () => {
-  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-  return { ...actual, stat: (...args: unknown[]) => statMock(...args) };
+  const actual = await vi.importActual<typeof FsPromises>("node:fs/promises");
+  return { ...actual, stat: (...args: unknown[]) => statMock(...args) as ReturnType<typeof FsPromises.stat> };
 });
 
 const { detectInstalledIdes, resetIdeDetectionCacheForTests } = await import("../ideDetection.js");

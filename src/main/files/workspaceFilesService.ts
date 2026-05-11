@@ -67,11 +67,14 @@ export class WorkspaceFilesService {
       return { kind: "skipped", reason: "too-large", size: stats.size };
     }
 
-    if (await looksBinary(resolved)) {
+    // Read the inode we validated via realpath, not the symlinked alias. If a
+    // symlink were swapped between the realpath check and the read, the
+    // unresolved path could still redirect outside the workspace.
+    if (await looksBinary(fileRealPath)) {
       return { kind: "skipped", reason: "binary", size: stats.size };
     }
 
-    const content = await readFile(resolved, "utf8");
+    const content = await readFile(fileRealPath, "utf8");
     return { kind: "text", content, size: stats.size };
   }
 }

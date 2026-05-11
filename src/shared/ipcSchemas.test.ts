@@ -221,6 +221,12 @@ describe("ipcSchemas", () => {
     ).toThrow();
   });
 
+  it("rejects registerProject when repoPath is not absolute or contains null bytes", () => {
+    expect(() => registerProjectInputSchema.parse({ repoPath: "relative/path" })).toThrow();
+    expect(() => registerProjectInputSchema.parse({ repoPath: "/tmp/with null" })).toThrow();
+    expect(registerProjectInputSchema.parse({ repoPath: "/tmp/argmax" })).toEqual({ repoPath: "/tmp/argmax" });
+  });
+
   it("rejects switchBranch when the branch name starts with '-' (argv-injection guard)", () => {
     expect(() => switchBranchInputSchema.parse({ projectId: "p-1", branch: "--orphan" })).toThrow();
     expect(() => switchBranchInputSchema.parse({ projectId: "p-1", branch: "-q" })).toThrow();

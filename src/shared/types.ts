@@ -103,6 +103,14 @@ export interface WorkspaceDiff {
   content: string;
 }
 
+export interface WorkspaceFileEntry {
+  path: string;
+}
+
+export type WorkspaceFilePreview =
+  | { kind: "text"; content: string; size: number }
+  | { kind: "skipped"; reason: "binary" | "too-large" | "not-a-file"; size?: number };
+
 export type RunCheckInput = RunCheckInputParsed;
 export type CreateCheckpointInput = CreateCheckpointInputParsed;
 export type SelectPreferredAttemptInput = SelectPreferredAttemptInputParsed;
@@ -315,6 +323,10 @@ export interface ArgmaxApi {
   review: {
     listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;
     loadDiff: (workspaceId: string, filePath?: string) => Promise<WorkspaceDiff>;
+  };
+  workspace: {
+    listFiles: (workspaceId: string) => Promise<WorkspaceFileEntry[]>;
+    readFile: (workspaceId: string, filePath: string) => Promise<WorkspaceFilePreview>;
   };
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;

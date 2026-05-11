@@ -32,6 +32,8 @@ import {
   skillsListInputSchema,
   systemOpenPathInputSchema,
   updateProjectSettingsInputSchema,
+  workspaceListFilesInputSchema,
+  workspaceReadFileInputSchema,
   workspaceStatusInputSchema,
   workspaceIdInputSchema,
   type IpcChannel
@@ -45,6 +47,7 @@ import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
 import { discoverProviders } from "./providers/providerDiscovery.js";
 import type { ProviderSessionService } from "./providers/providerSessionService.js";
 import { GitReviewService } from "./review/gitReviewService.js";
+import { WorkspaceFilesService } from "./files/workspaceFilesService.js";
 import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
 import { CommitPreparationService } from "./review/commitPreparationService.js";
@@ -106,6 +109,7 @@ export function registerIpcHandlers(
   const projects = new ProjectService(database);
   const workspaces = new WorkspaceService(database);
   const review = new GitReviewService(database);
+  const workspaceFiles = new WorkspaceFilesService(database);
   const checks = new CheckService(database);
   const checkpoints = new CheckpointService(database);
   const commits = new CommitPreparationService(database);
@@ -275,6 +279,14 @@ export function registerIpcHandlers(
     }
     return review.loadDiff(parsed[0], parsed[1]);
   });
+  ipcMain.handle(
+    "workspace:list-files",
+    withValidation(workspaceListFilesInputSchema, (input) => workspaceFiles.listFiles(input.workspaceId))
+  );
+  ipcMain.handle(
+    "workspace:read-file",
+    withValidation(workspaceReadFileInputSchema, (input) => workspaceFiles.readFile(input.workspaceId, input.filePath))
+  );
   ipcMain.handle(
     "checks:run",
     withValidation(runCheckInputSchema, (input) => checks.runWorkspaceCheck(input))

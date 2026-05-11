@@ -1,8 +1,9 @@
 import { lstat, readFile, readlink, realpath } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { ChangedFileSummary, WorkspaceDiff } from "../../shared/types.js";
 import { runGitText } from "../git/exec.js";
+import { assertContainedPath, assertSafeRelativePath } from "../util/workspacePaths.js";
 
 /** Cap on parallel `git diff` invocations when fetching all-files diff. */
 const DIFF_FANOUT_LIMIT = 8;
@@ -179,21 +180,3 @@ function synthesizeUntrackedSymlinkDiff(filePath: string, target: string): strin
   ].join("\n");
 }
 
-/**
- * Resolve filePath against the workspace root and assert the canonical result
- * stays inside it — defense against symlinks or constructed paths that would
- * redirect the diff into another tree. Shape validation (no absolute paths,
- * no `..`, no leading `-`) is already enforced by `relativeFilePathSchema`
- * at the IPC boundary.
- */
-function assertSafeRelativePath(workspaceRoot: string, filePath: string): void {
-  const resolved = resolve(workspaceRoot, filePath);
-  assertContainedPath(workspaceRoot, resolved, "filePath escapes the workspace root");
-}
-
-function assertContainedPath(root: string, candidate: string, message: string): void {
-  const rootPrefix = root.endsWith(sep) ? root : root + sep;
-  if (candidate !== root && !candidate.startsWith(rootPrefix)) {
-    throw new Error(message);
-  }
-}

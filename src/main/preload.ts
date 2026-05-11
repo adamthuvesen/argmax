@@ -29,6 +29,8 @@ import type {
   SkillsListInput,
   SkillSummary,
   WorkspaceDiff,
+  WorkspaceFileEntry,
+  WorkspaceFilePreview,
   WorkspaceStatusInput,
   WorkspaceStatusSnapshot,
   UpdateProjectSettingsInput
@@ -97,6 +99,12 @@ const api: ArgmaxApi = {
       ipcRenderer.invoke("review:list-changed-files", workspaceId) as Promise<ChangedFileSummary[]>,
     loadDiff: (workspaceId: string, filePath?: string) =>
       ipcRenderer.invoke("review:load-diff", workspaceId, filePath) as Promise<WorkspaceDiff>
+  },
+  workspace: {
+    listFiles: (workspaceId: string) =>
+      ipcRenderer.invoke("workspace:list-files", { workspaceId }) as Promise<WorkspaceFileEntry[]>,
+    readFile: (workspaceId: string, filePath: string) =>
+      ipcRenderer.invoke("workspace:read-file", { workspaceId, filePath }) as Promise<WorkspaceFilePreview>
   },
   checks: {
     run: (input: RunCheckInput) => ipcRenderer.invoke("checks:run", input) as Promise<DashboardSnapshot["checks"][number]>

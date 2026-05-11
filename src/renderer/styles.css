@@ -480,9 +480,6 @@ button {
   width: 20px;
 }
 
-.session-ide-chevron {
-  width: 14px;
-}
 
 .session-row:hover .session-row-action {
   opacity: 1;
@@ -1092,28 +1089,9 @@ button {
   min-height: 72px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-sm);
   background: var(--panel);
   box-shadow: var(--shadow-1);
-  transition: border-color var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);
-}
-
-.composer-input::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: 0 0 0 0 rgba(90, 143, 114, 0);
-  transition: box-shadow var(--duration-base) var(--ease);
-}
-
-.composer-input:focus-within {
-  border-color: var(--ink);
-}
-
-.composer-input:focus-within::before {
-  box-shadow: 0 0 0 4px rgba(90, 143, 114, 0.14);
 }
 
 .composer-input input,
@@ -1189,41 +1167,7 @@ button {
   opacity: 0.4;
 }
 
-.send-button .kbd-hint {
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 8px);
-  transform: translateY(-50%);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease);
-  white-space: nowrap;
-}
 
-.composer-input:focus-within .send-button:not(:disabled) .kbd-hint {
-  opacity: 1;
-}
-
-.kbd {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
-  color: var(--muted-strong);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04);
-}
-
-.kbd-hint {
-  font-size: 10.5px;
-  padding: 2px 5px;
-}
 
 .composer-context {
   gap: 8px;
@@ -1339,6 +1283,14 @@ button {
   position: relative;
 }
 
+.picker-dismiss-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 .project-picker-popover {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -1354,6 +1306,17 @@ button {
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow-2);
+}
+
+/* New-session composer chips: open menu below the trigger (default .project-picker-popover is upward). */
+.composer-context .project-picker-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  /* Keep the menu within the viewport so it isn’t clipped by .work-scroll; otherwise the ul’s
+     scrollbar sits in the clipped region / wheel scroll hits the outer scroller instead. */
+  max-height: min(260px, 22dvh, calc(100dvh - 96px));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .project-picker-item {
@@ -1410,6 +1373,8 @@ button {
 }
 
 .session-grid {
+  --session-review-panel-width: clamp(320px, 34vw, 520px);
+  --session-log-panel-width: clamp(300px, 32vw, 480px);
   display: grid;
   height: 100dvh;
   min-height: 0;
@@ -1418,26 +1383,35 @@ button {
 }
 
 .session-grid.review-open {
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 520px);
+  grid-template-columns: minmax(0, 1fr) var(--session-review-panel-width);
 }
 
 .session-grid.log-open {
-  grid-template-columns: minmax(0, 1fr) clamp(300px, 32vw, 480px);
+  grid-template-columns: minmax(0, 1fr) var(--session-log-panel-width);
 }
 
 .session-grid.review-open.log-open {
-  grid-template-columns: minmax(0, 1fr) clamp(240px, 26vw, 400px) clamp(240px, 26vw, 400px);
+  grid-template-columns: minmax(0, 1fr) var(--session-review-panel-width) var(--session-log-panel-width);
 }
 
 .session-main-column {
+  --session-inline-padding: clamp(36px, calc((100% - 920px) / 2), 2000px);
   display: grid;
   min-width: 0;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
+.session-grid.review-open .session-main-column,
+.session-grid.log-open .session-main-column {
+  --session-inline-padding: clamp(18px, calc((100% - 860px) / 2), 2000px);
+}
+
+.session-grid.review-open.log-open .session-main-column {
+  --session-inline-padding: clamp(10px, calc((100% - 780px) / 2), 2000px);
+}
+
 .conversation-surface {
-  --session-inline-padding: clamp(40px, calc((100vw - 272px - 920px) / 2), 2000px);
   display: grid;
   height: 100%;
   min-height: 0;
@@ -2636,7 +2610,12 @@ button {
   font-size: inherit;
 }
 
+.session-input-toolbar .composer-context-chip {
+  font-size: 12px;
+}
+
 .review-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -2652,6 +2631,8 @@ button {
   gap: 14px;
   padding: 22px 18px 14px;
   border-bottom: 1px solid var(--line);
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
 }
 
 .review-toolbar h2 {
@@ -2660,7 +2641,7 @@ button {
   gap: 8px;
   align-items: baseline;
   margin: 0;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 560;
 }
 
@@ -2677,7 +2658,7 @@ button {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  min-height: 38px;
+  min-height: 32px;
   padding: 0 18px;
   color: var(--muted-strong);
   border: 0;
@@ -2685,6 +2666,7 @@ button {
   background: transparent;
   cursor: pointer;
   text-align: left;
+  font-size: 13px;
 }
 
 .review-file-tabs button:first-child {
@@ -2730,10 +2712,11 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 12px 18px;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(10px);
+  font-size: 13px;
 }
 
 .review-diff-heading > div {
@@ -2758,6 +2741,221 @@ button {
 
 .review-error {
   color: var(--rose);
+}
+
+.review-toolbar-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.review-mode-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  gap: 2px;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.review-mode-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  font: inherit;
+  color: var(--muted-strong);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.review-mode-tabs button:hover {
+  color: var(--text);
+}
+
+.review-mode-tabs button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-1, 0 1px 2px rgba(0, 0, 0, 0.06));
+}
+
+.workspace-tree {
+  display: block;
+  flex: 0 0 auto;
+  overflow: auto;
+  padding: 4px 0;
+  font-size: 12.5px;
+}
+
+.workspace-tree-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspace-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding-right: 12px;
+  color: var(--muted-strong);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.workspace-tree-row:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.workspace-tree-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-tree-file[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--panel-soft);
+  font-weight: 560;
+}
+
+.workspace-tree-chevron {
+  flex: 0 0 12px;
+  color: var(--muted-strong);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.workspace-tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.workspace-tree-chevron-spacer {
+  display: inline-block;
+  width: 12px;
+}
+
+.file-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-preview-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+}
+
+.file-preview-heading strong {
+  font-weight: 560;
+  overflow-wrap: anywhere;
+}
+
+.file-preview-size {
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.file-preview-body {
+  margin: 0;
+  padding: 12px 0 24px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: pre;
+  overflow: visible;
+}
+
+.file-preview-line {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: baseline;
+  line-height: 1.5;
+}
+
+.file-preview-gutter {
+  color: var(--muted-strong);
+  text-align: right;
+  padding-right: 12px;
+  user-select: none;
+}
+
+.file-preview-content {
+  white-space: pre;
+}
+
+.changed-files-header-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.changed-files-header-row .changed-files-header {
+  flex: 1 1 auto;
+}
+
+.changed-files-header-static {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.changed-files-header-static .changed-files-title {
+  flex: 1 1 auto;
+}
+
+.changed-files-browse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted-strong);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line-soft);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.changed-files-header-static .changed-files-browse {
+  border-left: 0;
+}
+
+.changed-files-browse:hover {
+  color: var(--text);
+  background: var(--panel-soft);
 }
 
 .diff-blocks {
@@ -3103,12 +3301,42 @@ button {
 
 /* Debug log panel */
 .log-panel {
+  position: relative;
   display: grid;
   min-width: 0;
   min-height: 0;
   grid-template-rows: auto auto minmax(0, 1fr);
   border-left: 1px solid var(--line);
   background: var(--panel);
+}
+
+.panel-col-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.panel-col-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.panel-col-resize-handle:hover::after,
+.session-grid[data-panel-resizing="true"] .panel-col-resize-handle::after {
+  background: var(--line-strong);
 }
 
 .log-toolbar {
@@ -3397,8 +3625,11 @@ button {
   }
 
   .conversation-surface {
-    --session-inline-padding: 16px;
     padding-top: 20px;
+  }
+
+  .session-main-column {
+    --session-inline-padding: 16px;
   }
 
 }

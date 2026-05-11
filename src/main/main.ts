@@ -95,19 +95,11 @@ async function shutdown(): Promise<void> {
       await providerSessions.disposeAll();
     }
     for (const channel of registeredChannels) {
-      try {
-        ipcMain.removeHandler(channel);
-      } catch {
-        /* handler not registered or already removed */
-      }
+      ipcMain.removeHandler(channel);
     }
     if (database) {
       database.clearPruneInterval();
-      try {
-        database.connection.close();
-      } catch {
-        /* already closed */
-      }
+      database.connection.close();
       database = null;
     }
   } finally {

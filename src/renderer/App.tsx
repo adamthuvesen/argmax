@@ -10,7 +10,6 @@ import {
   Folder,
   GitBranch,
   Globe,
-  GripVertical,
   Loader2,
   Mic,
   PanelRightClose,
@@ -242,7 +241,9 @@ function extractToolInputPreview(name: string, input: Record<string, unknown>): 
   const url = input.url;
   if (typeof url === "string") return url.slice(0, 72);
   const first = Object.values(input)[0];
-  return first !== undefined ? String(first).slice(0, 72) : "";
+  if (typeof first === "string") return first.slice(0, 72);
+  if (typeof first === "number" || typeof first === "boolean") return String(first).slice(0, 72);
+  return "";
 }
 
 function extractToolOutput(payload: Record<string, unknown>): string | null {
@@ -607,6 +608,10 @@ export function App(): JSX.Element {
   }, []);
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
+    if (!window.maestro) {
+      setToast({ kind: "error", message: "Open the Electron app window to archive workspaces." });
+      return;
+    }
     const result = await window.maestro.workspaces.archive(workspaceId);
     setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
     if (selectedWorkspaceId === workspaceId) {
@@ -998,7 +1003,10 @@ function Sidebar({
                         <span className="status-dot" aria-hidden="true" />
                         <span>{workspace.taskLabel}</span>
                       </button>
-                      {(workspace.state === "complete" || workspace.state === "failed" || workspace.state === "kept") && (
+                      {(workspace.state === "complete" ||
+                        workspace.state === "failed" ||
+                        workspace.state === "cancelled" ||
+                        workspace.state === "kept") && (
                         <button
                           className="session-archive-btn"
                           title="Archive session"
@@ -1368,8 +1376,7 @@ function SessionConversation({
 
   const canSend = Boolean(
     session &&
-      (["complete", "waiting"].includes(session.state) ||
-        (session.provider === "codex" && session.state === "running"))
+      ["complete", "waiting"].includes(session.state)
   );
   const isThinking = session?.state === "running" && !hasAssistantForLatestTurn;
 
@@ -2381,6 +2388,36 @@ function LaunchSurface({
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const headingTemplate = useMemo(() => {
+    const options = [
+      "{name}: the final frontier.",
+      "In space, no one can hear your {name} build fail.",
+      "You're gonna need a bigger {name}.",
+      "What we've got here is a failure to ship {name}.",
+      "{name} will remember that.",
+      "I'm sorry Dave, I can't merge that into {name}.",
+      "With great {name} comes great responsibility.",
+      "One does not simply deploy {name} to production.",
+      "{name}: it's alive!",
+      "I know kung fu. What are we building in {name}?",
+    ];
+    return options[Math.floor(Math.random() * options.length)];
+  }, []);
+  const placeholderText = useMemo(() => {
+    const options = [
+      "Do or do not. There is no try.",
+      "You can't handle the diff.",
+      "I'll be back. (After this build passes.)",
+      "My precious... what are we shipping?",
+      "Make it so.",
+      "Elementary. What needs debugging?",
+      "You had me at \"merge conflict\".",
+      "Why so serious? Describe the task.",
+      "What is thy bidding, master?",
+      "They may take our lives, but they'll never take our main branch.",
+    ];
+    return options[Math.floor(Math.random() * options.length)];
+  }, []);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);
@@ -2433,7 +2470,7 @@ function LaunchSurface({
 
   return (
     <div className="launcher-surface">
-      <h1>What should we build in {project.name}?</h1>
+      <h1>{headingTemplate.replace("{name}", project.name)}</h1>
       <form className="composer" ref={formRef} onSubmit={(event) => void submitPrompt(event)}>
         <div className="composer-input">
           <textarea
@@ -2444,7 +2481,7 @@ function LaunchSurface({
             disabled={isSubmitting}
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={onPromptKeyDown}
-            placeholder="Ask an agent anything"
+            placeholder={placeholderText}
             ref={promptInputRef}
             value={prompt}
             rows={1}

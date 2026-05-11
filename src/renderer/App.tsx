@@ -25,7 +25,8 @@ import {
   X,
 } from "lucide-react";
 import type { DragEvent as ReactDragEvent, FormEvent, JSX, KeyboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import type {
   ApprovalRequest,
@@ -321,18 +322,22 @@ function useAutoGrowTextArea(
 function useCloseOnOutsideMouseDown(
   ref: RefObject<HTMLElement | null>,
   active: boolean,
-  close: () => void
+  close: () => void,
+  extraRef?: RefObject<HTMLElement | null>
 ): void {
   useEffect(() => {
     if (!active) return;
     const handleMouseDown = (event: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const insideMain = ref.current?.contains(target) ?? false;
+      const insideExtra = extraRef?.current?.contains(target) ?? false;
+      if (!insideMain && !insideExtra) {
         close();
       }
     };
     document.addEventListener("mousedown", handleMouseDown, { capture: true });
     return () => document.removeEventListener("mousedown", handleMouseDown, { capture: true });
-  }, [active, close, ref]);
+  }, [active, close, ref, extraRef]);
 }
 
 const PROMPT_MAX_HEIGHT_PX = 140;
@@ -1214,8 +1219,24 @@ function SidebarSessionRow({
   defaultIde: IdeId | null;
 }): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
-  useCloseOnOutsideMouseDown(pickerRef, pickerOpen, () => setPickerOpen(false));
+  const popoverRef = useRef<HTMLUListElement | null>(null);
+  useCloseOnOutsideMouseDown(pickerRef, pickerOpen, () => setPickerOpen(false), popoverRef);
+
+  useLayoutEffect(() => {
+    if (!pickerOpen) {
+      setPopoverPos(null);
+      return;
+    }
+    const cluster = pickerRef.current;
+    if (!cluster) return;
+    const rect = cluster.getBoundingClientRect();
+    setPopoverPos({
+      top: rect.bottom + 6,
+      right: Math.max(8, window.innerWidth - rect.right)
+    });
+  }, [pickerOpen]);
 
   const showArchive =
     workspace.state === "complete" ||
@@ -1304,8 +1325,20 @@ function SidebarSessionRow({
         >
           <ChevronDown size={10} />
         </button>
-        {pickerOpen && (
-          <ul className="project-picker-popover session-ide-popover" role="menu" aria-label="Open this worktree in">
+        {pickerOpen && popoverPos && createPortal(
+          <ul
+            ref={popoverRef}
+            className="project-picker-popover session-ide-popover"
+            role="menu"
+            aria-label="Open this worktree in"
+            style={{
+              position: "fixed",
+              top: popoverPos.top,
+              right: popoverPos.right,
+              left: "auto",
+              bottom: "auto"
+            }}
+          >
             {detectedIdes.map((entry) => {
               const isShell = entry.id === "terminal" || entry.id === "iterm";
               return (
@@ -1329,7 +1362,8 @@ function SidebarSessionRow({
                 </li>
               );
             })}
-          </ul>
+          </ul>,
+          document.body
         )}
       </div>
       {showArchive && (

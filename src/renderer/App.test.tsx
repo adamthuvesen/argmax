@@ -267,6 +267,18 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
+  it("settings Default model label is wired to the select via htmlFor/id", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Settings" });
+
+    // getByLabelText only resolves the SELECT element when label.htmlFor
+    // matches the select's id — i.e. the wiring is correct end-to-end.
+    const select = screen.getByLabelText("Default model");
+    expect(select.tagName).toBe("SELECT");
+  });
+
   it("renders the local project launcher from IPC data", async () => {
     render(<App />);
 

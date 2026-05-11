@@ -75,10 +75,12 @@ export function ModelSelector({
 
 export function CombinedModelSelector({
   ariaLabel,
+  inputId,
   onChange,
   value
 }: {
   ariaLabel: string;
+  inputId?: string;
   onChange: (model: ModelPickerSelection) => void;
   value: ModelPickerSelection;
 }): JSX.Element {
@@ -94,6 +96,7 @@ export function CombinedModelSelector({
   return (
     <span className="model-selector model-selector-combined">
       <select
+        id={inputId}
         aria-label={ariaLabel}
         value={selectedValue}
         onChange={(event) => {

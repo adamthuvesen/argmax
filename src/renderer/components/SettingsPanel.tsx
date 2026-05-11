@@ -94,6 +94,7 @@ export function SettingsPanel({
             <label htmlFor="settings-default-model">Default model</label>
             <CombinedModelSelector
               ariaLabel="Default model"
+              inputId="settings-default-model"
               value={defaultModel}
               onChange={onDefaultModelChange}
             />

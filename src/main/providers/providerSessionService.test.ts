@@ -490,6 +490,46 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
+  it("collapses embedded newlines in multi-line sendInput before writing to a live PTY", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("claude");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "claude",
+      prompt: "Ship",
+      modelLabel: "Claude Haiku",
+      modelId: "haiku",
+      cols: 80,
+      rows: 24
+    });
+
+    // Force the handle into PTY-input mode (default in production is
+    // structured-json, but the PTY-input path still exists and must not
+    // submit each line as a separate prompt).
+    const entry = (service as unknown as {
+      handles: Map<string, { kind: string; handle?: { acceptsInput: boolean } }>;
+    }).handles.get(session.id);
+    if (entry?.handle) entry.handle.acceptsInput = true;
+
+    await service.sendInput(session.id, "line one\nline two\nline three");
+
+    expect(fakeProvider.sentInput).toEqual(["line one line two line three\r"]);
+    // Persisted user.message keeps the original text — only PTY-bound bytes
+    // are sanitized.
+    expect(database.loadDashboard().events).toContainEqual(
+      expect.objectContaining({
+        sessionId: session.id,
+        type: "user.message",
+        message: "line one\nline two\nline three"
+      })
+    );
+
+    database.connection.close();
+  });
+
   it("resumes Claude follow-up prompts using the Argmax session id", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);

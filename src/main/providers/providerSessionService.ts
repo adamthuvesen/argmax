@@ -247,7 +247,11 @@ export class ProviderSessionService {
       if (!liveHandle.acceptsInput) {
         throw new Error("Wait for the current response before sending another prompt.");
       }
-      liveHandle.sendInput(`${message}\r`);
+      // Collapse embedded newlines so the PTY-side CLI doesn't treat each line
+      // as a separate prompt submission. The persisted user.message keeps the
+      // original text — only what travels to the live PTY is sanitized.
+      const ptyPayload = message.replace(/\r?\n/g, " ");
+      liveHandle.sendInput(`${ptyPayload}\r`);
     }
 
     const userMessage = this.database.persistTimelineEvent({

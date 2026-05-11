@@ -542,6 +542,30 @@ describe("findPendingApproval (Section 6)", () => {
     database.connection.close();
   });
 
+  it("caps listWorkspaceStatus at 200 rows and returns the newest first", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "limit-200");
+
+    // Insert 250 workspaces with strictly increasing last_activity_at so we
+    // can verify the cap drops the OLDEST rows, not the newest.
+    for (let i = 0; i < 250; i++) {
+      const id = `ws-${String(i).padStart(3, "0")}`;
+      seedWorkspace(database, id, projectId, "running", id);
+      // Bump last_activity_at to a deterministic per-row value.
+      database.connection
+        .prepare("UPDATE workspaces SET last_activity_at = ? WHERE id = ?")
+        .run(new Date(2026, 0, 1, 0, 0, i).toISOString(), id);
+    }
+
+    const snapshot = database.listWorkspaceStatus();
+    expect(snapshot.workspaces).toHaveLength(200);
+    // Newest 200 are ws-249..ws-050 in DESC order.
+    expect(snapshot.workspaces[0]?.id).toBe("ws-249");
+    expect(snapshot.workspaces[199]?.id).toBe("ws-050");
+
+    database.close();
+  });
+
   it("loadPreferredSessionIds via range scan ignores neighboring ui_state keys", () => {
     // The range query is `key >= 'preferred-attempt:' AND key <
     // 'preferred-attempt;'`. Keys outside that range must not leak in even

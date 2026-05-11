@@ -1183,15 +1183,20 @@ function listWorkspaceStatus(
   const checkFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
   const checkpointFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
 
+  // Cap unfiltered dashboard reads at 200 rows each, sorted newest first. The
+  // renderer's sidebar truncates further (7 per project) so older rows are
+  // unreachable in the UI anyway; without this the read grows linearly with
+  // local history. Filtered reads (explicit workspaceIds) still respect the
+  // cap because passing > 200 IDs would not render either.
   const workspaces = (
     connection
-      .prepare(`SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC`)
+      .prepare(`SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC LIMIT 200`)
       .all(...workspaceFilter.params) as WorkspaceRow[]
   ).map((row) => workspaceRowToSummary(row));
 
   const sessions = (
     connection
-      .prepare(`SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC`)
+      .prepare(`SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC LIMIT 200`)
       .all(...sessionFilter.params) as SessionRow[]
   ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
 

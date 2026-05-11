@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -66,6 +66,94 @@ describe("GitReviewService", () => {
     expect(untrackedDiff.content).toContain("--- /dev/null");
     expect(untrackedDiff.content).toContain("+export const added = true;");
     expect(deletedDiff.content).toContain("-export const remove = true;");
+
+    database.connection.close();
+  });
+
+  it("skips untracked directories without crashing on readFile", async () => {
+    const repoPath = createCommittedGitRepo();
+    mkdirSync(join(repoPath, "src/untracked-dir"));
+    writeFileSync(join(repoPath, "src/untracked-dir/inside.txt"), "hi\n");
+    const database = createDatabase(":memory:", { seed: false });
+    database.persistProject({
+      id: "project-1",
+      name: "Fixture",
+      repoPath,
+      currentBranch: "main",
+      defaultBranch: "main",
+      settings: {
+        defaultProvider: "codex",
+        defaultModelLabel: "GPT-5.3 Codex Spark Low",
+        worktreeLocation: join(repoPath, ".worktrees"),
+        setupCommand: "",
+        checkCommands: []
+      }
+    });
+    const workspace = database.persistWorkspace({
+      id: "workspace-1",
+      projectId: "project-1",
+      taskLabel: "Review",
+      branch: "main",
+      baseRef: "main",
+      path: repoPath,
+      state: "complete",
+      sharedWorkspace: true,
+      dirty: true,
+      changedFiles: 1
+    });
+    const service = new GitReviewService(database);
+
+    const files = await service.listChangedFiles(workspace.id);
+    expect(files.some((file) => file.path.endsWith("/"))).toBe(false);
+    expect(files.some((file) => file.path === "src/untracked-dir/")).toBe(false);
+
+    // Even if a caller hands a directory path directly to loadDiff, it must
+    // not throw EISDIR — synthesizeUntrackedDiff returns an empty body.
+    const diff = await service.loadDiff(workspace.id, "src/untracked-dir/");
+    expect(diff.content).toBe("");
+
+    database.connection.close();
+  });
+
+  it("shows untracked symlink targets without reading outside-workspace contents", async () => {
+    const repoPath = createCommittedGitRepo();
+    const outsidePath = join(tmpdir(), `maestro-secret-${Date.now()}.txt`);
+    writeFileSync(outsidePath, "do not show me\n");
+    symlinkSync(outsidePath, join(repoPath, "src/link.txt"));
+    const database = createDatabase(":memory:", { seed: false });
+    database.persistProject({
+      id: "project-1",
+      name: "Fixture",
+      repoPath,
+      currentBranch: "main",
+      defaultBranch: "main",
+      settings: {
+        defaultProvider: "codex",
+        defaultModelLabel: "GPT-5.3 Codex Spark Low",
+        worktreeLocation: join(repoPath, ".worktrees"),
+        setupCommand: "",
+        checkCommands: []
+      }
+    });
+    const workspace = database.persistWorkspace({
+      id: "workspace-1",
+      projectId: "project-1",
+      taskLabel: "Review",
+      branch: "main",
+      baseRef: "main",
+      path: repoPath,
+      state: "complete",
+      sharedWorkspace: true,
+      dirty: true,
+      changedFiles: 1
+    });
+    const service = new GitReviewService(database);
+
+    const diff = await service.loadDiff(workspace.id, "src/link.txt");
+
+    expect(diff.content).toContain("new file mode 120000");
+    expect(diff.content).toContain(`+${outsidePath}`);
+    expect(diff.content).not.toContain("do not show me");
 
     database.connection.close();
   });

@@ -7,6 +7,12 @@ import { assertContainedPath, assertSafeRelativePath } from "../util/workspacePa
 
 /** Cap on parallel `git diff` invocations when fetching all-files diff. */
 const DIFF_FANOUT_LIMIT = 8;
+/**
+ * Cap per-file diff content shipped over IPC. A lockfile rewrite or vendored
+ * bundle change can produce tens of MB; without this, the renderer freezes
+ * trying to parse a wall of changes the user can't usefully read anyway.
+ */
+const PER_FILE_DIFF_CAP_BYTES = 1_048_576;
 
 export class GitReviewService {
   constructor(private readonly database: ArgmaxDatabase) {}
@@ -52,11 +58,20 @@ export class GitReviewService {
   }
 
   private async loadFileDiff(workspacePath: string, file: ChangedFileSummary): Promise<string> {
-    if (file.status === "??") {
-      return synthesizeUntrackedDiff(workspacePath, file.path);
-    }
-    return runGitText(workspacePath, ["diff", "HEAD", "--", file.path]);
+    const raw =
+      file.status === "??"
+        ? await synthesizeUntrackedDiff(workspacePath, file.path)
+        : await runGitText(workspacePath, ["diff", "HEAD", "--", file.path]);
+    return capDiff(raw);
   }
+}
+
+function capDiff(content: string): string {
+  if (content.length <= PER_FILE_DIFF_CAP_BYTES) {
+    return content;
+  }
+  const droppedBytes = content.length - PER_FILE_DIFF_CAP_BYTES;
+  return `${content.slice(0, PER_FILE_DIFF_CAP_BYTES)}\n[diff truncated at ${PER_FILE_DIFF_CAP_BYTES} bytes; dropped ${droppedBytes} bytes]\n`;
 }
 
 async function mapWithConcurrency<T, R>(

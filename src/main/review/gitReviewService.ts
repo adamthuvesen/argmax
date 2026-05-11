@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { lstat, readFile, readlink, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import type { MaestroDatabase } from "../persistence/database.js";
 import type { ChangedFileSummary, WorkspaceDiff } from "../../shared/types.js";
@@ -16,7 +16,9 @@ export class GitReviewService {
     // (no quoting, no octal escapes), so we don't have to unquote git's
     // human-readable form. The byte after each path is NUL, not LF.
     const porcelain = await runGitText(workspace.path, ["status", "--porcelain=v1", "-z"]);
-    const files = parsePorcelainZ(porcelain);
+    // Untracked directories arrive as `?? dirname/` — drop them; readFile
+    // on a directory would crash, and a 0/0 placeholder row is junk.
+    const files = parsePorcelainZ(porcelain).filter((file) => !file.path.endsWith("/"));
     return mapWithConcurrency(files, DIFF_FANOUT_LIMIT, async (file) => {
       const content = await this.loadFileDiff(workspace.path, file);
       const counts = countDiffLines(content);
@@ -122,7 +124,30 @@ function countDiffLines(content: string): { additions: number; deletions: number
 async function synthesizeUntrackedDiff(workspacePath: string, filePath: string): Promise<string> {
   const safeAbsolutePath = resolve(workspacePath, filePath);
   assertSafeRelativePath(workspacePath, filePath);
-  const content = await readFile(safeAbsolutePath, "utf8");
+  const stats = await lstat(safeAbsolutePath);
+  if (stats.isSymbolicLink()) {
+    const target = await readlink(safeAbsolutePath);
+    return synthesizeUntrackedSymlinkDiff(filePath, target);
+  }
+  if (stats.isDirectory()) {
+    return "";
+  }
+  const workspaceRealPath = await realpath(workspacePath);
+  const fileRealPath = await realpath(safeAbsolutePath);
+  assertContainedPath(workspaceRealPath, fileRealPath, "filePath escapes the workspace root");
+  // Defense-in-depth: lstat said this wasn't a dir/symlink, but TOCTOU or
+  // a caller bypassing the listChangedFiles filter could still land here
+  // pointing at a directory or a vanished file.
+  let content: string;
+  try {
+    content = await readFile(safeAbsolutePath, "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === "EISDIR" || code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
   const lines = content.split("\n");
   const hasTrailingNewline = content.endsWith("\n");
   if (hasTrailingNewline) {
@@ -141,6 +166,19 @@ async function synthesizeUntrackedDiff(workspacePath: string, filePath: string):
   ].join("\n");
 }
 
+function synthesizeUntrackedSymlinkDiff(filePath: string, target: string): string {
+  return [
+    `diff --git a/${filePath} b/${filePath}`,
+    "new file mode 120000",
+    "index 0000000..0000000",
+    "--- /dev/null",
+    `+++ b/${filePath}`,
+    "@@ -0,0 +1 @@",
+    `+${target}`,
+    "\\ No newline at end of file"
+  ].join("\n");
+}
+
 /**
  * Resolve filePath against the workspace root and assert the canonical result
  * stays inside it — defense against symlinks or constructed paths that would
@@ -150,8 +188,12 @@ async function synthesizeUntrackedDiff(workspacePath: string, filePath: string):
  */
 function assertSafeRelativePath(workspaceRoot: string, filePath: string): void {
   const resolved = resolve(workspaceRoot, filePath);
-  const rootPrefix = workspaceRoot.endsWith(sep) ? workspaceRoot : workspaceRoot + sep;
-  if (resolved !== workspaceRoot && !resolved.startsWith(rootPrefix)) {
-    throw new Error("filePath escapes the workspace root");
+  assertContainedPath(workspaceRoot, resolved, "filePath escapes the workspace root");
+}
+
+function assertContainedPath(root: string, candidate: string, message: string): void {
+  const rootPrefix = root.endsWith(sep) ? root : root + sep;
+  if (candidate !== root && !candidate.startsWith(rootPrefix)) {
+    throw new Error(message);
   }
 }

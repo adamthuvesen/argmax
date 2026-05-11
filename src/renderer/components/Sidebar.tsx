@@ -69,30 +69,35 @@ export function Sidebar({
     return map;
   }, [snapshot.sessions]);
 
-  const toggleProjectVisibility = useCallback((projectId: string): void => {
-    setCollapsedProjectIds((current) => {
-      const next = new Set(current);
+  // Compute next outside the setState updater so the localStorage write fires
+  // exactly once per toggle. (React 18 StrictMode runs updater callbacks
+  // twice in dev — a side effect inside one would persist twice.)
+  const toggleProjectVisibility = useCallback(
+    (projectId: string): void => {
+      const next = new Set(collapsedProjectIds);
       if (next.has(projectId)) {
         next.delete(projectId);
       } else {
         next.add(projectId);
       }
+      setCollapsedProjectIds(next);
       saveCollapsedProjectIds(next);
-      return next;
-    });
-  }, []);
+    },
+    [collapsedProjectIds]
+  );
 
-  const expandProjectVisibility = useCallback((projectId: string): void => {
-    setCollapsedProjectIds((current) => {
-      if (!current.has(projectId)) {
-        return current;
+  const expandProjectVisibility = useCallback(
+    (projectId: string): void => {
+      if (!collapsedProjectIds.has(projectId)) {
+        return;
       }
-      const next = new Set(current);
+      const next = new Set(collapsedProjectIds);
       next.delete(projectId);
+      setCollapsedProjectIds(next);
       saveCollapsedProjectIds(next);
-      return next;
-    });
-  }, []);
+    },
+    [collapsedProjectIds]
+  );
 
   const handleDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
     setDraggingId(projectId);
@@ -105,25 +110,26 @@ export function Sidebar({
     setDragOverId(projectId);
   }, []);
 
-  const handleDrop = useCallback((e: ReactDragEvent<HTMLDivElement>, targetId: string, currentOrdered: ProjectSummary[]): void => {
-    e.preventDefault();
-    setDraggingId((currentDraggingId) => {
-      if (currentDraggingId && currentDraggingId !== targetId) {
+  const handleDrop = useCallback(
+    (e: ReactDragEvent<HTMLDivElement>, targetId: string, currentOrdered: ProjectSummary[]): void => {
+      e.preventDefault();
+      if (draggingId && draggingId !== targetId) {
         const ids = currentOrdered.map((p) => p.id);
-        const from = ids.indexOf(currentDraggingId);
+        const from = ids.indexOf(draggingId);
         const to = ids.indexOf(targetId);
         if (from !== -1 && to !== -1) {
           const next = [...ids];
           next.splice(from, 1);
-          next.splice(to, 0, currentDraggingId);
-          saveProjectOrder(next);
+          next.splice(to, 0, draggingId);
           setProjectOrder(next);
+          saveProjectOrder(next);
         }
       }
-      return null;
-    });
-    setDragOverId(null);
-  }, []);
+      setDraggingId(null);
+      setDragOverId(null);
+    },
+    [draggingId]
+  );
 
   const handleDragLeave = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
     // Only clear when the cursor leaves the row itself, not when it enters a

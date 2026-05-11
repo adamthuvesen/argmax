@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 /**
@@ -103,7 +104,11 @@ export const workspaceStatusInputSchema = z
 export const approvalsPendingInputSchema = z.void();
 
 export const registerProjectInputSchema = z.object({
-  repoPath: z.string().min(1)
+  repoPath: z
+    .string()
+    .min(1)
+    .refine((value) => isAbsolute(value), { message: "repoPath must be absolute" })
+    .refine((value) => !value.includes("\0"), { message: "repoPath cannot contain null bytes" })
 });
 
 export const updateProjectSettingsInputSchema = z.object({

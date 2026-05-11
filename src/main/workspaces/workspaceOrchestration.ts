@@ -34,8 +34,18 @@ export class WorkspaceError extends Error {
   }
 }
 
+/** Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`). */
+const WATCH_DEBOUNCE_MS = 200;
+
+interface WatchState {
+  debounceTimer: NodeJS.Timeout | null;
+  inFlight: boolean;
+  pending: boolean;
+}
+
 export class WorkspaceService {
   private readonly watchers = new Map<string, FSWatcher>();
+  private readonly watchState = new Map<string, WatchState>();
 
   constructor(private readonly database: ArgmaxDatabase) {}
 
@@ -206,18 +216,22 @@ export class WorkspaceService {
   }
 
   watchWorkspace(workspaceId: string): () => void {
+    // Replace any prior watcher for the same id — a stale FSWatcher would
+    // otherwise outlive its replacement and keep recursive kernel watches
+    // alive until process exit.
+    this.closeWatcher(workspaceId);
+
     const workspace = this.database.getWorkspace(workspaceId);
+    const state: WatchState = { debounceTimer: null, inFlight: false, pending: false };
+    this.watchState.set(workspaceId, state);
+
     // recursive: true is the macOS/Windows hot path. On Linux this is a no-op
     // (Node falls back to the directory-only watch); if a Linux user reports
     // missed updates the documented fallback is chokidar (see design.md
     // "Open Questions"). persistent: false keeps Node from holding the event
     // loop open just because of the watcher.
     const watcher = watch(workspace.path, { persistent: false, recursive: true }, () => {
-      this.refreshGitStatus(workspaceId).catch(() => {
-        // Best-effort refresh: ENOENT during teardown, transient git lock
-        // contention, or removed-worktree races are expected. We swallow
-        // here rather than throwing into a closure with no caller.
-      });
+      this.scheduleStatusRefresh(workspaceId);
     });
     watcher.on("error", () => {
       // fs.watch surfaces errors via the EventEmitter; if we don't listen,
@@ -229,7 +243,57 @@ export class WorkspaceService {
     return () => this.closeWatcher(workspaceId);
   }
 
+  /**
+   * Trailing-edge debounce + single-flight gate around `refreshGitStatus`.
+   * A burst like `npm install` would otherwise spawn one git child per fs
+   * event; we coalesce into one refresh per 200 ms quiet window, and never
+   * run two in parallel for the same workspace.
+   */
+  private scheduleStatusRefresh(workspaceId: string): void {
+    const state = this.watchState.get(workspaceId);
+    if (!state) return;
+    if (state.debounceTimer) {
+      clearTimeout(state.debounceTimer);
+    }
+    state.debounceTimer = setTimeout(() => {
+      state.debounceTimer = null;
+      void this.runStatusRefresh(workspaceId);
+    }, WATCH_DEBOUNCE_MS);
+    if (typeof state.debounceTimer.unref === "function") {
+      state.debounceTimer.unref();
+    }
+  }
+
+  private async runStatusRefresh(workspaceId: string): Promise<void> {
+    const state = this.watchState.get(workspaceId);
+    if (!state) return;
+    if (state.inFlight) {
+      // A refresh is already running. Mark pending so we re-run once it
+      // finishes — guarantees no event silently disappears.
+      state.pending = true;
+      return;
+    }
+    state.inFlight = true;
+    try {
+      await this.refreshGitStatus(workspaceId);
+    } catch {
+      // Best-effort refresh: ENOENT during teardown, transient git lock
+      // contention, or removed-worktree races are expected. Swallow.
+    } finally {
+      state.inFlight = false;
+      if (state.pending) {
+        state.pending = false;
+        void this.runStatusRefresh(workspaceId);
+      }
+    }
+  }
+
   private closeWatcher(workspaceId: string): void {
+    const state = this.watchState.get(workspaceId);
+    if (state?.debounceTimer) {
+      clearTimeout(state.debounceTimer);
+    }
+    this.watchState.delete(workspaceId);
     const watcher = this.watchers.get(workspaceId);
     if (!watcher) return;
     try {

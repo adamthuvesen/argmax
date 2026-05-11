@@ -542,6 +542,38 @@ describe("findPendingApproval (Section 6)", () => {
     database.connection.close();
   });
 
+  it("loadPreferredSessionIds via range scan ignores neighboring ui_state keys", () => {
+    // The range query is `key >= 'preferred-attempt:' AND key <
+    // 'preferred-attempt;'`. Keys outside that range must not leak in even
+    // if they look related (e.g. a typo like 'preferred-attempts').
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "prefer-range");
+    seedWorkspace(database, "ws-prefer-range-a", projectId, "running", "task-a");
+    seedSession(database, "session-a", "ws-prefer-range-a");
+    seedWorkspace(database, "ws-prefer-range-b", projectId, "running", "task-b");
+    seedSession(database, "session-b", "ws-prefer-range-b");
+
+    database.selectPreferredAttempt("session-a");
+    // Insert a noise row that LIKE 'preferred-attempt:%' would have caught
+    // but the range query must skip — and a row outside the half-open range.
+    const now = new Date().toISOString();
+    database.connection
+      .prepare(
+        "INSERT INTO ui_state (key, value_json, updated_at) VALUES (?, ?, ?)"
+      )
+      .run("preferred-attempts:other", JSON.stringify({ sessionId: "session-b" }), now);
+    database.connection
+      .prepare(
+        "INSERT INTO ui_state (key, value_json, updated_at) VALUES (?, ?, ?)"
+      )
+      .run("unrelated:key", JSON.stringify({ sessionId: "session-b" }), now);
+
+    expect(database.getSession("session-a").preferred).toBe(true);
+    expect(database.getSession("session-b").preferred).toBe(false);
+
+    database.close();
+  });
+
   it("close() clears the prune timer, closes the connection, and is idempotent", () => {
     const database = createDatabase(":memory:", { seed: false });
     expect(database.connection.open).toBe(true);

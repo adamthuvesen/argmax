@@ -480,6 +480,10 @@ button {
   width: 20px;
 }
 
+.session-ide-chevron {
+  width: 14px;
+}
+
 
 .session-row:hover .session-row-action {
   opacity: 1;

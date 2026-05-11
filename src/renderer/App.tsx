@@ -256,7 +256,11 @@ function extractToolInput(payload: Record<string, unknown>): Record<string, unkn
     return payload.input as Record<string, unknown>;
   }
   if (typeof payload.arguments === "string") {
-    try { return JSON.parse(payload.arguments) as Record<string, unknown>; } catch { /* ignore */ }
+    try {
+      return JSON.parse(payload.arguments) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
   }
   return {};
 }

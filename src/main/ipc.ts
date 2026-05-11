@@ -11,7 +11,9 @@ import {
   healthPingInputSchema,
   IPC_CHANNELS,
   launchProviderSessionInputSchema,
+  listDetectedIdesInputSchema,
   loadDiffInputSchema,
+  openInIdeInputSchema,
   prepareCommitInputSchema,
   projectsListInputSchema,
   providersDiscoverInputSchema,
@@ -34,6 +36,9 @@ import {
   workspaceIdInputSchema,
   type IpcChannel
 } from "../shared/ipcSchemas.js";
+import { detectInstalledIdes } from "./ide/ideDetection.js";
+import { launchIde } from "./ide/ideLaunch.js";
+import type { DetectedIde, IdeId } from "../shared/types.js";
 import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
 import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
@@ -180,6 +185,23 @@ export function registerIpcHandlers(
     withValidation(workspaceIdInputSchema, (workspaceId) => workspaces.archiveWorkspace(workspaceId))
   );
   ipcMain.handle(
+    "workspaces:openInIde",
+    withValidation(openInIdeInputSchema, async (input) => {
+      const workspace = database.getWorkspace(input.workspaceId);
+      if (!workspace.path) {
+        throw new Error("Workspace has no path on disk yet.");
+      }
+      const detected = await detectInstalledIdes();
+      const target: IdeId = input.ide === "default" ? resolveDefaultIde(detected) : input.ide;
+      await launchIde(target, workspace.path, detected);
+      return { ok: true } as const;
+    })
+  );
+  ipcMain.handle(
+    "system:listDetectedIdes",
+    withValidation(listDetectedIdesInputSchema, () => detectInstalledIdes())
+  );
+  ipcMain.handle(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
   );
@@ -308,3 +330,31 @@ export function registerIpcHandlers(
  * so adding a new channel only requires adding it to the schema map.
  */
 export const REGISTERED_IPC_CHANNELS: readonly IpcChannel[] = IPC_CHANNELS;
+
+/**
+ * Fallback when the renderer asks main to "open in default IDE" but the
+ * caller has not yet persisted a preference (`localStorage["argmax.defaultIde"]`
+ * is empty). Order matches the user-facing chevron menu: GUI IDEs first, then
+ * Terminal. If somehow the detected list is empty the renderer should already
+ * have disabled the button, so we throw a useful error instead of guessing.
+ */
+const DEFAULT_IDE_PRIORITY: readonly IdeId[] = ["vscode", "cursor", "windsurf", "zed", "iterm", "terminal"];
+
+export function resolveDefaultIde(detected: readonly DetectedIde[]): IdeId {
+  if (detected.length === 0) {
+    throw new Error("No IDEs detected on this machine.");
+  }
+  for (const id of DEFAULT_IDE_PRIORITY) {
+    if (detected.some((entry) => entry.id === id)) {
+      return id;
+    }
+  }
+  // Detected has at least one entry whose id is one of the schema-allowed
+  // values, so this is unreachable in practice. We narrow to a concrete
+  // IdeId anyway to keep the return type honest.
+  const first = detected[0];
+  if (!first) {
+    throw new Error("No IDEs detected on this machine.");
+  }
+  return first.id;
+}

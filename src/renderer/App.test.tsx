@@ -111,6 +111,8 @@ describe("App", () => {
   let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
+  let openInIde: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["openInIde"]>>;
+  let listDetectedIdes: ReturnType<typeof vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>>;
 
   afterEach(() => {
     cleanup();
@@ -152,6 +154,12 @@ describe("App", () => {
       content: ""
     });
     skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
+    openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
+    listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
+      { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true },
+      { id: "cursor", label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true },
+      { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false }
+    ]);
 
     window.argmax = {
       dashboard: {
@@ -176,7 +184,8 @@ describe("App", () => {
         refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
         status: workspaceStatus,
         keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
-        archive: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace())
+        archive: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
+        openInIde: openInIde
       },
       providers: {
         discover: () => Promise.resolve([]),
@@ -223,7 +232,8 @@ describe("App", () => {
         list: skillsList
       },
       system: {
-        openPath: () => Promise.resolve({ ok: true })
+        openPath: () => Promise.resolve({ ok: true }),
+        listDetectedIdes: listDetectedIdes
       }
     };
   });
@@ -1193,6 +1203,101 @@ describe("App", () => {
 
     expect(within(panel).getByRole("row", { name: "Cache read usage" })).toBeInTheDocument();
     expect(within(panel).getByRole("row", { name: "Cache write usage" })).toBeInTheDocument();
+  });
+
+  it("disables the Open in IDE button when the workspace has no path yet", async () => {
+    listDetectedIdes.mockResolvedValue([
+      { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true }
+    ]);
+    const pathless: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) => ({ ...workspace, path: "" }))
+    };
+    dashboardLoad.mockResolvedValue(pathless);
+    dashboardList.mockResolvedValue(dashboardListSnapshot(pathless));
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(pathless));
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const ideButton = await screen.findByRole("button", { name: "Open in IDE" });
+    expect(ideButton).toBeDisabled();
+    expect(ideButton).toHaveAttribute("title", "Worktree not ready yet");
+  });
+
+  it("opens the default IDE when one is configured", async () => {
+    window.localStorage.setItem("argmax.defaultIde", "vscode");
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const ideButton = await screen.findByRole("button", { name: "Open in IDE" });
+    await waitFor(() => expect(ideButton).not.toBeDisabled());
+    fireEvent.click(ideButton);
+
+    await waitFor(() => expect(openInIde).toHaveBeenCalledTimes(1));
+    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "vscode" });
+  });
+
+  it("auto-selects the only detected GUI IDE when no default is stored", async () => {
+    listDetectedIdes.mockResolvedValue([
+      { id: "windsurf", label: "Windsurf", appPath: "/Applications/Windsurf.app", hasCli: false },
+      { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false }
+    ]);
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const ideButton = await screen.findByRole("button", { name: "Open in IDE" });
+    await waitFor(() => expect(ideButton.getAttribute("title")).toContain("Windsurf"));
+    fireEvent.click(ideButton);
+
+    await waitFor(() => expect(openInIde).toHaveBeenCalledTimes(1));
+    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "windsurf" });
+  });
+
+  it("lists every detected IDE in the chevron menu", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const chevron = await screen.findByRole("button", { name: "Choose IDE" });
+    await waitFor(() => expect(chevron).not.toBeDisabled());
+    fireEvent.click(chevron);
+
+    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items).toHaveLength(3);
+    expect(items.map((item) => item.textContent)).toEqual(["VS Code", "Cursor", "Terminal"]);
+  });
+
+  it("opens the chosen IDE from the chevron menu without changing the default", async () => {
+    window.localStorage.setItem("argmax.defaultIde", "vscode");
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const chevron = await screen.findByRole("button", { name: "Choose IDE" });
+    await waitFor(() => expect(chevron).not.toBeDisabled());
+    fireEvent.click(chevron);
+    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Cursor" }));
+
+    await waitFor(() => expect(openInIde).toHaveBeenCalledTimes(1));
+    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "cursor" });
+    expect(window.localStorage.getItem("argmax.defaultIde")).toBe("vscode");
+  });
+
+  it("settings Tools section writes the chosen default IDE to localStorage", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Tools" });
+
+    const select = screen.getByRole("combobox", { name: "Default IDE" });
+    fireEvent.change(select, { target: { value: "cursor" } });
+
+    await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));
   });
 });
 

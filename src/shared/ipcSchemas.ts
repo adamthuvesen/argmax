@@ -210,6 +210,35 @@ export const sessionCostSummaryInputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// IDE launcher — `workspaces:openInIde` and `system:listDetectedIdes`
+// ---------------------------------------------------------------------------
+
+export const ideIdSchema = z.enum([
+  "vscode",
+  "cursor",
+  "windsurf",
+  "zed",
+  "terminal",
+  "iterm"
+]);
+
+export const openInIdeInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  ide: ideIdSchema.or(z.literal("default"))
+});
+
+export const listDetectedIdesInputSchema = z.void();
+
+export const listDetectedIdesOutputSchema = z.array(
+  z.object({
+    id: ideIdSchema,
+    label: z.string(),
+    appPath: z.string().nullable(),
+    hasCli: z.boolean()
+  })
+);
+
+// ---------------------------------------------------------------------------
 // Channel → schema map
 // ---------------------------------------------------------------------------
 
@@ -227,6 +256,7 @@ export const ipcSchemas = {
   "workspaces:refresh-status": workspaceIdInputSchema,
   "workspaces:keep": workspaceIdInputSchema,
   "workspaces:archive": workspaceIdInputSchema,
+  "workspaces:openInIde": openInIdeInputSchema,
   "workspace:status": workspaceStatusInputSchema,
   "providers:discover": providersDiscoverInputSchema,
   "providers:launch": launchProviderSessionInputSchema,
@@ -245,6 +275,7 @@ export const ipcSchemas = {
   "dashboard:load": dashboardLoadInputSchema,
   "skills:list": skillsListInputSchema,
   "system:open-path": systemOpenPathInputSchema,
+  "system:listDetectedIdes": listDetectedIdesInputSchema,
   "session:costSummary": sessionCostSummaryInputSchema
 } as const;
 
@@ -274,3 +305,6 @@ export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
 export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;
 export type SessionCostSummaryInputParsed = z.infer<typeof sessionCostSummaryInputSchema>;
+export type OpenInIdeInputParsed = z.infer<typeof openInIdeInputSchema>;
+export type IdeIdParsed = z.infer<typeof ideIdSchema>;
+export type DetectedIdeParsed = z.infer<typeof listDetectedIdesOutputSchema>[number];

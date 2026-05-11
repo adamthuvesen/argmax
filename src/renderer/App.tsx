@@ -43,7 +43,7 @@ import type {
 } from "../shared/types.js";
 import { PROVIDER_MODEL_DEFAULTS, PROVIDER_MODELS } from "../shared/providerModels.js";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
-import { tryParseJsonObject } from "../shared/safeJson.js";
+import { safeJsonParseArray, tryParseJsonObject } from "../shared/safeJson.js";
 import { stripTerminalControls } from "../shared/terminalControls.js";
 import { demoSnapshot } from "./demoSnapshot.js";
 import { formatElapsed } from "./formatElapsed.js";
@@ -314,6 +314,23 @@ function useAutoGrowTextArea(
   }, [ref, value, maxHeightPx]);
 }
 
+function useCloseOnOutsideMouseDown(
+  ref: RefObject<HTMLElement | null>,
+  active: boolean,
+  close: () => void
+): void {
+  useEffect(() => {
+    if (!active) return;
+    const handleMouseDown = (event: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        close();
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [active, close, ref]);
+}
+
 const PROMPT_MAX_HEIGHT_PX = 140;
 
 function thinkingModelSlug(model: ProviderModelSelection): string {
@@ -375,7 +392,6 @@ const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 const projectOrderStorageKey = "argmax.sidebar.projectOrder";
 const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
-const THEME_KEY = "argmax.theme";
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
@@ -403,10 +419,6 @@ export function App(): JSX.Element {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY) : null;
     return raw === null ? true : raw === "true";
   });
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(THEME_KEY) : null;
-    return raw === "dark" ? "dark" : "light";
-  });
   const [isResizing, setIsResizing] = useState(false);
 
   const dashboardLoadToken = useRef(0);
@@ -428,11 +440,6 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
   }, [toolCallsExpanded]);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem(THEME_KEY, theme);
-  }, [theme]);
 
   const handleResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
     event.preventDefault();
@@ -857,8 +864,6 @@ export function App(): JSX.Element {
               onDefaultModelChange={setLaunchModel}
               toolCallsExpanded={toolCallsExpanded}
               onToolCallsExpandedChange={setToolCallsExpanded}
-              theme={theme}
-              onThemeChange={setTheme}
               onClose={() => setIsSettingsOpen(false)}
             />
           ) : selectedSession ? (
@@ -1117,19 +1122,7 @@ function Sidebar({
 }
 
 function loadCollapsedProjectIds(): Set<string> {
-  if (typeof window === "undefined") {
-    return new Set();
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(collapsedProjectsStorageKey);
-    const projectIds: unknown = rawValue ? JSON.parse(rawValue) : [];
-    return Array.isArray(projectIds) && projectIds.every((projectId) => typeof projectId === "string")
-      ? new Set(projectIds)
-      : new Set();
-  } catch {
-    return new Set();
-  }
+  return new Set(loadStringArray(collapsedProjectsStorageKey));
 }
 
 function saveCollapsedProjectIds(projectIds: Set<string>): void {
@@ -1140,16 +1133,7 @@ function saveCollapsedProjectIds(projectIds: Set<string>): void {
 }
 
 function loadProjectOrder(): string[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-  try {
-    const raw = window.localStorage.getItem(projectOrderStorageKey);
-    const ids: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? ids : [];
-  } catch {
-    return [];
-  }
+  return loadStringArray(projectOrderStorageKey);
 }
 
 function saveProjectOrder(ids: string[]): void {
@@ -1157,6 +1141,16 @@ function saveProjectOrder(ids: string[]): void {
     return;
   }
   window.localStorage.setItem(projectOrderStorageKey, JSON.stringify(ids));
+}
+
+function loadStringArray(storageKey: string): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  return safeJsonParseArray(
+    window.localStorage.getItem(storageKey),
+    (value): value is string => typeof value === "string"
+  );
 }
 
 function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {
@@ -1352,12 +1346,6 @@ function SessionConversation({
     () => (hasAssistantEvents ? "" : buildTerminalTranscript(rawOutputs, session?.id ?? null)),
     [rawOutputs, session?.id, hasAssistantEvents]
   );
-  const latestUserMessageAt = conversationEvents
-    .filter((event) => event.type === "user.message")
-    .at(-1)?.createdAt ?? null;
-  const hasAssistantForLatestTurn = latestUserMessageAt
-    ? conversationEvents.some((event) => event.type !== "user.message" && event.createdAt > latestUserMessageAt)
-    : hasAssistantEvents;
 
   const toolCalls = useMemo((): ToolCall[] => {
     const starts = new Map<string, { event: TimelineEvent; toolUseId: string }>();
@@ -2496,38 +2484,9 @@ function LaunchSurface({
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!projectPickerOpen) return;
-    const handleMouseDown = (e: MouseEvent): void => {
-      if (projectPickerRef.current && !projectPickerRef.current.contains(e.target as Node)) {
-        setProjectPickerOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [projectPickerOpen]);
-
-  useEffect(() => {
-    if (!branchPickerOpen) return;
-    const handleMouseDown = (e: MouseEvent): void => {
-      if (branchPickerRef.current && !branchPickerRef.current.contains(e.target as Node)) {
-        setBranchPickerOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [branchPickerOpen]);
-
-  useEffect(() => {
-    if (!modelPickerOpen) return;
-    const handleMouseDown = (e: MouseEvent): void => {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
-        setModelPickerOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [modelPickerOpen]);
+  useCloseOnOutsideMouseDown(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
+  useCloseOnOutsideMouseDown(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
+  useCloseOnOutsideMouseDown(modelPickerRef, modelPickerOpen, () => setModelPickerOpen(false));
 
   const openBranchPicker = useCallback(async (): Promise<void> => {
     if (!window.argmax || !project) return;
@@ -2800,16 +2759,12 @@ function SettingsPanel({
   onDefaultModelChange,
   toolCallsExpanded,
   onToolCallsExpandedChange,
-  theme,
-  onThemeChange,
   onClose
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   toolCallsExpanded: boolean;
   onToolCallsExpandedChange: (v: boolean) => void;
-  theme: "light" | "dark";
-  onThemeChange: (t: "light" | "dark") => void;
   onClose: () => void;
 }): JSX.Element {
   return (
@@ -2856,30 +2811,11 @@ function SettingsPanel({
           <p>Fonts are locked to Lilex for consistency.</p>
         </header>
         <div className="settings-card">
-          <fieldset className="settings-radio-group">
-            <legend>Theme</legend>
-            <label>
-              <input
-                type="radio"
-                name="theme"
-                value="light"
-                checked={theme === "light"}
-                onChange={() => onThemeChange("light")}
-              />
-              <span>Light</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="theme"
-                value="dark"
-                checked={theme === "dark"}
-                onChange={() => onThemeChange("dark")}
-              />
-              <span>Dark</span>
-            </label>
-          </fieldset>
           <dl className="settings-keyvals">
+            <div>
+              <dt>Theme</dt>
+              <dd>Light</dd>
+            </div>
             <div>
               <dt>Font family</dt>
               <dd>Lilex Nerd Font</dd>
@@ -3439,7 +3375,7 @@ function mergeByCreatedAt<T extends { id: string; createdAt: string }>(
   limit: number,
   direction: "asc" | "desc"
 ): T[] {
-  const sorted = upsertById(current, updates).sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const sorted = sortByTimestamp(upsertById(current, updates), (item) => item.createdAt).reverse();
   const limited = sorted.slice(-limit);
   return direction === "asc" ? limited : limited.reverse();
 }

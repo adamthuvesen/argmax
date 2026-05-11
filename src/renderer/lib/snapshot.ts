@@ -29,6 +29,7 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   const isDescending = !!first && !!last && first.createdAt > last.createdAt;
   const ascending = isDescending ? [...events].reverse() : events;
   const kept: TimelineEvent[] = [];
+  let mutated = false;
   for (let i = 0; i < ascending.length; i++) {
     const event = ascending[i];
     if (!event) continue;
@@ -46,8 +47,17 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
         break;
       }
     }
-    if (!superseded) kept.push(event);
+    if (superseded) {
+      mutated = true;
+    } else {
+      kept.push(event);
+    }
   }
+  // Return the input reference when nothing was pruned so downstream identity
+  // checks (mergeDashboardDelta) don't rebuild a snapshot for an unchanged
+  // event list — the previous always-new-array shape forced a re-render per
+  // streamed event.
+  if (!mutated) return events;
   return isDescending ? kept.reverse() : kept;
 }
 

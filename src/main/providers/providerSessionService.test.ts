@@ -227,6 +227,45 @@ describe("ProviderSessionService", () => {
     }
   });
 
+  it("survives a lifecycle event when the session row is deleted mid-stream", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+
+    // Delete the session row before the exit event lands. The lifecycle
+    // writes (persistRawOutput, updateSessionState, updateWorkspaceState,
+    // persistTimelineEvent) would otherwise throw uncaught into the
+    // adapter's onExit callback.
+    database.connection.prepare("DELETE FROM sessions WHERE id = ?").run(session.id);
+
+    expect(() =>
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "exit",
+        stream: "system",
+        message: "Codex exited with code 0.",
+        exitCode: 0,
+        createdAt: "2026-05-08T16:00:01.000Z"
+      })
+    ).not.toThrow();
+
+    database.connection.close();
+  });
+
   it("drops the batch without throwing when the session row is deleted mid-flush", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);

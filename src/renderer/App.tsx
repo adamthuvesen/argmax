@@ -341,6 +341,36 @@ function getToolIcon(name: string): JSX.Element {
   return <Wrench size={13} />;
 }
 
+type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "other";
+
+function getToolTypeBucket(name: string): ToolTypeBucket {
+  const lower = name.toLowerCase();
+  if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
+  if (/write|edit|create|patch/.test(lower)) return "edit";
+  if (/read|view|open|cat|list/.test(lower)) return "read";
+  if (/search|grep|find|glob/.test(lower)) return "search";
+  if (/web|browser|navigate|fetch|url|http/.test(lower)) return "web";
+  return "other";
+}
+
+function buildGroupIconBuckets(tools: ToolCall[]): Array<{ bucket: ToolTypeBucket; count: number }> {
+  const seen = new Map<ToolTypeBucket, number>();
+  for (const tool of tools) {
+    const b = getToolTypeBucket(tool.name);
+    seen.set(b, (seen.get(b) ?? 0) + 1);
+  }
+  return [...seen.entries()].slice(0, 3).map(([bucket, count]) => ({ bucket, count }));
+}
+
+const BUCKET_ICON_NAME: Record<ToolTypeBucket, string> = {
+  bash: "bash",
+  edit: "write",
+  read: "read_file",
+  search: "search_files",
+  web: "web_fetch",
+  other: "tool",
+};
+
 const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 const projectOrderStorageKey = "argmax.sidebar.projectOrder";
 const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
@@ -384,6 +414,12 @@ export function App(): JSX.Element {
   const sessionCursorsRef = useRef(new Map<string, SessionCursor>());
   const resolveApprovalToken = useRef(0);
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
@@ -1836,6 +1872,7 @@ function ToolCallBubble({
     <div
       className={rootClass}
       data-status={tool.status}
+      data-tool-type={getToolTypeBucket(tool.name)}
       {...(parallelPosition ? { "data-parallel-position": parallelPosition } : {})}
       {...(parallelGroupId ? { "data-parallel-group": parallelGroupId } : {})}
     >
@@ -1974,8 +2011,10 @@ function ToolCallGroupBubble({
         onClick={() => setUserToggle(!expanded)}
       >
         <span className="tool-call-group-stack" aria-hidden="true">
-          {group.tools.slice(0, 3).map((t) => (
-            <span key={t.id} className="tool-call-group-stack-icon">{getToolIcon(t.name)}</span>
+          {buildGroupIconBuckets(group.tools).map(({ bucket }) => (
+            <span key={bucket} className="tool-call-group-stack-icon">
+              {getToolIcon(BUCKET_ICON_NAME[bucket])}
+            </span>
           ))}
         </span>
         <span className="tool-call-group-headline">{summary.headline}</span>

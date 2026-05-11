@@ -87,8 +87,13 @@
 }
 
 ::selection {
-  background: var(--amber-soft);
+  background: rgba(90, 143, 114, 0.22);
   color: var(--text);
+}
+
+.chat-bubble.user ::selection {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
 }
 
 body {
@@ -373,6 +378,7 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-transform: lowercase;
+  font-size: 14px;
 }
 
 .project-visibility {
@@ -1291,7 +1297,7 @@ button {
 }
 
 .conversation-surface {
-  --session-inline-padding: clamp(72px, 11vw, 188px);
+  --session-inline-padding: clamp(40px, calc((100vw - 272px - 980px) / 2), 400px);
   display: grid;
   height: 100%;
   min-height: 0;
@@ -1392,7 +1398,7 @@ button {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
   overflow: auto;
   padding: 8px var(--session-inline-padding) 28px 0;
   scroll-behavior: smooth;
@@ -1442,7 +1448,7 @@ button {
 }
 
 .markdown p {
-  margin: 0 0 10px;
+  margin: 0 0 13px;
   white-space: normal;
 }
 
@@ -1507,13 +1513,17 @@ button {
   padding-left: 22px;
 }
 
+.markdown ol {
+  padding-left: 32px;
+}
+
 .markdown ul:last-child,
 .markdown ol:last-child {
   margin-bottom: 0;
 }
 
 .markdown li {
-  margin: 3px 0;
+  margin: 16px 0;
 }
 
 .markdown li::marker {
@@ -1607,14 +1617,14 @@ button {
 
 .chat-bubble.user {
   align-self: flex-end;
-  color: var(--text);
-  background: #f0f1f2;
+  color: #ffffff;
+  background: var(--ink);
   box-shadow: none;
   animation-name: msg-in-right;
 }
 
 .chat-bubble.user p {
-  color: var(--text);
+  color: #ffffff;
 }
 
 @keyframes msg-in {
@@ -1840,9 +1850,29 @@ button {
   background: var(--panel-soft);
 }
 
+/* Tool-type accent bar on running items */
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="bash"] {
+  background: rgba(176, 128, 57, 0.04);
+  border-color: rgba(176, 128, 57, 0.22);
+  box-shadow: inset 3px 0 0 rgba(176, 128, 57, 0.45);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="edit"] {
+  box-shadow: inset 3px 0 0 rgba(90, 143, 114, 0.5);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="read"] {
+  box-shadow: inset 3px 0 0 rgba(138, 133, 123, 0.4);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="search"] {
+  box-shadow: inset 3px 0 0 rgba(61, 106, 82, 0.45);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="web"] {
+  box-shadow: inset 3px 0 0 rgba(90, 143, 114, 0.4);
+}
+
 .tool-call-item[data-status="error"]:not(.tool-call-item--nested) {
   border-color: var(--line);
   background: var(--panel-soft);
+  box-shadow: inset 3px 0 0 rgba(184, 87, 99, 0.45);
 }
 
 .tool-call-flash {
@@ -1869,7 +1899,7 @@ button {
   align-items: center;
   gap: 7px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 9px 10px;
   text-align: left;
   border: 0;
   background: transparent;
@@ -1980,6 +2010,18 @@ button {
   gap: 8px;
   padding: 6px 10px 10px;
   border-top: 1px solid var(--line-soft);
+  animation: detail-expand 180ms var(--ease) both;
+}
+
+@keyframes detail-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .tool-call-section-label {
@@ -2085,7 +2127,7 @@ button {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 9px 10px;
   text-align: left;
   border: 0;
   border-radius: 8px;
@@ -2122,6 +2164,7 @@ button {
   margin-left: 0;
 }
 
+
 .tool-call-group-headline {
   font-weight: 600;
   font-family: var(--font-mono);
@@ -2144,8 +2187,8 @@ button {
 .tool-call-group-body {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: 0 4px 4px;
+  gap: 2px;
+  padding: 0 6px 8px;
 }
 
 .tool-call-item--nested {
@@ -2159,7 +2202,7 @@ button {
 }
 
 .tool-call-item--nested .tool-call-header {
-  padding: 5px 8px;
+  padding: 7px 8px;
 }
 
 .tool-call-item[data-parallel-position] {
@@ -2484,6 +2527,7 @@ button {
 
 .review-file-tabs {
   display: grid;
+  align-content: start;
   flex: 0 0 auto;
   overflow: auto;
   border-bottom: none;
@@ -3287,6 +3331,16 @@ button {
 
 [data-theme="dark"] .command-stream-line::after {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+}
+
+/* User bubble — invert to white on dark surfaces */
+[data-theme="dark"] .chat-bubble.user {
+  background: #ffffff;
+  color: #0f0e0d;
+}
+
+[data-theme="dark"] .chat-bubble.user p {
+  color: #0f0e0d;
 }
 
 /* Launcher heading — white bg, black text so it reads clearly on dark */

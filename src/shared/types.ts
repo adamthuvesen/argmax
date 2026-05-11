@@ -27,6 +27,18 @@ import type {
 import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
 
 export type ProviderId = "claude" | "codex";
+export type ProviderMode = "interactive-pty" | "structured-json";
+
+export interface DiscoveredProvider {
+  provider: ProviderId;
+  displayName: string;
+  binaryName: string;
+  installed: boolean;
+  binaryPath: string | null;
+  version: string | null;
+  modes: ProviderMode[];
+  setupGuidance: string | null;
+}
 
 export type WorkspaceState =
   | "created"
@@ -306,7 +318,7 @@ export interface ArgmaxApi {
     openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
   };
   providers: {
-    discover: () => Promise<unknown[]>;
+    discover: () => Promise<DiscoveredProvider[]>;
     launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
     sendInput: (input: ProviderSessionInput) => Promise<{ ok: true }>;
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;

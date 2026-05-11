@@ -116,6 +116,18 @@ describe("provider PTY adapters", () => {
     expect(handle?.disposed).toBe(true);
   });
 
+  it("strips ASCII control bytes from the launch prompt before writing to the PTY", async () => {
+    const { adapters, ptys } = createTestAdapters();
+    const input = launchInput("claude");
+    // Prompt with embedded Ctrl-C (\x03), Ctrl-D (\x04), and an ESC sequence.
+    // The ESC byte (\x1b) itself is what makes `[A` a "move-cursor-up" command;
+    // stripping the ESC leaves only printable `[A` text, which is harmless.
+    input.prompt = "Run\x03 the\x04 task\x1b[A";
+    await adapters.get("claude")?.launch(input, () => undefined);
+    const pty = ptys[0];
+    expect(pty.writes).toEqual(["Run the task[A\r"]);
+  });
+
   it("terminate() resolves only after the child actually exits", async () => {
     const { adapters, ptys } = createTestAdapters();
     const handle = await adapters.get("claude")?.launch(launchInput("claude"), () => undefined);

@@ -1297,7 +1297,7 @@ button {
 }
 
 .conversation-surface {
-  --session-inline-padding: clamp(40px, calc((100vw - 272px - 980px) / 2), 400px);
+  --session-inline-padding: clamp(40px, calc((100vw - 272px - 920px) / 2), 2000px);
   display: grid;
   height: 100%;
   min-height: 0;

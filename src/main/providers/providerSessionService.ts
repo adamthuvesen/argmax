@@ -88,6 +88,8 @@ const EVENT_PAYLOAD_PREVIEW = 4 * 1024;
 /** Timeout to wait for natural exit during disposeAll before resolving. */
 const DISPOSE_GRACE_MS = 2_500;
 
+const DEBUG = process.env.DEBUG_ARGMAX === "1";
+
 export class ProviderSessionService {
   private readonly handles = new Map<string, HandleEntry>();
   private readonly buffers = new Map<string, SessionBuffer>();
@@ -110,6 +112,7 @@ export class ProviderSessionService {
   }
 
   private logHandleCount(action: string, sessionId: string): void {
+    if (!DEBUG) return;
     console.log(`[argmax] handles: ${this.openHandleCount} (${action} ${sessionId})`);
   }
 
@@ -429,7 +432,7 @@ export class ProviderSessionService {
 
   async disposeAll(): Promise<void> {
     const sessions = [...this.handles.keys()];
-    if (sessions.length > 0) {
+    if (DEBUG && sessions.length > 0) {
       console.log(`[argmax] disposeAll: terminating ${sessions.length} handle(s)`);
     }
     await Promise.allSettled(

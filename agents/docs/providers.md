@@ -15,7 +15,7 @@ Do not duplicate these labels, ids, reasoning values, or launch modes in rendere
 
 ## Launch flow
 
-1. Renderer calls `window.maestro.providers.launch({ workspaceId, provider, prompt, modelLabel, modelId, reasoningEffort?, cols, rows })`
+1. Renderer calls `window.argmax.providers.launch({ workspaceId, provider, prompt, modelLabel, modelId, reasoningEffort?, cols, rows })`
 2. IPC handler validates via `launchProviderSessionInputSchema` in [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts)
 3. [providerSessionService.ts](../../src/main/providers/providerSessionService.ts) `launch()`:
    - Resolves the workspace's `path` and `branch`
@@ -27,7 +27,7 @@ Do not duplicate these labels, ids, reasoning values, or launch modes in rendere
 
 ## Follow-up turns
 
-Maestro chats are durable UI sessions; structured provider processes may still be one process per turn. To keep follow-up prompts inside the same native provider conversation, `sessions.provider_conversation_id` stores the provider's resume id. Claude structured launches set `--session-id <maestro session id>` and resume with `--resume <provider_conversation_id>`. Codex structured launches capture `thread.started.thread_id` from JSONL and resume with `codex exec resume <provider_conversation_id> --json`.
+Argmax chats are durable UI sessions; structured provider processes may still be one process per turn. To keep follow-up prompts inside the same native provider conversation, `sessions.provider_conversation_id` stores the provider's resume id. Claude structured launches set `--session-id <argmax session id>` and resume with `--resume <provider_conversation_id>`. Codex structured launches capture `thread.started.thread_id` from JSONL and resume with `codex exec resume <provider_conversation_id> --json`.
 
 The selected model is also durable session state: `sessions.model_id`, `sessions.model_label`, and `sessions.reasoning_effort` are passed to resumed turns. Changing the model in the renderer affects the next prompt in the same provider conversation; it does not send a live `/model` command to an already-running interactive process.
 
@@ -57,7 +57,7 @@ Then register models in `PROVIDER_MODELS`, choose a default in `PROVIDER_MODEL_D
 
 ## Permission defaults
 
-Maestro is a trusted, single-user local app, so provider sessions intentionally launch with full write and command permissions by default. Claude launches with `--permission-mode bypassPermissions`; Codex launches with `--dangerously-bypass-approvals-and-sandbox`. Keep these flags centralized in `providerAdapters.ts` so composer launches, follow-up launches, structured JSON runs, and PTY runs stay consistent.
+Argmax is a trusted, single-user local app, so provider sessions intentionally launch with full write and command permissions by default. Claude launches with `--permission-mode bypassPermissions`; Codex launches with `--dangerously-bypass-approvals-and-sandbox`. Keep these flags centralized in `providerAdapters.ts` so composer launches, follow-up launches, structured JSON runs, and PTY runs stay consistent.
 
 ## Rendering provider output
 

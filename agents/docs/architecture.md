@@ -6,7 +6,7 @@ Two processes, three folders, one IPC contract.
 
 Owns the SQLite database, child processes (provider PTYs, check runs), the IPC surface, and Electron lifecycle.
 
-Entry: [src/main/main.ts](../../src/main/main.ts) — boots `BrowserWindow`, instantiates `MaestroDatabase` and `ProviderSessionService` in `app.whenReady()`, registers IPC handlers, binds shutdown to `before-quit`.
+Entry: [src/main/main.ts](../../src/main/main.ts) — boots `BrowserWindow`, instantiates `ArgmaxDatabase` and `ProviderSessionService` in `app.whenReady()`, registers IPC handlers, binds shutdown to `before-quit`.
 
 Subdirectories:
 
@@ -14,7 +14,7 @@ Subdirectories:
 |---|---|
 | `approvals/` | `approvalService` requests + `dangerousActionPolicy` risk classifier |
 | `checks/` | `checkService` spawns commands (5-min timeout, cancellation support) |
-| `persistence/` | `database`, `migrations`, `seed`. SQLite at `app.getPath("userData")/local-state/maestro.sqlite` |
+| `persistence/` | `database`, `migrations`, `seed`. SQLite at `app.getPath("userData")/local-state/argmax.sqlite` |
 | `projects/` | Project registration + settings |
 | `providers/` | Claude/Codex adapters and session lifecycle (see [providers.md](providers.md)) |
 | `review/` | `gitReviewService`, `commitPreparationService`, `checkpointService` (binary patches under `${dataDirectory}/checkpoints/`) |
@@ -38,7 +38,7 @@ The conversation surface intentionally separates normalized chat from raw provid
 
 The contract layer.
 
-- [types.ts](../../src/shared/types.ts) — TS types for dashboard data + the `MaestroApi` interface
+- [types.ts](../../src/shared/types.ts) — TS types for dashboard data + the `ArgmaxApi` interface
 - [ipcSchemas.ts](../../src/shared/ipcSchemas.ts) — Zod schemas + parsed-input type aliases
 - [providerModels.ts](../../src/shared/providerModels.ts) — `PROVIDER_MODEL_DEFAULTS` (single source of truth for model id + label + reasoning effort + launch mode)
 - [safeJson.ts](../../src/shared/safeJson.ts) — guarded JSON utilities
@@ -49,7 +49,7 @@ The contract layer.
 
 [src/main/ipc.ts](../../src/main/ipc.ts) registers request/response channels via `withValidation()` + `ipcMain.handle`. Channel names are kept in sync by `REGISTERED_IPC_CHANNELS` (a regression test enforces parity).
 
-The preload bridge ([src/main/preload.ts](../../src/main/preload.ts)) exposes `window.maestro` with grouped namespaces: `dashboard`, `projects`, `workspaces`, `providers`, `approvals`, `session`, `review`, `checks`, `checkpoints`, `attempts`, `commits`, `health`.
+The preload bridge ([src/main/preload.ts](../../src/main/preload.ts)) exposes `window.argmax` with grouped namespaces: `dashboard`, `projects`, `workspaces`, `providers`, `approvals`, `session`, `review`, `checks`, `checkpoints`, `attempts`, `commits`, `health`.
 
 `dashboard:delta` is different: it is a `webContents.send()` / `ipcRenderer.on()` event channel used by `dashboard.onDelta(listener)`, not an `ipcMain.handle` channel. It should be typed in [types.ts](../../src/shared/types.ts) and exposed in preload, but it should not be added to `REGISTERED_IPC_CHANNELS` or `ipcSchemas.ts`.
 
@@ -69,8 +69,8 @@ Focused dashboard request/response channels:
 2. Register the handler in `ipc.ts` using `withValidation()`
 3. Add the channel name to `REGISTERED_IPC_CHANNELS`
 4. Expose it through `preload.ts`
-5. Add the typed method to `MaestroApi` in `types.ts`
+5. Add the typed method to `ArgmaxApi` in `types.ts`
 
 Skipping any of these will fail the regression test or surface as a runtime `Method not found`.
 
-For push-only events, skip steps 1–3: publish from main with `webContents.send()`, subscribe/unsubscribe in preload with `ipcRenderer.on()` / `removeListener()`, and type the callback surface in `MaestroApi`.
+For push-only events, skip steps 1–3: publish from main with `webContents.send()`, subscribe/unsubscribe in preload with `ipcRenderer.on()` / `removeListener()`, and type the callback surface in `ArgmaxApi`.

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bgR1" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#0d1a10"/>
+      <stop offset="100%" stop-color="#020403"/>
+    </radialGradient>
+    <pattern id="scanR1" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="4" fill="rgba(0,0,0,0)"/>
+      <rect y="4" width="8" height="4" fill="rgba(0,0,0,0.28)"/>
+    </pattern>
+    <filter id="glowR1" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- CRT screen background -->
+  <rect width="1024" height="1024" rx="232" fill="url(#bgR1)"/>
+
+  <!-- Pixel-aligned argmax distribution. 32px grid: each bar 96 wide. -->
+  <g filter="url(#glowR1)">
+    <!-- Loser bars (dim phosphor) -->
+    <rect x="160" y="640" width="96" height="128" fill="#00ff41" opacity="0.22"/>
+    <rect x="320" y="512" width="96" height="256" fill="#00ff41" opacity="0.32"/>
+    <!-- WINNER (full phosphor) -->
+    <rect x="480" y="256" width="96" height="512" fill="#00ff41"/>
+    <!-- More losers -->
+    <rect x="640" y="416" width="96" height="352" fill="#00ff41" opacity="0.36"/>
+    <rect x="800" y="576" width="96" height="192" fill="#00ff41" opacity="0.24"/>
+  </g>
+
+  <!-- "MAX" tick marker above the winner — a pixel arrow -->
+  <g fill="#00ff41">
+    <rect x="496" y="192" width="64" height="32"/>
+    <rect x="512" y="160" width="32" height="32"/>
+  </g>
+
+  <!-- Scanline overlay -->
+  <rect width="1024" height="1024" rx="232" fill="url(#scanR1)"/>
+
+  <!-- Hairline phosphor edge -->
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+        fill="none" stroke="rgba(0,255,65,0.15)" stroke-width="1.5"/>
+</svg>

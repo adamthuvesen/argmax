@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bgB" cx="50%" cy="32%" r="95%">
+      <stop offset="0%" stop-color="#3a3530"/>
+      <stop offset="55%" stop-color="#1c1b18"/>
+      <stop offset="100%" stop-color="#0a0908"/>
+    </radialGradient>
+    <linearGradient id="peakStroke" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#cfc8b9"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bgB)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+        fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+
+  <!-- Stylized peak — a bold chevron ascending to a marked apex.
+       Reads as "max", "summit", or an up-arrow. -->
+  <g fill="none" stroke="url(#peakStroke)" stroke-width="96" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="232,720 512,288 792,720"/>
+  </g>
+
+  <!-- Apex dot — the argmax marker -->
+  <circle cx="512" cy="288" r="40" fill="#ffffff"/>
+  <circle cx="512" cy="288" r="18" fill="#5a8f72"/>
+
+  <!-- Baseline tick marks: a quiet visual reference at the bottom
+       (subtle three dots, suggesting "candidates evaluated") -->
+  <g fill="#ffffff" opacity="0.22">
+    <circle cx="320" cy="800" r="10"/>
+    <circle cx="512" cy="800" r="10"/>
+    <circle cx="704" cy="800" r="10"/>
+  </g>
+</svg>

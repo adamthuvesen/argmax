@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bgC" cx="50%" cy="32%" r="95%">
+      <stop offset="0%" stop-color="#3a3530"/>
+      <stop offset="55%" stop-color="#1c1b18"/>
+      <stop offset="100%" stop-color="#0a0908"/>
+    </radialGradient>
+    <linearGradient id="curveStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.4"/>
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.4"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bgC)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+        fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+
+  <!-- Gaussian-like curve with a clearly marked maximum.
+       Reads as a probability distribution: argmax = the x where p(x) peaks. -->
+
+  <!-- Subtle baseline -->
+  <line x1="192" y1="752" x2="832" y2="752" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2"/>
+
+  <!-- Dashed drop-line from apex to baseline — the argmax coordinate -->
+  <line x1="512" y1="288" x2="512" y2="752"
+        stroke="#5a8f72" stroke-width="3" stroke-dasharray="8 10" opacity="0.7"/>
+
+  <!-- The bell curve -->
+  <path d="M 192 752 C 320 752, 384 288, 512 288 C 640 288, 704 752, 832 752"
+        fill="none" stroke="url(#curveStroke)" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- Peak marker (the argmax) -->
+  <circle cx="512" cy="288" r="40" fill="#ffffff"/>
+  <circle cx="512" cy="288" r="18" fill="#5a8f72"/>
+
+  <!-- Foot marker at the baseline showing the x-coordinate -->
+  <rect x="496" y="744" width="32" height="16" rx="4" fill="#5a8f72" opacity="0.9"/>
+</svg>

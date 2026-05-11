@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bg1" cx="50%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#3a3530"/>
+      <stop offset="55%" stop-color="#1c1b18"/>
+      <stop offset="100%" stop-color="#0a0908"/>
+    </radialGradient>
+    <linearGradient id="mark1" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e6e2d8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bg1)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+        fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+
+  <!-- Three pillars + top beam = stylized M -->
+  <g fill="url(#mark1)">
+    <rect x="244" y="296" width="536" height="88" rx="44"/>
+    <rect x="244" y="296" width="88" height="424" rx="44"/>
+    <rect x="468" y="296" width="88" height="296" rx="44"/>
+    <rect x="692" y="296" width="88" height="424" rx="44"/>
+  </g>
+
+  <!-- Phosphor-green status dot -->
+  <circle cx="512" cy="640" r="22" fill="#5a8f72" opacity="0.92"/>
+</svg>

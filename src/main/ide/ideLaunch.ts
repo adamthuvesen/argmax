@@ -32,6 +32,7 @@ const CLI_BY_ID: Record<Exclude<IdeId, "terminal" | "iterm">, CliMapping> = {
   zed: { cli: "zed", appName: "Zed" }
 };
 
+// eslint-disable-next-line @typescript-eslint/require-await -- spawn() is sync but callers await for forward-compat
 export async function launchIde(
   ide: IdeId,
   path: string,

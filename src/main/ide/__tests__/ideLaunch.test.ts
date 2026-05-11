@@ -1,15 +1,16 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChildProcess } from "node:child_process";
+import type * as ChildProcessModule from "node:child_process";
 import type { DetectedIde } from "../../../shared/types.js";
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 
 vi.mock("node:child_process", async () => {
-  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  const actual = await vi.importActual<typeof ChildProcessModule>("node:child_process");
   return {
     ...actual,
-    spawn: (...args: unknown[]) => spawnMock(...args)
+    spawn: (...args: unknown[]) => spawnMock(...args) as ChildProcess
   };
 });
 

@@ -241,7 +241,9 @@ export const migrations: Migration[] = [
   {
     version: 5,
     name: "sessions_model_selection",
-    affectedTables: ["sessions"],
+    // sessions is re-verified by v6's affectedTables (post-v6 manifest);
+    // verifying it after v5 would compare to the post-v6 column set and fail.
+    affectedTables: [],
     up: `
       ALTER TABLE sessions ADD COLUMN model_id TEXT;
       ALTER TABLE sessions ADD COLUMN reasoning_effort TEXT;

@@ -542,6 +542,33 @@ describe("findPendingApproval (Section 6)", () => {
     database.connection.close();
   });
 
+  it("findById helpers throw typed RecordNotFoundError for checkpoint/check/approval kinds", () => {
+    const database = createDatabase(":memory:", { seed: false });
+
+    try {
+      database.resolveApproval("missing-approval", "approved");
+    } catch (error) {
+      expect(error).toBeInstanceOf(RecordNotFoundError);
+      expect((error as RecordNotFoundError).kind).toBe("approval");
+      expect((error as RecordNotFoundError).id).toBe("missing-approval");
+    }
+
+    try {
+      database.updateCheck("missing-check", {
+        status: "passed",
+        exitCode: 0,
+        summary: "",
+        completedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(RecordNotFoundError);
+      expect((error as RecordNotFoundError).kind).toBe("check");
+      expect((error as RecordNotFoundError).id).toBe("missing-check");
+    }
+
+    database.close();
+  });
+
   it("caps listWorkspaceStatus at 200 rows and returns the newest first", () => {
     const database = createDatabase(":memory:", { seed: false });
     const projectId = seedProject(database, "limit-200");

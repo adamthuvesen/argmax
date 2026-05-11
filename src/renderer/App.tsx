@@ -326,8 +326,8 @@ function useCloseOnOutsideMouseDown(
         close();
       }
     };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
+    document.addEventListener("mousedown", handleMouseDown, { capture: true });
+    return () => document.removeEventListener("mousedown", handleMouseDown, { capture: true });
   }, [active, close, ref]);
 }
 

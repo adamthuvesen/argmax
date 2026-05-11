@@ -799,6 +799,21 @@ export class ProviderSessionService {
     for (const [stream, trailing] of sessionState.streamBuffers) {
       if (!trailing) continue;
       sessionState.streamBuffers.set(stream, "");
+      // A `{`-prefixed trailing fragment is a truncated JSON line — feeding it
+      // to the normalizer would surface half a JSON blob as an assistant
+      // message. Persist it as a debug raw_output instead and skip the
+      // timeline emission. Plain-text fragments (PTY output) still flow
+      // through the normalizer.
+      if (trailing.trimStart().startsWith("{") && !tryParseJsonObject(trailing.trim())) {
+        this.queueRawOutput({
+          sessionId,
+          type: "output",
+          stream: "stderr",
+          message: `[argmax: dropped truncated JSON fragment (${trailing.length} bytes)]`,
+          createdAt: new Date().toISOString()
+        });
+        continue;
+      }
       const synthetic: ProviderEvent = {
         sessionId,
         type: "output",

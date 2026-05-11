@@ -227,6 +227,48 @@ describe("ProviderSessionService", () => {
     }
   });
 
+  it("drops a truncated JSON trailing fragment instead of rendering it as a chat message", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+
+    // Emit a half-finished JSON line (no newline, no closing brace). It
+    // stays in the per-stream partial-line buffer until terminate triggers
+    // a flush.
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: '{"type":"message.delta","text":"never finishe',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    await service.terminate(session.id);
+
+    const everyTimelineMessage = deltas.flatMap((d) => d.events ?? []).map((e) => e.message);
+    // The fragment must NOT have been emitted as an assistant message.delta.
+    expect(everyTimelineMessage.some((msg) => msg.includes("never finishe"))).toBe(false);
+    // It must be surfaced somewhere — as a raw stderr debug entry.
+    const rawOutputs = deltas.flatMap((d) => d.rawOutputs ?? []);
+    expect(rawOutputs.some((r) => r.stream === "stderr" && r.content.includes("argmax: dropped truncated JSON"))).toBe(true);
+
+    database.connection.close();
+  });
+
   it("survives a lifecycle event when the session row is deleted mid-stream", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);

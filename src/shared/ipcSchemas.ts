@@ -202,6 +202,35 @@ export const systemOpenPathInputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// IDE launcher — `workspaces:openInIde` and `system:listDetectedIdes`
+// ---------------------------------------------------------------------------
+
+export const ideIdSchema = z.enum([
+  "vscode",
+  "cursor",
+  "windsurf",
+  "zed",
+  "terminal",
+  "iterm"
+]);
+
+export const openInIdeInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  ide: ideIdSchema.or(z.literal("default"))
+});
+
+export const listDetectedIdesInputSchema = z.void();
+
+export const listDetectedIdesOutputSchema = z.array(
+  z.object({
+    id: ideIdSchema,
+    label: z.string(),
+    appPath: z.string().nullable(),
+    hasCli: z.boolean()
+  })
+);
+
+// ---------------------------------------------------------------------------
 // Channel → schema map
 // ---------------------------------------------------------------------------
 
@@ -219,6 +248,7 @@ export const ipcSchemas = {
   "workspaces:refresh-status": workspaceIdInputSchema,
   "workspaces:keep": workspaceIdInputSchema,
   "workspaces:archive": workspaceIdInputSchema,
+  "workspaces:openInIde": openInIdeInputSchema,
   "workspace:status": workspaceStatusInputSchema,
   "providers:discover": providersDiscoverInputSchema,
   "providers:launch": launchProviderSessionInputSchema,
@@ -236,7 +266,8 @@ export const ipcSchemas = {
   "commits:prepare": prepareCommitInputSchema,
   "dashboard:load": dashboardLoadInputSchema,
   "skills:list": skillsListInputSchema,
-  "system:open-path": systemOpenPathInputSchema
+  "system:open-path": systemOpenPathInputSchema,
+  "system:listDetectedIdes": listDetectedIdesInputSchema
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -264,3 +295,6 @@ export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
 export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;
+export type OpenInIdeInputParsed = z.infer<typeof openInIdeInputSchema>;
+export type IdeIdParsed = z.infer<typeof ideIdSchema>;
+export type DetectedIdeParsed = z.infer<typeof listDetectedIdesOutputSchema>[number];

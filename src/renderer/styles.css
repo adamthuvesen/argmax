@@ -439,6 +439,10 @@ button {
   position: relative;
 }
 
+.session-row:has(.session-ide-popover) {
+  z-index: 10;
+}
+
 .session-row .session-link {
   padding-right: 140px;
 }
@@ -1437,7 +1441,7 @@ button {
   display: grid;
   height: 100%;
   min-height: 0;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   padding: 44px var(--session-inline-padding) 24px;
   background: transparent;
   animation: fade-in 280ms var(--ease) both;
@@ -2372,29 +2376,34 @@ button {
 }
 
 .changed-files-card {
-  margin-top: 16px;
+  margin-top: 8px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--panel);
-  box-shadow: var(--shadow-1);
-}
-
-.changed-files-card[data-collapsed="true"] .changed-files-header {
-  border-bottom: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .changed-files-header {
   display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line-soft);
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  font-size: 12px;
   color: var(--text);
-  font-size: 15px;
-  font-weight: 500;
+}
+
+.changed-files-header[aria-expanded="true"] {
+  border-bottom: 1px solid var(--border);
+}
+
+.changed-files-title {
+  font-weight: 600;
 }
 
 .changed-files-actions {
@@ -2403,21 +2412,14 @@ button {
   gap: 12px;
 }
 
-.changed-files-actions button {
-  min-height: 28px;
-  padding: 0 10px;
-  color: var(--muted-strong);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel-soft);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
+.changed-files-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform var(--duration-fast) var(--ease);
 }
 
-.changed-files-actions button:hover {
-  color: var(--text);
-  background: var(--panel);
+.changed-files-chevron.expanded {
+  transform: rotate(90deg);
 }
 
 .changed-files-list {
@@ -2432,9 +2434,10 @@ button {
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
-  min-height: 42px;
-  padding: 0 14px 0 16px;
+  min-height: 32px;
+  padding: 0 10px 0 12px;
   color: var(--text);
+  font-size: 12px;
   border: 0;
   border-top: 1px solid var(--line-soft);
   background: transparent;

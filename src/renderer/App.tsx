@@ -396,6 +396,7 @@ const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 const projectOrderStorageKey = "argmax.sidebar.projectOrder";
 const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
+const COST_PANEL_EXPANDED_KEY = "argmax.costPanel.expanded";
 const DEFAULT_IDE_KEY = "argmax.defaultIde";
 
 const ALL_IDE_IDS = new Set<IdeId>(["vscode", "cursor", "windsurf", "zed", "terminal", "iterm"]);
@@ -1305,27 +1306,29 @@ function SidebarSessionRow({
         </button>
         {pickerOpen && (
           <ul className="project-picker-popover session-ide-popover" role="menu" aria-label="Open this worktree in">
-            {detectedIdes.map((entry) => (
-              <li key={entry.id} role="none">
-                <button
-                  type="button"
-                  className="project-picker-item"
-                  role="menuitem"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setPickerOpen(false);
-                    // Picking from the chevron menu launches that target but
-                    // does NOT change the persisted default — that's the
-                    // Settings panel's job (and the implicit pin-on-first-use).
-                    onOpenInIde(workspace.id, entry.id, {
-                      pinAsDefault: defaultIde === null && effectiveDefault === null
-                    });
-                  }}
-                >
-                  {entry.label}
-                </button>
-              </li>
-            ))}
+            {detectedIdes.map((entry) => {
+              const isShell = entry.id === "terminal" || entry.id === "iterm";
+              return (
+                <li key={entry.id} role="none">
+                  <button
+                    type="button"
+                    className="project-picker-item"
+                    role="menuitem"
+                    aria-pressed={effectiveDefault === entry.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPickerOpen(false);
+                      onOpenInIde(workspace.id, entry.id, {
+                        pinAsDefault: defaultIde === null && effectiveDefault === null
+                      });
+                    }}
+                  >
+                    {isShell ? <Terminal size={13} aria-hidden="true" /> : <ExternalLink size={13} aria-hidden="true" />}
+                    {entry.label}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -1784,7 +1787,6 @@ function SessionConversation({
           <Bug size={16} />
         </button>
       </div>
-      {session ? <CostPanel session={session} events={events} /> : null}
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         {conversationItems.length > 0 ? (
           conversationItems.map((item) =>
@@ -1851,6 +1853,7 @@ function SessionConversation({
         ) : null}
       </div>
       <ChangedFilesCard review={review} />
+      {session ? <CostPanel session={session} events={events} /> : null}
       <form className="session-input" ref={inputFormRef} onSubmit={(event) => void submitInput(event)}>
         <div className="session-input-field">
           <textarea
@@ -2280,7 +2283,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
   const [diffState, setDiffState] = useState<AsyncState>("idle");
   const [diffError, setDiffError] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
   const fileLoadToken = useRef(0);
   const diffLoadToken = useRef(0);
   const previousWorkspaceId = useRef<string | null>(null);
@@ -2300,7 +2303,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
       setDiffState("idle");
       setDiffError(null);
       setIsPanelOpen(false);
-      setIsSummaryCollapsed(false);
+      setIsSummaryCollapsed(true);
     }
 
     if (!workspace?.id || !window.argmax) {
@@ -2308,7 +2311,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
       setFilesState("idle");
       setFilesError(null);
       setIsPanelOpen(false);
-      setIsSummaryCollapsed(false);
+      setIsSummaryCollapsed(true);
       return;
     }
 
@@ -2430,17 +2433,21 @@ function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | nu
 
   const totals = summarizeChangedFiles(review.files);
   return (
-    <section className="changed-files-card" aria-label="Changed files" data-collapsed={review.isSummaryCollapsed ? "true" : undefined}>
-      <div className="changed-files-header">
-        <span>{review.files.length} files changed</span>
+    <section className="changed-files-card" aria-label="Changed files">
+      <button
+        className="changed-files-header"
+        type="button"
+        aria-expanded={!review.isSummaryCollapsed}
+        aria-label="Toggle changed files"
+        onClick={review.toggleSummary}
+      >
+        <span className="changed-files-title">{review.files.length} files changed</span>
         <span className="changed-files-actions">
           <ChangeCount additions={totals.additions} deletions={totals.deletions} />
-          <button type="button" onClick={review.toggleSummary}>
-            {review.isSummaryCollapsed ? "Show diff" : "Hide diff"}
-          </button>
         </span>
-      </div>
-      {review.isSummaryCollapsed ? null : (
+        <ChevronRight size={11} className={`changed-files-chevron${!review.isSummaryCollapsed ? " expanded" : ""}`} />
+      </button>
+      {!review.isSummaryCollapsed ? (
         <div className="changed-files-list">
           {review.files.map((file) => (
             <button
@@ -2458,7 +2465,7 @@ function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | nu
             </button>
           ))}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -3483,9 +3490,17 @@ function CostPanel({
   // ticks — usage events ride the same micro-batch flush so a new event
   // means a fresh cost is available.
   const [summary, setSummary] = useState<SessionCostSummary>(() => emptyCostSummary(session.id));
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(COST_PANEL_EXPANDED_KEY) : null;
+    return raw === null ? false : raw === "true";
+  });
 
   const eventTick = events.length;
   const sessionId = session.id;
+
+  useEffect(() => {
+    window.localStorage.setItem(COST_PANEL_EXPANDED_KEY, String(expanded));
+  }, [expanded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3513,7 +3528,13 @@ function CostPanel({
 
   return (
     <section className="cost-panel" aria-label="Session cost summary">
-      <header className="cost-panel-header">
+      <button
+        className="cost-panel-header"
+        type="button"
+        aria-expanded={expanded}
+        aria-label="Toggle cost breakdown"
+        onClick={() => setExpanded((v) => !v)}
+      >
         <span className="cost-panel-title">Cost</span>
         <span className="cost-panel-model" title={`Model: ${modelLabel}`}>{modelLabel}</span>
         <span
@@ -3523,30 +3544,33 @@ function CostPanel({
         >
           {formatCostUsd(summary.costUsd)}
         </span>
-      </header>
-      <table className="cost-panel-table" aria-label="Per-bucket usage">
-        <thead>
-          <tr>
-            <th scope="col">Bucket</th>
-            <th scope="col">Tokens</th>
-            <th scope="col">Cost</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ key, label }) => {
-            const tokens = summary.tokens[key];
-            return (
-              <tr key={key} aria-label={`${label} usage`}>
-                <th scope="row">{label}</th>
-                <td title={`${label} tokens: ${tokens.toLocaleString()}`}>{tokens.toLocaleString()}</td>
-                <td title={`${label} cost: ${formatCostUsd(costForBucket(key, tokens, summary.modelId))}`}>
-                  {formatCostUsd(costForBucket(key, tokens, summary.modelId))}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+        <ChevronRight size={11} className={`cost-panel-chevron${expanded ? " expanded" : ""}`} />
+      </button>
+      {expanded ? (
+        <table className="cost-panel-table" aria-label="Per-bucket usage">
+          <thead>
+            <tr>
+              <th scope="col">Bucket</th>
+              <th scope="col">Tokens</th>
+              <th scope="col">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ key, label }) => {
+              const tokens = summary.tokens[key];
+              return (
+                <tr key={key} aria-label={`${label} usage`}>
+                  <th scope="row">{label}</th>
+                  <td title={`${label} tokens: ${tokens.toLocaleString()}`}>{tokens.toLocaleString()}</td>
+                  <td title={`${label} cost: ${formatCostUsd(costForBucket(key, tokens, summary.modelId))}`}>
+                    {formatCostUsd(costForBucket(key, tokens, summary.modelId))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : null}
     </section>
   );
 }

@@ -7,12 +7,27 @@ import { useCallback, useEffect, useRef } from "react";
  * id so switching contexts re-flashes existing items.
  */
 export function useFreshSet<T>(items: T[], getId: (item: T) => string, resetKey: string): (item: T) => boolean {
-  const stateRef = useRef<{ key: string; seen: Set<string> }>({ key: "", seen: new Set() });
-  if (stateRef.current.key !== resetKey) {
-    stateRef.current = { key: resetKey, seen: new Set(items.map(getId)) };
-  }
+  const seenRef = useRef<Set<string>>(new Set());
+  const keyRef = useRef<string | null>(null);
+  // Render is pure — no ref mutation here. The effect handles both the
+  // resetKey transition (seed seen with current items) and incremental
+  // additions on subsequent renders with the same key.
   useEffect(() => {
-    for (const item of items) stateRef.current.seen.add(getId(item));
-  }, [items, getId]);
-  return useCallback((item: T) => !stateRef.current.seen.has(getId(item)), [getId]);
+    if (keyRef.current !== resetKey) {
+      keyRef.current = resetKey;
+      seenRef.current = new Set(items.map(getId));
+      return;
+    }
+    for (const item of items) seenRef.current.add(getId(item));
+  }, [items, getId, resetKey]);
+  return useCallback(
+    (item: T) => {
+      // During the render where resetKey just changed (before the effect
+      // commits the reseed), report every item as fresh so the docstring
+      // contract — "switching contexts re-flashes existing items" — holds.
+      if (keyRef.current !== resetKey) return true;
+      return !seenRef.current.has(getId(item));
+    },
+    [getId, resetKey]
+  );
 }

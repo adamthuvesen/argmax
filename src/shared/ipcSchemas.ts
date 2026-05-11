@@ -162,6 +162,15 @@ export const reviewListChangedFilesInputSchema = workspaceIdSchema;
  */
 export const loadDiffInputSchema = z.tuple([workspaceIdSchema, relativeFilePathSchema.optional()]);
 
+export const workspaceListFilesInputSchema = z.object({
+  workspaceId: workspaceIdSchema
+});
+
+export const workspaceReadFileInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  filePath: relativeFilePathSchema
+});
+
 export const runCheckInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   command: z.string().min(1)
@@ -268,6 +277,8 @@ export const ipcSchemas = {
   "session:eventsSince": sessionEventsSinceInputSchema,
   "review:list-changed-files": reviewListChangedFilesInputSchema,
   "review:load-diff": loadDiffInputSchema,
+  "workspace:list-files": workspaceListFilesInputSchema,
+  "workspace:read-file": workspaceReadFileInputSchema,
   "checks:run": runCheckInputSchema,
   "checkpoints:create": createCheckpointInputSchema,
   "attempts:select-preferred": selectPreferredAttemptInputSchema,
@@ -302,6 +313,8 @@ export type CreateCheckpointInputParsed = z.infer<typeof createCheckpointInputSc
 export type SelectPreferredAttemptInputParsed = z.infer<typeof selectPreferredAttemptInputSchema>;
 export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
+export type WorkspaceListFilesInputParsed = z.infer<typeof workspaceListFilesInputSchema>;
+export type WorkspaceReadFileInputParsed = z.infer<typeof workspaceReadFileInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
 export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;
 export type SessionCostSummaryInputParsed = z.infer<typeof sessionCostSummaryInputSchema>;

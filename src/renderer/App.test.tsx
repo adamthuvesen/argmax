@@ -106,6 +106,8 @@ describe("App", () => {
   let pickProjectFolder: ReturnType<typeof vi.fn<ArgmaxApi["projects"]["pickFolder"]>>;
   let listChangedFiles: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFiles"]>>;
   let loadDiff: ReturnType<typeof vi.fn<ArgmaxApi["review"]["loadDiff"]>>;
+  let listWorkspaceFiles: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["listFiles"]>>;
+  let readWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
   let sessionEventsSince: ReturnType<typeof vi.fn<ArgmaxApi["session"]["eventsSince"]>>;
   let sessionCostSummary: ReturnType<typeof vi.fn<ArgmaxApi["session"]["costSummary"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
@@ -152,6 +154,12 @@ describe("App", () => {
       workspaceId: "workspace-1",
       filePath: null,
       content: ""
+    });
+    listWorkspaceFiles = vi.fn<ArgmaxApi["workspace"]["listFiles"]>().mockResolvedValue([]);
+    readWorkspaceFile = vi.fn<ArgmaxApi["workspace"]["readFile"]>().mockResolvedValue({
+      kind: "text",
+      content: "",
+      size: 0
     });
     skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
     openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
@@ -205,6 +213,10 @@ describe("App", () => {
       review: {
         listChangedFiles,
         loadDiff
+      },
+      workspace: {
+        listFiles: listWorkspaceFiles,
+        readFile: readWorkspaceFile
       },
       checks: {
         run: () => Promise.resolve(missingCheck())
@@ -653,6 +665,42 @@ describe("App", () => {
     );
   });
 
+  it("dismisses the model picker when clicking non-option popover content", async () => {
+    render(<App />);
+
+    const modelToggle = await screen.findByRole("button", { name: "Switch model" });
+    fireEvent.click(modelToggle);
+    expect(modelToggle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(screen.getByText("Codex"));
+    expect(modelToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("dismisses the branch picker when clicking inside the popover chrome", async () => {
+    render(<App />);
+
+    const branchToggle = await screen.findByRole("button", { name: "Switch branch" });
+    fireEvent.click(branchToggle);
+    await waitFor(() => expect(branchToggle).toHaveAttribute("aria-expanded", "true"));
+
+    fireEvent.click(await screen.findByRole("listbox", { name: "Select branch" }));
+    expect(branchToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("dismisses open pickers via the global dismiss layer", async () => {
+    render(<App />);
+
+    const modelToggle = await screen.findByRole("button", { name: "Switch model" });
+    fireEvent.click(modelToggle);
+    expect(modelToggle).toHaveAttribute("aria-expanded", "true");
+
+    const dismissLayer = document.querySelector(".picker-dismiss-layer");
+    expect(dismissLayer).toBeInTheDocument();
+    fireEvent.mouseDown(dismissLayer as Element);
+
+    expect(modelToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("adds a second project, selects it, and launches from that project", async () => {
     const dotfilesProject = secondProject();
     const twoProjectSnapshot: DashboardSnapshot = {
@@ -982,6 +1030,54 @@ describe("App", () => {
     expect(screen.getByText("const newValue = true;")).toBeInTheDocument();
   });
 
+  it("browses workspace files via the Files tab and previews a selection", async () => {
+    listChangedFiles.mockResolvedValue([]);
+    listWorkspaceFiles.mockResolvedValue([
+      { path: "src/main/index.ts" },
+      { path: "src/main/preload.ts" },
+      { path: "src/renderer/App.tsx" },
+      { path: "README.md" }
+    ]);
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "export const hello = 'world';\n",
+      size: 30
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    // "No changes yet" → Browse files entry is available
+    fireEvent.click(await screen.findByRole("button", { name: "Browse workspace files" }));
+
+    // The panel opens directly in Files mode
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
+
+    // Expand src/ then src/main to reach the file
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^src$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^main$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^index\.ts$/ }));
+
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/index.ts"));
+    expect(await screen.findByText("export const hello = 'world';")).toBeInTheDocument();
+  });
+
+  it("shows a placeholder when a previewed file is binary or too large", async () => {
+    listChangedFiles.mockResolvedValue([]);
+    listWorkspaceFiles.mockResolvedValue([{ path: "assets/logo.png" }]);
+    readWorkspaceFile.mockResolvedValue({ kind: "skipped", reason: "binary", size: 2048 });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Browse workspace files" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^logo\.png$/ }));
+
+    expect(await screen.findByText(/Binary file/i)).toBeInTheDocument();
+  });
+
   it("opens slash autocomplete in the launcher composer without a workspace id", async () => {
     skillsList.mockResolvedValue([
       { name: "plan", description: "Phased plan", source: "user" },
@@ -1073,9 +1169,12 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
 
+    const projectVisibility = screen.getByRole("button", { name: "Hide Argmax sessions" });
     fireEvent.click(screen.getByRole("button", { name: "Argmax" }));
 
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+    expect(projectVisibility).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
   });
 

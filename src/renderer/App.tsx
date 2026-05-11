@@ -5,7 +5,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Command,
   Cpu,
   ExternalLink,
   FileText,
@@ -24,7 +23,15 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import type { DragEvent as ReactDragEvent, FormEvent, JSX, KeyboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  FormEvent,
+  JSX,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  RefObject
+} from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
@@ -43,6 +50,8 @@ import type {
   SkillSummary,
   TimelineEvent,
   WorkspaceDiff,
+  WorkspaceFileEntry,
+  WorkspaceFilePreview,
   WorkspaceSummary
 } from "../shared/types.js";
 import { costOf as rendererCostOf, PROVIDER_MODEL_DEFAULTS, PROVIDER_MODELS } from "../shared/providerModels.js";
@@ -68,6 +77,19 @@ type ToastMessage = { kind: "error" | "info"; message: string };
 type SessionCursor = { eventCursor?: number; rawOutputCursor?: number };
 type AsyncState = "idle" | "loading" | "ready" | "error";
 
+type ReviewPanelMode = "changes" | "files";
+
+interface WorkspaceFilesState {
+  entries: WorkspaceFileEntry[];
+  listState: AsyncState;
+  listError: string | null;
+  selectedPath: string | null;
+  preview: WorkspaceFilePreview | null;
+  previewState: AsyncState;
+  previewError: string | null;
+  openFile: (filePath: string) => void;
+}
+
 interface ReviewState {
   files: ChangedFileSummary[];
   filesState: AsyncState;
@@ -78,7 +100,11 @@ interface ReviewState {
   diffError: string | null;
   isPanelOpen: boolean;
   isSummaryCollapsed: boolean;
+  mode: ReviewPanelMode;
+  setMode: (mode: ReviewPanelMode) => void;
+  workspaceFiles: WorkspaceFilesState;
   openFile: (filePath: string) => void;
+  openPanelInFilesMode: () => void;
   closePanel: () => void;
   toggleSummary: () => void;
 }
@@ -319,12 +345,17 @@ function useAutoGrowTextArea(
   }, [ref, value, maxHeightPx]);
 }
 
-function useCloseOnOutsideMouseDown(
+function useDismissOnOutsideOrEscape(
   ref: RefObject<HTMLElement | null>,
   active: boolean,
   close: () => void,
   extraRef?: RefObject<HTMLElement | null>
 ): void {
+  const closeRef = useRef(close);
+  useEffect(() => {
+    closeRef.current = close;
+  }, [close]);
+
   useEffect(() => {
     if (!active) return;
     const handleMouseDown = (event: MouseEvent): void => {
@@ -332,12 +363,25 @@ function useCloseOnOutsideMouseDown(
       const insideMain = ref.current?.contains(target) ?? false;
       const insideExtra = extraRef?.current?.contains(target) ?? false;
       if (!insideMain && !insideExtra) {
-        close();
+        closeRef.current();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        closeRef.current();
       }
     };
     document.addEventListener("mousedown", handleMouseDown, { capture: true });
-    return () => document.removeEventListener("mousedown", handleMouseDown, { capture: true });
-  }, [active, close, ref, extraRef]);
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown, { capture: true });
+      document.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, [active, ref, extraRef]);
+}
+
+function isOptionButtonTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("button.project-picker-item") !== null;
 }
 
 const PROMPT_MAX_HEIGHT_PX = 140;
@@ -403,6 +447,7 @@ const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 const COST_PANEL_EXPANDED_KEY = "argmax.costPanel.expanded";
 const DEFAULT_IDE_KEY = "argmax.defaultIde";
+const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 
 const ALL_IDE_IDS = new Set<IdeId>(["vscode", "cursor", "windsurf", "zed", "terminal", "iterm"]);
 
@@ -417,6 +462,9 @@ function readStoredDefaultIde(): IdeId | null {
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
+const SESSION_RIGHT_PANEL_MIN = 260;
+const SESSION_RIGHT_PANEL_MAX = 760;
+const SESSION_RIGHT_PANEL_DEFAULT = 420;
 
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
@@ -1040,6 +1088,18 @@ function Sidebar({
     });
   }, []);
 
+  const expandProjectVisibility = useCallback((projectId: string): void => {
+    setCollapsedProjectIds((current) => {
+      if (!current.has(projectId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(projectId);
+      saveCollapsedProjectIds(next);
+      return next;
+    });
+  }, []);
+
   const handleDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
     setDraggingId(projectId);
     e.dataTransfer.effectAllowed = "move";
@@ -1134,7 +1194,7 @@ function Sidebar({
                   }
                   type="button"
                   onClick={() => {
-                    toggleProjectVisibility(project.id);
+                    expandProjectVisibility(project.id);
                     onOpenProject(project.id);
                     onOpenLauncher();
                   }}
@@ -1222,7 +1282,7 @@ function SidebarSessionRow({
   const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLUListElement | null>(null);
-  useCloseOnOutsideMouseDown(pickerRef, pickerOpen, () => setPickerOpen(false), popoverRef);
+  useDismissOnOutsideOrEscape(pickerRef, pickerOpen, () => setPickerOpen(false), popoverRef);
 
   useLayoutEffect(() => {
     if (!pickerOpen) {
@@ -1269,12 +1329,7 @@ function SidebarSessionRow({
   const handleMainClick = (event: ReactMouseEvent): void => {
     event.stopPropagation();
     if (!hasPath || !hasIdes) return;
-    if (effectiveDefault) {
-      onOpenInIde(workspace.id, effectiveDefault);
-      return;
-    }
-    // No default and multiple options — open the picker so the user chooses.
-    setPickerOpen(true);
+    setPickerOpen((open) => !open);
   };
 
   return (
@@ -1302,28 +1357,14 @@ function SidebarSessionRow({
         <button
           className="session-row-action session-ide-btn"
           aria-label="Open in IDE"
+          aria-haspopup="menu"
+          aria-expanded={pickerOpen}
           title={ideButtonTitle}
           type="button"
           disabled={buttonDisabled}
           onClick={handleMainClick}
         >
           <ExternalLink size={12} />
-        </button>
-        <button
-          className="session-row-action session-ide-chevron"
-          aria-label="Choose IDE"
-          aria-haspopup="menu"
-          aria-expanded={pickerOpen}
-          title="Choose IDE"
-          type="button"
-          disabled={!hasPath || !hasIdes}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!hasPath || !hasIdes) return;
-            setPickerOpen((open) => !open);
-          }}
-        >
-          <ChevronDown size={10} />
         </button>
         {pickerOpen && popoverPos && createPortal(
           <ul
@@ -1448,6 +1489,14 @@ function SessionPane({
   const sessionId = session?.id ?? null;
   const reviewState = useReviewState(workspace);
   const [isLogOpen, setIsLogOpen] = useState(false);
+  const [isPanelResizing, setIsPanelResizing] = useState(false);
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(SESSION_RIGHT_PANEL_WIDTH_KEY) : null;
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= SESSION_RIGHT_PANEL_MIN && n <= SESSION_RIGHT_PANEL_MAX
+      ? n
+      : SESSION_RIGHT_PANEL_DEFAULT;
+  });
   const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
   const visibleApprovals = useMemo(
     () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
@@ -1472,9 +1521,47 @@ function SessionPane({
   const gridClass = ["session-grid", reviewState.isPanelOpen && "review-open", isLogOpen && "log-open"]
     .filter(Boolean)
     .join(" ");
+  const reviewColumnWidth = `${rightPanelWidth}px`;
+  const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : `${rightPanelWidth}px`;
+  const gridStyle = {
+    "--session-review-panel-width": reviewColumnWidth,
+    "--session-log-panel-width": logColumnWidth
+  } as CSSProperties;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SESSION_RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth));
+  }, [rightPanelWidth]);
+
+  const onRightPanelResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = rightPanelWidth;
+    setIsPanelResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (e: MouseEvent): void => {
+      // Dragging left should widen the panel; dragging right should narrow it.
+      const next = Math.max(
+        SESSION_RIGHT_PANEL_MIN,
+        Math.min(SESSION_RIGHT_PANEL_MAX, startWidth - (e.clientX - startX))
+      );
+      setRightPanelWidth(next);
+    };
+    const onMouseUp = (): void => {
+      setIsPanelResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [rightPanelWidth]);
 
   return (
-    <div className={gridClass}>
+    <div className={gridClass} style={gridStyle} data-panel-resizing={isPanelResizing ? "true" : undefined}>
       <div className="session-main-column">
         <SessionConversation
           defaultToolCallsExpanded={defaultToolCallsExpanded}
@@ -1535,9 +1622,14 @@ function SessionPane({
           </section>
         ) : null}
       </div>
-      {reviewState.isPanelOpen ? <ReviewPanel review={reviewState} /> : null}
+      {reviewState.isPanelOpen ? <ReviewPanel review={reviewState} onResizePanelMouseDown={onRightPanelResizeMouseDown} /> : null}
       {isLogOpen ? (
-        <DebugLogPanel events={visibleEvents} rawOutputs={visibleRawOutputs} onClose={() => setIsLogOpen(false)} />
+        <DebugLogPanel
+          events={visibleEvents}
+          rawOutputs={visibleRawOutputs}
+          onClose={() => setIsLogOpen(false)}
+          onResizePanelMouseDown={reviewState.isPanelOpen ? undefined : onRightPanelResizeMouseDown}
+        />
       ) : null}
     </div>
   );
@@ -1769,7 +1861,7 @@ function SessionConversation({
 
   useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
 
-  const onSessionInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+  const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -1937,16 +2029,21 @@ function SessionConversation({
 
 function DebugLogPanel({
   events,
+  onResizePanelMouseDown,
   onClose,
   rawOutputs
 }: {
   events: TimelineEvent[];
+  onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   onClose: () => void;
   rawOutputs: RawProviderOutput[];
 }): JSX.Element {
   const [activeTab, setActiveTab] = useState<"events" | "output">("events");
   return (
     <aside className="log-panel" aria-label="Debug log">
+      {onResizePanelMouseDown ? (
+        <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
+      ) : null}
       <div className="log-toolbar">
         <div>
           <p className="eyebrow">Debug</p>
@@ -2318,8 +2415,18 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
   const [diffError, setDiffError] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
+  const [mode, setMode] = useState<ReviewPanelMode>("changes");
+  const [workspaceFileEntries, setWorkspaceFileEntries] = useState<WorkspaceFileEntry[]>([]);
+  const [workspaceFilesListState, setWorkspaceFilesListState] = useState<AsyncState>("idle");
+  const [workspaceFilesListError, setWorkspaceFilesListError] = useState<string | null>(null);
+  const [workspaceFileSelected, setWorkspaceFileSelected] = useState<string | null>(null);
+  const [workspaceFilePreview, setWorkspaceFilePreview] = useState<WorkspaceFilePreview | null>(null);
+  const [workspaceFilePreviewState, setWorkspaceFilePreviewState] = useState<AsyncState>("idle");
+  const [workspaceFilePreviewError, setWorkspaceFilePreviewError] = useState<string | null>(null);
   const fileLoadToken = useRef(0);
   const diffLoadToken = useRef(0);
+  const workspaceListToken = useRef(0);
+  const workspaceReadToken = useRef(0);
   const previousWorkspaceId = useRef<string | null>(null);
   const isPanelOpenRef = useRef(false);
 
@@ -2338,6 +2445,14 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
       setDiffError(null);
       setIsPanelOpen(false);
       setIsSummaryCollapsed(true);
+      setMode("changes");
+      setWorkspaceFileEntries([]);
+      setWorkspaceFilesListState("idle");
+      setWorkspaceFilesListError(null);
+      setWorkspaceFileSelected(null);
+      setWorkspaceFilePreview(null);
+      setWorkspaceFilePreviewState("idle");
+      setWorkspaceFilePreviewError(null);
     }
 
     if (!workspace?.id || !window.argmax) {
@@ -2410,8 +2525,69 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
       });
   }, [workspace?.id, selectedFilePath]);
 
+  useEffect(() => {
+    if (mode !== "files" || !isPanelOpen) return;
+    const token = ++workspaceListToken.current;
+    if (!workspace?.id || !window.argmax) {
+      setWorkspaceFileEntries([]);
+      setWorkspaceFilesListState("idle");
+      setWorkspaceFilesListError(null);
+      return;
+    }
+    setWorkspaceFilesListState("loading");
+    setWorkspaceFilesListError(null);
+    void window.argmax.workspace
+      .listFiles(workspace.id)
+      .then((entries) => {
+        if (token !== workspaceListToken.current) return;
+        setWorkspaceFileEntries(entries);
+        setWorkspaceFilesListState("ready");
+      })
+      .catch((error) => {
+        if (token !== workspaceListToken.current) return;
+        setWorkspaceFileEntries([]);
+        setWorkspaceFilesListState("error");
+        setWorkspaceFilesListError(error instanceof Error ? error.message : "Could not load files.");
+      });
+  }, [mode, isPanelOpen, workspace?.id, workspace?.lastActivityAt]);
+
+  useEffect(() => {
+    const token = ++workspaceReadToken.current;
+    if (!workspace?.id || !workspaceFileSelected || !window.argmax || mode !== "files") {
+      setWorkspaceFilePreview(null);
+      setWorkspaceFilePreviewState("idle");
+      setWorkspaceFilePreviewError(null);
+      return;
+    }
+    setWorkspaceFilePreviewState("loading");
+    setWorkspaceFilePreviewError(null);
+    void window.argmax.workspace
+      .readFile(workspace.id, workspaceFileSelected)
+      .then((preview) => {
+        if (token !== workspaceReadToken.current) return;
+        setWorkspaceFilePreview(preview);
+        setWorkspaceFilePreviewState("ready");
+      })
+      .catch((error) => {
+        if (token !== workspaceReadToken.current) return;
+        setWorkspaceFilePreview(null);
+        setWorkspaceFilePreviewState("error");
+        setWorkspaceFilePreviewError(error instanceof Error ? error.message : "Could not read file.");
+      });
+  }, [workspace?.id, workspaceFileSelected, mode]);
+
   const openFile = useCallback((filePath: string): void => {
     setSelectedFilePath(filePath);
+    setMode("changes");
+    setIsPanelOpen(true);
+  }, []);
+
+  const openWorkspaceFile = useCallback((filePath: string): void => {
+    setWorkspaceFileSelected(filePath);
+  }, []);
+
+  const openPanelInFilesMode = useCallback((): void => {
+    setMode("files");
     setIsPanelOpen(true);
   }, []);
 
@@ -2423,6 +2599,17 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
     setIsSummaryCollapsed((current) => !current);
   }, []);
 
+  const workspaceFiles: WorkspaceFilesState = {
+    entries: workspaceFileEntries,
+    listState: workspaceFilesListState,
+    listError: workspaceFilesListError,
+    selectedPath: workspaceFileSelected,
+    preview: workspaceFilePreview,
+    previewState: workspaceFilePreviewState,
+    previewError: workspaceFilePreviewError,
+    openFile: openWorkspaceFile
+  };
+
   return {
     files,
     filesState,
@@ -2433,22 +2620,39 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
     diffError,
     isPanelOpen,
     isSummaryCollapsed,
+    mode,
+    setMode,
+    workspaceFiles,
     openFile,
+    openPanelInFilesMode,
     closePanel,
     toggleSummary
   };
 }
 
 function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | null {
-  if (review.filesState === "idle" || (review.filesState === "ready" && review.files.length === 0)) {
+  if (review.filesState === "idle") {
     return null;
   }
+
+  const browseFilesButton = (
+    <button
+      className="changed-files-browse"
+      type="button"
+      aria-label="Browse workspace files"
+      title="Browse workspace files"
+      onClick={review.openPanelInFilesMode}
+    >
+      <Folder size={13} />
+    </button>
+  );
 
   if (review.filesState === "loading") {
     return (
       <section className="changed-files-card" aria-label="Changed files">
-        <div className="changed-files-header">
-          <span>Loading changed files</span>
+        <div className="changed-files-header changed-files-header-static">
+          <span className="changed-files-title">Loading changed files</span>
+          {browseFilesButton}
         </div>
       </section>
     );
@@ -2457,9 +2661,21 @@ function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | nu
   if (review.filesState === "error") {
     return (
       <section className="changed-files-card" aria-label="Changed files">
-        <div className="changed-files-header">
-          <span>Changed files unavailable</span>
+        <div className="changed-files-header changed-files-header-static">
+          <span className="changed-files-title">Changed files unavailable</span>
           <span className="review-error">{review.filesError}</span>
+          {browseFilesButton}
+        </div>
+      </section>
+    );
+  }
+
+  if (review.files.length === 0) {
+    return (
+      <section className="changed-files-card" aria-label="Changed files">
+        <div className="changed-files-header changed-files-header-static">
+          <span className="changed-files-title">No changes yet</span>
+          {browseFilesButton}
         </div>
       </section>
     );
@@ -2468,19 +2684,22 @@ function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | nu
   const totals = summarizeChangedFiles(review.files);
   return (
     <section className="changed-files-card" aria-label="Changed files">
-      <button
-        className="changed-files-header"
-        type="button"
-        aria-expanded={!review.isSummaryCollapsed}
-        aria-label="Toggle changed files"
-        onClick={review.toggleSummary}
-      >
-        <span className="changed-files-title">{review.files.length} files changed</span>
-        <span className="changed-files-actions">
-          <ChangeCount additions={totals.additions} deletions={totals.deletions} />
-        </span>
-        <ChevronRight size={11} className={`changed-files-chevron${!review.isSummaryCollapsed ? " expanded" : ""}`} />
-      </button>
+      <div className="changed-files-header-row">
+        <button
+          className="changed-files-header"
+          type="button"
+          aria-expanded={!review.isSummaryCollapsed}
+          aria-label="Toggle changed files"
+          onClick={review.toggleSummary}
+        >
+          <span className="changed-files-title">{review.files.length} files changed</span>
+          <span className="changed-files-actions">
+            <ChangeCount additions={totals.additions} deletions={totals.deletions} />
+          </span>
+          <ChevronRight size={11} className={`changed-files-chevron${!review.isSummaryCollapsed ? " expanded" : ""}`} />
+        </button>
+        {browseFilesButton}
+      </div>
       {!review.isSummaryCollapsed ? (
         <div className="changed-files-list">
           {review.files.map((file) => (
@@ -2504,7 +2723,13 @@ function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | nu
   );
 }
 
-function ReviewPanel({ review }: { review: ReviewState }): JSX.Element {
+function ReviewPanel({
+  onResizePanelMouseDown,
+  review
+}: {
+  onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
+  review: ReviewState;
+}): JSX.Element {
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
@@ -2535,52 +2760,99 @@ function ReviewPanel({ review }: { review: ReviewState }): JSX.Element {
     document.addEventListener("mouseup", onUp);
   };
 
+  const isChanges = review.mode === "changes";
+  const subtitle = isChanges
+    ? `${review.files.length} files changed`
+    : `${review.workspaceFiles.entries.length} files`;
+
   return (
     <aside className="review-panel" aria-label="Review panel" ref={panelRef}>
+      {onResizePanelMouseDown ? (
+        <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
+      ) : null}
       <div className="review-toolbar">
-        <div>
-          <p className="eyebrow">Review</p>
+        <div className="review-toolbar-titles">
+          <div className="review-mode-tabs" role="tablist" aria-label="Review panel mode">
+            <button
+              role="tab"
+              type="button"
+              aria-label="Changes"
+              aria-selected={isChanges}
+              aria-pressed={isChanges}
+              title="Changes"
+              onClick={() => review.setMode("changes")}
+            >
+              <GitBranch size={14} aria-hidden="true" />
+            </button>
+            <button
+              role="tab"
+              type="button"
+              aria-label="Files"
+              aria-selected={!isChanges}
+              aria-pressed={!isChanges}
+              title="Files"
+              onClick={() => review.setMode("files")}
+            >
+              <Folder size={14} aria-hidden="true" />
+            </button>
+          </div>
           <h2>
-            {review.files.length} files changed <ChangeCount additions={totals.additions} deletions={totals.deletions} />
+            {subtitle}
+            {isChanges && review.files.length > 0 ? (
+              <ChangeCount additions={totals.additions} deletions={totals.deletions} />
+            ) : null}
           </h2>
         </div>
         <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
           <PanelRightClose size={18} />
         </button>
       </div>
-      <div className="review-file-tabs" aria-label="Changed file list" style={{ height: fileTabsHeight }}>
-        {review.files.map((file) => (
-          <button
-            aria-pressed={review.selectedFilePath === file.path}
-            key={file.path}
-            type="button"
-            title={file.path}
-            onClick={() => review.openFile(file.path)}
-          >
-            <FileText size={15} />
-            <span>{file.path}</span>
-            <ChangeCount additions={file.additions} deletions={file.deletions} />
-          </button>
-        ))}
-      </div>
+      {isChanges ? (
+        <div className="review-file-tabs" aria-label="Changed file list" style={{ height: fileTabsHeight }}>
+          {review.files.map((file) => (
+            <button
+              aria-pressed={review.selectedFilePath === file.path}
+              key={file.path}
+              type="button"
+              title={file.path}
+              onClick={() => review.openFile(file.path)}
+            >
+              <FileText size={15} />
+              <span>{file.path}</span>
+              <ChangeCount additions={file.additions} deletions={file.deletions} />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <WorkspaceTree
+          state={review.workspaceFiles}
+          height={fileTabsHeight}
+        />
+      )}
       <div className="review-resize-handle" onMouseDown={handleResizeMouseDown} />
       <div className="review-diff">
-        {selectedFile ? (
-          <div className="review-diff-heading">
-            <div>
-              <span className="changed-file-status">{statusLabel(selectedFile.status)}</span>
-              <strong>{selectedFile.path}</strong>
-              <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
-            </div>
-            <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
-              <X size={16} />
-            </button>
-          </div>
-        ) : null}
-        {review.diffState === "loading" ? <p className="review-empty">Loading diff...</p> : null}
-        {review.diffState === "error" ? <p className="review-empty review-error">{review.diffError}</p> : null}
-        {review.diffState === "ready" && diffBlocks.length === 0 ? <p className="review-empty">No textual diff.</p> : null}
-        {review.diffState === "ready" && diffBlocks.length > 0 ? <DiffBlocks blocks={diffBlocks} /> : null}
+        {isChanges ? (
+          <>
+            {selectedFile ? (
+              <div className="review-diff-heading">
+                <div>
+                  <span className="changed-file-status">{statusLabel(selectedFile.status)}</span>
+                  <strong>{selectedFile.path}</strong>
+                  <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
+                </div>
+                <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
+                  <X size={16} />
+                </button>
+              </div>
+            ) : null}
+            {review.diffState === "loading" ? <p className="review-empty">Loading diff...</p> : null}
+            {review.diffState === "error" ? <p className="review-empty review-error">{review.diffError}</p> : null}
+            {review.diffState === "ready" && diffBlocks.length === 0 ? <p className="review-empty">No textual diff.</p> : null}
+            {review.diffState === "ready" && diffBlocks.length > 0 ? <DiffBlocks blocks={diffBlocks} /> : null}
+          </>
+        ) : (
+          <FilePreview state={review.workspaceFiles} />
+        )}
       </div>
     </aside>
   );
@@ -2609,6 +2881,233 @@ function DiffBlocks({ blocks }: { blocks: ParsedDiffBlock[] }): JSX.Element {
       )}
     </div>
   );
+}
+
+type TreeNode = {
+  name: string;
+  path: string;
+  kind: "dir" | "file";
+  children: TreeNode[];
+};
+
+function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
+  const root: TreeNode = { name: "", path: "", kind: "dir", children: [] };
+  for (const entry of entries) {
+    const segments = entry.path.split("/").filter(Boolean);
+    let cursor = root;
+    for (let i = 0; i < segments.length; i += 1) {
+      const segment = segments[i];
+      if (!segment) continue;
+      const isLast = i === segments.length - 1;
+      const childPath = cursor.path ? `${cursor.path}/${segment}` : segment;
+      let next = cursor.children.find((child) => child.name === segment);
+      if (!next) {
+        next = {
+          name: segment,
+          path: childPath,
+          kind: isLast ? "file" : "dir",
+          children: []
+        };
+        cursor.children.push(next);
+      }
+      cursor = next;
+    }
+  }
+  sortTree(root);
+  return root;
+}
+
+function sortTree(node: TreeNode): void {
+  node.children.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  for (const child of node.children) {
+    if (child.kind === "dir") sortTree(child);
+  }
+}
+
+function WorkspaceTree({
+  state,
+  height
+}: {
+  state: WorkspaceFilesState;
+  height: number;
+}): JSX.Element {
+  const tree = useMemo(() => buildFileTree(state.entries), [state.entries]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
+  const toggleDir = useCallback((path: string): void => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  if (state.listState === "loading") {
+    return (
+      <div className="workspace-tree workspace-tree-empty" style={{ height }} aria-label="Workspace files">
+        <p className="review-empty">Loading files…</p>
+      </div>
+    );
+  }
+
+  if (state.listState === "error") {
+    return (
+      <div className="workspace-tree workspace-tree-empty" style={{ height }} aria-label="Workspace files">
+        <p className="review-empty review-error">{state.listError}</p>
+      </div>
+    );
+  }
+
+  if (state.listState === "ready" && state.entries.length === 0) {
+    return (
+      <div className="workspace-tree workspace-tree-empty" style={{ height }} aria-label="Workspace files">
+        <p className="review-empty">No files in this workspace.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="workspace-tree"
+      style={{ height }}
+      aria-label="Workspace files"
+      role="tree"
+    >
+      {tree.children.map((child) => (
+        <TreeRow
+          key={child.path}
+          node={child}
+          depth={0}
+          expanded={expanded}
+          selectedPath={state.selectedPath}
+          onToggle={toggleDir}
+          onSelect={state.openFile}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TreeRow({
+  node,
+  depth,
+  expanded,
+  selectedPath,
+  onToggle,
+  onSelect
+}: {
+  node: TreeNode;
+  depth: number;
+  expanded: Set<string>;
+  selectedPath: string | null;
+  onToggle: (path: string) => void;
+  onSelect: (path: string) => void;
+}): JSX.Element {
+  const isOpen = expanded.has(node.path);
+  const indent = { paddingLeft: 6 + depth * 12 } as const;
+  if (node.kind === "dir") {
+    return (
+      <>
+        <button
+          type="button"
+          role="treeitem"
+          aria-expanded={isOpen}
+          className="workspace-tree-row workspace-tree-dir"
+          style={indent}
+          title={node.path}
+          onClick={() => onToggle(node.path)}
+        >
+          <ChevronRight size={12} className={`workspace-tree-chevron${isOpen ? " expanded" : ""}`} />
+          <Folder size={13} />
+          <span>{node.name}</span>
+        </button>
+        {isOpen
+          ? node.children.map((child) => (
+              <TreeRow
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                expanded={expanded}
+                selectedPath={selectedPath}
+                onToggle={onToggle}
+                onSelect={onSelect}
+              />
+            ))
+          : null}
+      </>
+    );
+  }
+  const isSelected = selectedPath === node.path;
+  return (
+    <button
+      type="button"
+      role="treeitem"
+      aria-selected={isSelected}
+      aria-pressed={isSelected}
+      className="workspace-tree-row workspace-tree-file"
+      style={indent}
+      title={node.path}
+      onClick={() => onSelect(node.path)}
+    >
+      <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
+      <FileText size={13} />
+      <span>{node.name}</span>
+    </button>
+  );
+}
+
+function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Element {
+  if (!state.selectedPath) {
+    return <p className="review-empty">Select a file to preview.</p>;
+  }
+  if (state.previewState === "loading") {
+    return <p className="review-empty">Loading file…</p>;
+  }
+  if (state.previewState === "error") {
+    return <p className="review-empty review-error">{state.previewError}</p>;
+  }
+  const preview = state.preview;
+  if (!preview) {
+    return <p className="review-empty">No preview available.</p>;
+  }
+  if (preview.kind === "skipped") {
+    const message =
+      preview.reason === "binary"
+        ? `Binary file${preview.size !== undefined ? ` (${formatBytes(preview.size)})` : ""} — not previewable.`
+        : preview.reason === "too-large"
+          ? `File too large to preview${preview.size !== undefined ? ` (${formatBytes(preview.size)})` : ""}.`
+          : "Not a regular file.";
+    return <p className="review-empty">{message}</p>;
+  }
+  const lines = preview.content.split("\n");
+  return (
+    <div className="file-preview" aria-label={`Preview of ${state.selectedPath}`}>
+      <div className="file-preview-heading">
+        <strong>{state.selectedPath}</strong>
+        <span className="file-preview-size">{formatBytes(preview.size)}</span>
+      </div>
+      <pre className="file-preview-body">
+        <code>
+          {lines.map((line, index) => (
+            <span className="file-preview-line" key={index}>
+              <span className="file-preview-gutter">{index + 1}</span>
+              <span className="file-preview-content">{line || " "}</span>
+            </span>
+          ))}
+        </code>
+      </pre>
+    </div>
+  );
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function ChangeCount({ additions, deletions }: { additions: number; deletions: number }): JSX.Element {
@@ -2749,9 +3248,16 @@ function LaunchSurface({
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement | null>(null);
 
-  useCloseOnOutsideMouseDown(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
-  useCloseOnOutsideMouseDown(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
-  useCloseOnOutsideMouseDown(modelPickerRef, modelPickerOpen, () => setModelPickerOpen(false));
+  useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
+  useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
+  useDismissOnOutsideOrEscape(modelPickerRef, modelPickerOpen, () => setModelPickerOpen(false));
+  const anyContextPickerOpen = projectPickerOpen || branchPickerOpen || modelPickerOpen;
+
+  const closeContextPickers = useCallback((): void => {
+    setProjectPickerOpen(false);
+    setBranchPickerOpen(false);
+    setModelPickerOpen(false);
+  }, []);
 
   const openBranchPicker = useCallback(async (): Promise<void> => {
     if (!window.argmax || !project) return;
@@ -2810,7 +3316,7 @@ function LaunchSurface({
     workspaceId: null
   });
 
-  const onPromptKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+  const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -2852,6 +3358,14 @@ function LaunchSurface({
 
   return (
     <div className="launcher-surface">
+      {anyContextPickerOpen && createPortal(
+        <div
+          className="picker-dismiss-layer"
+          aria-hidden="true"
+          onMouseDown={closeContextPickers}
+        />,
+        document.body
+      )}
       <h1>{headingTemplate.replace("{name}", project.name)}</h1>
       <form className="composer" ref={formRef} onSubmit={(event) => void submitPrompt(event)}>
         <div className="composer-input">
@@ -2872,14 +3386,10 @@ function LaunchSurface({
           <button className="composer-tool" type="button" title="Add context">
             <Plus size={18} />
           </button>
-          <button className="composer-tool" type="button" title="Commands">
-            <Command size={18} />
-          </button>
           <button className="composer-tool" type="button" title="Voice input">
             <Mic size={18} />
           </button>
           <button className="send-button" disabled={isSubmitting || !prompt.trim()} type="submit" title="Start agent">
-            <kbd className="kbd kbd-hint" aria-hidden="true">⌘ ↵</kbd>
             <ChevronRight size={20} />
           </button>
         </div>
@@ -2897,7 +3407,16 @@ function LaunchSurface({
               <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
             </button>
             {projectPickerOpen && (
-              <ul className="project-picker-popover" role="listbox" aria-label="Select project">
+              <ul
+                className="project-picker-popover"
+                role="listbox"
+                aria-label="Select project"
+                onClick={(event) => {
+                  if (!isOptionButtonTarget(event.target)) {
+                    setProjectPickerOpen(false);
+                  }
+                }}
+              >
                 {projects.map((p) => (
                   <li key={p.id} role="option" aria-selected={p.id === project.id}>
                     <button
@@ -2938,7 +3457,16 @@ function LaunchSurface({
               <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
             </button>
             {branchPickerOpen && (
-              <ul className="project-picker-popover" role="listbox" aria-label="Select branch">
+              <ul
+                className="project-picker-popover"
+                role="listbox"
+                aria-label="Select branch"
+                onClick={(event) => {
+                  if (!isOptionButtonTarget(event.target)) {
+                    setBranchPickerOpen(false);
+                  }
+                }}
+              >
                 {branches.map((b) => (
                   <li key={b} role="option" aria-selected={b === project.currentBranch}>
                     <button
@@ -2968,7 +3496,16 @@ function LaunchSurface({
               <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
             </button>
             {modelPickerOpen && (
-              <ul className="project-picker-popover" role="listbox" aria-label="Select model">
+              <ul
+                className="project-picker-popover"
+                role="listbox"
+                aria-label="Select model"
+                onClick={(event) => {
+                  if (!isOptionButtonTarget(event.target)) {
+                    setModelPickerOpen(false);
+                  }
+                }}
+              >
                 <li className="project-picker-group-label" role="presentation">Codex</li>
                 {PROVIDER_MODELS.codex.map((m) => {
                   const opt: ModelPickerSelection = { provider: "codex", label: m.label, modelId: m.modelId, ...(m.reasoningEffort ? { reasoningEffort: m.reasoningEffort } : {}) };
@@ -3277,7 +3814,7 @@ interface SlashAutocompleteState {
   selectionIndex: number;
   setSelectionIndex: (index: number) => void;
   selectSkill: (name: string) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
 }
 
 function useSlashAutocomplete({
@@ -3346,7 +3883,7 @@ function useSlashAutocomplete({
     setSelectionIndex(0);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
     if (!popoverOpen) {
       return;
     }
@@ -3423,35 +3960,59 @@ function ModelSelector({
   value: ProviderModelSelection;
 }): JSX.Element {
   const models = PROVIDER_MODELS[provider];
-  const fallbackKey = models[0] ? optionKey(models[0]) : "";
-  const matchedKey = models.find(
-    (model) => model.modelId === value.modelId && model.reasoningEffort === value.reasoningEffort
-  );
-  const selectedValue = matchedKey ? optionKey(matchedKey) : fallbackKey;
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
+
+  const currentLabel = value.reasoningEffort
+    ? `${value.label} · ${effortLabel(value.reasoningEffort)}`
+    : value.label;
 
   return (
-    <span className="model-selector">
-      <select
+    <div className="project-picker-anchor" ref={anchorRef}>
+      <button
+        type="button"
+        className="composer-context-chip"
         aria-label={ariaLabel}
-        value={selectedValue}
-        onChange={(event) => {
-          const model = models.find((option) => optionKey(option) === event.target.value);
-          if (model) {
-            onChange({
-              label: model.label,
-              modelId: model.modelId,
-              ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
-            });
-          }
-        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
       >
-        {models.map((model) => (
-          <option key={optionKey(model)} value={optionKey(model)}>
-            {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
-          </option>
-        ))}
-      </select>
-    </span>
+        <Cpu size={14} aria-hidden="true" />
+        {currentLabel}
+        <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+      </button>
+      {open && (
+        <ul className="project-picker-popover" role="listbox" aria-label={ariaLabel}>
+          {models.map((model) => {
+            const isSelected =
+              model.modelId === value.modelId && model.reasoningEffort === value.reasoningEffort;
+            const label = model.reasoningEffort
+              ? `${model.label} · ${effortLabel(model.reasoningEffort)}`
+              : model.label;
+            return (
+              <li key={optionKey(model)} role="option" aria-selected={isSelected}>
+                <button
+                  type="button"
+                  className="project-picker-item"
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    onChange({
+                      label: model.label,
+                      modelId: model.modelId,
+                      ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+                    });
+                    setOpen(false);
+                  }}
+                >
+                  {label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

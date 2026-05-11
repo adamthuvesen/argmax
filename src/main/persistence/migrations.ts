@@ -259,6 +259,33 @@ export const migrations: Migration[] = [
         END
       WHERE model_id IS NULL;
     `
+  },
+  {
+    version: 6,
+    name: "sessions_cost_usage",
+    affectedTables: ["sessions", "usage_events"],
+    up: `
+      ALTER TABLE sessions ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0;
+
+      CREATE TABLE usage_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        event_id TEXT,
+        model_id TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_usage_events_session ON usage_events(session_id);
+    `
   }
 ];
 
@@ -305,11 +332,16 @@ const expectedColumns: Record<string, string[]> = {
   ],
   sessions: [
     "attention",
+    "cache_read_tokens",
+    "cache_write_tokens",
     "completed_at",
+    "cost_usd",
     "id",
+    "input_tokens",
     "last_activity_at",
     "model_id",
     "model_label",
+    "output_tokens",
     "prompt",
     "provider",
     "provider_conversation_id",
@@ -317,6 +349,18 @@ const expectedColumns: Record<string, string[]> = {
     "started_at",
     "state",
     "workspace_id"
+  ],
+  usage_events: [
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "cost_usd",
+    "created_at",
+    "event_id",
+    "id",
+    "input_tokens",
+    "model_id",
+    "output_tokens",
+    "session_id"
   ],
   raw_outputs: ["content", "created_at", "id", "session_id", "stream"],
   events: ["created_at", "id", "message", "payload_json", "session_id", "type"],

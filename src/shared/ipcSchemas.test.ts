@@ -21,8 +21,18 @@ describe("ipcSchemas", () => {
     expect(channels).toContain("dashboard:load");
     expect(channels).toContain("dashboard:list");
     expect(channels).toContain("session:eventsSince");
+    expect(channels).toContain("session:costSummary");
     expect(channels).toContain("workspace:status");
     expect(channels).toContain("approvals:pending");
+  });
+
+  it("rejects session:costSummary with an empty or non-string sessionId", () => {
+    expect(() => ipcSchemas["session:costSummary"].parse({ sessionId: "" })).toThrow();
+    expect(() => ipcSchemas["session:costSummary"].parse({ sessionId: 42 })).toThrow();
+    expect(() => ipcSchemas["session:costSummary"].parse({})).toThrow();
+    expect(ipcSchemas["session:costSummary"].parse({ sessionId: "session-1" })).toEqual({
+      sessionId: "session-1"
+    });
   });
 
   // -------------------------- valid payloads --------------------------

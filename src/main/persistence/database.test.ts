@@ -455,4 +455,49 @@ describe("findPendingApproval (Section 6)", () => {
 
     database.connection.close();
   });
+
+  it("accumulates usage events into session aggregates and reports cost summary", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "cost");
+    seedWorkspace(database, "ws-cost", projectId, "running");
+    seedSession(database, "session-cost", "ws-cost");
+
+    database.insertUsageEvent({
+      sessionId: "session-cost",
+      modelId: "claude-sonnet-4-6",
+      tokens: { input: 100, output: 40, cacheRead: 500, cacheWrite: 200 },
+      costUsd: 0.0018
+    });
+    database.insertUsageEvent({
+      sessionId: "session-cost",
+      modelId: "claude-sonnet-4-6",
+      tokens: { input: 200, output: 60, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0.0015
+    });
+
+    const summary = database.getSessionCostSummary("session-cost");
+    expect(summary.modelId).toBe("claude-sonnet-4-6");
+    expect(summary.tokens).toEqual({ input: 300, output: 100, cacheRead: 500, cacheWrite: 200 });
+    expect(summary.costUsd).toBeCloseTo(0.0033, 9);
+
+    const session = database.getSession("session-cost");
+    expect(session.costUsd).toBeCloseTo(0.0033, 9);
+    expect(session.tokens).toEqual({ input: 300, output: 100, cacheRead: 500, cacheWrite: 200 });
+
+    database.connection.close();
+  });
+
+  it("returns a zero cost summary for sessions with no usage rows", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "cost-empty");
+    seedWorkspace(database, "ws-cost-empty", projectId, "running");
+    seedSession(database, "session-cost-empty", "ws-cost-empty");
+
+    const summary = database.getSessionCostSummary("session-cost-empty");
+    expect(summary.costUsd).toBe(0);
+    expect(summary.modelId).toBeNull();
+    expect(summary.tokens).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+
+    database.connection.close();
+  });
 });

@@ -699,38 +699,36 @@ function bareProjectRowToSummary(row: BareProjectRow): ProjectSummary {
 }
 
 function persistWorkspace(connection: Database.Database, input: PersistWorkspaceInput): WorkspaceSummary {
-  return connection.transaction(() => {
-    const timestamp = new Date().toISOString();
-    connection
-      .prepare(
-        `
-          INSERT INTO workspaces (
-            id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
-            dirty, changed_files, last_activity_at, created_at, updated_at
-          ) VALUES (
-            @id, @projectId, @taskLabel, @branch, @baseRef, @path, @state, @sharedWorkspace,
-            @dirty, @changedFiles, @lastActivityAt, @createdAt, @updatedAt
-          )
-        `
-      )
-      .run({
-        id: input.id,
-        projectId: input.projectId,
-        taskLabel: input.taskLabel,
-        branch: input.branch,
-        baseRef: input.baseRef,
-        path: input.path,
-        state: input.state,
-        sharedWorkspace: input.sharedWorkspace ? 1 : 0,
-        dirty: input.dirty ? 1 : 0,
-        changedFiles: input.changedFiles,
-        lastActivityAt: timestamp,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      });
+  const timestamp = new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO workspaces (
+          id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+          dirty, changed_files, last_activity_at, created_at, updated_at
+        ) VALUES (
+          @id, @projectId, @taskLabel, @branch, @baseRef, @path, @state, @sharedWorkspace,
+          @dirty, @changedFiles, @lastActivityAt, @createdAt, @updatedAt
+        )
+      `
+    )
+    .run({
+      id: input.id,
+      projectId: input.projectId,
+      taskLabel: input.taskLabel,
+      branch: input.branch,
+      baseRef: input.baseRef,
+      path: input.path,
+      state: input.state,
+      sharedWorkspace: input.sharedWorkspace ? 1 : 0,
+      dirty: input.dirty ? 1 : 0,
+      changedFiles: input.changedFiles,
+      lastActivityAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
 
-    return findWorkspaceById(connection, input.id);
-  })();
+  return findWorkspaceById(connection, input.id);
 }
 
 function updateWorkspaceState(
@@ -766,40 +764,38 @@ function updateWorkspaceStatus(
 }
 
 function persistSession(connection: Database.Database, input: PersistSessionInput): SessionSummary {
-  return connection.transaction(() => {
-    const timestamp = new Date().toISOString();
-    connection
-      .prepare(
-        `
-          INSERT INTO sessions (
-            id, workspace_id, provider, model_label, model_id, reasoning_effort, provider_conversation_id, prompt, state, attention,
-            started_at, completed_at, last_activity_at
-          ) VALUES (
-            @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, NULL, @prompt, @state, @attention,
-            @startedAt, NULL, @lastActivityAt
-          )
-        `
-      )
-      .run({
-        id: input.id,
-        workspaceId: input.workspaceId,
-        provider: input.provider,
-        modelLabel: input.modelLabel,
-        modelId: input.modelId,
-        reasoningEffort: input.reasoningEffort ?? null,
-        prompt: input.prompt,
-        state: input.state,
-        attention: input.attention,
-        startedAt: timestamp,
-        lastActivityAt: timestamp
-      });
+  const timestamp = new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO sessions (
+          id, workspace_id, provider, model_label, model_id, reasoning_effort, provider_conversation_id, prompt, state, attention,
+          started_at, completed_at, last_activity_at
+        ) VALUES (
+          @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, NULL, @prompt, @state, @attention,
+          @startedAt, NULL, @lastActivityAt
+        )
+      `
+    )
+    .run({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      provider: input.provider,
+      modelLabel: input.modelLabel,
+      modelId: input.modelId,
+      reasoningEffort: input.reasoningEffort ?? null,
+      prompt: input.prompt,
+      state: input.state,
+      attention: input.attention,
+      startedAt: timestamp,
+      lastActivityAt: timestamp
+    });
 
-    // Just-persisted row: no need to scan ui_state for the preferred bit.
-    // The row is brand new, so `preferred` is necessarily `false` here.
-    // (selectPreferredAttempt is the only writer to ui_state and it has
-    // its own re-read path.)
-    return findSessionByIdNoPreferred(connection, input.id);
-  })();
+  // Just-persisted row: no need to scan ui_state for the preferred bit.
+  // The row is brand new, so `preferred` is necessarily `false` here.
+  // (selectPreferredAttempt is the only writer to ui_state and it has
+  // its own re-read path.)
+  return findSessionByIdNoPreferred(connection, input.id);
 }
 
 function updateSessionModel(
@@ -902,28 +898,26 @@ function persistRawOutput(connection: Database.Database, input: PersistRawOutput
 }
 
 function persistApproval(connection: Database.Database, input: PersistApprovalInput): ApprovalRequest {
-  return connection.transaction(() => {
-    const createdAt = input.createdAt ?? new Date().toISOString();
-    connection
-      .prepare(
-        `
-          INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at)
-          VALUES (@id, @sessionId, @command, @cwd, @provider, @riskLevel, @status, @createdAt, NULL)
-        `
-      )
-      .run({
-        id: input.id,
-        sessionId: input.sessionId,
-        command: input.command,
-        cwd: input.cwd,
-        provider: input.provider,
-        riskLevel: input.riskLevel,
-        status: input.status,
-        createdAt
-      });
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at)
+        VALUES (@id, @sessionId, @command, @cwd, @provider, @riskLevel, @status, @createdAt, NULL)
+      `
+    )
+    .run({
+      id: input.id,
+      sessionId: input.sessionId,
+      command: input.command,
+      cwd: input.cwd,
+      provider: input.provider,
+      riskLevel: input.riskLevel,
+      status: input.status,
+      createdAt
+    });
 
-    return findApprovalById(connection, input.id);
-  })();
+  return findApprovalById(connection, input.id);
 }
 
 function findPendingApproval(
@@ -960,13 +954,11 @@ function resolveApproval(
   approvalId: string,
   status: Extract<ApprovalRequest["status"], "approved" | "rejected">
 ): ApprovalRequest {
-  return connection.transaction(() => {
-    connection
-      .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?")
-      .run(status, new Date().toISOString(), approvalId);
+  connection
+    .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?")
+    .run(status, new Date().toISOString(), approvalId);
 
-    return findApprovalById(connection, approvalId);
-  })();
+  return findApprovalById(connection, approvalId);
 }
 
 function persistCheck(connection: Database.Database, input: PersistCheckInput): CheckRun {
@@ -1004,27 +996,25 @@ function updateCheck(connection: Database.Database, checkId: string, input: Upda
 }
 
 function persistCheckpoint(connection: Database.Database, input: PersistCheckpointInput): Checkpoint {
-  return connection.transaction(() => {
-    const createdAt = input.createdAt ?? new Date().toISOString();
-    connection
-      .prepare(
-        `
-          INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
-          VALUES (@id, @workspaceId, @label, @branch, @gitRef, @patchPath, @createdAt)
-        `
-      )
-      .run({
-        id: input.id,
-        workspaceId: input.workspaceId,
-        label: input.label,
-        branch: input.branch,
-        gitRef: input.gitRef,
-        patchPath: input.patchPath,
-        createdAt
-      });
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  connection
+    .prepare(
+      `
+        INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
+        VALUES (@id, @workspaceId, @label, @branch, @gitRef, @patchPath, @createdAt)
+      `
+    )
+    .run({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      label: input.label,
+      branch: input.branch,
+      gitRef: input.gitRef,
+      patchPath: input.patchPath,
+      createdAt
+    });
 
-    return findCheckpointById(connection, input.id);
-  })();
+  return findCheckpointById(connection, input.id);
 }
 
 function findWorkspaceById(connection: Database.Database, workspaceId: string): WorkspaceSummary {

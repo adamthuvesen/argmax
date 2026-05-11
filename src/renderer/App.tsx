@@ -35,17 +35,19 @@ import type {
   ProviderId,
   ProjectSummary,
   RawProviderOutput,
+  SessionCostSummary,
   SessionSummary,
   SkillSummary,
   TimelineEvent,
   WorkspaceDiff,
   WorkspaceSummary
 } from "../shared/types.js";
-import { PROVIDER_MODEL_DEFAULTS, PROVIDER_MODELS } from "../shared/providerModels.js";
+import { costOf as rendererCostOf, PROVIDER_MODEL_DEFAULTS, PROVIDER_MODELS } from "../shared/providerModels.js";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import { safeJsonParseArray, tryParseJsonObject } from "../shared/safeJson.js";
 import { stripTerminalControls } from "../shared/terminalControls.js";
 import { demoSnapshot } from "./demoSnapshot.js";
+import { formatCostUsd } from "./formatCost.js";
 import { formatElapsed } from "./formatElapsed.js";
 
 const emptySnapshot: DashboardSnapshot = {
@@ -933,6 +935,15 @@ function Sidebar({
     [snapshot.projects, projectOrder]
   );
 
+  const workspaceCostMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const session of snapshot.sessions) {
+      const prev = map.get(session.workspaceId) ?? 0;
+      map.set(session.workspaceId, prev + (session.costUsd ?? 0));
+    }
+    return map;
+  }, [snapshot.sessions]);
+
   const toggleProjectVisibility = useCallback((projectId: string): void => {
     setCollapsedProjectIds((current) => {
       const next = new Set(current);
@@ -1061,35 +1072,46 @@ function Sidebar({
               </div>
               {isCollapsed
                 ? null
-                : projectWorkspaces.map((workspace) => (
-                    <div key={workspace.id} className="session-row">
-                      <button
-                        aria-pressed={selectedWorkspaceId === workspace.id}
-                        className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
-                        data-status={workspace.state}
-                        type="button"
-                        title={`${workspace.taskLabel} — ${workspace.state}`}
-                        onClick={() => onOpenWorkspaceChat(workspace.id)}
-                      >
-                        <span className="status-dot" aria-hidden="true" />
-                        <span>{workspace.taskLabel}</span>
-                      </button>
-                      {(workspace.state === "complete" ||
-                        workspace.state === "failed" ||
-                        workspace.state === "cancelled" ||
-                        workspace.state === "kept") && (
+                : projectWorkspaces.map((workspace) => {
+                    const workspaceCost = workspaceCostMap.get(workspace.id) ?? 0;
+                    return (
+                      <div key={workspace.id} className="session-row">
                         <button
-                          className="session-archive-btn"
-                          title="Archive session"
-                          aria-label="Archive session"
+                          aria-pressed={selectedWorkspaceId === workspace.id}
+                          className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
+                          data-status={workspace.state}
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
+                          title={`${workspace.taskLabel} — ${workspace.state}`}
+                          onClick={() => onOpenWorkspaceChat(workspace.id)}
                         >
-                          <Archive size={12} />
+                          <span className="status-dot" aria-hidden="true" />
+                          <span>{workspace.taskLabel}</span>
                         </button>
-                      )}
-                    </div>
-                  ))}
+                        <span
+                          className="session-cost"
+                          aria-label={`Cost: ${formatCostUsd(workspaceCost)}`}
+                          title={`Session cost so far: ${formatCostUsd(workspaceCost)}`}
+                          data-zero={workspaceCost === 0 ? "true" : undefined}
+                        >
+                          {formatCostUsd(workspaceCost)}
+                        </span>
+                        {(workspace.state === "complete" ||
+                          workspace.state === "failed" ||
+                          workspace.state === "cancelled" ||
+                          workspace.state === "kept") && (
+                          <button
+                            className="session-archive-btn"
+                            title="Archive session"
+                            aria-label="Archive session"
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
+                          >
+                            <Archive size={12} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
             </div>
           );
         })}
@@ -1561,6 +1583,7 @@ function SessionConversation({
           <Bug size={16} />
         </button>
       </div>
+      {session ? <CostPanel session={session} events={events} /> : null}
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         {conversationItems.length > 0 ? (
           conversationItems.map((item) =>
@@ -3199,6 +3222,104 @@ function CombinedModelSelector({
       </select>
     </span>
   );
+}
+
+function emptyCostSummary(sessionId: string): SessionCostSummary {
+  return {
+    sessionId,
+    modelId: null,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    costUsd: 0
+  };
+}
+
+function CostPanel({
+  session,
+  events
+}: {
+  session: SessionSummary;
+  events: TimelineEvent[];
+}): JSX.Element {
+  // The cost summary refreshes on session change and whenever the event tail
+  // ticks — usage events ride the same micro-batch flush so a new event
+  // means a fresh cost is available.
+  const [summary, setSummary] = useState<SessionCostSummary>(() => emptyCostSummary(session.id));
+
+  const eventTick = events.length;
+  const sessionId = session.id;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!window.argmax) return;
+    void window.argmax.session
+      .costSummary({ sessionId })
+      .then((next) => {
+        if (!cancelled) setSummary(next);
+      })
+      .catch(() => {
+        /* surface elsewhere; the panel just stays at last known totals */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, eventTick]);
+
+  const modelLabel = summary.modelId ?? session.modelId ?? "—";
+  const rows: Array<{ key: keyof SessionCostSummary["tokens"]; label: string }> = [
+    { key: "input", label: "Input" },
+    { key: "output", label: "Output" },
+    { key: "cacheRead", label: "Cache read" },
+    { key: "cacheWrite", label: "Cache write" }
+  ];
+
+  return (
+    <section className="cost-panel" aria-label="Session cost summary">
+      <header className="cost-panel-header">
+        <span className="cost-panel-title">Cost</span>
+        <span className="cost-panel-model" title={`Model: ${modelLabel}`}>{modelLabel}</span>
+        <span
+          className="cost-panel-total"
+          aria-label={`Total cost: ${formatCostUsd(summary.costUsd)}`}
+          title={`Total cost: ${formatCostUsd(summary.costUsd)}`}
+        >
+          {formatCostUsd(summary.costUsd)}
+        </span>
+      </header>
+      <table className="cost-panel-table" aria-label="Per-bucket usage">
+        <thead>
+          <tr>
+            <th scope="col">Bucket</th>
+            <th scope="col">Tokens</th>
+            <th scope="col">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ key, label }) => {
+            const tokens = summary.tokens[key];
+            return (
+              <tr key={key} aria-label={`${label} usage`}>
+                <th scope="row">{label}</th>
+                <td title={`${label} tokens: ${tokens.toLocaleString()}`}>{tokens.toLocaleString()}</td>
+                <td title={`${label} cost: ${formatCostUsd(costForBucket(key, tokens, summary.modelId))}`}>
+                  {formatCostUsd(costForBucket(key, tokens, summary.modelId))}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function costForBucket(
+  bucket: keyof SessionCostSummary["tokens"],
+  tokens: number,
+  modelId: string | null
+): number {
+  if (!modelId || tokens <= 0) return 0;
+  const empty = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  return rendererCostOf({ ...empty, [bucket]: tokens }, modelId);
 }
 
 function modelValue(model: Pick<ModelPickerSelection, "provider" | "modelId" | "reasoningEffort">): string {

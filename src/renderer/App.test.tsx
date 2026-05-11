@@ -107,6 +107,7 @@ describe("App", () => {
   let listChangedFiles: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFiles"]>>;
   let loadDiff: ReturnType<typeof vi.fn<ArgmaxApi["review"]["loadDiff"]>>;
   let sessionEventsSince: ReturnType<typeof vi.fn<ArgmaxApi["session"]["eventsSince"]>>;
+  let sessionCostSummary: ReturnType<typeof vi.fn<ArgmaxApi["session"]["costSummary"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
@@ -135,6 +136,12 @@ describe("App", () => {
       rawOutputs: snapshot.rawOutputs,
       eventCursor: 0,
       rawOutputCursor: 0
+    });
+    sessionCostSummary = vi.fn<ArgmaxApi["session"]["costSummary"]>().mockResolvedValue({
+      sessionId: "session-1",
+      modelId: "gpt-5.3-codex",
+      tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 },
+      costUsd: 0.012
     });
     sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
     workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
@@ -183,7 +190,8 @@ describe("App", () => {
         resolve: () => Promise.resolve(missingApproval())
       },
       session: {
-        eventsSince: sessionEventsSince
+        eventsSince: sessionEventsSince,
+        costSummary: sessionCostSummary
       },
       review: {
         listChangedFiles,
@@ -1129,6 +1137,62 @@ describe("App", () => {
 
     await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2));
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+  });
+
+  it("renders a cost cell on each session row with the workspace cost", async () => {
+    sessionCostSummary.mockResolvedValue({
+      sessionId: "session-1",
+      modelId: "gpt-5.3-codex",
+      tokens: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0.012
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    // Push a delta carrying costUsd so the workspace-cost map populates.
+    act(() => {
+      dashboardDeltaListener?.({
+        sessions: [
+          {
+            ...((snapshot.sessions[0] ?? missingSession())),
+            costUsd: 0.012,
+            tokens: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0 }
+          }
+        ]
+      });
+    });
+
+    const cell = await screen.findByLabelText(/Cost: \$0\.012/);
+    expect(cell).toHaveTextContent("$0.012");
+  });
+
+  it("renders the CostPanel rows and totals on session detail", async () => {
+    sessionCostSummary.mockResolvedValue({
+      sessionId: "session-1",
+      modelId: "gpt-5.3-codex",
+      tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 },
+      costUsd: 4.32
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    const panel = await screen.findByRole("region", { name: "Session cost summary" });
+    expect(panel).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(within(panel).getByLabelText(/Total cost:/)).toHaveTextContent("$4.32");
+    });
+
+    const inputRow = within(panel).getByRole("row", { name: "Input usage" });
+    expect(within(inputRow).getByTitle("Input tokens: 1,200")).toBeInTheDocument();
+
+    const outputRow = within(panel).getByRole("row", { name: "Output usage" });
+    expect(within(outputRow).getByTitle("Output tokens: 340")).toBeInTheDocument();
+
+    expect(within(panel).getByRole("row", { name: "Cache read usage" })).toBeInTheDocument();
+    expect(within(panel).getByRole("row", { name: "Cache write usage" })).toBeInTheDocument();
   });
 });
 

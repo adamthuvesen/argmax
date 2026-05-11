@@ -11,7 +11,12 @@ import type {
   TimelineEvent
 } from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
-import { normalizeProviderEvent } from "./providerEventNormalizer.js";
+import {
+  createNormalizerSessionContext,
+  normalizeProviderEventWithUsage,
+  type NormalizedUsage,
+  type NormalizerSessionContext
+} from "./providerEventNormalizer.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 
 interface FollowUpModelSelection {
@@ -45,11 +50,15 @@ interface SessionBuffer {
     content: string;
     createdAt: string;
   }>;
+  /** Coalesced usage events accumulated during the current micro-batch window. */
+  pendingUsages: NormalizedUsage[];
   pendingSessionUpdate: SessionSummary | null;
   /** Latest output createdAt seen, used for throttled lastActivityAt updates. */
   lastActivityWriteAt: number;
   workspaceId: string;
   provider: ProviderId;
+  /** Session-scoped normalizer context, e.g. most-recent Codex turn_context model. */
+  normalizerContext: NormalizerSessionContext;
 }
 
 interface PendingHandleEntry {
@@ -484,10 +493,12 @@ export class ProviderSessionService {
       flushTimer: null,
       pendingEvents: [],
       pendingRawOutputs: [],
+      pendingUsages: [],
       pendingSessionUpdate: null,
       lastActivityWriteAt: 0,
       workspaceId,
-      provider
+      provider,
+      normalizerContext: createNormalizerSessionContext()
     });
   }
 
@@ -525,9 +536,15 @@ export class ProviderSessionService {
             this.recordProviderConversationId(event.sessionId, providerConversationId);
           }
           const syntheticEvent: ProviderEvent = { ...event, message: completed };
-          const normalized = normalizeProviderEvent(syntheticEvent, { provider });
-          for (const ev of normalized) {
+          const normalized = normalizeProviderEventWithUsage(syntheticEvent, {
+            provider,
+            context: sessionState.normalizerContext
+          });
+          for (const ev of normalized.events) {
             this.queueTimelineEvent(event.sessionId, ev);
+          }
+          for (const usage of normalized.usages) {
+            this.queueUsage(event.sessionId, usage);
           }
         } else {
           sessionState.streamBuffers.set(event.stream, combined);
@@ -615,6 +632,23 @@ export class ProviderSessionService {
         this.publishDashboardDelta({ events: [persisted] });
       }
     }
+  }
+
+  private queueUsage(sessionId: string, usage: NormalizedUsage): void {
+    const sessionState = this.buffers.get(sessionId);
+    if (sessionState) {
+      sessionState.pendingUsages.push(usage);
+      return;
+    }
+    // Defensive: no buffer (post-disposal) — write through synchronously so
+    // late-arriving usage is not dropped.
+    this.database.insertUsageEvent({
+      sessionId,
+      ...(usage.eventId ? { eventId: usage.eventId } : {}),
+      modelId: usage.modelId,
+      tokens: usage.tokens,
+      costUsd: usage.costUsd
+    });
   }
 
   private queueTimelineEvent(sessionId: string, event: PersistTimelineEventInput): void {
@@ -724,9 +758,15 @@ export class ProviderSessionService {
         message: `${trailing}\n`,
         createdAt: new Date().toISOString()
       };
-      const normalized = normalizeProviderEvent(synthetic, { provider: sessionState.provider });
-      for (const ev of normalized) {
+      const normalized = normalizeProviderEventWithUsage(synthetic, {
+        provider: sessionState.provider,
+        context: sessionState.normalizerContext
+      });
+      for (const ev of normalized.events) {
         this.queueTimelineEvent(sessionId, ev);
+      }
+      for (const usage of normalized.usages) {
+        this.queueUsage(sessionId, usage);
       }
     }
   }
@@ -743,6 +783,7 @@ export class ProviderSessionService {
     if (
       sessionState.pendingRawOutputs.length === 0 &&
       sessionState.pendingEvents.length === 0 &&
+      sessionState.pendingUsages.length === 0 &&
       !sessionState.pendingSessionUpdate
     ) {
       return;
@@ -750,12 +791,14 @@ export class ProviderSessionService {
 
     const rawOutputs = sessionState.pendingRawOutputs.splice(0);
     const events = sessionState.pendingEvents.splice(0);
-    const sessionUpdate = sessionState.pendingSessionUpdate;
+    const usages = sessionState.pendingUsages.splice(0);
+    let sessionUpdate = sessionState.pendingSessionUpdate;
     sessionState.pendingSessionUpdate = null;
     const persistedEvents: TimelineEvent[] = [];
 
     // Wrap the whole micro-batch in one transaction so the renderer never
-    // observes a half-applied state between persistRawOutput and the timeline.
+    // observes a half-applied state between persistRawOutput, timeline, and
+    // usage aggregates.
     const persist = this.database.connection.transaction(() => {
       for (const raw of rawOutputs) {
         this.database.persistRawOutput(raw);
@@ -763,8 +806,24 @@ export class ProviderSessionService {
       for (const event of events) {
         persistedEvents.push(this.database.persistTimelineEvent(event));
       }
+      for (const usage of usages) {
+        this.database.insertUsageEvent({
+          sessionId,
+          ...(usage.eventId ? { eventId: usage.eventId } : {}),
+          modelId: usage.modelId,
+          tokens: usage.tokens,
+          costUsd: usage.costUsd
+        });
+      }
     });
     persist();
+    if (usages.length > 0) {
+      try {
+        sessionUpdate = this.database.getSession(sessionId);
+      } catch {
+        /* session row vanished — fall through with prior sessionUpdate */
+      }
+    }
     sessionState.lastFlushAt = Date.now();
     this.publishDashboardDelta({
       ...(sessionUpdate ? { sessions: [sessionUpdate] } : {}),

@@ -25,6 +25,7 @@ import {
   resolveApprovalInputSchema,
   runCheckInputSchema,
   selectPreferredAttemptInputSchema,
+  sessionCostSummaryInputSchema,
   sessionEventsSinceInputSchema,
   skillsListInputSchema,
   systemOpenPathInputSchema,
@@ -225,6 +226,11 @@ export function registerIpcHandlers(
   ipcMain.handle(
     "session:eventsSince",
     withValidation(sessionEventsSinceInputSchema, (input) => database.listSessionEventsSince(input))
+  );
+  // Cost & token transparency (additive — see SPEC_COST_TRANSPARENCY.md)
+  ipcMain.handle(
+    "session:costSummary",
+    withValidation(sessionCostSummaryInputSchema, (input) => database.getSessionCostSummary(input.sessionId))
   );
   ipcMain.handle(
     "review:list-changed-files",

@@ -202,6 +202,14 @@ export const systemOpenPathInputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Cost & token transparency (additive — see SPEC_COST_TRANSPARENCY.md)
+// ---------------------------------------------------------------------------
+
+export const sessionCostSummaryInputSchema = z.object({
+  sessionId: sessionIdSchema
+});
+
+// ---------------------------------------------------------------------------
 // Channel → schema map
 // ---------------------------------------------------------------------------
 
@@ -236,7 +244,8 @@ export const ipcSchemas = {
   "commits:prepare": prepareCommitInputSchema,
   "dashboard:load": dashboardLoadInputSchema,
   "skills:list": skillsListInputSchema,
-  "system:open-path": systemOpenPathInputSchema
+  "system:open-path": systemOpenPathInputSchema,
+  "session:costSummary": sessionCostSummaryInputSchema
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -264,3 +273,4 @@ export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
 export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;
+export type SessionCostSummaryInputParsed = z.infer<typeof sessionCostSummaryInputSchema>;

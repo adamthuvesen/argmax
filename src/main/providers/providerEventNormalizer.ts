@@ -3,18 +3,52 @@ import type { PersistTimelineEventInput } from "../persistence/database.js";
 import type { EventType, ProviderId } from "../../shared/types.js";
 import { tryParseJsonObject } from "../../shared/safeJson.js";
 import { stripTerminalControls } from "../../shared/terminalControls.js";
+import { costOf, type UsageCounts } from "../../shared/providerModels.js";
 import type { ProviderEvent } from "./providerTypes.js";
+
+export interface NormalizerSessionContext {
+  /** Most-recent Codex `turn_context.model` seen for this session. */
+  codexCurrentModel: string | null;
+}
+
+export function createNormalizerSessionContext(): NormalizerSessionContext {
+  return { codexCurrentModel: null };
+}
+
+export interface NormalizedUsage {
+  modelId: string;
+  tokens: UsageCounts;
+  costUsd: number;
+  eventId?: string;
+}
 
 export interface NormalizeProviderEventOptions {
   provider?: ProviderId;
+  context?: NormalizerSessionContext;
 }
 
+/**
+ * Backward-compatible normalizer entry point — returns events only.
+ * Usage extraction goes through `normalizeProviderEventWithUsage`.
+ */
 export function normalizeProviderEvent(
   event: ProviderEvent,
   options: NormalizeProviderEventOptions = {}
 ): PersistTimelineEventInput[] {
+  return normalizeProviderEventWithUsage(event, options).events;
+}
+
+export interface NormalizedProviderResult {
+  events: PersistTimelineEventInput[];
+  usages: NormalizedUsage[];
+}
+
+export function normalizeProviderEventWithUsage(
+  event: ProviderEvent,
+  options: NormalizeProviderEventOptions = {}
+): NormalizedProviderResult {
   if (event.type !== "output") {
-    return [];
+    return { events: [], usages: [] };
   }
 
   const lines = event.message.split(/\r?\n/);
@@ -23,6 +57,7 @@ export function normalizeProviderEvent(
   const candidates = trailing.length > 0 ? [...completedLines, trailing] : completedLines;
 
   const results: PersistTimelineEventInput[] = [];
+  const usages: NormalizedUsage[] = [];
   let parsedAny = false;
 
   for (const rawLine of candidates) {
@@ -34,7 +69,9 @@ export function normalizeProviderEvent(
     const payload = tryParseJsonObject(line);
     if (payload) {
       parsedAny = true;
-      results.push(...normalizeJsonPayload(event, payload, options.provider));
+      const out = normalizeJsonPayload(event, payload, options.provider, options.context);
+      results.push(...out.events);
+      usages.push(...out.usages);
       continue;
     }
 
@@ -62,45 +99,67 @@ export function normalizeProviderEvent(
   }
 
   if (results.length > 0 || parsedAny) {
-    return results;
+    return { events: results, usages };
   }
 
   if (event.stream === "pty") {
-    return [];
+    return { events: [], usages };
   }
 
   // No newlines, no JSON, no individual lines parsed — fall back to whole-message raw event.
   const cleaned = stripTerminalControls(event.message).trim();
   if (!cleaned) {
-    return [];
+    return { events: [], usages };
   }
-  return [
-    {
-      id: randomUUID(),
-      sessionId: event.sessionId,
-      type: event.stream === "stderr" ? "error" : "message.delta",
-      message: cleaned,
-      payload: {
-        raw: true,
-        stream: event.stream
-      },
-      createdAt: event.createdAt
-    }
-  ];
+  return {
+    events: [
+      {
+        id: randomUUID(),
+        sessionId: event.sessionId,
+        type: event.stream === "stderr" ? "error" : "message.delta",
+        message: cleaned,
+        payload: {
+          raw: true,
+          stream: event.stream
+        },
+        createdAt: event.createdAt
+      }
+    ],
+    usages
+  };
+}
+
+interface JsonPayloadResult {
+  events: PersistTimelineEventInput[];
+  usages: NormalizedUsage[];
 }
 
 function normalizeJsonPayload(
   event: ProviderEvent,
   payload: Record<string, unknown>,
-  provider: ProviderId | undefined
-): PersistTimelineEventInput[] {
+  provider: ProviderId | undefined,
+  context: NormalizerSessionContext | undefined
+): JsonPayloadResult {
   const providerType = stringValue(payload.type);
   const item = objectValue(payload.item);
   const itemType = stringValue(item?.type);
   const text = extractMessageText(payload, item);
 
+  // Codex turn_context updates the session-scoped current model. token_count
+  // events carry usage but no model id; the parser threads the latest model
+  // forward from turn_context to apply pricing correctly.
+  if (provider === "codex" && context && providerType === "turn_context") {
+    const model = extractCodexTurnContextModel(payload);
+    if (model) {
+      context.codexCurrentModel = model;
+    }
+  }
+
+  const usage = extractUsageFromPayload(payload, providerType, provider, context);
+  const usages = usage ? [usage] : [];
+
   if (isLifecycleEvent(providerType, itemType)) {
-    return [];
+    return { events: [], usages };
   }
 
   const results: PersistTimelineEventInput[] = [];
@@ -108,7 +167,7 @@ function normalizeJsonPayload(
   if (provider === "codex") {
     const codexToolEvent = normalizeCodexToolItem(event, payload, providerType, item, itemType);
     if (codexToolEvent) {
-      return [codexToolEvent];
+      return { events: [codexToolEvent], usages };
     }
   }
 
@@ -150,10 +209,10 @@ function normalizeJsonPayload(
 
   // Don't create a message event if there's nothing to say.
   if (isMessageEvent(mappedType) && !text) {
-    return results;
+    return { events: results, usages };
   }
   if (!mappedType && !text) {
-    return results;
+    return { events: results, usages };
   }
 
   const finalPayload = mappedType
@@ -169,7 +228,7 @@ function normalizeJsonPayload(
     createdAt: event.createdAt
   });
 
-  return results;
+  return { events: results, usages };
 }
 
 function normalizeCodexToolItem(
@@ -329,4 +388,111 @@ function stringValue(value: unknown): string | null {
 
 function isMessageEvent(eventType: EventType | null): boolean {
   return eventType === "message.delta" || eventType === "message.completed";
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function extractCodexTurnContextModel(payload: Record<string, unknown>): string | null {
+  // Codex turn_context rows usually carry the model on `payload.model`.
+  // Some variants nest it inside `payload.payload.model`.
+  return (
+    stringValue(payload.model) ??
+    stringValue(objectValue(payload.payload)?.model) ??
+    null
+  );
+}
+
+function extractUsageFromPayload(
+  payload: Record<string, unknown>,
+  providerType: string | null,
+  provider: ProviderId | undefined,
+  context: NormalizerSessionContext | undefined
+): NormalizedUsage | null {
+  if (provider === "claude") {
+    return extractClaudeUsage(payload, providerType);
+  }
+  if (provider === "codex") {
+    return extractCodexUsage(payload, providerType, context);
+  }
+  return null;
+}
+
+function extractClaudeUsage(
+  payload: Record<string, unknown>,
+  providerType: string | null
+): NormalizedUsage | null {
+  if (providerType !== "assistant") return null;
+  const message = objectValue(payload.message);
+  if (!message) return null;
+  const usage = objectValue(message.usage);
+  if (!usage) return null;
+  const modelId = stringValue(message.model);
+  if (!modelId) return null;
+  const tokens: UsageCounts = {
+    input: numberValue(usage.input_tokens),
+    output: numberValue(usage.output_tokens),
+    cacheRead: numberValue(usage.cache_read_input_tokens),
+    cacheWrite: numberValue(usage.cache_creation_input_tokens)
+  };
+  if (tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite === 0) {
+    return null;
+  }
+  const result: NormalizedUsage = {
+    modelId,
+    tokens,
+    costUsd: costOf(tokens, modelId)
+  };
+  const eventId = stringValue(message.id);
+  if (eventId) {
+    result.eventId = eventId;
+  }
+  return result;
+}
+
+function extractCodexUsage(
+  payload: Record<string, unknown>,
+  providerType: string | null,
+  context: NormalizerSessionContext | undefined
+): NormalizedUsage | null {
+  // Codex emits token usage two ways:
+  //   1. Outer `{type:"event_msg", payload:{type:"token_count", info:{last_token_usage:{...}}}}`
+  //   2. Outer `{type:"token_count", info:{last_token_usage:{...}}}` (flattened)
+  let info: Record<string, unknown> | null = null;
+
+  if (providerType === "event_msg") {
+    const inner = objectValue(payload.payload);
+    if (inner && stringValue(inner.type) === "token_count") {
+      info = objectValue(inner.info);
+    }
+  } else if (providerType === "token_count") {
+    info = objectValue(payload.info);
+  }
+
+  if (!info) return null;
+  const last = objectValue(info.last_token_usage);
+  if (!last) return null;
+
+  const inputTokens = numberValue(last.input_tokens);
+  const cachedInput = numberValue(last.cached_input_tokens);
+  const outputTokens = numberValue(last.output_tokens);
+  if (inputTokens + outputTokens + cachedInput === 0) return null;
+
+  // OpenAI reports `input_tokens` as the full context size INCLUDING cached
+  // tokens. Subtract so the cost calculator does not double-bill cache reads.
+  const nonCachedInput = Math.max(0, inputTokens - cachedInput);
+
+  const modelId = context?.codexCurrentModel ?? "unknown";
+  const tokens: UsageCounts = {
+    input: nonCachedInput,
+    output: outputTokens,
+    cacheRead: cachedInput,
+    cacheWrite: 0
+  };
+  return {
+    modelId,
+    tokens,
+    costUsd: costOf(tokens, modelId)
+  };
 }

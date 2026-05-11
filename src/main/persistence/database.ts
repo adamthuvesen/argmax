@@ -1130,12 +1130,18 @@ function findSessionByIdNoPreferred(
 }
 
 function sessionRowToSummary(row: SessionRow, preferred: boolean): SessionSummary {
+  // model_id is backfilled by migration v5 and required by `persistSession`'s
+  // TypeScript input. A null here means a buggy write path or a corrupted
+  // database — fail visibly rather than papering over with the human label.
+  if (row.model_id == null) {
+    throw new Error(`Session row missing model_id (id=${row.id}); database may be corrupted.`);
+  }
   return {
     id: row.id,
     workspaceId: row.workspace_id,
     provider: row.provider,
     modelLabel: row.model_label,
-    modelId: row.model_id ?? row.model_label,
+    modelId: row.model_id,
     ...(row.reasoning_effort ? { reasoningEffort: row.reasoning_effort } : {}),
     providerConversationId: row.provider_conversation_id,
     prompt: row.prompt,

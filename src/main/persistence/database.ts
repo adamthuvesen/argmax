@@ -511,10 +511,7 @@ function listProjects(connection: Database.Database): ProjectSummary[] {
           JOIN workspaces w ON w.id = s.workspace_id
           GROUP BY w.project_id
         ) ss ON ss.project_id = p.id
-        ORDER BY COALESCE(
-          MAX(ws.workspace_latest, COALESCE(ss.session_latest, '')),
-          p.updated_at
-        ) DESC
+        ORDER BY COALESCE(ws.workspace_latest, ss.session_latest, p.updated_at) DESC
       `
     )
     .all() as ProjectAggregateRow[];

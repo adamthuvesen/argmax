@@ -288,6 +288,24 @@ export const migrations: Migration[] = [
 
       CREATE INDEX IF NOT EXISTS idx_usage_events_session ON usage_events(session_id);
     `
+  },
+  {
+    version: 7,
+    name: "dashboard_read_indexes",
+    // Index-only migration: column shape is unchanged.
+    affectedTables: [],
+    up: `
+      -- Backs 'SELECT * FROM events ORDER BY created_at DESC LIMIT 500'.
+      CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
+
+      -- Backs 'SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT 100'
+      -- and the daily 'DELETE FROM raw_outputs WHERE created_at < ...' prune.
+      CREATE INDEX IF NOT EXISTS idx_raw_outputs_created_at ON raw_outputs(created_at);
+
+      -- Backs 'WHERE status = ? ORDER BY created_at DESC' (pending list)
+      -- and the global approvals list.
+      CREATE INDEX IF NOT EXISTS idx_approvals_status_created ON approvals(status, created_at);
+    `
   }
 ];
 

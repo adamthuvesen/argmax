@@ -378,6 +378,8 @@ export interface ArgmaxDatabase {
   getSessionCostSummary: (sessionId: string) => SessionCostSummary;
   /** Cancels the periodic raw_outputs prune timer. Call before close. */
   clearPruneInterval: () => void;
+  /** Clears the prune timer and closes the underlying connection. Idempotent. */
+  close: () => void;
 }
 
 export function createDatabase(databasePath = getDatabasePath(), options: { seed?: boolean } = {}): ArgmaxDatabase {
@@ -406,6 +408,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
   // dashboard read path slices the latest 100 rows; older rows are dead
   // weight and grow unboundedly without this.
   const pruneRawOutputs = (): void => {
+    if (!connection.open) return;
     try {
       connection
         .prepare("DELETE FROM raw_outputs WHERE created_at < datetime('now', '-7 days')")
@@ -459,7 +462,13 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     persistRawOutput: (input) => persistRawOutput(connection, input),
     insertUsageEvent: (input) => insertUsageEvent(connection, input),
     getSessionCostSummary: (sessionId) => getSessionCostSummary(connection, sessionId),
-    clearPruneInterval: () => clearInterval(pruneTimer)
+    clearPruneInterval: () => clearInterval(pruneTimer),
+    close: () => {
+      clearInterval(pruneTimer);
+      if (connection.open) {
+        connection.close();
+      }
+    }
   };
 }
 

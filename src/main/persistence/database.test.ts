@@ -542,6 +542,18 @@ describe("findPendingApproval (Section 6)", () => {
     database.connection.close();
   });
 
+  it("close() clears the prune timer, closes the connection, and is idempotent", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    expect(database.connection.open).toBe(true);
+
+    database.close();
+    expect(database.connection.open).toBe(false);
+
+    // Second call must not throw — the timer is already cleared and the
+    // connection is already closed.
+    expect(() => database.close()).not.toThrow();
+  });
+
   it("returns a zero cost summary for sessions with no usage rows", () => {
     const database = createDatabase(":memory:", { seed: false });
     const projectId = seedProject(database, "cost-empty");

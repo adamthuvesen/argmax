@@ -17,38 +17,39 @@
     </filter>
   </defs>
 
-  <rect width="1024" height="1024" rx="232" fill="url(#bgR2)"/>
+  <!-- Scale to 80% centred — leaves ~102px transparent padding each side -->
+  <g transform="translate(512,512) scale(0.80) translate(-512,-512)">
+    <rect width="1024" height="1024" rx="232" fill="url(#bgR2)"/>
 
-  <!-- Pixel-stepped chevron in amber phosphor — staircase climbing to a peak.
-       Each "pixel" is 32px on a coarse grid for chunky retro feel.
-       Shifted up 88px so the composition centers around the icon midpoint. -->
-  <g fill="#ffb000" filter="url(#glowR2)">
-    <!-- Left side ascent -->
-    <rect x="192" y="616" width="64" height="64"/>
-    <rect x="256" y="552" width="64" height="64"/>
-    <rect x="320" y="488" width="64" height="64"/>
-    <rect x="384" y="424" width="64" height="64"/>
-    <rect x="448" y="360" width="64" height="64"/>
-    <!-- Apex -->
-    <rect x="480" y="296" width="64" height="64"/>
-    <!-- Right side descent -->
-    <rect x="512" y="360" width="64" height="64"/>
-    <rect x="576" y="424" width="64" height="64"/>
-    <rect x="640" y="488" width="64" height="64"/>
-    <rect x="704" y="552" width="64" height="64"/>
-    <rect x="768" y="616" width="64" height="64"/>
+    <!-- Pixel-stepped chevron in amber phosphor -->
+    <g fill="#ffb000" filter="url(#glowR2)">
+      <!-- Left side ascent -->
+      <rect x="192" y="616" width="64" height="64"/>
+      <rect x="256" y="552" width="64" height="64"/>
+      <rect x="320" y="488" width="64" height="64"/>
+      <rect x="384" y="424" width="64" height="64"/>
+      <rect x="448" y="360" width="64" height="64"/>
+      <!-- Apex -->
+      <rect x="480" y="296" width="64" height="64"/>
+      <!-- Right side descent -->
+      <rect x="512" y="360" width="64" height="64"/>
+      <rect x="576" y="424" width="64" height="64"/>
+      <rect x="640" y="488" width="64" height="64"/>
+      <rect x="704" y="552" width="64" height="64"/>
+      <rect x="768" y="616" width="64" height="64"/>
+    </g>
+
+    <!-- Pixelated baseline dots -->
+    <g fill="#ffb000" opacity="0.45">
+      <rect x="288" y="728" width="32" height="32"/>
+      <rect x="496" y="728" width="32" height="32"/>
+      <rect x="704" y="728" width="32" height="32"/>
+    </g>
+
+    <!-- Scanlines -->
+    <rect width="1024" height="1024" rx="232" fill="url(#scanR2)"/>
+
+    <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
+          fill="none" stroke="rgba(255,176,0,0.18)" stroke-width="1.5"/>
   </g>
-
-  <!-- Pixelated baseline dots (three candidates) -->
-  <g fill="#ffb000" opacity="0.45">
-    <rect x="288" y="728" width="32" height="32"/>
-    <rect x="496" y="728" width="32" height="32"/>
-    <rect x="704" y="728" width="32" height="32"/>
-  </g>
-
-  <!-- Scanlines -->
-  <rect width="1024" height="1024" rx="232" fill="url(#scanR2)"/>
-
-  <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
-        fill="none" stroke="rgba(255,176,0,0.18)" stroke-width="1.5"/>
 </svg>

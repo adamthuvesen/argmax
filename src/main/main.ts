@@ -32,7 +32,7 @@ async function createWindow(): Promise<void> {
       preload: join(currentDirectory, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   });
 

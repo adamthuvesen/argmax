@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "description": "Local desktop command center for Claude Code and Codex sessions.",
+  "author": "Adam Thuvesen <a.thuvesen@gmail.com>",
   "type": "module",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "npm run rebuild:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"wait-on dist/main/main.js tcp:5173 && electron .\"",
     "build": "tsc -p tsconfig.main.json && vite build",
+    "package": "npm run build && electron-builder --mac",
     "lint": "eslint .",
     "rebuild:electron": "npm_config_runtime=electron npm_config_target=35.7.5 npm_config_disturl=https://electronjs.org/headers npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
     "rebuild:node": "npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
@@ -18,7 +20,6 @@
   "dependencies": {
     "@electron-toolkit/utils": "^3.0.0",
     "better-sqlite3": "^11.8.1",
-    "electron": "^35.0.0",
     "lucide-react": "^0.468.0",
     "node-pty": "^1.1.0",
     "react": "^19.0.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "electron": "^35.0.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/better-sqlite3": "^7.6.12",
@@ -36,6 +38,7 @@
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
@@ -45,5 +48,31 @@
     "vite": "^6.0.5",
     "vitest": "^2.1.8",
     "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.menti.argmax",
+    "productName": "Argmax",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "mac": {
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "dmg": {
+      "title": "Argmax",
+      "background": null,
+      "window": { "width": 540, "height": 380 }
+    },
+    "npmRebuild": true,
+    "asar": true
   }
 }

@@ -593,38 +593,50 @@ export class ProviderSessionService {
     const completedAt = event.createdAt;
     const succeeded = event.type === "exit" && event.exitCode === 0;
     const state = succeeded ? "complete" : "failed";
-    const rawOutput = {
-      id: randomUUID(),
-      sessionId: event.sessionId,
-      stream: event.stream,
-      content: capRawContent(event.message).content,
-      createdAt: event.createdAt
-    };
-    this.database.persistRawOutput(rawOutput);
-    const session = this.database.updateSessionState(event.sessionId, {
-      state,
-      attention: computeSessionAttention({ state }),
-      completedAt,
-      lastActivityAt: completedAt
-    });
-    const workspace = this.database.updateWorkspaceState(workspaceId, state);
-    const timelineEvent = this.database.persistTimelineEvent({
-      id: randomUUID(),
-      sessionId: event.sessionId,
-      type: succeeded ? "session.completed" : "error",
-      message: event.message,
-      payload: capEventPayload({
-        exitCode: event.exitCode
-      }).payload,
-      createdAt: event.createdAt
-    });
-    this.publishDashboardDelta({
-      projects: this.database.listProjects(),
-      workspaces: [workspace],
-      sessions: [session],
-      events: [timelineEvent],
-      rawOutputs: [rawOutput]
-    });
+    try {
+      const rawOutput = {
+        id: randomUUID(),
+        sessionId: event.sessionId,
+        stream: event.stream,
+        content: capRawContent(event.message).content,
+        createdAt: event.createdAt
+      };
+      this.database.persistRawOutput(rawOutput);
+      const session = this.database.updateSessionState(event.sessionId, {
+        state,
+        attention: computeSessionAttention({ state }),
+        completedAt,
+        lastActivityAt: completedAt
+      });
+      const workspace = this.database.updateWorkspaceState(workspaceId, state);
+      const timelineEvent = this.database.persistTimelineEvent({
+        id: randomUUID(),
+        sessionId: event.sessionId,
+        type: succeeded ? "session.completed" : "error",
+        message: event.message,
+        payload: capEventPayload({
+          exitCode: event.exitCode
+        }).payload,
+        createdAt: event.createdAt
+      });
+      this.publishDashboardDelta({
+        projects: this.database.listProjects(),
+        workspaces: [workspace],
+        sessions: [session],
+        events: [timelineEvent],
+        rawOutputs: [rawOutput]
+      });
+    } catch (error) {
+      // Race: session or workspace was deleted between buffer flush and
+      // lifecycle write. The local handle still needs cleanup; skip the
+      // delta — the renderer will pick up the deletion via status poll.
+      const rowGone =
+        isSessionGoneError(error, event.sessionId) ||
+        (error instanceof RecordNotFoundError && error.kind === "workspace");
+      if (!rowGone) {
+        throw error;
+      }
+    }
     this.handles.delete(event.sessionId);
     this.logHandleCount("closed", event.sessionId);
     this.deleteBuffer(event.sessionId);

@@ -107,6 +107,32 @@ describe("ipcSchemas", () => {
     expect(() => ipcSchemas["system:open-path"].parse({ path: "" })).toThrow();
   });
 
+  it("accepts a valid workspaces:openInIde payload with a known ide", () => {
+    expect(ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "ws-1", ide: "vscode" })).toEqual({
+      workspaceId: "ws-1",
+      ide: "vscode"
+    });
+    expect(ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "ws-1", ide: "default" })).toEqual({
+      workspaceId: "ws-1",
+      ide: "default"
+    });
+  });
+
+  it("rejects workspaces:openInIde with an unknown ide value", () => {
+    expect(() =>
+      ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "ws-1", ide: "atom" })
+    ).toThrow();
+  });
+
+  it("rejects workspaces:openInIde with a missing workspaceId", () => {
+    expect(() => ipcSchemas["workspaces:openInIde"].parse({ ide: "vscode" })).toThrow();
+    expect(() => ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "", ide: "vscode" })).toThrow();
+  });
+
+  it("accepts system:listDetectedIdes with no payload", () => {
+    expect(ipcSchemas["system:listDetectedIdes"].parse(undefined)).toBeUndefined();
+  });
+
   it("accepts focused dashboard read payloads", () => {
     expect(ipcSchemas["dashboard:list"].parse(undefined)).toBeUndefined();
     expect(ipcSchemas["approvals:pending"].parse(undefined)).toBeUndefined();

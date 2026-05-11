@@ -8,7 +8,9 @@ import type {
   CreateCheckpointInputParsed,
   CreateCurrentWorkspaceInputParsed,
   CreateWorkspaceInputParsed,
+  IdeIdParsed,
   LaunchProviderSessionInputParsed,
+  OpenInIdeInputParsed,
   PrepareCommitInputParsed,
   ProviderSessionInputParsed,
   ProviderSessionResizeInputParsed,
@@ -97,6 +99,15 @@ export type CreateCheckpointInput = CreateCheckpointInputParsed;
 export type SelectPreferredAttemptInput = SelectPreferredAttemptInputParsed;
 export type PrepareCommitInput = PrepareCommitInputParsed;
 export type SkillsListInput = SkillsListInputParsed;
+export type OpenInIdeInput = OpenInIdeInputParsed;
+export type IdeId = IdeIdParsed;
+
+export interface DetectedIde {
+  id: IdeId;
+  label: string;
+  appPath: string | null;
+  hasCli: boolean;
+}
 
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system";
 
@@ -273,6 +284,7 @@ export interface ArgmaxApi {
     status: (input?: WorkspaceStatusInput) => Promise<WorkspaceStatusSnapshot>;
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;
     archive: (workspaceId: string) => Promise<WorkspaceSummary>;
+    openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
   };
   providers: {
     discover: () => Promise<unknown[]>;
@@ -312,6 +324,7 @@ export interface ArgmaxApi {
   };
   system: {
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
+    listDetectedIdes: () => Promise<DetectedIde[]>;
   };
 }
 

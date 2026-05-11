@@ -827,7 +827,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Session model")).toHaveValue("claude-sonnet-4-6");
+    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Claude Sonnet 4.6");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-pressed", "true");
@@ -970,9 +970,9 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.change(await screen.findByLabelText("Session model"), {
-      target: { value: "gpt-5.5:medium" }
-    });
+    fireEvent.click(await screen.findByRole("button", { name: "Session model" }));
+    const modelPopover = await screen.findByRole("listbox", { name: "Session model" });
+    fireEvent.click(within(modelPopover).getByRole("button", { name: "GPT-5.5 · Medium" }));
     fireEvent.change(await screen.findByLabelText("Session prompt"), {
       target: { value: "use the stronger model" }
     });

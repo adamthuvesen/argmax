@@ -1326,9 +1326,17 @@ function SidebarSessionRow({
         ? `Open in ${detectedIdes.find((e) => e.id === effectiveDefault)?.label ?? effectiveDefault}`
         : "Open in IDE";
 
-  const handleMainClick = (event: ReactMouseEvent): void => {
+  const handlePrimaryClick = (event: ReactMouseEvent): void => {
     event.stopPropagation();
-    if (!hasPath || !hasIdes) return;
+    if (buttonDisabled || !effectiveDefault) return;
+    onOpenInIde(workspace.id, effectiveDefault, {
+      pinAsDefault: defaultIde === null
+    });
+  };
+
+  const handleChevronClick = (event: ReactMouseEvent): void => {
+    event.stopPropagation();
+    if (buttonDisabled) return;
     setPickerOpen((open) => !open);
   };
 
@@ -1357,14 +1365,24 @@ function SidebarSessionRow({
         <button
           className="session-row-action session-ide-btn"
           aria-label="Open in IDE"
-          aria-haspopup="menu"
-          aria-expanded={pickerOpen}
           title={ideButtonTitle}
           type="button"
-          disabled={buttonDisabled}
-          onClick={handleMainClick}
+          disabled={buttonDisabled || !effectiveDefault}
+          onClick={handlePrimaryClick}
         >
           <ExternalLink size={12} />
+        </button>
+        <button
+          className="session-row-action session-ide-chevron"
+          aria-label="Choose IDE"
+          aria-haspopup="menu"
+          aria-expanded={pickerOpen}
+          title="Choose IDE"
+          type="button"
+          disabled={buttonDisabled}
+          onClick={handleChevronClick}
+        >
+          <ChevronDown size={12} />
         </button>
         {pickerOpen && popoverPos && createPortal(
           <ul

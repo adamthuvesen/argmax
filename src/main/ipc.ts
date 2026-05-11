@@ -20,6 +20,8 @@ import {
   providerSessionTerminateInputSchema,
   projectsPickFolderInputSchema,
   registerProjectInputSchema,
+  listBranchesInputSchema,
+  switchBranchInputSchema,
   resolveApprovalInputSchema,
   runCheckInputSchema,
   selectPreferredAttemptInputSchema,
@@ -41,6 +43,7 @@ import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
 import { CommitPreparationService } from "./review/commitPreparationService.js";
 import { listSkills } from "./skills/skillRegistry.js";
+import { runGitText } from "./git/exec.js";
 
 /**
  * Wraps an IPC handler body so its `input` is validated against a zod schema
@@ -138,6 +141,22 @@ export function registerIpcHandlers(
   ipcMain.handle(
     "projects:update-settings",
     withValidation(updateProjectSettingsInputSchema, (input) => projects.updateSettings(input))
+  );
+  ipcMain.handle(
+    "projects:list-branches",
+    withValidation(listBranchesInputSchema, async (input) => {
+      const project = database.getProject(input.projectId);
+      const raw = await runGitText(project.repoPath, ["branch"]);
+      return raw.split("\n").map((b) => b.replace(/^\*\s*/, "").trim()).filter(Boolean);
+    })
+  );
+  ipcMain.handle(
+    "projects:switch-branch",
+    withValidation(switchBranchInputSchema, async (input) => {
+      const project = database.getProject(input.projectId);
+      await runGitText(project.repoPath, ["checkout", input.branch]);
+      return database.updateProjectBranch(input.projectId, input.branch);
+    })
   );
   ipcMain.handle(
     "workspaces:create-isolated",

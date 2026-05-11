@@ -291,6 +291,9 @@ export interface WorkspaceStatusInputFilter {
   workspaceIds?: string[];
 }
 
+const SESSION_EVENT_PAGE_LIMIT = 500;
+const SESSION_RAW_OUTPUT_PAGE_LIMIT = 100;
+
 export type DashboardListSnapshot = Pick<
   DashboardSnapshot,
   "projects" | "workspaces" | "sessions" | "checks" | "checkpoints"
@@ -311,6 +314,7 @@ export interface MaestroDatabase {
   loadDashboard: () => DashboardSnapshot;
   persistProject: (input: PersistProjectInput) => ProjectSummary;
   updateProjectSettings: (projectId: string, settings: ProjectSettings) => ProjectSummary;
+  updateProjectBranch: (projectId: string, branch: string) => ProjectSummary;
   getProject: (projectId: string) => ProjectSummary;
   findProjectById: (projectId: string) => ProjectSummary | null;
   findProjectByRepoPath: (repoPath: string) => ProjectSummary | null;
@@ -390,6 +394,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     loadDashboard: () => loadDashboard(connection),
     persistProject: (input) => persistProject(connection, input),
     updateProjectSettings: (projectId, settings) => updateProjectSettings(connection, projectId, settings),
+    updateProjectBranch: (projectId, branch) => updateProjectBranch(connection, projectId, branch),
     getProject: (projectId) => requireProject(connection, projectId),
     findProjectById: (projectId) => findProjectById(connection, projectId),
     findProjectByRepoPath: (repoPath) => findProjectByRepoPath(connection, repoPath),
@@ -581,6 +586,17 @@ function updateProjectSettings(
       updatedAt: new Date().toISOString()
     });
 
+  return requireProject(connection, projectId);
+}
+
+function updateProjectBranch(
+  connection: Database.Database,
+  projectId: string,
+  branch: string
+): ProjectSummary {
+  connection
+    .prepare("UPDATE projects SET current_branch = @branch, updated_at = @updatedAt WHERE id = @projectId")
+    .run({ projectId, branch, updatedAt: new Date().toISOString() });
   return requireProject(connection, projectId);
 }
 
@@ -1164,7 +1180,7 @@ function listSessionEventsSince(
               SELECT rowid AS row_cursor, * FROM events
               WHERE session_id = ?
               ORDER BY rowid DESC
-              LIMIT 500
+              LIMIT ${SESSION_EVENT_PAGE_LIMIT}
             )
             ORDER BY row_cursor ASC
           `
@@ -1176,6 +1192,7 @@ function listSessionEventsSince(
             SELECT rowid AS row_cursor, * FROM events
             WHERE session_id = ? AND rowid > ?
             ORDER BY rowid ASC
+            LIMIT ${SESSION_EVENT_PAGE_LIMIT}
           `
         )
         .all(input.sessionId, input.eventCursor) as EventRow[]);
@@ -1188,7 +1205,7 @@ function listSessionEventsSince(
               SELECT rowid AS row_cursor, * FROM raw_outputs
               WHERE session_id = ?
               ORDER BY rowid DESC
-              LIMIT 100
+              LIMIT ${SESSION_RAW_OUTPUT_PAGE_LIMIT}
             )
             ORDER BY row_cursor ASC
           `
@@ -1200,6 +1217,7 @@ function listSessionEventsSince(
             SELECT rowid AS row_cursor, * FROM raw_outputs
             WHERE session_id = ? AND rowid > ?
             ORDER BY rowid ASC
+            LIMIT ${SESSION_RAW_OUTPUT_PAGE_LIMIT}
           `
         )
         .all(input.sessionId, input.rawOutputCursor) as RawOutputRow[]);

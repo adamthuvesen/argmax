@@ -80,7 +80,10 @@ export const providersDiscoverInputSchema = z.void();
 export const listBranchesInputSchema = z.object({ projectId: projectIdSchema });
 export const switchBranchInputSchema = z.object({
   projectId: projectIdSchema,
-  branch: z.string().min(1)
+  branch: z
+    .string()
+    .min(1)
+    .refine((value) => !value.startsWith("-"), { message: "branch cannot start with '-'" })
 });
 export const dashboardLoadInputSchema = z.void();
 export const dashboardListInputSchema = z.void();

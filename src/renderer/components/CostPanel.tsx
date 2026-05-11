@@ -15,7 +15,9 @@ export function CostPanel({
 }): JSX.Element {
   // The cost summary refreshes on session change and whenever the event tail
   // ticks — usage events ride the same micro-batch flush so a new event
-  // means a fresh cost is available.
+  // means a fresh cost is available. A trailing debounce coalesces the burst
+  // of events that arrive while a token stream is mid-flight, otherwise we'd
+  // fire an IPC roundtrip per token.
   const [summary, setSummary] = useState<SessionCostSummary>(() => emptyCostSummary(session.id));
   const [expanded, setExpanded] = useState<boolean>(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(COST_PANEL_EXPANDED_KEY) : null;
@@ -32,16 +34,20 @@ export function CostPanel({
   useEffect(() => {
     let cancelled = false;
     if (!window.argmax) return;
-    void window.argmax.session
-      .costSummary({ sessionId })
-      .then((next) => {
-        if (!cancelled) setSummary(next);
-      })
-      .catch(() => {
-        /* surface elsewhere; the panel just stays at last known totals */
-      });
+    const timer = setTimeout(() => {
+      if (cancelled || !window.argmax) return;
+      void window.argmax.session
+        .costSummary({ sessionId })
+        .then((next) => {
+          if (!cancelled) setSummary(next);
+        })
+        .catch(() => {
+          /* surface elsewhere; the panel just stays at last known totals */
+        });
+    }, 300);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [sessionId, eventTick]);
 

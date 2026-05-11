@@ -128,7 +128,10 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
         setFilesState("error");
         setFilesError(error instanceof Error ? error.message : "Could not load changed files.");
       });
-  }, [workspace?.id, workspace?.changedFiles, workspace?.lastActivityAt]);
+    // Depend on the changed-file count, not on lastActivityAt — the activity
+    // timestamp bumps for every event delta, which would re-fetch the changed
+    // files list ~once per streamed token.
+  }, [workspace?.id, workspace?.changedFiles]);
 
   useEffect(() => {
     const token = ++diffLoadToken.current;

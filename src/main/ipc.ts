@@ -33,7 +33,7 @@ import {
   workspaceIdInputSchema,
   type IpcChannel
 } from "../shared/ipcSchemas.js";
-import type { MaestroDatabase } from "./persistence/database.js";
+import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
 import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
 import { discoverProviders } from "./providers/providerDiscovery.js";
@@ -94,7 +94,7 @@ export function withValidation<TIn, TOut>(
  * `INVALID_INPUT` instead of crashing inside a service.
  */
 export function registerIpcHandlers(
-  database: MaestroDatabase,
+  database: ArgmaxDatabase,
   providerSessions: ProviderSessionService
 ): readonly string[] {
   const projects = new ProjectService(database);

@@ -25,7 +25,7 @@ describe("ProjectService", () => {
   });
 
   it("rejects directories that are not inside a git repository", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "maestro-not-git-"));
+    const directory = mkdtempSync(join(tmpdir(), "argmax-not-git-"));
     const database = createDatabase(":memory:", { seed: false });
     const service = new ProjectService(database);
 
@@ -91,7 +91,7 @@ describe("ProjectService", () => {
 });
 
 function createGitRepo(): string {
-  const repoPath = mkdtempSync(join(tmpdir(), "maestro-git-"));
+  const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-"));
   execFileSync("git", ["init", "--initial-branch=main", repoPath]);
   return realpathSync(repoPath);
 }

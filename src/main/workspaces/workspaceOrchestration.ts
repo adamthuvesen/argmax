@@ -4,7 +4,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, sep } from "node:path";
 import { promisify } from "node:util";
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { runGitText } from "../git/exec.js";
 
@@ -37,7 +37,7 @@ export class WorkspaceError extends Error {
 export class WorkspaceService {
   private readonly watchers = new Map<string, FSWatcher>();
 
-  constructor(private readonly database: MaestroDatabase) {}
+  constructor(private readonly database: ArgmaxDatabase) {}
 
   async createIsolatedWorkspace(input: CreateWorkspaceInput): Promise<WorkspaceSummary> {
     const project = this.database.getProject(input.projectId);
@@ -53,7 +53,7 @@ export class WorkspaceService {
     // catches other malformed refs (whitespace, control chars, "..", "@{").
     await assertValidRef(project.repoPath, baseRef);
 
-    const branch = `maestro/${slugify(input.taskLabel)}-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const branch = `argmax/${slugify(input.taskLabel)}-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     // 16 hex chars = 64 bits of entropy. Birthday-paradox 50% collision after
     // ~5.1B branches; at 100 branches/day a single user reaches 1% collision
     // probability after ~6M years. The previous 8-hex slice (32 bits) hit 1%

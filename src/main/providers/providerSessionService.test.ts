@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { createDatabase, type MaestroDatabase } from "../persistence/database.js";
+import { createDatabase, type ArgmaxDatabase } from "../persistence/database.js";
 import type { PersistProjectInput, PersistWorkspaceInput } from "../persistence/database.js";
 import type { DashboardDelta, ProviderId } from "../../shared/types.js";
 import type { ProviderAdapter, ProviderEvent, ProviderLaunchInput, ProviderSessionHandle } from "./providerTypes.js";
@@ -350,7 +350,7 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
-  it("resumes Claude follow-up prompts using the Maestro session id", async () => {
+  it("resumes Claude follow-up prompts using the Argmax session id", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
     const fakeProvider = createFakeProvider("claude");
@@ -589,7 +589,8 @@ describe("ProviderSessionService", () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
     const fakeProvider = createFakeProvider("codex");
-    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
 
     const session = await service.launch({
       workspaceId: workspace.id,
@@ -604,6 +605,21 @@ describe("ProviderSessionService", () => {
 
     await service.terminate(session.id);
     expect(fakeProvider.terminatedCalls).toBe(1);
+    expect(database.getSession(session.id)).toMatchObject({
+      state: "cancelled",
+      attention: "normal"
+    });
+    expect(database.getWorkspace(workspace.id).state).toBe("cancelled");
+    expect(database.loadDashboard().events).toContainEqual(
+      expect.objectContaining({ sessionId: session.id, type: "session.cancelled" })
+    );
+    expect(deltas).toContainEqual(
+      expect.objectContaining({
+        workspaces: [expect.objectContaining({ id: workspace.id, state: "cancelled" })],
+        sessions: [expect.objectContaining({ id: session.id, state: "cancelled" })],
+        events: [expect.objectContaining({ sessionId: session.id, type: "session.cancelled" })]
+      })
+    );
     // Second terminate on a now-disposed handle should be a quiet no-op.
     await expect(service.terminate(session.id)).resolves.toBeUndefined();
     expect(fakeProvider.terminatedCalls).toBe(1);
@@ -738,7 +754,7 @@ function createFakeProvider(provider: ProviderId): {
   };
 }
 
-function persistWorkspaceFixture(database: MaestroDatabase): ReturnType<MaestroDatabase["persistWorkspace"]> {
+function persistWorkspaceFixture(database: ArgmaxDatabase): ReturnType<ArgmaxDatabase["persistWorkspace"]> {
   const project: PersistProjectInput = {
     id: "project-1",
     name: "Fixture",
@@ -759,7 +775,7 @@ function persistWorkspaceFixture(database: MaestroDatabase): ReturnType<MaestroD
     id: "workspace-1",
     projectId: project.id,
     taskLabel: "Launch provider",
-    branch: "maestro/launch-provider",
+    branch: "argmax/launch-provider",
     baseRef: "main",
     path: "/repo/.worktrees/launch-provider",
     state: "created",

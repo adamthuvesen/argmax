@@ -1,6 +1,6 @@
 import { lstat, readFile, readlink, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { ChangedFileSummary, WorkspaceDiff } from "../../shared/types.js";
 import { runGitText } from "../git/exec.js";
 
@@ -8,7 +8,7 @@ import { runGitText } from "../git/exec.js";
 const DIFF_FANOUT_LIMIT = 8;
 
 export class GitReviewService {
-  constructor(private readonly database: MaestroDatabase) {}
+  constructor(private readonly database: ArgmaxDatabase) {}
 
   async listChangedFiles(workspaceId: string): Promise<ChangedFileSummary[]> {
     const workspace = this.database.getWorkspace(workspaceId);

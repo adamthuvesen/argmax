@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createDatabase, type MaestroDatabase } from "../persistence/database.js";
+import { createDatabase, type ArgmaxDatabase } from "../persistence/database.js";
 import { ApprovalService } from "./approvalService.js";
 import type { ApprovalRequest, ProviderId } from "../../shared/types.js";
 
@@ -57,7 +57,7 @@ describe("ApprovalService", () => {
 
   it("deduplicates concurrent approval requests for the same command", () => {
     // 10.4: When the foundations-owned `findPendingApproval` helper is wired
-    // into MaestroDatabase, two concurrent requests with the same tuple
+    // into ArgmaxDatabase, two concurrent requests with the same tuple
     // produce exactly one pending row. We stub the helper here so the test
     // is independent of the foundations agent's merge order.
     const database = createDatabase(":memory:", { seed: false });
@@ -144,6 +144,34 @@ describe("ApprovalService", () => {
 
     database.connection.close();
   });
+
+  it("marks rejected approvals as blocked in session state and project counts", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const sessionId = persistSessionFixture(database);
+    const service = new ApprovalService(database);
+
+    const decision = service.requestCommandApproval({
+      sessionId,
+      command: "git reset --hard HEAD~1",
+      cwd: "/repo",
+      provider: "claude"
+    });
+    expect(decision.approval).not.toBeNull();
+
+    const resolved = service.resolveApproval(decision.approval!.id, "rejected");
+    expect(resolved.status).toBe("rejected");
+
+    const snapshot = database.loadDashboard();
+    expect(snapshot.sessions[0]).toMatchObject({
+      state: "blocked",
+      attention: "blocked"
+    });
+    expect(snapshot.projects[0]?.counts.blocked).toBe(1);
+    const resolvedEvent = snapshot.events.find((event) => event.type === "approval.resolved");
+    expect(resolvedEvent?.payload).toMatchObject({ status: "rejected" });
+
+    database.connection.close();
+  });
 });
 
 /**
@@ -152,7 +180,7 @@ describe("ApprovalService", () => {
  * provider, status='pending'), returns null on miss. Once the foundations
  * agent ships the real helper this stub becomes a no-op.
  */
-function installFindPendingApprovalStub(database: MaestroDatabase): void {
+function installFindPendingApprovalStub(database: ArgmaxDatabase): void {
   (database as unknown as {
     findPendingApproval: (q: {
       sessionId: string;
@@ -175,7 +203,7 @@ function installFindPendingApprovalStub(database: MaestroDatabase): void {
   };
 }
 
-function persistSessionFixture(database: MaestroDatabase): string {
+function persistSessionFixture(database: ArgmaxDatabase): string {
   database.persistProject({
     id: "project-1",
     name: "Fixture",
@@ -194,7 +222,7 @@ function persistSessionFixture(database: MaestroDatabase): string {
     id: "workspace-1",
     projectId: "project-1",
     taskLabel: "Approval",
-    branch: "maestro/approval",
+    branch: "argmax/approval",
     baseRef: "main",
     path: "/repo/.worktrees/approval",
     state: "running",

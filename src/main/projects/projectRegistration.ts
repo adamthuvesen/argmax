@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { ArgmaxDatabase } from "../persistence/database.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
 import type { ProjectSettings, ProjectSummary, RegisterProjectInput, UpdateProjectSettingsInput } from "../../shared/types.js";
 import { runGitMaybe, runGitText } from "../git/exec.js";
@@ -24,7 +24,7 @@ export class ProjectRegistrationError extends Error {
 }
 
 export class ProjectService {
-  constructor(private readonly database: MaestroDatabase) {}
+  constructor(private readonly database: ArgmaxDatabase) {}
 
   async registerProject(input: RegisterProjectInput): Promise<ProjectSummary> {
     const canonicalPath = await canonicalizeRepoPath(input.repoPath);
@@ -58,14 +58,14 @@ async function canonicalizeRepoPath(candidatePath: string): Promise<string> {
     resolved = await realpath(candidatePath);
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown filesystem error";
-    throw new ProjectRegistrationError(`Maestro could not resolve ${candidatePath}. ${detail}`);
+    throw new ProjectRegistrationError(`Argmax could not resolve ${candidatePath}. ${detail}`);
   }
   let stats;
   try {
     stats = await stat(resolved);
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown filesystem error";
-    throw new ProjectRegistrationError(`Maestro could not stat ${resolved}. ${detail}`);
+    throw new ProjectRegistrationError(`Argmax could not stat ${resolved}. ${detail}`);
   }
   if (!stats.isDirectory()) {
     throw new ProjectRegistrationError(`${resolved} is not a directory.`);
@@ -107,7 +107,7 @@ async function readGitMetadata(candidatePath: string): Promise<GitMetadata> {
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown git error";
-    throw new ProjectRegistrationError(`Maestro requires a local git repository. ${detail}`);
+    throw new ProjectRegistrationError(`Argmax requires a local git repository. ${detail}`);
   }
 }
 
@@ -131,7 +131,7 @@ function defaultSettings(repoPath: string): ProjectSettings {
   return {
     defaultProvider: "codex",
     defaultModelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
-    worktreeLocation: join(repoPath, ".maestro", "worktrees"),
+    worktreeLocation: join(repoPath, ".argmax", "worktrees"),
     setupCommand: "",
     checkCommands: []
   };

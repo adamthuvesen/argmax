@@ -37,8 +37,8 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
-    label: "Claude Sonnet 4.6",
-    modelId: "claude-sonnet-4-6",
+    label: "Claude Haiku 4.5",
+    modelId: "claude-haiku-4-5",
     launchMode: "structured-json"
   },
   codex: {

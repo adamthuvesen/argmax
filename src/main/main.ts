@@ -2,17 +2,18 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { createDatabase, type MaestroDatabase } from "./persistence/database.js";
+import { createDatabase, type ArgmaxDatabase } from "./persistence/database.js";
 import { registerIpcHandlers } from "./ipc.js";
 let registeredChannels: readonly string[] = [];
 import { ProviderSessionService } from "./providers/providerSessionService.js";
 import type { DashboardDelta } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
-let database: MaestroDatabase | null = null;
+let database: ArgmaxDatabase | null = null;
 let providerSessions: ProviderSessionService | null = null;
 let shutdownInProgress = false;
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
+const iconPath = join(currentDirectory, "..", "..", "assets", "icon.png");
 
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
@@ -21,7 +22,8 @@ async function createWindow(): Promise<void> {
     minWidth: 900,
     minHeight: 620,
     resizable: true,
-    title: "Maestro",
+    title: "Argmax",
+    icon: iconPath,
     backgroundColor: "#101418",
     show: false,
     titleBarStyle: "hiddenInset",
@@ -48,6 +50,9 @@ async function createWindow(): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(iconPath);
+  }
   database = createDatabase();
   providerSessions = new ProviderSessionService(database, undefined, publishDashboardDelta);
   registeredChannels = registerIpcHandlers(database, providerSessions);

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { MaestroDatabase, PersistTimelineEventInput } from "../persistence/database.js";
+import type { ArgmaxDatabase, PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import { PROVIDER_MODEL_DEFAULTS, type ReasoningEffort } from "../../shared/providerModels.js";
 import { tryParseJsonObject } from "../../shared/safeJson.js";
@@ -56,6 +56,7 @@ interface PendingHandleEntry {
   kind: "pending";
   ops: PendingOp[];
   rejected: boolean;
+  cancelled: boolean;
 }
 
 interface ResolvedHandleEntry {
@@ -83,7 +84,7 @@ export class ProviderSessionService {
   private readonly buffers = new Map<string, SessionBuffer>();
 
   constructor(
-    private readonly database: MaestroDatabase,
+    private readonly database: ArgmaxDatabase,
     private readonly adapterFactory: (provider: ProviderId) => ProviderAdapter = getProviderAdapter,
     private readonly publishDelta: (delta: DashboardDelta) => void = () => undefined
   ) {}
@@ -100,7 +101,7 @@ export class ProviderSessionService {
   }
 
   private logHandleCount(action: string, sessionId: string): void {
-    console.log(`[maestro] handles: ${this.openHandleCount} (${action} ${sessionId})`);
+    console.log(`[argmax] handles: ${this.openHandleCount} (${action} ${sessionId})`);
   }
 
   async launch(input: LaunchProviderSessionInput): Promise<SessionSummary> {
@@ -158,7 +159,7 @@ export class ProviderSessionService {
     this.initializeBuffer(sessionId, workspace.id, input.provider);
     // Register a pending placeholder synchronously so any racing operations are
     // queued into arrival order against the real handle once launch resolves.
-    const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false };
+    const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
     this.handles.set(sessionId, pending);
 
     const adapter = this.adapterFactory(input.provider);
@@ -200,6 +201,9 @@ export class ProviderSessionService {
       this.handles.delete(sessionId);
       pending.rejected = true;
       pending.ops.length = 0;
+      if (pending.cancelled) {
+        throw error;
+      }
       this.recordLaunchFailure({
         sessionId,
         workspaceId: workspace.id,
@@ -259,7 +263,7 @@ export class ProviderSessionService {
     });
 
     this.initializeBuffer(sessionId, workspace.id, session.provider);
-    const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false };
+    const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
     this.handles.set(sessionId, pending);
     const modelDefault = PROVIDER_MODEL_DEFAULTS[session.provider];
 
@@ -297,6 +301,9 @@ export class ProviderSessionService {
       this.handles.delete(sessionId);
       pending.rejected = true;
       pending.ops.length = 0;
+      if (pending.cancelled) {
+        throw error;
+      }
       this.recordLaunchFailure({
         sessionId,
         workspaceId: workspace.id,
@@ -361,7 +368,11 @@ export class ProviderSessionService {
       return;
     }
     if (entry.kind === "pending") {
-      entry.ops.push({ kind: "terminate" });
+      entry.cancelled = true;
+      entry.rejected = true;
+      entry.ops.length = 0;
+      this.handles.delete(sessionId);
+      this.cancelSession(sessionId);
       return;
     }
     if (entry.handle.disposed) {
@@ -372,12 +383,45 @@ export class ProviderSessionService {
     this.flushTrailingFragment(sessionId);
     this.flushBatch(sessionId);
     await Promise.resolve(entry.handle.terminate());
+    this.cancelSession(sessionId);
+  }
+
+  private cancelSession(sessionId: string): void {
+    this.flushTrailingFragment(sessionId);
+    this.flushBatch(sessionId);
+    const completedAt = new Date().toISOString();
+    const sessionState = this.buffers.get(sessionId);
+    const workspaceId = sessionState?.workspaceId ?? this.database.getSession(sessionId).workspaceId;
+    const session = this.database.updateSessionState(sessionId, {
+      state: "cancelled",
+      attention: computeSessionAttention({ state: "cancelled" }),
+      completedAt,
+      lastActivityAt: completedAt
+    });
+    const workspace = this.database.updateWorkspaceState(workspaceId, "cancelled");
+    const event = this.database.persistTimelineEvent({
+      id: randomUUID(),
+      sessionId,
+      type: "session.cancelled",
+      message: "Provider session cancelled.",
+      payload: {},
+      createdAt: completedAt
+    });
+    this.handles.delete(sessionId);
+    this.logHandleCount("cancelled", sessionId);
+    this.deleteBuffer(sessionId);
+    this.publishDashboardDelta({
+      projects: this.database.listProjects(),
+      workspaces: [workspace],
+      sessions: [session],
+      events: [event]
+    });
   }
 
   async disposeAll(): Promise<void> {
     const sessions = [...this.handles.keys()];
     if (sessions.length > 0) {
-      console.log(`[maestro] disposeAll: terminating ${sessions.length} handle(s)`);
+      console.log(`[argmax] disposeAll: terminating ${sessions.length} handle(s)`);
     }
     await Promise.allSettled(
       sessions.map(async (sessionId) => {

@@ -4,15 +4,15 @@ import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 export const demoSnapshot: DashboardSnapshot = {
   projects: [
     {
-      id: "project-maestro",
-      name: "Maestro",
+      id: "project-argmax",
+      name: "Argmax",
       repoPath: "~/code/sample-project",
       currentBranch: "main",
       defaultBranch: "main",
       settings: {
         defaultProvider: "codex",
         defaultModelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
-        worktreeLocation: "~/code/.maestro/worktrees",
+        worktreeLocation: "~/code/.argmax/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm run lint", "npm test", "npm run build"]
       },
@@ -28,11 +28,11 @@ export const demoSnapshot: DashboardSnapshot = {
   workspaces: [
     {
       id: "workspace-ui-board",
-      projectId: "project-maestro",
+      projectId: "project-argmax",
       taskLabel: "Design parallel agent board",
-      branch: "maestro/agent-board",
+      branch: "argmax/agent-board",
       baseRef: "main",
-      path: "~/code/.maestro/worktrees/maestro-agent-board",
+      path: "~/code/.argmax/worktrees/argmax-agent-board",
       state: "running",
       sharedWorkspace: false,
       dirty: true,
@@ -41,11 +41,11 @@ export const demoSnapshot: DashboardSnapshot = {
     },
     {
       id: "workspace-review-studio",
-      projectId: "project-maestro",
+      projectId: "project-argmax",
       taskLabel: "Build review studio shell",
-      branch: "maestro/review-studio",
+      branch: "argmax/review-studio",
       baseRef: "main",
-      path: "~/code/.maestro/worktrees/maestro-review-studio",
+      path: "~/code/.argmax/worktrees/argmax-review-studio",
       state: "complete",
       sharedWorkspace: false,
       dirty: true,
@@ -54,11 +54,11 @@ export const demoSnapshot: DashboardSnapshot = {
     },
     {
       id: "workspace-approval-gate",
-      projectId: "project-maestro",
+      projectId: "project-argmax",
       taskLabel: "Gate destructive shell commands",
-      branch: "maestro/approval-gate",
+      branch: "argmax/approval-gate",
       baseRef: "main",
-      path: "~/code/.maestro/worktrees/maestro-approval-gate",
+      path: "~/code/.argmax/worktrees/argmax-approval-gate",
       state: "waiting",
       sharedWorkspace: false,
       dirty: false,
@@ -234,7 +234,7 @@ export const demoSnapshot: DashboardSnapshot = {
     {
       id: "approval-delete-worktree",
       sessionId: "session-approval-gate",
-      command: "git worktree remove ~/code/.maestro/worktrees/old-attempt",
+      command: "git worktree remove ~/code/.argmax/worktrees/old-attempt",
       cwd: "~/code/sample-project",
       provider: "codex",
       riskLevel: "high",

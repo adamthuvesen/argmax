@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fakeHome = mkdtempSync(join(tmpdir(), "maestro-skills-home-"));
+const fakeHome = mkdtempSync(join(tmpdir(), "argmax-skills-home-"));
 
 vi.mock("node:os", async () => {
   const actual = await vi.importActual("node:os");
@@ -49,7 +49,7 @@ function writePluginSkill(
 
 beforeEach(() => {
   clearSkillsCache();
-  workspaceCwd = mkdtempSync(join(tmpdir(), "maestro-skills-ws-"));
+  workspaceCwd = mkdtempSync(join(tmpdir(), "argmax-skills-ws-"));
   mkdirSync(claudeSkillsDir, { recursive: true });
   mkdirSync(claudePluginCache, { recursive: true });
   mkdirSync(codexSkillsDir, { recursive: true });

@@ -28,7 +28,7 @@ const providerDefinitions: ProviderDefinition[] = [
     versionArgs: ["--version"],
     modes: ["interactive-pty", "structured-json"],
     setupGuidance:
-      "Install Claude Code locally and authenticate it in your normal terminal. Maestro will launch the local `claude` CLI from the selected workspace."
+      "Install Claude Code locally and authenticate it in your normal terminal. Argmax will launch the local `claude` CLI from the selected workspace."
   },
   {
     id: "codex",
@@ -37,7 +37,7 @@ const providerDefinitions: ProviderDefinition[] = [
     versionArgs: ["--version"],
     modes: ["interactive-pty", "structured-json"],
     setupGuidance:
-      "Install the Codex CLI locally and authenticate it in your normal terminal. Maestro will launch the local `codex` CLI from the selected workspace."
+      "Install the Codex CLI locally and authenticate it in your normal terminal. Argmax will launch the local `codex` CLI from the selected workspace."
   }
 ];
 

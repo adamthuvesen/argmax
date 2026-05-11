@@ -1,4 +1,4 @@
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { CommitPreparation, PrepareCommitInput } from "../../shared/types.js";
 
 /**
@@ -22,7 +22,7 @@ export interface CommitPlan {
 }
 
 export class CommitPreparationService {
-  constructor(private readonly database: MaestroDatabase) {}
+  constructor(private readonly database: ArgmaxDatabase) {}
 
   prepareCommit(input: PrepareCommitInput): CommitPreparation {
     const plan = this.preparePlan(input);

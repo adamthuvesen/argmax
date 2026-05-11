@@ -252,7 +252,7 @@ export type DashboardDelta = {
   [K in keyof DashboardSnapshot]?: DashboardSnapshot[K];
 };
 
-export interface MaestroApi {
+export interface ArgmaxApi {
   dashboard: {
     load: () => Promise<DashboardSnapshot>;
     list: () => Promise<DashboardListSnapshot>;
@@ -317,6 +317,6 @@ export interface MaestroApi {
 
 declare global {
   interface Window {
-    maestro?: MaestroApi;
+    argmax?: ArgmaxApi;
   }
 }

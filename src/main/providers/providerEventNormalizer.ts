@@ -28,6 +28,14 @@ export interface NormalizeProviderEventOptions {
 }
 
 /**
+ * Per-line size cap before we attempt `JSON.parse`. A pathological provider
+ * emitting a multi-MiB single line would otherwise block the main process
+ * inside V8's parser. Raw bytes are still persisted via raw_outputs (which
+ * has its own 256 KiB cap); the timeline gets a truncation marker.
+ */
+const JSON_PARSE_LINE_CAP = 1_048_576;
+
+/**
  * Backward-compatible normalizer entry point — returns events only.
  * Usage extraction goes through `normalizeProviderEventWithUsage`.
  */
@@ -63,6 +71,26 @@ export function normalizeProviderEventWithUsage(
   for (const rawLine of candidates) {
     const line = rawLine.trim();
     if (!line) {
+      continue;
+    }
+
+    if (line.length > JSON_PARSE_LINE_CAP) {
+      // Skip JSON.parse on pathologically long lines. Surface a truncation
+      // marker so the renderer reflects what happened, but keep the raw bytes
+      // out of the timeline payload — they're already in raw_outputs.
+      results.push({
+        id: randomUUID(),
+        sessionId: event.sessionId,
+        type: "error",
+        message: `[argmax: skipped ${line.length}-byte line (> ${JSON_PARSE_LINE_CAP} bytes); too large to parse]`,
+        payload: {
+          raw: true,
+          stream: event.stream,
+          truncated: true,
+          droppedBytes: line.length
+        },
+        createdAt: event.createdAt
+      });
       continue;
     }
 

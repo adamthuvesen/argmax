@@ -114,19 +114,27 @@ app.on("before-quit", (event) => {
 });
 
 async function shutdown(): Promise<void> {
-  try {
-    if (providerSessions) {
+  // Each cleanup step is independent so a failure in one doesn't strand the
+  // others — a half-flushed WAL or leaked IPC handler is worse than a logged
+  // error in disposeAll.
+  if (providerSessions) {
+    try {
       await providerSessions.disposeAll();
+    } catch (error) {
+      console.error("[argmax] disposeAll failed during shutdown:", error);
     }
-    for (const channel of registeredChannels) {
-      ipcMain.removeHandler(channel);
-    }
-    if (database) {
+  }
+  for (const channel of registeredChannels) {
+    ipcMain.removeHandler(channel);
+  }
+  if (database) {
+    try {
       database.clearPruneInterval();
       database.connection.close();
-      database = null;
+    } catch (error) {
+      console.error("[argmax] database close failed during shutdown:", error);
     }
-  } finally {
-    app.exit(0);
+    database = null;
   }
+  app.exit(0);
 }

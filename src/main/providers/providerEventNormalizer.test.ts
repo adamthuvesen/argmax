@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { mapProviderType, normalizeProviderEvent } from "./providerEventNormalizer.js";
+import {
+  createNormalizerSessionContext,
+  mapProviderType,
+  normalizeProviderEvent,
+  normalizeProviderEventWithUsage
+} from "./providerEventNormalizer.js";
 import type { ProviderEvent } from "./providerTypes.js";
 
 describe("normalizeProviderEvent", () => {
@@ -202,3 +207,142 @@ function outputEvent(message: string, stream: ProviderEvent["stream"] = "stdout"
     createdAt: "2026-05-08T16:00:00.000Z"
   };
 }
+
+describe("normalizeProviderEventWithUsage — Claude usage extraction", () => {
+  const claudeAssistantWithUsage =
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-1",
+        model: "claude-sonnet-4-6",
+        content: [{ type: "text", text: "Hello." }],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 40,
+          cache_read_input_tokens: 500,
+          cache_creation_input_tokens: 200
+        }
+      }
+    }) + "\n";
+
+  it("extracts usage from a Claude assistant event", () => {
+    const result = normalizeProviderEventWithUsage(outputEvent(claudeAssistantWithUsage), {
+      provider: "claude"
+    });
+    expect(result.usages).toHaveLength(1);
+    expect(result.usages[0]).toMatchObject({
+      modelId: "claude-sonnet-4-6",
+      tokens: { input: 100, output: 40, cacheRead: 500, cacheWrite: 200 },
+      eventId: "msg-1"
+    });
+    // 100*3/M + 40*15/M + 500*0.3/M + 200*3.75/M
+    // = 0.0003 + 0.0006 + 0.00015 + 0.00075 = 0.0018
+    expect(result.usages[0]?.costUsd).toBeCloseTo(0.0018, 9);
+  });
+
+  it("emits a visible message event alongside the usage", () => {
+    const result = normalizeProviderEventWithUsage(outputEvent(claudeAssistantWithUsage), {
+      provider: "claude"
+    });
+    expect(result.events.some((e) => e.message === "Hello.")).toBe(true);
+  });
+
+  it("ignores Claude assistant events with zero usage totals", () => {
+    const line =
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "m9",
+          model: "claude-sonnet-4-6",
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0
+          }
+        }
+      }) + "\n";
+    const result = normalizeProviderEventWithUsage(outputEvent(line), { provider: "claude" });
+    expect(result.usages).toEqual([]);
+  });
+});
+
+describe("normalizeProviderEventWithUsage — Codex usage extraction", () => {
+  const turnContextLine =
+    JSON.stringify({
+      timestamp: "2026-04-20T12:49:05.000Z",
+      type: "turn_context",
+      payload: { model: "gpt-5.4", cwd: "/repo" }
+    }) + "\n";
+  const tokenCountLine =
+    JSON.stringify({
+      timestamp: "2026-04-20T12:49:10.000Z",
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          last_token_usage: {
+            input_tokens: 200,
+            cached_input_tokens: 50,
+            output_tokens: 60,
+            reasoning_output_tokens: 10,
+            total_tokens: 320
+          }
+        }
+      }
+    }) + "\n";
+
+  it("threads the model id forward from a prior turn_context", () => {
+    const context = createNormalizerSessionContext();
+    normalizeProviderEventWithUsage(outputEvent(turnContextLine), { provider: "codex", context });
+    expect(context.codexCurrentModel).toBe("gpt-5.4");
+
+    const result = normalizeProviderEventWithUsage(outputEvent(tokenCountLine), {
+      provider: "codex",
+      context
+    });
+    expect(result.usages).toHaveLength(1);
+    expect(result.usages[0]).toMatchObject({
+      modelId: "gpt-5.4",
+      // 200 - 50 cached = 150 non-cached input
+      tokens: { input: 150, output: 60, cacheRead: 50, cacheWrite: 0 }
+    });
+  });
+
+  it("uses 'unknown' when no prior turn_context has been seen", () => {
+    const context = createNormalizerSessionContext();
+    const result = normalizeProviderEventWithUsage(outputEvent(tokenCountLine), {
+      provider: "codex",
+      context
+    });
+    expect(result.usages).toHaveLength(1);
+    expect(result.usages[0]?.modelId).toBe("unknown");
+    expect(result.usages[0]?.costUsd).toBe(0);
+  });
+
+  it("ignores Codex token_count rows with zero totals", () => {
+    const context = createNormalizerSessionContext();
+    context.codexCurrentModel = "gpt-5.4";
+    const zero =
+      JSON.stringify({
+        timestamp: "2026-04-20T12:49:10.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            last_token_usage: {
+              input_tokens: 0,
+              output_tokens: 0,
+              cached_input_tokens: 0,
+              reasoning_output_tokens: 0
+            }
+          }
+        }
+      }) + "\n";
+    const result = normalizeProviderEventWithUsage(outputEvent(zero), {
+      provider: "codex",
+      context
+    });
+    expect(result.usages).toEqual([]);
+  });
+});

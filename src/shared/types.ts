@@ -15,13 +15,14 @@ import type {
   RegisterProjectInputParsed,
   ResolveApprovalInputParsed,
   RunCheckInputParsed,
+  SessionCostSummaryInputParsed,
   SessionEventsSinceInputParsed,
   SelectPreferredAttemptInputParsed,
   SkillsListInputParsed,
   UpdateProjectSettingsInputParsed,
   WorkspaceStatusInputParsed
 } from "./ipcSchemas.js";
-import type { ReasoningEffort } from "./providerModels.js";
+import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
 
 export type ProviderId = "claude" | "codex";
 
@@ -76,7 +77,15 @@ export type ProviderSessionInput = ProviderSessionInputParsed;
 export type ProviderSessionResizeInput = ProviderSessionResizeInputParsed;
 export type ResolveApprovalInput = ResolveApprovalInputParsed;
 export type SessionEventsSinceInput = SessionEventsSinceInputParsed;
+export type SessionCostSummaryInput = SessionCostSummaryInputParsed;
 export type WorkspaceStatusInput = WorkspaceStatusInputParsed;
+
+export interface SessionCostSummary {
+  sessionId: string;
+  modelId: string | null;
+  tokens: UsageCounts;
+  costUsd: number;
+}
 
 export interface ChangedFileSummary {
   path: string;
@@ -168,6 +177,8 @@ export interface SessionSummary {
   completedAt: string | null;
   lastActivityAt: string;
   preferred: boolean;
+  costUsd?: number;
+  tokens?: UsageCounts;
 }
 
 export interface TimelineEvent {
@@ -287,6 +298,7 @@ export interface ArgmaxApi {
   };
   session: {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
+    costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
   };
   review: {
     listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;

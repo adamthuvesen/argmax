@@ -57,6 +57,7 @@ npm test             # rebuild native modules for Node, then run Vitest
 npm run lint         # run ESLint
 npm run typecheck    # typecheck renderer/shared and main configs
 npm run build        # build main and renderer output
+npm run package      # build and package a distributable macOS app (output: release/)
 ```
 
 Targeted test runs:

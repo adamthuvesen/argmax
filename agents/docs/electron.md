@@ -13,6 +13,23 @@
 
 [scripts/ensure-node-pty-helper.cjs](../../scripts/ensure-node-pty-helper.cjs) runs after rebuilds to copy node-pty's helper binary into place — required on macOS. Don't edit it without understanding why.
 
+> **Note:** `electron` itself is a `devDependency` — it is not bundled into the app; `electron-builder` packages the binary separately.
+
+## Building a distributable
+
+```bash
+npm run package   # npm run build && electron-builder --mac
+```
+
+Output lands in `release/`. `electron-builder` is configured in the `"build"` key of `package.json`:
+
+- App ID: `com.menti.argmax`, product name: `Argmax`
+- Targets: `dmg` + `zip` for `arm64` and `x64`
+- Icon: `assets/icon.icns`
+- Bundled files: `dist/**/*` and `assets/**/*`
+
+For CI or cross-platform targets, pass additional flags to `electron-builder` directly; the `package` script is macOS-only by default.
+
 ## Lifecycle
 
 - `app.whenReady()` instantiates the database + `ProviderSessionService`, registers all IPC handlers, opens the `BrowserWindow`

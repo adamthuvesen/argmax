@@ -33,10 +33,9 @@ export function ToolCallGroupBubble({
     () => Math.min(...group.tools.map((t) => Date.parse(t.createdAt))),
     [group.tools]
   );
-  const latestEnd = useMemo(() => {
-    const ends = group.tools.map((t) => (t.completedAt ? Date.parse(t.completedAt) : now));
-    return Math.max(...ends);
-  }, [group.tools, now]);
+  // No useMemo: `now` ticks every 250 ms while a tool is running, so the
+  // memo never hit. Direct computation is the same cost as the dep-check.
+  const latestEnd = Math.max(...group.tools.map((t) => (t.completedAt ? Date.parse(t.completedAt) : now)));
   const elapsedMs = Number.isFinite(earliestStart) ? Math.max(0, latestEnd - earliestStart) : 0;
   const elapsedText = formatElapsed(elapsedMs);
   const chipLabel =

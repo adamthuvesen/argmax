@@ -2,25 +2,14 @@
  * Persistence layer for Argmax.
  *
  * `findSessionById` returns a `SessionSummary` whose `preferred` flag is
- * computed by `loadPreferredSessionIds`. That helper scans every
- * `ui_state` row matching `LIKE 'preferred-attempt:%'`, which would be an
- * N×M cost when called inside a loop (e.g. building dashboard summaries).
+ * computed by `loadPreferredSessionIds`. That helper reads `ui_state` via
+ * a primary-key range scan (`key >= 'preferred-attempt:' AND key <
+ * 'preferred-attempt;'`), which uses the PK index regardless of the
+ * `case_sensitive_like` pragma.
  *
- * Two complementary footgun mitigations:
- *
- *   1. Hot-path callers that don't need the preferred bit (e.g. callers
- *      that just persisted the row) should use `findSessionByIdNoPreferred`
- *      below. It's a single-row SELECT and never hits `ui_state`.
- *
- *   2. Bulk callers that do need preferred go through a request-scoped
- *      `WeakMap<connection, …>` cache populated on first call within a
- *      transaction. `selectPreferredAttempt` bumps a per-connection version
- *      number to invalidate the cache when it writes a new preference.
- *
- * Future maintainers: do NOT call `findSessionById` from a loop without
- * confirming you're inside a transaction (so the cache is in effect). If
- * you're not, prefer `findSessionByIdNoPreferred` plus a precomputed
- * `Set<string>` of preferred ids.
+ * Hot-path callers that don't need the preferred bit (e.g. callers that
+ * just persisted the row) should use `findSessionByIdNoPreferred` below.
+ * It's a single-row SELECT and never hits `ui_state`.
  */
 import Database from "better-sqlite3";
 import { getDatabasePath } from "../paths.js";
@@ -1404,39 +1393,10 @@ function maxRowCursor(rows: Array<{ row_cursor?: number }>, fallback: number): n
   return rows.reduce((max, row) => Math.max(max, row.row_cursor ?? max), fallback);
 }
 
-/**
- * Per-connection request-scoped cache for `loadPreferredSessionIds`. The
- * cache is keyed by the better-sqlite3 connection object via WeakMap so
- * it is GC'd when the connection is closed. The version counter is bumped
- * by `selectPreferredAttempt` after it writes a new preference; cache
- * consumers compare against the latest version before returning the
- * memoized set. See file-level docstring for context.
- */
-interface PreferredCacheEntry {
-  version: number;
-  ids: Set<string> | null;
-}
-const preferredCache = new WeakMap<Database.Database, PreferredCacheEntry>();
-
-function getOrInitPreferredCache(connection: Database.Database): PreferredCacheEntry {
-  let entry = preferredCache.get(connection);
-  if (!entry) {
-    entry = { version: 0, ids: null };
-    preferredCache.set(connection, entry);
-  }
-  return entry;
-}
-
-function bumpPreferredVersion(connection: Database.Database): void {
-  const entry = getOrInitPreferredCache(connection);
-  entry.version += 1;
-  entry.ids = null;
-}
-
 function selectPreferredAttempt(connection: Database.Database, sessionId: string): SessionSummary {
   return connection.transaction(() => {
     // Read first via the no-preferred fast path so the workspace lookup is
-    // available without polluting the preferred cache.
+    // available without an extra ui_state scan.
     const session = findSessionByIdNoPreferred(connection, sessionId);
     const workspace = findWorkspaceById(connection, session.workspaceId);
     const key = preferredAttemptKey(workspace.projectId, workspace.taskLabel);
@@ -1450,9 +1410,6 @@ function selectPreferredAttempt(connection: Database.Database, sessionId: string
       )
       .run(key, JSON.stringify({ sessionId }), new Date().toISOString());
 
-    // Invalidate the cache so the re-read below sees the just-written row.
-    bumpPreferredVersion(connection);
-
     // Re-read with preferred recomputed; returned session reflects the
     // just-written preferred state without relying on a `{ ...session,
     // preferred: true }` overlay — concurrent calls would otherwise
@@ -1462,21 +1419,20 @@ function selectPreferredAttempt(connection: Database.Database, sessionId: string
 }
 
 function loadPreferredSessionIds(connection: Database.Database): Set<string> {
-  const entry = getOrInitPreferredCache(connection);
-  if (entry.ids) {
-    return entry.ids;
-  }
+  // Range scan on the PK index — `LIKE 'preferred-attempt:%'` skips the index
+  // unless `case_sensitive_like` is ON. The half-open range below uses the PK
+  // regardless of pragma settings. `:` is 0x3A, `;` is 0x3B (next codepoint).
   const rows = connection
-    .prepare("SELECT value_json FROM ui_state WHERE key LIKE 'preferred-attempt:%'")
+    .prepare(
+      "SELECT value_json FROM ui_state WHERE key >= 'preferred-attempt:' AND key < 'preferred-attempt;'"
+    )
     .all() as Array<{ value_json: string }>;
 
-  const ids = new Set(
+  return new Set(
     rows
       .map((row) => parseJsonRecord(row.value_json, "database.preferredAttempt").sessionId)
       .filter((value): value is string => typeof value === "string")
   );
-  entry.ids = ids;
-  return ids;
 }
 
 function isPreferredSession(connection: Database.Database, sessionId: string): boolean {

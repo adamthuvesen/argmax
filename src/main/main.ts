@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -38,6 +38,30 @@ async function createWindow(): Promise<void> {
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
+  });
+
+  // Block any window.open / target=_blank attempts. External links should
+  // route through `shell.openExternal` when we choose to support them.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://") || url.startsWith("http://")) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+
+  // Refuse any in-page navigation away from the loaded app bundle. The only
+  // legitimate navigations during a session are dev-server reloads.
+  const loadedOrigin =
+    is.dev && process.env.ELECTRON_RENDERER_URL
+      ? new URL(process.env.ELECTRON_RENDERER_URL).origin
+      : is.dev
+        ? "http://127.0.0.1:5173"
+        : "file://";
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    const allowed = loadedOrigin === "file://" ? url.startsWith("file://") : url.startsWith(loadedOrigin);
+    if (!allowed) {
+      event.preventDefault();
+    }
   });
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {

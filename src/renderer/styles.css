@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
 :root {
   color-scheme: light;
   --font-ui: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
@@ -337,6 +339,7 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: lowercase;
 }
 
 .project-visibility {
@@ -364,11 +367,11 @@ button {
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-columns: 8px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   width: 100%;
-  min-height: 30px;
+  min-height: 26px;
   padding: 0 10px 0 22px;
   color: var(--muted);
   text-align: left;
@@ -376,6 +379,7 @@ button {
   border-radius: 8px;
   background: transparent;
   cursor: pointer;
+  font-size: 12.5px;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -398,12 +402,13 @@ button {
 
 .status-dot {
   display: inline-block;
-  visibility: hidden;
-  width: 7px;
-  height: 7px;
+  visibility: visible;
+  width: 5px;
+  height: 5px;
   flex: 0 0 auto;
   border-radius: 999px;
-  box-shadow: 0 0 0 2px transparent;
+  background: transparent;
+  box-shadow: 0 0 0 1.5px var(--line-strong);
   transition: background var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
 }
 
@@ -643,14 +648,17 @@ button {
 }
 
 .launcher-surface h1 {
-  margin: 0;
-  text-align: center;
-  font-size: 38px;
-  font-weight: 480;
-  line-height: 1.16;
-  letter-spacing: -0.012em;
-  color: var(--text);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
+  margin: 0 auto;
+  width: fit-content;
+  padding: 4px 14px;
+  font-family: 'VT323', monospace;
+  font-size: 58px;
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+  background: var(--text);
+  text-shadow: none;
 }
 
 .empty-project-launcher {
@@ -660,18 +668,16 @@ button {
 
 .settings-scroll {
   overflow: auto;
-  padding: 96px 36px 64px;
-  -webkit-app-region: drag;
-  app-region: drag;
+  padding: 140px 48px 80px;
 }
 
 .settings-surface {
   display: flex;
   flex-direction: column;
-  width: min(100%, 720px);
+  width: min(100%, 740px);
   margin: 0 auto;
   padding: 0 0 80px;
-  gap: 24px;
+  gap: 36px;
   animation: surface-in 320ms var(--ease) both;
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -686,64 +692,76 @@ button {
 
 .settings-header h1 {
   margin: 4px 0 0;
-  font-size: 28px;
-  font-weight: 540;
-  letter-spacing: -0.012em;
+  font-size: 30px;
+  font-weight: 560;
+  letter-spacing: -0.014em;
   color: var(--text);
 }
 
 .settings-section {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .settings-section-header {
   display: grid;
-  gap: 4px;
-  padding: 0 4px;
+  gap: 3px;
+  padding: 0 2px;
 }
 
 .settings-section-header h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: -0.008em;
   color: var(--text);
 }
 
 .settings-section-header p {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.5;
 }
 
 .settings-card {
-  display: grid;
-  gap: 16px;
-  padding: 16px 18px;
-  border: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
   box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.settings-card > * {
+  padding: 16px 20px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.settings-card > *:first-child {
+  border-top: 0;
 }
 
 .settings-account {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .settings-avatar {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   background: var(--ink);
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   box-shadow: var(--shadow-1);
+  flex: 0 0 auto;
 }
 
 .settings-account-meta {
@@ -752,20 +770,20 @@ button {
 }
 
 .settings-account-name {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 600;
   color: var(--text);
 }
 
 .settings-account-sub {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--muted);
 }
 
 .settings-keyvals {
   display: grid;
-  grid-template-columns: minmax(120px, max-content) 1fr;
-  gap: 6px 18px;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: 0;
   margin: 0;
   font-size: 13px;
 }
@@ -774,50 +792,58 @@ button {
   display: contents;
 }
 
-.settings-keyvals dt {
+.settings-keyvals dt,
+.settings-keyvals dd {
   margin: 0;
-  color: var(--muted);
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.settings-keyvals div:first-child dt,
+.settings-keyvals div:first-child dd {
+  border-top: 0;
+}
+
+.settings-keyvals dt {
+  color: var(--text-soft);
   font-weight: 500;
 }
 
 .settings-keyvals dd {
-  margin: 0;
-  color: var(--text-soft);
+  color: var(--muted);
 }
 
 .settings-radio-group {
   display: grid;
-  gap: 6px;
+  gap: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
 .settings-radio-group legend {
-  margin-bottom: 6px;
-  padding: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted-strong);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  display: none;
 }
 
 .settings-radio-group label {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 10px 16px 10px 12px;
+  border-top: 1px solid var(--line-soft);
   cursor: default;
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text);
-  transition: background var(--duration-fast) var(--ease);
+}
+
+.settings-radio-group label:first-of-type {
+  border-top: 0;
 }
 
 .settings-radio-group input[type="radio"] {
   accent-color: var(--ink);
   cursor: inherit;
+  flex: 0 0 auto;
 }
 
 .settings-radio-disabled {
@@ -826,11 +852,12 @@ button {
 
 .settings-pill {
   margin-left: auto;
-  padding: 1px 8px;
+  padding: 2px 9px;
   border-radius: 999px;
   background: var(--panel-sunken);
   color: var(--muted-strong);
   font-size: 11px;
+  font-weight: 500;
   letter-spacing: 0.02em;
 }
 
@@ -843,7 +870,7 @@ button {
 }
 
 .settings-row label {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text);
 }
@@ -1034,10 +1061,21 @@ button {
 }
 
 .composer-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 10px;
+  border: 0;
   border-radius: 999px;
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.composer-context-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--line-strong);
 }
 
 .composer-context-chip:hover {
@@ -1106,6 +1144,7 @@ button {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
+  outline: none;
 }
 
 .model-selector select {
@@ -1115,6 +1154,60 @@ button {
 .model-selector input {
   width: min(180px, 34vw);
   padding: 0 9px;
+}
+
+.project-picker-anchor {
+  position: relative;
+}
+
+.project-picker-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 200px;
+  max-height: 260px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+}
+
+.project-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  color: var(--text-soft);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.project-picker-item:hover {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.project-picker-item[aria-pressed="true"] {
+  background: var(--panel-sunken);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.project-picker-divider {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 4px 6px;
 }
 
 .composer-status {

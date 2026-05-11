@@ -45,7 +45,11 @@ const api: MaestroApi = {
     pickFolder: () => ipcRenderer.invoke("projects:pick-folder") as Promise<ProjectFolderPickResult>,
     register: (input: RegisterProjectInput) => ipcRenderer.invoke("projects:register", input) as Promise<ProjectSummary>,
     updateSettings: (input: UpdateProjectSettingsInput) =>
-      ipcRenderer.invoke("projects:update-settings", input) as Promise<ProjectSummary>
+      ipcRenderer.invoke("projects:update-settings", input) as Promise<ProjectSummary>,
+    listBranches: (projectId: string) =>
+      ipcRenderer.invoke("projects:list-branches", { projectId }) as Promise<string[]>,
+    switchBranch: (projectId: string, branch: string) =>
+      ipcRenderer.invoke("projects:switch-branch", { projectId, branch }) as Promise<ProjectSummary>
   },
   workspaces: {
     createIsolated: (input: CreateWorkspaceInput) =>

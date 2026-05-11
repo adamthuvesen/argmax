@@ -32,10 +32,11 @@ export type WorkspaceState =
   | "blocked"
   | "complete"
   | "failed"
+  | "cancelled"
   | "kept"
   | "archived";
 
-export type SessionState = "created" | "running" | "waiting" | "blocked" | "complete" | "failed";
+export type SessionState = "created" | "running" | "waiting" | "blocked" | "complete" | "failed" | "cancelled";
 
 export type AttentionState = "normal" | "approval-needed" | "blocked" | "failed" | "review-ready";
 
@@ -55,7 +56,8 @@ export type EventType =
   | "check.started"
   | "check.completed"
   | "error"
-  | "session.completed";
+  | "session.completed"
+  | "session.cancelled";
 
 export interface ProjectSettings {
   defaultProvider: ProviderId;
@@ -261,6 +263,8 @@ export interface MaestroApi {
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
+    listBranches: (projectId: string) => Promise<string[]>;
+    switchBranch: (projectId: string, branch: string) => Promise<ProjectSummary>;
   };
   workspaces: {
     createIsolated: (input: CreateWorkspaceInput) => Promise<WorkspaceSummary>;

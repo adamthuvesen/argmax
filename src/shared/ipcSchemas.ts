@@ -77,6 +77,11 @@ export const healthPingInputSchema = z.void();
 export const projectsListInputSchema = z.void();
 export const projectsPickFolderInputSchema = z.void();
 export const providersDiscoverInputSchema = z.void();
+export const listBranchesInputSchema = z.object({ projectId: projectIdSchema });
+export const switchBranchInputSchema = z.object({
+  projectId: projectIdSchema,
+  branch: z.string().min(1)
+});
 export const dashboardLoadInputSchema = z.void();
 export const dashboardListInputSchema = z.void();
 
@@ -207,6 +212,8 @@ export const ipcSchemas = {
   "dashboard:list": dashboardListInputSchema,
   "projects:register": registerProjectInputSchema,
   "projects:update-settings": updateProjectSettingsInputSchema,
+  "projects:list-branches": listBranchesInputSchema,
+  "projects:switch-branch": switchBranchInputSchema,
   "workspaces:create-isolated": createWorkspaceInputSchema,
   "workspaces:create-current": createCurrentWorkspaceInputSchema,
   "workspaces:refresh-status": workspaceIdInputSchema,

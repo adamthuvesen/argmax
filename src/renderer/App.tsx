@@ -3,6 +3,7 @@ import {
   Archive,
   Bug,
   Check,
+  ChevronDown,
   ChevronRight,
   Command,
   ExternalLink,
@@ -814,10 +815,13 @@ export function App(): JSX.Element {
           ) : (
             <LaunchSurface
               onAddProject={() => void addProject()}
+              onBranchSwitch={(updated) => setSnapshot((s) => ({ ...s, projects: s.projects.map((p) => p.id === updated.id ? updated : p) }))}
               onLaunchTask={launchTask}
               model={launchModel}
               onModelChange={setLaunchModel}
+              onSelectProject={openProjectLauncher}
               project={selectedProject}
+              projects={snapshot.projects}
             />
           )}
         </div>
@@ -1378,7 +1382,19 @@ function SessionConversation({
     session &&
       ["complete", "waiting"].includes(session.state)
   );
-  const isThinking = session?.state === "running" && !hasAssistantForLatestTurn;
+  const lastSignificantEvent = events.find(
+    (event) =>
+      event.payload.raw !== true &&
+      (event.type === "user.message" ||
+        event.type === "message.delta" ||
+        event.type === "message.completed" ||
+        event.type === "command.completed")
+  );
+  const lastIsAssistantMessage =
+    lastSignificantEvent?.type === "message.delta" ||
+    lastSignificantEvent?.type === "message.completed";
+  const isThinking =
+    session?.state === "running" && !anyToolRunning && !lastIsAssistantMessage;
 
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const wasNearBottomRef = useRef<boolean>(true);
@@ -2375,19 +2391,70 @@ function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
 function LaunchSurface({
   model,
   onAddProject,
+  onBranchSwitch,
   onLaunchTask,
   onModelChange,
-  project
+  onSelectProject,
+  project,
+  projects
 }: {
   model: ModelPickerSelection;
   onAddProject: () => void;
+  onBranchSwitch: (updated: ProjectSummary) => void;
   onLaunchTask: (prompt: string, model: ModelPickerSelection) => Promise<void>;
   onModelChange: (model: ModelPickerSelection) => void;
+  onSelectProject: (id: string) => void;
   project: ProjectSummary | null;
+  projects: ProjectSummary[];
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const projectPickerRef = useRef<HTMLDivElement | null>(null);
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const [branches, setBranches] = useState<string[]>([]);
+  const branchPickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!projectPickerOpen) return;
+    const handleMouseDown = (e: MouseEvent): void => {
+      if (projectPickerRef.current && !projectPickerRef.current.contains(e.target as Node)) {
+        setProjectPickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [projectPickerOpen]);
+
+  useEffect(() => {
+    if (!branchPickerOpen) return;
+    const handleMouseDown = (e: MouseEvent): void => {
+      if (branchPickerRef.current && !branchPickerRef.current.contains(e.target as Node)) {
+        setBranchPickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [branchPickerOpen]);
+
+  const openBranchPicker = useCallback(async (): Promise<void> => {
+    if (!window.maestro || !project) return;
+    const list = await window.maestro.projects.listBranches(project.id);
+    setBranches(list);
+    setBranchPickerOpen(true);
+  }, [project]);
+
+  const switchBranch = useCallback(async (branch: string): Promise<void> => {
+    if (!window.maestro || !project) return;
+    setBranchPickerOpen(false);
+    try {
+      const updated = await window.maestro.projects.switchBranch(project.id, branch);
+      onBranchSwitch(updated);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not switch branch.");
+    }
+  }, [project, onBranchSwitch]);
   const headingTemplate = useMemo(() => {
     const options = [
       "{name}: the final frontier.",
@@ -2502,14 +2569,77 @@ function LaunchSurface({
           </button>
         </div>
         <div className="composer-context">
-          <span className="composer-context-chip">
-            <Folder size={14} aria-hidden="true" />
-            {project.name}
-          </span>
-          <span className="composer-context-chip">
-            <GitBranch size={14} aria-hidden="true" />
-            main
-          </span>
+          <div className="project-picker-anchor" ref={projectPickerRef}>
+            <button
+              className="composer-context-chip"
+              type="button"
+              aria-label="Switch project"
+              aria-expanded={projectPickerOpen}
+              onClick={() => setProjectPickerOpen((o) => !o)}
+            >
+              <Folder size={14} aria-hidden="true" />
+              {project.name}
+              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+            </button>
+            {projectPickerOpen && (
+              <ul className="project-picker-popover" role="listbox" aria-label="Select project">
+                {projects.map((p) => (
+                  <li key={p.id} role="option" aria-selected={p.id === project.id}>
+                    <button
+                      type="button"
+                      className="project-picker-item"
+                      aria-pressed={p.id === project.id}
+                      onClick={() => { onSelectProject(p.id); setProjectPickerOpen(false); }}
+                    >
+                      <Folder size={13} aria-hidden="true" />
+                      {p.name}
+                    </button>
+                  </li>
+                ))}
+                <li className="project-picker-divider" role="separator" />
+                <li role="option" aria-selected={false}>
+                  <button
+                    type="button"
+                    className="project-picker-item"
+                    onClick={() => { onAddProject(); setProjectPickerOpen(false); }}
+                  >
+                    <Plus size={13} aria-hidden="true" />
+                    Browse folder…
+                  </button>
+                </li>
+              </ul>
+            )}
+          </div>
+          <div className="project-picker-anchor" ref={branchPickerRef}>
+            <button
+              className="composer-context-chip"
+              type="button"
+              aria-label="Switch branch"
+              aria-expanded={branchPickerOpen}
+              onClick={() => void openBranchPicker()}
+            >
+              <GitBranch size={14} aria-hidden="true" />
+              {project.currentBranch}
+              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+            </button>
+            {branchPickerOpen && (
+              <ul className="project-picker-popover" role="listbox" aria-label="Select branch">
+                {branches.map((b) => (
+                  <li key={b} role="option" aria-selected={b === project.currentBranch}>
+                    <button
+                      type="button"
+                      className="project-picker-item"
+                      aria-pressed={b === project.currentBranch}
+                      onClick={() => void switchBranch(b)}
+                    >
+                      <GitBranch size={13} aria-hidden="true" />
+                      {b}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <CombinedModelSelector value={model} onChange={onModelChange} ariaLabel="Launch model" />
         </div>
         {status ? (

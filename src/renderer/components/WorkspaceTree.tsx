@@ -12,6 +12,11 @@ type TreeNode = {
 
 function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
   const root: TreeNode = { name: "", path: "", kind: "dir", children: [] };
+  // Per-cursor `Map<segment, TreeNode>` makes the inner lookup O(1). The
+  // previous `cursor.children.find(...)` made the build O(n²) for wide
+  // directories with many siblings.
+  const indexes = new WeakMap<TreeNode, Map<string, TreeNode>>();
+  indexes.set(root, new Map());
   for (const entry of entries) {
     const segments = entry.path.split("/").filter(Boolean);
     let cursor = root;
@@ -20,7 +25,11 @@ function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
       if (!segment) continue;
       const isLast = i === segments.length - 1;
       const childPath = cursor.path ? `${cursor.path}/${segment}` : segment;
-      let next = cursor.children.find((child) => child.name === segment);
+      const cursorIndex = indexes.get(cursor);
+      if (!cursorIndex) {
+        throw new Error("buildFileTree: missing index for cursor");
+      }
+      let next = cursorIndex.get(segment);
       if (!next) {
         next = {
           name: segment,
@@ -29,6 +38,8 @@ function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
           children: []
         };
         cursor.children.push(next);
+        cursorIndex.set(segment, next);
+        indexes.set(next, new Map());
       }
       cursor = next;
     }

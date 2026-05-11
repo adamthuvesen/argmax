@@ -948,10 +948,11 @@ function createFakeProvider(provider: ProviderId): {
           },
           resize: (cols, rows) => fake.resizeCalls.push({ cols, rows }),
           terminate: () => {
-            if (handle.disposed) return;
+            if (handle.disposed) return Promise.resolve();
             handle.disposed = true;
             fake.terminated = true;
             fake.terminatedCalls += 1;
+            return Promise.resolve();
           }
         };
         fake.handle = handle;

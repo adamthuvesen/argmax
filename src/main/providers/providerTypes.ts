@@ -43,7 +43,12 @@ export interface ProviderSessionHandle {
   disposed: boolean;
   sendInput: (input: string) => void;
   resize: (cols: number, rows: number) => void;
-  terminate: () => Promise<void> | void;
+  /**
+   * Initiates teardown (SIGTERM, then SIGKILL escalation) and resolves when the
+   * child process has actually exited (onExit fired). Idempotent — repeated
+   * calls return the same already-resolved promise.
+   */
+  terminate: () => Promise<void>;
 }
 
 export interface ProviderAdapter {

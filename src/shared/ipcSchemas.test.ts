@@ -8,7 +8,8 @@ import {
   prepareCommitInputSchema,
   providerSessionInputSchema,
   registerProjectInputSchema,
-  resolveApprovalInputSchema
+  resolveApprovalInputSchema,
+  switchBranchInputSchema
 } from "./ipcSchemas.js";
 
 describe("ipcSchemas", () => {
@@ -218,6 +219,15 @@ describe("ipcSchemas", () => {
         rows: 24
       })
     ).toThrow();
+  });
+
+  it("rejects switchBranch when the branch name starts with '-' (argv-injection guard)", () => {
+    expect(() => switchBranchInputSchema.parse({ projectId: "p-1", branch: "--orphan" })).toThrow();
+    expect(() => switchBranchInputSchema.parse({ projectId: "p-1", branch: "-q" })).toThrow();
+    expect(switchBranchInputSchema.parse({ projectId: "p-1", branch: "feature/foo" })).toEqual({
+      projectId: "p-1",
+      branch: "feature/foo"
+    });
   });
 
   it("rejects createWorkspace with a baseRef starting with '-'", () => {

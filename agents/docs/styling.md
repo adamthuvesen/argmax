@@ -35,7 +35,7 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 
 ## Chat bubbles
 
-User bubbles (`chat-bubble.user`) have a near-black background (`var(--ink)`) with white text — set `color: #ffffff` on both the bubble and its `p` descendants when targeting them. The dark mode override flips this to a white bubble with dark text. Do not revert to the light-gray style.
+User bubbles (`chat-bubble.user`) have a near-black background (`var(--ink)`) with white text — set `color: #ffffff` on both the bubble and its `p` descendants when targeting them. Do not revert to the light-gray style.
 
 `::selection` uses a translucent sage tint (`rgba(90, 143, 114, 0.22)`) globally. Inside user bubbles, a separate `.chat-bubble.user ::selection` rule switches to a translucent white so the highlight is visible on the dark background.
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+
 import type { ProviderId, SkillSummary } from "../../shared/types.js";
 
 /**
@@ -43,7 +44,10 @@ export function useSlashAutocomplete({
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [selectionIndex, setSelectionIndex] = useState(0);
   const fetchedFor = useRef<string | null>(null);
-  const slashQuery = parseSlashQuery(input);
+  // Memoize so identity is stable per `input`. Without this, every parent
+  // render rebuilds the result object, refiring the fetch + filter effects
+  // below on deps that didn't actually change.
+  const slashQuery = useMemo(() => parseSlashQuery(input), [input]);
 
   useEffect(() => {
     if (!slashQuery || !provider) {

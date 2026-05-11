@@ -53,6 +53,9 @@ export function useSlashAutocomplete({
     if (fetchedFor.current === cacheKey) {
       return;
     }
+    // Set synchronously so re-entrant renders during the in-flight window
+    // don't fire duplicate IPC calls; cleared in .catch so a transient
+    // failure can be retried on the next render.
     fetchedFor.current = cacheKey;
     let cancelled = false;
     const api = window.argmax?.skills;
@@ -62,14 +65,13 @@ export function useSlashAutocomplete({
     void api
       .list(workspaceId ? { provider, workspaceId } : { provider })
       .then((result) => {
-        if (!cancelled) {
-          setSkills(result);
-        }
+        if (cancelled) return;
+        setSkills(result);
       })
       .catch(() => {
-        if (!cancelled) {
-          setSkills([]);
-        }
+        if (cancelled) return;
+        fetchedFor.current = null;
+        setSkills([]);
       });
     return () => {
       cancelled = true;
@@ -106,12 +108,12 @@ export function useSlashAutocomplete({
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSelectionIndex((selectionIndex + 1) % filteredSkills.length);
+      setSelectionIndex((prev) => (prev + 1) % filteredSkills.length);
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setSelectionIndex((selectionIndex - 1 + filteredSkills.length) % filteredSkills.length);
+      setSelectionIndex((prev) => (prev - 1 + filteredSkills.length) % filteredSkills.length);
       return;
     }
     if (event.key === "Enter" || event.key === "Tab") {

@@ -158,11 +158,57 @@ describe("ProviderSessionService", () => {
         (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id)
       ).toThrow("write failed");
       expect(deltas).toEqual([]);
+      // Buffer must survive a transient persistence failure so the next flush
+      // can retry. This is the load-bearing reason we splice after the
+      // transaction commits, not before.
+      const buffers = (service as unknown as {
+        buffers: Map<string, { pendingRawOutputs: unknown[] }>;
+      }).buffers;
+      expect(buffers.get(session.id)?.pendingRawOutputs.length).toBe(1);
     } finally {
       persistRawOutput.mockRestore();
       await service.terminate(session.id);
       database.connection.close();
     }
+  });
+
+  it("drops the batch without throwing when the session row is deleted mid-flush", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: "plain log line\n",
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    database.connection.prepare("DELETE FROM sessions WHERE id = ?").run(session.id);
+
+    expect(() => (service as unknown as { flushBatch: (id: string) => void }).flushBatch(session.id)).not.toThrow();
+    expect(deltas).toEqual([]);
+
+    const rawOutputCount = database.connection
+      .prepare("SELECT COUNT(*) AS c FROM raw_outputs WHERE session_id = ?")
+      .get(session.id) as { c: number };
+    expect(rawOutputCount.c).toBe(0);
+
+    database.connection.close();
   });
 
   it("launches a provider from a selected workspace and completes successful exits for review", async () => {

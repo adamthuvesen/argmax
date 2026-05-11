@@ -72,12 +72,12 @@ describe("launchIde", () => {
     );
   });
 
-  it("launches Terminal via osascript do script", async () => {
+  it("launches Terminal via osascript with quoted form of for the path", async () => {
     spawnMock.mockReturnValue(makeChild());
     await launchIde("terminal", "/tmp/work", ALL_DETECTED);
     expect(spawnMock).toHaveBeenCalledWith(
       "osascript",
-      ["-e", 'tell application "Terminal" to do script "cd /tmp/work"'],
+      ["-e", 'tell application "Terminal" to do script "cd " & quoted form of "/tmp/work"'],
       expect.objectContaining({ detached: true })
     );
   });
@@ -115,13 +115,30 @@ describe("launchIde", () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
-  it("escapes double quotes in the path when building osascript args", async () => {
+  it("escapes double quotes and backslashes in the path when building osascript args", async () => {
     spawnMock.mockReturnValue(makeChild());
-    await launchIde("terminal", '/tmp/with"quote', ALL_DETECTED);
+    await launchIde("terminal", '/tmp/with"quote\\back', ALL_DETECTED);
     expect(spawnMock).toHaveBeenCalledWith(
       "osascript",
-      ["-e", 'tell application "Terminal" to do script "cd /tmp/with\\"quote"'],
+      [
+        "-e",
+        'tell application "Terminal" to do script "cd " & quoted form of "/tmp/with\\"quote\\\\back"'
+      ],
       expect.objectContaining({ detached: true })
     );
+  });
+
+  it("wraps paths containing shell metacharacters in quoted form of so cd cannot be injected", async () => {
+    spawnMock.mockReturnValue(makeChild());
+    await launchIde("terminal", "/tmp/foo;rm -rf $(echo pwned)", ALL_DETECTED);
+    const call = spawnMock.mock.calls[0];
+    const script = (call?.[1] as string[])[1] ?? "";
+    // The metacharacters must reach AppleScript inside the string literal, not
+    // as raw shell tokens. `quoted form of` will then single-quote them before
+    // they reach `do script`'s shell.
+    expect(script).toContain('"/tmp/foo;rm -rf $(echo pwned)"');
+    expect(script).toContain("quoted form of");
+    // And the script never builds the cd command via direct interpolation:
+    expect(script).not.toContain('"cd /tmp/foo;rm -rf');
   });
 });

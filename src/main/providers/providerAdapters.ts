@@ -234,13 +234,9 @@ async function launchInteractivePty(
     terminate: () => {
       if (handle.disposed) return;
       handle.disposed = true;
-      try {
-        dataDisposable.dispose();
-      } catch {
-        /* ignore */
-      }
-      // exitDisposable is intentionally NOT disposed here. It must stay alive so
-      // onExit can cancel the SIGKILL escalation timer if SIGTERM succeeds first.
+      dataDisposable.dispose();
+      // exitDisposable stays alive so onExit can cancel the SIGKILL escalation
+      // timer if SIGTERM succeeds first.
       killEscalation = scheduleSigkillEscalation(
         () => ptyProcess?.kill("SIGTERM"),
         () => {
@@ -266,20 +262,10 @@ async function launchInteractivePty(
     exitDisposable = ptyProcess.onExit(({ exitCode, signal }) => {
       killEscalation?.cancel();
       killEscalation = null;
-      // Release the PTY and clean up listeners unconditionally — both the
-      // terminate() path (handle.disposed already true) and the natural exit
-      // path need this. releasePty() is a no-op if SIGKILL already ran first.
+      // Both the terminate() path and the natural exit path land here.
       releasePty();
-      try {
-        dataDisposable.dispose();
-      } catch {
-        /* ignore */
-      }
-      try {
-        exitDisposable.dispose();
-      } catch {
-        /* ignore */
-      }
+      dataDisposable.dispose();
+      exitDisposable.dispose();
       if (handle.disposed) {
         return;
       }
@@ -301,12 +287,8 @@ async function launchInteractivePty(
       ptyProcess.write(`${input.prompt}\r`);
     }
   } catch (error) {
-    // Post-spawn wiring failed: ensure the child is killed before re-throwing.
-    try {
-      void handle.terminate();
-    } catch {
-      /* ignore */
-    }
+    // Post-spawn wiring failed: kill the child before re-throwing.
+    void handle.terminate();
     const detail = error instanceof Error ? error.message : "Unknown PTY wiring error";
     throw new ProviderLaunchError(
       `Could not wire ${definition.displayName} PTY: ${detail}`,
@@ -387,12 +369,8 @@ async function launchStructuredProcess(
     terminate: () => {
       if (handle.disposed) return;
       handle.disposed = true;
-      try {
-        if (childProcess.stdin.writable) {
-          childProcess.stdin.end();
-        }
-      } catch {
-        /* already closed */
+      if (childProcess.stdin.writable) {
+        childProcess.stdin.end();
       }
       killEscalation = scheduleSigkillEscalation(
         () => childProcess.kill("SIGTERM"),
@@ -401,11 +379,8 @@ async function launchStructuredProcess(
     }
   };
 
-  // Swallow EPIPE on stdin (M9): writes after the child closes stdin would
-  // otherwise crash the main process.
-  childProcess.stdin.on("error", () => {
-    /* swallow EPIPE and similar */
-  });
+  // Swallow EPIPE (M9): writes after the child closes stdin would crash main.
+  childProcess.stdin.on("error", () => undefined);
 
   const createdAt = () => new Date().toISOString();
 
@@ -460,11 +435,7 @@ async function launchStructuredProcess(
     });
     childProcess.stdin.end(definition.structuredStdin?.(input) ?? undefined);
   } catch (error) {
-    try {
-      void handle.terminate();
-    } catch {
-      /* ignore */
-    }
+    void handle.terminate();
     const detail = error instanceof Error ? error.message : "Unknown wiring error";
     throw new ProviderLaunchError(
       `Could not wire ${definition.displayName} structured probe: ${detail}`,

@@ -77,7 +77,7 @@ export async function launchIde(
 }
 
 function launchTerminal(path: string): void {
-  const script = `tell application "Terminal" to do script "cd ${escapeForOsascript(path)}"`;
+  const script = `tell application "Terminal" to do script "cd " & quoted form of "${escapeForOsascript(path)}"`;
   spawnDetached("osascript", ["-e", script]);
 }
 
@@ -86,16 +86,20 @@ function launchIterm(path: string): void {
   const script =
     `tell application "iTerm"\n` +
     `  create window with default profile\n` +
-    `  tell current session of current window to write text "cd ${escaped}"\n` +
+    `  tell current session of current window to write text "cd " & quoted form of "${escaped}"\n` +
     `end tell`;
   spawnDetached("osascript", ["-e", script]);
 }
 
+/**
+ * Escape a path for use inside an AppleScript double-quoted string literal.
+ * The AppleScript layer then passes the value through `quoted form of`, which
+ * produces a single-quoted shell argument — that's what stops shell
+ * metacharacters in the path (`;`, backticks, `$(...)`) from being executed.
+ * Newlines are rejected upstream in `launchIde`.
+ */
 function escapeForOsascript(value: string): string {
-  // Inside an AppleScript double-quoted string, the only character that
-  // needs escaping is the double quote itself. We've already rejected
-  // newlines upstream.
-  return value.replace(/"/g, '\\"');
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function spawnDetached(command: string, args: readonly string[]): ChildProcess {

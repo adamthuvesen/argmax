@@ -1,5 +1,5 @@
 /**
- * Persistence layer for Maestro.
+ * Persistence layer for Argmax.
  *
  * `findSessionById` returns a `SessionSummary` whose `preferred` flag is
  * computed by `loadPreferredSessionIds`. That helper scans every
@@ -304,7 +304,7 @@ export type WorkspaceStatusSnapshot = Pick<
   "workspaces" | "sessions" | "checks" | "checkpoints"
 >;
 
-export interface MaestroDatabase {
+export interface ArgmaxDatabase {
   connection: Database.Database;
   listProjects: () => ProjectSummary[];
   listDashboard: () => DashboardListSnapshot;
@@ -340,7 +340,7 @@ export interface MaestroDatabase {
   clearPruneInterval: () => void;
 }
 
-export function createDatabase(databasePath = getDatabasePath(), options: { seed?: boolean } = {}): MaestroDatabase {
+export function createDatabase(databasePath = getDatabasePath(), options: { seed?: boolean } = {}): ArgmaxDatabase {
   const connection = new Database(databasePath);
   // Pragmas must be set before migrations run so the migration writes
   // themselves use the configured journal/durability/locking behavior.

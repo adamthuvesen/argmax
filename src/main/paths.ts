@@ -9,5 +9,5 @@ export function getDataDirectory(): string {
 }
 
 export function getDatabasePath(): string {
-  return join(getDataDirectory(), "maestro.sqlite");
+  return join(getDataDirectory(), "argmax.sqlite");
 }

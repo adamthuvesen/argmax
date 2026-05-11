@@ -8,8 +8,8 @@ import type Database from "better-sqlite3";
 import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
 
 const now = "2026-05-08T15:30:00.000Z";
-const SAMPLE_REPO_PATH = "/tmp/maestro-seed/sample-project";
-const SAMPLE_WORKTREE_ROOT = "/tmp/maestro-seed/worktrees";
+const SAMPLE_REPO_PATH = "/tmp/argmax-seed/sample-project";
+const SAMPLE_WORKTREE_ROOT = "/tmp/argmax-seed/worktrees";
 
 export function seedDemoData(database: Database.Database): void {
   const projectCount = (database.prepare("SELECT COUNT(*) AS count FROM projects").get() as { count: number }).count;
@@ -77,8 +77,8 @@ export function seedDemoData(database: Database.Database): void {
 
   const seed = database.transaction(() => {
     insertProject.run({
-      id: "project-maestro",
-      name: "Maestro",
+      id: "project-argmax",
+      name: "Argmax",
       repoPath: SAMPLE_REPO_PATH,
       currentBranch: "main",
       defaultBranch: "main",
@@ -96,7 +96,7 @@ export function seedDemoData(database: Database.Database): void {
       {
         id: "workspace-ui-board",
         taskLabel: "Design parallel agent board",
-        branch: "maestro/agent-board",
+        branch: "argmax/agent-board",
         state: "running",
         dirty: 1,
         changedFiles: 8,
@@ -105,7 +105,7 @@ export function seedDemoData(database: Database.Database): void {
       {
         id: "workspace-review-studio",
         taskLabel: "Build review studio shell",
-        branch: "maestro/review-studio",
+        branch: "argmax/review-studio",
         state: "complete",
         dirty: 1,
         changedFiles: 14,
@@ -114,7 +114,7 @@ export function seedDemoData(database: Database.Database): void {
       {
         id: "workspace-approval-gate",
         taskLabel: "Gate destructive shell commands",
-        branch: "maestro/approval-gate",
+        branch: "argmax/approval-gate",
         state: "waiting",
         dirty: 0,
         changedFiles: 2,
@@ -123,7 +123,7 @@ export function seedDemoData(database: Database.Database): void {
       {
         id: "workspace-provider-probe",
         taskLabel: "Probe Codex structured mode",
-        branch: "maestro/codex-probe",
+        branch: "argmax/codex-probe",
         state: "failed",
         dirty: 0,
         changedFiles: 0,
@@ -134,7 +134,7 @@ export function seedDemoData(database: Database.Database): void {
     for (const workspace of workspaces) {
       insertWorkspace.run({
         id: workspace.id,
-        projectId: "project-maestro",
+        projectId: "project-argmax",
         taskLabel: workspace.taskLabel,
         branch: workspace.branch,
         baseRef: "main",
@@ -272,8 +272,8 @@ export function seedDemoData(database: Database.Database): void {
       id: "checkpoint-review-baseline",
       workspaceId: "workspace-review-studio",
       label: "Before diff wiring",
-      branch: "maestro/review-studio",
-      gitRef: "maestro/review-studio",
+      branch: "argmax/review-studio",
+      gitRef: "argmax/review-studio",
       patchPath: null,
       createdAt: "2026-05-08T15:47:00.000Z"
     });

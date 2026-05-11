@@ -117,7 +117,7 @@ describe("GitReviewService", () => {
 
   it("shows untracked symlink targets without reading outside-workspace contents", async () => {
     const repoPath = createCommittedGitRepo();
-    const outsidePath = join(tmpdir(), `maestro-secret-${Date.now()}.txt`);
+    const outsidePath = join(tmpdir(), `argmax-secret-${Date.now()}.txt`);
     writeFileSync(outsidePath, "do not show me\n");
     symlinkSync(outsidePath, join(repoPath, "src/link.txt"));
     const database = createDatabase(":memory:", { seed: false });
@@ -160,10 +160,10 @@ describe("GitReviewService", () => {
 });
 
 function createCommittedGitRepo(): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-review-")));
+  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-review-")));
   git(repoPath, ["init", "--initial-branch=main"]);
-  git(repoPath, ["config", "user.email", "maestro@example.test"]);
-  git(repoPath, ["config", "user.name", "Maestro Test"]);
+  git(repoPath, ["config", "user.email", "argmax@example.test"]);
+  git(repoPath, ["config", "user.name", "Argmax Test"]);
   mkdirSync(join(repoPath, "src"));
   writeFileSync(join(repoPath, "src/index.ts"), "export const ok = true;\n");
   writeFileSync(join(repoPath, "src/delete-me.ts"), "export const remove = true;\n");

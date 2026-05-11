@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { ApprovalRequest, ProviderId } from "../../shared/types.js";
 import { classifyCommandRisk } from "./dangerousActionPolicy.js";
+import { computeSessionAttention } from "../sessions/sessionAttention.js";
 
 export interface RequestCommandApprovalInput {
   sessionId: string;
@@ -17,7 +18,7 @@ export interface CommandApprovalDecision {
 }
 
 export class ApprovalService {
-  constructor(private readonly database: MaestroDatabase) {}
+  constructor(private readonly database: ArgmaxDatabase) {}
 
   /**
    * Persist an approval request and the matching session-state and timeline
@@ -103,9 +104,10 @@ export class ApprovalService {
   ): ApprovalRequest {
     return this.database.connection.transaction((): ApprovalRequest => {
       const approval = this.database.resolveApproval(approvalId, status);
+      const state = status === "approved" ? "running" : "blocked";
       this.database.updateSessionState(approval.sessionId, {
-        state: status === "approved" ? "running" : "blocked",
-        attention: "normal"
+        state,
+        attention: computeSessionAttention({ state })
       });
       this.database.persistTimelineEvent({
         id: randomUUID(),
@@ -122,4 +124,3 @@ export class ApprovalService {
     })();
   }
 }
-

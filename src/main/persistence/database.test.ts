@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createDatabase, type MaestroDatabase } from "./database.js";
-import type { ProjectSettings } from "../../shared/types.js";
+import { createDatabase, type ArgmaxDatabase } from "./database.js";
+import type { ProjectSettings, WorkspaceState } from "../../shared/types.js";
 
 const settings: ProjectSettings = {
   defaultProvider: "codex",
@@ -11,7 +11,7 @@ const settings: ProjectSettings = {
   checkCommands: []
 };
 
-function seedProject(database: MaestroDatabase, projectId = "p-1"): string {
+function seedProject(database: ArgmaxDatabase, projectId = "p-1"): string {
   database.persistProject({
     id: projectId,
     name: `proj-${projectId}`,
@@ -24,10 +24,10 @@ function seedProject(database: MaestroDatabase, projectId = "p-1"): string {
 }
 
 function seedWorkspace(
-  database: MaestroDatabase,
+  database: ArgmaxDatabase,
   workspaceId: string,
   projectId: string,
-  state: "created" | "running" | "waiting" | "blocked" | "complete" | "failed" | "kept" | "archived",
+  state: WorkspaceState,
   taskLabel = workspaceId
 ): void {
   database.persistWorkspace({
@@ -45,7 +45,7 @@ function seedWorkspace(
 }
 
 function seedSession(
-  database: MaestroDatabase,
+  database: ArgmaxDatabase,
   sessionId: string,
   workspaceId: string,
   attention: "normal" | "approval-needed" | "blocked" | "failed" | "review-ready" = "normal"
@@ -107,6 +107,63 @@ describe("createDatabase", () => {
     expect(preferred.preferred).toBe(true);
     expect(snapshot.sessions).toHaveLength(4);
     expect(snapshot.sessions.find((item) => item.id === session.id)?.preferred).toBe(true);
+
+    database.connection.close();
+  });
+
+  it("bounds cursor-based session event and raw output pages", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "cursor-limit");
+    seedWorkspace(database, "ws-cursor-limit", projectId, "running");
+    seedSession(database, "session-cursor-limit", "ws-cursor-limit");
+
+    for (let i = 1; i <= 505; i += 1) {
+      database.persistTimelineEvent({
+        id: `event-limit-${i}`,
+        sessionId: "session-cursor-limit",
+        type: "message.delta",
+        message: `event ${i}`,
+        payload: {}
+      });
+    }
+    for (let i = 1; i <= 105; i += 1) {
+      database.persistRawOutput({
+        id: `raw-limit-${i}`,
+        sessionId: "session-cursor-limit",
+        stream: "stdout",
+        content: `raw ${i}`
+      });
+    }
+
+    const first = database.listSessionEventsSince({
+      sessionId: "session-cursor-limit",
+      eventCursor: 0,
+      rawOutputCursor: 0
+    });
+    const second = database.listSessionEventsSince({
+      sessionId: "session-cursor-limit",
+      eventCursor: first.eventCursor,
+      rawOutputCursor: first.rawOutputCursor
+    });
+
+    expect(first.events).toHaveLength(500);
+    expect(first.rawOutputs).toHaveLength(100);
+    expect(first.events[0]?.id).toBe("event-limit-1");
+    expect(first.events.at(-1)?.id).toBe("event-limit-500");
+    expect(second.events.map((event) => event.id)).toEqual([
+      "event-limit-501",
+      "event-limit-502",
+      "event-limit-503",
+      "event-limit-504",
+      "event-limit-505"
+    ]);
+    expect(second.rawOutputs.map((output) => output.id)).toEqual([
+      "raw-limit-101",
+      "raw-limit-102",
+      "raw-limit-103",
+      "raw-limit-104",
+      "raw-limit-105"
+    ]);
 
     database.connection.close();
   });

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { CheckRun } from "../../shared/types.js";
 import { scheduleSigkillEscalation } from "../processControl.js";
 
@@ -30,7 +30,7 @@ export class CheckService {
    */
   private readonly running = new Map<string, Set<ChildProcess>>();
 
-  constructor(private readonly database: MaestroDatabase) {}
+  constructor(private readonly database: ArgmaxDatabase) {}
 
   async runWorkspaceCheck(input: RunWorkspaceCheckInput): Promise<CheckRun> {
     const workspace = this.database.getWorkspace(input.workspaceId);

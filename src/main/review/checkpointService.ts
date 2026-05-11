@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getDataDirectory } from "../paths.js";
-import type { MaestroDatabase } from "../persistence/database.js";
+import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { Checkpoint } from "../../shared/types.js";
 import { runGitBuffer, runGitText } from "../git/exec.js";
 
@@ -13,7 +14,7 @@ export interface CreateCheckpointInput {
 
 export class CheckpointService {
   constructor(
-    private readonly database: MaestroDatabase,
+    private readonly database: ArgmaxDatabase,
     private readonly checkpointDirectory = join(getDataDirectory(), "checkpoints")
   ) {}
 
@@ -24,7 +25,7 @@ export class CheckpointService {
     const [branchRaw, gitRefRaw, diff] = await Promise.all([
       runGitText(workspace.path, ["branch", "--show-current"]),
       runGitText(workspace.path, ["rev-parse", "HEAD"]),
-      runGitBuffer(workspace.path, ["diff", "--binary", "HEAD"])
+      buildCheckpointDiff(workspace.path)
     ]);
     const branch = branchRaw.trim() || workspace.branch;
     const gitRef = gitRefRaw.trim() || null;
@@ -41,5 +42,19 @@ export class CheckpointService {
       gitRef,
       patchPath
     });
+  }
+}
+
+async function buildCheckpointDiff(workspacePath: string): Promise<Buffer> {
+  const tempDir = await mkdtemp(join(tmpdir(), "argmax-checkpoint-index-"));
+  const tempIndex = join(tempDir, "index");
+  const env = { GIT_INDEX_FILE: tempIndex };
+
+  try {
+    await runGitText(workspacePath, ["read-tree", "HEAD"], { env });
+    await runGitText(workspacePath, ["add", "-A", "--", "."], { env });
+    return await runGitBuffer(workspacePath, ["diff", "--binary", "--cached", "HEAD"], { env });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
   }
 }

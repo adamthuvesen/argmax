@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createDatabase, type MaestroDatabase } from "../persistence/database.js";
+import { createDatabase, type ArgmaxDatabase } from "../persistence/database.js";
 import { CheckService } from "./checkService.js";
 
 describe("CheckService", () => {
@@ -117,8 +117,8 @@ describe("CheckService", () => {
   });
 });
 
-function persistWorkspaceFixture(database: MaestroDatabase): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-check-")));
+function persistWorkspaceFixture(database: ArgmaxDatabase): string {
+  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-check-")));
   database.persistProject({
     id: "project-1",
     name: "Fixture",

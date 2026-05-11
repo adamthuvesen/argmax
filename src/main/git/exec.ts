@@ -6,6 +6,7 @@ const execFileAsync = promisify(execFile);
 interface GitExecOptions {
   timeoutMs?: number;
   maxBufferBytes?: number;
+  env?: NodeJS.ProcessEnv;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -21,7 +22,8 @@ export async function runGitText(cwd: string, args: string[], options: GitExecOp
     const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
       timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxBuffer: options.maxBufferBytes ?? DEFAULT_MAX_BUFFER,
-      encoding: "utf8"
+      encoding: "utf8",
+      ...(options.env ? { env: { ...process.env, ...options.env } } : {})
     });
     return stdout;
   } catch (error) {
@@ -39,7 +41,8 @@ export async function runGitBuffer(cwd: string, args: string[], options: GitExec
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
     timeout: options.timeoutMs ?? 60_000,
     maxBuffer: options.maxBufferBytes ?? 256 * 1024 * 1024,
-    encoding: "buffer"
+    encoding: "buffer",
+    ...(options.env ? { env: { ...process.env, ...options.env } } : {})
   });
   return stdout;
 }

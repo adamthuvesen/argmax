@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Command,
+  Cpu,
   ExternalLink,
   FileText,
   Folder,
@@ -340,9 +341,11 @@ function getToolIcon(name: string): JSX.Element {
   return <Wrench size={13} />;
 }
 
-const collapsedProjectsStorageKey = "maestro.sidebar.collapsedProjects";
-const projectOrderStorageKey = "maestro.sidebar.projectOrder";
-const SIDEBAR_WIDTH_KEY = "maestro.sidebar.width";
+const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
+const projectOrderStorageKey = "argmax.sidebar.projectOrder";
+const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
+const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
+const THEME_KEY = "argmax.theme";
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
@@ -352,19 +355,27 @@ export function App(): JSX.Element {
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
-    provider: "codex",
-    ...modelDefaultForProvider("codex")
+    provider: "claude",
+    ...modelDefaultForProvider("claude")
   }));
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.maestro);
+  const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(SIDEBAR_WIDTH_KEY) : null;
     const n = raw ? parseInt(raw, 10) : NaN;
     return Number.isFinite(n) && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
+  });
+  const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(() => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY) : null;
+    return raw === null ? true : raw === "true";
+  });
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(THEME_KEY) : null;
+    return raw === "dark" ? "dark" : "light";
   });
   const [isResizing, setIsResizing] = useState(false);
 
@@ -377,6 +388,15 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
+  }, [toolCallsExpanded]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
 
   const handleResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
     event.preventDefault();
@@ -402,12 +422,12 @@ export function App(): JSX.Element {
   }, [sidebarWidth]);
 
   const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
-    if (!window.maestro) {
+    if (!window.argmax) {
       return;
     }
 
     const cursor = sessionCursorsRef.current.get(sessionId);
-    const data = await window.maestro.session.eventsSince({
+    const data = await window.argmax.session.eventsSince({
       sessionId,
       ...(cursor?.eventCursor !== undefined ? { eventCursor: cursor.eventCursor } : {}),
       ...(cursor?.rawOutputCursor !== undefined ? { rawOutputCursor: cursor.rawOutputCursor } : {})
@@ -446,14 +466,14 @@ export function App(): JSX.Element {
   const refreshDashboardStatus = useCallback(async (): Promise<void> => {
     const token = ++dashboardLoadToken.current;
     try {
-      if (!window.maestro) {
+      if (!window.argmax) {
         await loadDashboard();
         return;
       }
 
       const [status, approvals] = await Promise.all([
-        window.maestro.workspaces.status(),
-        window.maestro.approvals.pending()
+        window.argmax.workspaces.status(),
+        window.argmax.approvals.pending()
       ]);
       if (token !== dashboardLoadToken.current) {
         return;
@@ -479,10 +499,10 @@ export function App(): JSX.Element {
   }, [loadDashboard]);
 
   useEffect(() => {
-    if (!window.maestro) {
+    if (!window.argmax) {
       return;
     }
-    return window.maestro.dashboard.onDelta((delta) => {
+    return window.argmax.dashboard.onDelta((delta) => {
       dashboardDeltaRevision.current += 1;
       setSnapshot((current) => mergeDashboardDelta(current, delta));
       setLoadState("ready");
@@ -609,11 +629,11 @@ export function App(): JSX.Element {
   }, []);
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
-    if (!window.maestro) {
+    if (!window.argmax) {
       setToast({ kind: "error", message: "Open the Electron app window to archive workspaces." });
       return;
     }
-    const result = await window.maestro.workspaces.archive(workspaceId);
+    const result = await window.argmax.workspaces.archive(workspaceId);
     setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
     if (selectedWorkspaceId === workspaceId) {
       setSelectedWorkspaceId(null);
@@ -622,13 +642,13 @@ export function App(): JSX.Element {
   }, [selectedWorkspaceId]);
 
   const addProject = useCallback(async (): Promise<void> => {
-    if (!window.maestro) {
+    if (!window.argmax) {
       setToast({ kind: "error", message: "Open the Electron app window to add a project." });
       return;
     }
 
     try {
-      const result = await window.maestro.projects.pickFolder();
+      const result = await window.argmax.projects.pickFolder();
       if (result.cancelled) {
         return;
       }
@@ -641,7 +661,7 @@ export function App(): JSX.Element {
     } catch (error) {
       setToast({
         kind: "error",
-        message: error instanceof Error ? error.message : "Maestro requires a local git repository."
+        message: error instanceof Error ? error.message : "Argmax requires a local git repository."
       });
     }
   }, []);
@@ -661,12 +681,12 @@ export function App(): JSX.Element {
         )
       }));
 
-      if (!window.maestro) {
+      if (!window.argmax) {
         return;
       }
 
       try {
-        await window.maestro.approvals.resolve({ approvalId, status });
+        await window.argmax.approvals.resolve({ approvalId, status });
         if (token !== resolveApprovalToken.current) {
           return;
         }
@@ -687,11 +707,11 @@ export function App(): JSX.Element {
 
   const sendSessionInput = useCallback(
     async (sessionId: string, input: string, model: ProviderModelSelection): Promise<void> => {
-      if (!window.maestro) {
+      if (!window.argmax) {
         throw new Error("Open the Electron app window to send input to a live session.");
       }
 
-      await window.maestro.providers.sendInput({
+      await window.argmax.providers.sendInput({
         sessionId,
         input: `${input}\r`,
         modelLabel: model.label,
@@ -705,7 +725,7 @@ export function App(): JSX.Element {
 
   const launchTask = useCallback(
     async (prompt: string, model: ModelPickerSelection): Promise<void> => {
-      if (!window.maestro) {
+      if (!window.argmax) {
         throw new Error("Open the Electron app window to launch local agents.");
       }
 
@@ -713,12 +733,12 @@ export function App(): JSX.Element {
         throw new Error("Register a project before launching an agent.");
       }
 
-      const workspace = await window.maestro.workspaces.createCurrent({
+      const workspace = await window.argmax.workspaces.createCurrent({
         projectId: selectedProject.id,
         taskLabel: titleFromPrompt(prompt)
       });
 
-      const launchedSession = await window.maestro.providers.launch({
+      const launchedSession = await window.argmax.providers.launch({
         workspaceId: workspace.id,
         provider: model.provider,
         prompt,
@@ -799,11 +819,16 @@ export function App(): JSX.Element {
             <SettingsPanel
               defaultModel={launchModel}
               onDefaultModelChange={setLaunchModel}
+              toolCallsExpanded={toolCallsExpanded}
+              onToolCallsExpandedChange={setToolCallsExpanded}
+              theme={theme}
+              onThemeChange={setTheme}
               onClose={() => setIsSettingsOpen(false)}
             />
           ) : selectedSession ? (
             <SessionPane
               approvals={snapshot.approvals}
+              defaultToolCallsExpanded={toolCallsExpanded}
               events={snapshot.events}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
@@ -974,6 +999,7 @@ function Sidebar({
                   }
                   type="button"
                   onClick={() => {
+                    toggleProjectVisibility(project.id);
                     onOpenProject(project.id);
                     onOpenLauncher();
                   }}
@@ -1032,7 +1058,7 @@ function Sidebar({
         <div className="identity-chip" data-state={loadState}>
           <span className="identity-avatar" aria-hidden="true">M</span>
           <span className="identity-meta">
-            <span className="identity-name">Maestro</span>
+            <span className="identity-name">Argmax</span>
             <span className="identity-sub">
               {loadState === "ready" ? "Local · Online" : loadState === "loading" ? "Local · Loading" : "Local · Issue"}
             </span>
@@ -1110,6 +1136,7 @@ function applyProjectOrder(projects: ProjectSummary[], order: string[]): Project
 
 function SessionPane({
   approvals,
+  defaultToolCallsExpanded,
   events,
   onResolveApproval,
   onSendSessionInput,
@@ -1119,6 +1146,7 @@ function SessionPane({
   workspace
 }: {
   approvals: ApprovalRequest[];
+  defaultToolCallsExpanded?: boolean;
   events: TimelineEvent[];
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
@@ -1159,6 +1187,7 @@ function SessionPane({
     <div className={gridClass}>
       <div className="session-main-column">
         <SessionConversation
+          defaultToolCallsExpanded={defaultToolCallsExpanded}
           events={visibleEvents}
           isLogOpen={isLogOpen}
           onSendSessionInput={onSendSessionInput}
@@ -1225,6 +1254,7 @@ function SessionPane({
 }
 
 function SessionConversation({
+  defaultToolCallsExpanded,
   events,
   isLogOpen,
   onSendSessionInput,
@@ -1235,6 +1265,7 @@ function SessionConversation({
   session,
   workspace
 }: {
+  defaultToolCallsExpanded?: boolean;
   events: TimelineEvent[];
   isLogOpen: boolean;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
@@ -1515,6 +1546,7 @@ function SessionConversation({
                 tool={item.tool}
                 now={now}
                 fresh={isFreshTool(item.tool)}
+                defaultExpanded={defaultToolCallsExpanded}
                 workspaceCwd={workspace?.path ?? null}
               />
             ) : item.kind === "tool-group" ? (
@@ -1523,6 +1555,7 @@ function SessionConversation({
                 group={item.group}
                 now={now}
                 isFreshTool={isFreshTool}
+                defaultExpanded={defaultToolCallsExpanded}
                 workspaceCwd={workspace?.path ?? null}
               />
             ) : item.event.type === "user.message" ? (
@@ -1555,7 +1588,7 @@ function SessionConversation({
               <span className="command-stream-glyph" />
               <span className="command-stream-line">
                 <span className="command-stream-prompt">$</span>
-                <span className="command-stream-text">maestro run --model {thinkingModelSlug(selectedModel)}</span>
+                <span className="command-stream-text">argmax run --model {thinkingModelSlug(selectedModel)}</span>
                 <span className="command-stream-caret" />
               </span>
               <span className="command-stream-ticks">
@@ -1752,6 +1785,7 @@ function ToolCallBubble({
   parallelPosition,
   parallelGroupId,
   nested,
+  defaultExpanded,
   workspaceCwd
 }: {
   tool: ToolCall;
@@ -1760,6 +1794,7 @@ function ToolCallBubble({
   parallelPosition?: ParallelPosition;
   parallelGroupId?: string;
   nested?: boolean;
+  defaultExpanded?: boolean;
   workspaceCwd?: string | null;
 }): JSX.Element {
   // Standalone errors expand themselves so the message is visible without a
@@ -1767,7 +1802,9 @@ function ToolCallBubble({
   // open individual error rows on demand so a bursty turn doesn't unfold into
   // a wall of stack traces.
   const shouldAutoExpandOnError = !nested;
-  const [expanded, setExpanded] = useState<boolean>(shouldAutoExpandOnError && tool.status === "error");
+  const [expanded, setExpanded] = useState<boolean>(
+    (shouldAutoExpandOnError && tool.status === "error") || (defaultExpanded ?? false)
+  );
   const autoExpandedOnErrorRef = useRef<boolean>(shouldAutoExpandOnError && tool.status === "error");
   const [didFlash, setDidFlash] = useState<boolean>(false);
 
@@ -1850,8 +1887,8 @@ function ToolCallBubble({
                 const openable = extractOpenablePath(tool.name, tool.inputFull);
                 if (!openable) return null;
                 const onOpen = (): void => {
-                  if (!window.maestro) return;
-                  void window.maestro.system
+                  if (!window.argmax) return;
+                  void window.argmax.system
                     .openPath({ path: openable, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) })
                     .catch(() => undefined);
                 };
@@ -1896,18 +1933,20 @@ function ToolCallGroupBubble({
   group,
   now,
   isFreshTool,
+  defaultExpanded,
   workspaceCwd
 }: {
   group: ToolCallGroup;
   now: number;
   isFreshTool: (tool: ToolCall) => boolean;
+  defaultExpanded?: boolean;
   workspaceCwd?: string | null;
 }): JSX.Element {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
   // Default to expanded so users can see what the agent did, even after the
   // turn completes. The user can manually collapse to free up vertical space.
-  const expanded = userToggle ?? true;
+  const expanded = userToggle ?? (defaultExpanded ?? true);
   const earliestStart = useMemo(
     () => Math.min(...group.tools.map((t) => Date.parse(t.createdAt))),
     [group.tools]
@@ -2013,7 +2052,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
       setIsSummaryCollapsed(false);
     }
 
-    if (!workspace?.id || !window.maestro) {
+    if (!workspace?.id || !window.argmax) {
       setFiles([]);
       setFilesState("idle");
       setFilesError(null);
@@ -2024,7 +2063,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
 
     setFilesState("loading");
     setFilesError(null);
-    void window.maestro.review
+    void window.argmax.review
       .listChangedFiles(workspace.id)
       .then((result) => {
         if (token !== fileLoadToken.current) {
@@ -2055,7 +2094,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
 
   useEffect(() => {
     const token = ++diffLoadToken.current;
-    if (!workspace?.id || !selectedFilePath || !window.maestro) {
+    if (!workspace?.id || !selectedFilePath || !window.argmax) {
       setDiff(null);
       setDiffState("idle");
       setDiffError(null);
@@ -2064,7 +2103,7 @@ function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
 
     setDiffState("loading");
     setDiffError(null);
-    void window.maestro.review
+    void window.argmax.review
       .loadDiff(workspace.id, selectedFilePath)
       .then((result) => {
         if (token !== diffLoadToken.current) {
@@ -2415,6 +2454,8 @@ function LaunchSurface({
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const modelPickerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!projectPickerOpen) return;
@@ -2438,18 +2479,29 @@ function LaunchSurface({
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, [branchPickerOpen]);
 
+  useEffect(() => {
+    if (!modelPickerOpen) return;
+    const handleMouseDown = (e: MouseEvent): void => {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
+        setModelPickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [modelPickerOpen]);
+
   const openBranchPicker = useCallback(async (): Promise<void> => {
-    if (!window.maestro || !project) return;
-    const list = await window.maestro.projects.listBranches(project.id);
+    if (!window.argmax || !project) return;
+    const list = await window.argmax.projects.listBranches(project.id);
     setBranches(list);
     setBranchPickerOpen(true);
   }, [project]);
 
   const switchBranch = useCallback(async (branch: string): Promise<void> => {
-    if (!window.maestro || !project) return;
+    if (!window.argmax || !project) return;
     setBranchPickerOpen(false);
     try {
-      const updated = await window.maestro.projects.switchBranch(project.id, branch);
+      const updated = await window.argmax.projects.switchBranch(project.id, branch);
       onBranchSwitch(updated);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not switch branch.");
@@ -2640,7 +2692,59 @@ function LaunchSurface({
               </ul>
             )}
           </div>
-          <CombinedModelSelector value={model} onChange={onModelChange} ariaLabel="Launch model" />
+          <div className="project-picker-anchor" ref={modelPickerRef}>
+            <button
+              className="composer-context-chip"
+              type="button"
+              aria-label="Switch model"
+              aria-expanded={modelPickerOpen}
+              onClick={() => setModelPickerOpen((o) => !o)}
+            >
+              <Cpu size={14} aria-hidden="true" />
+              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
+              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+            </button>
+            {modelPickerOpen && (
+              <ul className="project-picker-popover" role="listbox" aria-label="Select model">
+                <li className="project-picker-group-label" role="presentation">Codex</li>
+                {PROVIDER_MODELS.codex.map((m) => {
+                  const opt: ModelPickerSelection = { provider: "codex", label: m.label, modelId: m.modelId, ...(m.reasoningEffort ? { reasoningEffort: m.reasoningEffort } : {}) };
+                  const isSelected = model.provider === "codex" && model.modelId === m.modelId && model.reasoningEffort === m.reasoningEffort;
+                  const label = m.reasoningEffort ? `${m.label} · ${effortLabel(m.reasoningEffort)}` : m.label;
+                  return (
+                    <li key={modelValue(opt)} role="option" aria-selected={isSelected}>
+                      <button
+                        type="button"
+                        className="project-picker-item"
+                        aria-pressed={isSelected}
+                        onClick={() => { onModelChange(opt); setModelPickerOpen(false); }}
+                      >
+                        {label}
+                      </button>
+                    </li>
+                  );
+                })}
+                <li className="project-picker-divider" role="separator" />
+                <li className="project-picker-group-label" role="presentation">Claude</li>
+                {PROVIDER_MODELS.claude.map((m) => {
+                  const opt: ModelPickerSelection = { provider: "claude", label: m.label, modelId: m.modelId };
+                  const isSelected = model.provider === "claude" && model.modelId === m.modelId;
+                  return (
+                    <li key={modelValue(opt)} role="option" aria-selected={isSelected}>
+                      <button
+                        type="button"
+                        className="project-picker-item"
+                        aria-pressed={isSelected}
+                        onClick={() => { onModelChange(opt); setModelPickerOpen(false); }}
+                      >
+                        {m.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
         {status ? (
           <p className="composer-status" role="status">
@@ -2655,10 +2759,18 @@ function LaunchSurface({
 function SettingsPanel({
   defaultModel,
   onDefaultModelChange,
+  toolCallsExpanded,
+  onToolCallsExpandedChange,
+  theme,
+  onThemeChange,
   onClose
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
+  toolCallsExpanded: boolean;
+  onToolCallsExpandedChange: (v: boolean) => void;
+  theme: "light" | "dark";
+  onThemeChange: (t: "light" | "dark") => void;
   onClose: () => void;
 }): JSX.Element {
   return (
@@ -2676,13 +2788,13 @@ function SettingsPanel({
       <section className="settings-section" aria-labelledby="settings-account">
         <header className="settings-section-header">
           <h2 id="settings-account">Account</h2>
-          <p>Maestro runs locally on this machine — there is no cloud account.</p>
+          <p>Argmax runs locally on this machine — there is no cloud account.</p>
         </header>
         <div className="settings-card">
           <div className="settings-account">
             <span className="settings-avatar" aria-hidden="true">M</span>
             <div className="settings-account-meta">
-              <span className="settings-account-name">Maestro</span>
+              <span className="settings-account-name">Argmax</span>
               <span className="settings-account-sub">Local · single user</span>
             </div>
           </div>
@@ -2702,23 +2814,30 @@ function SettingsPanel({
       <section className="settings-section" aria-labelledby="settings-appearance">
         <header className="settings-section-header">
           <h2 id="settings-appearance">Appearance</h2>
-          <p>Maestro is light-theme only by design. Fonts are locked to Lilex for consistency.</p>
+          <p>Fonts are locked to Lilex for consistency.</p>
         </header>
         <div className="settings-card">
           <fieldset className="settings-radio-group">
             <legend>Theme</legend>
             <label>
-              <input type="radio" name="theme" value="light" checked readOnly />
+              <input
+                type="radio"
+                name="theme"
+                value="light"
+                checked={theme === "light"}
+                onChange={() => onThemeChange("light")}
+              />
               <span>Light</span>
-              <span className="settings-pill">Locked</span>
             </label>
-            <label className="settings-radio-disabled">
-              <input type="radio" name="theme" value="dark" disabled />
+            <label>
+              <input
+                type="radio"
+                name="theme"
+                value="dark"
+                checked={theme === "dark"}
+                onChange={() => onThemeChange("dark")}
+              />
               <span>Dark</span>
-            </label>
-            <label className="settings-radio-disabled">
-              <input type="radio" name="theme" value="system" disabled />
-              <span>Match system</span>
             </label>
           </fieldset>
           <dl className="settings-keyvals">
@@ -2748,6 +2867,29 @@ function SettingsPanel({
               onChange={onDefaultModelChange}
             />
           </div>
+          <fieldset className="settings-radio-group">
+            <legend>Tool calls</legend>
+            <label>
+              <input
+                type="radio"
+                name="tool-calls-expand"
+                value="show"
+                checked={toolCallsExpanded}
+                onChange={() => onToolCallsExpandedChange(true)}
+              />
+              <span>Show expanded</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="tool-calls-expand"
+                value="hide"
+                checked={!toolCallsExpanded}
+                onChange={() => onToolCallsExpandedChange(false)}
+              />
+              <span>Show collapsed</span>
+            </label>
+          </fieldset>
           <dl className="settings-keyvals">
             <div>
               <dt>Worktree base</dt>
@@ -2769,7 +2911,7 @@ function SettingsPanel({
           <dl className="settings-keyvals">
             <div>
               <dt>App</dt>
-              <dd>Maestro</dd>
+              <dd>Argmax</dd>
             </div>
             <div>
               <dt>Runtime</dt>
@@ -2793,7 +2935,7 @@ function EmptyState({ message, onRetry }: { message?: string | null; onRetry?: (
       <h2>Local state could not be loaded</h2>
       <p>
         {message ??
-          "Maestro keeps working from local storage, but the database needs attention before the dashboard can render."}
+          "Argmax keeps working from local storage, but the database needs attention before the dashboard can render."}
       </p>
       {onRetry ? (
         <button className="empty-state-retry" type="button" onClick={onRetry}>
@@ -2805,11 +2947,11 @@ function EmptyState({ message, onRetry }: { message?: string | null; onRetry?: (
 }
 
 async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
-  if (!window.maestro) {
+  if (!window.argmax) {
     return demoSnapshot;
   }
 
-  const snapshot = await window.maestro.dashboard.load();
+  const snapshot = await window.argmax.dashboard.load();
   return { ...snapshot, events: pruneSupersededDeltas(snapshot.events) };
 }
 
@@ -2881,7 +3023,7 @@ function useSlashAutocomplete({
     }
     fetchedFor.current = cacheKey;
     let cancelled = false;
-    const api = window.maestro?.skills;
+    const api = window.argmax?.skills;
     if (!api?.list) {
       return;
     }

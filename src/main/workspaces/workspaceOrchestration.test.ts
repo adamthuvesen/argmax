@@ -22,7 +22,7 @@ describe("WorkspaceService", () => {
 
     expect(workspace.sharedWorkspace).toBe(false);
     expect(workspace.state).toBe("created");
-    expect(workspace.branch).toMatch(/^maestro\/add-review-studio-/);
+    expect(workspace.branch).toMatch(/^argmax\/add-review-studio-/);
     expect((await git(workspace.path, ["branch", "--show-current"])).trim()).toBe(workspace.branch);
 
     database.connection.close();
@@ -108,7 +108,7 @@ describe("WorkspaceService", () => {
     const project = await new ProjectService(database).registerProject({ repoPath });
 
     // Reconfigure the project so the worktreeLocation escapes the repo.
-    const escapedLocation = realpathSync(mkdtempSync(join(tmpdir(), "maestro-escape-")));
+    const escapedLocation = realpathSync(mkdtempSync(join(tmpdir(), "argmax-escape-")));
     database.updateProjectSettings(project.id, {
       ...project.settings,
       worktreeLocation: escapedLocation
@@ -153,7 +153,7 @@ describe("WorkspaceService", () => {
 
 describe("git() helper", () => {
   it("surfaces stderr in the error message when the invocation fails", async () => {
-    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-git-helper-")));
+    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-git-helper-")));
     // Not a git repository: every git command rejects with stderr.
     await expect(git(repoPath, ["status"])).rejects.toThrow(/git failed:/);
   });
@@ -163,7 +163,7 @@ describe("git() helper", () => {
     // would hang; instead we use `git --exec-path` only as a smoke that the
     // call returns under the cap. Real timeout enforcement is covered by
     // the execFile contract.
-    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-git-helper-")));
+    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-git-helper-")));
     execFileSync("git", ["-C", repoPath, "init", "--initial-branch=main"], { stdio: "ignore" });
     const start = Date.now();
     await git(repoPath, ["status", "--short"]);
@@ -173,7 +173,7 @@ describe("git() helper", () => {
   it("rejects without leaking stack-only error info when stderr is empty", async () => {
     // Using a path that resolves but is not a git repo produces a typical
     // stderr the helper should forward.
-    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-git-helper-")));
+    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-git-helper-")));
     try {
       await git(repoPath, ["log"]);
       expect.fail("expected git() to reject");
@@ -185,10 +185,10 @@ describe("git() helper", () => {
 });
 
 function createCommittedGitRepo(): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-worktree-")));
+  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-worktree-")));
   gitSync(repoPath, ["init", "--initial-branch=main"]);
-  gitSync(repoPath, ["config", "user.email", "maestro@example.test"]);
-  gitSync(repoPath, ["config", "user.name", "Maestro Test"]);
+  gitSync(repoPath, ["config", "user.email", "argmax@example.test"]);
+  gitSync(repoPath, ["config", "user.name", "Argmax Test"]);
   mkdirSync(join(repoPath, "src"));
   writeFileSync(join(repoPath, "src", "index.ts"), "export const ok = true;\n");
   gitSync(repoPath, ["add", "src/index.ts"]);

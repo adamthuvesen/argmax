@@ -10,8 +10,10 @@ import { CheckpointService } from "./checkpointService.js";
 describe("CheckpointService", () => {
   it("creates a patch snapshot checkpoint for a workspace", async () => {
     const repoPath = createCommittedGitRepo();
-    const checkpointDir = realpathSync(mkdtempSync(join(tmpdir(), "maestro-checkpoints-")));
+    const checkpointDir = realpathSync(mkdtempSync(join(tmpdir(), "argmax-checkpoints-")));
     writeFileSync(join(repoPath, "src/index.ts"), "export const ok = false;\n");
+    writeFileSync(join(repoPath, "src/new.ts"), "export const added = true;\n");
+    writeFileSync(join(repoPath, "src/image.bin"), Buffer.from([0, 1, 2, 3, 0, 255]));
     const database = createDatabase(":memory:", { seed: false });
     database.persistProject({
       id: "project-1",
@@ -53,17 +55,24 @@ describe("CheckpointService", () => {
     });
     expect(checkpoint.gitRef).toMatch(/^[0-9a-f]{40}$/);
     expect(checkpoint.patchPath).toContain(checkpointDir);
-    expect(readFileSync(checkpoint.patchPath ?? "", "utf8")).toContain("+export const ok = false;");
+    const patch = readFileSync(checkpoint.patchPath ?? "", "utf8");
+    expect(patch).toContain("+export const ok = false;");
+    expect(patch).toContain("diff --git a/src/new.ts b/src/new.ts");
+    expect(patch).toContain("+export const added = true;");
+    expect(patch).toContain("diff --git a/src/image.bin b/src/image.bin");
+    expect(patch).toContain("GIT binary patch");
+    expect(git(repoPath, ["status", "--porcelain"])).toContain("?? src/new.ts");
+    expect(git(repoPath, ["status", "--porcelain"])).toContain("?? src/image.bin");
 
     database.connection.close();
   });
 });
 
 function createCommittedGitRepo(): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "maestro-checkpoint-repo-")));
+  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-checkpoint-repo-")));
   git(repoPath, ["init", "--initial-branch=main"]);
-  git(repoPath, ["config", "user.email", "maestro@example.test"]);
-  git(repoPath, ["config", "user.name", "Maestro Test"]);
+  git(repoPath, ["config", "user.email", "argmax@example.test"]);
+  git(repoPath, ["config", "user.name", "Argmax Test"]);
   mkdirSync(join(repoPath, "src"));
   writeFileSync(join(repoPath, "src/index.ts"), "export const ok = true;\n");
   git(repoPath, ["add", "src/index.ts"]);

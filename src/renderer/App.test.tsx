@@ -1,14 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import type { DashboardDelta, DashboardSnapshot, MaestroApi } from "../shared/types.js";
+import type { DashboardDelta, DashboardSnapshot, ArgmaxApi } from "../shared/types.js";
 
 const snapshot: DashboardSnapshot = {
   projects: [
     {
       id: "project-1",
-      name: "Maestro",
-      repoPath: "/tmp/maestro",
+      name: "Argmax",
+      repoPath: "/tmp/argmax",
       currentBranch: "main",
       defaultBranch: "main",
       settings: {
@@ -32,7 +32,7 @@ const snapshot: DashboardSnapshot = {
       id: "workspace-1",
       projectId: "project-1",
       taskLabel: "Build dashboard",
-      branch: "maestro/dashboard",
+      branch: "argmax/dashboard",
       baseRef: "main",
       path: "/tmp/worktrees/dashboard",
       state: "running",
@@ -76,7 +76,7 @@ const snapshot: DashboardSnapshot = {
   checkpoints: []
 };
 
-function dashboardListSnapshot(data: DashboardSnapshot): Awaited<ReturnType<MaestroApi["dashboard"]["list"]>> {
+function dashboardListSnapshot(data: DashboardSnapshot): Awaited<ReturnType<ArgmaxApi["dashboard"]["list"]>> {
   return {
     projects: data.projects,
     workspaces: data.workspaces,
@@ -86,7 +86,7 @@ function dashboardListSnapshot(data: DashboardSnapshot): Awaited<ReturnType<Maes
   };
 }
 
-function workspaceStatusSnapshot(data: DashboardSnapshot): Awaited<ReturnType<MaestroApi["workspaces"]["status"]>> {
+function workspaceStatusSnapshot(data: DashboardSnapshot): Awaited<ReturnType<ArgmaxApi["workspaces"]["status"]>> {
   return {
     workspaces: data.workspaces,
     sessions: data.sessions,
@@ -96,20 +96,20 @@ function workspaceStatusSnapshot(data: DashboardSnapshot): Awaited<ReturnType<Ma
 }
 
 describe("App", () => {
-  let createCurrentWorkspace: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["createCurrent"]>>;
-  let dashboardLoad: ReturnType<typeof vi.fn<MaestroApi["dashboard"]["load"]>>;
-  let dashboardList: ReturnType<typeof vi.fn<MaestroApi["dashboard"]["list"]>>;
+  let createCurrentWorkspace: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>>;
+  let dashboardLoad: ReturnType<typeof vi.fn<ArgmaxApi["dashboard"]["load"]>>;
+  let dashboardList: ReturnType<typeof vi.fn<ArgmaxApi["dashboard"]["list"]>>;
   let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null;
   let dashboardDeltaUnsubscribe: ReturnType<typeof vi.fn<() => void>>;
-  let launchProvider: ReturnType<typeof vi.fn<MaestroApi["providers"]["launch"]>>;
-  let approvalsPending: ReturnType<typeof vi.fn<MaestroApi["approvals"]["pending"]>>;
-  let pickProjectFolder: ReturnType<typeof vi.fn<MaestroApi["projects"]["pickFolder"]>>;
-  let listChangedFiles: ReturnType<typeof vi.fn<MaestroApi["review"]["listChangedFiles"]>>;
-  let loadDiff: ReturnType<typeof vi.fn<MaestroApi["review"]["loadDiff"]>>;
-  let sessionEventsSince: ReturnType<typeof vi.fn<MaestroApi["session"]["eventsSince"]>>;
-  let sendProviderInput: ReturnType<typeof vi.fn<MaestroApi["providers"]["sendInput"]>>;
-  let workspaceStatus: ReturnType<typeof vi.fn<MaestroApi["workspaces"]["status"]>>;
-  let skillsList: ReturnType<typeof vi.fn<MaestroApi["skills"]["list"]>>;
+  let launchProvider: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["launch"]>>;
+  let approvalsPending: ReturnType<typeof vi.fn<ArgmaxApi["approvals"]["pending"]>>;
+  let pickProjectFolder: ReturnType<typeof vi.fn<ArgmaxApi["projects"]["pickFolder"]>>;
+  let listChangedFiles: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFiles"]>>;
+  let loadDiff: ReturnType<typeof vi.fn<ArgmaxApi["review"]["loadDiff"]>>;
+  let sessionEventsSince: ReturnType<typeof vi.fn<ArgmaxApi["session"]["eventsSince"]>>;
+  let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
+  let workspaceStatus: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
+  let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
 
   afterEach(() => {
     cleanup();
@@ -117,36 +117,36 @@ describe("App", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
-    createCurrentWorkspace = vi.fn<MaestroApi["workspaces"]["createCurrent"]>().mockResolvedValue(
+    createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
       snapshot.workspaces[0] ?? missingWorkspace()
     );
-    dashboardLoad = vi.fn<MaestroApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
-    dashboardList = vi.fn<MaestroApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
+    dashboardLoad = vi.fn<ArgmaxApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
+    dashboardList = vi.fn<ArgmaxApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
     dashboardDeltaListener = null;
     dashboardDeltaUnsubscribe = vi.fn<() => void>();
-    launchProvider = vi.fn<MaestroApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
-    approvalsPending = vi.fn<MaestroApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
-    pickProjectFolder = vi.fn<MaestroApi["projects"]["pickFolder"]>().mockResolvedValue({
+    launchProvider = vi.fn<ArgmaxApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
+    approvalsPending = vi.fn<ArgmaxApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
+    pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
       cancelled: false,
       project: primaryProject()
     });
-    sessionEventsSince = vi.fn<MaestroApi["session"]["eventsSince"]>().mockResolvedValue({
+    sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue({
       events: snapshot.events,
       rawOutputs: snapshot.rawOutputs,
       eventCursor: 0,
       rawOutputCursor: 0
     });
-    sendProviderInput = vi.fn<MaestroApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
-    workspaceStatus = vi.fn<MaestroApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
-    listChangedFiles = vi.fn<MaestroApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
-    loadDiff = vi.fn<MaestroApi["review"]["loadDiff"]>().mockResolvedValue({
+    sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
+    workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
+    listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
+    loadDiff = vi.fn<ArgmaxApi["review"]["loadDiff"]>().mockResolvedValue({
       workspaceId: "workspace-1",
       filePath: null,
       content: ""
     });
-    skillsList = vi.fn<MaestroApi["skills"]["list"]>().mockResolvedValue([]);
+    skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
 
-    window.maestro = {
+    window.argmax = {
       dashboard: {
         load: dashboardLoad,
         list: dashboardList,
@@ -159,7 +159,9 @@ describe("App", () => {
         list: () => Promise.resolve(snapshot.projects),
         pickFolder: pickProjectFolder,
         register: () => Promise.resolve(primaryProject()),
-        updateSettings: () => Promise.resolve(primaryProject())
+        updateSettings: () => Promise.resolve(primaryProject()),
+        listBranches: () => Promise.resolve(["main"]),
+        switchBranch: () => Promise.resolve(primaryProject())
       },
       workspaces: {
         createIsolated: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
@@ -200,7 +202,7 @@ describe("App", () => {
         prepare: () =>
           Promise.resolve({
             workspaceId: "workspace-1",
-            branch: "maestro/dashboard",
+            branch: "argmax/dashboard",
             selectedFiles: ["src/renderer/App.tsx"],
             message: "feat: test",
             commands: ["git add -- 'src/renderer/App.tsx'", "git commit -m 'feat: test'"]
@@ -239,9 +241,9 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Maestro" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex-spark:medium");
+    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Claude Haiku 4.5");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
@@ -254,19 +256,19 @@ describe("App", () => {
     const { unmount } = render(<App />);
 
     expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    const hideProjectSessions = screen.getByRole("button", { name: "Hide Maestro sessions" });
+    const hideProjectSessions = screen.getByRole("button", { name: "Hide Argmax sessions" });
     fireEvent.click(hideProjectSessions);
 
     expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show Maestro sessions" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Show Argmax sessions" })).toHaveAttribute("aria-expanded", "false");
 
     unmount();
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Show Maestro sessions" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Show Argmax sessions" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Maestro sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
     expect(await screen.findByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
@@ -274,7 +276,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     expect(dashboardLoad).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -327,10 +329,10 @@ describe("App", () => {
     };
     dashboardLoad.mockResolvedValue({
       ...snapshot,
-      events: [snapshot.events[0]!, toolCompleted, toolStarted]
+      events: [snapshot.events[0], toolCompleted, toolStarted]
     });
     sessionEventsSince.mockResolvedValue({
-      events: [snapshot.events[0]!, toolCompleted, toolStarted],
+      events: [snapshot.events[0], toolCompleted, toolStarted],
       rawOutputs: [],
       eventCursor: 3,
       rawOutputCursor: 0
@@ -468,7 +470,7 @@ describe("App", () => {
           sessionId: "session-1",
           stream: "stdout",
           content:
-            '{"type":"thread.started","thread_id":"019e0bd0-7694-7032-85cd-f670d78ac282"}\n{"type":"turn.started"}\n{"type":"init","cwd":"/tmp/maestro","session_id":"claude-session","tools":["Task","Bash"]}\n',
+            '{"type":"thread.started","thread_id":"019e0bd0-7694-7032-85cd-f670d78ac282"}\n{"type":"turn.started"}\n{"type":"init","cwd":"/tmp/argmax","session_id":"claude-session","tools":["Task","Bash"]}\n',
           createdAt: "2026-05-08T15:54:01.000Z"
         }
       ]
@@ -485,7 +487,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.queryByText(/thread\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/turn\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/"tools"/)).not.toBeInTheDocument();
@@ -517,7 +519,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByLabelText("Launch model")).toHaveValue("codex:gpt-5.3-codex-spark:medium");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Claude Haiku 4.5");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -531,15 +533,14 @@ describe("App", () => {
     );
     expect(launchProvider).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
-      provider: "codex",
+      provider: "claude",
       prompt: "Implement PTY launch",
-      modelLabel: "Codex Spark",
-      modelId: "gpt-5.3-codex-spark",
-      reasoningEffort: "medium",
+      modelLabel: "Claude Haiku 4.5",
+      modelId: "claude-haiku-4-5",
       cols: 120,
       rows: 32
     });
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
   });
 
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {
@@ -549,7 +550,7 @@ describe("App", () => {
       taskLabel: "New chat",
       branch: "main",
       baseRef: "main",
-      path: "/tmp/maestro",
+      path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
       dirty: false,
@@ -614,9 +615,8 @@ describe("App", () => {
   it("starts Claude when selected in the composer", async () => {
     render(<App />);
 
-    fireEvent.change(await screen.findByLabelText("Launch model"), {
-      target: { value: "claude:claude-sonnet-4-6" }
-    });
+    fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Claude Sonnet 4.6" }));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
     });
@@ -680,13 +680,13 @@ describe("App", () => {
   });
 
   it("shows a clear error when folder registration fails", async () => {
-    pickProjectFolder.mockRejectedValue(new Error("Maestro requires a local git repository."));
+    pickProjectFolder.mockRejectedValue(new Error("Argmax requires a local git repository."));
 
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Maestro requires a local git repository.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Argmax requires a local git repository.");
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
@@ -711,7 +711,7 @@ describe("App", () => {
       id: "workspace-2",
       projectId: "project-1",
       taskLabel: "Second chat",
-      branch: "maestro/second-chat",
+      branch: "argmax/second-chat",
       baseRef: "main",
       path: "/tmp/worktrees/second-chat",
       state: "complete",
@@ -759,7 +759,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
 
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
     expect(screen.getByLabelText("Session model")).toHaveValue("claude-sonnet-4-6");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
@@ -847,14 +847,19 @@ describe("App", () => {
 
   it("sends follow-up prompts to the selected live session", async () => {
     const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
+    const completeSnapshot = {
+      ...snapshot,
+      sessions: completeSessions
+    };
     dashboardLoad.mockResolvedValue({
       ...snapshot,
       sessions: completeSessions
     });
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     const input = await screen.findByLabelText("Session prompt");
     fireEvent.change(input, {
       target: { value: "continue with tests" }
@@ -873,6 +878,21 @@ describe("App", () => {
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(launchProvider).not.toHaveBeenCalled();
     await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("disables follow-up prompts while a structured Codex session is running", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+    expect(input).toBeDisabled();
+
+    fireEvent.change(input, {
+      target: { value: "too soon" }
+    });
+    fireEvent.click(screen.getByTitle("Send follow-up"));
+
+    expect(sendProviderInput).not.toHaveBeenCalled();
   });
 
   it("switches the session model for the next follow-up prompt", async () => {
@@ -953,9 +973,8 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.change(await screen.findByLabelText("Launch model"), {
-      target: { value: "claude:claude-sonnet-4-6" }
-    });
+    fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Claude Sonnet 4.6" }));
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 
@@ -1026,7 +1045,7 @@ describe("App", () => {
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
     expect(launchProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "Implement PTY launch", provider: "codex" })
+      expect.objectContaining({ prompt: "Implement PTY launch", provider: "claude" })
     );
     expect(submitEvent.defaultPrevented).toBe(true);
   });
@@ -1035,9 +1054,9 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Maestro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Maestro" }));
+    fireEvent.click(screen.getByRole("button", { name: "Argmax" }));
 
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
@@ -1114,9 +1133,9 @@ describe("App", () => {
 });
 
 describe("App without preload bridge", () => {
-  it("renders the bridge-missing banner when window.maestro is undefined", async () => {
-    const previousMaestro = window.maestro;
-    delete (window as { maestro?: MaestroApi }).maestro;
+  it("renders the bridge-missing banner when window.argmax is undefined", async () => {
+    const previousArgmax = window.argmax;
+    delete (window as { argmax?: ArgmaxApi }).argmax;
 
     // jsdom marks Location.prototype.hostname non-configurable, so swap the
     // entire `window.location` with a plain stub for the duration of the test.
@@ -1138,7 +1157,7 @@ describe("App without preload bridge", () => {
         writable: true,
         value: originalLocation
       });
-      window.maestro = previousMaestro;
+      window.argmax = previousArgmax;
     }
   });
 });

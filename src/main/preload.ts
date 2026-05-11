@@ -10,7 +10,7 @@ import type {
   DashboardDelta,
   DashboardListSnapshot,
   LaunchProviderSessionInput,
-  MaestroApi,
+  ArgmaxApi,
   PrepareCommitInput,
   ProviderSessionInput,
   ProviderSessionResizeInput,
@@ -30,7 +30,7 @@ import type {
   UpdateProjectSettingsInput
 } from "../shared/types.js";
 
-const api: MaestroApi = {
+const api: ArgmaxApi = {
   dashboard: {
     load: () => ipcRenderer.invoke("dashboard:load") as Promise<DashboardSnapshot>,
     list: () => ipcRenderer.invoke("dashboard:list") as Promise<DashboardListSnapshot>,
@@ -116,4 +116,4 @@ const api: MaestroApi = {
   }
 };
 
-contextBridge.exposeInMainWorld("maestro", api);
+contextBridge.exposeInMainWorld("argmax", api);

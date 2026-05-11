@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createDatabase, type MaestroDatabase } from "../persistence/database.js";
+import { createDatabase, type ArgmaxDatabase } from "../persistence/database.js";
 import { CommitPreparationService } from "./commitPreparationService.js";
 
 describe("CommitPreparationService", () => {
@@ -17,7 +17,7 @@ describe("CommitPreparationService", () => {
 
     expect(preparation).toEqual({
       workspaceId,
-      branch: "maestro/review",
+      branch: "argmax/review",
       selectedFiles: ["src/a.ts", "src/b.ts"],
       message: "feat: add review",
       // Display strings are derived from argv arrays; safe characters render
@@ -65,7 +65,7 @@ describe("CommitPreparationService", () => {
   });
 });
 
-function persistWorkspaceFixture(database: MaestroDatabase): string {
+function persistWorkspaceFixture(database: ArgmaxDatabase): string {
   database.persistProject({
     id: "project-1",
     name: "Fixture",
@@ -84,7 +84,7 @@ function persistWorkspaceFixture(database: MaestroDatabase): string {
     id: "workspace-1",
     projectId: "project-1",
     taskLabel: "Review",
-    branch: "maestro/review",
+    branch: "argmax/review",
     baseRef: "main",
     path: "/repo/.worktrees/review",
     state: "complete",

@@ -19,9 +19,9 @@ Do not run multiple `npm test` commands in parallel. Each one starts with `npm r
 
 - Query by **role / aria-label / title** — never by `className`. Visual changes shouldn't break tests.
 - `aria-pressed`, `aria-label`, `title`, and visible button text are part of the contract; tests rely on them. Treat them like a public API.
-- Mock `window.maestro` in `beforeEach`. The component falls back to `demoSnapshot` only when `window.maestro` is undefined (browser-preview mode), so renderer tests must explicitly set it.
-- Include `dashboard.onDelta(listener)` in Maestro API mocks. Capture the listener, return an unsubscribe spy, and use `act()` when invoking the captured listener so React observes streamed updates.
-- Include the focused dashboard APIs in Maestro mocks: `dashboard.list()`, `session.eventsSince()`, `workspaces.status()`, and `approvals.pending()`. Normal renderer refresh should not call `dashboard.load()`.
+- Mock `window.argmax` in `beforeEach`. The component falls back to `demoSnapshot` only when `window.argmax` is undefined (browser-preview mode), so renderer tests must explicitly set it.
+- Include `dashboard.onDelta(listener)` in Argmax API mocks. Capture the listener, return an unsubscribe spy, and use `act()` when invoking the captured listener so React observes streamed updates.
+- Include the focused dashboard APIs in Argmax mocks: `dashboard.list()`, `session.eventsSince()`, `workspaces.status()`, and `approvals.pending()`. Normal renderer refresh should not call `dashboard.load()`.
 - Active provider sessions may schedule a 1200ms focused poll. Assert polling uses `workspaces.status()` / `approvals.pending()` and, for the selected running/waiting session, `session.eventsSince()`; streamed deltas should render without another `dashboard.load()` call.
 - See [src/renderer/App.test.tsx](../../src/renderer/App.test.tsx) for the canonical pattern (mocks of every IPC namespace, fixture `snapshot`, etc.).
 

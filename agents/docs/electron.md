@@ -27,10 +27,10 @@ Hard rules in [src/main/main.ts](../../src/main/main.ts) BrowserWindow config:
 - `contextIsolation: true`
 - `nodeIntegration: false`
 
-The renderer talks to main **only** through `window.maestro` (defined in [src/main/preload.ts](../../src/main/preload.ts)). Never reach for `require()`, `process`, or `ipcRenderer` directly from renderer code — they don't exist there. The preload bridge is the only place where main and renderer share a runtime.
+The renderer talks to main **only** through `window.argmax` (defined in [src/main/preload.ts](../../src/main/preload.ts)). Never reach for `require()`, `process`, or `ipcRenderer` directly from renderer code — they don't exist there. The preload bridge is the only place where main and renderer share a runtime.
 
 Request/response methods call `ipcRenderer.invoke()`. The dashboard surface is split into focused request/response reads (`dashboard:list`, `session:eventsSince`, `workspace:status`, `approvals:pending`) plus the compatibility `dashboard:load` wrapper. Live dashboard updates use `dashboard.onDelta(listener)`, which wraps `ipcRenderer.on("dashboard:delta", ...)` and returns an unsubscribe function. Keep that listener cleanup path intact in renderer components and tests.
 
 ## Browser-preview fallback
 
-When the renderer is opened via Vite alone (no Electron host, e.g. via `npx vite` for visual debugging), `window.maestro` is `undefined` and the app falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts). The bridge-missing banner is suppressed when `location.hostname` is `127.0.0.1` or `localhost` (see `isBrowserPreview()` in `App.tsx`). Use this for fast UI iteration without the full Electron rebuild loop.
+When the renderer is opened via Vite alone (no Electron host, e.g. via `npx vite` for visual debugging), `window.argmax` is `undefined` and the app falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts). The bridge-missing banner is suppressed when `location.hostname` is `127.0.0.1` or `localhost` (see `isBrowserPreview()` in `App.tsx`). Use this for fast UI iteration without the full Electron rebuild loop.

@@ -42,6 +42,19 @@ import type {
 } from "../../shared/types.js";
 import type { ReasoningEffort, UsageCounts } from "../../shared/providerModels.js";
 
+/**
+ * Thrown when a row lookup fails because the row no longer exists. Callers
+ * that race against deletion (e.g. async event handlers writing to a session
+ * that was just cancelled) can catch this specifically; everything else is
+ * a real fault and should propagate.
+ */
+export class RecordNotFoundError extends Error {
+  constructor(readonly kind: "session" | "workspace" | "project", readonly id: string) {
+    super(`${kind} not found: ${id}`);
+    this.name = "RecordNotFoundError";
+  }
+}
+
 export interface PersistProjectInput {
   id: string;
   name: string;
@@ -658,7 +671,7 @@ function findProjectById(connection: Database.Database, projectId: string): Proj
 function requireProject(connection: Database.Database, projectId: string): ProjectSummary {
   const project = findProjectById(connection, projectId);
   if (!project) {
-    throw new Error(`Project not found: ${projectId}`);
+    throw new RecordNotFoundError("project", projectId);
   }
   return project;
 }
@@ -1022,7 +1035,7 @@ function persistCheckpoint(connection: Database.Database, input: PersistCheckpoi
 function findWorkspaceById(connection: Database.Database, workspaceId: string): WorkspaceSummary {
   const row = connection.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as WorkspaceRow | undefined;
   if (!row) {
-    throw new Error(`Workspace not found: ${workspaceId}`);
+    throw new RecordNotFoundError("workspace", workspaceId);
   }
 
   return workspaceRowToSummary(row);
@@ -1104,7 +1117,7 @@ function findApprovalById(connection: Database.Database, approvalId: string): Ap
 function findSessionById(connection: Database.Database, sessionId: string): SessionSummary {
   const row = connection.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as SessionRow | undefined;
   if (!row) {
-    throw new Error(`Session not found: ${sessionId}`);
+    throw new RecordNotFoundError("session", sessionId);
   }
 
   return sessionRowToSummary(row, isPreferredSession(connection, row.id));
@@ -1123,7 +1136,7 @@ function findSessionByIdNoPreferred(
 ): SessionSummary {
   const row = connection.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as SessionRow | undefined;
   if (!row) {
-    throw new Error(`Session not found: ${sessionId}`);
+    throw new RecordNotFoundError("session", sessionId);
   }
   return sessionRowToSummary(row, false);
 }
@@ -1532,7 +1545,7 @@ function getSessionCostSummary(connection: Database.Database, sessionId: string)
     )
     .get(sessionId) as SessionCostRow | undefined;
   if (!sessionRow) {
-    throw new Error(`Session not found: ${sessionId}`);
+    throw new RecordNotFoundError("session", sessionId);
   }
   const latestUsage = connection
     .prepare("SELECT model_id FROM usage_events WHERE session_id = ? ORDER BY id DESC LIMIT 1")

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ArgmaxDatabase, PersistTimelineEventInput } from "../persistence/database.js";
+import { RecordNotFoundError, type ArgmaxDatabase, type PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import { PROVIDER_MODEL_DEFAULTS, type ReasoningEffort } from "../../shared/providerModels.js";
 import { tryParseJsonObject } from "../../shared/safeJson.js";
@@ -705,8 +705,9 @@ export class ProviderSessionService {
         completedAt: session.completedAt ?? null,
         lastActivityAt: event.createdAt
       });
-    } catch {
-      /* session row vanished — ignore */
+    } catch (error) {
+      if (error instanceof RecordNotFoundError && error.kind === "session") return;
+      throw error;
     }
   }
 
@@ -723,8 +724,9 @@ export class ProviderSessionService {
         return;
       }
       this.publishDashboardDelta({ sessions: [updated] });
-    } catch {
-      /* session row vanished — ignore */
+    } catch (error) {
+      if (error instanceof RecordNotFoundError && error.kind === "session") return;
+      throw error;
     }
   }
 

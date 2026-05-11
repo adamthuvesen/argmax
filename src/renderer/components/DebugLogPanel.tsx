@@ -1,5 +1,5 @@
 import { PanelRightClose } from "lucide-react";
-import { useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import { useMemo, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 
 export function DebugLogPanel({
@@ -46,7 +46,7 @@ export function DebugLogPanel({
 }
 
 function DebugEventList({ events }: { events: TimelineEvent[] }): JSX.Element {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   if (events.length === 0) {
     return <p className="log-empty">No events yet.</p>;
@@ -96,11 +96,10 @@ function DebugEventList({ events }: { events: TimelineEvent[] }): JSX.Element {
 }
 
 function DebugOutputList({ outputs }: { outputs: RawProviderOutput[] }): JSX.Element {
+  const sorted = useMemo(() => [...outputs].reverse(), [outputs]);
   if (outputs.length === 0) {
     return <p className="log-empty">No raw output yet.</p>;
   }
-
-  const sorted = [...outputs].reverse();
   return (
     <div className="log-output-list">
       {sorted.map((output) => (

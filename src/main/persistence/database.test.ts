@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createDatabase, type ArgmaxDatabase } from "./database.js";
+import { createDatabase, RecordNotFoundError, type ArgmaxDatabase } from "./database.js";
 import type { ProjectSettings, WorkspaceState } from "../../shared/types.js";
 
 const settings: ProjectSettings = {
@@ -483,6 +483,61 @@ describe("findPendingApproval (Section 6)", () => {
     const session = database.getSession("session-cost");
     expect(session.costUsd).toBeCloseTo(0.0033, 9);
     expect(session.tokens).toEqual({ input: 300, output: 100, cacheRead: 500, cacheWrite: 200 });
+
+    database.connection.close();
+  });
+
+  it("rolls back the usage_events insert when the session row is gone", () => {
+    // In production the foreign key on usage_events.session_id catches this
+    // first, but the transaction wrapper plus the `result.changes === 0`
+    // throw is the defensive belt-and-braces — without it, a future
+    // schema change that loosened the FK would silently leave the audit
+    // row committed while the aggregate UPDATE matched nothing.
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "cost-race");
+    seedWorkspace(database, "ws-cost-race", projectId, "running");
+
+    expect(() =>
+      database.insertUsageEvent({
+        sessionId: "session-missing",
+        modelId: "claude-sonnet-4-6",
+        tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+        costUsd: 0.0001
+      })
+    ).toThrow();
+
+    const orphans = database.connection
+      .prepare("SELECT COUNT(*) AS c FROM usage_events WHERE session_id = ?")
+      .get("session-missing") as { c: number };
+    expect(orphans.c).toBe(0);
+
+    database.connection.close();
+  });
+
+  it("throws RecordNotFoundError when the session UPDATE matches zero rows (FK disabled)", () => {
+    // Exercises the `result.changes === 0` branch directly by disabling the
+    // FK so the insert succeeds but the UPDATE finds no session row.
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "cost-fk-off");
+    seedWorkspace(database, "ws-cost-fk-off", projectId, "running");
+    seedSession(database, "session-cost-fk-off", "ws-cost-fk-off");
+
+    database.connection.pragma("foreign_keys = OFF");
+    database.connection.prepare("DELETE FROM sessions WHERE id = ?").run("session-cost-fk-off");
+
+    expect(() =>
+      database.insertUsageEvent({
+        sessionId: "session-cost-fk-off",
+        modelId: "claude-sonnet-4-6",
+        tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+        costUsd: 0.0001
+      })
+    ).toThrow(RecordNotFoundError);
+
+    const orphans = database.connection
+      .prepare("SELECT COUNT(*) AS c FROM usage_events WHERE session_id = ?")
+      .get("session-cost-fk-off") as { c: number };
+    expect(orphans.c).toBe(0);
 
     database.connection.close();
   });

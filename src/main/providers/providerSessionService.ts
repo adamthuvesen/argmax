@@ -794,16 +794,16 @@ export class ProviderSessionService {
       return;
     }
 
-    const rawOutputs = sessionState.pendingRawOutputs.splice(0);
-    const events = sessionState.pendingEvents.splice(0);
-    const usages = sessionState.pendingUsages.splice(0);
+    // Snapshot the pending buffers without draining them. We only splice them
+    // off after the transaction commits — if it throws, the items stay in the
+    // buffer (transient errors retry on the next flush; session-deleted races
+    // are detected below and the batch is dropped explicitly).
+    const rawOutputs = sessionState.pendingRawOutputs.slice();
+    const events = sessionState.pendingEvents.slice();
+    const usages = sessionState.pendingUsages.slice();
     let sessionUpdate = sessionState.pendingSessionUpdate;
-    sessionState.pendingSessionUpdate = null;
     const persistedEvents: TimelineEvent[] = [];
 
-    // Wrap the whole micro-batch in one transaction so the renderer never
-    // observes a half-applied state between persistRawOutput, timeline, and
-    // usage aggregates.
     const persist = this.database.connection.transaction(() => {
       for (const raw of rawOutputs) {
         this.database.persistRawOutput(raw);
@@ -821,12 +821,33 @@ export class ProviderSessionService {
         });
       }
     });
-    persist();
+    try {
+      persist();
+    } catch (error) {
+      if (isSessionGoneError(error, sessionId)) {
+        // Session was deleted mid-stream. Drop the whole batch — the renderer
+        // will pick up the deletion via the next status poll.
+        sessionState.pendingRawOutputs.length = 0;
+        sessionState.pendingEvents.length = 0;
+        sessionState.pendingUsages.length = 0;
+        sessionState.pendingSessionUpdate = null;
+        return;
+      }
+      throw error;
+    }
+
+    sessionState.pendingRawOutputs.splice(0, rawOutputs.length);
+    sessionState.pendingEvents.splice(0, events.length);
+    sessionState.pendingUsages.splice(0, usages.length);
+    sessionState.pendingSessionUpdate = null;
+
     if (usages.length > 0) {
       try {
         sessionUpdate = this.database.getSession(sessionId);
-      } catch {
-        /* session row vanished — fall through with prior sessionUpdate */
+      } catch (error) {
+        if (!(error instanceof RecordNotFoundError && error.kind === "session")) {
+          throw error;
+        }
       }
     }
     sessionState.lastFlushAt = Date.now();
@@ -840,6 +861,27 @@ export class ProviderSessionService {
   private publishDashboardDelta(delta: DashboardDelta): void {
     this.publishDelta(delta);
   }
+}
+
+/**
+ * True when an error from the flush transaction indicates the session row
+ * vanished mid-stream (workspace archived, CASCADE delete). Either the typed
+ * `RecordNotFoundError` from `insertUsageEvent`, or a foreign-key violation
+ * from a timeline/raw-output INSERT.
+ */
+function isSessionGoneError(error: unknown, sessionId: string): boolean {
+  if (error instanceof RecordNotFoundError && error.kind === "session" && error.id === sessionId) {
+    return true;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "SQLITE_CONSTRAINT_FOREIGNKEY"
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function capRawContent(content: string): { content: string; droppedBytes: number } {

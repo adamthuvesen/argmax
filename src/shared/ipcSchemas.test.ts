@@ -96,6 +96,17 @@ describe("ipcSchemas", () => {
     });
   });
 
+  it("accepts a valid system:open-path payload and rejects leading '-'", () => {
+    expect(ipcSchemas["system:open-path"].parse({ path: "/Users/me/file.ts" })).toEqual({
+      path: "/Users/me/file.ts"
+    });
+    expect(
+      ipcSchemas["system:open-path"].parse({ path: "src/index.ts", cwd: "/Users/me/repo" })
+    ).toEqual({ path: "src/index.ts", cwd: "/Users/me/repo" });
+    expect(() => ipcSchemas["system:open-path"].parse({ path: "-rf" })).toThrow();
+    expect(() => ipcSchemas["system:open-path"].parse({ path: "" })).toThrow();
+  });
+
   it("accepts focused dashboard read payloads", () => {
     expect(ipcSchemas["dashboard:list"].parse(undefined)).toBeUndefined();
     expect(ipcSchemas["approvals:pending"].parse(undefined)).toBeUndefined();

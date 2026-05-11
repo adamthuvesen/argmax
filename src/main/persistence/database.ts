@@ -1164,7 +1164,7 @@ function listSessionEventsSince(
               SELECT rowid AS row_cursor, * FROM events
               WHERE session_id = ?
               ORDER BY rowid DESC
-              LIMIT 50
+              LIMIT 500
             )
             ORDER BY row_cursor ASC
           `
@@ -1216,7 +1216,7 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
   const dashboard = listDashboard(connection);
 
   const events = (
-    connection.prepare("SELECT * FROM events ORDER BY created_at DESC LIMIT 50").all() as EventRow[]
+    connection.prepare("SELECT * FROM events ORDER BY created_at DESC LIMIT 500").all() as EventRow[]
   ).map(eventRowToTimelineEvent);
 
   const rawOutputs = (

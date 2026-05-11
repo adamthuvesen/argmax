@@ -182,6 +182,20 @@ export const skillsListInputSchema = z.object({
   workspaceId: workspaceIdSchema.optional()
 });
 
+/**
+ * Opens a file or folder in the OS default handler. The `path` may be absolute
+ * or relative; relative paths are resolved against `cwd` if provided. We reject
+ * leading `-` to avoid argv-style mis-parses downstream, but otherwise trust
+ * the local single-user environment — there is no privilege boundary here.
+ */
+export const systemOpenPathInputSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .refine((value) => !value.startsWith("-"), { message: "path cannot start with '-'" }),
+  cwd: z.string().min(1).optional()
+});
+
 // ---------------------------------------------------------------------------
 // Channel → schema map
 // ---------------------------------------------------------------------------
@@ -214,7 +228,8 @@ export const ipcSchemas = {
   "attempts:select-preferred": selectPreferredAttemptInputSchema,
   "commits:prepare": prepareCommitInputSchema,
   "dashboard:load": dashboardLoadInputSchema,
-  "skills:list": skillsListInputSchema
+  "skills:list": skillsListInputSchema,
+  "system:open-path": systemOpenPathInputSchema
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -241,3 +256,4 @@ export type SelectPreferredAttemptInputParsed = z.infer<typeof selectPreferredAt
 export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
+export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;

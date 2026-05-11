@@ -114,7 +114,7 @@ async function readGitMetadata(candidatePath: string): Promise<GitMetadata> {
 async function discoverDefaultBranch(repoPath: string, currentBranch: string): Promise<string | null> {
   const originHead = await runGitMaybe(repoPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
   if (originHead) {
-    return originHead.replace(/^origin\//, "");
+    return originHead.trim().replace(/^origin\//, "");
   }
 
   for (const branch of ["main", "master", "trunk"]) {

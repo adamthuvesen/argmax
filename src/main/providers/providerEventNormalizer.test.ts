@@ -66,6 +66,43 @@ describe("normalizeProviderEvent", () => {
     });
   });
 
+  it("maps Codex item tool events into visible command events", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        [
+          '{"type":"item.started","item":{"id":"ws_1","type":"web_search","query":"","action":{"type":"other"}}}',
+          '{"type":"item.completed","item":{"id":"ws_1","type":"web_search","query":"pizza recipe","action":{"type":"search","query":"pizza recipe","queries":["pizza recipe"]}}}'
+        ].join("\n") + "\n"
+      ),
+      { provider: "codex" }
+    );
+
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      type: "command.started",
+      message: "web_search",
+      payload: {
+        id: "ws_1",
+        type: "web_search",
+        name: "web_search",
+        input: {},
+        providerEventType: "item.started"
+      }
+    });
+    expect(events[1]).toMatchObject({
+      type: "command.completed",
+      message: "web_search",
+      payload: {
+        id: "ws_1",
+        input: {
+          query: "pizza recipe",
+          queries: ["pizza recipe"]
+        },
+        providerEventType: "item.completed"
+      }
+    });
+  });
+
   it("ignores structured lifecycle events that are not user-visible messages", () => {
     const events = normalizeProviderEvent(
       outputEvent('{"type":"thread.started","thread_id":"thread-1"}\n{"type":"turn.started"}\n{"type":"turn.completed"}\n')

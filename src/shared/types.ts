@@ -306,6 +306,9 @@ export interface MaestroApi {
   skills: {
     list: (input: SkillsListInput) => Promise<SkillSummary[]>;
   };
+  system: {
+    openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
+  };
 }
 
 declare global {

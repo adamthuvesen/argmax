@@ -88,6 +88,21 @@ export class ProviderSessionService {
     private readonly publishDelta: (delta: DashboardDelta) => void = () => undefined
   ) {}
 
+  /** Number of sessions with an active (non-disposed) handle. */
+  get openHandleCount(): number {
+    let count = 0;
+    for (const entry of this.handles.values()) {
+      if (entry.kind === "pending" || (entry.kind === "resolved" && !entry.handle.disposed)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private logHandleCount(action: string, sessionId: string): void {
+    console.log(`[maestro] handles: ${this.openHandleCount} (${action} ${sessionId})`);
+  }
+
   async launch(input: LaunchProviderSessionInput): Promise<SessionSummary> {
     const workspace = this.database.getWorkspace(input.workspaceId);
     const sessionId = randomUUID();
@@ -174,6 +189,7 @@ export class ProviderSessionService {
         throw new Error("Provider launch was cancelled before handle registration.");
       }
       this.handles.set(sessionId, { kind: "resolved", handle });
+      this.logHandleCount("opened", sessionId);
       // Replay queued operations in arrival order.
       for (const op of pending.ops) {
         this.applyOpToHandle(handle, op);
@@ -272,6 +288,7 @@ export class ProviderSessionService {
         throw new Error("Provider launch was cancelled before handle registration.");
       }
       this.handles.set(sessionId, { kind: "resolved", handle });
+      this.logHandleCount("reopened", sessionId);
       for (const op of pending.ops) {
         this.applyOpToHandle(handle, op);
       }
@@ -359,6 +376,9 @@ export class ProviderSessionService {
 
   async disposeAll(): Promise<void> {
     const sessions = [...this.handles.keys()];
+    if (sessions.length > 0) {
+      console.log(`[maestro] disposeAll: terminating ${sessions.length} handle(s)`);
+    }
     await Promise.allSettled(
       sessions.map(async (sessionId) => {
         const entry = this.handles.get(sessionId);
@@ -515,6 +535,7 @@ export class ProviderSessionService {
       rawOutputs: [rawOutput]
     });
     this.handles.delete(event.sessionId);
+    this.logHandleCount("closed", event.sessionId);
     this.deleteBuffer(event.sessionId);
   }
 

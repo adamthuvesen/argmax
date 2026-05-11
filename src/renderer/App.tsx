@@ -1,19 +1,29 @@
 import {
   AlertTriangle,
+  Archive,
+  Bug,
+  Check,
   ChevronRight,
   Command,
+  ExternalLink,
   FileText,
   Folder,
   GitBranch,
+  Globe,
+  GripVertical,
+  Loader2,
   Mic,
   PanelRightClose,
+  Pencil,
   Plus,
   Search,
   Settings,
   ShieldAlert,
+  Terminal,
+  Wrench,
   X,
 } from "lucide-react";
-import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
+import type { DragEvent as ReactDragEvent, FormEvent, JSX, KeyboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
@@ -35,6 +45,7 @@ import type { ProviderModelSelection } from "../shared/providerModels.js";
 import { tryParseJsonObject } from "../shared/safeJson.js";
 import { stripTerminalControls } from "../shared/terminalControls.js";
 import { demoSnapshot } from "./demoSnapshot.js";
+import { formatElapsed } from "./formatElapsed.js";
 
 const emptySnapshot: DashboardSnapshot = {
   projects: [],
@@ -89,14 +100,250 @@ const allModelOptions: ModelPickerSelection[] = (Object.entries(PROVIDER_MODELS)
     }))
   );
 
-const SUGGESTION_CHIPS = [
-  "Plan a feature",
-  "Review changes",
-  "Run checks",
-  "Debug a test"
-] as const;
+
+type ToolCall = {
+  id: string;
+  toolUseId: string;
+  name: string;
+  inputPreview: string;
+  inputFull: Record<string, unknown>;
+  output: string | null;
+  status: "running" | "done" | "error";
+  createdAt: string;
+  completedAt: string | null;
+  error: string | null;
+};
+
+type ParallelPosition = "start" | "middle" | "end";
+
+type ToolCallGroup = {
+  id: string;
+  tools: ToolCall[];
+  parallelPositions: Map<string, ParallelPosition>;
+  parallelGroupId: Map<string, string>;
+};
+
+type ConversationItem =
+  | { kind: "message"; event: TimelineEvent }
+  | { kind: "tool"; tool: ToolCall }
+  | { kind: "tool-group"; group: ToolCallGroup };
+
+const PARALLEL_WINDOW_MS = 75;
+
+function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
+  const parallelPositions = new Map<string, ParallelPosition>();
+  const parallelGroupId = new Map<string, string>();
+  let cluster: ToolCall[] = [];
+  const finalize = (): void => {
+    if (cluster.length >= 2) {
+      const first = cluster[0];
+      const last = cluster[cluster.length - 1];
+      if (!first || !last) {
+        cluster = [];
+        return;
+      }
+      const groupId = `pg-${first.id}`;
+      parallelPositions.set(first.id, "start");
+      parallelPositions.set(last.id, "end");
+      parallelGroupId.set(first.id, groupId);
+      parallelGroupId.set(last.id, groupId);
+      for (let i = 1; i < cluster.length - 1; i++) {
+        const mid = cluster[i];
+        if (!mid) continue;
+        parallelPositions.set(mid.id, "middle");
+        parallelGroupId.set(mid.id, groupId);
+      }
+    }
+    cluster = [];
+  };
+  for (const tool of tools) {
+    const last = cluster[cluster.length - 1];
+    if (!last) {
+      cluster.push(tool);
+      continue;
+    }
+    const gap = Date.parse(tool.createdAt) - Date.parse(last.createdAt);
+    if (Number.isFinite(gap) && gap <= PARALLEL_WINDOW_MS) {
+      cluster.push(tool);
+    } else {
+      finalize();
+      cluster = [tool];
+    }
+  }
+  finalize();
+  const firstTool = tools[0];
+  return {
+    id: firstTool ? `tcg-${firstTool.id}` : "tcg-empty",
+    tools,
+    parallelPositions,
+    parallelGroupId
+  };
+}
+
+function summarizeToolGroup(tools: ToolCall[]): { headline: string; preview: string; worstStatus: ToolCall["status"] } {
+  const names = tools.map((t) => t.name.toLowerCase());
+  const every = (pred: (n: string) => boolean): boolean => names.every(pred);
+  let headline = `${tools.length} tool calls`;
+  if (every((n) => /read|view|cat|^ls$|list_dir/.test(n))) headline = `Explored ${tools.length} files`;
+  else if (every((n) => /bash|shell|exec|terminal/.test(n))) headline = `Ran ${tools.length} commands`;
+  else if (every((n) => /grep|search|find|glob/.test(n))) headline = `Searched ${tools.length} times`;
+  else if (every((n) => /web|fetch|http|url|browser/.test(n))) headline = `Fetched ${tools.length} URLs`;
+  else if (every((n) => /write|edit|patch|create/.test(n))) headline = `Edited ${tools.length} files`;
+
+  const previewParts: string[] = [];
+  for (const tool of tools) {
+    const raw = tool.inputPreview;
+    if (!raw) continue;
+    const trimmed = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
+    previewParts.push(trimmed.slice(0, 28));
+    if (previewParts.length === 3) break;
+  }
+  const preview = previewParts.join(", ") + (tools.length > previewParts.length ? ", …" : "");
+  const worstStatus: ToolCall["status"] = tools.some((t) => t.status === "error")
+    ? "error"
+    : tools.some((t) => t.status === "running")
+      ? "running"
+      : "done";
+  return { headline, preview, worstStatus };
+}
+
+function extractToolUseId(payload: Record<string, unknown>): string | null {
+  if (typeof payload.id === "string" && payload.id) return payload.id;
+  if (typeof payload.call_id === "string" && payload.call_id) return payload.call_id;
+  return null;
+}
+
+function extractToolName(payload: Record<string, unknown>): string {
+  if (typeof payload.name === "string" && payload.name) return payload.name;
+  if (typeof payload.type === "string" && payload.type !== "command.started") return payload.type;
+  return "tool";
+}
+
+function extractToolInput(payload: Record<string, unknown>): Record<string, unknown> {
+  if (payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)) {
+    return payload.input as Record<string, unknown>;
+  }
+  if (typeof payload.arguments === "string") {
+    try { return JSON.parse(payload.arguments) as Record<string, unknown>; } catch { /* ignore */ }
+  }
+  return {};
+}
+
+function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
+  const lower = name.toLowerCase();
+  if (lower.includes("bash") || lower.includes("shell") || lower.includes("exec")) {
+    const cmd = input.command ?? input.cmd;
+    if (typeof cmd === "string") return cmd.split("\n")[0]?.slice(0, 72) ?? "";
+  }
+  const path = input.file_path ?? input.path ?? input.relative_path;
+  if (typeof path === "string") return path;
+  const query = input.query ?? input.pattern ?? input.search_term;
+  if (typeof query === "string") return String(query).slice(0, 72);
+  const url = input.url;
+  if (typeof url === "string") return url.slice(0, 72);
+  const first = Object.values(input)[0];
+  return first !== undefined ? String(first).slice(0, 72) : "";
+}
+
+function extractToolOutput(payload: Record<string, unknown>): string | null {
+  if (typeof payload.content === "string") return payload.content;
+  if (Array.isArray(payload.content)) {
+    const text = payload.content
+      .map((c: unknown) => (c && typeof c === "object" && "text" in c ? String((c as Record<string, unknown>).text) : ""))
+      .filter(Boolean)
+      .join("\n");
+    return text || null;
+  }
+  if (typeof payload.output === "string") return payload.output;
+  return null;
+}
+
+function detectToolError(payload: Record<string, unknown>): boolean {
+  if (payload.is_error === true) return true;
+  if (payload.isError === true) return true;
+  if (typeof payload.error === "string" && payload.error.length > 0) return true;
+  if (payload.error && typeof payload.error === "object") return true;
+  const status = payload.status;
+  if (typeof status === "string" && /fail|error/i.test(status)) return true;
+  return false;
+}
+
+function extractToolError(payload: Record<string, unknown>): string | null {
+  if (typeof payload.error === "string" && payload.error.length > 0) return payload.error;
+  if (payload.error && typeof payload.error === "object") {
+    const errObj = payload.error as Record<string, unknown>;
+    if (typeof errObj.message === "string") return errObj.message;
+  }
+  if (payload.is_error === true || payload.isError === true) {
+    const output = extractToolOutput(payload);
+    if (output) return output;
+  }
+  return null;
+}
+
+function extractOpenablePath(name: string, input: Record<string, unknown>): string | null {
+  const lower = name.toLowerCase();
+  if (!/read|view|cat|write|edit|patch|create|open/.test(lower)) return null;
+  for (const key of ["file_path", "filepath", "path", "relative_path", "absolute_path"]) {
+    const value = input[key];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return null;
+}
+
+function isBashLikeTool(name: string): boolean {
+  const lower = name.toLowerCase();
+  return /bash|shell|exec|terminal|cmd/.test(lower);
+}
+
+function useAutoGrowTextArea(
+  ref: RefObject<HTMLTextAreaElement | null>,
+  value: string,
+  maxHeightPx: number
+): void {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, maxHeightPx);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > maxHeightPx ? "auto" : "hidden";
+  }, [ref, value, maxHeightPx]);
+}
+
+const PROMPT_MAX_HEIGHT_PX = 140;
+
+function thinkingModelSlug(model: ProviderModelSelection): string {
+  const id = model.modelId.toLowerCase().split(":")[0] ?? model.modelId;
+  return id.replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
+}
+
+function getToolIcon(name: string): JSX.Element {
+  const lower = name.toLowerCase();
+  if (lower.includes("bash") || lower.includes("shell") || lower.includes("terminal") || lower.includes("exec")) {
+    return <Terminal size={13} />;
+  }
+  if (lower.includes("write") || lower.includes("edit") || lower.includes("create") || lower.includes("patch")) {
+    return <Pencil size={13} />;
+  }
+  if (lower.includes("read") || lower.includes("view") || lower.includes("open") || lower.includes("cat") || lower.includes("list")) {
+    return <FileText size={13} />;
+  }
+  if (lower.includes("search") || lower.includes("grep") || lower.includes("find") || lower.includes("glob")) {
+    return <Search size={13} />;
+  }
+  if (lower.includes("web") || lower.includes("browser") || lower.includes("navigate") || lower.includes("fetch") || lower.includes("url") || lower.includes("http")) {
+    return <Globe size={13} />;
+  }
+  return <Wrench size={13} />;
+}
 
 const collapsedProjectsStorageKey = "maestro.sidebar.collapsedProjects";
+const projectOrderStorageKey = "maestro.sidebar.projectOrder";
+const SIDEBAR_WIDTH_KEY = "maestro.sidebar.width";
+const SIDEBAR_MIN = 180;
+const SIDEBAR_MAX = 500;
+const SIDEBAR_DEFAULT = 272;
 
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
@@ -109,14 +356,48 @@ export function App(): JSX.Element {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.maestro);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(SIDEBAR_WIDTH_KEY) : null;
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
+  });
+  const [isResizing, setIsResizing] = useState(false);
 
   const dashboardLoadToken = useRef(0);
   const dashboardDeltaRevision = useRef(0);
   const sessionCursorsRef = useRef(new Map<string, SessionCursor>());
   const resolveApprovalToken = useRef(0);
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  const handleResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    setIsResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (e: MouseEvent): void => {
+      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + (e.clientX - startX)));
+      setSidebarWidth(next);
+    };
+    const onMouseUp = (): void => {
+      setIsResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [sidebarWidth]);
 
   const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
     if (!window.maestro) {
@@ -135,8 +416,8 @@ export function App(): JSX.Element {
     });
     setSnapshot((current) => ({
       ...current,
-      events: mergeByCreatedAt(current.events, data.events, 50, "asc"),
-      rawOutputs: mergeByCreatedAt(current.rawOutputs, data.rawOutputs, 100, "asc")
+      events: pruneSupersededDeltas(mergeByCreatedAt(current.events, data.events, 500, "desc")),
+      rawOutputs: mergeByCreatedAt(current.rawOutputs, data.rawOutputs, 100, "desc")
     }));
   }, []);
 
@@ -325,6 +606,15 @@ export function App(): JSX.Element {
     setSelectedWorkspaceId(null);
   }, []);
 
+  const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
+    const result = await window.maestro.workspaces.archive(workspaceId);
+    setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
+    if (selectedWorkspaceId === workspaceId) {
+      setSelectedWorkspaceId(null);
+      setSelectedSessionId(null);
+    }
+  }, [selectedWorkspaceId]);
+
   const addProject = useCallback(async (): Promise<void> => {
     if (!window.maestro) {
       setToast({ kind: "error", message: "Open the Electron app window to add a project." });
@@ -445,7 +735,12 @@ export function App(): JSX.Element {
   );
 
   return (
-    <main className="app-shell" tabIndex={-1}>
+    <main
+      className="app-shell"
+      tabIndex={-1}
+      style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}
+      data-resizing={isResizing ? "true" : undefined}
+    >
       {bridgeMissing && !isBrowserPreview() ? (
         <div className="bridge-banner" role="alert">
           Preload bridge unavailable; running on demo data.
@@ -464,19 +759,42 @@ export function App(): JSX.Element {
         onOpenLauncher={() => {
           setSelectedSessionId(null);
           setSelectedWorkspaceId(null);
+          setIsSettingsOpen(false);
         }}
         onAddProject={() => void addProject()}
-        onOpenProject={openProjectLauncher}
-        onOpenWorkspaceChat={openWorkspaceChat}
+        onArchiveWorkspace={(id) => void handleArchiveWorkspace(id)}
+        onOpenProject={(projectId) => {
+          setIsSettingsOpen(false);
+          openProjectLauncher(projectId);
+        }}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenWorkspaceChat={(workspaceId) => {
+          setIsSettingsOpen(false);
+          openWorkspaceChat(workspaceId);
+        }}
+        onResizeMouseDown={handleResizeMouseDown}
+        isSettingsActive={isSettingsOpen}
         selectedProjectId={selectedProject?.id ?? null}
         selectedWorkspaceId={selectedWorkspace?.id ?? null}
         snapshot={snapshot}
       />
 
       <section className="workspace">
-        <div className={selectedSession ? "work-scroll session-scroll" : "work-scroll launcher-scroll"}>
+        <div className={
+          isSettingsOpen
+            ? "work-scroll settings-scroll"
+            : selectedSession
+              ? "work-scroll session-scroll"
+              : "work-scroll launcher-scroll"
+        }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
+          ) : isSettingsOpen ? (
+            <SettingsPanel
+              defaultModel={launchModel}
+              onDefaultModelChange={setLaunchModel}
+              onClose={() => setIsSettingsOpen(false)}
+            />
           ) : selectedSession ? (
             <SessionPane
               approvals={snapshot.approvals}
@@ -506,23 +824,39 @@ export function App(): JSX.Element {
 function Sidebar({
   loadState,
   onAddProject,
+  onArchiveWorkspace,
   onOpenLauncher,
   onOpenProject,
+  onOpenSettings,
   onOpenWorkspaceChat,
+  onResizeMouseDown,
+  isSettingsActive,
   selectedProjectId,
   selectedWorkspaceId,
   snapshot
 }: {
   loadState: "loading" | "ready" | "error";
   onAddProject: () => void;
+  onArchiveWorkspace: (workspaceId: string) => void;
   onOpenLauncher: () => void;
   onOpenProject: (projectId: string) => void;
+  onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string) => void;
+  onResizeMouseDown: (event: ReactMouseEvent) => void;
+  isSettingsActive: boolean;
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
   snapshot: DashboardSnapshot;
 }): JSX.Element {
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
+  const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const orderedProjects = useMemo(
+    () => applyProjectOrder(snapshot.projects, projectOrder),
+    [snapshot.projects, projectOrder]
+  );
 
   const toggleProjectVisibility = useCallback((projectId: string): void => {
     setCollapsedProjectIds((current) => {
@@ -537,16 +871,65 @@ function Sidebar({
     });
   }, []);
 
+  const handleDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
+    setDraggingId(projectId);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handleDragOver = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverId(projectId);
+  }, []);
+
+  const handleDrop = useCallback((e: ReactDragEvent<HTMLDivElement>, targetId: string, currentOrdered: ProjectSummary[]): void => {
+    e.preventDefault();
+    setDraggingId((currentDraggingId) => {
+      if (currentDraggingId && currentDraggingId !== targetId) {
+        const ids = currentOrdered.map((p) => p.id);
+        const from = ids.indexOf(currentDraggingId);
+        const to = ids.indexOf(targetId);
+        if (from !== -1 && to !== -1) {
+          const next = [...ids];
+          next.splice(from, 1);
+          next.splice(to, 0, currentDraggingId);
+          saveProjectOrder(next);
+          setProjectOrder(next);
+        }
+      }
+      return null;
+    });
+    setDragOverId(null);
+  }, []);
+
+  const handleDragLeave = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
+    // Only clear when the cursor leaves the row itself, not when it enters a
+    // child element (which also fires dragleave on the parent).
+    const related = e.relatedTarget;
+    if (related instanceof Node && e.currentTarget.contains(related)) return;
+    setDragOverId((current) => (current === projectId ? null : current));
+  }, []);
+
+  const handleDragEnd = useCallback((): void => {
+    setDraggingId(null);
+    setDragOverId(null);
+  }, []);
+
   return (
     <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
-      <div className="window-controls">
-        <span className="search-shell">
-          <kbd className="kbd kbd-floating" aria-hidden="true">⌘ K</kbd>
-          <button className="small-icon" type="button" title="Search">
-            <Search size={16} />
-          </button>
-        </span>
-      </div>
+      <div className="window-controls" />
+      <nav className="rail-nav" aria-label="Primary">
+        <button
+          className="rail-nav-item"
+          type="button"
+          title="New session"
+          aria-label="New session"
+          onClick={onOpenLauncher}
+        >
+          <Plus size={16} />
+          <span>New session</span>
+        </button>
+      </nav>
 
       <div className="project-list">
         <div className="rail-heading">
@@ -555,13 +938,25 @@ function Sidebar({
             <Plus size={16} />
           </button>
         </div>
-        {snapshot.projects.map((project) => {
+        {orderedProjects.map((project) => {
           const projectWorkspaces = snapshot.workspaces
-            .filter((workspace) => workspace.projectId === project.id)
+            .filter((workspace) => workspace.projectId === project.id && workspace.state !== "archived")
             .slice(0, 7);
           const isCollapsed = collapsedProjectIds.has(project.id);
+          const isDragging = draggingId === project.id;
+          const isDragOver = dragOverId === project.id && !isDragging;
           return (
-            <div className="project-group" data-collapsed={isCollapsed ? "true" : undefined} key={project.id}>
+            <div
+              className={`project-group${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
+              data-collapsed={isCollapsed ? "true" : undefined}
+              draggable
+              key={project.id}
+              onDragStart={(e) => handleDragStart(e, project.id)}
+              onDragOver={(e) => handleDragOver(e, project.id)}
+              onDragLeave={(e) => handleDragLeave(e, project.id)}
+              onDrop={(e) => handleDrop(e, project.id, orderedProjects)}
+              onDragEnd={handleDragEnd}
+            >
               <div className="project-row">
                 <button
                   aria-pressed={selectedProjectId === project.id && !selectedWorkspaceId}
@@ -591,17 +986,30 @@ function Sidebar({
               {isCollapsed
                 ? null
                 : projectWorkspaces.map((workspace) => (
-                    <button
-                      aria-pressed={selectedWorkspaceId === workspace.id}
-                      className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
-                      data-status={workspace.state}
-                      key={workspace.id}
-                      type="button"
-                      onClick={() => onOpenWorkspaceChat(workspace.id)}
-                    >
-                      <span className="status-dot" aria-hidden="true" />
-                      <span>{workspace.taskLabel}</span>
-                    </button>
+                    <div key={workspace.id} className="session-row">
+                      <button
+                        aria-pressed={selectedWorkspaceId === workspace.id}
+                        className={selectedWorkspaceId === workspace.id ? "session-link active" : "session-link"}
+                        data-status={workspace.state}
+                        type="button"
+                        title={`${workspace.taskLabel} — ${workspace.state}`}
+                        onClick={() => onOpenWorkspaceChat(workspace.id)}
+                      >
+                        <span className="status-dot" aria-hidden="true" />
+                        <span>{workspace.taskLabel}</span>
+                      </button>
+                      {(workspace.state === "complete" || workspace.state === "failed" || workspace.state === "kept") && (
+                        <button
+                          className="session-archive-btn"
+                          title="Archive session"
+                          aria-label="Archive session"
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
+                        >
+                          <Archive size={12} />
+                        </button>
+                      )}
+                    </div>
                   ))}
             </div>
           );
@@ -609,13 +1017,27 @@ function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <span className="connection-state" data-state={loadState}>
-          {loadState === "ready" ? "Online" : loadState === "loading" ? "Loading" : "Issue"}
-        </span>
-        <button className="small-icon" type="button" title="Settings">
+        <div className="identity-chip" data-state={loadState}>
+          <span className="identity-avatar" aria-hidden="true">M</span>
+          <span className="identity-meta">
+            <span className="identity-name">Maestro</span>
+            <span className="identity-sub">
+              {loadState === "ready" ? "Local · Online" : loadState === "loading" ? "Local · Loading" : "Local · Issue"}
+            </span>
+          </span>
+        </div>
+        <button
+          className="small-icon"
+          type="button"
+          title="Settings"
+          aria-label="Settings"
+          aria-pressed={isSettingsActive}
+          onClick={onOpenSettings}
+        >
           <Settings size={16} />
         </button>
       </div>
+      <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
     </aside>
   );
 }
@@ -643,6 +1065,37 @@ function saveCollapsedProjectIds(projectIds: Set<string>): void {
   window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([...projectIds]));
 }
 
+function loadProjectOrder(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(projectOrderStorageKey);
+    const ids: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? ids : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveProjectOrder(ids: string[]): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(projectOrderStorageKey, JSON.stringify(ids));
+}
+
+function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {
+  if (order.length === 0) return projects;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return [...projects].sort((a, b) => {
+    const ra = rank.get(a.id) ?? Infinity;
+    const rb = rank.get(b.id) ?? Infinity;
+    if (ra !== rb) return ra - rb;
+    return (b.latestActivityAt ?? "") > (a.latestActivityAt ?? "") ? 1 : -1;
+  });
+}
+
 function SessionPane({
   approvals,
   events,
@@ -664,6 +1117,8 @@ function SessionPane({
 }): JSX.Element {
   const sessionId = session?.id ?? null;
   const reviewState = useReviewState(workspace);
+  const [isLogOpen, setIsLogOpen] = useState(false);
+  const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
   const visibleApprovals = useMemo(
     () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
     [approvals, sessionId]
@@ -671,6 +1126,10 @@ function SessionPane({
   const visibleEvents = useMemo(
     () => (sessionId ? events.filter((event) => event.sessionId === sessionId) : events),
     [events, sessionId]
+  );
+  const visibleRawOutputs = useMemo(
+    () => (sessionId ? rawOutputs.filter((output) => output.sessionId === sessionId) : rawOutputs),
+    [rawOutputs, sessionId]
   );
   const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
     try {
@@ -680,12 +1139,18 @@ function SessionPane({
     }
   };
 
+  const gridClass = ["session-grid", reviewState.isPanelOpen && "review-open", isLogOpen && "log-open"]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className={reviewState.isPanelOpen ? "session-grid review-open" : "session-grid"}>
+    <div className={gridClass}>
       <div className="session-main-column">
         <SessionConversation
           events={visibleEvents}
+          isLogOpen={isLogOpen}
           onSendSessionInput={onSendSessionInput}
+          onToggleLog={toggleLog}
           project={project}
           rawOutputs={rawOutputs}
           review={reviewState}
@@ -740,13 +1205,18 @@ function SessionPane({
         ) : null}
       </div>
       {reviewState.isPanelOpen ? <ReviewPanel review={reviewState} /> : null}
+      {isLogOpen ? (
+        <DebugLogPanel events={visibleEvents} rawOutputs={visibleRawOutputs} onClose={() => setIsLogOpen(false)} />
+      ) : null}
     </div>
   );
 }
 
 function SessionConversation({
   events,
+  isLogOpen,
   onSendSessionInput,
+  onToggleLog,
   project,
   rawOutputs,
   review,
@@ -754,7 +1224,9 @@ function SessionConversation({
   workspace
 }: {
   events: TimelineEvent[];
+  isLogOpen: boolean;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
+  onToggleLog: () => void;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   review: ReviewState;
@@ -765,20 +1237,35 @@ function SessionConversation({
   const [status, setStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputFormRef = useRef<HTMLFormElement | null>(null);
   const shouldRefocusInput = useRef(false);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
   const conversationEvents = useMemo(
-    () =>
-      events
+    () => {
+      const ascending = events
         .filter(
           (event) =>
             event.payload.raw !== true &&
             ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
             event.message !== "turn.completed"
         )
-        .reverse(),
+        .reverse();
+      // Providers stream message.delta fragments and then a final message.completed
+      // with the accumulated text. Once a turn has a completed event, the deltas
+      // are stale duplicates — keep them only while streaming (before completion).
+      return ascending.filter((event, index) => {
+        if (event.type !== "message.delta") return true;
+        for (let next = index + 1; next < ascending.length; next++) {
+          const nextEvent = ascending[next];
+          if (!nextEvent) break;
+          if (nextEvent.type === "user.message") return true;
+          if (nextEvent.type === "message.completed") return false;
+        }
+        return true;
+      });
+    },
     [events]
   );
   const hasAssistantEvents = conversationEvents.some((event) => event.type !== "user.message");
@@ -792,12 +1279,129 @@ function SessionConversation({
   const hasAssistantForLatestTurn = latestUserMessageAt
     ? conversationEvents.some((event) => event.type !== "user.message" && event.createdAt > latestUserMessageAt)
     : hasAssistantEvents;
+
+  const toolCalls = useMemo((): ToolCall[] => {
+    const starts = new Map<string, { event: TimelineEvent; toolUseId: string }>();
+    const completions = new Map<string, TimelineEvent>();
+    for (const event of events) {
+      if (event.type === "command.started") {
+        const toolUseId = extractToolUseId(event.payload) ?? event.id;
+        starts.set(toolUseId, { event, toolUseId });
+      } else if (event.type === "command.completed") {
+        const toolUseId =
+          typeof event.payload.tool_use_id === "string" ? event.payload.tool_use_id :
+          typeof event.payload.id === "string" ? event.payload.id : null;
+        if (toolUseId) completions.set(toolUseId, event);
+      }
+    }
+    return [...starts.values()]
+      .map(({ event, toolUseId }) => {
+        const name = extractToolName(event.payload);
+        const completion = completions.get(toolUseId);
+        const startInput = extractToolInput(event.payload);
+        const completionInput = completion ? extractToolInput(completion.payload) : {};
+        const input = Object.keys(startInput).length > 0 ? startInput : completionInput;
+        const isError = completion ? detectToolError(completion.payload) : false;
+        const status: ToolCall["status"] = !completion ? "running" : isError ? "error" : "done";
+        return {
+          id: event.id,
+          toolUseId,
+          name,
+          inputPreview: extractToolInputPreview(name, input),
+          inputFull: input,
+          output: completion ? extractToolOutput(completion.payload) : null,
+          status,
+          createdAt: event.createdAt,
+          completedAt: completion ? completion.createdAt : null,
+          error: completion && isError ? extractToolError(completion.payload) : null
+        };
+      })
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [events]);
+
+  const conversationItems = useMemo((): ConversationItem[] => {
+    const items: ConversationItem[] = [
+      ...conversationEvents.map((event) => ({ kind: "message" as const, event })),
+      ...toolCalls.map((tool) => ({ kind: "tool" as const, tool }))
+    ];
+    const itemTime = (item: ConversationItem): string =>
+      item.kind === "message"
+        ? item.event.createdAt
+        : item.kind === "tool"
+          ? item.tool.createdAt
+          : item.group.tools[0]?.createdAt ?? "";
+    const sorted = items.sort((a, b) => itemTime(a).localeCompare(itemTime(b)));
+    const folded: ConversationItem[] = [];
+    let i = 0;
+    while (i < sorted.length) {
+      const item = sorted[i];
+      if (!item) {
+        i++;
+        continue;
+      }
+      if (item.kind !== "tool") {
+        folded.push(item);
+        i++;
+        continue;
+      }
+      const run: ToolCall[] = [item.tool];
+      let j = i + 1;
+      while (j < sorted.length) {
+        const next = sorted[j];
+        if (!next || next.kind !== "tool") break;
+        run.push(next.tool);
+        j++;
+      }
+      if (run.length === 1) {
+        folded.push(item);
+      } else {
+        folded.push({ kind: "tool-group", group: buildToolCallGroup(run) });
+      }
+      i = j;
+    }
+    return folded;
+  }, [conversationEvents, toolCalls]);
+
+  const anyToolRunning = toolCalls.some((tool) => tool.status === "running");
+  const now = useNow(anyToolRunning, 250);
+  const isFreshTool = useFreshSet(toolCalls, (tool) => tool.id, session?.id ?? "");
+
   const canSend = Boolean(
     session &&
       (["complete", "waiting"].includes(session.state) ||
         (session.provider === "codex" && session.state === "running"))
   );
   const isThinking = session?.state === "running" && !hasAssistantForLatestTurn;
+
+  const conversationListRef = useRef<HTMLDivElement | null>(null);
+  const wasNearBottomRef = useRef<boolean>(true);
+
+  const handleConversationScroll = useCallback((): void => {
+    const el = conversationListRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    wasNearBottomRef.current = distanceFromBottom < 80;
+  }, []);
+
+  // Snap to the latest content when the session changes — the previous
+  // session's scroll position would otherwise leave the new conversation
+  // mid-scroll.
+  useEffect(() => {
+    const el = conversationListRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    wasNearBottomRef.current = true;
+  }, [session?.id]);
+
+  // Smart follow: if the user is already at (or near) the bottom, keep them
+  // pinned as new messages / tool rows arrive. If they've scrolled up to read,
+  // don't yank them back down. `now` is intentionally excluded — re-scrolling
+  // every 250ms while a tool is running would be jittery.
+  useEffect(() => {
+    const el = conversationListRef.current;
+    if (!el || !wasNearBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [conversationItems, isThinking]);
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
   const sessionDetails = [
     session ? providerLabel(session.provider) : null,
@@ -824,6 +1428,17 @@ function SessionConversation({
     provider: session?.provider ?? null,
     workspaceId: workspace?.id ?? null
   });
+
+  useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
+
+  const onSessionInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    slashAutocomplete.onKeyDown(event);
+    if (event.defaultPrevented) return;
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      inputFormRef.current?.requestSubmit();
+    }
+  };
 
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -857,26 +1472,44 @@ function SessionConversation({
             ))}
           </div>
         </div>
-        {session ? (
-          <ModelSelector
-            provider={session.provider}
-            value={selectedModel}
-            onChange={setSelectedModel}
-            ariaLabel="Session model"
-          />
-        ) : null}
+        <button
+          className="small-icon"
+          type="button"
+          title="Toggle debug log"
+          aria-label="Toggle debug log"
+          aria-pressed={isLogOpen}
+          onClick={onToggleLog}
+        >
+          <Bug size={16} />
+        </button>
       </div>
-      <div className="conversation-list">
-        {conversationEvents.length > 0 ? (
-          conversationEvents.map((event) =>
-            event.type === "user.message" ? (
-              <article className="chat-bubble user" key={event.id}>
-                <p>{event.message}</p>
+      <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
+        {conversationItems.length > 0 ? (
+          conversationItems.map((item) =>
+            item.kind === "tool" ? (
+              <ToolCallBubble
+                key={item.tool.id}
+                tool={item.tool}
+                now={now}
+                fresh={isFreshTool(item.tool)}
+                workspaceCwd={workspace?.path ?? null}
+              />
+            ) : item.kind === "tool-group" ? (
+              <ToolCallGroupBubble
+                key={item.group.id}
+                group={item.group}
+                now={now}
+                isFreshTool={isFreshTool}
+                workspaceCwd={workspace?.path ?? null}
+              />
+            ) : item.event.type === "user.message" ? (
+              <article className="chat-bubble user" key={item.event.id}>
+                <p>{item.event.message}</p>
               </article>
             ) : (
-              <article className="chat-bubble assistant" key={event.id}>
+              <article className="chat-bubble assistant" key={item.event.id}>
                 <div className="markdown">
-                  <ReactMarkdown>{event.message}</ReactMarkdown>
+                  <ReactMarkdown>{item.event.message}</ReactMarkdown>
                 </div>
               </article>
             )
@@ -885,10 +1518,10 @@ function SessionConversation({
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>
           </article>
-        ) : (
+        ) : isThinking ? null : (
           <p className="conversation-empty">Agent replies will appear here.</p>
         )}
-        {terminalTranscript && !hasAssistantEvents && conversationEvents.length > 0 ? (
+        {terminalTranscript && !hasAssistantEvents && conversationItems.length > 0 ? (
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>
           </article>
@@ -899,7 +1532,7 @@ function SessionConversation({
               <span className="command-stream-glyph" />
               <span className="command-stream-line">
                 <span className="command-stream-prompt">$</span>
-                <span className="command-stream-text">maestro run --agent</span>
+                <span className="command-stream-text">maestro run --model {thinkingModelSlug(selectedModel)}</span>
                 <span className="command-stream-caret" />
               </span>
               <span className="command-stream-ticks">
@@ -914,25 +1547,43 @@ function SessionConversation({
         ) : null}
       </div>
       <ChangedFilesCard review={review} />
-      <form className="session-input" onSubmit={(event) => void submitInput(event)}>
+      <form className="session-input" ref={inputFormRef} onSubmit={(event) => void submitInput(event)}>
         <div className="session-input-field">
-          <input
+          <textarea
             aria-label="Session prompt"
             aria-autocomplete="list"
             aria-expanded={slashAutocomplete.popoverOpen}
             aria-controls={slashAutocomplete.popoverOpen ? "skill-popover" : undefined}
             disabled={!canSend || isSending}
             onChange={(event) => setInput(event.target.value)}
-            onKeyDown={slashAutocomplete.onKeyDown}
+            onKeyDown={onSessionInputKeyDown}
             placeholder=""
             ref={inputRef}
             value={input}
+            rows={1}
           />
           <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
         </div>
-        <button disabled={!canSend || isSending || !input.trim()} type="submit" title="Send follow-up">
-          <ChevronRight size={18} />
-        </button>
+        <div className="session-input-toolbar">
+          <button className="composer-tool" type="button" title="Add context" disabled={!canSend || isSending}>
+            <Plus size={16} />
+          </button>
+          {session ? (
+            <ModelSelector
+              provider={session.provider}
+              value={selectedModel}
+              onChange={setSelectedModel}
+              ariaLabel="Session model"
+            />
+          ) : null}
+          <span className="session-toolbar-spacer" />
+          <button className="composer-tool" type="button" title="Voice input" disabled={!canSend || isSending}>
+            <Mic size={16} />
+          </button>
+          <button className="session-send-button" disabled={!canSend || isSending || !input.trim()} type="submit" title="Send follow-up">
+            <ChevronRight size={18} />
+          </button>
+        </div>
       </form>
       {status ? (
         <p className="composer-status" role="status">
@@ -940,6 +1591,370 @@ function SessionConversation({
         </p>
       ) : null}
     </section>
+  );
+}
+
+function DebugLogPanel({
+  events,
+  onClose,
+  rawOutputs
+}: {
+  events: TimelineEvent[];
+  onClose: () => void;
+  rawOutputs: RawProviderOutput[];
+}): JSX.Element {
+  const [activeTab, setActiveTab] = useState<"events" | "output">("events");
+  return (
+    <aside className="log-panel" aria-label="Debug log">
+      <div className="log-toolbar">
+        <div>
+          <p className="eyebrow">Debug</p>
+          <h2>Session log</h2>
+        </div>
+        <button className="small-icon" type="button" title="Close debug log" aria-label="Close debug log" onClick={onClose}>
+          <PanelRightClose size={18} />
+        </button>
+      </div>
+      <div className="log-tab-bar" role="tablist">
+        <button role="tab" aria-selected={activeTab === "events"} type="button" onClick={() => setActiveTab("events")}>
+          Events
+          <span>{events.length}</span>
+        </button>
+        <button role="tab" aria-selected={activeTab === "output"} type="button" onClick={() => setActiveTab("output")}>
+          Raw output
+          <span>{rawOutputs.length}</span>
+        </button>
+      </div>
+      <div className="log-body">
+        {activeTab === "events" ? <DebugEventList events={events} /> : <DebugOutputList outputs={rawOutputs} />}
+      </div>
+    </aside>
+  );
+}
+
+function DebugEventList({ events }: { events: TimelineEvent[] }): JSX.Element {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  if (events.length === 0) {
+    return <p className="log-empty">No events yet.</p>;
+  }
+
+  return (
+    <div className="log-event-list">
+      {events.map((event) => {
+        const isExpanded = expanded.has(event.id);
+        const hasPayload = Object.keys(event.payload).length > 0;
+        const time = new Date(event.createdAt).toLocaleTimeString("en-US", { hour12: false });
+        return (
+          <div className="log-event-row" data-type={event.type} key={event.id}>
+            <div className="log-event-header">
+              <span className="log-type-badge">{event.type}</span>
+              <span className="log-event-time">{time}</span>
+              {hasPayload ? (
+                <button
+                  className="log-expand-btn"
+                  type="button"
+                  aria-expanded={isExpanded}
+                  onClick={() =>
+                    setExpanded((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(event.id)) {
+                        next.delete(event.id);
+                      } else {
+                        next.add(event.id);
+                      }
+                      return next;
+                    })
+                  }
+                >
+                  {isExpanded ? "▴" : "▾"}
+                </button>
+              ) : null}
+            </div>
+            {event.message ? <p className="log-event-message">{event.message}</p> : null}
+            {isExpanded ? (
+              <pre className="log-event-payload">{JSON.stringify(event.payload, null, 2)}</pre>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DebugOutputList({ outputs }: { outputs: RawProviderOutput[] }): JSX.Element {
+  if (outputs.length === 0) {
+    return <p className="log-empty">No raw output yet.</p>;
+  }
+
+  const sorted = [...outputs].reverse();
+  return (
+    <div className="log-output-list">
+      {sorted.map((output) => (
+        <div className="log-output-row" data-stream={output.stream} key={output.id}>
+          <span className="log-stream-badge">{output.stream}</span>
+          <pre className="log-output-content">{output.content}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function useNow(active: boolean, intervalMs: number): number {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [active, intervalMs]);
+  return now;
+}
+
+function useFreshSet<T>(items: T[], getId: (item: T) => string, resetKey: string): (item: T) => boolean {
+  const stateRef = useRef<{ key: string; seen: Set<string> }>({ key: "", seen: new Set() });
+  if (stateRef.current.key !== resetKey) {
+    stateRef.current = { key: resetKey, seen: new Set(items.map(getId)) };
+  }
+  useEffect(() => {
+    for (const item of items) stateRef.current.seen.add(getId(item));
+  }, [items, getId]);
+  return useCallback((item: T) => !stateRef.current.seen.has(getId(item)), [getId]);
+}
+
+function ToolCallBubble({
+  tool,
+  now,
+  fresh,
+  parallelPosition,
+  parallelGroupId,
+  nested,
+  workspaceCwd
+}: {
+  tool: ToolCall;
+  now: number;
+  fresh: boolean;
+  parallelPosition?: ParallelPosition;
+  parallelGroupId?: string;
+  nested?: boolean;
+  workspaceCwd?: string | null;
+}): JSX.Element {
+  // Standalone errors expand themselves so the message is visible without a
+  // click. When nested in a group the group is the entry point — let the user
+  // open individual error rows on demand so a bursty turn doesn't unfold into
+  // a wall of stack traces.
+  const shouldAutoExpandOnError = !nested;
+  const [expanded, setExpanded] = useState<boolean>(shouldAutoExpandOnError && tool.status === "error");
+  const autoExpandedOnErrorRef = useRef<boolean>(shouldAutoExpandOnError && tool.status === "error");
+  const [didFlash, setDidFlash] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!shouldAutoExpandOnError) return;
+    if (tool.status === "error" && !autoExpandedOnErrorRef.current) {
+      autoExpandedOnErrorRef.current = true;
+      setExpanded(true);
+    }
+  }, [tool.status, shouldAutoExpandOnError]);
+
+  const startedMs = Date.parse(tool.createdAt);
+  const endedMs = tool.completedAt ? Date.parse(tool.completedAt) : now;
+  const elapsedMs = Number.isFinite(startedMs) ? Math.max(0, endedMs - startedMs) : 0;
+  const elapsedText = formatElapsed(elapsedMs);
+  const statusWord = tool.status === "running" ? "running" : tool.status === "error" ? "failed" : "done";
+  const chipLabel = elapsedText ? `${statusWord}, ${elapsedText}` : statusWord;
+
+  const showFlash = fresh && !didFlash;
+  const rootClass = [
+    "tool-call-item",
+    `tool-call-${tool.status}`,
+    nested ? "tool-call-item--nested" : null
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div
+      className={rootClass}
+      data-status={tool.status}
+      {...(parallelPosition ? { "data-parallel-position": parallelPosition } : {})}
+      {...(parallelGroupId ? { "data-parallel-group": parallelGroupId } : {})}
+    >
+      {showFlash ? (
+        <span
+          className="tool-call-flash"
+          aria-hidden="true"
+          onAnimationEnd={() => setDidFlash(true)}
+        />
+      ) : null}
+      <button
+        className="tool-call-header"
+        type="button"
+        aria-expanded={expanded}
+        aria-label={`${tool.name}${tool.inputPreview ? ": " + tool.inputPreview : ""}`}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="tool-call-icon" aria-hidden="true">{getToolIcon(tool.name)}</span>
+        <span className="tool-call-name">{tool.name}</span>
+        {tool.inputPreview ? <code className="tool-call-preview">{tool.inputPreview}</code> : null}
+        <span className="tool-call-status-chip" aria-label={chipLabel} title={chipLabel}>
+          <span className="tool-call-status-glyph" aria-hidden="true">
+            {tool.status === "running" ? (
+              <Loader2 size={11} className="tool-call-spinner" />
+            ) : tool.status === "error" ? (
+              <X size={11} />
+            ) : (
+              <Check size={11} />
+            )}
+          </span>
+          {elapsedText ? (
+            <span className="tool-call-status-time" aria-hidden="true">
+              {tool.status === "error" && elapsedMs < 100 ? "failed" : elapsedText}
+            </span>
+          ) : null}
+        </span>
+        <ChevronRight size={11} className={`tool-call-chevron${expanded ? " expanded" : ""}`} />
+      </button>
+      {expanded ? (
+        <div className="tool-call-detail">
+          {tool.error ? (
+            <div className="tool-call-section">
+              <p className="tool-call-section-label">Error</p>
+              <pre className="tool-call-code tool-call-code--error">{tool.error}</pre>
+            </div>
+          ) : null}
+          {tool.status !== "error"
+            ? (() => {
+                const openable = extractOpenablePath(tool.name, tool.inputFull);
+                if (!openable) return null;
+                const onOpen = (): void => {
+                  if (!window.maestro) return;
+                  void window.maestro.system
+                    .openPath({ path: openable, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) })
+                    .catch(() => undefined);
+                };
+                return (
+                  <button className="tool-call-open-button" type="button" onClick={onOpen} aria-label={`Open ${openable}`}>
+                    <ExternalLink size={11} aria-hidden="true" />
+                    <span>Open {openable}</span>
+                  </button>
+                );
+              })()
+            : null}
+          {Object.keys(tool.inputFull).length > 0 ? (
+            <div className="tool-call-section">
+              <p className="tool-call-section-label">Input</p>
+              <pre className="tool-call-code">{JSON.stringify(tool.inputFull, null, 2)}</pre>
+            </div>
+          ) : null}
+          {tool.output && !tool.error ? (
+            <div className="tool-call-section">
+              <p className="tool-call-section-label">
+                Output
+                {tool.output.length > 3000 ? (
+                  <span className="tool-call-section-meta">
+                    {" "}— showing first 3,000 of {tool.output.length.toLocaleString()} chars
+                  </span>
+                ) : null}
+              </p>
+              <pre
+                className={`tool-call-code${isBashLikeTool(tool.name) ? " tool-call-code--terminal" : ""}`}
+              >
+                {tool.output.length > 3000 ? `${tool.output.slice(0, 3000)}\n…` : tool.output}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ToolCallGroupBubble({
+  group,
+  now,
+  isFreshTool,
+  workspaceCwd
+}: {
+  group: ToolCallGroup;
+  now: number;
+  isFreshTool: (tool: ToolCall) => boolean;
+  workspaceCwd?: string | null;
+}): JSX.Element {
+  const [userToggle, setUserToggle] = useState<boolean | null>(null);
+  const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
+  // Default to expanded so users can see what the agent did, even after the
+  // turn completes. The user can manually collapse to free up vertical space.
+  const expanded = userToggle ?? true;
+  const earliestStart = useMemo(
+    () => Math.min(...group.tools.map((t) => Date.parse(t.createdAt))),
+    [group.tools]
+  );
+  const latestEnd = useMemo(() => {
+    const ends = group.tools.map((t) => (t.completedAt ? Date.parse(t.completedAt) : now));
+    return Math.max(...ends);
+  }, [group.tools, now]);
+  const elapsedMs = Number.isFinite(earliestStart) ? Math.max(0, latestEnd - earliestStart) : 0;
+  const elapsedText = formatElapsed(elapsedMs);
+  const chipLabel =
+    summary.worstStatus === "running"
+      ? `running, ${elapsedText}`
+      : summary.worstStatus === "error"
+        ? `failed, ${elapsedText}`
+        : `done, ${elapsedText}`;
+
+  return (
+    <div className="tool-call-group" data-status={summary.worstStatus}>
+      <button
+        className="tool-call-group-header"
+        type="button"
+        aria-expanded={expanded}
+        aria-label={`${summary.headline}${summary.preview ? ": " + summary.preview : ""}`}
+        onClick={() => setUserToggle(!expanded)}
+      >
+        <span className="tool-call-group-stack" aria-hidden="true">
+          {group.tools.slice(0, 3).map((t) => (
+            <span key={t.id} className="tool-call-group-stack-icon">{getToolIcon(t.name)}</span>
+          ))}
+        </span>
+        <span className="tool-call-group-headline">{summary.headline}</span>
+        {summary.preview ? <span className="tool-call-group-preview">· {summary.preview}</span> : null}
+        <span className="tool-call-status-chip" aria-label={chipLabel} title={chipLabel}>
+          <span className="tool-call-status-glyph" aria-hidden="true">
+            {summary.worstStatus === "running" ? (
+              <Loader2 size={11} className="tool-call-spinner" />
+            ) : summary.worstStatus === "error" ? (
+              <X size={11} />
+            ) : (
+              <Check size={11} />
+            )}
+          </span>
+          {elapsedText ? (
+            <span className="tool-call-status-time" aria-hidden="true">{elapsedText}</span>
+          ) : null}
+        </span>
+        <ChevronRight size={11} className={`tool-call-chevron${expanded ? " expanded" : ""}`} />
+      </button>
+      {expanded ? (
+        <div className="tool-call-group-body">
+          {group.tools.map((tool) => (
+            <ToolCallBubble
+              key={tool.id}
+              tool={tool}
+              now={now}
+              fresh={isFreshTool(tool)}
+              nested
+              workspaceCwd={workspaceCwd ?? null}
+              {...(group.parallelPositions.get(tool.id)
+                ? { parallelPosition: group.parallelPositions.get(tool.id)! }
+                : {})}
+              {...(group.parallelGroupId.get(tool.id)
+                ? { parallelGroupId: group.parallelGroupId.get(tool.id)! }
+                : {})}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1120,6 +2135,7 @@ function ChangedFilesCard({ review }: { review: ReviewState }): JSX.Element | nu
               className="changed-file-row"
               key={file.path}
               type="button"
+              title={file.path}
               onClick={() => review.openFile(file.path)}
             >
               <span className="changed-file-status">{statusLabel(file.status)}</span>
@@ -1138,9 +2154,35 @@ function ReviewPanel({ review }: { review: ReviewState }): JSX.Element {
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
+  const [fileTabsHeight, setFileTabsHeight] = useState(168);
+  const panelRef = useRef<HTMLElement>(null);
+
+  const handleResizeMouseDown = (e: ReactMouseEvent): void => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = fileTabsHeight;
+    // Cap so the diff area always gets at least 120px (toolbar ~80px + handle 5px + diff min).
+    const maxH = (panelRef.current?.clientHeight ?? 800) - 160;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (me: MouseEvent) => {
+      // Minimum of ~80px gives the user at least two file tabs to scan.
+      setFileTabsHeight(Math.max(80, Math.min(startH + me.clientY - startY, maxH)));
+    };
+    const onUp = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
 
   return (
-    <aside className="review-panel" aria-label="Review panel">
+    <aside className="review-panel" aria-label="Review panel" ref={panelRef}>
       <div className="review-toolbar">
         <div>
           <p className="eyebrow">Review</p>
@@ -1152,12 +2194,13 @@ function ReviewPanel({ review }: { review: ReviewState }): JSX.Element {
           <PanelRightClose size={18} />
         </button>
       </div>
-      <div className="review-file-tabs" aria-label="Changed file list">
+      <div className="review-file-tabs" aria-label="Changed file list" style={{ height: fileTabsHeight }}>
         {review.files.map((file) => (
           <button
             aria-pressed={review.selectedFilePath === file.path}
             key={file.path}
             type="button"
+            title={file.path}
             onClick={() => review.openFile(file.path)}
           >
             <FileText size={15} />
@@ -1166,6 +2209,7 @@ function ReviewPanel({ review }: { review: ReviewState }): JSX.Element {
           </button>
         ))}
       </div>
+      <div className="review-resize-handle" onMouseDown={handleResizeMouseDown} />
       <div className="review-diff">
         {selectedFile ? (
           <div className="review-diff-heading">
@@ -1337,13 +2381,24 @@ function LaunchSurface({
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const promptInputRef = useRef<HTMLInputElement | null>(null);
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);
   const slashAutocomplete = useSlashAutocomplete({
     input: prompt,
     setInput: setPrompt,
     provider: model.provider,
     workspaceId: null
   });
+
+  const onPromptKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    slashAutocomplete.onKeyDown(event);
+    if (event.defaultPrevented) return;
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      formRef.current?.requestSubmit();
+    }
+  };
 
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -1378,20 +2433,21 @@ function LaunchSurface({
 
   return (
     <div className="launcher-surface">
-      <h1>What should we build in {project.name.toLowerCase()}?</h1>
-      <form className="composer" onSubmit={(event) => void submitPrompt(event)}>
+      <h1>What should we build in {project.name}?</h1>
+      <form className="composer" ref={formRef} onSubmit={(event) => void submitPrompt(event)}>
         <div className="composer-input">
-          <input
+          <textarea
             aria-label="Task prompt"
             aria-autocomplete="list"
             aria-expanded={slashAutocomplete.popoverOpen}
             aria-controls={slashAutocomplete.popoverOpen ? "skill-popover" : undefined}
             disabled={isSubmitting}
             onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={slashAutocomplete.onKeyDown}
-            placeholder="Ask an agent to work locally"
+            onKeyDown={onPromptKeyDown}
+            placeholder="Ask an agent anything"
             ref={promptInputRef}
             value={prompt}
+            rows={1}
           />
           <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
           <button className="composer-tool" type="button" title="Add context">
@@ -1409,24 +2465,15 @@ function LaunchSurface({
           </button>
         </div>
         <div className="composer-context">
-          <span>
-            <GitBranch size={16} />
+          <span className="composer-context-chip">
+            <Folder size={14} aria-hidden="true" />
+            {project.name}
+          </span>
+          <span className="composer-context-chip">
+            <GitBranch size={14} aria-hidden="true" />
             main
           </span>
-          <span>Work locally</span>
           <CombinedModelSelector value={model} onChange={onModelChange} ariaLabel="Launch model" />
-        </div>
-        <div className="suggestion-chips" aria-label="Suggestions">
-          {SUGGESTION_CHIPS.map((chip) => (
-            <button
-              key={chip}
-              type="button"
-              disabled={isSubmitting}
-              onClick={() => setPrompt(chip)}
-            >
-              {chip}
-            </button>
-          ))}
         </div>
         {status ? (
           <p className="composer-status" role="status">
@@ -1434,6 +2481,140 @@ function LaunchSurface({
           </p>
         ) : null}
       </form>
+    </div>
+  );
+}
+
+function SettingsPanel({
+  defaultModel,
+  onDefaultModelChange,
+  onClose
+}: {
+  defaultModel: ModelPickerSelection;
+  onDefaultModelChange: (model: ModelPickerSelection) => void;
+  onClose: () => void;
+}): JSX.Element {
+  return (
+    <div className="settings-surface">
+      <header className="settings-header">
+        <div>
+          <p className="eyebrow">Preferences</p>
+          <h1>Settings</h1>
+        </div>
+        <button className="small-icon" type="button" title="Close settings" aria-label="Close settings" onClick={onClose}>
+          <X size={18} />
+        </button>
+      </header>
+
+      <section className="settings-section" aria-labelledby="settings-account">
+        <header className="settings-section-header">
+          <h2 id="settings-account">Account</h2>
+          <p>Maestro runs locally on this machine — there is no cloud account.</p>
+        </header>
+        <div className="settings-card">
+          <div className="settings-account">
+            <span className="settings-avatar" aria-hidden="true">M</span>
+            <div className="settings-account-meta">
+              <span className="settings-account-name">Maestro</span>
+              <span className="settings-account-sub">Local · single user</span>
+            </div>
+          </div>
+          <dl className="settings-keyvals">
+            <div>
+              <dt>Storage</dt>
+              <dd>SQLite (on this device)</dd>
+            </div>
+            <div>
+              <dt>Network</dt>
+              <dd>Provider calls only · no telemetry</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-appearance">
+        <header className="settings-section-header">
+          <h2 id="settings-appearance">Appearance</h2>
+          <p>Maestro is light-theme only by design. Fonts are locked to Lilex for consistency.</p>
+        </header>
+        <div className="settings-card">
+          <fieldset className="settings-radio-group">
+            <legend>Theme</legend>
+            <label>
+              <input type="radio" name="theme" value="light" checked readOnly />
+              <span>Light</span>
+              <span className="settings-pill">Locked</span>
+            </label>
+            <label className="settings-radio-disabled">
+              <input type="radio" name="theme" value="dark" disabled />
+              <span>Dark</span>
+            </label>
+            <label className="settings-radio-disabled">
+              <input type="radio" name="theme" value="system" disabled />
+              <span>Match system</span>
+            </label>
+          </fieldset>
+          <dl className="settings-keyvals">
+            <div>
+              <dt>Font family</dt>
+              <dd>Lilex Nerd Font</dd>
+            </div>
+            <div>
+              <dt>Reduce motion</dt>
+              <dd>Follows OS setting</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-defaults">
+        <header className="settings-section-header">
+          <h2 id="settings-defaults">Defaults</h2>
+          <p>Pick the model that pre-fills the launcher when you start a new session.</p>
+        </header>
+        <div className="settings-card">
+          <div className="settings-row">
+            <label htmlFor="settings-default-model">Default model</label>
+            <CombinedModelSelector
+              ariaLabel="Default model"
+              value={defaultModel}
+              onChange={onDefaultModelChange}
+            />
+          </div>
+          <dl className="settings-keyvals">
+            <div>
+              <dt>Worktree base</dt>
+              <dd>Configured per project</dd>
+            </div>
+            <div>
+              <dt>Setup &amp; check commands</dt>
+              <dd>Configured per project</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-about">
+        <header className="settings-section-header">
+          <h2 id="settings-about">About</h2>
+        </header>
+        <div className="settings-card">
+          <dl className="settings-keyvals">
+            <div>
+              <dt>App</dt>
+              <dd>Maestro</dd>
+            </div>
+            <div>
+              <dt>Runtime</dt>
+              <dd>Electron · single-user local</dd>
+            </div>
+            <div>
+              <dt>Providers</dt>
+              <dd>Claude Code · Codex</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1461,7 +2642,8 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
     return demoSnapshot;
   }
 
-  return window.maestro.dashboard.load();
+  const snapshot = await window.maestro.dashboard.load();
+  return { ...snapshot, events: pruneSupersededDeltas(snapshot.events) };
 }
 
 function titleFromPrompt(prompt: string): string {
@@ -1508,7 +2690,7 @@ interface SlashAutocompleteState {
   selectionIndex: number;
   setSelectionIndex: (index: number) => void;
   selectSkill: (name: string) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
 }
 
 function useSlashAutocomplete({
@@ -1577,7 +2759,7 @@ function useSlashAutocomplete({
     setSelectionIndex(0);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
     if (!popoverOpen) {
       return;
     }
@@ -1614,7 +2796,7 @@ function SkillPopover({
   inputRef
 }: {
   state: SlashAutocompleteState;
-  inputRef: RefObject<HTMLInputElement | null>;
+  inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
 }): JSX.Element | null {
   if (!state.popoverOpen) {
     return null;
@@ -1654,7 +2836,11 @@ function ModelSelector({
   value: ProviderModelSelection;
 }): JSX.Element {
   const models = PROVIDER_MODELS[provider];
-  const selectedValue = models.some((model) => model.modelId === value.modelId) ? value.modelId : "__custom";
+  const fallbackKey = models[0] ? optionKey(models[0]) : "";
+  const matchedKey = models.find(
+    (model) => model.modelId === value.modelId && model.reasoningEffort === value.reasoningEffort
+  );
+  const selectedValue = matchedKey ? optionKey(matchedKey) : fallbackKey;
 
   return (
     <span className="model-selector">
@@ -1662,16 +2848,7 @@ function ModelSelector({
         aria-label={ariaLabel}
         value={selectedValue}
         onChange={(event) => {
-          const modelId = event.target.value;
-          if (modelId === "__custom") {
-            onChange({
-              label: value.modelId,
-              modelId: value.modelId,
-              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
-            });
-            return;
-          }
-          const model = models.find((option) => option.modelId === modelId);
+          const model = models.find((option) => optionKey(option) === event.target.value);
           if (model) {
             onChange({
               label: model.label,
@@ -1682,26 +2859,11 @@ function ModelSelector({
         }}
       >
         {models.map((model) => (
-          <option key={model.modelId} value={model.modelId}>
-            {model.badge ? `${model.label} (${model.badge})` : model.label}
+          <option key={optionKey(model)} value={optionKey(model)}>
+            {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
           </option>
         ))}
-        <option value="__custom">Custom model</option>
       </select>
-      {selectedValue === "__custom" ? (
-        <input
-          aria-label={`${ariaLabel} custom id`}
-          value={value.modelId}
-          onChange={(event) => {
-            const modelId = event.target.value.trim();
-            onChange({
-              label: modelId || "Custom model",
-              modelId: modelId || value.modelId,
-              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
-            });
-          }}
-        />
-      ) : null}
     </span>
   );
 }
@@ -1715,11 +2877,14 @@ function CombinedModelSelector({
   onChange: (model: ModelPickerSelection) => void;
   value: ModelPickerSelection;
 }): JSX.Element {
-  const selectedValue = allModelOptions.some(
-    (model) => model.provider === value.provider && model.modelId === value.modelId
-  )
-    ? modelValue(value)
-    : "__custom";
+  const fallbackKey = allModelOptions[0] ? modelValue(allModelOptions[0]) : "";
+  const matched = allModelOptions.find(
+    (model) =>
+      model.provider === value.provider &&
+      model.modelId === value.modelId &&
+      model.reasoningEffort === value.reasoningEffort
+  );
+  const selectedValue = matched ? modelValue(matched) : fallbackKey;
 
   return (
     <span className="model-selector model-selector-combined">
@@ -1727,17 +2892,7 @@ function CombinedModelSelector({
         aria-label={ariaLabel}
         value={selectedValue}
         onChange={(event) => {
-          const selected = event.target.value;
-          if (selected === "__custom") {
-            onChange({
-              provider: value.provider,
-              label: "custom-model",
-              modelId: "custom-model",
-              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
-            });
-            return;
-          }
-          const model = allModelOptions.find((option) => modelValue(option) === selected);
+          const model = allModelOptions.find((option) => modelValue(option) === event.target.value);
           if (model) {
             onChange(model);
           }
@@ -1745,41 +2900,31 @@ function CombinedModelSelector({
       >
         <optgroup label="Codex">
           {PROVIDER_MODELS.codex.map((model) => (
-            <option key={model.modelId} value={modelValue({ provider: "codex", ...model })}>
+            <option key={optionKey(model)} value={modelValue({ provider: "codex", ...model })}>
               {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
             </option>
           ))}
         </optgroup>
         <optgroup label="Claude">
           {PROVIDER_MODELS.claude.map((model) => (
-            <option key={model.modelId} value={modelValue({ provider: "claude", ...model })}>
+            <option key={optionKey(model)} value={modelValue({ provider: "claude", ...model })}>
               {model.label}
             </option>
           ))}
         </optgroup>
-        <option value="__custom">Custom model</option>
       </select>
-      {selectedValue === "__custom" ? (
-        <input
-          aria-label={`${ariaLabel} custom id`}
-          value={value.modelId}
-          onChange={(event) => {
-            const modelId = event.target.value.trim();
-            onChange({
-              provider: value.provider,
-              label: modelId || "Custom model",
-              modelId: modelId || value.modelId,
-              ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {})
-            });
-          }}
-        />
-      ) : null}
     </span>
   );
 }
 
-function modelValue(model: Pick<ModelPickerSelection, "provider" | "modelId">): string {
-  return `${model.provider}:${model.modelId}`;
+function modelValue(model: Pick<ModelPickerSelection, "provider" | "modelId" | "reasoningEffort">): string {
+  return model.reasoningEffort
+    ? `${model.provider}:${model.modelId}:${model.reasoningEffort}`
+    : `${model.provider}:${model.modelId}`;
+}
+
+function optionKey(model: Pick<ProviderModelSelection, "modelId" | "reasoningEffort">): string {
+  return model.reasoningEffort ? `${model.modelId}:${model.reasoningEffort}` : model.modelId;
 }
 
 function effortLabel(reasoningEffort: NonNullable<ProviderModelSelection["reasoningEffort"]>): string {
@@ -1811,12 +2956,15 @@ function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: str
     return "";
   }
 
-  const transcript = rawOutputs
+  // Stream-json events can be split across multiple raw output chunks; concatenate
+  // first so the JSON-line filter sees whole lines and hides them properly.
+  const combined = rawOutputs
     .filter((output) => output.sessionId === sessionId && ["stdout", "stderr"].includes(output.stream))
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .flatMap((output) => visibleRawProviderLines(stripTerminalControls(output.content)))
-    .join("")
-    .trim();
+    .map((output) => stripTerminalControls(output.content))
+    .join("");
+
+  const transcript = visibleRawProviderLines(combined).join("").trim();
 
   return transcript.length > 8_000 ? transcript.slice(-8_000) : transcript;
 }
@@ -1849,6 +2997,46 @@ function mergeSlice<T extends { id: string }>(
   return limit !== undefined ? sorted.slice(0, limit) : sorted;
 }
 
+/**
+ * Drops message.delta events that have a subsequent message.completed within
+ * the same turn. A streaming response can produce hundreds of deltas; if we
+ * keep them in renderer state they crowd out command.started/completed pairs
+ * under the event cap, and tool calls vanish from the UI once the response
+ * finishes. We still keep the latest deltas (no completion yet) so live
+ * streaming continues to render.
+ *
+ * Events may arrive in any order; this works on either ascending or descending
+ * arrays.
+ */
+function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] {
+  if (events.length < 2) return events;
+  const first = events[0];
+  const last = events[events.length - 1];
+  const isDescending = !!first && !!last && first.createdAt > last.createdAt;
+  const ascending = isDescending ? [...events].reverse() : events;
+  const kept: TimelineEvent[] = [];
+  for (let i = 0; i < ascending.length; i++) {
+    const event = ascending[i];
+    if (!event) continue;
+    if (event.type !== "message.delta") {
+      kept.push(event);
+      continue;
+    }
+    let superseded = false;
+    for (let j = i + 1; j < ascending.length; j++) {
+      const next = ascending[j];
+      if (!next) break;
+      if (next.type === "user.message") break;
+      if (next.type === "message.completed") {
+        superseded = true;
+        break;
+      }
+    }
+    if (!superseded) kept.push(event);
+  }
+  return isDescending ? kept.reverse() : kept;
+}
+
 function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
   const projects = delta.projects
     ? (() => {
@@ -1858,7 +3046,9 @@ function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta)
     : snapshot.projects;
   const workspaces = mergeSlice(snapshot.workspaces, delta.workspaces, (workspace) => workspace.lastActivityAt);
   const sessions = mergeSlice(snapshot.sessions, delta.sessions, (session) => session.lastActivityAt);
-  const events = mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 50);
+  const events = pruneSupersededDeltas(
+    mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 500)
+  );
   const rawOutputs = mergeSlice(snapshot.rawOutputs, delta.rawOutputs, (output) => output.createdAt, 100);
   const approvals = mergeSlice(snapshot.approvals, delta.approvals, (approval) => approval.createdAt, 200);
   const checks = mergeSlice(snapshot.checks, delta.checks, (check) => check.startedAt, 200);

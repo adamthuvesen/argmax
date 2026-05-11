@@ -328,6 +328,39 @@ describe("App", () => {
     expect(dashboardLoad).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves the user's model selection across dashboard deltas for the same session", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+
+    const modelButton = await screen.findByRole("button", { name: "Session model" });
+    const initialLabel = modelButton.textContent ?? "";
+    expect(initialLabel).toContain("GPT-5.3 Codex");
+
+    // A delta that bumps lastActivityAt and reports a different modelLabel for
+    // the same session id used to overwrite the user's local pick because the
+    // effect depended on the session object reference. With the fix the effect
+    // is gated on session.id, so the selector text must not change.
+    const baseSession = snapshot.sessions[0];
+    if (!baseSession) throw new Error("snapshot must include session-1");
+    act(() => {
+      dashboardDeltaListener?.({
+        sessions: [
+          {
+            ...baseSession,
+            modelLabel: "Claude Haiku 4.5",
+            modelId: "claude-haiku-4-5",
+            reasoningEffort: undefined,
+            lastActivityAt: "2026-05-08T15:55:00.000Z"
+          }
+        ]
+      });
+    });
+
+    const after = await screen.findByRole("button", { name: "Session model" });
+    expect(after.textContent ?? "").toBe(initialLabel);
+  });
+
   it("renders normalized tool calls in the conversation timeline", async () => {
     const toolStarted: DashboardSnapshot["events"][number] = {
       id: "event-tool-started",

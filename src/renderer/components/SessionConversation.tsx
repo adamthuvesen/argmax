@@ -251,9 +251,13 @@ export function SessionConversation({
     workspace?.branch ?? null
   ].filter((detail): detail is string => Boolean(detail));
 
+  // Depend on session.id rather than the session object: the parent rebuilds
+  // SessionSummary references on every dashboard delta, which would otherwise
+  // overwrite the user's per-session model pick on every streaming event.
   useEffect(() => {
     setSelectedModel(modelSelectionFromSession(session));
-  }, [session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
+  }, [session?.id]);
 
   useEffect(() => {
     if (!shouldRefocusInput.current || isSending || !canSend) {

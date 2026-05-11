@@ -678,6 +678,188 @@ describe("ProviderSessionService", () => {
     updateSpy.mockRestore();
     database.connection.close();
   });
+
+  it("persists Claude usage from assistant events and publishes updated session totals", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("claude");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "claude",
+      prompt: "Ship the cockpit",
+      modelLabel: "Claude Sonnet",
+      modelId: "claude-sonnet-4-6",
+      cols: 100,
+      rows: 30
+    });
+    deltas.length = 0;
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message:
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            id: "m1",
+            model: "claude-sonnet-4-6",
+            content: [{ type: "text", text: "Hi" }],
+            usage: {
+              input_tokens: 1_000_000,
+              output_tokens: 0,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0
+            }
+          }
+        }) + "\n",
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Claude Code exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+
+    const summary = database.getSessionCostSummary(session.id);
+    expect(summary.tokens.input).toBe(1_000_000);
+    expect(summary.costUsd).toBeCloseTo(3.0, 9);
+    expect(summary.modelId).toBe("claude-sonnet-4-6");
+
+    const persistedSession = database.getSession(session.id);
+    expect(persistedSession.costUsd).toBeCloseTo(3.0, 9);
+    expect(persistedSession.tokens?.input).toBe(1_000_000);
+
+    const sessionDeltaWithCost = deltas.find((delta) =>
+      delta.sessions?.some((s) => s.id === session.id && (s.costUsd ?? 0) > 0)
+    );
+    expect(sessionDeltaWithCost).toBeDefined();
+
+    database.connection.close();
+  });
+
+  it("persists Codex token_count usage with the model from the latest turn_context", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.4",
+      modelId: "gpt-5.4",
+      reasoningEffort: "medium",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message:
+        JSON.stringify({
+          timestamp: "2026-05-08T16:00:00.000Z",
+          type: "turn_context",
+          payload: { model: "gpt-5.4", cwd: "/repo" }
+        }) +
+        "\n" +
+        JSON.stringify({
+          timestamp: "2026-05-08T16:00:01.000Z",
+          type: "event_msg",
+          payload: {
+            type: "token_count",
+            info: {
+              last_token_usage: {
+                input_tokens: 1_000_000,
+                cached_input_tokens: 0,
+                output_tokens: 0,
+                reasoning_output_tokens: 0,
+                total_tokens: 1_000_000
+              }
+            }
+          }
+        }) +
+        "\n",
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:02.000Z"
+    });
+
+    const summary = database.getSessionCostSummary(session.id);
+    expect(summary.modelId).toBe("gpt-5.4");
+    expect(summary.tokens).toEqual({ input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 });
+    expect(summary.costUsd).toBeCloseTo(2.5, 9);
+
+    database.connection.close();
+  });
+
+  it("treats unknown model ids as cost=0 without throwing", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("claude");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "claude",
+      prompt: "Ship",
+      modelLabel: "Brand new",
+      modelId: "claude-omega-0",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message:
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            id: "m1",
+            model: "claude-omega-0",
+            content: [{ type: "text", text: "Hi" }],
+            usage: {
+              input_tokens: 1000,
+              output_tokens: 0,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0
+            }
+          }
+        }) + "\n",
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Claude Code exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+
+    const summary = database.getSessionCostSummary(session.id);
+    expect(summary.costUsd).toBe(0);
+    expect(summary.tokens.input).toBe(1000);
+
+    database.connection.close();
+  });
 });
 
 function createFakeProvider(provider: ProviderId): {

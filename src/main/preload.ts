@@ -20,6 +20,8 @@ import type {
   ResolveApprovalInput,
   RunCheckInput,
   SelectPreferredAttemptInput,
+  SessionCostSummary,
+  SessionCostSummaryInput,
   SessionEventsSinceInput,
   SessionEventsSinceResult,
   SkillsListInput,
@@ -82,7 +84,9 @@ const api: ArgmaxApi = {
   },
   session: {
     eventsSince: (input: SessionEventsSinceInput) =>
-      ipcRenderer.invoke("session:eventsSince", input) as Promise<SessionEventsSinceResult>
+      ipcRenderer.invoke("session:eventsSince", input) as Promise<SessionEventsSinceResult>,
+    costSummary: (input: SessionCostSummaryInput) =>
+      ipcRenderer.invoke("session:costSummary", input) as Promise<SessionCostSummary>
   },
   review: {
     listChangedFiles: (workspaceId: string) =>

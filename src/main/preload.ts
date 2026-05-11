@@ -10,6 +10,7 @@ import type {
   DashboardDelta,
   DashboardListSnapshot,
   DetectedIde,
+  DiscoveredProvider,
   LaunchProviderSessionInput,
   ArgmaxApi,
   OpenInIdeInput,
@@ -74,7 +75,7 @@ const api: ArgmaxApi = {
       ipcRenderer.invoke("workspaces:openInIde", input) as Promise<{ ok: true }>
   },
   providers: {
-    discover: () => ipcRenderer.invoke("providers:discover") as Promise<unknown[]>,
+    discover: () => ipcRenderer.invoke("providers:discover") as Promise<DiscoveredProvider[]>,
     launch: (input: LaunchProviderSessionInput) =>
       ipcRenderer.invoke("providers:launch", input) as Promise<DashboardSnapshot["sessions"][number]>,
     sendInput: (input: ProviderSessionInput) =>

@@ -91,6 +91,34 @@ export function withValidation<TIn, TOut>(
 }
 
 /**
+ * Sibling of `withValidation` for handlers invoked positionally (e.g. via
+ * `ipcRenderer.invoke("ch", a, b)`). Collects rest args into a tuple, runs
+ * the supplied tuple schema, and forwards the parsed tuple to `fn`. Keeps
+ * the INVALID_INPUT wrapping single-sourced so error shape stays consistent.
+ */
+export function withTupleValidation<TTuple extends readonly unknown[], TOut>(
+  schema: ZodType<TTuple>,
+  fn: (input: TTuple) => TOut | Promise<TOut>
+): (event: unknown, ...rawArgs: unknown[]) => Promise<TOut> {
+  return async (_event, ...rawArgs) => {
+    let parsed: TTuple;
+    try {
+      parsed = schema.parse(rawArgs);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const wrapped: IpcInvalidInputError = Object.assign(new Error("INVALID_INPUT"), {
+          code: "INVALID_INPUT" as const,
+          issues: error.issues
+        });
+        throw wrapped;
+      }
+      throw error;
+    }
+    return fn(parsed);
+  };
+}
+
+/**
  * Registers every IPC channel against `ipcMain.handle` and returns the list
  * of channel names so the lifecycle owner (`main.ts`) can call
  * `ipcMain.removeHandler(channel)` for each on `before-quit`.
@@ -263,22 +291,10 @@ export function registerIpcHandlers(
     withValidation(workspaceIdInputSchema, (workspaceId) => review.listChangedFiles(workspaceId))
   );
   // `review:load-diff` is invoked positionally as (workspaceId, filePath?).
-  // We assemble the args into a tuple before validating against the tuple schema.
-  ipcMain.handle("review:load-diff", async (_event, workspaceId: unknown, filePath: unknown) => {
-    let parsed: [string, string | undefined];
-    try {
-      parsed = loadDiffInputSchema.parse([workspaceId, filePath]);
-    } catch (error) {
-      if (error instanceof ZodError) {
-        throw Object.assign(new Error("INVALID_INPUT"), {
-          code: "INVALID_INPUT" as const,
-          issues: error.issues
-        });
-      }
-      throw error;
-    }
-    return review.loadDiff(parsed[0], parsed[1]);
-  });
+  ipcMain.handle(
+    "review:load-diff",
+    withTupleValidation(loadDiffInputSchema, ([workspaceId, filePath]) => review.loadDiff(workspaceId, filePath))
+  );
   ipcMain.handle(
     "workspace:list-files",
     withValidation(workspaceListFilesInputSchema, (input) => workspaceFiles.listFiles(input.workspaceId))

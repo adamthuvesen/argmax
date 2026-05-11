@@ -10,17 +10,13 @@ import {
   FileText,
   Folder,
   GitBranch,
-  Globe,
   Loader2,
   Mic,
   PanelRightClose,
-  Pencil,
   Plus,
-  Search,
   Settings,
   ShieldAlert,
   Terminal,
-  Wrench,
   X,
 } from "lucide-react";
 import type {
@@ -38,7 +34,6 @@ import ReactMarkdown from "react-markdown";
 import type {
   ApprovalRequest,
   ChangedFileSummary,
-  DashboardDelta,
   DashboardSnapshot,
   DetectedIde,
   IdeId,
@@ -54,24 +49,66 @@ import type {
   WorkspaceFilePreview,
   WorkspaceSummary
 } from "../shared/types.js";
-import { costOf as rendererCostOf, PROVIDER_MODEL_DEFAULTS, PROVIDER_MODELS } from "../shared/providerModels.js";
+import { PROVIDER_MODELS } from "../shared/providerModels.js";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
-import { safeJsonParseArray, tryParseJsonObject } from "../shared/safeJson.js";
-import { stripTerminalControls } from "../shared/terminalControls.js";
 import { demoSnapshot } from "./demoSnapshot.js";
 import { formatCostUsd } from "./formatCost.js";
 import { formatElapsed } from "./formatElapsed.js";
-
-const emptySnapshot: DashboardSnapshot = {
-  projects: [],
-  workspaces: [],
-  sessions: [],
-  events: [],
-  rawOutputs: [],
-  approvals: [],
-  checks: [],
-  checkpoints: []
-};
+import { parseUnifiedDiff, type ParsedDiffBlock } from "./lib/diff.js";
+import { isBrowserPreview } from "./lib/env.js";
+import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "./lib/ide.js";
+import {
+  allModelOptions,
+  costForBucket,
+  effortLabel,
+  emptyCostSummary,
+  modelDefaultForProvider,
+  modelSelectionFromSession,
+  modelValue,
+  optionKey,
+  thinkingModelSlug,
+  type ModelPickerSelection
+} from "./lib/models.js";
+import {
+  applyProjectOrder,
+  loadCollapsedProjectIds,
+  loadProjectOrder,
+  providerLabel,
+  repoNameFromPath,
+  saveCollapsedProjectIds,
+  saveProjectOrder,
+  titleFromPrompt
+} from "./lib/projects.js";
+import { buildTerminalTranscript } from "./lib/rawProvider.js";
+import {
+  emptySnapshot,
+  mergeByCreatedAt,
+  mergeDashboardDelta,
+  pruneSupersededDeltas
+} from "./lib/snapshot.js";
+import {
+  BUCKET_ICON_NAME,
+  buildGroupIconBuckets,
+  buildToolCallGroup,
+  detectToolError,
+  extractOpenablePath,
+  extractToolError,
+  extractToolInput,
+  extractToolInputPreview,
+  extractToolName,
+  extractToolOutput,
+  extractToolUseId,
+  getToolIcon,
+  getToolTypeBucket,
+  isBashLikeTool,
+  summarizeToolGroup,
+  type ConversationItem,
+  type ParallelPosition,
+  type ToolCall,
+  type ToolCallGroup
+} from "./lib/toolCalls.js";
+import { useAutoGrowTextArea } from "./hooks/useAutoGrowTextArea.js";
+import { useDismissOnOutsideOrEscape } from "./hooks/useDismissOnOutsideOrEscape.js";
 
 type ToastMessage = { kind: "error" | "info"; message: string };
 type SessionCursor = { eventCursor?: number; rawOutputCursor?: number };
@@ -109,360 +146,17 @@ interface ReviewState {
   toggleSummary: () => void;
 }
 
-type ParsedDiffLine = {
-  kind: "addition" | "deletion" | "context";
-  oldLineNumber: number | null;
-  newLineNumber: number | null;
-  content: string;
-};
-
-type ParsedDiffBlock =
-  | { kind: "hunk"; id: string; header: string; lines: ParsedDiffLine[] }
-  | { kind: "omitted"; id: string; count: number };
-
-type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId };
-
-const allModelOptions: ModelPickerSelection[] = (Object.entries(PROVIDER_MODELS) as Array<[ProviderId, typeof PROVIDER_MODELS[ProviderId]]>)
-  .flatMap(([provider, models]) =>
-    models.map((model) => ({
-      provider,
-      label: model.label,
-      modelId: model.modelId,
-      ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
-    }))
-  );
-
-
-type ToolCall = {
-  id: string;
-  toolUseId: string;
-  name: string;
-  inputPreview: string;
-  inputFull: Record<string, unknown>;
-  output: string | null;
-  status: "running" | "done" | "error";
-  createdAt: string;
-  completedAt: string | null;
-  error: string | null;
-};
-
-type ParallelPosition = "start" | "middle" | "end";
-
-type ToolCallGroup = {
-  id: string;
-  tools: ToolCall[];
-  parallelPositions: Map<string, ParallelPosition>;
-  parallelGroupId: Map<string, string>;
-};
-
-type ConversationItem =
-  | { kind: "message"; event: TimelineEvent }
-  | { kind: "tool"; tool: ToolCall }
-  | { kind: "tool-group"; group: ToolCallGroup };
-
-const PARALLEL_WINDOW_MS = 75;
-
-function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
-  const parallelPositions = new Map<string, ParallelPosition>();
-  const parallelGroupId = new Map<string, string>();
-  let cluster: ToolCall[] = [];
-  const finalize = (): void => {
-    if (cluster.length >= 2) {
-      const first = cluster[0];
-      const last = cluster[cluster.length - 1];
-      if (!first || !last) {
-        cluster = [];
-        return;
-      }
-      const groupId = `pg-${first.id}`;
-      parallelPositions.set(first.id, "start");
-      parallelPositions.set(last.id, "end");
-      parallelGroupId.set(first.id, groupId);
-      parallelGroupId.set(last.id, groupId);
-      for (let i = 1; i < cluster.length - 1; i++) {
-        const mid = cluster[i];
-        if (!mid) continue;
-        parallelPositions.set(mid.id, "middle");
-        parallelGroupId.set(mid.id, groupId);
-      }
-    }
-    cluster = [];
-  };
-  for (const tool of tools) {
-    const last = cluster[cluster.length - 1];
-    if (!last) {
-      cluster.push(tool);
-      continue;
-    }
-    const gap = Date.parse(tool.createdAt) - Date.parse(last.createdAt);
-    if (Number.isFinite(gap) && gap <= PARALLEL_WINDOW_MS) {
-      cluster.push(tool);
-    } else {
-      finalize();
-      cluster = [tool];
-    }
-  }
-  finalize();
-  const firstTool = tools[0];
-  return {
-    id: firstTool ? `tcg-${firstTool.id}` : "tcg-empty",
-    tools,
-    parallelPositions,
-    parallelGroupId
-  };
-}
-
-function summarizeToolGroup(tools: ToolCall[]): { headline: string; preview: string; worstStatus: ToolCall["status"] } {
-  const names = tools.map((t) => t.name.toLowerCase());
-  const every = (pred: (n: string) => boolean): boolean => names.every(pred);
-  let headline = `${tools.length} tool calls`;
-  if (every((n) => /read|view|cat|^ls$|list_dir/.test(n))) headline = `Explored ${tools.length} files`;
-  else if (every((n) => /bash|shell|exec|terminal/.test(n))) headline = `Ran ${tools.length} commands`;
-  else if (every((n) => /grep|search|find|glob/.test(n))) headline = `Searched ${tools.length} times`;
-  else if (every((n) => /web|fetch|http|url|browser/.test(n))) headline = `Fetched ${tools.length} URLs`;
-  else if (every((n) => /write|edit|patch|create/.test(n))) headline = `Edited ${tools.length} files`;
-
-  const previewParts: string[] = [];
-  for (const tool of tools) {
-    const raw = tool.inputPreview;
-    if (!raw) continue;
-    const trimmed = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
-    previewParts.push(trimmed.slice(0, 28));
-    if (previewParts.length === 3) break;
-  }
-  const preview = previewParts.join(", ") + (tools.length > previewParts.length ? ", …" : "");
-  const worstStatus: ToolCall["status"] = tools.some((t) => t.status === "error")
-    ? "error"
-    : tools.some((t) => t.status === "running")
-      ? "running"
-      : "done";
-  return { headline, preview, worstStatus };
-}
-
-function extractToolUseId(payload: Record<string, unknown>): string | null {
-  if (typeof payload.id === "string" && payload.id) return payload.id;
-  if (typeof payload.call_id === "string" && payload.call_id) return payload.call_id;
-  return null;
-}
-
-function extractToolName(payload: Record<string, unknown>): string {
-  if (typeof payload.name === "string" && payload.name) return payload.name;
-  if (typeof payload.type === "string" && payload.type !== "command.started") return payload.type;
-  return "tool";
-}
-
-function extractToolInput(payload: Record<string, unknown>): Record<string, unknown> {
-  if (payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)) {
-    return payload.input as Record<string, unknown>;
-  }
-  if (typeof payload.arguments === "string") {
-    try {
-      return JSON.parse(payload.arguments) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
-  const lower = name.toLowerCase();
-  if (lower.includes("bash") || lower.includes("shell") || lower.includes("exec")) {
-    const cmd = input.command ?? input.cmd;
-    if (typeof cmd === "string") return cmd.split("\n")[0]?.slice(0, 72) ?? "";
-  }
-  const path = input.file_path ?? input.path ?? input.relative_path;
-  if (typeof path === "string") return path;
-  const query = input.query ?? input.pattern ?? input.search_term;
-  if (typeof query === "string") return String(query).slice(0, 72);
-  const url = input.url;
-  if (typeof url === "string") return url.slice(0, 72);
-  const first = Object.values(input)[0];
-  if (typeof first === "string") return first.slice(0, 72);
-  if (typeof first === "number" || typeof first === "boolean") return String(first).slice(0, 72);
-  return "";
-}
-
-function extractToolOutput(payload: Record<string, unknown>): string | null {
-  if (typeof payload.content === "string") return payload.content;
-  if (Array.isArray(payload.content)) {
-    const text = payload.content
-      .map((c: unknown) => (c && typeof c === "object" && "text" in c ? String((c as Record<string, unknown>).text) : ""))
-      .filter(Boolean)
-      .join("\n");
-    return text || null;
-  }
-  if (typeof payload.output === "string") return payload.output;
-  return null;
-}
-
-function detectToolError(payload: Record<string, unknown>): boolean {
-  if (payload.is_error === true) return true;
-  if (payload.isError === true) return true;
-  if (typeof payload.error === "string" && payload.error.length > 0) return true;
-  if (payload.error && typeof payload.error === "object") return true;
-  const status = payload.status;
-  if (typeof status === "string" && /fail|error/i.test(status)) return true;
-  return false;
-}
-
-function extractToolError(payload: Record<string, unknown>): string | null {
-  if (typeof payload.error === "string" && payload.error.length > 0) return payload.error;
-  if (payload.error && typeof payload.error === "object") {
-    const errObj = payload.error as Record<string, unknown>;
-    if (typeof errObj.message === "string") return errObj.message;
-  }
-  if (payload.is_error === true || payload.isError === true) {
-    const output = extractToolOutput(payload);
-    if (output) return output;
-  }
-  return null;
-}
-
-function extractOpenablePath(name: string, input: Record<string, unknown>): string | null {
-  const lower = name.toLowerCase();
-  if (!/read|view|cat|write|edit|patch|create|open/.test(lower)) return null;
-  for (const key of ["file_path", "filepath", "path", "relative_path", "absolute_path"]) {
-    const value = input[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-}
-
-function isBashLikeTool(name: string): boolean {
-  const lower = name.toLowerCase();
-  return /bash|shell|exec|terminal|cmd/.test(lower);
-}
-
-function useAutoGrowTextArea(
-  ref: RefObject<HTMLTextAreaElement | null>,
-  value: string,
-  maxHeightPx: number
-): void {
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const next = Math.min(el.scrollHeight, maxHeightPx);
-    el.style.height = `${next}px`;
-    el.style.overflowY = el.scrollHeight > maxHeightPx ? "auto" : "hidden";
-  }, [ref, value, maxHeightPx]);
-}
-
-function useDismissOnOutsideOrEscape(
-  ref: RefObject<HTMLElement | null>,
-  active: boolean,
-  close: () => void,
-  extraRef?: RefObject<HTMLElement | null>
-): void {
-  const closeRef = useRef(close);
-  useEffect(() => {
-    closeRef.current = close;
-  }, [close]);
-
-  useEffect(() => {
-    if (!active) return;
-    const handleMouseDown = (event: MouseEvent): void => {
-      const target = event.target as Node;
-      const insideMain = ref.current?.contains(target) ?? false;
-      const insideExtra = extraRef?.current?.contains(target) ?? false;
-      if (!insideMain && !insideExtra) {
-        closeRef.current();
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        closeRef.current();
-      }
-    };
-    document.addEventListener("mousedown", handleMouseDown, { capture: true });
-    document.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => {
-      document.removeEventListener("mousedown", handleMouseDown, { capture: true });
-      document.removeEventListener("keydown", handleKeyDown, { capture: true });
-    };
-  }, [active, ref, extraRef]);
-}
-
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
 }
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
-function thinkingModelSlug(model: ProviderModelSelection): string {
-  const id = model.modelId.toLowerCase().split(":")[0] ?? model.modelId;
-  return id.replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
-}
-
-function getToolIcon(name: string): JSX.Element {
-  const lower = name.toLowerCase();
-  if (lower.includes("bash") || lower.includes("shell") || lower.includes("terminal") || lower.includes("exec")) {
-    return <Terminal size={13} />;
-  }
-  if (lower.includes("write") || lower.includes("edit") || lower.includes("create") || lower.includes("patch")) {
-    return <Pencil size={13} />;
-  }
-  if (lower.includes("read") || lower.includes("view") || lower.includes("open") || lower.includes("cat") || lower.includes("list")) {
-    return <FileText size={13} />;
-  }
-  if (lower.includes("search") || lower.includes("grep") || lower.includes("find") || lower.includes("glob")) {
-    return <Search size={13} />;
-  }
-  if (lower.includes("web") || lower.includes("browser") || lower.includes("navigate") || lower.includes("fetch") || lower.includes("url") || lower.includes("http")) {
-    return <Globe size={13} />;
-  }
-  return <Wrench size={13} />;
-}
-
-type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "other";
-
-function getToolTypeBucket(name: string): ToolTypeBucket {
-  const lower = name.toLowerCase();
-  if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
-  if (/write|edit|create|patch/.test(lower)) return "edit";
-  if (/read|view|open|cat|list/.test(lower)) return "read";
-  if (/search|grep|find|glob/.test(lower)) return "search";
-  if (/web|browser|navigate|fetch|url|http/.test(lower)) return "web";
-  return "other";
-}
-
-function buildGroupIconBuckets(tools: ToolCall[]): Array<{ bucket: ToolTypeBucket; count: number }> {
-  const seen = new Map<ToolTypeBucket, number>();
-  for (const tool of tools) {
-    const b = getToolTypeBucket(tool.name);
-    seen.set(b, (seen.get(b) ?? 0) + 1);
-  }
-  return [...seen.entries()].slice(0, 3).map(([bucket, count]) => ({ bucket, count }));
-}
-
-const BUCKET_ICON_NAME: Record<ToolTypeBucket, string> = {
-  bash: "bash",
-  edit: "write",
-  read: "read_file",
-  search: "search_files",
-  web: "web_fetch",
-  other: "tool",
-};
-
-const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
-const projectOrderStorageKey = "argmax.sidebar.projectOrder";
 const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 const COST_PANEL_EXPANDED_KEY = "argmax.costPanel.expanded";
-const DEFAULT_IDE_KEY = "argmax.defaultIde";
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 
-const ALL_IDE_IDS = new Set<IdeId>(["vscode", "cursor", "windsurf", "zed", "terminal", "iterm"]);
-
-function readStoredDefaultIde(): IdeId | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(DEFAULT_IDE_KEY);
-  if (raw && (ALL_IDE_IDS as Set<string>).has(raw)) {
-    return raw as IdeId;
-  }
-  return null;
-}
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
@@ -1442,49 +1136,6 @@ function SidebarSessionRow({
       )}
     </div>
   );
-}
-
-function loadCollapsedProjectIds(): Set<string> {
-  return new Set(loadStringArray(collapsedProjectsStorageKey));
-}
-
-function saveCollapsedProjectIds(projectIds: Set<string>): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([...projectIds]));
-}
-
-function loadProjectOrder(): string[] {
-  return loadStringArray(projectOrderStorageKey);
-}
-
-function saveProjectOrder(ids: string[]): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.setItem(projectOrderStorageKey, JSON.stringify(ids));
-}
-
-function loadStringArray(storageKey: string): string[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-  return safeJsonParseArray(
-    window.localStorage.getItem(storageKey),
-    (value): value is string => typeof value === "string"
-  );
-}
-
-function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {
-  if (order.length === 0) return projects;
-  const rank = new Map(order.map((id, i) => [id, i]));
-  return [...projects].sort((a, b) => {
-    const ra = rank.get(a.id) ?? Infinity;
-    const rb = rank.get(b.id) ?? Infinity;
-    if (ra !== rb) return ra - rb;
-    return (b.latestActivityAt ?? "") > (a.latestActivityAt ?? "") ? 1 : -1;
-  });
 }
 
 function SessionPane({
@@ -3167,79 +2818,6 @@ function statusLabel(status: string): string {
   return "Modified";
 }
 
-function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
-  const lines = content.split("\n");
-  const blocks: ParsedDiffBlock[] = [];
-  let index = 0;
-  let previousOldEnd: number | null = null;
-  let hunkIndex = 0;
-
-  while (index < lines.length) {
-    const header = lines[index];
-    const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(header);
-    if (!match) {
-      index += 1;
-      continue;
-    }
-
-    const oldStart = Number(match[1]);
-    let oldLineNumber = oldStart;
-    let newLineNumber = Number(match[2]);
-    if (previousOldEnd !== null) {
-      const omittedCount = oldStart - previousOldEnd - 1;
-      if (omittedCount > 0) {
-        blocks.push({ kind: "omitted", id: `omitted-${hunkIndex}`, count: omittedCount });
-      }
-    }
-
-    const hunkLines: ParsedDiffLine[] = [];
-    index += 1;
-    while (index < lines.length && !lines[index].startsWith("@@ ")) {
-      const line = lines[index];
-      if (line.startsWith("diff --git ")) {
-        break;
-      }
-      if (line.startsWith("\\ No newline")) {
-        index += 1;
-        continue;
-      }
-      if (line.startsWith("+") && !line.startsWith("+++")) {
-        hunkLines.push({
-          kind: "addition",
-          oldLineNumber: null,
-          newLineNumber,
-          content: line.slice(1)
-        });
-        newLineNumber += 1;
-      } else if (line.startsWith("-") && !line.startsWith("---")) {
-        hunkLines.push({
-          kind: "deletion",
-          oldLineNumber,
-          newLineNumber: null,
-          content: line.slice(1)
-        });
-        oldLineNumber += 1;
-      } else if (line.startsWith(" ")) {
-        hunkLines.push({
-          kind: "context",
-          oldLineNumber,
-          newLineNumber,
-          content: line.slice(1)
-        });
-        oldLineNumber += 1;
-        newLineNumber += 1;
-      }
-      index += 1;
-    }
-
-    blocks.push({ kind: "hunk", id: `hunk-${hunkIndex}`, header, lines: hunkLines });
-    previousOldEnd = oldLineNumber - 1;
-    hunkIndex += 1;
-  }
-
-  return blocks;
-}
-
 function LaunchSurface({
   model,
   onAddProject,
@@ -3792,20 +3370,6 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
   return { ...snapshot, events: pruneSupersededDeltas(snapshot.events) };
 }
 
-function titleFromPrompt(prompt: string): string {
-  const firstLine = prompt.split(/\r?\n/, 1)[0]?.trim() ?? "";
-  return firstLine.length > 64 ? `${firstLine.slice(0, 61)}...` : firstLine || "Local agent task";
-}
-
-function providerLabel(provider: ProviderId): string {
-  return provider === "codex" ? "Codex" : "Claude";
-}
-
-function repoNameFromPath(path: string | null | undefined): string | null {
-  const trimmedPath = path?.replace(/\/+$/, "") ?? "";
-  return trimmedPath.split("/").at(-1) || null;
-}
-
 /**
  * Returns the partial skill name when the input is a slash command being
  * composed (no whitespace yet), otherwise null. The popover only opens on
@@ -4087,15 +3651,6 @@ function CombinedModelSelector({
   );
 }
 
-function emptyCostSummary(sessionId: string): SessionCostSummary {
-  return {
-    sessionId,
-    modelId: null,
-    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    costUsd: 0
-  };
-}
-
 function CostPanel({
   session,
   events
@@ -4192,207 +3747,3 @@ function CostPanel({
   );
 }
 
-function costForBucket(
-  bucket: keyof SessionCostSummary["tokens"],
-  tokens: number,
-  modelId: string | null
-): number {
-  if (!modelId || tokens <= 0) return 0;
-  const empty = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  return rendererCostOf({ ...empty, [bucket]: tokens }, modelId);
-}
-
-function modelValue(model: Pick<ModelPickerSelection, "provider" | "modelId" | "reasoningEffort">): string {
-  return model.reasoningEffort
-    ? `${model.provider}:${model.modelId}:${model.reasoningEffort}`
-    : `${model.provider}:${model.modelId}`;
-}
-
-function optionKey(model: Pick<ProviderModelSelection, "modelId" | "reasoningEffort">): string {
-  return model.reasoningEffort ? `${model.modelId}:${model.reasoningEffort}` : model.modelId;
-}
-
-function effortLabel(reasoningEffort: NonNullable<ProviderModelSelection["reasoningEffort"]>): string {
-  return `${reasoningEffort[0]?.toUpperCase() ?? ""}${reasoningEffort.slice(1)}`;
-}
-
-function modelDefaultForProvider(provider: ProviderId): ProviderModelSelection {
-  const model = PROVIDER_MODEL_DEFAULTS[provider];
-  return {
-    label: model.label,
-    modelId: model.modelId,
-    ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
-  };
-}
-
-function modelSelectionFromSession(session: SessionSummary | null): ProviderModelSelection {
-  if (!session) {
-    return modelDefaultForProvider("codex");
-  }
-  return {
-    label: session.modelLabel,
-    modelId: session.modelId,
-    ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {})
-  };
-}
-
-function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: string | null): string {
-  if (!sessionId) {
-    return "";
-  }
-
-  // Stream-json events can be split across multiple raw output chunks; concatenate
-  // first so the JSON-line filter sees whole lines and hides them properly.
-  const combined = rawOutputs
-    .filter((output) => output.sessionId === sessionId && ["stdout", "stderr"].includes(output.stream))
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .map((output) => stripTerminalControls(output.content))
-    .join("");
-
-  const transcript = visibleRawProviderLines(combined).join("").trim();
-
-  return transcript.length > 8_000 ? transcript.slice(-8_000) : transcript;
-}
-
-function visibleRawProviderLines(content: string): string[] {
-  return content
-    .split(/(\r?\n)/)
-    .filter((part) => part === "\n" || part === "\r\n" || !isHiddenRawProviderLine(part.trim()));
-}
-
-function isHiddenRawProviderLine(line: string): boolean {
-  const record = tryParseJsonObject(line);
-  return record !== null && typeof record.type === "string";
-}
-
-function mergeSlice<T extends { id: string }>(
-  current: T[],
-  updates: T[] | undefined,
-  sortBy: (item: T) => string,
-  limit?: number
-): T[] {
-  if (!updates) {
-    return current;
-  }
-  const merged = upsertById(current, updates);
-  if (merged === current) {
-    return current;
-  }
-  const sorted = sortByTimestamp(merged, sortBy);
-  return limit !== undefined ? sorted.slice(0, limit) : sorted;
-}
-
-/**
- * Drops message.delta events that have a subsequent message.completed within
- * the same turn. A streaming response can produce hundreds of deltas; if we
- * keep them in renderer state they crowd out command.started/completed pairs
- * under the event cap, and tool calls vanish from the UI once the response
- * finishes. We still keep the latest deltas (no completion yet) so live
- * streaming continues to render.
- *
- * Events may arrive in any order; this works on either ascending or descending
- * arrays.
- */
-function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] {
-  if (events.length < 2) return events;
-  const first = events[0];
-  const last = events[events.length - 1];
-  const isDescending = !!first && !!last && first.createdAt > last.createdAt;
-  const ascending = isDescending ? [...events].reverse() : events;
-  const kept: TimelineEvent[] = [];
-  for (let i = 0; i < ascending.length; i++) {
-    const event = ascending[i];
-    if (!event) continue;
-    if (event.type !== "message.delta") {
-      kept.push(event);
-      continue;
-    }
-    let superseded = false;
-    for (let j = i + 1; j < ascending.length; j++) {
-      const next = ascending[j];
-      if (!next) break;
-      if (next.type === "user.message") break;
-      if (next.type === "message.completed") {
-        superseded = true;
-        break;
-      }
-    }
-    if (!superseded) kept.push(event);
-  }
-  return isDescending ? kept.reverse() : kept;
-}
-
-function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
-  const projects = delta.projects
-    ? (() => {
-        const merged = upsertById(snapshot.projects, delta.projects);
-        return merged === snapshot.projects ? snapshot.projects : sortProjects(merged);
-      })()
-    : snapshot.projects;
-  const workspaces = mergeSlice(snapshot.workspaces, delta.workspaces, (workspace) => workspace.lastActivityAt);
-  const sessions = mergeSlice(snapshot.sessions, delta.sessions, (session) => session.lastActivityAt);
-  const events = pruneSupersededDeltas(
-    mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 500)
-  );
-  const rawOutputs = mergeSlice(snapshot.rawOutputs, delta.rawOutputs, (output) => output.createdAt, 100);
-  const approvals = mergeSlice(snapshot.approvals, delta.approvals, (approval) => approval.createdAt, 200);
-  const checks = mergeSlice(snapshot.checks, delta.checks, (check) => check.startedAt, 200);
-  const checkpoints = mergeSlice(snapshot.checkpoints, delta.checkpoints, (checkpoint) => checkpoint.createdAt, 200);
-
-  if (
-    projects === snapshot.projects &&
-    workspaces === snapshot.workspaces &&
-    sessions === snapshot.sessions &&
-    events === snapshot.events &&
-    rawOutputs === snapshot.rawOutputs &&
-    approvals === snapshot.approvals &&
-    checks === snapshot.checks &&
-    checkpoints === snapshot.checkpoints
-  ) {
-    return snapshot;
-  }
-
-  return { projects, workspaces, sessions, events, rawOutputs, approvals, checks, checkpoints };
-}
-
-function upsertById<T extends { id: string }>(current: T[], updates: T[]): T[] {
-  if (updates.length === 0) {
-    return current;
-  }
-  const byId = new Map(current.map((item) => [item.id, item]));
-  let changed = false;
-  for (const item of updates) {
-    if (byId.get(item.id) !== item) {
-      changed = true;
-      byId.set(item.id, item);
-    }
-  }
-  return changed ? [...byId.values()] : current;
-}
-
-function mergeByCreatedAt<T extends { id: string; createdAt: string }>(
-  current: T[],
-  updates: T[],
-  limit: number,
-  direction: "asc" | "desc"
-): T[] {
-  const sorted = sortByTimestamp(upsertById(current, updates), (item) => item.createdAt).reverse();
-  const limited = sorted.slice(-limit);
-  return direction === "asc" ? limited : limited.reverse();
-}
-
-function sortProjects(projects: DashboardSnapshot["projects"]): DashboardSnapshot["projects"] {
-  return sortByTimestamp(projects, (project) => project.latestActivityAt ?? "");
-}
-
-function sortByTimestamp<T>(items: T[], getTimestamp: (item: T) => string): T[] {
-  return [...items].sort((left, right) => getTimestamp(right).localeCompare(getTimestamp(left)));
-}
-
-function isBrowserPreview(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  return ["127.0.0.1", "localhost"].includes(window.location.hostname);
-}

@@ -149,6 +149,23 @@ describe("normalizeProviderEvent", () => {
     });
   });
 
+  it("skips JSON.parse on lines over the size cap and emits a truncation marker", () => {
+    // 1 MiB + 1 byte of pure `x` — `tryParseJsonObject` would just return null
+    // here, but we want the cap to short-circuit BEFORE the parse attempt so
+    // the main process can't be blocked by a malicious multi-MiB blob.
+    const oversized = "x".repeat(1_048_577);
+    const events = normalizeProviderEvent(outputEvent(`${oversized}\n`));
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "error",
+      payload: { truncated: true, droppedBytes: oversized.length }
+    });
+    expect(events[0]?.message).toContain("too large to parse");
+    // The huge payload must not be embedded back into the event message.
+    expect((events[0]?.message ?? "").length).toBeLessThan(200);
+  });
+
   it("emits both JSON and raw events when a chunk mixes parsed and unparsed lines", () => {
     const events = normalizeProviderEvent(
       outputEvent('{"type":"command.started","message":"npm test"}\nplain stderr-style line\n')

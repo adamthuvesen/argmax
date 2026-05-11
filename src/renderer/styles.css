@@ -498,12 +498,12 @@ button {
   opacity: 0.4;
 }
 
-.session-ide-popover {
+.session-ide-cluster > .session-ide-popover {
   bottom: auto;
   top: calc(100% + 6px);
   right: 0;
   left: auto;
-  min-width: 160px;
+  min-width: 200px;
 }
 
 .session-archive-btn {
@@ -551,7 +551,7 @@ button {
 }
 
 .cost-panel {
-  margin: 8px 16px 0 16px;
+  margin: 8px 0 0;
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -562,6 +562,13 @@ button {
   display: flex;
   align-items: baseline;
   gap: 12px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
   font-size: 12px;
 }
 
@@ -606,6 +613,16 @@ button {
 .cost-panel-table thead th {
   font-weight: 500;
   border-bottom: 1px solid var(--border);
+}
+
+.cost-panel-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.cost-panel-chevron.expanded {
+  transform: rotate(90deg);
 }
 
 @keyframes status-pulse {

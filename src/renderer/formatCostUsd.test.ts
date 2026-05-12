@@ -3,12 +3,17 @@ import { describe, expect, it } from "vitest";
 import { formatCostUsd } from "./formatCost.js";
 
 describe("formatCostUsd", () => {
-  it("renders $0.00 for zero, null, undefined, negative, NaN", () => {
+  it("renders $0.00 for zero, null, undefined, NaN", () => {
     expect(formatCostUsd(0)).toBe("$0.00");
     expect(formatCostUsd(null)).toBe("$0.00");
     expect(formatCostUsd(undefined)).toBe("$0.00");
-    expect(formatCostUsd(-1)).toBe("$0.00");
     expect(formatCostUsd(Number.NaN)).toBe("$0.00");
+  });
+
+  it("renders negatives with a leading minus so upstream bugs surface", () => {
+    expect(formatCostUsd(-1)).toBe("-$1.00");
+    expect(formatCostUsd(-0.05)).toBe("-$0.050");
+    expect(formatCostUsd(-12.34)).toBe("-$12.34");
   });
 
   it("uses 3-decimal precision under $1", () => {

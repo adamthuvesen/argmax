@@ -284,6 +284,13 @@ export function registerIpcHandlers(
     })
   );
   ipcMain.handle(
+    "session:search",
+    withValidation(
+      z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(200).optional() }),
+      (input) => database.searchEvents(input)
+    )
+  );
+  ipcMain.handle(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
   );

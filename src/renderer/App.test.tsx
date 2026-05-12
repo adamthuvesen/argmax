@@ -237,7 +237,8 @@ describe("App", () => {
       },
       session: {
         eventsSince: sessionEventsSince,
-        costSummary: sessionCostSummary
+        costSummary: sessionCostSummary,
+        search: () => Promise.resolve([])
       },
       review: {
         listChangedFiles,

@@ -22,13 +22,12 @@ const PROJECT: ProjectSummary = {
 
 function makeLearning(overrides: Partial<Learning> & { id: string }): Learning {
   return {
-    id: overrides.id,
     projectId: "project-1",
     kind: "pitfall",
-    summary: overrides.summary ?? "Original summary",
+    summary: "Original summary",
     evidenceSessionId: null,
     evidenceEventId: null,
-    verified: overrides.verified ?? false,
+    verified: false,
     hits: 1,
     createdAt: "2026-05-12T00:00:00.000Z",
     lastSeenAt: "2026-05-12T00:00:00.000Z",

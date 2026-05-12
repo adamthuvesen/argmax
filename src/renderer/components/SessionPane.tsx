@@ -12,6 +12,8 @@ import {
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   ApprovalRequest,
+  CommitPreparation,
+  PrepareCommitInput,
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
@@ -37,6 +39,7 @@ export function SessionPane({
   onSendSessionInput,
   onTerminateSession,
   onCreateCheckpoint,
+  onPrepareCommit,
   project,
   rawOutputs,
   session,
@@ -49,6 +52,7 @@ export function SessionPane({
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
+  onPrepareCommit?: (input: PrepareCommitInput) => Promise<CommitPreparation>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
@@ -219,7 +223,14 @@ export function SessionPane({
           </section>
         ) : null}
       </div>
-      {reviewState.isPanelOpen ? <ReviewPanel review={reviewState} onResizePanelMouseDown={onRightPanelResizeMouseDown} /> : null}
+      {reviewState.isPanelOpen ? (
+        <ReviewPanel
+          review={reviewState}
+          onResizePanelMouseDown={onRightPanelResizeMouseDown}
+          workspace={workspace}
+          onPrepareCommit={onPrepareCommit}
+        />
+      ) : null}
       {isLogOpen ? (
         <DebugLogPanel
           events={visibleEvents}

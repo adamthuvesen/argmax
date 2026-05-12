@@ -1030,6 +1030,37 @@ describe("App", () => {
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
   });
 
+  it("opens the command palette on Cmd+K and routes Enter to a matching session", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+
+    const paletteInput = await screen.findByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(paletteInput, { target: { value: "Settings" } });
+
+    const option = await screen.findByRole("option", { name: /Open Settings/ });
+    expect(option).toBeInTheDocument();
+
+    fireEvent.keyDown(paletteInput, { key: "Enter" });
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("closes the command palette on Escape without dispatching a command", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    const paletteInput = await screen.findByRole("searchbox", { name: "Command palette query" });
+
+    fireEvent.keyDown(paletteInput, { key: "Escape" });
+
+    await waitFor(() =>
+      expect(screen.queryByRole("searchbox", { name: "Command palette query" })).toBeNull()
+    );
+    expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull();
+  });
+
   it("opens Settings via Cmd+, keyboard shortcut", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });

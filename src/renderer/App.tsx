@@ -609,6 +609,25 @@ export function App(): JSX.Element {
     []
   );
 
+  const runCheck = useCallback(
+    async (workspaceId: string, command: string): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Electron app window to run a check." });
+        return;
+      }
+      try {
+        await window.argmax.checks.run({ workspaceId, command });
+        await refreshDashboardStatus();
+      } catch (error) {
+        setToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not run check."
+        });
+      }
+    },
+    [refreshDashboardStatus]
+  );
+
   const createCheckpoint = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
@@ -827,6 +846,8 @@ export function App(): JSX.Element {
               onTerminateSession={terminateSession}
               onCreateCheckpoint={createCheckpoint}
               onPrepareCommit={prepareCommit}
+              onRunCheck={runCheck}
+              checks={snapshot.checks}
               project={selectedProject}
               rawOutputs={snapshot.rawOutputs}
               session={selectedSession}

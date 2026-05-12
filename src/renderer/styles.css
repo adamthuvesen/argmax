@@ -2604,6 +2604,116 @@ button {
   background: rgba(0, 0, 0, 0.02);
 }
 
+.checks-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  padding: 6px 12px 8px;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.checks-list-title {
+  font-weight: 600;
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+.checks-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.checks-row:first-of-type {
+  border-top: 0;
+}
+
+.checks-row-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.checks-row-run,
+.checks-row-expand {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+  color: var(--text);
+  display: inline-grid;
+  place-items: center;
+}
+
+.checks-row-run[disabled],
+.checks-row-expand[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.checks-row-command {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checks-row-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-strong);
+}
+
+.checks-row[data-status="passed"] .checks-row-status {
+  color: #2f7a4f;
+}
+
+.checks-row[data-status="failed"] .checks-row-status {
+  color: #b3261e;
+}
+
+.checks-row[data-status="running"] .checks-row-status {
+  color: #b08300;
+}
+
+.checks-row-duration {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.checks-row-chevron {
+  transition: transform var(--duration-fast, 120ms) var(--ease, ease);
+}
+
+.checks-row-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.checks-row-log {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+  border-radius: 6px;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow: auto;
+}
+
 .changed-files-header {
   display: flex;
   align-items: baseline;

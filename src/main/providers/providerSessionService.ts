@@ -19,6 +19,7 @@ import {
 } from "./providerEventNormalizer.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 import type { NotificationService } from "../notifications/notificationService.js";
+import { extractLearningCandidates } from "../memory/learningExtractor.js";
 
 interface FollowUpModelSelection {
   modelLabel: string;
@@ -425,6 +426,31 @@ export class ProviderSessionService {
    * `session.recovered-from-crash` timeline event so users see why a session
    * they expected to be live is no longer running.
    */
+  /**
+   * Extract and persist learning candidates from a completed session's
+   * timeline. Best-effort: a failing insert (e.g. project was archived
+   * mid-flight) is swallowed so the session-complete pipeline can't fail.
+   */
+  private synthesizeLearnings(sessionId: string, workspaceId: string): void {
+    try {
+      const workspace = this.database.getWorkspace(workspaceId);
+      const { events } = this.database.listSessionEventsSince({ sessionId });
+      const candidates = extractLearningCandidates(events);
+      for (const candidate of candidates) {
+        this.database.insertLearning({
+          projectId: workspace.projectId,
+          kind: candidate.kind,
+          summary: candidate.summary,
+          evidenceSessionId: candidate.evidenceSessionId,
+          evidenceEventId: candidate.evidenceEventId
+        });
+      }
+    } catch (error) {
+      // Synthesizer is non-critical; log and move on.
+      console.warn("[argmax] synthesizeLearnings failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
   recoverOrphanedSessions(): { recoveredCount: number } {
     const ids = this.database.listRunningSessionIds();
     if (ids.length === 0) {
@@ -692,6 +718,9 @@ export class ProviderSessionService {
         events: [timelineEvent],
         rawOutputs: [rawOutput]
       });
+      if (succeeded) {
+        this.synthesizeLearnings(event.sessionId, workspaceId);
+      }
     } catch (error) {
       // Race: session or workspace was deleted between buffer flush and
       // lifecycle write. The local handle still needs cleanup; skip the

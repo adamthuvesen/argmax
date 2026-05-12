@@ -467,13 +467,19 @@ button {
   justify-content: center;
   height: 20px;
   padding: 0;
-  opacity: 0;
+  opacity: 0.55;
   color: var(--muted);
   background: transparent;
   border: 0;
   border-radius: 5px;
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.session-row-action:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent, #4f46e5);
+  outline-offset: 1px;
 }
 
 .session-ide-btn {
@@ -485,7 +491,8 @@ button {
 }
 
 
-.session-row:hover .session-row-action {
+.session-row:hover .session-row-action,
+.session-row:focus-within .session-row-action {
   opacity: 1;
 }
 
@@ -496,10 +503,11 @@ button {
 
 .session-row-action:disabled {
   cursor: not-allowed;
-  opacity: 0;
+  opacity: 0.25;
 }
 
-.session-row:hover .session-row-action:disabled {
+.session-row:hover .session-row-action:disabled,
+.session-row:focus-within .session-row-action:disabled {
   opacity: 0.4;
 }
 
@@ -522,7 +530,7 @@ button {
   width: 20px;
   height: 20px;
   padding: 0;
-  opacity: 0;
+  opacity: 0.55;
   color: var(--muted);
   background: transparent;
   border: 0;
@@ -531,8 +539,15 @@ button {
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
-.session-row:hover .session-archive-btn {
+.session-row:hover .session-archive-btn,
+.session-row:focus-within .session-archive-btn {
   opacity: 1;
+}
+
+.session-archive-btn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent, #4f46e5);
+  outline-offset: 1px;
 }
 
 .session-archive-btn:hover {

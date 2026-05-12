@@ -4,10 +4,12 @@ import type {
   DetectedIde,
   DiagnosticsReport,
   DiscoveredProvider,
-  IdeId
+  IdeId,
+  ProjectSummary
 } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
+import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel.js";
 
 const PROVIDER_INSTALL_HINTS: Record<string, { label: string; url: string }> = {
   claude: {
@@ -28,6 +30,7 @@ export function SettingsPanel({
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
+  projects,
   onClose
 }: {
   defaultModel: ModelPickerSelection;
@@ -37,6 +40,7 @@ export function SettingsPanel({
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
+  projects: ProjectSummary[];
   onClose: () => void;
 }): JSX.Element {
   const [providers, setProviders] = useState<DiscoveredProvider[] | null>(null);
@@ -319,6 +323,17 @@ export function SettingsPanel({
             <p className="settings-hint">Detecting providers…</p>
           )}
         </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-knowledge">
+        <header className="settings-section-header">
+          <h2 id="settings-knowledge">Project knowledge</h2>
+          <p>
+            Learnings Argmax has captured from your sessions. The top-K of these are injected as a
+            preamble for every new launch — verified ones stick to the top of the list.
+          </p>
+        </header>
+        <ProjectKnowledgePanel projects={projects} />
       </section>
 
       <section className="settings-section" aria-labelledby="settings-diagnostics">

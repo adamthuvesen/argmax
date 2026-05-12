@@ -370,6 +370,8 @@ export interface ArgmaxApi {
   };
   learnings: {
     list: (input: { projectId: string; limit?: number }) => Promise<Learning[]>;
+    update: (input: { id: string; summary?: string; verified?: boolean }) => Promise<Learning>;
+    delete: (id: string) => Promise<{ ok: true }>;
   };
 }
 

@@ -266,6 +266,24 @@ export function registerIpcHandlers(
     )
   );
   ipcMain.handle(
+    "learnings:update",
+    withValidation(
+      z.object({
+        id: z.string().min(1),
+        summary: z.string().min(1).optional(),
+        verified: z.boolean().optional()
+      }),
+      (input) => database.updateLearning(input)
+    )
+  );
+  ipcMain.handle(
+    "learnings:delete",
+    withValidation(z.object({ id: z.string().min(1) }), (input) => {
+      database.deleteLearning(input.id);
+      return { ok: true } as const;
+    })
+  );
+  ipcMain.handle(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
   );

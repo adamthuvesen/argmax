@@ -146,7 +146,10 @@ const api: ArgmaxApi = {
   },
   learnings: {
     list: (input: { projectId: string; limit?: number }) =>
-      ipcRenderer.invoke("learnings:list", input) as Promise<Learning[]>
+      ipcRenderer.invoke("learnings:list", input) as Promise<Learning[]>,
+    update: (input: { id: string; summary?: string; verified?: boolean }) =>
+      ipcRenderer.invoke("learnings:update", input) as Promise<Learning>,
+    delete: (id: string) => ipcRenderer.invoke("learnings:delete", { id }) as Promise<{ ok: true }>
   }
 };
 

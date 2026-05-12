@@ -304,6 +304,14 @@ export const ipcSchemas = {
   "learnings:list": z.object({
     projectId: projectIdSchema,
     limit: z.number().int().min(1).max(200).optional()
+  }),
+  "learnings:update": z.object({
+    id: z.string().min(1),
+    summary: z.string().min(1).optional(),
+    verified: z.boolean().optional()
+  }),
+  "learnings:delete": z.object({
+    id: z.string().min(1)
   })
 } as const;
 

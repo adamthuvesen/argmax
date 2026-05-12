@@ -9,8 +9,7 @@ export function loadCollapsedProjectIds(): Set<string> {
 }
 
 export function saveCollapsedProjectIds(projectIds: Set<string>): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([...projectIds]));
+  writeStorageJson(collapsedProjectsStorageKey, [...projectIds]);
 }
 
 export function loadProjectOrder(): string[] {
@@ -18,8 +17,23 @@ export function loadProjectOrder(): string[] {
 }
 
 export function saveProjectOrder(ids: string[]): void {
+  writeStorageJson(projectOrderStorageKey, ids);
+}
+
+function writeStorageJson(storageKey: string, value: unknown): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(projectOrderStorageKey, JSON.stringify(ids));
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(value));
+  } catch (error) {
+    // QuotaExceededError (storage full) or SecurityError (private-mode in
+    // some browsers / Electron edge cases). Log and continue — losing a
+    // sidebar preference is preferable to an unhandled rejection burying
+    // the click handler that triggered the write.
+    console.warn("projects.writeStorageJson.failed", {
+      storageKey,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
 
 function loadStringArray(storageKey: string): string[] {

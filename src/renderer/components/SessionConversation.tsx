@@ -1,4 +1,4 @@
-import { Bug, ChevronRight, Mic, Plus, Square } from "lucide-react";
+import { Bug, ChevronRight, GitCommit, Mic, Plus, Square } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -54,6 +54,7 @@ export function SessionConversation({
   isLogOpen,
   onSendSessionInput,
   onTerminateSession,
+  onCreateCheckpoint,
   onToggleLog,
   project,
   rawOutputs,
@@ -66,6 +67,7 @@ export function SessionConversation({
   isLogOpen: boolean;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onToggleLog: () => void;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -321,16 +323,30 @@ export function SessionConversation({
             ))}
           </div>
         </div>
-        <button
-          className="small-icon"
-          type="button"
-          title="Toggle debug log"
-          aria-label="Toggle debug log"
-          aria-pressed={isLogOpen}
-          onClick={onToggleLog}
-        >
-          <Bug size={16} />
-        </button>
+        <div className="conversation-header-actions">
+          <button
+            className="small-icon"
+            type="button"
+            title={workspace?.dirty ? "Save checkpoint of the current worktree" : "Worktree is clean — no checkpoint needed"}
+            aria-label="Save checkpoint"
+            disabled={!workspace?.dirty}
+            onClick={() => {
+              if (workspace) void onCreateCheckpoint(workspace.id);
+            }}
+          >
+            <GitCommit size={16} />
+          </button>
+          <button
+            className="small-icon"
+            type="button"
+            title="Toggle debug log"
+            aria-label="Toggle debug log"
+            aria-pressed={isLogOpen}
+            onClick={onToggleLog}
+          >
+            <Bug size={16} />
+          </button>
+        </div>
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         {conversationItems.length > 0 ? (

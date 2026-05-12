@@ -285,6 +285,9 @@ describe("App", () => {
             menuCommandListener = null;
           };
         }
+      },
+      learnings: {
+        list: () => Promise.resolve([])
       }
     };
   });

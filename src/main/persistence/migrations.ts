@@ -320,6 +320,50 @@ export const migrations: Migration[] = [
       -- sessions that died before any token_count arrived.
       ALTER TABLE sessions ADD COLUMN last_model_id TEXT;
     `
+  },
+  {
+    version: 9,
+    name: "learnings_table",
+    affectedTables: ["learnings"],
+    up: `
+      CREATE TABLE learnings (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('pitfall', 'convention', 'command')),
+        summary TEXT NOT NULL,
+        evidence_session_id TEXT,
+        evidence_event_id TEXT,
+        verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1)),
+        hits INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_learnings_project ON learnings(project_id, last_seen_at DESC);
+
+      -- FTS5 sidecar so 'top-K by query against this project' is a single
+      -- prepared query, not an O(N) scan in the renderer.
+      CREATE VIRTUAL TABLE learnings_fts USING fts5(
+        summary,
+        content='learnings',
+        content_rowid='rowid'
+      );
+
+      CREATE TRIGGER learnings_after_insert AFTER INSERT ON learnings BEGIN
+        INSERT INTO learnings_fts (rowid, summary) VALUES (new.rowid, new.summary);
+      END;
+
+      CREATE TRIGGER learnings_after_delete AFTER DELETE ON learnings BEGIN
+        INSERT INTO learnings_fts (learnings_fts, rowid, summary)
+          VALUES ('delete', old.rowid, old.summary);
+      END;
+
+      CREATE TRIGGER learnings_after_update AFTER UPDATE OF summary ON learnings BEGIN
+        INSERT INTO learnings_fts (learnings_fts, rowid, summary)
+          VALUES ('delete', old.rowid, old.summary);
+        INSERT INTO learnings_fts (rowid, summary) VALUES (new.rowid, new.summary);
+      END;
+    `
   }
 ];
 
@@ -363,6 +407,18 @@ const expectedColumns: Record<string, string[]> = {
     "state",
     "task_label",
     "updated_at"
+  ],
+  learnings: [
+    "created_at",
+    "evidence_event_id",
+    "evidence_session_id",
+    "hits",
+    "id",
+    "kind",
+    "last_seen_at",
+    "project_id",
+    "summary",
+    "verified"
   ],
   sessions: [
     "attention",

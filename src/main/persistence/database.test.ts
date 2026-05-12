@@ -650,4 +650,32 @@ describe("findPendingApproval (Section 6)", () => {
 
     database.connection.close();
   });
+
+  it("persists and lists learnings ranked by verified, hits, then recency", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "learn-1");
+
+    const older = database.insertLearning({
+      projectId,
+      kind: "pitfall",
+      summary: "Always run prettier before commit"
+    });
+    const newer = database.insertLearning({
+      projectId,
+      kind: "convention",
+      summary: "Use absolute imports under src/"
+    });
+
+    const all = database.listLearnings(projectId);
+    expect(all).toHaveLength(2);
+    expect(all[0]?.id).toBe(newer.id); // newest first
+    expect(all[1]?.id).toBe(older.id);
+
+    // Bump hits on older — should bubble to top
+    database.connection.prepare("UPDATE learnings SET hits = 5 WHERE id = ?").run(older.id);
+    const reordered = database.listLearnings(projectId);
+    expect(reordered[0]?.id).toBe(older.id);
+
+    database.connection.close();
+  });
 });

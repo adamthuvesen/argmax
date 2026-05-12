@@ -368,6 +368,24 @@ export interface ArgmaxApi {
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
   };
+  learnings: {
+    list: (input: { projectId: string; limit?: number }) => Promise<Learning[]>;
+  };
+}
+
+export type LearningKind = "pitfall" | "convention" | "command";
+
+export interface Learning {
+  id: string;
+  projectId: string;
+  kind: LearningKind;
+  summary: string;
+  evidenceSessionId: string | null;
+  evidenceEventId: string | null;
+  verified: boolean;
+  hits: number;
+  createdAt: string;
+  lastSeenAt: string;
 }
 
 export interface DiagnosticsReport {

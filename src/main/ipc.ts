@@ -260,6 +260,12 @@ export function registerIpcHandlers(
     return { ok: true } as const;
   }));
   ipcMain.handle(
+    "learnings:list",
+    withValidation(z.object({ projectId: z.string().min(1), limit: z.number().int().min(1).max(200).optional() }), (input) =>
+      database.listLearnings(input.projectId, input.limit)
+    )
+  );
+  ipcMain.handle(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
   );

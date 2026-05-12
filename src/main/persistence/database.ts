@@ -11,6 +11,7 @@
  * just persisted the row) should use `findSessionByIdNoPreferred` below.
  * It's a single-row SELECT and never hits `ui_state`.
  */
+import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { getDatabasePath } from "../paths.js";
 import { runMigrations } from "./migrations.js";
@@ -21,6 +22,7 @@ import type {
   Checkpoint,
   CheckRun,
   DashboardSnapshot,
+  Learning,
   ProjectSettings,
   ProjectSummary,
   RawProviderOutput,
@@ -380,6 +382,8 @@ export interface ArgmaxDatabase {
   insertUsageEvent: (input: InsertUsageEventInput) => void;
   updateSessionLastModelId: (sessionId: string, modelId: string) => void;
   getSessionCostSummary: (sessionId: string) => SessionCostSummary;
+  insertLearning: (input: InsertLearningInput) => Learning;
+  listLearnings: (projectId: string, limit?: number) => Learning[];
   /** Cancels the periodic raw_outputs prune timer. Call before close. */
   clearPruneInterval: () => void;
   /** Clears the prune timer and closes the underlying connection. Idempotent. */
@@ -468,6 +472,8 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     insertUsageEvent: (input) => insertUsageEvent(connection, input),
     updateSessionLastModelId: (sessionId, modelId) => updateSessionLastModelId(connection, sessionId, modelId),
     getSessionCostSummary: (sessionId) => getSessionCostSummary(connection, sessionId),
+    insertLearning: (input) => insertLearning(connection, input),
+    listLearnings: (projectId, limit) => listLearnings(connection, projectId, limit),
     clearPruneInterval: () => clearInterval(pruneTimer),
     close: () => {
       clearInterval(pruneTimer);
@@ -1552,6 +1558,80 @@ function insertUsageEvent(connection: Database.Database, input: InsertUsageEvent
       modelStmt.run({ sessionId: input.sessionId, modelId: input.modelId });
     }
   })();
+}
+
+interface LearningRow {
+  id: string;
+  project_id: string;
+  kind: "pitfall" | "convention" | "command";
+  summary: string;
+  evidence_session_id: string | null;
+  evidence_event_id: string | null;
+  verified: number;
+  hits: number;
+  created_at: string;
+  last_seen_at: string;
+}
+
+export interface InsertLearningInput {
+  id?: string;
+  projectId: string;
+  kind: "pitfall" | "convention" | "command";
+  summary: string;
+  evidenceSessionId?: string | null;
+  evidenceEventId?: string | null;
+}
+
+function learningRowToSummary(row: LearningRow): Learning {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    kind: row.kind,
+    summary: row.summary,
+    evidenceSessionId: row.evidence_session_id,
+    evidenceEventId: row.evidence_event_id,
+    verified: row.verified === 1,
+    hits: row.hits,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at
+  };
+}
+
+function insertLearning(connection: Database.Database, input: InsertLearningInput): Learning {
+  const id = input.id ?? randomUUID();
+  const now = new Date().toISOString();
+  connection
+    .prepare(
+      `INSERT INTO learnings (id, project_id, kind, summary, evidence_session_id, evidence_event_id, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      input.projectId,
+      input.kind,
+      input.summary,
+      input.evidenceSessionId ?? null,
+      input.evidenceEventId ?? null,
+      now,
+      now
+    );
+  const row = connection.prepare("SELECT * FROM learnings WHERE id = ?").get(id) as LearningRow;
+  return learningRowToSummary(row);
+}
+
+function listLearnings(
+  connection: Database.Database,
+  projectId: string,
+  limit = 50
+): Learning[] {
+  const rows = connection
+    .prepare(
+      `SELECT * FROM learnings WHERE project_id = ?
+       ORDER BY verified DESC, hits DESC, last_seen_at DESC
+       LIMIT ?`
+    )
+    .all(projectId, limit) as LearningRow[];
+  return rows.map(learningRowToSummary);
 }
 
 function updateSessionLastModelId(connection: Database.Database, sessionId: string, modelId: string): void {

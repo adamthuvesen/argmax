@@ -13,6 +13,7 @@ import type {
   DiagnosticsReport,
   DiscoveredProvider,
   LaunchProviderSessionInput,
+  Learning,
   ArgmaxApi,
   MenuCommand,
   OpenInIdeInput,
@@ -142,6 +143,10 @@ const api: ArgmaxApi = {
       ipcRenderer.on("menu:command", handler);
       return () => ipcRenderer.removeListener("menu:command", handler);
     }
+  },
+  learnings: {
+    list: (input: { projectId: string; limit?: number }) =>
+      ipcRenderer.invoke("learnings:list", input) as Promise<Learning[]>
   }
 };
 

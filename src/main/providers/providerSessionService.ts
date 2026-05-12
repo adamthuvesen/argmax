@@ -20,6 +20,7 @@ import {
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 import type { NotificationService } from "../notifications/notificationService.js";
 import { extractLearningCandidates } from "../memory/learningExtractor.js";
+import { composeLearningPreamble } from "../memory/learningInjector.js";
 
 interface FollowUpModelSelection {
   modelLabel: string;
@@ -130,6 +131,15 @@ export class ProviderSessionService {
     const workspace = this.database.getWorkspace(input.workspaceId);
     const sessionId = randomUUID();
 
+    // Inject project-scoped learnings into the prompt the provider sees, but
+    // keep the user-visible `input.prompt` on the session row and timeline.
+    // The renderer renders only the original; the agent sees the preamble.
+    const { augmentedPrompt, injectedIds } = composeLearningPreamble(
+      this.database,
+      workspace.projectId,
+      input.prompt
+    );
+
     let session = this.database.persistSession({
       id: sessionId,
       workspaceId: workspace.id,
@@ -190,7 +200,7 @@ export class ProviderSessionService {
         {
           sessionId,
           workspacePath: workspace.path,
-          prompt: input.prompt,
+          prompt: augmentedPrompt,
           modelLabel: input.modelLabel,
           modelId: input.modelId,
           reasoningEffort: input.reasoningEffort,
@@ -214,6 +224,12 @@ export class ProviderSessionService {
       }
       this.handles.set(sessionId, { kind: "resolved", handle });
       this.logHandleCount("opened", sessionId);
+
+      // Bump hits + last_seen_at on injected learnings so the next launch
+      // prefers facts that have already proven useful for this project.
+      if (injectedIds.length > 0) {
+        this.bumpInjectedLearningHits(injectedIds);
+      }
       // Replay queued operations in arrival order.
       for (const op of pending.ops) {
         this.applyOpToHandle(handle, op);
@@ -431,6 +447,22 @@ export class ProviderSessionService {
    * timeline. Best-effort: a failing insert (e.g. project was archived
    * mid-flight) is swallowed so the session-complete pipeline can't fail.
    */
+  private bumpInjectedLearningHits(ids: readonly string[]): void {
+    try {
+      const now = new Date().toISOString();
+      const stmt = this.database.connection.prepare(
+        "UPDATE learnings SET hits = hits + 1, last_seen_at = ? WHERE id = ?"
+      );
+      this.database.connection.transaction(() => {
+        for (const id of ids) {
+          stmt.run(now, id);
+        }
+      })();
+    } catch (error) {
+      console.warn("[argmax] bumpInjectedLearningHits failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
   private synthesizeLearnings(sessionId: string, workspaceId: string): void {
     try {
       const workspace = this.database.getWorkspace(workspaceId);

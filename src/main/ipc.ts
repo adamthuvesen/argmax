@@ -291,6 +291,13 @@ export function registerIpcHandlers(
     )
   );
   ipcMain.handle(
+    "workspaces:set-pinned",
+    withValidation(
+      z.object({ workspaceId: z.string().min(1), pinned: z.boolean() }),
+      (input) => database.setWorkspacePinned(input.workspaceId, input.pinned)
+    )
+  );
+  ipcMain.handle(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
   );

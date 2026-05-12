@@ -12,8 +12,11 @@ import {
   applyProjectOrder,
   loadCollapsedProjectIds,
   loadProjectOrder,
+  loadWorkspaceOrders,
   saveCollapsedProjectIds,
-  saveProjectOrder
+  saveProjectOrder,
+  saveWorkspaceOrders,
+  sortWorkspaceGroup
 } from "../lib/projects.js";
 import { SidebarSessionRow } from "./SidebarSessionRow.js";
 import { useNow } from "../hooks/useNow.js";
@@ -28,6 +31,7 @@ export function Sidebar({
   onOpenSettings,
   onOpenWorkspaceChat,
   onResizeMouseDown,
+  onToggleWorkspacePinned,
   isSettingsActive,
   selectedProjectId,
   selectedWorkspaceId,
@@ -44,6 +48,7 @@ export function Sidebar({
   onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
+  onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
   isSettingsActive: boolean;
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
@@ -57,8 +62,10 @@ export function Sidebar({
   const now = useNow(true, 5000);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
+  const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
 
   const orderedProjects = useMemo(
     () => applyProjectOrder(snapshot.projects, projectOrder),
@@ -149,6 +156,53 @@ export function Sidebar({
     setDragOverId(null);
   }, []);
 
+  const handleWorkspaceDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, workspaceId: string): void => {
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = "move";
+    setDraggingWorkspaceId(workspaceId);
+  }, []);
+
+  const handleWorkspaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    if (draggingWorkspaceId) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    }
+  }, [draggingWorkspaceId]);
+
+  const handleWorkspaceDrop = useCallback(
+    (
+      event: ReactDragEvent<HTMLDivElement>,
+      projectId: string,
+      targetWorkspaceId: string,
+      orderedIds: string[]
+    ): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!draggingWorkspaceId || draggingWorkspaceId === targetWorkspaceId) {
+        setDraggingWorkspaceId(null);
+        return;
+      }
+      const from = orderedIds.indexOf(draggingWorkspaceId);
+      const to = orderedIds.indexOf(targetWorkspaceId);
+      if (from === -1 || to === -1) {
+        setDraggingWorkspaceId(null);
+        return;
+      }
+      const next = [...orderedIds];
+      next.splice(from, 1);
+      next.splice(to, 0, draggingWorkspaceId);
+      const updated = { ...workspaceOrders, [projectId]: next };
+      setWorkspaceOrders(updated);
+      saveWorkspaceOrders(updated);
+      setDraggingWorkspaceId(null);
+    },
+    [draggingWorkspaceId, workspaceOrders]
+  );
+
+  const handleWorkspaceDragEnd = useCallback((): void => {
+    setDraggingWorkspaceId(null);
+  }, []);
+
   return (
     <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
       <div className="window-controls" />
@@ -173,9 +227,14 @@ export function Sidebar({
           </button>
         </div>
         {orderedProjects.map((project) => {
-          const projectWorkspaces = snapshot.workspaces
-            .filter((workspace) => workspace.projectId === project.id && workspace.state !== "archived")
-            .slice(0, 7);
+          const manualOrder = workspaceOrders[project.id] ?? [];
+          const projectWorkspaces = sortWorkspaceGroup(
+            snapshot.workspaces.filter(
+              (workspace) => workspace.projectId === project.id && workspace.state !== "archived"
+            ),
+            manualOrder
+          ).slice(0, 7);
+          const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
           const isCollapsed = collapsedProjectIds.has(project.id);
           const isDragging = draggingId === project.id;
           const isDragOver = dragOverId === project.id && !isDragging;
@@ -221,18 +280,30 @@ export function Sidebar({
               {isCollapsed
                 ? null
                 : projectWorkspaces.map((workspace) => (
-                    <SidebarSessionRow
+                    <div
                       key={workspace.id}
-                      workspace={workspace}
-                      workspaceCost={workspaceCostMap.get(workspace.id) ?? 0}
-                      isSelected={selectedWorkspaceId === workspace.id}
-                      now={now}
-                      onOpenWorkspaceChat={onOpenWorkspaceChat}
-                      onArchiveWorkspace={onArchiveWorkspace}
-                      onOpenInIde={onOpenInIde}
-                      detectedIdes={detectedIdes}
-                      defaultIde={defaultIde}
-                    />
+                      className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                      draggable={Boolean(onToggleWorkspacePinned)}
+                      onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
+                      onDragOver={handleWorkspaceDragOver}
+                      onDrop={(event) =>
+                        handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
+                      }
+                      onDragEnd={handleWorkspaceDragEnd}
+                    >
+                      <SidebarSessionRow
+                        workspace={workspace}
+                        workspaceCost={workspaceCostMap.get(workspace.id) ?? 0}
+                        isSelected={selectedWorkspaceId === workspace.id}
+                        now={now}
+                        onOpenWorkspaceChat={onOpenWorkspaceChat}
+                        onArchiveWorkspace={onArchiveWorkspace}
+                        onOpenInIde={onOpenInIde}
+                        onTogglePin={onToggleWorkspacePinned}
+                        detectedIdes={detectedIdes}
+                        defaultIde={defaultIde}
+                      />
+                    </div>
                   ))}
             </div>
           );

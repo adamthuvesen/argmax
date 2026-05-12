@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, ExternalLink, Terminal } from "lucide-react";
+import { Archive, ChevronDown, ExternalLink, Pin, PinOff, Terminal } from "lucide-react";
 import {
   useLayoutEffect,
   useMemo,
@@ -21,6 +21,7 @@ export function SidebarSessionRow({
   onOpenWorkspaceChat,
   onArchiveWorkspace,
   onOpenInIde,
+  onTogglePin,
   detectedIdes,
   defaultIde
 }: {
@@ -31,6 +32,7 @@ export function SidebarSessionRow({
   onOpenWorkspaceChat: (workspaceId: string) => void;
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
+  onTogglePin?: (workspaceId: string, pinned: boolean) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
 }): JSX.Element {
@@ -194,6 +196,21 @@ export function SidebarSessionRow({
           document.body
         )}
       </div>
+      {onTogglePin ? (
+        <button
+          className="session-row-action session-pin-btn"
+          title={workspace.pinned ? "Unpin session" : "Pin session"}
+          aria-label={workspace.pinned ? "Unpin session" : "Pin session"}
+          aria-pressed={workspace.pinned}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTogglePin(workspace.id, !workspace.pinned);
+          }}
+        >
+          {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+        </button>
+      ) : null}
       {showArchive && (
         <button
           className="session-archive-btn"

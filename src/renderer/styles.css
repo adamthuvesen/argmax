@@ -4030,6 +4030,24 @@ button {
   font-weight: 600;
 }
 
+.session-row-wrap {
+  position: relative;
+}
+
+.session-row-wrap.dragging {
+  opacity: 0.55;
+}
+
+.session-pin-btn {
+  display: inline-grid;
+  place-items: center;
+}
+
+.session-pin-btn[aria-pressed="true"] {
+  color: #b08300;
+  opacity: 1;
+}
+
 .diff-line.addition {
   background: #eaf7ef;
 }

@@ -75,7 +75,9 @@ const api: ArgmaxApi = {
     archive: (workspaceId: string) =>
       ipcRenderer.invoke("workspaces:archive", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>,
     openInIde: (input: OpenInIdeInput) =>
-      ipcRenderer.invoke("workspaces:openInIde", input) as Promise<{ ok: true }>
+      ipcRenderer.invoke("workspaces:openInIde", input) as Promise<{ ok: true }>,
+    setPinned: (input: { workspaceId: string; pinned: boolean }) =>
+      ipcRenderer.invoke("workspaces:set-pinned", input) as Promise<DashboardSnapshot["workspaces"][number]>
   },
   providers: {
     discover: () => ipcRenderer.invoke("providers:discover") as Promise<DiscoveredProvider[]>,

@@ -19,6 +19,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState } from "../hooks/useReviewState.js";
+import { isTypingTarget } from "../lib/typingTarget.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { SessionConversation } from "./SessionConversation.js";
@@ -97,6 +98,18 @@ export function SessionPane({
     if (typeof window === "undefined") return;
     window.localStorage.setItem(SESSION_RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth));
   }, [rightPanelWidth]);
+
+  useEffect(() => {
+    if (!isLogOpen) return;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      setIsLogOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isLogOpen]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount

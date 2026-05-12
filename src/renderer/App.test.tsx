@@ -1020,6 +1020,35 @@ describe("App", () => {
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
   });
 
+  it("closes the Settings panel on Escape", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull()
+    );
+  });
+
+  it("does not close Settings on Escape when focus is in a textarea", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+    textarea.focus();
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    textarea.remove();
+  });
+
   it("switches the session model for the next follow-up prompt", async () => {
     const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
     dashboardLoad.mockResolvedValue({

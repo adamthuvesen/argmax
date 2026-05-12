@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+@font-face {
+  font-family: "VT323";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/VT323/VT323-Regular.ttf") format("truetype");
+}
 
 @font-face {
   font-family: "Lilex Nerd Font";

@@ -17,7 +17,8 @@ const workspaceBase: WorkspaceSummary = {
   sharedWorkspace: false,
   dirty: false,
   changedFiles: 0,
-  lastActivityAt: "2026-05-01T00:01:00.000Z"
+  lastActivityAt: "2026-05-01T00:01:00.000Z",
+  pinned: false
 };
 
 const detectedIdes = [

@@ -617,6 +617,25 @@ export function App(): JSX.Element {
     []
   );
 
+  const toggleWorkspacePinned = useCallback(
+    async (workspaceId: string, pinned: boolean): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Electron app window to pin a session." });
+        return;
+      }
+      try {
+        await window.argmax.workspaces.setPinned({ workspaceId, pinned });
+        await refreshDashboardStatus();
+      } catch (error) {
+        setToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not toggle pin."
+        });
+      }
+    },
+    [refreshDashboardStatus]
+  );
+
   const runCheck = useCallback(
     async (workspaceId: string, command: string): Promise<void> => {
       if (!window.argmax) {
@@ -816,6 +835,7 @@ export function App(): JSX.Element {
       ) : null}
       <Sidebar
         loadState={loadState}
+        onToggleWorkspacePinned={(workspaceId, pinned) => void toggleWorkspacePinned(workspaceId, pinned)}
         onOpenLauncher={() => {
           setSelectedSessionId(null);
           setSelectedWorkspaceId(null);

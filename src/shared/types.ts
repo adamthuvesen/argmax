@@ -192,6 +192,7 @@ export interface WorkspaceSummary {
   dirty: boolean;
   changedFiles: number;
   lastActivityAt: string;
+  pinned: boolean;
 }
 
 export interface SessionSummary {
@@ -317,6 +318,7 @@ export interface ArgmaxApi {
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;
     archive: (workspaceId: string) => Promise<WorkspaceSummary>;
     openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
+    setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
   };
   providers: {
     discover: () => Promise<DiscoveredProvider[]>;

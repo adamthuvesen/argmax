@@ -3,6 +3,7 @@ import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 export const projectOrderStorageKey = "argmax.sidebar.projectOrder";
+export const workspaceOrderStorageKey = "argmax.sidebar.workspaceOrder";
 
 export function loadCollapsedProjectIds(): Set<string> {
   return new Set(loadStringArray(collapsedProjectsStorageKey));
@@ -42,6 +43,54 @@ function loadStringArray(storageKey: string): string[] {
     window.localStorage.getItem(storageKey),
     (value): value is string => typeof value === "string"
   );
+}
+
+// Per-project workspace order persistence. Pinned workspaces always sort first
+// regardless of the manual drag order; the manual order is a tiebreaker among
+// unpinned (or among pinned) sessions inside a single project group.
+export function loadWorkspaceOrders(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  const raw = window.localStorage.getItem(workspaceOrderStorageKey);
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const result: Record<string, string[]> = {};
+    for (const [projectId, ids] of Object.entries(parsed as Record<string, unknown>)) {
+      if (Array.isArray(ids) && ids.every((entry) => typeof entry === "string")) {
+        result[projectId] = ids;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export function saveWorkspaceOrders(orders: Record<string, string[]>): void {
+  writeStorageJson(workspaceOrderStorageKey, orders);
+}
+
+export function sortWorkspaceGroup<T extends { id: string; pinned: boolean; lastActivityAt: string }>(
+  workspaces: T[],
+  manualOrder: string[]
+): T[] {
+  const rank = new Map(manualOrder.map((id, index) => [id, index]));
+  return [...workspaces].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    const ra = rank.get(a.id);
+    const rb = rank.get(b.id);
+    if (ra !== undefined || rb !== undefined) {
+      // Anyone in the manual order beats anyone outside it; among those in
+      // the order, the lower index wins.
+      if (ra === undefined) return 1;
+      if (rb === undefined) return -1;
+      if (ra !== rb) return ra - rb;
+    }
+    // Final tiebreak: most-recent activity first.
+    if (a.lastActivityAt === b.lastActivityAt) return 0;
+    return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
+  });
 }
 
 export function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {

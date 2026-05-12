@@ -316,6 +316,10 @@ export const ipcSchemas = {
   "session:search": z.object({
     query: z.string().min(1).max(200),
     limit: z.number().int().min(1).max(200).optional()
+  }),
+  "workspaces:set-pinned": z.object({
+    workspaceId: workspaceIdSchema,
+    pinned: z.boolean()
   })
 } as const;
 

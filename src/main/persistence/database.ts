@@ -224,6 +224,7 @@ interface WorkspaceRow {
   dirty: number;
   changed_files: number;
   last_activity_at: string;
+  pinned: number;
 }
 
 interface SessionRow {
@@ -392,6 +393,7 @@ export interface ArgmaxDatabase {
     snippet: string;
     rank: number;
   }>;
+  setWorkspacePinned: (workspaceId: string, pinned: boolean) => WorkspaceSummary;
   /** Cancels the periodic raw_outputs prune timer. Call before close. */
   clearPruneInterval: () => void;
   /** Clears the prune timer and closes the underlying connection. Idempotent. */
@@ -485,6 +487,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     updateLearning: (input) => updateLearning(connection, input),
     deleteLearning: (id) => deleteLearning(connection, id),
     searchEvents: (input) => searchEvents(connection, input.query, input.limit),
+    setWorkspacePinned: (workspaceId, pinned) => setWorkspacePinned(connection, workspaceId, pinned),
     clearPruneInterval: () => clearInterval(pruneTimer),
     close: () => {
       clearInterval(pruneTimer);
@@ -1075,7 +1078,8 @@ function workspaceRowToSummary(row: WorkspaceRow): WorkspaceSummary {
     sharedWorkspace: row.shared_workspace === 1,
     dirty: row.dirty === 1,
     changedFiles: row.changed_files,
-    lastActivityAt: row.last_activity_at
+    lastActivityAt: row.last_activity_at,
+    pinned: row.pinned === 1
   };
 }
 
@@ -1679,6 +1683,20 @@ function updateLearning(
 
 function deleteLearning(connection: Database.Database, id: string): void {
   connection.prepare("DELETE FROM learnings WHERE id = ?").run(id);
+}
+
+function setWorkspacePinned(
+  connection: Database.Database,
+  workspaceId: string,
+  pinned: boolean
+): WorkspaceSummary {
+  const result = connection
+    .prepare("UPDATE workspaces SET pinned = ?, updated_at = ? WHERE id = ?")
+    .run(pinned ? 1 : 0, new Date().toISOString(), workspaceId);
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("workspace", workspaceId);
+  }
+  return findWorkspaceById(connection, workspaceId);
 }
 
 /**

@@ -39,7 +39,8 @@ const snapshot: DashboardSnapshot = {
       sharedWorkspace: false,
       dirty: true,
       changedFiles: 3,
-      lastActivityAt: "2026-05-08T15:54:00.000Z"
+      lastActivityAt: "2026-05-08T15:54:00.000Z",
+      pinned: false
     }
   ],
   sessions: [
@@ -222,7 +223,13 @@ describe("App", () => {
         status: workspaceStatus,
         keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
         archive: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
-        openInIde: openInIde
+        openInIde: openInIde,
+        setPinned: ({ workspaceId, pinned }) =>
+          Promise.resolve({
+            ...(snapshot.workspaces[0] ?? missingWorkspace()),
+            id: workspaceId,
+            pinned
+          })
       },
       providers: {
         discover: providersDiscover,
@@ -687,7 +694,8 @@ describe("App", () => {
       sharedWorkspace: true,
       dirty: false,
       changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
+      pinned: false
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-new",
@@ -890,7 +898,8 @@ describe("App", () => {
       sharedWorkspace: false,
       dirty: false,
       changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:04:00.000Z"
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",

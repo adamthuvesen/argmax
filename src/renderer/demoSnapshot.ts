@@ -37,7 +37,8 @@ export const demoSnapshot: DashboardSnapshot = {
       sharedWorkspace: false,
       dirty: true,
       changedFiles: 8,
-      lastActivityAt: "2026-05-08T15:54:00.000Z"
+      lastActivityAt: "2026-05-08T15:54:00.000Z",
+      pinned: false
     },
     {
       id: "workspace-review-studio",
@@ -50,7 +51,8 @@ export const demoSnapshot: DashboardSnapshot = {
       sharedWorkspace: false,
       dirty: true,
       changedFiles: 14,
-      lastActivityAt: "2026-05-08T15:48:00.000Z"
+      lastActivityAt: "2026-05-08T15:48:00.000Z",
+      pinned: false
     },
     {
       id: "workspace-approval-gate",
@@ -63,7 +65,8 @@ export const demoSnapshot: DashboardSnapshot = {
       sharedWorkspace: false,
       dirty: false,
       changedFiles: 2,
-      lastActivityAt: "2026-05-08T15:42:00.000Z"
+      lastActivityAt: "2026-05-08T15:42:00.000Z",
+      pinned: false
     }
   ],
   sessions: [

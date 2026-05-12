@@ -38,9 +38,11 @@ export const migrations: Migration[] = [
   {
     version: 1,
     name: "initial_local_product_state",
+    // workspaces is re-verified by v11's affectedTables (post-v11 manifest);
+    // including it here would compare the v1 column set to the post-v11 shape
+    // and fail. The table creation itself still happens.
     affectedTables: [
       "projects",
-      "workspaces",
       "raw_outputs",
       "events",
       "approvals",
@@ -175,7 +177,10 @@ export const migrations: Migration[] = [
   {
     version: 3,
     name: "workspaces_check_constraints",
-    affectedTables: ["workspaces"],
+    // workspaces is re-verified by v11's affectedTables (post-v11 manifest);
+    // setting it here would compare the v3 column set to the post-v11 shape
+    // and fail. The check-constraint changes here still apply.
+    affectedTables: [],
     // SQLite cannot ALTER TABLE to add a CHECK constraint, so we follow the
     // canonical destructive-migration recipe (https://sqlite.org/lang_altertable.html#otheralter):
     //
@@ -401,6 +406,19 @@ export const migrations: Migration[] = [
         INSERT INTO events_fts (rowid, message) VALUES (new.rowid, new.message);
       END;
     `
+  },
+  {
+    version: 11,
+    name: "workspaces_pinned",
+    affectedTables: ["workspaces"],
+    up: `
+      -- Sticky-pinned sessions sort to the top of their project group in the
+      -- sidebar. Boolean encoded as INTEGER per SQLite convention. SQLite's
+      -- ALTER TABLE ADD COLUMN rejects inline CHECK constraints (only NOT
+      -- NULL + DEFAULT are accepted), so the 0/1 invariant is enforced at
+      -- the call site via setWorkspacePinned() rather than schema-level.
+      ALTER TABLE workspaces ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    `
   }
 ];
 
@@ -439,6 +457,7 @@ const expectedColumns: Record<string, string[]> = {
     "id",
     "last_activity_at",
     "path",
+    "pinned",
     "project_id",
     "shared_workspace",
     "state",

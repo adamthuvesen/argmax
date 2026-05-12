@@ -1,5 +1,7 @@
 export function formatElapsed(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "";
+  // Visible sentinel for invalid input. Empty string would collapse next to
+  // its label (e.g. "Ran in ") and silently hide upstream timing bugs.
+  if (!Number.isFinite(ms) || ms < 0) return "—";
   if (ms < 950) return `${Math.max(0, Math.round(ms / 100) * 100) / 1000}s`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   const totalSeconds = Math.round(ms / 1000);

@@ -45,7 +45,13 @@ export function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
         index += 1;
         continue;
       }
-      if (line.startsWith("+") && !line.startsWith("+++")) {
+      // Inside a hunk body (post-`@@`) every `+`/`-`-prefixed line is an
+      // addition or deletion respectively. File-header lines like `+++ b/f`
+      // and `--- a/f` appear before the first `@@` and never reach this
+      // branch — the outer loop's `@@` filter handled them. Dropping the
+      // `!startsWith("+++")` guard means addition content like `++ foo`
+      // (which arrives as `+++ foo`) is no longer silently discarded.
+      if (line.startsWith("+")) {
         hunkLines.push({
           kind: "addition",
           oldLineNumber: null,
@@ -53,7 +59,7 @@ export function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
           content: line.slice(1)
         });
         newLineNumber += 1;
-      } else if (line.startsWith("-") && !line.startsWith("---")) {
+      } else if (line.startsWith("-")) {
         hunkLines.push({
           kind: "deletion",
           oldLineNumber,

@@ -22,8 +22,17 @@ export type ProviderModelSelection = Pick<ProviderModelOption, "label" | "modelI
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
     { label: "Claude Opus 4.7", modelId: "claude-opus-4-7" },
+    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7", reasoningEffort: "low" },
+    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7", reasoningEffort: "medium" },
+    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7", reasoningEffort: "high" },
     { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6" },
-    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" }
+    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", reasoningEffort: "low" },
+    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", reasoningEffort: "medium" },
+    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", reasoningEffort: "high" },
+    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" },
+    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", reasoningEffort: "low" },
+    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", reasoningEffort: "medium" },
+    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", reasoningEffort: "high" }
   ],
   codex: [
     { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", reasoningEffort: "low", disableReasoningSummary: true },

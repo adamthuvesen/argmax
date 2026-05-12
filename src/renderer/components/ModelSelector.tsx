@@ -116,7 +116,7 @@ export function CombinedModelSelector({
         <optgroup label="Claude">
           {PROVIDER_MODELS.claude.map((model) => (
             <option key={optionKey(model)} value={modelValue({ provider: "claude", ...model })}>
-              {model.label}
+              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
             </option>
           ))}
         </optgroup>

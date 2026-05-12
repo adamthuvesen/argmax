@@ -47,6 +47,29 @@ function codexPermissionArgs(input: ProviderLaunchInput): string[] {
   return input.permissionMode === "auto-approve" ? CODEX_BYPASS_PERMISSION_ARGS : [];
 }
 
+/**
+ * Claude Code does not expose a CLI flag that maps directly to the
+ * `thinking` API parameter, but it DOES honor a fully-supplied
+ * `--append-system-prompt`. We use that as the carrier for the thinking
+ * effort knob: each level adds an instruction to the system prompt that
+ * nudges the model toward deeper reasoning without relying on the
+ * "think hard / ultrathink" prompt magic (which the Opus 4.5 migration
+ * guide warns is sensitive when extended thinking is off at the API level).
+ */
+const CLAUDE_REASONING_SYSTEM_PROMPTS = {
+  low: "Reason step by step through this task before acting.",
+  medium: "Reason carefully through this task. Consider edge cases and trade-offs before acting.",
+  high: "Reason deeply through this task. Explore alternatives, consider edge cases, and weigh trade-offs comprehensively before acting.",
+  xhigh: "Reason deeply through this task. Explore alternatives, consider edge cases, and weigh trade-offs comprehensively before acting."
+} as const;
+
+function claudeReasoningArgs(input: ProviderLaunchInput): string[] {
+  if (!input.reasoningEffort) return [];
+  const systemPrompt = CLAUDE_REASONING_SYSTEM_PROMPTS[input.reasoningEffort];
+  if (!systemPrompt) return [];
+  return ["--append-system-prompt", systemPrompt];
+}
+
 const providerDefinitions: ProviderLaunchDefinition[] = [
   {
     id: "claude",
@@ -55,6 +78,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
     structuredArgs: (input) => [
       "-p",
       ...claudePermissionArgs(input),
+      ...claudeReasoningArgs(input),
       "--model",
       input.modelId,
       "--session-id",
@@ -69,6 +93,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "--resume",
       resumeConversationId,
       ...claudePermissionArgs(input),
+      ...claudeReasoningArgs(input),
       "--model",
       input.modelId,
       "--output-format",
@@ -76,7 +101,12 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "--verbose",
       input.prompt
     ],
-    interactiveArgs: (input) => ["--model", input.modelId, ...claudePermissionArgs(input)],
+    interactiveArgs: (input) => [
+      "--model",
+      input.modelId,
+      ...claudePermissionArgs(input),
+      ...claudeReasoningArgs(input)
+    ],
     structuredStdin: () => null
   },
   {

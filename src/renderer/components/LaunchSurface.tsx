@@ -332,8 +332,17 @@ export function LaunchSurface({
                 <li className="project-picker-divider" role="separator" />
                 <li className="project-picker-group-label" role="presentation">Claude</li>
                 {PROVIDER_MODELS.claude.map((m) => {
-                  const opt: ModelPickerSelection = { provider: "claude", label: m.label, modelId: m.modelId };
-                  const isSelected = model.provider === "claude" && model.modelId === m.modelId;
+                  const opt: ModelPickerSelection = {
+                    provider: "claude",
+                    label: m.label,
+                    modelId: m.modelId,
+                    ...(m.reasoningEffort ? { reasoningEffort: m.reasoningEffort } : {})
+                  };
+                  const isSelected =
+                    model.provider === "claude" &&
+                    model.modelId === m.modelId &&
+                    model.reasoningEffort === m.reasoningEffort;
+                  const label = m.reasoningEffort ? `${m.label} · ${effortLabel(m.reasoningEffort)}` : m.label;
                   return (
                     <li key={modelValue(opt)} role="option" aria-selected={isSelected}>
                       <button
@@ -342,7 +351,7 @@ export function LaunchSurface({
                         aria-pressed={isSelected}
                         onClick={() => { onModelChange(opt); setModelPickerOpen(false); }}
                       >
-                        {m.label}
+                        {label}
                       </button>
                     </li>
                   );

@@ -239,6 +239,42 @@ describe("provider PTY adapters", () => {
     expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
   });
 
+  it("injects --append-system-prompt for Claude structured launches when reasoningEffort is high", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+    await adapters
+      .get("claude")
+      ?.launch({ ...launchInput("claude"), mode: "structured-json", reasoningEffort: "high" }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    const args = processSpawnCalls[0]?.args ?? [];
+    expect(args).toContain("--append-system-prompt");
+    const promptIndex = args.indexOf("--append-system-prompt");
+    expect(args[promptIndex + 1]).toContain("Reason deeply");
+  });
+
+  it("injects --append-system-prompt for Claude interactive PTY launches when reasoningEffort is medium", async () => {
+    const { adapters, ptys, spawnCalls } = createTestAdapters();
+    await adapters
+      .get("claude")
+      ?.launch({ ...launchInput("claude"), reasoningEffort: "medium" }, () => undefined);
+    ptys[0].emitExit(0);
+
+    const command = spawnCalls[0]?.args[1] ?? "";
+    expect(command).toContain("--append-system-prompt");
+    expect(command).toContain("Reason carefully");
+  });
+
+  it("omits --append-system-prompt for Claude when no reasoningEffort is set", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+    await adapters
+      .get("claude")
+      ?.launch({ ...launchInput("claude"), mode: "structured-json", reasoningEffort: undefined }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    const args = processSpawnCalls[0]?.args ?? [];
+    expect(args).not.toContain("--append-system-prompt");
+  });
+
   it("launches Claude structured probes with stream-json verbose output", async () => {
     const { adapters, processes, processSpawnCalls } = createTestAdapters();
     const events: ProviderEvent[] = [];

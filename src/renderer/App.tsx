@@ -360,6 +360,16 @@ export function App(): JSX.Element {
     }
     const result = await window.argmax.workspaces.archive(workspaceId);
     setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
+    // Backend refuses to remove a dirty worktree and falls back to "kept" —
+    // the row stays in the sidebar (filter only hides "archived"). Tell the
+    // user why, and don't clear selection since the workspace is still live.
+    if (result.state !== "archived") {
+      setToast({
+        kind: "info",
+        message: "Workspace has uncommitted changes — kept in sidebar. Commit or discard, then retry archive."
+      });
+      return;
+    }
     if (selectedWorkspaceId === workspaceId) {
       setSelectedWorkspaceId(null);
       setSelectedSessionId(null);

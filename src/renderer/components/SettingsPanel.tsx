@@ -1,8 +1,19 @@
-import { X } from "lucide-react";
-import type { JSX } from "react";
-import type { DetectedIde, IdeId } from "../../shared/types.js";
+import { RefreshCcw, X } from "lucide-react";
+import { useCallback, useEffect, useState, type JSX } from "react";
+import type { DetectedIde, DiscoveredProvider, IdeId } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
+
+const PROVIDER_INSTALL_HINTS: Record<string, { label: string; url: string }> = {
+  claude: {
+    label: "Install Claude Code CLI",
+    url: "https://docs.claude.com/en/docs/claude-code/install"
+  },
+  codex: {
+    label: "Install Codex CLI",
+    url: "https://github.com/openai/codex"
+  }
+};
 
 export function SettingsPanel({
   defaultModel,
@@ -23,6 +34,30 @@ export function SettingsPanel({
   onDefaultIdeChange: (ide: IdeId | null) => void;
   onClose: () => void;
 }): JSX.Element {
+  const [providers, setProviders] = useState<DiscoveredProvider[] | null>(null);
+  const [providerLoadError, setProviderLoadError] = useState<string | null>(null);
+  const [refreshingProviders, setRefreshingProviders] = useState(false);
+
+  const refreshProviders = useCallback(async (): Promise<void> => {
+    if (!window.argmax) {
+      setProviderLoadError("Open the Electron app window to detect providers.");
+      return;
+    }
+    setRefreshingProviders(true);
+    setProviderLoadError(null);
+    try {
+      const discovered = await window.argmax.providers.discover();
+      setProviders(discovered);
+    } catch (error) {
+      setProviderLoadError(error instanceof Error ? error.message : "Provider discovery failed.");
+    } finally {
+      setRefreshingProviders(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshProviders();
+  }, [refreshProviders]);
   return (
     <div className="settings-surface">
       <header className="settings-header">
@@ -164,6 +199,73 @@ export function SettingsPanel({
               No supported IDEs detected. Install VS Code, Cursor, Windsurf, or Zed to enable this.
             </p>
           ) : null}
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-providers">
+        <header className="settings-section-header">
+          <h2 id="settings-providers">Providers</h2>
+          <p>
+            Detected CLI agents. Argmax discovers them on launch; click refresh after installing one.
+          </p>
+        </header>
+        <div className="settings-card">
+          <div className="settings-providers-actions">
+            <button
+              type="button"
+              className="settings-refresh"
+              onClick={() => void refreshProviders()}
+              disabled={refreshingProviders}
+              aria-label="Refresh provider discovery"
+            >
+              <RefreshCcw size={14} />
+              <span>{refreshingProviders ? "Refreshing…" : "Refresh"}</span>
+            </button>
+          </div>
+          {providerLoadError ? (
+            <p className="settings-hint" role="alert">
+              {providerLoadError}
+            </p>
+          ) : null}
+          {providers && providers.length > 0 ? (
+            <ul className="settings-providers-list">
+              {providers.map((provider) => {
+                const installHint = PROVIDER_INSTALL_HINTS[provider.provider];
+                return (
+                  <li
+                    key={provider.provider}
+                    className="settings-provider-row"
+                    data-installed={provider.installed ? "true" : "false"}
+                  >
+                    <div className="settings-provider-meta">
+                      <span className="settings-provider-name">{provider.displayName}</span>
+                      <span className="settings-provider-status">
+                        {provider.installed
+                          ? provider.version
+                            ? `Installed · v${provider.version}`
+                            : "Installed"
+                          : "Not found on PATH"}
+                      </span>
+                    </div>
+                    {!provider.installed && installHint ? (
+                      <a
+                        className="settings-provider-link"
+                        href={installHint.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {installHint.label}
+                      </a>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : providers ? (
+            <p className="settings-hint">No providers reported by discovery.</p>
+          ) : (
+            <p className="settings-hint">Detecting providers…</p>
+          )}
         </div>
       </section>
 

@@ -112,6 +112,7 @@ describe("App", () => {
   let sessionCostSummary: ReturnType<typeof vi.fn<ArgmaxApi["session"]["costSummary"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
   let terminateProvider: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["terminate"]>>;
+  let providersDiscover: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["discover"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
   let openInIde: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["openInIde"]>>;
@@ -151,6 +152,7 @@ describe("App", () => {
     });
     sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
     terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
+    providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
     menuCommandListener = null;
     workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
     listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
@@ -200,7 +202,7 @@ describe("App", () => {
         openInIde: openInIde
       },
       providers: {
-        discover: () => Promise.resolve([]),
+        discover: providersDiscover,
         launch: launchProvider,
         sendInput: sendProviderInput,
         resize: () => Promise.resolve({ ok: true }),
@@ -1028,6 +1030,44 @@ describe("App", () => {
     fireEvent.click(stopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
+  });
+
+  it("renders Settings → Providers with install hint when a provider is missing", async () => {
+    providersDiscover.mockResolvedValueOnce([
+      {
+        provider: "claude",
+        displayName: "Claude Code",
+        binaryName: "claude",
+        installed: true,
+        binaryPath: "/usr/local/bin/claude",
+        version: "1.2.3",
+        modes: ["structured-json"],
+        setupGuidance: null
+      },
+      {
+        provider: "codex",
+        displayName: "Codex",
+        binaryName: "codex",
+        installed: false,
+        binaryPath: null,
+        version: null,
+        modes: [],
+        setupGuidance: "Install via npm i -g @openai/codex"
+      }
+    ]);
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Providers" })).toBeInTheDocument();
+
+    expect(await screen.findByText(/Installed · v1\.2\.3/)).toBeInTheDocument();
+    expect(screen.getByText("Not found on PATH")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Install Codex CLI" })).toHaveAttribute(
+      "href",
+      "https://github.com/openai/codex"
+    );
   });
 
   it("opens the keyboard cheat sheet on Cmd+/ and closes on the X button", async () => {

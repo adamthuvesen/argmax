@@ -1,5 +1,29 @@
 @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
+@font-face {
+  font-family: "Lilex Nerd Font";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/Lilex/LilexNerdFont-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Lilex Nerd Font";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/Lilex/LilexNerdFont-Medium.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Lilex Nerd Font";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Lilex/LilexNerdFont-Bold.ttf") format("truetype");
+}
+
 :root {
   color-scheme: light;
   --font-ui: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;

@@ -1066,6 +1066,7 @@ describe("App", () => {
 
       await act(async () => {
         vi.advanceTimersByTime(5000);
+        await Promise.resolve();
       });
 
       await waitFor(() => expect(screen.queryByText(/Added /)).toBeNull());

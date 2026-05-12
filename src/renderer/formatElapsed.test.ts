@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { formatElapsed } from "./formatElapsed.js";
 
 describe("formatElapsed", () => {
-  it("returns empty for invalid input", () => {
-    expect(formatElapsed(Number.NaN)).toBe("");
-    expect(formatElapsed(-100)).toBe("");
+  it("returns an em-dash sentinel for invalid input", () => {
+    expect(formatElapsed(Number.NaN)).toBe("—");
+    expect(formatElapsed(-100)).toBe("—");
+    expect(formatElapsed(Number.POSITIVE_INFINITY)).toBe("—");
   });
 
   it("renders sub-second durations to one decimal", () => {

@@ -24,7 +24,7 @@ async function createWindow(): Promise<void> {
     resizable: true,
     title: "Argmax",
     icon: iconPath,
-    backgroundColor: "#101418",
+    backgroundColor: "#fbfbfa",
     show: false,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },

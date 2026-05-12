@@ -1279,14 +1279,6 @@ button {
   color: var(--text);
 }
 
-.session-row-elapsed {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  padding-right: 8px;
-}
-
 .error-boundary {
   display: grid;
   gap: 12px;
@@ -3700,6 +3692,11 @@ button {
 .changed-files-browse:hover {
   color: var(--text);
   background: var(--panel-soft);
+}
+
+.changed-files-header:focus-visible,
+.changed-files-browse:focus-visible {
+  outline-offset: -2px;
 }
 
 .diff-blocks {

@@ -267,6 +267,18 @@ button {
   background: var(--panel-sunken);
 }
 
+.small-icon:disabled,
+.small-icon[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.small-icon:disabled:hover,
+.small-icon[disabled]:hover {
+  background: transparent;
+  color: var(--muted-strong);
+}
+
 .small-icon svg {
   transition: transform var(--duration-base) var(--ease);
 }

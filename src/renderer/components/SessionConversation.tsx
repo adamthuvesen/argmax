@@ -1,4 +1,4 @@
-import { Bug, ChevronRight, Mic, Plus } from "lucide-react";
+import { Bug, ChevronRight, Mic, Plus, Square } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -53,6 +53,7 @@ export function SessionConversation({
   events,
   isLogOpen,
   onSendSessionInput,
+  onTerminateSession,
   onToggleLog,
   project,
   rawOutputs,
@@ -64,6 +65,7 @@ export function SessionConversation({
   events: TimelineEvent[];
   isLogOpen: boolean;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
+  onTerminateSession: (sessionId: string) => Promise<void>;
   onToggleLog: () => void;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -432,9 +434,27 @@ export function SessionConversation({
           <button className="composer-tool" type="button" title="Voice input" disabled={!canSend || isSending}>
             <Mic size={16} />
           </button>
-          <button className="session-send-button" disabled={!canSend || isSending || !input.trim()} type="submit" title="Send follow-up">
-            <ChevronRight size={18} />
-          </button>
+          {session && session.state === "running" ? (
+            <button
+              className="session-send-button session-stop-button"
+              type="button"
+              title="Stop session"
+              aria-label="Stop session"
+              onClick={() => void onTerminateSession(session.id)}
+            >
+              <Square size={16} />
+            </button>
+          ) : (
+            <button
+              className="session-send-button"
+              disabled={!canSend || isSending || !input.trim()}
+              type="submit"
+              title="Send follow-up"
+              aria-label="Send follow-up"
+            >
+              <ChevronRight size={18} />
+            </button>
+          )}
         </div>
       </form>
       {status ? (

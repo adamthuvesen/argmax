@@ -34,6 +34,7 @@ export function SessionPane({
   events,
   onResolveApproval,
   onSendSessionInput,
+  onTerminateSession,
   project,
   rawOutputs,
   session,
@@ -44,6 +45,7 @@ export function SessionPane({
   events: TimelineEvent[];
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
+  onTerminateSession: (sessionId: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
@@ -146,6 +148,7 @@ export function SessionPane({
           events={visibleEvents}
           isLogOpen={isLogOpen}
           onSendSessionInput={onSendSessionInput}
+          onTerminateSession={onTerminateSession}
           onToggleLog={toggleLog}
           project={project}
           rawOutputs={rawOutputs}

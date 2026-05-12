@@ -111,6 +111,7 @@ describe("App", () => {
   let sessionEventsSince: ReturnType<typeof vi.fn<ArgmaxApi["session"]["eventsSince"]>>;
   let sessionCostSummary: ReturnType<typeof vi.fn<ArgmaxApi["session"]["costSummary"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
+  let terminateProvider: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["terminate"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
   let openInIde: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["openInIde"]>>;
@@ -148,6 +149,7 @@ describe("App", () => {
       costUsd: 0.012
     });
     sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
+    terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
     workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
     listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
     loadDiff = vi.fn<ArgmaxApi["review"]["loadDiff"]>().mockResolvedValue({
@@ -200,7 +202,7 @@ describe("App", () => {
         launch: launchProvider,
         sendInput: sendProviderInput,
         resize: () => Promise.resolve({ ok: true }),
-        terminate: () => Promise.resolve({ ok: true })
+        terminate: terminateProvider
       },
       approvals: {
         pending: approvalsPending,
@@ -1001,9 +1003,21 @@ describe("App", () => {
     fireEvent.change(input, {
       target: { value: "too soon" }
     });
-    fireEvent.click(screen.getByTitle("Send follow-up"));
+    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
 
     expect(sendProviderInput).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a Stop button on a running session and terminates it", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const stopButton = await screen.findByRole("button", { name: "Stop session" });
+    expect(screen.queryByRole("button", { name: "Send follow-up" })).toBeNull();
+
+    fireEvent.click(stopButton);
+
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
   });
 
   it("switches the session model for the next follow-up prompt", async () => {

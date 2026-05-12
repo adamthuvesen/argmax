@@ -40,6 +40,7 @@ import {
   type ToolCall
 } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
+import { ChatBubble } from "./ChatBubble.js";
 import { CostPanel } from "./CostPanel.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
@@ -370,15 +371,25 @@ export function SessionConversation({
                 workspaceCwd={workspace?.path ?? null}
               />
             ) : item.event.type === "user.message" ? (
-              <article className="chat-bubble user" key={item.event.id}>
+              <ChatBubble
+                key={item.event.id}
+                kind="user"
+                createdAt={item.event.createdAt}
+                rawMarkdown={item.event.message}
+              >
                 <p>{item.event.message}</p>
-              </article>
+              </ChatBubble>
             ) : (
-              <article className="chat-bubble assistant" key={item.event.id}>
+              <ChatBubble
+                key={item.event.id}
+                kind="assistant"
+                createdAt={item.event.createdAt}
+                rawMarkdown={item.event.message}
+              >
                 <div className="markdown">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.event.message}</ReactMarkdown>
                 </div>
-              </article>
+              </ChatBubble>
             )
           )
         ) : terminalTranscript ? (

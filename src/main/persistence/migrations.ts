@@ -265,7 +265,9 @@ export const migrations: Migration[] = [
   {
     version: 6,
     name: "sessions_cost_usage",
-    affectedTables: ["sessions", "usage_events"],
+    // sessions is re-verified by v8's affectedTables (post-v8 manifest);
+    // verifying it after v6 would compare to the post-v8 column set and fail.
+    affectedTables: ["usage_events"],
     up: `
       ALTER TABLE sessions ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE sessions ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;
@@ -305,6 +307,18 @@ export const migrations: Migration[] = [
       -- Backs 'WHERE status = ? ORDER BY created_at DESC' (pending list)
       -- and the global approvals list.
       CREATE INDEX IF NOT EXISTS idx_approvals_status_created ON approvals(status, created_at);
+    `
+  },
+  {
+    version: 8,
+    name: "sessions_last_model_id",
+    affectedTables: ["sessions"],
+    up: `
+      -- Denormalized fallback for the most recently observed provider model id.
+      -- Populated from Codex turn_context events (and any usage event) so the
+      -- cost panel can render a model label without joining usage_events for
+      -- sessions that died before any token_count arrived.
+      ALTER TABLE sessions ADD COLUMN last_model_id TEXT;
     `
   }
 ];
@@ -359,6 +373,7 @@ const expectedColumns: Record<string, string[]> = {
     "id",
     "input_tokens",
     "last_activity_at",
+    "last_model_id",
     "model_id",
     "model_label",
     "output_tokens",

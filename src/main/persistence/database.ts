@@ -378,6 +378,7 @@ export interface ArgmaxDatabase {
   persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
   persistRawOutput: (input: PersistRawOutputInput) => void;
   insertUsageEvent: (input: InsertUsageEventInput) => void;
+  updateSessionLastModelId: (sessionId: string, modelId: string) => void;
   getSessionCostSummary: (sessionId: string) => SessionCostSummary;
   /** Cancels the periodic raw_outputs prune timer. Call before close. */
   clearPruneInterval: () => void;
@@ -465,6 +466,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     persistTimelineEvent: (input) => persistTimelineEvent(connection, input),
     persistRawOutput: (input) => persistRawOutput(connection, input),
     insertUsageEvent: (input) => insertUsageEvent(connection, input),
+    updateSessionLastModelId: (sessionId, modelId) => updateSessionLastModelId(connection, sessionId, modelId),
     getSessionCostSummary: (sessionId) => getSessionCostSummary(connection, sessionId),
     clearPruneInterval: () => clearInterval(pruneTimer),
     close: () => {
@@ -1520,6 +1522,9 @@ function insertUsageEvent(connection: Database.Database, input: InsertUsageEvent
   // Atomic so the audit-log row and aggregate totals can't diverge on a
   // session-deleted race. Nested-call safe: better-sqlite3 promotes this to
   // a savepoint when run inside an outer transaction (see flushBatch).
+  const modelStmt = connection.prepare(
+    "UPDATE sessions SET last_model_id = @modelId WHERE id = @sessionId"
+  );
   connection.transaction(() => {
     insertStmt.run({
       sessionId: input.sessionId,
@@ -1543,15 +1548,25 @@ function insertUsageEvent(connection: Database.Database, input: InsertUsageEvent
     if (result.changes === 0) {
       throw new RecordNotFoundError("session", input.sessionId);
     }
+    if (input.modelId) {
+      modelStmt.run({ sessionId: input.sessionId, modelId: input.modelId });
+    }
   })();
+}
+
+function updateSessionLastModelId(connection: Database.Database, sessionId: string, modelId: string): void {
+  if (!modelId) return;
+  connection
+    .prepare("UPDATE sessions SET last_model_id = ? WHERE id = ?")
+    .run(modelId, sessionId);
 }
 
 function getSessionCostSummary(connection: Database.Database, sessionId: string): SessionCostSummary {
   const sessionRow = connection
     .prepare(
-      "SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd FROM sessions WHERE id = ?"
+      "SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id FROM sessions WHERE id = ?"
     )
-    .get(sessionId) as SessionCostRow | undefined;
+    .get(sessionId) as (SessionCostRow & { last_model_id: string | null }) | undefined;
   if (!sessionRow) {
     throw new RecordNotFoundError("session", sessionId);
   }
@@ -1561,7 +1576,7 @@ function getSessionCostSummary(connection: Database.Database, sessionId: string)
 
   return {
     sessionId,
-    modelId: latestUsage?.model_id ?? null,
+    modelId: latestUsage?.model_id ?? sessionRow.last_model_id ?? null,
     tokens: {
       input: sessionRow.input_tokens,
       output: sessionRow.output_tokens,

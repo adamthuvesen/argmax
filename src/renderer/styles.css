@@ -3730,6 +3730,30 @@ button {
   white-space: pre;
 }
 
+.diff-sbs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  border-top: 1px solid var(--line-soft);
+}
+
+.diff-sbs-cell {
+  min-width: 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.diff-sbs-cell:first-of-type,
+.diff-sbs-cell:nth-of-type(2) {
+  border-top: 0;
+}
+
+.diff-sbs-cell.diff-sbs-old {
+  border-right: 1px solid var(--line-soft);
+}
+
+.diff-sbs-empty {
+  background: rgba(0, 0, 0, 0.02);
+}
+
 .diff-line.addition {
   background: #eaf7ef;
 }

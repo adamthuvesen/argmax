@@ -822,7 +822,7 @@ export class ProviderSessionService {
 
   private queueTimelineEvent(sessionId: string, event: PersistTimelineEventInput): void {
     const sessionState = this.buffers.get(sessionId);
-    const { payload, sibling } = capEventPayload(event.payload);
+    const { payload, sibling } = capEventPayload(event.payload, event.type);
     const stamped: PersistTimelineEventInput & { sequence?: number } = {
       ...event,
       payload
@@ -1118,7 +1118,28 @@ interface CappedPayload {
   sibling: Omit<PersistTimelineEventInput, "sessionId"> | null;
 }
 
-function capEventPayload(payload: Record<string, unknown>): CappedPayload {
+// Keys that must survive truncation so downstream consumers (renderer, tests)
+// can still reconcile state. For command.completed especially: without
+// tool_use_id/id the renderer can't match the result back to its
+// command.started event, and the tool call hangs in "running" forever.
+const STRUCTURAL_KEYS_BY_TYPE: Partial<Record<string, readonly string[]>> = {
+  "command.started": ["id", "call_id", "tool_use_id", "name", "type"],
+  "command.completed": [
+    "id",
+    "call_id",
+    "tool_use_id",
+    "name",
+    "type",
+    "is_error",
+    "isError",
+    "status"
+  ]
+};
+
+function capEventPayload(
+  payload: Record<string, unknown>,
+  eventType?: string
+): CappedPayload {
   let serialized: string;
   try {
     serialized = JSON.stringify(payload);
@@ -1129,8 +1150,14 @@ function capEventPayload(payload: Record<string, unknown>): CappedPayload {
     return { payload, sibling: null };
   }
   const truncatedEventId = randomUUID();
+  const preserved: Record<string, unknown> = {};
+  const preserveKeys = (eventType && STRUCTURAL_KEYS_BY_TYPE[eventType]) ?? [];
+  for (const key of preserveKeys) {
+    if (key in payload) preserved[key] = payload[key];
+  }
   return {
     payload: {
+      ...preserved,
       truncated: true,
       originalSize: serialized.length,
       preview: serialized.slice(0, EVENT_PAYLOAD_PREVIEW),

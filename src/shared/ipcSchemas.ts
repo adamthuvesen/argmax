@@ -300,7 +300,11 @@ export const ipcSchemas = {
   "system:listDetectedIdes": listDetectedIdesInputSchema,
   "system:diagnostics": z.void(),
   "system:vacuumDatabase": z.void(),
-  "session:costSummary": sessionCostSummaryInputSchema
+  "session:costSummary": sessionCostSummaryInputSchema,
+  "learnings:list": z.object({
+    projectId: projectIdSchema,
+    limit: z.number().int().min(1).max(200).optional()
+  })
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;

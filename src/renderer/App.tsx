@@ -486,6 +486,24 @@ export function App(): JSX.Element {
     [refreshDashboardStatus, loadSessionEvents]
   );
 
+  const terminateSession = useCallback(
+    async (sessionId: string): Promise<void> => {
+      if (!window.argmax) {
+        throw new Error("Open the Electron app window to stop a live session.");
+      }
+      try {
+        await window.argmax.providers.terminate(sessionId);
+        await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      } catch (error) {
+        setToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not stop session."
+        });
+      }
+    },
+    [refreshDashboardStatus, loadSessionEvents]
+  );
+
   const launchTask = useCallback(
     async (prompt: string, model: ModelPickerSelection): Promise<void> => {
       if (!window.argmax) {
@@ -599,6 +617,7 @@ export function App(): JSX.Element {
               events={snapshot.events}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
+              onTerminateSession={terminateSession}
               project={selectedProject}
               rawOutputs={snapshot.rawOutputs}
               session={selectedSession}

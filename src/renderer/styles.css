@@ -2629,6 +2629,14 @@ button {
   opacity: 0.4;
 }
 
+.session-stop-button {
+  background: #b3261e;
+}
+
+.session-stop-button:hover:not(:disabled) {
+  background-color: #8c1d17;
+}
+
 .session-input-toolbar .composer-tool {
   width: 32px;
   height: 32px;

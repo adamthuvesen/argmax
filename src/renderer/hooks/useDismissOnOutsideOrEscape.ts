@@ -23,6 +23,7 @@ export function useDismissOnOutsideOrEscape(
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        event.stopPropagation();
         closeRef.current();
       }
     };

@@ -8,6 +8,7 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { demoSnapshot } from "./demoSnapshot.js";
 import { isBrowserPreview } from "./lib/env.js";
+import { isTypingTarget } from "./lib/typingTarget.js";
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "./lib/ide.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
 import { titleFromPrompt } from "./lib/projects.js";
@@ -74,6 +75,19 @@ export function App(): JSX.Element {
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (isTypingTarget(event.target)) return;
+      if (isSettingsOpen) {
+        event.preventDefault();
+        setIsSettingsOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isSettingsOpen]);
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));

@@ -1,5 +1,6 @@
 import { FileText, Globe, Pencil, Search, Terminal, Wrench } from "lucide-react";
 import type { JSX } from "react";
+import { safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
 
 export type ToolCall = {
@@ -125,11 +126,7 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
     return payload.input as Record<string, unknown>;
   }
   if (typeof payload.arguments === "string") {
-    try {
-      return JSON.parse(payload.arguments) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
+    return safeJsonParseRecord(payload.arguments, "toolCalls.arguments");
   }
   return {};
 }
@@ -236,13 +233,13 @@ export function getToolTypeBucket(name: string): ToolTypeBucket {
   return "other";
 }
 
-export function buildGroupIconBuckets(tools: ToolCall[]): Array<{ bucket: ToolTypeBucket; count: number }> {
+export function buildGroupIconBuckets(tools: ToolCall[]): ToolTypeBucket[] {
   const seen = new Map<ToolTypeBucket, number>();
   for (const tool of tools) {
     const b = getToolTypeBucket(tool.name);
     seen.set(b, (seen.get(b) ?? 0) + 1);
   }
-  return [...seen.entries()].slice(0, 3).map(([bucket, count]) => ({ bucket, count }));
+  return [...seen.keys()].slice(0, 3);
 }
 
 export const BUCKET_ICON_NAME: Record<ToolTypeBucket, string> = {

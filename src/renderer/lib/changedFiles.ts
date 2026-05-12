@@ -11,17 +11,27 @@ export function summarizeChangedFiles(files: ChangedFileSummary[]): { additions:
 }
 
 export function statusLabel(status: string): string {
-  if (status === "??" || status.includes("A")) {
-    return "Added";
+  // Git porcelain v1 status is `XY` where X is the index change and Y is
+  // the worktree change. Discriminate on the primary (X) column so combo
+  // codes like `AD` ("added in index, deleted in worktree") aren't matched
+  // by every alternative that happens to share a letter.
+  if (status === "??") return "Added";
+  const primary = status[0] ?? "";
+  switch (primary) {
+    case "A":
+      return "Added";
+    case "D":
+      return "Deleted";
+    case "R":
+      return "Renamed";
+    case "C":
+      return "Copied";
+    case " ": {
+      // Index unchanged; the worktree column decides.
+      const worktree = status[1] ?? "";
+      return worktree === "D" ? "Deleted" : "Modified";
+    }
+    default:
+      return "Modified";
   }
-  if (status.includes("D")) {
-    return "Deleted";
-  }
-  if (status.includes("R")) {
-    return "Renamed";
-  }
-  if (status.includes("C")) {
-    return "Copied";
-  }
-  return "Modified";
 }

@@ -1033,6 +1033,47 @@ describe("App", () => {
     );
   });
 
+  it("keeps error toasts past the 4s auto-dismiss window", async () => {
+    pickProjectFolder.mockRejectedValueOnce(new Error("Pick a real git repo."));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
+      const errorMessage = await screen.findByText("Pick a real git repo.");
+
+      act(() => {
+        vi.advanceTimersByTime(8000);
+      });
+
+      expect(errorMessage).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("auto-dismisses info toasts after the 4s window", async () => {
+    pickProjectFolder.mockResolvedValueOnce({ cancelled: false, project: primaryProject() });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
+      await screen.findByText(/Added /);
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      await waitFor(() => expect(screen.queryByText(/Added /)).toBeNull());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not close Settings on Escape when focus is in a textarea", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });

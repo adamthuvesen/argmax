@@ -19,7 +19,6 @@ import {
   sortWorkspaceGroup
 } from "../lib/projects.js";
 import { SidebarSessionRow } from "./SidebarSessionRow.js";
-import { useNow } from "../hooks/useNow.js";
 
 export function Sidebar({
   loadState,
@@ -56,10 +55,6 @@ export function Sidebar({
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
 }): JSX.Element {
-  // Single shared 5s tick drives the per-row "last activity ago" badge.
-  // Lifting the interval here is intentional — N row instances each with
-  // their own setInterval would cause N independent re-renders per tick.
-  const now = useNow(true, 5000);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
@@ -295,7 +290,6 @@ export function Sidebar({
                         workspace={workspace}
                         workspaceCost={workspaceCostMap.get(workspace.id) ?? 0}
                         isSelected={selectedWorkspaceId === workspace.id}
-                        now={now}
                         onOpenWorkspaceChat={onOpenWorkspaceChat}
                         onArchiveWorkspace={onArchiveWorkspace}
                         onOpenInIde={onOpenInIde}

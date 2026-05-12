@@ -413,11 +413,8 @@ export const migrations: Migration[] = [
     affectedTables: ["workspaces"],
     up: `
       -- Sticky-pinned sessions sort to the top of their project group in the
-      -- sidebar. Boolean encoded as INTEGER per SQLite convention. SQLite's
-      -- ALTER TABLE ADD COLUMN rejects inline CHECK constraints (only NOT
-      -- NULL + DEFAULT are accepted), so the 0/1 invariant is enforced at
-      -- the call site via setWorkspacePinned() rather than schema-level.
-      ALTER TABLE workspaces ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+      -- sidebar. Boolean encoded as INTEGER per SQLite convention.
+      ALTER TABLE workspaces ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1));
     `
   }
 ];

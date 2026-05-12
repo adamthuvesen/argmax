@@ -1030,6 +1030,23 @@ describe("App", () => {
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
   });
 
+  it("opens the keyboard cheat sheet on Cmd+/ and closes on the X button", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    fireEvent.keyDown(document, { key: "/", metaKey: true });
+
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(within(dialog).getByText("Open command palette")).toBeInTheDocument();
+    expect(within(dialog).getByText("Open Settings")).toBeInTheDocument();
+    expect(within(dialog).getByText("Jump to session 1–9")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull()
+    );
+  });
+
   it("opens the command palette on Cmd+K and routes Enter to a matching session", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));

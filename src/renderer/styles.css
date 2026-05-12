@@ -2756,6 +2756,77 @@ button {
   font-size: 13px;
 }
 
+.cheat-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 24, 32, 0.32);
+  z-index: 80;
+}
+
+.cheat-sheet {
+  width: min(520px, 92vw);
+  background: var(--panel, #ffffff);
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
+  padding: 20px 24px 18px;
+}
+
+.cheat-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 12px;
+}
+
+.cheat-sheet-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.cheat-sheet-header button {
+  background: transparent;
+  border: 0;
+  font-size: 20px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.cheat-sheet-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.cheat-sheet-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  align-items: baseline;
+}
+
+.cheat-sheet-row dt {
+  margin: 0;
+}
+
+.cheat-sheet-row dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.cheat-sheet kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
+  font-family: inherit;
+  font-size: 12px;
+}
+
 .session-input-toolbar .composer-tool {
   width: 32px;
   height: 32px;

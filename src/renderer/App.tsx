@@ -3,6 +3,7 @@ import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type { DashboardSnapshot, DetectedIde, IdeId, MenuCommand } from "../shared/types.js";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.js";
 import { EmptyState } from "./components/EmptyState.js";
+import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
 import { SessionPane } from "./components/SessionPane.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
@@ -51,6 +52,7 @@ export function App(): JSX.Element {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
+  const [isCheatSheetOpen, setIsCheatSheetOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -110,9 +112,11 @@ export function App(): JSX.Element {
         case "open-command-palette":
           setIsPaletteOpen(true);
           return;
+        case "open-cheat-sheet":
+          setIsCheatSheetOpen(true);
+          return;
         case "toggle-debug-log":
         case "toggle-sidebar":
-        case "open-cheat-sheet":
         case "check-for-updates":
           // Wired in later phase tasks (P2.06 cheat sheet, P4 review
           // surface for debug-log lift, P7 updater). Menu accelerator
@@ -150,6 +154,11 @@ export function App(): JSX.Element {
       if (event.key.toLowerCase() === "k") {
         event.preventDefault();
         handleMenuCommand("open-command-palette");
+        return;
+      }
+      if (event.key === "/") {
+        event.preventDefault();
+        handleMenuCommand("open-cheat-sheet");
         return;
       }
     };
@@ -702,6 +711,7 @@ export function App(): JSX.Element {
         commands={paletteCommands}
         onClose={() => setIsPaletteOpen(false)}
       />
+      <KeyboardCheatSheet open={isCheatSheetOpen} onClose={() => setIsCheatSheetOpen(false)} />
       {toast ? (
         <div className={`toast toast-${toast.kind}`} role="status">
           <span>{toast.message}</span>

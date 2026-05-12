@@ -1145,10 +1145,21 @@ button {
   color: var(--muted);
 }
 
-.settings-providers-actions {
+.settings-section-header-row {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-section-header-row > div {
+  min-width: 0;
+}
+
+.settings-providers-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .settings-refresh {

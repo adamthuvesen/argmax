@@ -1,5 +1,5 @@
 import { PanelRightClose } from "lucide-react";
-import { useMemo, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 
 export function DebugLogPanel({
@@ -47,6 +47,25 @@ export function DebugLogPanel({
 
 function DebugEventList({ events }: { events: TimelineEvent[] }): JSX.Element {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
+  // Prune the expanded set whenever the visible events change so ids for
+  // pruned/replaced events don't linger forever in panel state.
+  useEffect(() => {
+    setExpanded((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(events.map((event) => event.id));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (live.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [events]);
 
   if (events.length === 0) {
     return <p className="log-empty">No events yet.</p>;

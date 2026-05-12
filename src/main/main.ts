@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -9,12 +9,14 @@ import { ProviderSessionService } from "./providers/providerSessionService.js";
 import { NotificationService } from "./notifications/notificationService.js";
 import { DockBadgeService } from "./dock/dockBadgeService.js";
 import { buildAppMenuTemplate, type MenuCommand } from "./menu.js";
+import { UpdateService } from "./updater/updateService.js";
 import type { DashboardDelta } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
 let providerSessions: ProviderSessionService | null = null;
 let dockBadge: DockBadgeService | null = null;
+let updateService: UpdateService | null = null;
 let shutdownInProgress = false;
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 const iconPath = join(currentDirectory, "..", "..", "assets", "icon.png");
@@ -108,12 +110,40 @@ void app.whenReady().then(async () => {
   dockBadge.update();
   registeredChannels = registerIpcHandlers(database, providerSessions);
 
+  // electron-updater only works in a packaged build — running it in dev or
+  // unsigned would no-op at best and surface confusing errors at worst.
+  if (app.isPackaged) {
+    const { autoUpdater } = await import("electron-updater");
+    updateService = new UpdateService({
+      autoUpdater,
+      dialog,
+      log: (level, message, meta) => {
+        console[level === "error" ? "error" : "log"](`[argmax:updater] ${message}`, meta ?? "");
+      }
+    });
+    void updateService.runStartupCheck();
+  }
+
   const menuTemplate = buildAppMenuTemplate({
     isDev: is.dev,
     onCommand: (command: MenuCommand) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("menu:command", command);
       }
+    },
+    onCheckForUpdates: () => {
+      if (!updateService) {
+        // Dev / unpackaged: surface a quick "no updater here" dialog so the
+        // menu item still reads as wired-up instead of doing nothing.
+        void dialog.showMessageBox({
+          type: "info",
+          title: "Updates",
+          message: "Auto-update is only available in packaged builds.",
+          buttons: ["OK"]
+        });
+        return;
+      }
+      void updateService.checkOnUserRequest();
     }
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));

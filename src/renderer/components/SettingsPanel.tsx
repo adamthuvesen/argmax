@@ -259,25 +259,25 @@ export function SettingsPanel({
       </section>
 
       <section className="settings-section" aria-labelledby="settings-providers">
-        <header className="settings-section-header">
-          <h2 id="settings-providers">Providers</h2>
-          <p>
-            Detected CLI agents. Argmax discovers them on launch; click refresh after installing one.
-          </p>
-        </header>
-        <div className="settings-card">
-          <div className="settings-providers-actions">
-            <button
-              type="button"
-              className="settings-refresh"
-              onClick={() => void refreshProviders()}
-              disabled={refreshingProviders}
-              aria-label="Refresh provider discovery"
-            >
-              <RefreshCcw size={14} />
-              <span>{refreshingProviders ? "Refreshing…" : "Refresh"}</span>
-            </button>
+        <header className="settings-section-header settings-section-header-row">
+          <div>
+            <h2 id="settings-providers">Providers</h2>
+            <p>
+              Detected CLI agents. Argmax discovers them on launch; click refresh after installing one.
+            </p>
           </div>
+          <button
+            type="button"
+            className="settings-refresh"
+            onClick={() => void refreshProviders()}
+            disabled={refreshingProviders}
+            aria-label="Refresh provider discovery"
+          >
+            <RefreshCcw size={14} />
+            <span>{refreshingProviders ? "Refreshing…" : "Refresh"}</span>
+          </button>
+        </header>
+        <div className="settings-providers-body">
           {providerLoadError ? (
             <p className="settings-hint" role="alert">
               {providerLoadError}

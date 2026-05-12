@@ -58,6 +58,30 @@ describe("ProjectService", () => {
     database.connection.close();
   });
 
+  it("prefers main over master and trunk when probing default-branch candidates", async () => {
+    const repoPath = createGitRepoWithBranches(["trunk", "master", "main"], "trunk");
+    const database = createDatabase(":memory:", { seed: false });
+    const service = new ProjectService(database);
+
+    const project = await service.registerProject({ repoPath });
+
+    expect(project.defaultBranch).toBe("main");
+
+    database.connection.close();
+  });
+
+  it("falls back to master when main is absent but trunk exists alongside", async () => {
+    const repoPath = createGitRepoWithBranches(["trunk", "master"], "trunk");
+    const database = createDatabase(":memory:", { seed: false });
+    const service = new ProjectService(database);
+
+    const project = await service.registerProject({ repoPath });
+
+    expect(project.defaultBranch).toBe("master");
+
+    database.connection.close();
+  });
+
   it("preserves local settings when re-registering an existing repository", async () => {
     const repoPath = createGitRepo();
     const database = createDatabase(":memory:", { seed: false });
@@ -93,5 +117,20 @@ describe("ProjectService", () => {
 function createGitRepo(): string {
   const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-"));
   execFileSync("git", ["init", "--initial-branch=main", repoPath]);
+  return realpathSync(repoPath);
+}
+
+function createGitRepoWithBranches(branches: readonly string[], initialBranch: string): string {
+  const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-multi-"));
+  execFileSync("git", ["init", `--initial-branch=${initialBranch}`, repoPath]);
+  execFileSync("git", ["-C", repoPath, "config", "user.email", "test@example.com"]);
+  execFileSync("git", ["-C", repoPath, "config", "user.name", "Test"]);
+  execFileSync("git", ["-C", repoPath, "commit", "--allow-empty", "-m", "init"]);
+  for (const branch of branches) {
+    if (branch === initialBranch) continue;
+    execFileSync("git", ["-C", repoPath, "branch", branch]);
+  }
+  // Re-checkout initial branch so `branch --show-current` is deterministic.
+  execFileSync("git", ["-C", repoPath, "checkout", initialBranch]);
   return realpathSync(repoPath);
 }

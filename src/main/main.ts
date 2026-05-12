@@ -40,14 +40,10 @@ async function createWindow(): Promise<void> {
     // panel surface. Revisit only after a side-by-side visual test against the
     // current --bg #fbfbfa value confirms no milky-grey artifacts.
     webPreferences: {
-      preload: join(currentDirectory, "preload.js"),
+      preload: join(currentDirectory, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      // Sandboxed preloads must be CommonJS; this project is `"type": "module"`
-      // and ships an ESM preload. Re-enabling sandbox needs a separate esbuild
-      // step that bundles the preload as .cjs. `contextIsolation: true` +
-      // `nodeIntegration: false` remain the main isolation walls.
-      sandbox: false
+      sandbox: true
     }
   });
 

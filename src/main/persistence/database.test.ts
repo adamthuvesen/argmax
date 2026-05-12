@@ -665,6 +665,14 @@ describe("findPendingApproval (Section 6)", () => {
       kind: "convention",
       summary: "Use absolute imports under src/"
     });
+    // Force a deterministic time ordering — the helper stamps both inserts
+    // with the same millisecond when they happen back-to-back.
+    database.connection
+      .prepare("UPDATE learnings SET last_seen_at = ? WHERE id = ?")
+      .run("2026-05-01T00:00:00.000Z", older.id);
+    database.connection
+      .prepare("UPDATE learnings SET last_seen_at = ? WHERE id = ?")
+      .run("2026-05-02T00:00:00.000Z", newer.id);
 
     const all = database.listLearnings(projectId);
     expect(all).toHaveLength(2);

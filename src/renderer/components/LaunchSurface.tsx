@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Cpu, Folder, GitBranch, Mic, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, GitBranch, Mic, Plus } from "lucide-react";
 import {
   useCallback,
   useMemo,
@@ -9,12 +9,12 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import { PROVIDER_MODELS } from "../../shared/providerModels.js";
 import type { ProjectSummary } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
-import { effortLabel, modelValue, type ModelPickerSelection } from "../lib/models.js";
+import { type ModelPickerSelection } from "../lib/models.js";
+import { LaunchModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
@@ -51,11 +51,9 @@ export function LaunchSurface({
   const [branches, setBranches] = useState<string[]>([]);
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const modelPickerRef = useRef<HTMLDivElement | null>(null);
 
   useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
   useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
-  useDismissOnOutsideOrEscape(modelPickerRef, modelPickerOpen, () => setModelPickerOpen(false));
   const anyContextPickerOpen = projectPickerOpen || branchPickerOpen || modelPickerOpen;
 
   const closeContextPickers = useCallback((): void => {
@@ -288,77 +286,13 @@ export function LaunchSurface({
               </ul>
             )}
           </div>
-          <div className="project-picker-anchor" ref={modelPickerRef}>
-            <button
-              className="composer-context-chip"
-              type="button"
-              aria-label="Switch model"
-              aria-expanded={modelPickerOpen}
-              onClick={() => setModelPickerOpen((o) => !o)}
-            >
-              <Cpu size={14} aria-hidden="true" />
-              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
-              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
-            </button>
-            {modelPickerOpen && (
-              <ul
-                className="project-picker-popover"
-                role="listbox"
-                aria-label="Select model"
-                onClick={(event) => {
-                  if (!isOptionButtonTarget(event.target)) {
-                    setModelPickerOpen(false);
-                  }
-                }}
-              >
-                <li className="project-picker-group-label" role="presentation">Codex</li>
-                {PROVIDER_MODELS.codex.map((m) => {
-                  const opt: ModelPickerSelection = { provider: "codex", label: m.label, modelId: m.modelId, ...(m.reasoningEffort ? { reasoningEffort: m.reasoningEffort } : {}) };
-                  const isSelected = model.provider === "codex" && model.modelId === m.modelId && model.reasoningEffort === m.reasoningEffort;
-                  const label = m.reasoningEffort ? `${m.label} · ${effortLabel(m.reasoningEffort)}` : m.label;
-                  return (
-                    <li key={modelValue(opt)} role="option" aria-selected={isSelected}>
-                      <button
-                        type="button"
-                        className="project-picker-item"
-                        aria-pressed={isSelected}
-                        onClick={() => { onModelChange(opt); setModelPickerOpen(false); }}
-                      >
-                        {label}
-                      </button>
-                    </li>
-                  );
-                })}
-                <li className="project-picker-divider" role="separator" />
-                <li className="project-picker-group-label" role="presentation">Claude</li>
-                {PROVIDER_MODELS.claude.map((m) => {
-                  const opt: ModelPickerSelection = {
-                    provider: "claude",
-                    label: m.label,
-                    modelId: m.modelId,
-                    ...(m.reasoningEffort ? { reasoningEffort: m.reasoningEffort } : {})
-                  };
-                  const isSelected =
-                    model.provider === "claude" &&
-                    model.modelId === m.modelId &&
-                    model.reasoningEffort === m.reasoningEffort;
-                  const label = m.reasoningEffort ? `${m.label} · ${effortLabel(m.reasoningEffort)}` : m.label;
-                  return (
-                    <li key={modelValue(opt)} role="option" aria-selected={isSelected}>
-                      <button
-                        type="button"
-                        className="project-picker-item"
-                        aria-pressed={isSelected}
-                        onClick={() => { onModelChange(opt); setModelPickerOpen(false); }}
-                      >
-                        {label}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+          <LaunchModelSelector
+            ariaLabel="Switch model"
+            open={modelPickerOpen}
+            onOpenChange={setModelPickerOpen}
+            value={model}
+            onChange={onModelChange}
+          />
         </div>
         {status ? (
           <p className="composer-status" role="status">

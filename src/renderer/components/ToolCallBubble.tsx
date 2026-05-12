@@ -1,6 +1,5 @@
-import { Check, ChevronRight, ExternalLink, Loader2, X } from "lucide-react";
+import { ChevronRight, ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState, type JSX } from "react";
-import { formatElapsed } from "../formatElapsed.js";
 import {
   extractOpenablePath,
   getToolIcon,
@@ -9,6 +8,7 @@ import {
   type ParallelPosition,
   type ToolCall
 } from "../lib/toolCalls.js";
+import { ToolStatusChip } from "./ToolStatusChip.js";
 
 export function ToolCallBubble({
   tool,
@@ -51,9 +51,6 @@ export function ToolCallBubble({
   const startedMs = Date.parse(tool.createdAt);
   const endedMs = tool.completedAt ? Date.parse(tool.completedAt) : now;
   const elapsedMs = Number.isFinite(startedMs) ? Math.max(0, endedMs - startedMs) : 0;
-  const elapsedText = formatElapsed(elapsedMs);
-  const statusWord = tool.status === "running" ? "running" : tool.status === "error" ? "failed" : "done";
-  const chipLabel = elapsedText ? `${statusWord}, ${elapsedText}` : statusWord;
 
   const showFlash = fresh && !didFlash;
   const rootClass = [
@@ -89,22 +86,7 @@ export function ToolCallBubble({
         <span className="tool-call-icon" aria-hidden="true">{getToolIcon(tool.name)}</span>
         <span className="tool-call-name">{tool.name}</span>
         {tool.inputPreview ? <code className="tool-call-preview">{tool.inputPreview}</code> : null}
-        <span className="tool-call-status-chip" aria-label={chipLabel} title={chipLabel}>
-          <span className="tool-call-status-glyph" aria-hidden="true">
-            {tool.status === "running" ? (
-              <Loader2 size={11} className="tool-call-spinner" />
-            ) : tool.status === "error" ? (
-              <X size={11} />
-            ) : (
-              <Check size={11} />
-            )}
-          </span>
-          {elapsedText ? (
-            <span className="tool-call-status-time" aria-hidden="true">
-              {tool.status === "error" && elapsedMs < 100 ? "failed" : elapsedText}
-            </span>
-          ) : null}
-        </span>
+        <ToolStatusChip status={tool.status} elapsedMs={elapsedMs} showFastFailureText />
         <ChevronRight size={11} className={`tool-call-chevron${expanded ? " expanded" : ""}`} />
       </button>
       {expanded ? (

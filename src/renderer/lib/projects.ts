@@ -1,4 +1,4 @@
-import { safeJsonParseArray } from "../../shared/safeJson.js";
+import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
@@ -50,21 +50,17 @@ function loadStringArray(storageKey: string): string[] {
 // unpinned (or among pinned) sessions inside a single project group.
 export function loadWorkspaceOrders(): Record<string, string[]> {
   if (typeof window === "undefined") return {};
-  const raw = window.localStorage.getItem(workspaceOrderStorageKey);
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    const result: Record<string, string[]> = {};
-    for (const [projectId, ids] of Object.entries(parsed as Record<string, unknown>)) {
-      if (Array.isArray(ids) && ids.every((entry) => typeof entry === "string")) {
-        result[projectId] = ids;
-      }
+  const parsed = safeJsonParseRecord(
+    window.localStorage.getItem(workspaceOrderStorageKey),
+    "projects.workspaceOrder"
+  );
+  const result: Record<string, string[]> = {};
+  for (const [projectId, ids] of Object.entries(parsed)) {
+    if (Array.isArray(ids) && ids.every((entry) => typeof entry === "string")) {
+      result[projectId] = ids;
     }
-    return result;
-  } catch {
-    return {};
   }
+  return result;
 }
 
 export function saveWorkspaceOrders(orders: Record<string, string[]>): void {

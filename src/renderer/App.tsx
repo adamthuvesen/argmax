@@ -927,7 +927,9 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
     return demoSnapshot;
   }
 
-  const snapshot = await window.argmax.dashboard.load();
-  return { ...snapshot, events: pruneSupersededDeltas(snapshot.events) };
+  const [dashboard, approvals] = await Promise.all([
+    window.argmax.dashboard.list(),
+    window.argmax.approvals.pending()
+  ]);
+  return { ...dashboard, events: [], rawOutputs: [], approvals };
 }
-

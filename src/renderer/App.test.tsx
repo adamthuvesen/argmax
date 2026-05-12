@@ -314,6 +314,13 @@ describe("App", () => {
     };
   });
 
+  function mockDashboardSnapshot(data: DashboardSnapshot): void {
+    dashboardLoad.mockResolvedValue(data);
+    dashboardList.mockResolvedValue(dashboardListSnapshot(data));
+    approvalsPending.mockResolvedValue(data.approvals);
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(data));
+  }
+
   it("opens the settings page from the sidebar and lets the user close it", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -383,7 +390,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
-    expect(dashboardLoad).toHaveBeenCalledTimes(1);
+    expect(dashboardList).toHaveBeenCalledTimes(1);
 
     act(() => {
       dashboardDeltaListener?.({
@@ -401,7 +408,7 @@ describe("App", () => {
     });
 
     expect(await screen.findByText("Streaming now.")).toBeInTheDocument();
-    expect(dashboardLoad).toHaveBeenCalledTimes(1);
+    expect(dashboardList).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the user's model selection across dashboard deltas for the same session", async () => {
@@ -466,7 +473,7 @@ describe("App", () => {
       },
       createdAt: "2026-05-08T15:53:59.000Z"
     };
-    dashboardLoad.mockResolvedValue({
+    mockDashboardSnapshot({
       ...snapshot,
       events: [snapshot.events[0], toolCompleted, toolStarted]
     });
@@ -522,7 +529,7 @@ describe("App", () => {
     const firstEvent = snapshot.events[0];
     if (!firstEvent) throw new Error("test fixture missing baseline event");
     const eventsBundle = [firstEvent, toolStarted, toolCompleted, ...streamingDeltas, messageCompleted];
-    dashboardLoad.mockResolvedValue({ ...snapshot, events: eventsBundle });
+    mockDashboardSnapshot({ ...snapshot, events: eventsBundle });
     sessionEventsSince.mockResolvedValue({
       events: eventsBundle,
       rawOutputs: [],
@@ -583,7 +590,7 @@ describe("App", () => {
     };
 
     const eventsBundle = [userMessage, announce, ...toolEvents, finalAnswer];
-    dashboardLoad.mockResolvedValue({ ...snapshot, events: eventsBundle });
+    mockDashboardSnapshot({ ...snapshot, events: eventsBundle });
     sessionEventsSince.mockResolvedValue({
       events: eventsBundle,
       rawOutputs: [],
@@ -614,7 +621,7 @@ describe("App", () => {
         }
       ]
     };
-    dashboardLoad.mockResolvedValue(lifecycleSnapshot);
+    mockDashboardSnapshot(lifecycleSnapshot);
     sessionEventsSince.mockResolvedValue({
       events: [],
       rawOutputs: lifecycleSnapshot.rawOutputs,
@@ -721,7 +728,7 @@ describe("App", () => {
       payload: {},
       createdAt: "2026-05-08T16:10:01.000Z"
     };
-    dashboardLoad.mockResolvedValue(snapshot);
+    mockDashboardSnapshot(snapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-new") {
         return Promise.resolve({ events: [newEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0 });
@@ -813,12 +820,7 @@ describe("App", () => {
 
   it("adds a second project, selects it, and launches from that project", async () => {
     const dotfilesProject = secondProject();
-    const twoProjectSnapshot: DashboardSnapshot = {
-      ...snapshot,
-      projects: [...snapshot.projects, dotfilesProject]
-    };
     pickProjectFolder.mockResolvedValue({ cancelled: false, project: dotfilesProject });
-    dashboardLoad.mockResolvedValueOnce(snapshot).mockResolvedValue(twoProjectSnapshot);
 
     render(<App />);
 
@@ -854,7 +856,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
 
     await waitFor(() => expect(pickProjectFolder).toHaveBeenCalledTimes(1));
-    expect(dashboardLoad).toHaveBeenCalledTimes(1);
+    expect(dashboardList).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
@@ -871,7 +873,7 @@ describe("App", () => {
   });
 
   it("offers Add Project before any projects are registered", async () => {
-    dashboardLoad.mockResolvedValue({
+    mockDashboardSnapshot({
       ...snapshot,
       projects: [],
       workspaces: [],
@@ -924,7 +926,7 @@ describe("App", () => {
       payload: {},
       createdAt: "2026-05-08T16:04:00.000Z"
     };
-    dashboardLoad.mockResolvedValue({
+    mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
       sessions: [...snapshot.sessions, secondSession]
@@ -950,7 +952,7 @@ describe("App", () => {
   });
 
   it("shows a thinking indicator while a session is running", async () => {
-    dashboardLoad.mockResolvedValue({
+    mockDashboardSnapshot({
       ...snapshot,
       events: []
     });
@@ -1004,7 +1006,7 @@ describe("App", () => {
       content: '{"type":"turn.started"}\n',
       createdAt: "2026-05-08T15:55:01.000Z"
     };
-    dashboardLoad.mockResolvedValue({
+    mockDashboardSnapshot({
       ...snapshot,
       rawOutputs: [oldRawOutput, rawOutputAfterFollowUp],
       events: [...snapshot.events, followUpEvent]
@@ -1032,7 +1034,7 @@ describe("App", () => {
       ...snapshot,
       sessions: completeSessions
     };
-    dashboardLoad.mockResolvedValue({
+    mockDashboardSnapshot({
       ...snapshot,
       sessions: completeSessions
     });
@@ -1329,7 +1331,7 @@ describe("App", () => {
 
   it("switches the session model for the next follow-up prompt", async () => {
     const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
-    dashboardLoad.mockResolvedValue({
+    mockDashboardSnapshot({
       ...snapshot,
       sessions: completeSessions
     });
@@ -1545,7 +1547,9 @@ describe("App", () => {
   });
 
   it("discards a stale dashboard load when a newer load completes first", async () => {
-    let resolveSlow: ((data: DashboardSnapshot) => void) | null = null;
+    let resolveSlow: (data: Awaited<ReturnType<ArgmaxApi["dashboard"]["list"]>>) => void = () => {
+      throw new Error("slow dashboard load did not start");
+    };
     const slowSnapshot: DashboardSnapshot = {
       ...snapshot,
       projects: [
@@ -1566,14 +1570,14 @@ describe("App", () => {
     };
 
     let callCount = 0;
-    dashboardLoad.mockImplementation(() => {
+    dashboardList.mockImplementation(() => {
       callCount += 1;
       if (callCount === 1) {
-        return new Promise<DashboardSnapshot>((resolve) => {
+        return new Promise<Awaited<ReturnType<ArgmaxApi["dashboard"]["list"]>>>((resolve) => {
           resolveSlow = resolve;
         });
       }
-      return Promise.resolve(fastSnapshot);
+      return Promise.resolve(dashboardListSnapshot(fastSnapshot));
     });
 
     render(<App />);
@@ -1586,7 +1590,7 @@ describe("App", () => {
     });
 
     // Now resolve the first (slow) load with stale data.
-    (resolveSlow as ((data: DashboardSnapshot) => void) | null)?.(slowSnapshot);
+    resolveSlow(dashboardListSnapshot(slowSnapshot));
 
     // Snapshot should reflect the second (fast) load result, not the stale first.
     expect(await screen.findByRole("button", { name: "Fresh-Project" })).toBeInTheDocument();
@@ -1595,12 +1599,12 @@ describe("App", () => {
 
   it("renders the dashboard error state with a Retry button and reloads on click", async () => {
     let attempts = 0;
-    dashboardLoad.mockImplementation(() => {
+    dashboardList.mockImplementation(() => {
       attempts += 1;
       if (attempts === 1) {
         return Promise.reject(new Error("backend-fault"));
       }
-      return Promise.resolve(snapshot);
+      return Promise.resolve(dashboardListSnapshot(snapshot));
     });
 
     render(<App />);
@@ -1654,9 +1658,7 @@ describe("App", () => {
           : session
       )
     };
-    dashboardLoad.mockResolvedValue(costed);
-    dashboardList.mockResolvedValue(dashboardListSnapshot(costed));
-    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(costed));
+    mockDashboardSnapshot(costed);
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -1692,9 +1694,7 @@ describe("App", () => {
       ...snapshot,
       workspaces: snapshot.workspaces.map((workspace) => ({ ...workspace, path: "" }))
     };
-    dashboardLoad.mockResolvedValue(pathless);
-    dashboardList.mockResolvedValue(dashboardListSnapshot(pathless));
-    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(pathless));
+    mockDashboardSnapshot(pathless);
 
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -1857,4 +1857,3 @@ function missingApproval(): never {
 function missingCheck(): never {
   throw new Error("Test snapshot must include a check");
 }
-

@@ -1,25 +1,33 @@
-import { FileText, Folder, GitBranch, PanelRightClose, X } from "lucide-react";
+import { FileText, Folder, GitBranch, GitCommitHorizontal, PanelRightClose, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
+import type { CommitPreparation, PrepareCommitInput, WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { CommitDialog } from "./CommitDialog.js";
 import { DiffBlocks } from "./DiffBlocks.js";
 import { FilePreview } from "./FilePreview.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 
 export function ReviewPanel({
   onResizePanelMouseDown,
-  review
+  review,
+  workspace,
+  onPrepareCommit
 }: {
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
+  workspace?: WorkspaceSummary | null;
+  onPrepareCommit?: (input: PrepareCommitInput) => Promise<CommitPreparation>;
 }): JSX.Element {
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
   const [fileTabsHeight, setFileTabsHeight] = useState(168);
+  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
+  const canCommit = Boolean(workspace?.id && onPrepareCommit && review.files.length > 0);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -103,9 +111,21 @@ export function ReviewPanel({
             ) : null}
           </h2>
         </div>
-        <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
-          <PanelRightClose size={18} />
-        </button>
+        <div className="review-toolbar-actions">
+          <button
+            className="small-icon"
+            type="button"
+            title="Commit selected"
+            aria-label="Commit selected"
+            disabled={!canCommit}
+            onClick={() => setIsCommitDialogOpen(true)}
+          >
+            <GitCommitHorizontal size={18} />
+          </button>
+          <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
+            <PanelRightClose size={18} />
+          </button>
+        </div>
       </div>
       {isChanges ? (
         <div className="review-file-tabs" aria-label="Changed file list" style={{ height: fileTabsHeight }}>
@@ -154,6 +174,16 @@ export function ReviewPanel({
           <FilePreview state={review.workspaceFiles} />
         )}
       </div>
+      {workspace && onPrepareCommit ? (
+        <CommitDialog
+          open={isCommitDialogOpen}
+          onClose={() => setIsCommitDialogOpen(false)}
+          workspaceId={workspace.id}
+          files={review.files}
+          defaultMessage={workspace.taskLabel}
+          onPrepareCommit={onPrepareCommit}
+        />
+      ) : null}
     </aside>
   );
 }

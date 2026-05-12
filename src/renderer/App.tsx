@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
-import type { DashboardSnapshot, DetectedIde, IdeId, MenuCommand } from "../shared/types.js";
+import type {
+  CommitPreparation,
+  DashboardSnapshot,
+  DetectedIde,
+  IdeId,
+  MenuCommand,
+  PrepareCommitInput
+} from "../shared/types.js";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
@@ -582,6 +589,26 @@ export function App(): JSX.Element {
     [refreshDashboardStatus, loadSessionEvents]
   );
 
+  const prepareCommit = useCallback(
+    async (input: PrepareCommitInput): Promise<CommitPreparation> => {
+      if (!window.argmax) {
+        const message = "Open the Electron app window to prepare a commit.";
+        setToast({ kind: "error", message });
+        throw new Error(message);
+      }
+      try {
+        return await window.argmax.commits.prepare(input);
+      } catch (error) {
+        setToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not prepare commit."
+        });
+        throw error;
+      }
+    },
+    []
+  );
+
   const createCheckpoint = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
@@ -799,6 +826,7 @@ export function App(): JSX.Element {
               onSendSessionInput={sendSessionInput}
               onTerminateSession={terminateSession}
               onCreateCheckpoint={createCheckpoint}
+              onPrepareCommit={prepareCommit}
               project={selectedProject}
               rawOutputs={snapshot.rawOutputs}
               session={selectedSession}

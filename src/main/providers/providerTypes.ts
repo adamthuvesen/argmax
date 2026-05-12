@@ -14,6 +14,8 @@ export interface ProviderCapabilityReport {
   setupGuidance: string | null;
 }
 
+export type PermissionMode = "auto-approve" | "ask-each-time";
+
 export interface ProviderLaunchInput {
   sessionId: string;
   workspacePath: string;
@@ -23,6 +25,7 @@ export interface ProviderLaunchInput {
   reasoningEffort?: ReasoningEffort;
   resumeConversationId?: string;
   mode: ProviderMode;
+  permissionMode: PermissionMode;
   cols: number;
   rows: number;
 }

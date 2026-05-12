@@ -36,8 +36,16 @@ interface ProviderLaunchDefinition {
   structuredStdin?: (input: ProviderLaunchInput) => string | null;
 }
 
-const CLAUDE_FULL_PERMISSION_ARGS = ["--permission-mode", "bypassPermissions"];
-const CODEX_FULL_PERMISSION_ARGS = ["--dangerously-bypass-approvals-and-sandbox"];
+const CLAUDE_BYPASS_PERMISSION_ARGS = ["--permission-mode", "bypassPermissions"];
+const CODEX_BYPASS_PERMISSION_ARGS = ["--dangerously-bypass-approvals-and-sandbox"];
+
+function claudePermissionArgs(input: ProviderLaunchInput): string[] {
+  return input.permissionMode === "auto-approve" ? CLAUDE_BYPASS_PERMISSION_ARGS : [];
+}
+
+function codexPermissionArgs(input: ProviderLaunchInput): string[] {
+  return input.permissionMode === "auto-approve" ? CODEX_BYPASS_PERMISSION_ARGS : [];
+}
 
 const providerDefinitions: ProviderLaunchDefinition[] = [
   {
@@ -46,7 +54,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
     binaryName: "claude",
     structuredArgs: (input) => [
       "-p",
-      ...CLAUDE_FULL_PERMISSION_ARGS,
+      ...claudePermissionArgs(input),
       "--model",
       input.modelId,
       "--session-id",
@@ -60,7 +68,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "-p",
       "--resume",
       resumeConversationId,
-      ...CLAUDE_FULL_PERMISSION_ARGS,
+      ...claudePermissionArgs(input),
       "--model",
       input.modelId,
       "--output-format",
@@ -68,7 +76,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "--verbose",
       input.prompt
     ],
-    interactiveArgs: (input) => ["--model", input.modelId, ...CLAUDE_FULL_PERMISSION_ARGS],
+    interactiveArgs: (input) => ["--model", input.modelId, ...claudePermissionArgs(input)],
     structuredStdin: () => null
   },
   {
@@ -78,7 +86,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
     structuredArgs: (input) => [
       "exec",
       "--json",
-      ...CODEX_FULL_PERMISSION_ARGS,
+      ...codexPermissionArgs(input),
       "--model",
       input.modelId,
       ...codexReasoningArgs(input, true),
@@ -88,14 +96,14 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "exec",
       "resume",
       "--json",
-      ...CODEX_FULL_PERMISSION_ARGS,
+      ...codexPermissionArgs(input),
       "--model",
       input.modelId,
       ...codexReasoningArgs(input, true),
       resumeConversationId,
       "-"
     ],
-    interactiveArgs: (input) => ["--model", input.modelId, ...codexReasoningArgs(input), ...CODEX_FULL_PERMISSION_ARGS],
+    interactiveArgs: (input) => ["--model", input.modelId, ...codexReasoningArgs(input), ...codexPermissionArgs(input)],
     structuredStdin: (input) => input.prompt
   }
 ];

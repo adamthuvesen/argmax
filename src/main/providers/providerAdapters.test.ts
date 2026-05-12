@@ -216,6 +216,29 @@ describe("provider PTY adapters", () => {
     });
   });
 
+  it("drops the Claude bypass flag when permissionMode is ask-each-time", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+    await adapters
+      .get("claude")
+      ?.launch({ ...launchInput("claude"), mode: "structured-json", permissionMode: "ask-each-time" }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    const args = processSpawnCalls[0]?.args ?? [];
+    expect(args).not.toContain("--permission-mode");
+    expect(args).not.toContain("bypassPermissions");
+  });
+
+  it("drops the Codex bypass flag when permissionMode is ask-each-time", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+    await adapters
+      .get("codex")
+      ?.launch({ ...launchInput("codex"), mode: "structured-json", permissionMode: "ask-each-time" }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    const args = processSpawnCalls[0]?.args ?? [];
+    expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+  });
+
   it("launches Claude structured probes with stream-json verbose output", async () => {
     const { adapters, processes, processSpawnCalls } = createTestAdapters();
     const events: ProviderEvent[] = [];
@@ -383,6 +406,7 @@ function launchInput(provider: "claude" | "codex"): ProviderLaunchInput {
     modelId: provider === "claude" ? "haiku" : "gpt-5.3-codex-spark",
     reasoningEffort: provider === "codex" ? "low" : undefined,
     mode: "interactive-pty",
+    permissionMode: "auto-approve",
     cols: 100,
     rows: 30
   };

@@ -7,11 +7,13 @@ import { registerIpcHandlers } from "./ipc.js";
 let registeredChannels: readonly string[] = [];
 import { ProviderSessionService } from "./providers/providerSessionService.js";
 import { NotificationService } from "./notifications/notificationService.js";
+import { DockBadgeService } from "./dock/dockBadgeService.js";
 import type { DashboardDelta } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
 let providerSessions: ProviderSessionService | null = null;
+let dockBadge: DockBadgeService | null = null;
 let shutdownInProgress = false;
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 const iconPath = join(currentDirectory, "..", "..", "assets", "icon.png");
@@ -86,7 +88,16 @@ void app.whenReady().then(async () => {
   const notifications = new NotificationService({
     isWindowFocused: () => mainWindow?.isFocused() === true
   });
+  dockBadge = new DockBadgeService({
+    setBadge: (text) => {
+      if (process.platform === "darwin" && app.dock) {
+        app.dock.setBadge(text);
+      }
+    },
+    countAttention: () => database!.countAttention()
+  });
   providerSessions = new ProviderSessionService(database, undefined, publishDashboardDelta, notifications);
+  dockBadge.update();
   registeredChannels = registerIpcHandlers(database, providerSessions);
 
   await createWindow();
@@ -104,6 +115,7 @@ function publishDashboardDelta(delta: DashboardDelta): void {
       window.webContents.send("dashboard:delta", delta);
     }
   }
+  dockBadge?.update();
 }
 
 app.on("window-all-closed", () => {

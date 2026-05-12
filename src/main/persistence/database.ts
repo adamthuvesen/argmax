@@ -350,6 +350,7 @@ export interface ArgmaxDatabase {
   listSessionEventsSince: (input: SessionEventsSinceInput) => SessionEventsSinceResult;
   listWorkspaceStatus: (input?: WorkspaceStatusInputFilter) => WorkspaceStatusSnapshot;
   listPendingApprovals: () => ApprovalRequest[];
+  countAttention: () => { pendingApprovals: number; waitingSessions: number; total: number };
   loadDashboard: () => DashboardSnapshot;
   persistProject: (input: PersistProjectInput) => ProjectSummary;
   updateProjectSettings: (projectId: string, settings: ProjectSettings) => ProjectSummary;
@@ -434,6 +435,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     listSessionEventsSince: (input) => listSessionEventsSince(connection, input),
     listWorkspaceStatus: (input) => listWorkspaceStatus(connection, input),
     listPendingApprovals: () => listPendingApprovals(connection),
+    countAttention: () => countAttention(connection),
     loadDashboard: () => loadDashboard(connection),
     persistProject: (input) => persistProject(connection, input),
     updateProjectSettings: (projectId, settings) => updateProjectSettings(connection, projectId, settings),
@@ -1322,6 +1324,24 @@ function listPendingApprovals(connection: Database.Database): ApprovalRequest[] 
       .prepare(`SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
       .all() as ApprovalRow[]
   ).map(approvalRowToRequest);
+}
+
+function countAttention(
+  connection: Database.Database
+): { pendingApprovals: number; waitingSessions: number; total: number } {
+  const approvalsRow = connection
+    .prepare("SELECT COUNT(*) AS count FROM approvals WHERE status = 'pending'")
+    .get() as { count: number };
+  const sessionsRow = connection
+    .prepare("SELECT COUNT(*) AS count FROM sessions WHERE state = 'waiting'")
+    .get() as { count: number };
+  const pendingApprovals = approvalsRow.count;
+  const waitingSessions = sessionsRow.count;
+  return {
+    pendingApprovals,
+    waitingSessions,
+    total: pendingApprovals + waitingSessions
+  };
 }
 
 function buildWorkspaceFilter(

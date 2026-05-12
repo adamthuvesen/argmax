@@ -298,6 +298,8 @@ export const ipcSchemas = {
   "skills:list": skillsListInputSchema,
   "system:open-path": systemOpenPathInputSchema,
   "system:listDetectedIdes": listDetectedIdesInputSchema,
+  "system:diagnostics": z.void(),
+  "system:vacuumDatabase": z.void(),
   "session:costSummary": sessionCostSummaryInputSchema
 } as const;
 

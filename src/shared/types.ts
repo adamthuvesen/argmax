@@ -362,10 +362,23 @@ export interface ArgmaxApi {
   system: {
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
+    diagnostics: () => Promise<DiagnosticsReport>;
+    vacuumDatabase: () => Promise<{ ok: true }>;
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
   };
+}
+
+export interface DiagnosticsReport {
+  appVersion: string;
+  electronVersion: string;
+  nodeVersion: string;
+  sqliteVersion: string;
+  databasePath: string;
+  platform: string;
+  arch: string;
+  generatedAt: string;
 }
 
 export type MenuCommand =

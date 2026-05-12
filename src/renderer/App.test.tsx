@@ -116,6 +116,7 @@ describe("App", () => {
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
   let openInIde: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["openInIde"]>>;
   let listDetectedIdes: ReturnType<typeof vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>>;
+  let menuCommandListener: ((command: Parameters<Parameters<ArgmaxApi["menu"]["onCommand"]>[0]>[0]) => void) | null;
 
   afterEach(() => {
     cleanup();
@@ -150,6 +151,7 @@ describe("App", () => {
     });
     sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
     terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
+    menuCommandListener = null;
     workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
     listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
     loadDiff = vi.fn<ArgmaxApi["review"]["loadDiff"]>().mockResolvedValue({
@@ -248,6 +250,14 @@ describe("App", () => {
       system: {
         openPath: () => Promise.resolve({ ok: true }),
         listDetectedIdes: listDetectedIdes
+      },
+      menu: {
+        onCommand: (listener) => {
+          menuCommandListener = listener;
+          return () => {
+            menuCommandListener = null;
+          };
+        }
       }
     };
   });
@@ -1018,6 +1028,38 @@ describe("App", () => {
     fireEvent.click(stopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
+  });
+
+  it("opens Settings via Cmd+, keyboard shortcut", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull();
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("opens Settings when the main process sends the open-settings menu command", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    expect(menuCommandListener).not.toBeNull();
+
+    expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull();
+    act(() => {
+      menuCommandListener?.("open-settings");
+    });
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("does not trigger Cmd shortcuts while typing in the composer", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+
+    fireEvent.keyDown(input, { key: ",", metaKey: true });
+    expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull();
   });
 
   it("closes the Settings panel on Escape", async () => {

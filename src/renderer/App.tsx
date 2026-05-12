@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
-import type { DashboardSnapshot, DetectedIde, IdeId } from "../shared/types.js";
+import type { DashboardSnapshot, DetectedIde, IdeId, MenuCommand } from "../shared/types.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
 import { SessionPane } from "./components/SessionPane.js";
@@ -91,6 +91,66 @@ export function App(): JSX.Element {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isSettingsOpen]);
+
+  const handleMenuCommand = useCallback(
+    (command: MenuCommand): void => {
+      switch (command) {
+        case "open-settings":
+          setIsSettingsOpen(true);
+          return;
+        case "new-session":
+          setIsSettingsOpen(false);
+          setSelectedSessionId(null);
+          setSelectedWorkspaceId(null);
+          return;
+        case "toggle-debug-log":
+        case "toggle-sidebar":
+        case "open-command-palette":
+        case "open-cheat-sheet":
+        case "check-for-updates":
+          // Wired in later phase tasks (P2.05 palette, P2.06 cheat sheet,
+          // P4 review surface, P7 updater). Menu accelerator still fires
+          // when the native menu has focus; renderer-level handling lands
+          // alongside its dedicated UI.
+          return;
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (isTypingTarget(event.target)) return;
+      const digit = parseInt(event.key, 10);
+      if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
+        const targetSession = snapshot.sessions[digit - 1];
+        if (!targetSession) return;
+        event.preventDefault();
+        setIsSettingsOpen(false);
+        setSelectedSessionId(targetSession.id);
+        setSelectedWorkspaceId(targetSession.workspaceId);
+        return;
+      }
+      if (event.key === ",") {
+        event.preventDefault();
+        handleMenuCommand("open-settings");
+        return;
+      }
+      if (event.key.toLowerCase() === "n" && !event.shiftKey) {
+        event.preventDefault();
+        handleMenuCommand("new-session");
+        return;
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [snapshot.sessions, handleMenuCommand]);
+
+  useEffect(() => {
+    if (!window.argmax) return;
+    return window.argmax.menu.onCommand(handleMenuCommand);
+  }, [handleMenuCommand]);
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));

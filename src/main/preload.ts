@@ -13,6 +13,7 @@ import type {
   DiscoveredProvider,
   LaunchProviderSessionInput,
   ArgmaxApi,
+  MenuCommand,
   OpenInIdeInput,
   PrepareCommitInput,
   ProviderSessionInput,
@@ -131,6 +132,13 @@ const api: ArgmaxApi = {
     openPath: (input: { path: string; cwd?: string }) =>
       ipcRenderer.invoke("system:open-path", input) as Promise<{ ok: true }>,
     listDetectedIdes: () => ipcRenderer.invoke("system:listDetectedIdes") as Promise<DetectedIde[]>
+  },
+  menu: {
+    onCommand: (listener: (command: MenuCommand) => void) => {
+      const handler = (_event: IpcRendererEvent, command: MenuCommand): void => listener(command);
+      ipcRenderer.on("menu:command", handler);
+      return () => ipcRenderer.removeListener("menu:command", handler);
+    }
   }
 };
 

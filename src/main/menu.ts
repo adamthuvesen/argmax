@@ -1,13 +1,7 @@
 import type { MenuItemConstructorOptions } from "electron";
+import type { MenuCommand } from "../shared/types.js";
 
-export type MenuCommand =
-  | "new-session"
-  | "open-settings"
-  | "toggle-sidebar"
-  | "toggle-debug-log"
-  | "open-command-palette"
-  | "open-cheat-sheet"
-  | "check-for-updates";
+export type { MenuCommand };
 
 export interface MenuConfig {
   appName?: string;

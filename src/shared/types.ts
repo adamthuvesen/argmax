@@ -362,7 +362,19 @@ export interface ArgmaxApi {
     openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
   };
+  menu: {
+    onCommand: (listener: (command: MenuCommand) => void) => () => void;
+  };
 }
+
+export type MenuCommand =
+  | "new-session"
+  | "open-settings"
+  | "toggle-sidebar"
+  | "toggle-debug-log"
+  | "open-command-palette"
+  | "open-cheat-sheet"
+  | "check-for-updates";
 
 declare global {
   interface Window {

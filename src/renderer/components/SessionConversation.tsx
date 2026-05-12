@@ -10,6 +10,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   ProjectSummary,
@@ -357,7 +358,7 @@ export function SessionConversation({
             ) : (
               <article className="chat-bubble assistant" key={item.event.id}>
                 <div className="markdown">
-                  <ReactMarkdown>{item.event.message}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.event.message}</ReactMarkdown>
                 </div>
               </article>
             )
@@ -394,8 +395,10 @@ export function SessionConversation({
           </article>
         ) : null}
       </div>
-      <ChangedFilesCard review={review} />
-      {session ? <CostPanel session={session} events={events} /> : null}
+      <div className="session-meta-cards">
+        <ChangedFilesCard review={review} />
+        {session ? <CostPanel session={session} events={events} /> : null}
+      </div>
       <form className="session-input" ref={inputFormRef} onSubmit={(event) => void submitInput(event)}>
         <div className="session-input-field">
           <textarea

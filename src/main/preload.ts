@@ -96,7 +96,14 @@ const api: ArgmaxApi = {
     eventsSince: (input: SessionEventsSinceInput) =>
       ipcRenderer.invoke("session:eventsSince", input) as Promise<SessionEventsSinceResult>,
     costSummary: (input: SessionCostSummaryInput) =>
-      ipcRenderer.invoke("session:costSummary", input) as Promise<SessionCostSummary>
+      ipcRenderer.invoke("session:costSummary", input) as Promise<SessionCostSummary>,
+    search: (input: { query: string; limit?: number }) =>
+      ipcRenderer.invoke("session:search", input) as Promise<Array<{
+        sessionId: string;
+        eventId: string;
+        snippet: string;
+        rank: number;
+      }>>
   },
   review: {
     listChangedFiles: (workspaceId: string) =>

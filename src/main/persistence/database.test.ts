@@ -686,4 +686,47 @@ describe("findPendingApproval (Section 6)", () => {
 
     database.connection.close();
   });
+
+  it("ranks events FTS5 matches and returns the originating session", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "search-1");
+    seedWorkspace(database, "ws-search", projectId, "running");
+    seedSession(database, "session-search-1", "ws-search");
+    seedSession(database, "session-search-2", "ws-search");
+
+    database.persistTimelineEvent({
+      id: "event-search-1",
+      sessionId: "session-search-1",
+      type: "message.completed",
+      message: "Investigate flaky migration in CI",
+      payload: {}
+    });
+    database.persistTimelineEvent({
+      id: "event-search-2",
+      sessionId: "session-search-2",
+      type: "message.completed",
+      message: "Refactor session orchestration around lazy loading",
+      payload: {}
+    });
+    database.persistTimelineEvent({
+      id: "event-search-3",
+      sessionId: "session-search-2",
+      type: "message.completed",
+      message: "no relevant terms here",
+      payload: {}
+    });
+
+    const hits = database.searchEvents({ query: "migration" });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ eventId: "event-search-1", sessionId: "session-search-1" });
+    expect(hits[0]?.snippet).toContain("<b>");
+
+    // Broader query crosses sessions; ranking favors specificity but both
+    // should appear since they each contain the term.
+    const broad = database.searchEvents({ query: "session" });
+    const sessionIds = broad.map((row) => row.sessionId).sort();
+    expect(sessionIds).toContain("session-search-2");
+
+    database.connection.close();
+  });
 });

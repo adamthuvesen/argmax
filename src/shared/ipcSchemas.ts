@@ -312,6 +312,10 @@ export const ipcSchemas = {
   }),
   "learnings:delete": z.object({
     id: z.string().min(1)
+  }),
+  "session:search": z.object({
+    query: z.string().min(1).max(200),
+    limit: z.number().int().min(1).max(200).optional()
   })
 } as const;
 

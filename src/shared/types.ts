@@ -332,6 +332,12 @@ export interface ArgmaxApi {
   session: {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
+    search: (input: { query: string; limit?: number }) => Promise<Array<{
+      sessionId: string;
+      eventId: string;
+      snippet: string;
+      rank: number;
+    }>>;
   };
   review: {
     listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;

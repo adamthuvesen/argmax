@@ -386,6 +386,12 @@ export interface ArgmaxDatabase {
   listLearnings: (projectId: string, limit?: number) => Learning[];
   updateLearning: (input: { id: string; summary?: string; verified?: boolean }) => Learning;
   deleteLearning: (id: string) => void;
+  searchEvents: (input: { query: string; limit?: number }) => Array<{
+    sessionId: string;
+    eventId: string;
+    snippet: string;
+    rank: number;
+  }>;
   /** Cancels the periodic raw_outputs prune timer. Call before close. */
   clearPruneInterval: () => void;
   /** Clears the prune timer and closes the underlying connection. Idempotent. */
@@ -478,6 +484,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     listLearnings: (projectId, limit) => listLearnings(connection, projectId, limit),
     updateLearning: (input) => updateLearning(connection, input),
     deleteLearning: (id) => deleteLearning(connection, id),
+    searchEvents: (input) => searchEvents(connection, input.query, input.limit),
     clearPruneInterval: () => clearInterval(pruneTimer),
     close: () => {
       clearInterval(pruneTimer);
@@ -1672,6 +1679,44 @@ function updateLearning(
 
 function deleteLearning(connection: Database.Database, id: string): void {
   connection.prepare("DELETE FROM learnings WHERE id = ?").run(id);
+}
+
+/**
+ * Ranked full-text search over events.message via the FTS5 sidecar. Returns
+ * the matching session id, event id, an FTS5 snippet (with `<b>` markers
+ * around the matched tokens), and the raw rank (lower = more relevant).
+ *
+ * The query is passed straight into MATCH so callers can use the standard
+ * FTS5 operators (prefix `term*`, phrase `"foo bar"`, NEAR, AND/OR/NOT). To
+ * accept untrusted free-text without surprising operator behavior, wrap the
+ * user input in double quotes before invoking — that's the renderer's
+ * responsibility, not this helper's.
+ */
+function searchEvents(
+  connection: Database.Database,
+  query: string,
+  limit = 50
+): Array<{ sessionId: string; eventId: string; snippet: string; rank: number }> {
+  if (!query.trim()) return [];
+  const rows = connection
+    .prepare(
+      `SELECT events.session_id AS sessionId,
+              events.id AS eventId,
+              snippet(events_fts, 0, '<b>', '</b>', '…', 12) AS snippet,
+              events_fts.rank AS rank
+       FROM events_fts
+       JOIN events ON events.rowid = events_fts.rowid
+       WHERE events_fts MATCH ?
+       ORDER BY events_fts.rank
+       LIMIT ?`
+    )
+    .all(query, limit) as Array<{
+    sessionId: string;
+    eventId: string;
+    snippet: string;
+    rank: number;
+  }>;
+  return rows;
 }
 
 function updateSessionLastModelId(connection: Database.Database, sessionId: string, modelId: string): void {

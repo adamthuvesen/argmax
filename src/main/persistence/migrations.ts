@@ -364,6 +364,43 @@ export const migrations: Migration[] = [
         INSERT INTO learnings_fts (rowid, summary) VALUES (new.rowid, new.summary);
       END;
     `
+  },
+  {
+    version: 10,
+    name: "events_fts_sidecar",
+    up: `
+      -- FTS5 mirror of events.message + events.id so the renderer can run a
+      -- single ranked query for cross-session text search instead of pulling
+      -- the entire events table client-side. content_rowid binds the FTS5 row
+      -- to the events row by sqlite rowid; we keep events.id as an indexed
+      -- column so search results can join back without an extra lookup.
+      CREATE VIRTUAL TABLE events_fts USING fts5(
+        message,
+        content='events',
+        content_rowid='rowid'
+      );
+
+      -- Backfill any rows that already exist. New installs have an empty
+      -- events table so this is a no-op; existing installs get the index
+      -- populated in one shot.
+      INSERT INTO events_fts (rowid, message)
+        SELECT rowid, message FROM events;
+
+      CREATE TRIGGER events_after_insert AFTER INSERT ON events BEGIN
+        INSERT INTO events_fts (rowid, message) VALUES (new.rowid, new.message);
+      END;
+
+      CREATE TRIGGER events_after_delete AFTER DELETE ON events BEGIN
+        INSERT INTO events_fts (events_fts, rowid, message)
+          VALUES ('delete', old.rowid, old.message);
+      END;
+
+      CREATE TRIGGER events_after_update AFTER UPDATE OF message ON events BEGIN
+        INSERT INTO events_fts (events_fts, rowid, message)
+          VALUES ('delete', old.rowid, old.message);
+        INSERT INTO events_fts (rowid, message) VALUES (new.rowid, new.message);
+      END;
+    `
   }
 ];
 

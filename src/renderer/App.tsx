@@ -12,6 +12,7 @@ import { CommandPalette, type PaletteCommand } from "./components/CommandPalette
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
+import { SearchOverlay } from "./components/SearchOverlay.js";
 import { SessionPane } from "./components/SessionPane.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
@@ -61,6 +62,7 @@ export function App(): JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
   const [isCheatSheetOpen, setIsCheatSheetOpen] = useState<boolean>(false);
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -167,6 +169,11 @@ export function App(): JSX.Element {
       if (event.key === "/") {
         event.preventDefault();
         handleMenuCommand("open-cheat-sheet");
+        return;
+      }
+      if (event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setIsSearchOpen(true);
         return;
       }
     };
@@ -721,6 +728,13 @@ export function App(): JSX.Element {
         group: "Actions",
         run: () => setIsSettingsOpen(true)
       },
+      {
+        id: "action:search-sessions",
+        label: "Search Sessions",
+        subtitle: "Full-text search across every session timeline",
+        group: "Actions",
+        run: () => setIsSearchOpen(true)
+      },
       ...(selectedSession && selectedSession.state === "running"
         ? [
             {
@@ -780,6 +794,18 @@ export function App(): JSX.Element {
         onClose={() => setIsPaletteOpen(false)}
       />
       <KeyboardCheatSheet open={isCheatSheetOpen} onClose={() => setIsCheatSheetOpen(false)} />
+      <SearchOverlay
+        open={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelectSession={(sessionId) => {
+          const target = snapshot.sessions.find((session) => session.id === sessionId);
+          setIsSettingsOpen(false);
+          setSelectedSessionId(sessionId);
+          if (target) {
+            setSelectedWorkspaceId(target.workspaceId);
+          }
+        }}
+      />
       {toast ? (
         <div className={`toast toast-${toast.kind}`} role="status">
           <span>{toast.message}</span>

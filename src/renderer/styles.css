@@ -585,6 +585,39 @@ button {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.session-pin-btn {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+}
+
+.session-pin-btn[aria-pressed="true"] {
+  opacity: 1;
+  color: var(--text);
+}
+
+.session-row:has(.session-pin-btn) .session-ide-cluster {
+  right: 28px;
+}
+
+.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-pin-btn {
+  right: 28px;
+}
+
+.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-ide-cluster {
+  right: 51px;
+}
+
+.session-row:has(.session-pin-btn) .session-link {
+  padding-right: 165px;
+}
+
+.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link {
+  padding-right: 188px;
+}
+
 .session-cost {
   position: absolute;
   right: 70px;
@@ -594,6 +627,14 @@ button {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+}
+
+.session-row:has(.session-pin-btn) .session-cost {
+  right: 88px;
+}
+
+.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-cost {
+  right: 111px;
 }
 
 .session-cost[data-zero="true"] {

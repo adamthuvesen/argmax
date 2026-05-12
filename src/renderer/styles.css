@@ -3726,6 +3726,10 @@ button {
   white-space: pre;
 }
 
+.diff-line .hl-token {
+  white-space: pre;
+}
+
 .diff-line.addition {
   background: #eaf7ef;
 }

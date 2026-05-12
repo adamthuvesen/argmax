@@ -168,7 +168,9 @@ export function ReviewPanel({
             {review.diffState === "loading" ? <p className="review-empty">Loading diff...</p> : null}
             {review.diffState === "error" ? <p className="review-empty review-error">{review.diffError}</p> : null}
             {review.diffState === "ready" && diffBlocks.length === 0 ? <p className="review-empty">No textual diff.</p> : null}
-            {review.diffState === "ready" && diffBlocks.length > 0 ? <DiffBlocks blocks={diffBlocks} /> : null}
+            {review.diffState === "ready" && diffBlocks.length > 0 ? (
+              <DiffBlocks blocks={diffBlocks} filePath={selectedFile?.path ?? null} />
+            ) : null}
           </>
         ) : (
           <FilePreview state={review.workspaceFiles} />

@@ -99,4 +99,38 @@ describe("DiffBlocks", () => {
     expect(screen.getByText("const x = 42;")).toBeInTheDocument();
     expect(highlightLineMock).not.toHaveBeenCalled();
   });
+
+  it("renders a 2-column grid in side-by-side mode with paired old/new cells", () => {
+    // Skip syntax-highlighting for this test — the row-pairing logic is what
+    // we're asserting, and the highlighter mock would otherwise split each
+    // line into separate tokens and defeat the textContent check below.
+    langFromPathMock.mockReturnValueOnce(null);
+    langFromPathMock.mockReturnValueOnce(null);
+    const block: ParsedDiffBlock = {
+      id: "hunk-pair",
+      kind: "hunk",
+      header: "@@ -1,2 +1,2 @@",
+      lines: [
+        { kind: "deletion", content: "old line", oldLineNumber: 1, newLineNumber: null },
+        { kind: "addition", content: "new line", oldLineNumber: null, newLineNumber: 1 },
+        { kind: "context", content: "shared line", oldLineNumber: 2, newLineNumber: 2 }
+      ]
+    };
+
+    const { container } = render(<DiffBlocks blocks={[block]} filePath="src/x.ts" view="side-by-side" />);
+
+    const root = container.querySelector(".diff-blocks");
+    expect(root).not.toBeNull();
+    expect(root?.classList.contains("diff-side-by-side")).toBe(true);
+
+    const grid = container.querySelector(".diff-sbs-grid");
+    expect(grid).not.toBeNull();
+
+    // 2 pairs (deletion+addition + context) × 2 cells each = 4 cells.
+    expect(container.querySelectorAll(".diff-sbs-cell").length).toBe(4);
+    expect(container.querySelectorAll(".diff-sbs-old").length).toBe(2);
+    expect(container.querySelectorAll(".diff-sbs-new").length).toBe(2);
+    expect(screen.getByText("old line")).toBeInTheDocument();
+    expect(screen.getByText("new line")).toBeInTheDocument();
+  });
 });

@@ -287,7 +287,21 @@ describe("App", () => {
         }
       },
       learnings: {
-        list: () => Promise.resolve([])
+        list: () => Promise.resolve([]),
+        update: (input) =>
+          Promise.resolve({
+            id: input.id,
+            projectId: "project-1",
+            kind: "pitfall",
+            summary: input.summary ?? "",
+            evidenceSessionId: null,
+            evidenceEventId: null,
+            verified: input.verified ?? false,
+            hits: 0,
+            createdAt: "2026-05-12T00:00:00.000Z",
+            lastSeenAt: "2026-05-12T00:00:00.000Z"
+          }),
+        delete: () => Promise.resolve({ ok: true })
       }
     };
   });

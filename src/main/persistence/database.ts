@@ -41,7 +41,7 @@ import type { ReasoningEffort, UsageCounts } from "../../shared/providerModels.j
  */
 export class RecordNotFoundError extends Error {
   constructor(
-    readonly kind: "session" | "workspace" | "project" | "checkpoint" | "check" | "approval",
+    readonly kind: "session" | "workspace" | "project" | "checkpoint" | "check" | "approval" | "learning",
     readonly id: string
   ) {
     super(`${kind} not found: ${id}`);
@@ -384,6 +384,8 @@ export interface ArgmaxDatabase {
   getSessionCostSummary: (sessionId: string) => SessionCostSummary;
   insertLearning: (input: InsertLearningInput) => Learning;
   listLearnings: (projectId: string, limit?: number) => Learning[];
+  updateLearning: (input: { id: string; summary?: string; verified?: boolean }) => Learning;
+  deleteLearning: (id: string) => void;
   /** Cancels the periodic raw_outputs prune timer. Call before close. */
   clearPruneInterval: () => void;
   /** Clears the prune timer and closes the underlying connection. Idempotent. */
@@ -474,6 +476,8 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     getSessionCostSummary: (sessionId) => getSessionCostSummary(connection, sessionId),
     insertLearning: (input) => insertLearning(connection, input),
     listLearnings: (projectId, limit) => listLearnings(connection, projectId, limit),
+    updateLearning: (input) => updateLearning(connection, input),
+    deleteLearning: (id) => deleteLearning(connection, id),
     clearPruneInterval: () => clearInterval(pruneTimer),
     close: () => {
       clearInterval(pruneTimer);
@@ -1632,6 +1636,42 @@ function listLearnings(
     )
     .all(projectId, limit) as LearningRow[];
   return rows.map(learningRowToSummary);
+}
+
+function updateLearning(
+  connection: Database.Database,
+  input: { id: string; summary?: string; verified?: boolean }
+): Learning {
+  const fragments: string[] = [];
+  const values: unknown[] = [];
+  if (typeof input.summary === "string") {
+    fragments.push("summary = ?");
+    values.push(input.summary);
+  }
+  if (typeof input.verified === "boolean") {
+    fragments.push("verified = ?");
+    values.push(input.verified ? 1 : 0);
+  }
+  if (fragments.length === 0) {
+    const existing = connection.prepare("SELECT * FROM learnings WHERE id = ?").get(input.id) as LearningRow | undefined;
+    if (!existing) throw new RecordNotFoundError("learning", input.id);
+    return learningRowToSummary(existing);
+  }
+  fragments.push("last_seen_at = ?");
+  values.push(new Date().toISOString());
+  values.push(input.id);
+  const result = connection
+    .prepare(`UPDATE learnings SET ${fragments.join(", ")} WHERE id = ?`)
+    .run(...values);
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("learning", input.id);
+  }
+  const row = connection.prepare("SELECT * FROM learnings WHERE id = ?").get(input.id) as LearningRow;
+  return learningRowToSummary(row);
+}
+
+function deleteLearning(connection: Database.Database, id: string): void {
+  connection.prepare("DELETE FROM learnings WHERE id = ?").run(id);
 }
 
 function updateSessionLastModelId(connection: Database.Database, sessionId: string, modelId: string): void {

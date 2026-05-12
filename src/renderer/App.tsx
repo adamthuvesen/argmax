@@ -837,6 +837,7 @@ export function App(): JSX.Element {
               detectedIdes={detectedIdes}
               defaultIde={defaultIde}
               onDefaultIdeChange={setDefaultIde}
+              projects={snapshot.projects}
               onClose={() => setIsSettingsOpen(false)}
             />
           ) : selectedSession ? (

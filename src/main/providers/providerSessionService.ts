@@ -18,6 +18,7 @@ import {
   type NormalizerSessionContext
 } from "./providerEventNormalizer.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
+import type { NotificationService } from "../notifications/notificationService.js";
 
 interface FollowUpModelSelection {
   modelLabel: string;
@@ -104,7 +105,8 @@ export class ProviderSessionService {
   constructor(
     private readonly database: ArgmaxDatabase,
     private readonly adapterFactory: (provider: ProviderId) => ProviderAdapter = getProviderAdapter,
-    private readonly publishDelta: (delta: DashboardDelta) => void = () => undefined
+    private readonly publishDelta: (delta: DashboardDelta) => void = () => undefined,
+    private readonly notifications: NotificationService | null = null
   ) {}
 
   /** Number of sessions with an active (non-disposed) handle. */
@@ -352,6 +354,7 @@ export class ProviderSessionService {
       attention: computeSessionAttention({ state: "failed" }),
       completedAt: new Date().toISOString()
     });
+    this.notifications?.notify(failedSession);
     const failedWorkspace = this.database.updateWorkspaceState(args.workspaceId, "failed");
     const errorEvent = this.database.persistTimelineEvent({
       id: randomUUID(),
@@ -612,6 +615,7 @@ export class ProviderSessionService {
         completedAt,
         lastActivityAt: completedAt
       });
+      this.notifications?.notify(session);
       const workspace = this.database.updateWorkspaceState(workspaceId, state);
       const timelineEvent = this.database.persistTimelineEvent({
         id: randomUUID(),

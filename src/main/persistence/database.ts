@@ -323,6 +323,15 @@ export interface WorkspaceStatusInputFilter {
 
 const SESSION_EVENT_PAGE_LIMIT = 500;
 const SESSION_RAW_OUTPUT_PAGE_LIMIT = 100;
+/** Cap on dashboard rows per resource (workspaces, sessions, approvals, checks, checkpoints). */
+const DASHBOARD_ROW_LIMIT = 200;
+/** Dashboard timeline tail size and raw-output tail size. */
+const DASHBOARD_EVENT_LIMIT = 500;
+const DASHBOARD_RAW_OUTPUT_LIMIT = 100;
+/** How often the prune timer fires (raw_outputs retention sweep). */
+const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** SQLite datetime modifier matching PRUNE_INTERVAL_MS retention. */
+const RAW_OUTPUT_RETENTION = "-7 days";
 
 export type DashboardListSnapshot = Pick<
   DashboardSnapshot,
@@ -403,7 +412,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     if (!connection.open) return;
     try {
       connection
-        .prepare("DELETE FROM raw_outputs WHERE created_at < datetime('now', '-7 days')")
+        .prepare(`DELETE FROM raw_outputs WHERE created_at < datetime('now', '${RAW_OUTPUT_RETENTION}')`)
         .run();
     } catch (error) {
       console.warn("database.pruneRawOutputs.failed", {
@@ -412,8 +421,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     }
   };
   pruneRawOutputs();
-  const pruneIntervalMs = 24 * 60 * 60 * 1000;
-  const pruneTimer: NodeJS.Timeout = setInterval(pruneRawOutputs, pruneIntervalMs);
+  const pruneTimer: NodeJS.Timeout = setInterval(pruneRawOutputs, PRUNE_INTERVAL_MS);
   // Don't keep the event loop alive solely for the prune timer.
   if (typeof pruneTimer.unref === "function") {
     pruneTimer.unref();
@@ -1186,25 +1194,25 @@ function listWorkspaceStatus(
   // cap because passing > 200 IDs would not render either.
   const workspaces = (
     connection
-      .prepare(`SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC LIMIT 200`)
+      .prepare(`SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
       .all(...workspaceFilter.params) as WorkspaceRow[]
   ).map((row) => workspaceRowToSummary(row));
 
   const sessions = (
     connection
-      .prepare(`SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC LIMIT 200`)
+      .prepare(`SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
       .all(...sessionFilter.params) as SessionRow[]
   ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
 
   const checks = (
     connection
-      .prepare(`SELECT * FROM checks${checkFilter.where} ORDER BY started_at DESC LIMIT 200`)
+      .prepare(`SELECT * FROM checks${checkFilter.where} ORDER BY started_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
       .all(...checkFilter.params) as CheckRow[]
   ).map(checkRowToRun);
 
   const checkpoints = (
     connection
-      .prepare(`SELECT * FROM checkpoints${checkpointFilter.where} ORDER BY created_at DESC LIMIT 200`)
+      .prepare(`SELECT * FROM checkpoints${checkpointFilter.where} ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
       .all(...checkpointFilter.params) as CheckpointRow[]
   ).map(checkpointRowToSummary);
 
@@ -1282,11 +1290,11 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
   const dashboard = listDashboard(connection);
 
   const events = (
-    connection.prepare("SELECT * FROM events ORDER BY created_at DESC LIMIT 500").all() as EventRow[]
+    connection.prepare(`SELECT * FROM events ORDER BY created_at DESC LIMIT ${DASHBOARD_EVENT_LIMIT}`).all() as EventRow[]
   ).map(eventRowToTimelineEvent);
 
   const rawOutputs = (
-    connection.prepare("SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT 100").all() as RawOutputRow[]
+    connection.prepare(`SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT ${DASHBOARD_RAW_OUTPUT_LIMIT}`).all() as RawOutputRow[]
   ).map(rawOutputRowToProviderOutput);
 
   // Cap dashboard reads at 200 rows for approvals/checks/checkpoints.
@@ -1304,14 +1312,14 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
 
 function listApprovals(connection: Database.Database): ApprovalRequest[] {
   return (
-    connection.prepare("SELECT * FROM approvals ORDER BY created_at DESC LIMIT 200").all() as ApprovalRow[]
+    connection.prepare(`SELECT * FROM approvals ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`).all() as ApprovalRow[]
   ).map(approvalRowToRequest);
 }
 
 function listPendingApprovals(connection: Database.Database): ApprovalRequest[] {
   return (
     connection
-      .prepare("SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT 200")
+      .prepare(`SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
       .all() as ApprovalRow[]
   ).map(approvalRowToRequest);
 }

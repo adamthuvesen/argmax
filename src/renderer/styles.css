@@ -3754,6 +3754,106 @@ button {
   background: rgba(0, 0, 0, 0.02);
 }
 
+.skeleton-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 32px 40px;
+  max-width: 820px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.skeleton-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.skeleton-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.skeleton-block {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
+}
+
+.skeleton-block-title {
+  height: 18px;
+  width: 30%;
+}
+
+.skeleton-block-subtitle {
+  height: 12px;
+  width: 50%;
+}
+
+.skeleton-row-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.skeleton-row-line {
+  height: 12px;
+  width: 70%;
+}
+
+.skeleton-row-line-short {
+  width: 35%;
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
+}
+
 .diff-line.addition {
   background: #eaf7ef;
 }

@@ -3867,6 +3867,31 @@ button {
   color: var(--text-soft);
   white-space: pre-wrap;
   word-break: break-all;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.log-output-row {
+  position: relative;
+}
+
+.log-output-copy {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.log-output-row:hover .log-output-copy,
+.log-output-row:focus-within .log-output-copy {
+  opacity: 1;
 }
 
 @media (max-width: 1040px) {

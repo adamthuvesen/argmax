@@ -119,12 +119,23 @@ function DebugOutputList({ outputs }: { outputs: RawProviderOutput[] }): JSX.Ele
   if (outputs.length === 0) {
     return <p className="log-empty">No raw output yet.</p>;
   }
+  const copyBlock = (content: string): void => {
+    void navigator.clipboard?.writeText(content);
+  };
   return (
     <div className="log-output-list">
       {sorted.map((output) => (
         <div className="log-output-row" data-stream={output.stream} key={output.id}>
           <span className="log-stream-badge">{output.stream}</span>
           <pre className="log-output-content">{output.content}</pre>
+          <button
+            type="button"
+            className="log-output-copy"
+            aria-label="Copy output block"
+            onClick={() => copyBlock(output.content)}
+          >
+            Copy
+          </button>
         </div>
       ))}
     </div>

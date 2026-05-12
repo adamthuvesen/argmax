@@ -13,6 +13,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
+  CheckRun,
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
@@ -50,12 +51,14 @@ import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 const PROMPT_MAX_HEIGHT_PX = 140;
 
 export function SessionConversation({
+  checks,
   defaultToolCallsExpanded,
   events,
   isLogOpen,
   onSendSessionInput,
   onTerminateSession,
   onCreateCheckpoint,
+  onRunCheck,
   onToggleLog,
   project,
   rawOutputs,
@@ -63,12 +66,14 @@ export function SessionConversation({
   session,
   workspace
 }: {
+  checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
   events: TimelineEvent[];
   isLogOpen: boolean;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
+  onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -425,7 +430,13 @@ export function SessionConversation({
         ) : null}
       </div>
       <div className="session-meta-cards">
-        <ChangedFilesCard review={review} />
+        <ChangedFilesCard
+          review={review}
+          workspaceId={workspace?.id}
+          checkCommands={project?.settings.checkCommands ?? []}
+          checks={checks ?? []}
+          onRunCheck={onRunCheck}
+        />
         {session ? <CostPanel session={session} /> : null}
       </div>
       <form className="session-input" ref={inputFormRef} onSubmit={(event) => void submitInput(event)}>

@@ -12,6 +12,7 @@ import {
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   ApprovalRequest,
+  CheckRun,
   CommitPreparation,
   PrepareCommitInput,
   ProjectSummary,
@@ -33,6 +34,7 @@ const SESSION_RIGHT_PANEL_DEFAULT = 420;
 
 export function SessionPane({
   approvals,
+  checks,
   defaultToolCallsExpanded,
   events,
   onResolveApproval,
@@ -40,12 +42,14 @@ export function SessionPane({
   onTerminateSession,
   onCreateCheckpoint,
   onPrepareCommit,
+  onRunCheck,
   project,
   rawOutputs,
   session,
   workspace
 }: {
   approvals: ApprovalRequest[];
+  checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
   events: TimelineEvent[];
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
@@ -53,6 +57,7 @@ export function SessionPane({
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onPrepareCommit?: (input: PrepareCommitInput) => Promise<CommitPreparation>;
+  onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
@@ -163,12 +168,14 @@ export function SessionPane({
     <div className={gridClass} style={gridStyle} data-panel-resizing={isPanelResizing ? "true" : undefined}>
       <div className="session-main-column">
         <SessionConversation
+          checks={checks}
           defaultToolCallsExpanded={defaultToolCallsExpanded}
           events={visibleEvents}
           isLogOpen={isLogOpen}
           onSendSessionInput={onSendSessionInput}
           onTerminateSession={onTerminateSession}
           onCreateCheckpoint={onCreateCheckpoint}
+          onRunCheck={onRunCheck}
           onToggleLog={toggleLog}
           project={project}
           rawOutputs={rawOutputs}

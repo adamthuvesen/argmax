@@ -146,9 +146,10 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
   if (typeof query === "string") return String(query).slice(0, 72);
   const url = input.url;
   if (typeof url === "string") return url.slice(0, 72);
-  const first = Object.values(input)[0];
-  if (typeof first === "string") return first.slice(0, 72);
-  if (typeof first === "number" || typeof first === "boolean") return String(first).slice(0, 72);
+  // Unknown shape: skip the Object.values[0] fallback — key iteration order
+  // is insertion-order for strings but ascending-numeric-first for
+  // integer-like keys, so the preview would vary unpredictably with the
+  // input shape. Return empty rather than guess.
   return "";
 }
 

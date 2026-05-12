@@ -129,6 +129,8 @@ export const createCurrentWorkspaceInputSchema = z.object({
 
 export const workspaceIdInputSchema = workspaceIdSchema;
 
+export const permissionModeSchema = z.enum(["auto-approve", "ask-each-time"]);
+
 export const launchProviderSessionInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   provider: providerIdSchema,
@@ -136,6 +138,7 @@ export const launchProviderSessionInputSchema = z.object({
   modelLabel: z.string().min(1),
   modelId: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.optional(),
+  permissionMode: permissionModeSchema.optional(),
   cols: z.number().int().min(20).max(400),
   rows: z.number().int().min(5).max(200)
 });

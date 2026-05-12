@@ -195,6 +195,7 @@ export class ProviderSessionService {
           reasoningEffort: input.reasoningEffort,
           resumeConversationId: undefined,
           mode: PROVIDER_MODEL_DEFAULTS[input.provider].launchMode,
+          permissionMode: input.permissionMode ?? "auto-approve",
           cols: input.cols,
           rows: input.rows
         },
@@ -303,6 +304,10 @@ export class ProviderSessionService {
           reasoningEffort: session.reasoningEffort,
           ...(session.providerConversationId ? { resumeConversationId: session.providerConversationId } : {}),
           mode: modelDefault.launchMode,
+          // Follow-ups inherit the current default permission mode. Stage 2
+          // (P3.02) will read the per-session value from the sessions row
+          // once it's persisted there.
+          permissionMode: "auto-approve",
           cols: 120,
           rows: 32
         },

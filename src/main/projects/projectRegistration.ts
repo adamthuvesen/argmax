@@ -117,11 +117,15 @@ async function discoverDefaultBranch(repoPath: string, currentBranch: string): P
     return originHead.trim().replace(/^origin\//, "");
   }
 
-  for (const branch of ["main", "master", "trunk"]) {
-    const exists = await runGitMaybe(repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
-    if (exists !== null) {
-      return branch;
-    }
+  // Probe all conventional default-branch names in parallel and pick the
+  // first that exists in preferred order. Cold-disk serial probes were three
+  // round-trips on registration; this is one.
+  const candidates = ["main", "master", "trunk"] as const;
+  const results = await Promise.all(
+    candidates.map((branch) => runGitMaybe(repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]))
+  );
+  for (let i = 0; i < candidates.length; i++) {
+    if (results[i] !== null) return candidates[i];
   }
 
   return currentBranch === "HEAD" ? null : currentBranch;

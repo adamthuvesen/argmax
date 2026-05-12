@@ -37,7 +37,13 @@ export function applyProjectOrder(projects: ProjectSummary[], order: string[]): 
     const ra = rank.get(a.id) ?? Infinity;
     const rb = rank.get(b.id) ?? Infinity;
     if (ra !== rb) return ra - rb;
-    return (b.latestActivityAt ?? "") > (a.latestActivityAt ?? "") ? 1 : -1;
+    // Equal explicit rank: tiebreak by most-recent activity, descending. Return
+    // 0 on equal timestamps so the comparator is symmetric (modern V8 sort is
+    // stable, but a non-symmetric comparator is still technically broken).
+    const av = a.latestActivityAt ?? "";
+    const bv = b.latestActivityAt ?? "";
+    if (av === bv) return 0;
+    return av < bv ? 1 : -1;
   });
 }
 

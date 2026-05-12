@@ -1,6 +1,11 @@
-import { RefreshCcw, X } from "lucide-react";
+import { ClipboardCopy, FolderOpen, RefreshCcw, X } from "lucide-react";
 import { useCallback, useEffect, useState, type JSX } from "react";
-import type { DetectedIde, DiscoveredProvider, IdeId } from "../../shared/types.js";
+import type {
+  DetectedIde,
+  DiagnosticsReport,
+  DiscoveredProvider,
+  IdeId
+} from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
 
@@ -58,6 +63,53 @@ export function SettingsPanel({
   useEffect(() => {
     void refreshProviders();
   }, [refreshProviders]);
+
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
+  const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
+
+  const loadDiagnostics = useCallback(async (): Promise<void> => {
+    if (!window.argmax) return;
+    try {
+      const report = await window.argmax.system.diagnostics();
+      setDiagnostics(report);
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not load diagnostics.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDiagnostics();
+  }, [loadDiagnostics]);
+
+  const copyDiagnostics = useCallback(async (): Promise<void> => {
+    if (!diagnostics) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
+      setDiagnosticsStatus("Diagnostics copied to clipboard.");
+    } catch {
+      setDiagnosticsStatus("Clipboard unavailable. Copy from the visible fields below.");
+    }
+  }, [diagnostics]);
+
+  const revealDatabase = useCallback(async (): Promise<void> => {
+    if (!window.argmax || !diagnostics) return;
+    try {
+      await window.argmax.system.openPath({ path: diagnostics.databasePath });
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not reveal database file.");
+    }
+  }, [diagnostics]);
+
+  const vacuumDatabase = useCallback(async (): Promise<void> => {
+    if (!window.argmax) return;
+    setDiagnosticsStatus("Vacuuming…");
+    try {
+      await window.argmax.system.vacuumDatabase();
+      setDiagnosticsStatus("Database vacuum complete.");
+    } catch (error) {
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Vacuum failed.");
+    }
+  }, []);
   return (
     <div className="settings-surface">
       <header className="settings-header">
@@ -266,6 +318,73 @@ export function SettingsPanel({
           ) : (
             <p className="settings-hint">Detecting providers…</p>
           )}
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-diagnostics">
+        <header className="settings-section-header">
+          <h2 id="settings-diagnostics">Diagnostics</h2>
+          <p>Runtime details for bug reports. No data leaves the machine.</p>
+        </header>
+        <div className="settings-card">
+          {diagnostics ? (
+            <dl className="settings-keyvals">
+              <div>
+                <dt>App version</dt>
+                <dd>{diagnostics.appVersion}</dd>
+              </div>
+              <div>
+                <dt>Electron</dt>
+                <dd>{diagnostics.electronVersion || "unknown"}</dd>
+              </div>
+              <div>
+                <dt>Node</dt>
+                <dd>{diagnostics.nodeVersion}</dd>
+              </div>
+              <div>
+                <dt>SQLite</dt>
+                <dd>{diagnostics.sqliteVersion}</dd>
+              </div>
+              <div>
+                <dt>Platform</dt>
+                <dd>{`${diagnostics.platform} · ${diagnostics.arch}`}</dd>
+              </div>
+              <div>
+                <dt>Database</dt>
+                <dd className="settings-diagnostics-path">{diagnostics.databasePath}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="settings-hint">Loading runtime details…</p>
+          )}
+          <div className="settings-diagnostics-actions">
+            <button
+              type="button"
+              onClick={() => void copyDiagnostics()}
+              disabled={!diagnostics}
+              aria-label="Copy diagnostics"
+            >
+              <ClipboardCopy size={14} />
+              <span>Copy diagnostics</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void revealDatabase()}
+              disabled={!diagnostics}
+              aria-label="Reveal database file"
+            >
+              <FolderOpen size={14} />
+              <span>Reveal database</span>
+            </button>
+            <button type="button" onClick={() => void vacuumDatabase()} aria-label="Vacuum database">
+              <span>Vacuum database</span>
+            </button>
+          </div>
+          {diagnosticsStatus ? (
+            <p className="settings-hint" role="status">
+              {diagnosticsStatus}
+            </p>
+          ) : null}
         </div>
       </section>
 

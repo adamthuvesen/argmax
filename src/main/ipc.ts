@@ -1,6 +1,7 @@
-import { dialog, ipcMain, shell } from "electron";
+import { app, dialog, ipcMain, shell } from "electron";
 import { isAbsolute, resolve as resolvePath } from "node:path";
-import { ZodError, type ZodIssue, type ZodType } from "zod";
+import { ZodError, z, type ZodIssue, type ZodType } from "zod";
+import { createRequire } from "node:module";
 import {
   createCheckpointInputSchema,
   createCurrentWorkspaceInputSchema,
@@ -233,6 +234,31 @@ export function registerIpcHandlers(
     "system:listDetectedIdes",
     withValidation(listDetectedIdesInputSchema, () => detectInstalledIdes())
   );
+  ipcMain.handle("system:diagnostics", withValidation(z.void(), () => {
+    const require = createRequire(import.meta.url);
+    const pkg = require("../../package.json") as { version?: string };
+    let sqliteVersion = "";
+    try {
+      const row = database.connection.prepare("SELECT sqlite_version() AS v").get() as { v: string };
+      sqliteVersion = row.v;
+    } catch {
+      sqliteVersion = "unknown";
+    }
+    return {
+      appVersion: pkg.version ?? "0.0.0",
+      electronVersion: process.versions.electron ?? "",
+      nodeVersion: process.versions.node,
+      sqliteVersion,
+      databasePath: app.getPath("userData") + "/local-state/argmax.sqlite",
+      platform: process.platform,
+      arch: process.arch,
+      generatedAt: new Date().toISOString()
+    };
+  }));
+  ipcMain.handle("system:vacuumDatabase", withValidation(z.void(), () => {
+    database.connection.exec("VACUUM");
+    return { ok: true } as const;
+  }));
   ipcMain.handle(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))

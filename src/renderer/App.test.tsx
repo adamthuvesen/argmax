@@ -113,6 +113,8 @@ describe("App", () => {
   let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
   let terminateProvider: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["terminate"]>>;
   let providersDiscover: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["discover"]>>;
+  let diagnosticsStub: ReturnType<typeof vi.fn<ArgmaxApi["system"]["diagnostics"]>>;
+  let vacuumDatabaseStub: ReturnType<typeof vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
   let openInIde: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["openInIde"]>>;
@@ -153,6 +155,17 @@ describe("App", () => {
     sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
     terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
     providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
+    diagnosticsStub = vi.fn<ArgmaxApi["system"]["diagnostics"]>().mockResolvedValue({
+      appVersion: "0.1.0",
+      electronVersion: "35.0.0",
+      nodeVersion: "20.0.0",
+      sqliteVersion: "3.45.0",
+      databasePath: "/tmp/argmax.sqlite",
+      platform: "darwin",
+      arch: "arm64",
+      generatedAt: "2026-05-12T00:00:00.000Z"
+    });
+    vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
     menuCommandListener = null;
     workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
     listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
@@ -251,7 +264,9 @@ describe("App", () => {
       },
       system: {
         openPath: () => Promise.resolve({ ok: true }),
-        listDetectedIdes: listDetectedIdes
+        listDetectedIdes: listDetectedIdes,
+        diagnostics: diagnosticsStub,
+        vacuumDatabase: vacuumDatabaseStub
       },
       menu: {
         onCommand: (listener) => {
@@ -1030,6 +1045,41 @@ describe("App", () => {
     fireEvent.click(stopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
+  });
+
+  it("copies diagnostics to clipboard from Settings → Diagnostics", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+    const previousClipboard = (navigator as { clipboard?: unknown }).clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+
+    try {
+      render(<App />);
+      await screen.findByRole("button", { name: "Build dashboard" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+
+      const copyButton = await screen.findByRole("button", { name: "Copy diagnostics" });
+      await waitFor(() => expect(copyButton).toBeEnabled());
+      fireEvent.click(copyButton);
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      const arg = writeText.mock.calls[0]?.[0] ?? "";
+      const parsed = JSON.parse(arg) as { appVersion: string };
+      expect(parsed.appVersion).toBe("0.1.0");
+    } finally {
+      if (previousClipboard === undefined) {
+        delete (navigator as { clipboard?: unknown }).clipboard;
+      } else {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: previousClipboard
+        });
+      }
+    }
   });
 
   it("renders Settings → Providers with install hint when a provider is missing", async () => {

@@ -10,6 +10,7 @@ import type {
   DashboardDelta,
   DashboardListSnapshot,
   DetectedIde,
+  DiagnosticsReport,
   DiscoveredProvider,
   LaunchProviderSessionInput,
   ArgmaxApi,
@@ -131,7 +132,9 @@ const api: ArgmaxApi = {
   system: {
     openPath: (input: { path: string; cwd?: string }) =>
       ipcRenderer.invoke("system:open-path", input) as Promise<{ ok: true }>,
-    listDetectedIdes: () => ipcRenderer.invoke("system:listDetectedIdes") as Promise<DetectedIde[]>
+    listDetectedIdes: () => ipcRenderer.invoke("system:listDetectedIdes") as Promise<DetectedIde[]>,
+    diagnostics: () => ipcRenderer.invoke("system:diagnostics") as Promise<DiagnosticsReport>,
+    vacuumDatabase: () => ipcRenderer.invoke("system:vacuumDatabase") as Promise<{ ok: true }>
   },
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => {

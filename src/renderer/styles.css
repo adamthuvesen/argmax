@@ -1199,6 +1199,14 @@ button {
   opacity: 0.6;
 }
 
+.session-row-elapsed {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding-right: 8px;
+}
+
 .error-boundary {
   display: grid;
   gap: 12px;

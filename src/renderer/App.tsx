@@ -30,6 +30,14 @@ const SIDEBAR_DEFAULT = 272;
 
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
+  // Mirror snapshot into a ref so callbacks that need a "current value at
+  // call time" reference (e.g. resolveApproval's optimistic-rollback target)
+  // don't have to depend on snapshot — which would rebuild their identity on
+  // every dashboard delta and defeat downstream memoization.
+  const snapshotRef = useRef<DashboardSnapshot>(snapshot);
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
@@ -410,7 +418,11 @@ export function App(): JSX.Element {
   const resolveApproval = useCallback(
     async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
       const token = ++resolveApprovalToken.current;
-      const previousSnapshot = snapshot;
+      // Use the ref so the callback's identity doesn't depend on `snapshot`;
+      // depending on snapshot would rebuild this callback on every dashboard
+      // delta, defeating memoization in every consumer that takes it as a
+      // prop.
+      const previousSnapshot = snapshotRef.current;
 
       // Optimistic update.
       setSnapshot((current) => ({
@@ -443,7 +455,7 @@ export function App(): JSX.Element {
         });
       }
     },
-    [snapshot, refreshDashboardStatus]
+    [refreshDashboardStatus]
   );
 
   const sendSessionInput = useCallback(

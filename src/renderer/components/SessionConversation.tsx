@@ -151,17 +151,17 @@ export function SessionConversation({
   }, [events]);
 
   const conversationItems = useMemo((): ConversationItem[] => {
-    const items: ConversationItem[] = [
+    // Pre-fold items hold only message/tool kinds — `tool-group` is built by
+    // the folding pass below. Narrowing the array type lets `itemTime` drop
+    // its previously-unreachable `tool-group` branch.
+    type PreFoldItem = Extract<ConversationItem, { kind: "message" } | { kind: "tool" }>;
+    const items: PreFoldItem[] = [
       ...conversationEvents.map((event) => ({ kind: "message" as const, event })),
       ...toolCalls.map((tool) => ({ kind: "tool" as const, tool }))
     ];
-    const itemTime = (item: ConversationItem): string =>
-      item.kind === "message"
-        ? item.event.createdAt
-        : item.kind === "tool"
-          ? item.tool.createdAt
-          : item.group.tools[0]?.createdAt ?? "";
-    const sorted = items.sort((a, b) => itemTime(a).localeCompare(itemTime(b)));
+    const itemTime = (item: PreFoldItem): string =>
+      item.kind === "message" ? item.event.createdAt : item.tool.createdAt;
+    const sorted: ConversationItem[] = items.sort((a, b) => itemTime(a).localeCompare(itemTime(b)));
     const folded: ConversationItem[] = [];
     let i = 0;
     while (i < sorted.length) {

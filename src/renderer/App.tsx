@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type { DashboardSnapshot, DetectedIde, IdeId, MenuCommand } from "../shared/types.js";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
 import { SessionPane } from "./components/SessionPane.js";
@@ -49,6 +50,7 @@ export function App(): JSX.Element {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -96,22 +98,25 @@ export function App(): JSX.Element {
     (command: MenuCommand): void => {
       switch (command) {
         case "open-settings":
+          setIsPaletteOpen(false);
           setIsSettingsOpen(true);
           return;
         case "new-session":
+          setIsPaletteOpen(false);
           setIsSettingsOpen(false);
           setSelectedSessionId(null);
           setSelectedWorkspaceId(null);
           return;
+        case "open-command-palette":
+          setIsPaletteOpen(true);
+          return;
         case "toggle-debug-log":
         case "toggle-sidebar":
-        case "open-command-palette":
         case "open-cheat-sheet":
         case "check-for-updates":
-          // Wired in later phase tasks (P2.05 palette, P2.06 cheat sheet,
-          // P4 review surface, P7 updater). Menu accelerator still fires
-          // when the native menu has focus; renderer-level handling lands
-          // alongside its dedicated UI.
+          // Wired in later phase tasks (P2.06 cheat sheet, P4 review
+          // surface for debug-log lift, P7 updater). Menu accelerator
+          // still fires when the native menu has focus.
           return;
       }
     },
@@ -140,6 +145,11 @@ export function App(): JSX.Element {
       if (event.key.toLowerCase() === "n" && !event.shiftKey) {
         event.preventDefault();
         handleMenuCommand("new-session");
+        return;
+      }
+      if (event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        handleMenuCommand("open-command-palette");
         return;
       }
     };
@@ -618,6 +628,63 @@ export function App(): JSX.Element {
     [selectedProject, refreshDashboardStatus, loadSessionEvents]
   );
 
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const actions: PaletteCommand[] = [
+      {
+        id: "action:new-session",
+        label: "New Session",
+        subtitle: "Open the launcher",
+        group: "Actions",
+        run: () => handleMenuCommand("new-session")
+      },
+      {
+        id: "action:open-settings",
+        label: "Open Settings",
+        subtitle: "Defaults, providers, tools",
+        group: "Actions",
+        run: () => setIsSettingsOpen(true)
+      },
+      ...(selectedSession && selectedSession.state === "running"
+        ? [
+            {
+              id: "action:stop-session",
+              label: "Stop Current Session",
+              subtitle: selectedSession.modelLabel,
+              group: "Actions" as const,
+              run: () => void terminateSession(selectedSession.id)
+            }
+          ]
+        : [])
+    ];
+
+    const sessions: PaletteCommand[] = snapshot.sessions.slice(0, 20).map((session) => ({
+      id: `session:${session.id}`,
+      label: session.prompt.slice(0, 80) || session.modelLabel,
+      subtitle: `${session.modelLabel} · ${session.state}`,
+      group: "Sessions",
+      run: () => {
+        setIsSettingsOpen(false);
+        setSelectedSessionId(session.id);
+        setSelectedWorkspaceId(session.workspaceId);
+      }
+    }));
+
+    const projects: PaletteCommand[] = snapshot.projects.slice(0, 20).map((project) => ({
+      id: `project:${project.id}`,
+      label: project.name,
+      subtitle: project.repoPath,
+      group: "Projects",
+      run: () => {
+        setIsSettingsOpen(false);
+        setSelectedProjectId(project.id);
+        setSelectedSessionId(null);
+        setSelectedWorkspaceId(null);
+      }
+    }));
+
+    return [...actions, ...sessions, ...projects];
+  }, [snapshot.sessions, snapshot.projects, selectedSession, handleMenuCommand, terminateSession]);
+
   return (
     <main
       className="app-shell"
@@ -630,6 +697,11 @@ export function App(): JSX.Element {
           Preload bridge unavailable; running on demo data.
         </div>
       ) : null}
+      <CommandPalette
+        open={isPaletteOpen}
+        commands={paletteCommands}
+        onClose={() => setIsPaletteOpen(false)}
+      />
       {toast ? (
         <div className={`toast toast-${toast.kind}`} role="status">
           <span>{toast.message}</span>

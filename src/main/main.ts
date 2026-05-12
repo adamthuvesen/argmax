@@ -32,7 +32,11 @@ async function createWindow(): Promise<void> {
       preload: join(currentDirectory, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      // Sandboxed preloads must be CommonJS; this project is `"type": "module"`
+      // and ships an ESM preload. Re-enabling sandbox needs a separate esbuild
+      // step that bundles the preload as .cjs. `contextIsolation: true` +
+      // `nodeIntegration: false` remain the main isolation walls.
+      sandbox: false
     }
   });
 

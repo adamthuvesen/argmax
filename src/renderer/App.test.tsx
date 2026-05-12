@@ -799,6 +799,10 @@ describe("App", () => {
 
     render(<App />);
 
+    // Wait for the initial dashboard load to settle so the post-mount loadState
+    // transition can't race with addProject and overwrite the merged snapshot.
+    await screen.findByRole("button", { name: "Build dashboard" });
+
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
     expect(await screen.findByRole("button", { name: "Dotfiles" })).toBeInTheDocument();

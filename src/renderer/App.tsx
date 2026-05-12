@@ -14,6 +14,7 @@ import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
 import { SessionPane } from "./components/SessionPane.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
+import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { demoSnapshot } from "./demoSnapshot.js";
 import { isBrowserPreview } from "./lib/env.js";
@@ -825,6 +826,8 @@ export function App(): JSX.Element {
         }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
+          ) : loadState === "loading" && !selectedSession && !isSettingsOpen ? (
+            <SkeletonPane />
           ) : isSettingsOpen ? (
             <SettingsPanel
               defaultModel={launchModel}

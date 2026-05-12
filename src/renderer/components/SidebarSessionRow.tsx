@@ -10,12 +10,14 @@ import {
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js";
 import { formatCostUsd } from "../formatCost.js";
+import { formatElapsed } from "../formatElapsed.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 
 export function SidebarSessionRow({
   workspace,
   workspaceCost,
   isSelected,
+  now,
   onOpenWorkspaceChat,
   onArchiveWorkspace,
   onOpenInIde,
@@ -25,6 +27,7 @@ export function SidebarSessionRow({
   workspace: WorkspaceSummary;
   workspaceCost: number;
   isSelected: boolean;
+  now?: number;
   onOpenWorkspaceChat: (workspaceId: string) => void;
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
@@ -71,6 +74,10 @@ export function SidebarSessionRow({
         : null;
 
   const buttonDisabled = !hasPath || !hasIdes;
+  const lastActivityMs = workspace.lastActivityAt ? Date.parse(workspace.lastActivityAt) : NaN;
+  const elapsedLabel = Number.isFinite(lastActivityMs) && now
+    ? formatElapsed(Math.max(0, now - lastActivityMs))
+    : null;
   const ideButtonTitle = !hasPath
     ? "Worktree not ready yet"
     : !hasIdes
@@ -105,6 +112,15 @@ export function SidebarSessionRow({
       >
         <span className="status-dot" aria-hidden="true" />
         <span>{workspace.taskLabel}</span>
+        {elapsedLabel ? (
+          <span
+            className="session-row-elapsed"
+            aria-hidden="true"
+            title={`Last activity ${elapsedLabel} ago`}
+          >
+            {elapsedLabel}
+          </span>
+        ) : null}
       </button>
       <span
         className="session-cost"

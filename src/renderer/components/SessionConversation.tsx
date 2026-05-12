@@ -415,7 +415,7 @@ export function SessionConversation({
       </div>
       <div className="session-meta-cards">
         <ChangedFilesCard review={review} />
-        {session ? <CostPanel session={session} events={events} /> : null}
+        {session ? <CostPanel session={session} /> : null}
       </div>
       <form className="session-input" ref={inputFormRef} onSubmit={(event) => void submitInput(event)}>
         <div className="session-input-field">

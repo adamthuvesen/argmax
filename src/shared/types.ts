@@ -72,7 +72,8 @@ export type EventType =
   | "check.completed"
   | "error"
   | "session.completed"
-  | "session.cancelled";
+  | "session.cancelled"
+  | "session.recovered-from-crash";
 
 export interface ProjectSettings {
   defaultProvider: ProviderId;

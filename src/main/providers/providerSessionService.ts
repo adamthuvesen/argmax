@@ -417,6 +417,59 @@ export class ProviderSessionService {
     this.cancelSession(sessionId);
   }
 
+  /**
+   * Reconcile sessions that the database still marks `running` but for which
+   * no live handle exists. Intended to run exactly once at app boot — any row
+   * in this state at startup was abandoned by a previous process (crash, kill,
+   * power loss). Each surviving row transitions to `cancelled` with a synthetic
+   * `session.recovered-from-crash` timeline event so users see why a session
+   * they expected to be live is no longer running.
+   */
+  recoverOrphanedSessions(): { recoveredCount: number } {
+    const ids = this.database.listRunningSessionIds();
+    if (ids.length === 0) {
+      return { recoveredCount: 0 };
+    }
+    const completedAt = new Date().toISOString();
+    const recoveredSessions = [];
+    const recoveredWorkspaces = [];
+    const recoveryEvents = [];
+    for (const sessionId of ids) {
+      try {
+        const session = this.database.updateSessionState(sessionId, {
+          state: "cancelled",
+          attention: computeSessionAttention({ state: "cancelled" }),
+          completedAt,
+          lastActivityAt: completedAt
+        });
+        recoveredSessions.push(session);
+        const workspace = this.database.updateWorkspaceState(session.workspaceId, "cancelled");
+        recoveredWorkspaces.push(workspace);
+        const event = this.database.persistTimelineEvent({
+          id: randomUUID(),
+          sessionId,
+          type: "session.recovered-from-crash",
+          message: "Argmax restarted while this session was still running; marking as cancelled.",
+          payload: {},
+          createdAt: completedAt
+        });
+        recoveryEvents.push(event);
+      } catch (error) {
+        if (error instanceof RecordNotFoundError) continue;
+        throw error;
+      }
+    }
+    if (recoveredSessions.length > 0) {
+      this.publishDashboardDelta({
+        projects: this.database.listProjects(),
+        workspaces: recoveredWorkspaces,
+        sessions: recoveredSessions,
+        events: recoveryEvents
+      });
+    }
+    return { recoveredCount: recoveredSessions.length };
+  }
+
   private cancelSession(sessionId: string): void {
     this.flushTrailingFragment(sessionId);
     this.flushBatch(sessionId);

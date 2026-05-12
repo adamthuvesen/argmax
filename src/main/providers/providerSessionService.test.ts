@@ -1082,6 +1082,42 @@ describe("ProviderSessionService", () => {
 
     database.connection.close();
   });
+
+  it("recoverOrphanedSessions cancels rows left as 'running' from a previous process", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    database.persistSession({
+      id: "session-orphan",
+      workspaceId: workspace.id,
+      provider: "claude",
+      modelLabel: "Claude Haiku 4.5",
+      modelId: "claude-haiku-4-5",
+      prompt: "lost session",
+      state: "running",
+      attention: "normal"
+    });
+
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, undefined, (delta) => deltas.push(delta));
+    const result = service.recoverOrphanedSessions();
+
+    expect(result.recoveredCount).toBe(1);
+    const recovered = database.getSession("session-orphan");
+    expect(recovered.state).toBe("cancelled");
+
+    const events = database.listSessionEventsSince({ sessionId: "session-orphan" }).events;
+    expect(events.some((event) => event.type === "session.recovered-from-crash")).toBe(true);
+
+    expect(deltas).toContainEqual(
+      expect.objectContaining({
+        sessions: [expect.objectContaining({ id: "session-orphan", state: "cancelled" })],
+        events: [expect.objectContaining({ type: "session.recovered-from-crash" })]
+      })
+    );
+
+    expect(service.recoverOrphanedSessions().recoveredCount).toBe(0);
+    database.connection.close();
+  });
 });
 
 function createFakeProvider(provider: ProviderId): {

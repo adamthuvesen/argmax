@@ -351,6 +351,7 @@ export interface ArgmaxDatabase {
   listWorkspaceStatus: (input?: WorkspaceStatusInputFilter) => WorkspaceStatusSnapshot;
   listPendingApprovals: () => ApprovalRequest[];
   countAttention: () => { pendingApprovals: number; waitingSessions: number; total: number };
+  listRunningSessionIds: () => string[];
   loadDashboard: () => DashboardSnapshot;
   persistProject: (input: PersistProjectInput) => ProjectSummary;
   updateProjectSettings: (projectId: string, settings: ProjectSettings) => ProjectSummary;
@@ -436,6 +437,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     listWorkspaceStatus: (input) => listWorkspaceStatus(connection, input),
     listPendingApprovals: () => listPendingApprovals(connection),
     countAttention: () => countAttention(connection),
+    listRunningSessionIds: () => listRunningSessionIds(connection),
     loadDashboard: () => loadDashboard(connection),
     persistProject: (input) => persistProject(connection, input),
     updateProjectSettings: (projectId, settings) => updateProjectSettings(connection, projectId, settings),
@@ -1324,6 +1326,13 @@ function listPendingApprovals(connection: Database.Database): ApprovalRequest[] 
       .prepare(`SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
       .all() as ApprovalRow[]
   ).map(approvalRowToRequest);
+}
+
+function listRunningSessionIds(connection: Database.Database): string[] {
+  const rows = connection
+    .prepare("SELECT id FROM sessions WHERE state = 'running'")
+    .all() as { id: string }[];
+  return rows.map((row) => row.id);
 }
 
 function countAttention(

@@ -105,6 +105,10 @@ void app.whenReady().then(async () => {
     countAttention: () => database!.countAttention()
   });
   providerSessions = new ProviderSessionService(database, undefined, publishDashboardDelta, notifications);
+  // Any session left in `running` at boot was orphaned by a previous process
+  // (crash, kill, power loss). Reconcile before serving IPC so the renderer
+  // sees an honest view instead of a phantom live session.
+  providerSessions.recoverOrphanedSessions();
   dockBadge.update();
   registeredChannels = registerIpcHandlers(database, providerSessions);
 

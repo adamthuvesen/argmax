@@ -32,6 +32,8 @@ interface ListSkillsInput {
 
 const cache = new Map<string, SkillSummary[]>();
 
+const SKILL_FILE_SIZE_CAP_BYTES = 262_144;
+
 export async function listSkills(input: ListSkillsInput): Promise<SkillSummary[]> {
   const cacheKey = `${input.provider}::${input.workspaceCwd ?? ""}`;
   const cached = cache.get(cacheKey);
@@ -225,6 +227,19 @@ async function parseSkillFile(
   fallbackName: string,
   sourceKind: SkillSource
 ): Promise<SkillSummary | null> {
+  // Stat first so a pathological multi-MiB SKILL.md cannot blow up the
+  // discovery walk. Anything over the cap is skipped with a warning rather
+  // than rejected loudly — discovery should still surface other skills.
+  let size: number;
+  try {
+    size = (await stat(filePath)).size;
+  } catch {
+    return null;
+  }
+  if (size > SKILL_FILE_SIZE_CAP_BYTES) {
+    console.warn("skillRegistry.skillFile.oversized", { filePath, size, cap: SKILL_FILE_SIZE_CAP_BYTES });
+    return null;
+  }
   const content = await safeReadFile(filePath);
   if (content === null) {
     return null;

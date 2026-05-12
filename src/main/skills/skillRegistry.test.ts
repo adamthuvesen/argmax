@@ -178,6 +178,23 @@ describe("listSkills", () => {
     expect(impl2?.source).toBe("user");
   });
 
+  it("skips oversized SKILL.md files with a warn and continues discovering siblings", async () => {
+    // 257 KB body — just past the 256 KB cap.
+    const oversizedBody = "x".repeat(257 * 1024);
+    writeSkill(claudeSkillsDir, "huge", `name: huge\ndescription: too big\n---\n${oversizedBody}`);
+    writeSkill(claudeSkillsDir, "small", "name: small\ndescription: fine");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const result = await listSkills({ provider: "claude", workspaceCwd: null });
+
+    expect(result.map((s) => s.name)).toEqual(["small"]);
+    expect(warn).toHaveBeenCalledWith(
+      "skillRegistry.skillFile.oversized",
+      expect.objectContaining({ cap: 262_144 })
+    );
+    warn.mockRestore();
+  });
+
   it("returns empty list when source directories are missing", async () => {
     rmSync(claudeSkillsDir, { recursive: true, force: true });
     rmSync(claudePluginCache, { recursive: true, force: true });

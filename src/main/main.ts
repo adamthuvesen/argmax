@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ let registeredChannels: readonly string[] = [];
 import { ProviderSessionService } from "./providers/providerSessionService.js";
 import { NotificationService } from "./notifications/notificationService.js";
 import { DockBadgeService } from "./dock/dockBadgeService.js";
+import { buildAppMenuTemplate, type MenuCommand } from "./menu.js";
 import type { DashboardDelta } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
@@ -99,6 +100,16 @@ void app.whenReady().then(async () => {
   providerSessions = new ProviderSessionService(database, undefined, publishDashboardDelta, notifications);
   dockBadge.update();
   registeredChannels = registerIpcHandlers(database, providerSessions);
+
+  const menuTemplate = buildAppMenuTemplate({
+    isDev: is.dev,
+    onCommand: (command: MenuCommand) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("menu:command", command);
+      }
+    }
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
   await createWindow();
 

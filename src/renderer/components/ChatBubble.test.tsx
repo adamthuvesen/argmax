@@ -22,8 +22,8 @@ describe("ChatBubble", () => {
     expect(screen.getByText(/\d{1,2}:\d{2}/)).toBeInTheDocument();
   });
 
-  it("calls clipboard.writeText with the raw markdown on copy", async () => {
-    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+  it("calls clipboard.writeText with the raw markdown on copy", () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText }

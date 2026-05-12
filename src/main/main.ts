@@ -6,6 +6,7 @@ import { createDatabase, type ArgmaxDatabase } from "./persistence/database.js";
 import { registerIpcHandlers } from "./ipc.js";
 let registeredChannels: readonly string[] = [];
 import { ProviderSessionService } from "./providers/providerSessionService.js";
+import { NotificationService } from "./notifications/notificationService.js";
 import type { DashboardDelta } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
@@ -82,7 +83,10 @@ void app.whenReady().then(async () => {
     app.dock.setIcon(iconPath);
   }
   database = createDatabase();
-  providerSessions = new ProviderSessionService(database, undefined, publishDashboardDelta);
+  const notifications = new NotificationService({
+    isWindowFocused: () => mainWindow?.isFocused() === true
+  });
+  providerSessions = new ProviderSessionService(database, undefined, publishDashboardDelta, notifications);
   registeredChannels = registerIpcHandlers(database, providerSessions);
 
   await createWindow();

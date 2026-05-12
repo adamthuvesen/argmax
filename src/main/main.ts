@@ -30,8 +30,15 @@ async function createWindow(): Promise<void> {
     icon: iconPath,
     backgroundColor: "#fbfbfa",
     show: false,
+    // hiddenInset draws the traffic lights inside a flush titlebar so the
+    // sidebar header sits beside them. x/y tuned so the lights align with the
+    // sidebar's "Argmax" header baseline at default zoom.
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 18, y: 18 },
+    trafficLightPosition: { x: 14, y: 18 },
+    // Vibrancy is intentionally off: Electron's "sidebar" vibrancy bleeds the
+    // desktop colors through the light theme and clashes with the paper-white
+    // panel surface. Revisit only after a side-by-side visual test against the
+    // current --bg #fbfbfa value confirms no milky-grey artifacts.
     webPreferences: {
       preload: join(currentDirectory, "preload.js"),
       contextIsolation: true,

@@ -1199,6 +1199,41 @@ button {
   opacity: 0.6;
 }
 
+.error-boundary {
+  display: grid;
+  gap: 12px;
+  padding: 48px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.error-boundary h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.error-boundary-message {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.error-boundary-actions button {
+  padding: 8px 14px;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .primary-action {
   display: inline-flex;
   align-items: center;

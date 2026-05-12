@@ -1,55 +1,38 @@
 import { ChevronRight } from "lucide-react";
-import { useEffect, useState, type JSX } from "react";
-import type { SessionCostSummary, SessionSummary, TimelineEvent } from "../../shared/types.js";
+import { useEffect, useMemo, useState, type JSX } from "react";
+import type { SessionCostSummary, SessionSummary } from "../../shared/types.js";
 import { formatCostUsd } from "../formatCost.js";
-import { costForBucket, emptyCostSummary } from "../lib/models.js";
+import { costForBucket } from "../lib/models.js";
 
 const COST_PANEL_EXPANDED_KEY = "argmax.costPanel.expanded";
 
 export function CostPanel({
-  session,
-  events
+  session
 }: {
   session: SessionSummary;
-  events: TimelineEvent[];
 }): JSX.Element {
-  // The cost summary refreshes on session change and whenever the event tail
-  // ticks — usage events ride the same micro-batch flush so a new event
-  // means a fresh cost is available. A trailing debounce coalesces the burst
-  // of events that arrive while a token stream is mid-flight, otherwise we'd
-  // fire an IPC roundtrip per token.
-  const [summary, setSummary] = useState<SessionCostSummary>(() => emptyCostSummary(session.id));
+  // Cost rides the existing dashboard:delta push: `session.tokens` and
+  // `session.costUsd` arrive on every micro-batch flush from the main process.
+  // No separate IPC, no debounce — the panel is a pure projection of the
+  // session row.
   const [expanded, setExpanded] = useState<boolean>(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(COST_PANEL_EXPANDED_KEY) : null;
     return raw === null ? false : raw === "true";
   });
 
-  const eventTick = events.length;
-  const sessionId = session.id;
-
   useEffect(() => {
     window.localStorage.setItem(COST_PANEL_EXPANDED_KEY, String(expanded));
   }, [expanded]);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!window.argmax) return;
-    const timer = setTimeout(() => {
-      if (cancelled || !window.argmax) return;
-      void window.argmax.session
-        .costSummary({ sessionId })
-        .then((next) => {
-          if (!cancelled) setSummary(next);
-        })
-        .catch(() => {
-          /* surface elsewhere; the panel just stays at last known totals */
-        });
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [sessionId, eventTick]);
+  const summary = useMemo<SessionCostSummary>(
+    () => ({
+      sessionId: session.id,
+      modelId: session.modelId,
+      tokens: session.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: session.costUsd ?? 0
+    }),
+    [session.id, session.modelId, session.tokens, session.costUsd]
+  );
 
   const modelLabel = summary.modelId ?? session.modelId ?? "—";
   const rows: Array<{ key: keyof SessionCostSummary["tokens"]; label: string }> = [

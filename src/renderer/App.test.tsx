@@ -1611,12 +1611,21 @@ describe("App", () => {
   });
 
   it("renders the CostPanel rows and totals on session detail", async () => {
-    sessionCostSummary.mockResolvedValue({
-      sessionId: "session-1",
-      modelId: "gpt-5.3-codex",
-      tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 },
-      costUsd: 4.32
-    });
+    const costed: DashboardSnapshot = {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.id === "session-1"
+          ? {
+              ...session,
+              costUsd: 4.32,
+              tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 }
+            }
+          : session
+      )
+    };
+    dashboardLoad.mockResolvedValue(costed);
+    dashboardList.mockResolvedValue(dashboardListSnapshot(costed));
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(costed));
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -1638,6 +1647,10 @@ describe("App", () => {
 
     expect(within(panel).getByRole("row", { name: "Cache read usage" })).toBeInTheDocument();
     expect(within(panel).getByRole("row", { name: "Cache write usage" })).toBeInTheDocument();
+
+    // Cost is projected from session.costUsd on the dashboard delta. The
+    // panel must not fire a separate session:costSummary IPC.
+    expect(sessionCostSummary).not.toHaveBeenCalled();
   });
 
   it("disables the Open in IDE button when the workspace has no path yet", async () => {

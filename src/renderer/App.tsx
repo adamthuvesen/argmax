@@ -582,6 +582,27 @@ export function App(): JSX.Element {
     [refreshDashboardStatus, loadSessionEvents]
   );
 
+  const createCheckpoint = useCallback(
+    async (workspaceId: string): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Electron app window to save checkpoints." });
+        return;
+      }
+      const label = `Checkpoint ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      try {
+        await window.argmax.checkpoints.create({ workspaceId, label });
+        setToast({ kind: "info", message: `Saved ${label}.` });
+        await refreshDashboardStatus();
+      } catch (error) {
+        setToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not save checkpoint."
+        });
+      }
+    },
+    [refreshDashboardStatus]
+  );
+
   const terminateSession = useCallback(
     async (sessionId: string): Promise<void> => {
       if (!window.argmax) {
@@ -777,6 +798,7 @@ export function App(): JSX.Element {
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
               onTerminateSession={terminateSession}
+              onCreateCheckpoint={createCheckpoint}
               project={selectedProject}
               rawOutputs={snapshot.rawOutputs}
               session={selectedSession}

@@ -115,6 +115,7 @@ describe("App", () => {
   let providersDiscover: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["discover"]>>;
   let diagnosticsStub: ReturnType<typeof vi.fn<ArgmaxApi["system"]["diagnostics"]>>;
   let vacuumDatabaseStub: ReturnType<typeof vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>>;
+  let createCheckpointStub: ReturnType<typeof vi.fn<ArgmaxApi["checkpoints"]["create"]>>;
   let workspaceStatus: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
   let openInIde: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["openInIde"]>>;
@@ -166,6 +167,15 @@ describe("App", () => {
       generatedAt: "2026-05-12T00:00:00.000Z"
     });
     vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
+    createCheckpointStub = vi.fn<ArgmaxApi["checkpoints"]["create"]>().mockResolvedValue({
+      id: "checkpoint-1",
+      workspaceId: "workspace-1",
+      label: "Checkpoint",
+      branch: "argmax/dashboard",
+      gitRef: null,
+      patchPath: null,
+      createdAt: "2026-05-12T00:00:00.000Z"
+    });
     menuCommandListener = null;
     workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
     listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
@@ -241,7 +251,7 @@ describe("App", () => {
         run: () => Promise.resolve(missingCheck())
       },
       checkpoints: {
-        create: () => Promise.resolve(missingCheckpoint())
+        create: createCheckpointStub
       },
       attempts: {
         selectPreferred: () => Promise.resolve(snapshot.sessions[0] ?? missingSession())
@@ -1035,6 +1045,21 @@ describe("App", () => {
     expect(sendProviderInput).not.toHaveBeenCalled();
   });
 
+  it("saves a checkpoint via the session header button on a dirty worktree", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    const checkpointButton = await screen.findByRole("button", { name: "Save checkpoint" });
+    expect(checkpointButton).toBeEnabled();
+    fireEvent.click(checkpointButton);
+
+    await waitFor(() => expect(createCheckpointStub).toHaveBeenCalledTimes(1));
+    const callArg = createCheckpointStub.mock.calls[0]?.[0];
+    expect(callArg?.workspaceId).toBe("workspace-1");
+    expect(callArg?.label).toMatch(/^Checkpoint /);
+    expect(await screen.findByText(/Saved Checkpoint /)).toBeInTheDocument();
+  });
+
   it("surfaces a Stop button on a running session and terminates it", async () => {
     render(<App />);
 
@@ -1789,6 +1814,3 @@ function missingCheck(): never {
   throw new Error("Test snapshot must include a check");
 }
 
-function missingCheckpoint(): never {
-  throw new Error("Test snapshot must include a checkpoint");
-}

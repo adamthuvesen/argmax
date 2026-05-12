@@ -36,6 +36,7 @@ export function SessionPane({
   onResolveApproval,
   onSendSessionInput,
   onTerminateSession,
+  onCreateCheckpoint,
   project,
   rawOutputs,
   session,
@@ -47,6 +48,7 @@ export function SessionPane({
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
+  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
@@ -162,6 +164,7 @@ export function SessionPane({
           isLogOpen={isLogOpen}
           onSendSessionInput={onSendSessionInput}
           onTerminateSession={onTerminateSession}
+          onCreateCheckpoint={onCreateCheckpoint}
           onToggleLog={toggleLog}
           project={project}
           rawOutputs={rawOutputs}

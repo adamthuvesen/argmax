@@ -1832,8 +1832,8 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("heading", { name: "Appearance" });
 
-    const jetbrains = screen.getByRole("radio", { name: "JetBrains Mono" });
-    fireEvent.click(jetbrains);
+    fireEvent.click(screen.getByRole("button", { name: "Font family" }));
+    fireEvent.click(screen.getByRole("button", { name: "JetBrains Mono" }));
 
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
@@ -1854,7 +1854,8 @@ describe("App", () => {
       ["Monaco", "monaco"],
       ["Lilex", "lilex"]
     ] as const) {
-      fireEvent.click(screen.getByRole("radio", { name: label }));
+      fireEvent.click(screen.getByRole("button", { name: "Font family" }));
+      fireEvent.click(screen.getByRole("button", { name: label }));
       await waitFor(() =>
         expect(document.documentElement.getAttribute("data-font")).toBe(id)
       );

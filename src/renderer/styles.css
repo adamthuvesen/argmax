@@ -3509,10 +3509,24 @@ button {
   overflow-y: auto;
 }
 
+.command-palette-group {
+  list-style: none;
+  padding: 12px 18px 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.command-palette-results > .command-palette-group:first-child {
+  padding-top: 6px;
+}
+
 .command-palette-result {
   display: grid;
-  grid-template-columns: 80px 1fr auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 12px;
   align-items: baseline;
   padding: 8px 18px;
   font-size: 13px;
@@ -3524,21 +3538,39 @@ button {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.command-palette-result-group {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.command-palette-result-label {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.command-palette-result-subtitle {
-  color: var(--muted);
+.command-palette-result-subtitle,
+.command-palette-result-snippet {
+  color: var(--muted-strong);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.command-palette-empty {
+.command-palette-result mark {
+  background: rgba(176, 128, 57, 0.18);
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.command-palette-result.selected mark {
+  background: rgba(176, 128, 57, 0.32);
+}
+
+.command-palette-empty,
+.command-palette-loading {
   list-style: none;
-  padding: 16px 18px;
+  padding: 12px 18px;
   color: var(--muted);
   font-size: 13px;
 }
@@ -4504,9 +4536,9 @@ button {
 }
 
 .search-result-session {
-  font-family: var(--font-mono, ui-monospace);
-  font-size: 11px;
-  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4514,14 +4546,22 @@ button {
 
 .search-result-snippet {
   min-width: 0;
+  color: var(--muted-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.search-result-snippet b {
-  background: rgba(255, 230, 100, 0.55);
+.search-result-snippet mark {
+  background: rgba(176, 128, 57, 0.22);
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
   font-weight: 600;
+}
+
+.search-result.selected .search-result-snippet mark {
+  background: rgba(176, 128, 57, 0.36);
 }
 
 .session-row-wrap {

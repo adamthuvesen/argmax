@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { parseFtsSnippet } from "../lib/paletteSearch.js";
 
 export interface SearchHit {
   sessionId: string;
@@ -11,11 +12,14 @@ export interface SearchHit {
 export function SearchOverlay({
   open,
   onClose,
-  onSelectSession
+  onSelectSession,
+  sessionLabelById
 }: {
   open: boolean;
   onClose: () => void;
   onSelectSession: (sessionId: string) => void;
+  /** Friendly "Project · Task" label for each session, used in result rows. */
+  sessionLabelById: Map<string, string>;
 }): JSX.Element | null {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -52,11 +56,23 @@ export function SearchOverlay({
     setRunning(true);
     setError(null);
     try {
-      // Wrap in double quotes so FTS5 treats the input as a phrase rather
-      // than a query language. Escape embedded quotes so a `"` in the user
-      // input doesn't break the syntax.
-      const escaped = trimmed.replace(/"/g, '""');
-      const result = await window.argmax.session.search({ query: `"${escaped}"`, limit: 50 });
+      // Build an FTS5 query that combines phrase relevance with prefix recall:
+      // `"foo bar"` returns exact-phrase hits (ranked best by BM25), and
+      // `foo* bar*` catches partial typing (e.g. "dash" → "dashboard"). Tokens
+      // are stripped of FTS5 operators so a stray quote or dash can't break
+      // the syntax.
+      const tokens = trimmed
+        .split(/\s+/)
+        .map((token) => token.replace(/["'()*-]/g, ""))
+        .filter((token) => token.length > 0);
+      if (tokens.length === 0) {
+        setHits([]);
+        return;
+      }
+      const phrase = `"${tokens.join(" ")}"`;
+      const prefixed = tokens.map((token) => `${token}*`).join(" ");
+      const ftsQuery = `${phrase} OR (${prefixed})`;
+      const result = await window.argmax.session.search({ query: ftsQuery, limit: 50 });
       if (token !== tokenRef.current) return;
       setHits(result);
       setSelectedIndex(0);
@@ -145,53 +161,38 @@ export function SearchOverlay({
               No matches.
             </li>
           ) : null}
-          {hits.map((hit, index) => (
-            <li
-              key={hit.eventId}
-              role="option"
-              aria-selected={index === selectedIndex}
-              className={`search-result${index === selectedIndex ? " selected" : ""}`}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                onSelectSession(hit.sessionId);
-                onClose();
-              }}
-            >
-              <span className="search-result-session">{hit.sessionId}</span>
-              <span
-                className="search-result-snippet"
-                // FTS5's snippet() returns inert markup with <b>…</b> markers.
-                // The text is user-generated event content; we trust SQLite's
-                // snippet() to only emit our configured tags around tokens,
-                // but we still HTML-escape anything else via textContent below.
-                dangerouslySetInnerHTML={{ __html: renderSnippet(hit.snippet) }}
-              />
-            </li>
-          ))}
+          {hits.map((hit, index) => {
+            const segments = parseFtsSnippet(hit.snippet);
+            return (
+              <li
+                key={hit.eventId}
+                role="option"
+                aria-selected={index === selectedIndex}
+                className={`search-result${index === selectedIndex ? " selected" : ""}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelectSession(hit.sessionId);
+                  onClose();
+                }}
+              >
+                <span className="search-result-session">
+                  {sessionLabelById.get(hit.sessionId) ?? "Unknown session"}
+                </span>
+                <span className="search-result-snippet">
+                  {segments.map((segment, segmentIndex) =>
+                    segment.matched ? (
+                      <mark key={segmentIndex}>{segment.text}</mark>
+                    ) : (
+                      <span key={segmentIndex}>{segment.text}</span>
+                    )
+                  )}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>
   );
 }
 
-/**
- * Render an FTS5 snippet that contains literal `<b>`/`</b>` markers around
- * matched tokens. Escapes every other byte so an event message that itself
- * contains HTML can't smuggle a script tag past `dangerouslySetInnerHTML`.
- * Splits on the marker, escapes each segment, then rejoins with `<b>…</b>`.
- */
-function renderSnippet(raw: string): string {
-  return raw
-    .split(/(<\/?b>)/g)
-    .map((segment) => (segment === "<b>" || segment === "</b>" ? segment : escapeHtml(segment)))
-    .join("");
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}

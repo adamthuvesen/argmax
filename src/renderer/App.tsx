@@ -8,7 +8,8 @@ import type {
   MenuCommand,
   PrepareCommitInput
 } from "../shared/types.js";
-import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.js";
+import { CommandPalette, type MessageHit as PaletteMessageHit, type PaletteCommand } from "./components/CommandPalette.js";
+import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
@@ -780,22 +781,34 @@ export function App(): JSX.Element {
         : [])
     ];
 
-    const sessions: PaletteCommand[] = snapshot.sessions.slice(0, 20).map((session) => ({
-      id: `session:${session.id}`,
-      label: session.prompt.slice(0, 80) || session.modelLabel,
-      subtitle: `${session.modelLabel} · ${session.state}`,
-      group: "Sessions",
-      run: () => {
-        setIsSettingsOpen(false);
-        setSelectedSessionId(session.id);
-        setSelectedWorkspaceId(session.workspaceId);
-      }
-    }));
+    const workspaceById = new Map(snapshot.workspaces.map((workspace) => [workspace.id, workspace]));
+    const projectById = new Map(snapshot.projects.map((project) => [project.id, project]));
 
-    const projects: PaletteCommand[] = snapshot.projects.slice(0, 20).map((project) => ({
+    const sessions: PaletteCommand[] = snapshot.sessions.slice(0, 40).map((session) => {
+      const workspace = workspaceById.get(session.workspaceId) ?? null;
+      const project = workspace ? projectById.get(workspace.projectId) ?? null : null;
+      const label = workspace?.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel;
+      const parts: string[] = [];
+      if (project) parts.push(project.name);
+      if (workspace?.branch) parts.push(workspace.branch);
+      parts.push(session.modelLabel, session.state);
+      return {
+        id: `session:${session.id}`,
+        label,
+        subtitle: parts.filter(Boolean).join(" · "),
+        group: "Sessions",
+        run: () => {
+          setIsSettingsOpen(false);
+          setSelectedSessionId(session.id);
+          setSelectedWorkspaceId(session.workspaceId);
+        }
+      };
+    });
+
+    const projects: PaletteCommand[] = snapshot.projects.slice(0, 40).map((project) => ({
       id: `project:${project.id}`,
       label: project.name,
-      subtitle: project.repoPath,
+      subtitle: [project.currentBranch, project.repoPath].filter(Boolean).join(" · "),
       group: "Projects",
       run: () => {
         setIsSettingsOpen(false);
@@ -806,7 +819,62 @@ export function App(): JSX.Element {
     }));
 
     return [...actions, ...sessions, ...projects];
-  }, [snapshot.sessions, snapshot.projects, selectedSession, handleMenuCommand, terminateSession]);
+  }, [
+    snapshot.sessions,
+    snapshot.workspaces,
+    snapshot.projects,
+    selectedSession,
+    handleMenuCommand,
+    terminateSession
+  ]);
+
+  const sessionLabelById = useMemo(() => {
+    const workspaceById = new Map(snapshot.workspaces.map((workspace) => [workspace.id, workspace]));
+    const projectById = new Map(snapshot.projects.map((project) => [project.id, project]));
+    const map = new Map<string, string>();
+    for (const session of snapshot.sessions) {
+      const workspace = workspaceById.get(session.workspaceId) ?? null;
+      const project = workspace ? projectById.get(workspace.projectId) ?? null : null;
+      const taskLabel = workspace?.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel;
+      map.set(session.id, project ? `${project.name} · ${taskLabel}` : taskLabel);
+    }
+    return map;
+  }, [snapshot.sessions, snapshot.workspaces, snapshot.projects]);
+
+  const searchMessages = useCallback(
+    async (rawQuery: string, limit: number): Promise<PaletteMessageHit[]> => {
+      if (!window.argmax) return [];
+      const trimmed = rawQuery.trim();
+      if (!trimmed) return [];
+      // Build an FTS5 query that supports the user's tokens both as a phrase
+      // (relevance) and as prefix-matched terms (recall). Tokens are stripped
+      // of FTS5 operator chars so a stray quote or dash can't break the query.
+      const tokens = trimmed
+        .split(/\s+/)
+        .map((token) => token.replace(/["'()*-]/g, ""))
+        .filter((token) => token.length > 0);
+      if (tokens.length === 0) return [];
+      const phrase = `"${tokens.join(" ")}"`;
+      const prefixed = tokens.map((token) => `${token}*`).join(" ");
+      const ftsQuery = `${phrase} OR (${prefixed})`;
+      const hits = await window.argmax.session.search({ query: ftsQuery, limit });
+      return hits.map((hit) => ({
+        id: `${hit.sessionId}:${hit.eventId}`,
+        sessionId: hit.sessionId,
+        label: sessionLabelById.get(hit.sessionId) ?? "Unknown session",
+        snippetSegments: parseFtsSnippet(hit.snippet),
+        run: () => {
+          const target = snapshot.sessions.find((session) => session.id === hit.sessionId);
+          setIsSettingsOpen(false);
+          setSelectedSessionId(hit.sessionId);
+          if (target) {
+            setSelectedWorkspaceId(target.workspaceId);
+          }
+        }
+      }));
+    },
+    [sessionLabelById, snapshot.sessions]
+  );
 
   return (
     <main
@@ -824,11 +892,13 @@ export function App(): JSX.Element {
         open={isPaletteOpen}
         commands={paletteCommands}
         onClose={() => setIsPaletteOpen(false)}
+        searchMessages={searchMessages}
       />
       <KeyboardCheatSheet open={isCheatSheetOpen} onClose={() => setIsCheatSheetOpen(false)} />
       <SearchOverlay
         open={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
+        sessionLabelById={sessionLabelById}
         onSelectSession={(sessionId) => {
           const target = snapshot.sessions.find((session) => session.id === sessionId);
           setIsSettingsOpen(false);

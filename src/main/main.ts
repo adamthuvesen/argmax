@@ -6,15 +6,17 @@ import { createDatabase, type ArgmaxDatabase } from "./persistence/database.js";
 import { registerIpcHandlers } from "./ipc.js";
 let registeredChannels: readonly string[] = [];
 import { ProviderSessionService } from "./providers/providerSessionService.js";
+import { TerminalService } from "./terminal/terminalService.js";
 import { NotificationService } from "./notifications/notificationService.js";
 import { DockBadgeService } from "./dock/dockBadgeService.js";
 import { buildAppMenuTemplate, type MenuCommand } from "./menu.js";
 import { UpdateService } from "./updater/updateService.js";
-import type { DashboardDelta } from "../shared/types.js";
+import type { DashboardDelta, TerminalDataEvent, TerminalExitEvent } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
 let providerSessions: ProviderSessionService | null = null;
+let terminals: TerminalService | null = null;
 let dockBadge: DockBadgeService | null = null;
 let updateService: UpdateService | null = null;
 let shutdownInProgress = false;
@@ -107,8 +109,12 @@ void app.whenReady().then(async () => {
   // (crash, kill, power loss). Reconcile before serving IPC so the renderer
   // sees an honest view instead of a phantom live session.
   providerSessions.recoverOrphanedSessions();
+  terminals = new TerminalService(database, {
+    emitData: publishTerminalData,
+    emitExit: publishTerminalExit
+  });
   dockBadge.update();
-  registeredChannels = registerIpcHandlers(database, providerSessions);
+  registeredChannels = registerIpcHandlers(database, providerSessions, terminals);
 
   // electron-updater only works in a packaged build — running it in dev or
   // unsigned would no-op at best and surface confusing errors at worst.
@@ -166,6 +172,22 @@ function publishDashboardDelta(delta: DashboardDelta): void {
   dockBadge?.update();
 }
 
+function publishTerminalData(event: TerminalDataEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("terminal:data", event);
+    }
+  }
+}
+
+function publishTerminalExit(event: TerminalExitEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("terminal:exit", event);
+    }
+  }
+}
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
@@ -190,6 +212,13 @@ async function shutdown(): Promise<void> {
       await providerSessions.disposeAll();
     } catch (error) {
       console.error("[argmax] disposeAll failed during shutdown:", error);
+    }
+  }
+  if (terminals) {
+    try {
+      terminals.disposeAll();
+    } catch (error) {
+      console.error("[argmax] terminals.disposeAll failed during shutdown:", error);
     }
   }
   for (const channel of registeredChannels) {

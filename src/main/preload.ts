@@ -32,6 +32,11 @@ import type {
   SessionEventsSinceResult,
   SkillsListInput,
   SkillSummary,
+  TerminalDataEvent,
+  TerminalExitEvent,
+  TerminalResizeInput,
+  TerminalSpawnInput,
+  TerminalWriteInput,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
@@ -159,6 +164,26 @@ const api: ArgmaxApi = {
     update: (input: { id: string; summary?: string; verified?: boolean }) =>
       ipcRenderer.invoke("learnings:update", input) as Promise<Learning>,
     delete: (id: string) => ipcRenderer.invoke("learnings:delete", { id }) as Promise<{ ok: true }>
+  },
+  terminal: {
+    spawn: (input: TerminalSpawnInput) =>
+      ipcRenderer.invoke("terminal:spawn", input) as Promise<{ terminalId: string }>,
+    write: (input: TerminalWriteInput) =>
+      ipcRenderer.invoke("terminal:write", input) as Promise<{ ok: true }>,
+    resize: (input: TerminalResizeInput) =>
+      ipcRenderer.invoke("terminal:resize", input) as Promise<{ ok: true }>,
+    terminate: (terminalId: string) =>
+      ipcRenderer.invoke("terminal:terminate", terminalId) as Promise<{ ok: true }>,
+    onData: (listener: (event: TerminalDataEvent) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: TerminalDataEvent): void => listener(payload);
+      ipcRenderer.on("terminal:data", handler);
+      return () => ipcRenderer.removeListener("terminal:data", handler);
+    },
+    onExit: (listener: (event: TerminalExitEvent) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: TerminalExitEvent): void => listener(payload);
+      ipcRenderer.on("terminal:exit", handler);
+      return () => ipcRenderer.removeListener("terminal:exit", handler);
+    }
   }
 };
 

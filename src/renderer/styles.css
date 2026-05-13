@@ -1688,6 +1688,10 @@ button {
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
+.session-main-column[data-terminal-open="true"] {
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+
 .session-grid.review-open .session-main-column,
 .session-grid.log-open .session-main-column {
   --session-inline-padding: clamp(18px, calc((100% - 860px) / 2), 2000px);
@@ -4766,3 +4770,94 @@ button {
     transform: none;
   }
 }
+
+.terminal-panel {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.terminal-panel-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+  background: transparent;
+  z-index: 2;
+}
+
+.terminal-panel-resize:hover,
+.session-grid[data-panel-resizing="true"] .terminal-panel-resize {
+  background: linear-gradient(to bottom, var(--line-strong), transparent);
+}
+
+.terminal-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-strong);
+  user-select: none;
+}
+
+.terminal-panel-title {
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.terminal-panel-cwd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.terminal-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.terminal-panel-close:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.terminal-panel-surface {
+  min-height: 0;
+  min-width: 0;
+  padding: 8px 12px 4px;
+  background: var(--bg);
+}
+
+.terminal-panel-surface .xterm {
+  height: 100%;
+}
+
+.terminal-panel-surface .xterm-viewport {
+  background-color: transparent !important;
+}
+

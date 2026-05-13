@@ -21,6 +21,9 @@ import type {
   SessionEventsSinceInputParsed,
   SelectPreferredAttemptInputParsed,
   SkillsListInputParsed,
+  TerminalResizeInputParsed,
+  TerminalSpawnInputParsed,
+  TerminalWriteInputParsed,
   UpdateProjectSettingsInputParsed,
   WorkspaceStatusInputParsed
 } from "./ipcSchemas.js";
@@ -94,6 +97,20 @@ export type ResolveApprovalInput = ResolveApprovalInputParsed;
 export type SessionEventsSinceInput = SessionEventsSinceInputParsed;
 export type SessionCostSummaryInput = SessionCostSummaryInputParsed;
 export type WorkspaceStatusInput = WorkspaceStatusInputParsed;
+export type TerminalSpawnInput = TerminalSpawnInputParsed;
+export type TerminalWriteInput = TerminalWriteInputParsed;
+export type TerminalResizeInput = TerminalResizeInputParsed;
+
+export interface TerminalDataEvent {
+  terminalId: string;
+  data: string;
+}
+
+export interface TerminalExitEvent {
+  terminalId: string;
+  exitCode: number;
+  signal: number | null;
+}
 
 export interface SessionCostSummary {
   sessionId: string;
@@ -380,6 +397,14 @@ export interface ArgmaxApi {
     list: (input: { projectId: string; limit?: number }) => Promise<Learning[]>;
     update: (input: { id: string; summary?: string; verified?: boolean }) => Promise<Learning>;
     delete: (id: string) => Promise<{ ok: true }>;
+  };
+  terminal: {
+    spawn: (input: TerminalSpawnInput) => Promise<{ terminalId: string }>;
+    write: (input: TerminalWriteInput) => Promise<{ ok: true }>;
+    resize: (input: TerminalResizeInput) => Promise<{ ok: true }>;
+    terminate: (terminalId: string) => Promise<{ ok: true }>;
+    onData: (listener: (event: TerminalDataEvent) => void) => () => void;
+    onExit: (listener: (event: TerminalExitEvent) => void) => () => void;
   };
 }
 

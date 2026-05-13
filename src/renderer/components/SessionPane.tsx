@@ -26,11 +26,17 @@ import { isTypingTarget } from "../lib/typingTarget.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { SessionConversation } from "./SessionConversation.js";
+import { TerminalPanel } from "./TerminalPanel.js";
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 const SESSION_RIGHT_PANEL_MIN = 260;
 const SESSION_RIGHT_PANEL_MAX = 760;
 const SESSION_RIGHT_PANEL_DEFAULT = 420;
+
+const TERMINAL_HEIGHT_KEY = "argmax.terminal.height";
+const TERMINAL_MIN_HEIGHT = 120;
+const TERMINAL_MAX_HEIGHT = 600;
+const TERMINAL_DEFAULT_HEIGHT = 280;
 
 export function SessionPane({
   approvals,
@@ -75,6 +81,18 @@ export function SessionPane({
       : SESSION_RIGHT_PANEL_DEFAULT;
   });
   const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [isTerminalResizing, setIsTerminalResizing] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState<number>(() => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(TERMINAL_HEIGHT_KEY) : null;
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= TERMINAL_MIN_HEIGHT && n <= TERMINAL_MAX_HEIGHT ? n : TERMINAL_DEFAULT_HEIGHT;
+  });
+  // Close the terminal when the session/workspace context goes away so a
+  // stale PTY isn't kept alive against an archived worktree.
+  useEffect(() => {
+    if (!workspace) setIsTerminalOpen(false);
+  }, [workspace]);
   const visibleApprovals = useMemo(
     () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
     [approvals, sessionId]
@@ -100,15 +118,39 @@ export function SessionPane({
     .join(" ");
   const reviewColumnWidth = `${rightPanelWidth}px`;
   const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : `${rightPanelWidth}px`;
+  const terminalOpen = isTerminalOpen && workspace !== null;
   const gridStyle = {
     "--session-review-panel-width": reviewColumnWidth,
-    "--session-log-panel-width": logColumnWidth
+    "--session-log-panel-width": logColumnWidth,
+    "--session-terminal-height": terminalOpen ? `${terminalHeight}px` : "0px"
   } as CSSProperties;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(SESSION_RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth));
   }, [rightPanelWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(TERMINAL_HEIGHT_KEY, String(terminalHeight));
+  }, [terminalHeight]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "j") return;
+      // Allow toggling when focus is inside the terminal itself, since the
+      // panel is the thing the shortcut controls.
+      const target = event.target as HTMLElement | null;
+      const insideTerminal = target?.closest('[data-argmax-terminal="true"]') !== null;
+      if (!insideTerminal && isTypingTarget(event.target)) return;
+      event.preventDefault();
+      setIsTerminalOpen((open) => !open);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!isLogOpen) return;
@@ -122,6 +164,19 @@ export function SessionPane({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isLogOpen]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "b") return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      reviewState.togglePanel();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [reviewState.togglePanel]);
+
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
   // doesn't leave document-level listeners or a frozen cursor behind.
@@ -133,6 +188,36 @@ export function SessionPane({
     },
     []
   );
+
+  const onTerminalResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = terminalHeight;
+    setIsTerminalResizing(true);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (e: MouseEvent): void => {
+      // Dragging up grows the panel, dragging down shrinks it.
+      const next = Math.max(
+        TERMINAL_MIN_HEIGHT,
+        Math.min(TERMINAL_MAX_HEIGHT, startHeight - (e.clientY - startY))
+      );
+      setTerminalHeight(next);
+    };
+    const cleanup = (): void => {
+      setIsTerminalResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      dragCleanupRef.current = null;
+    };
+    const onMouseUp = (): void => cleanup();
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    dragCleanupRef.current = cleanup;
+  }, [terminalHeight]);
 
   const onRightPanelResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
     event.preventDefault();
@@ -165,8 +250,12 @@ export function SessionPane({
   }, [rightPanelWidth]);
 
   return (
-    <div className={gridClass} style={gridStyle} data-panel-resizing={isPanelResizing ? "true" : undefined}>
-      <div className="session-main-column">
+    <div
+      className={gridClass}
+      style={gridStyle}
+      data-panel-resizing={isPanelResizing || isTerminalResizing ? "true" : undefined}
+    >
+      <div className="session-main-column" data-terminal-open={terminalOpen ? "true" : undefined}>
         <SessionConversation
           checks={checks}
           defaultToolCallsExpanded={defaultToolCallsExpanded}
@@ -228,6 +317,37 @@ export function SessionPane({
               </div>
             ))}
           </section>
+        ) : null}
+        {terminalOpen && workspace ? (
+          <div
+            className="terminal-panel"
+            data-argmax-terminal="true"
+            style={{ height: `${terminalHeight}px` }}
+          >
+            <div
+              className="terminal-panel-resize"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize terminal"
+              onMouseDown={onTerminalResizeMouseDown}
+            />
+            <div className="terminal-panel-header">
+              <span className="terminal-panel-title">Terminal</span>
+              <span className="terminal-panel-cwd" title={workspace.path}>
+                {workspace.path}
+              </span>
+              <button
+                type="button"
+                className="terminal-panel-close"
+                aria-label="Hide terminal"
+                title="Hide terminal (⌘J)"
+                onClick={() => setIsTerminalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <TerminalPanel workspaceId={workspace.id} visible={terminalOpen} />
+          </div>
         ) : null}
       </div>
       {reviewState.isPanelOpen ? (

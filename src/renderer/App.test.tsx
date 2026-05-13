@@ -310,6 +310,14 @@ describe("App", () => {
             lastSeenAt: "2026-05-12T00:00:00.000Z"
           }),
         delete: () => Promise.resolve({ ok: true })
+      },
+      terminal: {
+        spawn: () => Promise.resolve({ terminalId: "test-terminal" }),
+        write: () => Promise.resolve({ ok: true }),
+        resize: () => Promise.resolve({ ok: true }),
+        terminate: () => Promise.resolve({ ok: true }),
+        onData: () => () => undefined,
+        onExit: () => () => undefined
       }
     };
   });

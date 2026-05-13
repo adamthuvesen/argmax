@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
   CommitPreparation,
@@ -8,12 +8,19 @@ import type {
   MenuCommand,
   PrepareCommitInput
 } from "../shared/types.js";
-import { CommandPalette, type MessageHit as PaletteMessageHit, type PaletteCommand } from "./components/CommandPalette.js";
+import type { MessageHit as PaletteMessageHit, PaletteCommand } from "./components/CommandPalette.js";
+// Heavy overlays are dynamic-imported on first open so the launcher's first
+// paint doesn't construct the palette / search code paths (audit P4.03).
+const CommandPalette = lazy(async () => ({
+  default: (await import("./components/CommandPalette.js")).CommandPalette
+}));
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
-import { SearchOverlay } from "./components/SearchOverlay.js";
+const SearchOverlay = lazy(async () => ({
+  default: (await import("./components/SearchOverlay.js")).SearchOverlay
+}));
 import { SessionPane } from "./components/SessionPane.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
@@ -806,26 +813,41 @@ export function App(): JSX.Element {
           Preload bridge unavailable; running on demo data.
         </div>
       ) : null}
-      <CommandPalette
-        open={isPaletteOpen}
-        commands={paletteCommands}
-        onClose={() => setIsPaletteOpen(false)}
-        searchMessages={searchMessages}
-      />
+      {/*
+        Lazy overlays — only mount when the user actually opens them. The
+        first ⌘K / ⌘F press triggers the dynamic import; subsequent opens
+        re-use the already-loaded chunk. Fallback is `null` because these
+        are full-screen modals and a loading spinner would flash worse
+        than a 1-frame delay on the cold-open path.
+      */}
+      {isPaletteOpen ? (
+        <Suspense fallback={null}>
+          <CommandPalette
+            open={isPaletteOpen}
+            commands={paletteCommands}
+            onClose={() => setIsPaletteOpen(false)}
+            searchMessages={searchMessages}
+          />
+        </Suspense>
+      ) : null}
       <KeyboardCheatSheet open={isCheatSheetOpen} onClose={() => setIsCheatSheetOpen(false)} />
-      <SearchOverlay
-        open={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        sessionLabelById={sessionLabelById}
-        onSelectSession={(sessionId) => {
-          const target = snapshot.sessions.find((session) => session.id === sessionId);
-          setIsSettingsOpen(false);
-          setSelectedSessionId(sessionId);
-          if (target) {
-            setSelectedWorkspaceId(target.workspaceId);
-          }
-        }}
-      />
+      {isSearchOpen ? (
+        <Suspense fallback={null}>
+          <SearchOverlay
+            open={isSearchOpen}
+            onClose={() => setIsSearchOpen(false)}
+            sessionLabelById={sessionLabelById}
+            onSelectSession={(sessionId) => {
+              const target = snapshot.sessions.find((session) => session.id === sessionId);
+              setIsSettingsOpen(false);
+              setSelectedSessionId(sessionId);
+              if (target) {
+                setSelectedWorkspaceId(target.workspaceId);
+              }
+            }}
+          />
+        </Suspense>
+      ) : null}
       {toast ? (
         <div className={`toast toast-${toast.kind}`} role="status">
           <span>{toast.message}</span>

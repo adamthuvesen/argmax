@@ -159,6 +159,27 @@ export const providerSessionResizeInputSchema = z.object({
 
 export const providerSessionTerminateInputSchema = sessionIdSchema;
 
+const terminalIdSchema = z.string().min(1);
+
+export const terminalSpawnInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  cols: z.number().int().min(20).max(400),
+  rows: z.number().int().min(5).max(200)
+});
+
+export const terminalWriteInputSchema = z.object({
+  terminalId: terminalIdSchema,
+  data: z.string()
+});
+
+export const terminalResizeInputSchema = z.object({
+  terminalId: terminalIdSchema,
+  cols: z.number().int().min(20).max(400),
+  rows: z.number().int().min(5).max(200)
+});
+
+export const terminalTerminateInputSchema = terminalIdSchema;
+
 export const resolveApprovalInputSchema = z.object({
   approvalId: approvalIdSchema,
   status: z.enum(["approved", "rejected"])
@@ -283,6 +304,10 @@ export const ipcSchemas = {
   "providers:send-input": providerSessionInputSchema,
   "providers:resize": providerSessionResizeInputSchema,
   "providers:terminate": providerSessionTerminateInputSchema,
+  "terminal:spawn": terminalSpawnInputSchema,
+  "terminal:write": terminalWriteInputSchema,
+  "terminal:resize": terminalResizeInputSchema,
+  "terminal:terminate": terminalTerminateInputSchema,
   "approvals:resolve": resolveApprovalInputSchema,
   "approvals:pending": approvalsPendingInputSchema,
   "session:eventsSince": sessionEventsSinceInputSchema,
@@ -354,3 +379,6 @@ export type SessionCostSummaryInputParsed = z.infer<typeof sessionCostSummaryInp
 export type OpenInIdeInputParsed = z.infer<typeof openInIdeInputSchema>;
 export type IdeIdParsed = z.infer<typeof ideIdSchema>;
 export type DetectedIdeParsed = z.infer<typeof listDetectedIdesOutputSchema>[number];
+export type TerminalSpawnInputParsed = z.infer<typeof terminalSpawnInputSchema>;
+export type TerminalWriteInputParsed = z.infer<typeof terminalWriteInputSchema>;
+export type TerminalResizeInputParsed = z.infer<typeof terminalResizeInputSchema>;

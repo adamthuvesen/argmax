@@ -32,6 +32,10 @@ import {
   sessionEventsSinceInputSchema,
   skillsListInputSchema,
   systemOpenPathInputSchema,
+  terminalResizeInputSchema,
+  terminalSpawnInputSchema,
+  terminalTerminateInputSchema,
+  terminalWriteInputSchema,
   updateProjectSettingsInputSchema,
   workspaceListFilesInputSchema,
   workspaceReadFileInputSchema,
@@ -47,6 +51,7 @@ import { ProjectService } from "./projects/projectRegistration.js";
 import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
 import { discoverProviders } from "./providers/providerDiscovery.js";
 import type { ProviderSessionService } from "./providers/providerSessionService.js";
+import type { TerminalService } from "./terminal/terminalService.js";
 import { GitReviewService } from "./review/gitReviewService.js";
 import { WorkspaceFilesService } from "./files/workspaceFilesService.js";
 import { CheckService } from "./checks/checkService.js";
@@ -133,7 +138,8 @@ export function withTupleValidation<TTuple extends readonly unknown[], TOut>(
  */
 export function registerIpcHandlers(
   database: ArgmaxDatabase,
-  providerSessions: ProviderSessionService
+  providerSessions: ProviderSessionService,
+  terminals: TerminalService
 ): readonly string[] {
   const projects = new ProjectService(database);
   const workspaces = new WorkspaceService(database);
@@ -333,6 +339,31 @@ export function registerIpcHandlers(
     "providers:terminate",
     withValidation(providerSessionTerminateInputSchema, async (sessionId) => {
       await providerSessions.terminate(sessionId);
+      return { ok: true } as const;
+    })
+  );
+  ipcMain.handle(
+    "terminal:spawn",
+    withValidation(terminalSpawnInputSchema, (input) => terminals.spawn(input))
+  );
+  ipcMain.handle(
+    "terminal:write",
+    withValidation(terminalWriteInputSchema, (input) => {
+      terminals.write(input);
+      return { ok: true } as const;
+    })
+  );
+  ipcMain.handle(
+    "terminal:resize",
+    withValidation(terminalResizeInputSchema, (input) => {
+      terminals.resize(input);
+      return { ok: true } as const;
+    })
+  );
+  ipcMain.handle(
+    "terminal:terminate",
+    withValidation(terminalTerminateInputSchema, (terminalId) => {
+      terminals.terminate(terminalId);
       return { ok: true } as const;
     })
   );

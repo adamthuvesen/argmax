@@ -8,7 +8,8 @@ export const KEYBOARD_BINDINGS: KeyBinding[] = [
   { accelerator: "⌘,", label: "Open Settings" },
   { accelerator: "⌘N", label: "New session" },
   { accelerator: "⌘1 – ⌘9", label: "Jump to session 1–9" },
-  { accelerator: "⌘B", label: "Toggle sidebar" },
+  { accelerator: "⌘B", label: "Toggle review panel" },
+  { accelerator: "⌘J", label: "Toggle integrated terminal" },
   { accelerator: "⌘⇧D", label: "Toggle debug log" },
   { accelerator: "⌘/", label: "Show keyboard shortcuts" },
   { accelerator: "Esc", label: "Close the topmost overlay" }

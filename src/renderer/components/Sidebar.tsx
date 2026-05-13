@@ -1,4 +1,4 @@
-import { ChevronRight, Folder, Plus, Settings } from "lucide-react";
+import { ChevronRight, Plus, Settings } from "lucide-react";
 import {
   useCallback,
   useMemo,
@@ -258,8 +258,11 @@ export function Sidebar({
                     onOpenLauncher();
                   }}
                 >
-                  <Folder size={16} />
-                  <span>{project.name}</span>
+                  <span className="project-bullet" aria-hidden="true" />
+                  <span className="project-name-text">{project.name}</span>
+                  {projectWorkspaces.length > 0 ? (
+                    <span className="project-count" aria-hidden="true">{projectWorkspaces.length}</span>
+                  ) : null}
                 </button>
                 <button
                   aria-expanded={!isCollapsed}

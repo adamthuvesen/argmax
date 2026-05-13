@@ -125,7 +125,7 @@ export function SidebarSessionRow({
           disabled={buttonDisabled || !effectiveDefault}
           onClick={handlePrimaryClick}
         >
-          <ExternalLink size={12} />
+          <ExternalLink size={11} />
         </button>
         <button
           className="session-row-action session-ide-chevron"
@@ -137,7 +137,7 @@ export function SidebarSessionRow({
           disabled={buttonDisabled}
           onClick={handleChevronClick}
         >
-          <ChevronDown size={12} />
+          <ChevronDown size={11} />
         </button>
         {pickerOpen && popoverPos && createPortal(
           <ul
@@ -192,7 +192,7 @@ export function SidebarSessionRow({
             onTogglePin(workspace.id, !workspace.pinned);
           }}
         >
-          {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+          {workspace.pinned ? <PinOff size={11} /> : <Pin size={11} />}
         </button>
       ) : null}
       {showArchive && (
@@ -203,7 +203,7 @@ export function SidebarSessionRow({
           type="button"
           onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
         >
-          <Archive size={12} />
+          <Archive size={11} />
         </button>
       )}
     </div>

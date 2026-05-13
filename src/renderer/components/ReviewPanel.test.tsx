@@ -41,6 +41,7 @@ function reviewStub(): ReviewState {
     openFile: vi.fn(),
     openPanelInFilesMode: vi.fn(),
     closePanel: vi.fn(),
+    togglePanel: vi.fn(),
     toggleSummary: vi.fn()
   };
 }

@@ -1,4 +1,4 @@
-import { Bug, ChevronRight, GitCommit, Mic, Plus, Square } from "lucide-react";
+import { Bug, ChevronRight, Folder, GitCommit, Mic, Plus, Square } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -231,6 +231,7 @@ export function SessionConversation({
     session?.state === "running" && !anyToolRunning && !lastIsAssistantMessage;
 
   const conversationListRef = useRef<HTMLDivElement | null>(null);
+  const metaCardsRef = useRef<HTMLDivElement | null>(null);
   const wasNearBottomRef = useRef<boolean>(true);
 
   const handleConversationScroll = useCallback((): void => {
@@ -259,6 +260,24 @@ export function SessionConversation({
     if (!el || !wasNearBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [conversationItems, isThinking]);
+
+  // The meta-cards row (changed files + cost) shares vertical space with the
+  // conversation list via grid 1fr. When it grows or shrinks, the list's
+  // viewport changes height without any of the smart-follow deps changing, so
+  // the latest content can slip behind the cards. Re-pin to bottom whenever
+  // the cards resize and the user was already near the bottom.
+  useEffect(() => {
+    const cards = metaCardsRef.current;
+    if (!cards || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (!wasNearBottomRef.current) return;
+      const el = conversationListRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(cards);
+    return () => observer.disconnect();
+  }, []);
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
   const sessionDetails = [
     session ? providerLabel(session.provider) : null,
@@ -369,6 +388,16 @@ export function SessionConversation({
           <button
             className="small-icon"
             type="button"
+            title="Browse workspace files"
+            aria-label="Browse workspace files"
+            disabled={!workspace}
+            onClick={review.openPanelInFilesMode}
+          >
+            <Folder size={16} />
+          </button>
+          <button
+            className="small-icon"
+            type="button"
             title={workspace?.dirty ? "Save checkpoint of the current worktree" : "Worktree is clean — no checkpoint needed"}
             aria-label="Save checkpoint"
             disabled={!workspace?.dirty}
@@ -465,7 +494,7 @@ export function SessionConversation({
           </article>
         ) : null}
       </div>
-      <div className="session-meta-cards">
+      <div className="session-meta-cards" ref={metaCardsRef}>
         <ChangedFilesCard
           review={review}
           workspaceId={workspace?.id}

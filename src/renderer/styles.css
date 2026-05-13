@@ -298,25 +298,41 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 30px;
-  margin: 18px 0 8px 6px;
+  min-height: 24px;
+  margin: 20px 4px 6px 12px;
 }
 
 .rail-label {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+.rail-heading .small-icon {
+  width: 24px;
+  height: 24px;
 }
 
 .project-group {
   position: relative;
   display: grid;
-  gap: 1px;
-  margin-bottom: 10px;
-  padding-left: 6px;
+  gap: 0;
+  margin-bottom: 6px;
+  padding-left: 0;
+}
+
+.project-group:not([data-collapsed="true"]):has(.session-row-wrap)::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 28px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--line-soft);
+  pointer-events: none;
 }
 
 .project-group.dragging {
@@ -344,66 +360,114 @@ button {
 
 .project-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) 22px;
   align-items: center;
   gap: 2px;
+  margin-bottom: 2px;
 }
 
 .project-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  min-height: 30px;
-  padding: 0 6px;
-  color: var(--muted-strong);
+  min-height: 28px;
+  padding: 0 6px 0 11px;
+  color: var(--text);
   text-align: left;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
-.project-name:hover,
-.project-visibility:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.5);
+.project-name:hover {
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.project-name:hover .project-visibility,
+.project-row:hover .project-visibility,
+.project-row:focus-within .project-visibility {
+  opacity: 1;
 }
 
 .project-name.active {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--sage);
 }
 
-.project-name svg {
-  color: var(--muted);
+.project-name.active .project-bullet {
+  background: var(--sage);
+  transform: scale(1.1);
+}
+
+.project-bullet {
   flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 1.5px;
+  background: var(--muted);
+  transition: background var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
 }
 
-.project-name span {
+.project-name:hover .project-bullet {
+  background: var(--text);
+}
+
+.project-name-text {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-transform: lowercase;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.project-count {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.project-row:hover .project-count,
+.project-name.active .project-count {
+  opacity: 0.7;
 }
 
 .project-visibility {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   color: var(--muted);
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
-  transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+  opacity: 0.45;
+  transition: color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease);
+}
+
+.project-visibility:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.6);
+  opacity: 1;
 }
 
 .project-visibility svg {
+  width: 12px;
+  height: 12px;
   transform: rotate(90deg);
   transition: transform var(--duration-base) var(--ease);
 }
@@ -415,30 +479,32 @@ button {
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 4px minmax(0, 1fr);
+  gap: 11px;
   align-items: center;
   width: 100%;
-  min-height: 26px;
+  min-height: 24px;
   padding: 0 10px 0 12px;
   color: var(--muted-strong);
   text-align: left;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
-  font-size: 13.5px;
+  font-size: 12.5px;
+  font-weight: 400;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .session-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .session-link.active {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: var(--sage-soft);
+  box-shadow: inset 2px 0 0 var(--sage);
 }
 
 .session-link span {
@@ -450,13 +516,12 @@ button {
 
 .status-dot {
   display: inline-block;
-  visibility: visible;
-  width: 5px;
-  height: 5px;
+  visibility: hidden;
+  width: 4px;
+  height: 4px;
   flex: 0 0 auto;
   border-radius: 999px;
   background: transparent;
-  box-shadow: 0 0 0 1.5px var(--line-strong);
   transition: background var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
 }
 
@@ -486,55 +551,69 @@ button {
 }
 
 .session-row .session-link {
-  padding-right: 140px;
+  padding-right: 56px;
 }
 
 .session-ide-cluster {
   position: absolute;
-  right: 5px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 1px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+  pointer-events: none;
+}
+
+.session-row:hover .session-ide-cluster,
+.session-row:focus-within .session-ide-cluster {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .session-row:has(.session-archive-btn) .session-ide-cluster {
-  right: 28px;
+  right: 30px;
 }
 
 .session-row-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 20px;
+  height: 18px;
   padding: 0;
-  opacity: 0.55;
+  opacity: 0.18;
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
 .session-row-action:focus-visible {
   opacity: 1;
-  outline: 2px solid var(--accent, #4f46e5);
+  outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
 
 .session-ide-btn {
-  width: 20px;
+  width: 18px;
 }
 
 .session-ide-chevron {
-  width: 14px;
+  width: 12px;
 }
 
 
 .session-row:hover .session-row-action,
 .session-row:focus-within .session-row-action {
+  opacity: 0.85;
+}
+
+.session-row:hover .session-row-action:hover,
+.session-row:focus-within .session-row-action:focus-visible {
   opacity: 1;
 }
 
@@ -569,30 +648,31 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
-  opacity: 0.55;
+  opacity: 0.18;
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
 .session-row:hover .session-archive-btn,
 .session-row:focus-within .session-archive-btn {
-  opacity: 1;
+  opacity: 0.85;
 }
 
 .session-archive-btn:focus-visible {
   opacity: 1;
-  outline: 2px solid var(--accent, #4f46e5);
+  outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
 
 .session-archive-btn:hover {
+  opacity: 1;
   color: var(--text);
   background: rgba(0, 0, 0, 0.06);
 }
@@ -602,55 +682,59 @@ button {
   right: 5px;
   top: 50%;
   transform: translateY(-50%);
-  width: 20px;
+  width: 18px;
 }
 
 .session-pin-btn[aria-pressed="true"] {
+  opacity: 0.85;
+  color: var(--amber);
+}
+
+.session-row:hover .session-pin-btn[aria-pressed="true"],
+.session-row:focus-within .session-pin-btn[aria-pressed="true"] {
   opacity: 1;
-  color: var(--text);
 }
 
 .session-row:has(.session-pin-btn) .session-ide-cluster {
-  right: 28px;
+  right: 30px;
 }
 
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-pin-btn {
-  right: 28px;
+  right: 30px;
 }
 
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-ide-cluster {
-  right: 51px;
+  right: 54px;
 }
 
-.session-row:has(.session-pin-btn) .session-link {
-  padding-right: 165px;
-}
-
+.session-row:has(.session-pin-btn) .session-link,
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link {
-  padding-right: 188px;
+  padding-right: 56px;
 }
 
 .session-cost {
   position: absolute;
-  right: 70px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--muted);
+  background: transparent;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "calt" 0, "ss01" 0;
+  letter-spacing: -0.01em;
   pointer-events: none;
+  opacity: 0.65;
+  transition: opacity var(--duration-fast) var(--ease);
 }
 
-.session-row:has(.session-pin-btn) .session-cost {
-  right: 88px;
-}
-
-.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-cost {
-  right: 111px;
+.session-row:hover .session-cost,
+.session-row:focus-within .session-cost {
+  opacity: 0;
 }
 
 .session-cost[data-zero="true"] {
-  opacity: 0.4;
+  opacity: 0.3;
 }
 
 .cost-panel {
@@ -1735,6 +1819,14 @@ button {
   min-width: 0;
 }
 
+.conversation-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 .section-heading h2 {
   margin: 0;
   overflow-wrap: anywhere;
@@ -2801,6 +2893,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
 }
 
 .changed-files-chevron {
@@ -3644,6 +3737,17 @@ button {
   font-size: 12px;
 }
 
+.file-preview-heading-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-preview-markdown {
+  padding: 18px 24px 32px;
+  overflow-wrap: anywhere;
+}
+
 .file-preview-body {
   margin: 0;
   padding: 12px 0 24px;
@@ -3671,16 +3775,6 @@ button {
   white-space: pre;
 }
 
-.changed-files-header-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-}
-
-.changed-files-header-row .changed-files-header {
-  flex: 1 1 auto;
-}
-
 .changed-files-header-static {
   display: flex;
   align-items: center;
@@ -3695,34 +3789,7 @@ button {
   flex: 1 1 auto;
 }
 
-.changed-files-browse {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 8px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--muted-strong);
-  background: transparent;
-  border: 0;
-  border-left: 1px solid var(--line-soft);
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
-}
-
-.changed-files-header-static .changed-files-browse {
-  border-left: 0;
-}
-
-.changed-files-browse:hover {
-  color: var(--text);
-  background: var(--panel-soft);
-}
-
-.changed-files-header:focus-visible,
-.changed-files-browse:focus-visible {
+.changed-files-header:focus-visible {
   outline-offset: -2px;
 }
 
@@ -3791,7 +3858,8 @@ button {
   white-space: pre;
 }
 
-.diff-line .hl-token {
+.diff-line .hl-token,
+.file-preview-content .hl-token {
   white-space: pre;
 }
 
@@ -3802,8 +3870,22 @@ button {
 }
 
 .diff-sbs-cell {
+  /* Override .diff-line's three-column template (which assumes both line
+     numbers in a unified row): each side-by-side cell carries only one
+     line number, so collapse to two columns. */
+  grid-template-columns: 44px minmax(0, 1fr);
+  /* Override .diff-line's `min-width: max-content` — that's needed for
+     unified rows to horizontal-scroll, but in side-by-side it forces each
+     cell past its outer track width and the code overflows into the
+     adjacent cell. */
   min-width: 0;
+  overflow: hidden;
   border-top: 1px solid var(--line-soft);
+}
+
+.diff-sbs-cell > code {
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .diff-sbs-cell:first-of-type,
@@ -4106,11 +4188,6 @@ button {
 .session-pin-btn {
   display: inline-grid;
   place-items: center;
-}
-
-.session-pin-btn[aria-pressed="true"] {
-  color: #b08300;
-  opacity: 1;
 }
 
 .diff-line.addition {

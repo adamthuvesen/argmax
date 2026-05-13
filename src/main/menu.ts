@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from "electron";
+import { findMenuKeybinding } from "../shared/menuKeybindings.js";
 import type { MenuCommand } from "../shared/types.js";
 
 export type { MenuCommand };
@@ -8,6 +9,19 @@ export interface MenuConfig {
   isDev?: boolean;
   onCommand: (command: MenuCommand) => void;
   onCheckForUpdates?: () => void;
+}
+
+function menuItem(
+  command: MenuCommand,
+  fallbackLabel: string,
+  dispatch: (c: MenuCommand) => () => void
+): MenuItemConstructorOptions {
+  const binding = findMenuKeybinding(command);
+  return {
+    label: fallbackLabel,
+    ...(binding ? { accelerator: binding.accelerator } : {}),
+    click: dispatch(command)
+  };
 }
 
 export function buildAppMenuTemplate(config: MenuConfig): MenuItemConstructorOptions[] {
@@ -20,11 +34,7 @@ export function buildAppMenuTemplate(config: MenuConfig): MenuItemConstructorOpt
     submenu: [
       { role: "about", label: `About ${appName}` },
       { type: "separator" },
-      {
-        label: "Settings…",
-        accelerator: "CmdOrCtrl+,",
-        click: dispatch("open-settings")
-      },
+      menuItem("open-settings", "Settings…", dispatch),
       {
         label: "Check for Updates…",
         click: () => config.onCheckForUpdates?.()
@@ -43,11 +53,7 @@ export function buildAppMenuTemplate(config: MenuConfig): MenuItemConstructorOpt
   const fileMenu: MenuItemConstructorOptions = {
     label: "File",
     submenu: [
-      {
-        label: "New Session",
-        accelerator: "CmdOrCtrl+N",
-        click: dispatch("new-session")
-      },
+      menuItem("new-session", "New Session", dispatch),
       { type: "separator" },
       { role: "close" }
     ]
@@ -72,21 +78,9 @@ export function buildAppMenuTemplate(config: MenuConfig): MenuItemConstructorOpt
   const viewMenu: MenuItemConstructorOptions = {
     label: "View",
     submenu: [
-      {
-        label: "Command Palette…",
-        accelerator: "CmdOrCtrl+K",
-        click: dispatch("open-command-palette")
-      },
-      {
-        label: "Toggle Sidebar",
-        accelerator: "CmdOrCtrl+B",
-        click: dispatch("toggle-sidebar")
-      },
-      {
-        label: "Toggle Debug Log",
-        accelerator: "CmdOrCtrl+Shift+D",
-        click: dispatch("toggle-debug-log")
-      },
+      menuItem("open-command-palette", "Command Palette…", dispatch),
+      menuItem("toggle-sidebar", "Toggle Sidebar", dispatch),
+      menuItem("toggle-debug-log", "Toggle Debug Log", dispatch),
       { type: "separator" },
       ...(isDev
         ? [
@@ -112,11 +106,7 @@ export function buildAppMenuTemplate(config: MenuConfig): MenuItemConstructorOpt
   const helpMenu: MenuItemConstructorOptions = {
     role: "help",
     submenu: [
-      {
-        label: "Keyboard Shortcuts",
-        accelerator: "CmdOrCtrl+/",
-        click: dispatch("open-cheat-sheet")
-      }
+      menuItem("open-cheat-sheet", "Keyboard Shortcuts", dispatch)
     ]
   };
 

@@ -19,6 +19,7 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { demoSnapshot } from "./demoSnapshot.js";
+import { useOverlays } from "./hooks/useOverlays.js";
 import { useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { isTypingTarget } from "./lib/typingTarget.js";
@@ -62,10 +63,16 @@ export function App(): JSX.Element {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
-  const [isCheatSheetOpen, setIsCheatSheetOpen] = useState<boolean>(false);
-  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const {
+    isSettingsOpen,
+    setIsSettingsOpen,
+    isPaletteOpen,
+    setIsPaletteOpen,
+    isCheatSheetOpen,
+    setIsCheatSheetOpen,
+    isSearchOpen,
+    setIsSearchOpen
+  } = useOverlays();
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize();
@@ -91,19 +98,6 @@ export function App(): JSX.Element {
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      if (isTypingTarget(event.target)) return;
-      if (isSettingsOpen) {
-        event.preventDefault();
-        setIsSettingsOpen(false);
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isSettingsOpen]);
 
   const handleMenuCommand = useCallback(
     (command: MenuCommand): void => {
@@ -133,7 +127,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    []
+    [setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
   useEffect(() => {
@@ -178,7 +172,7 @@ export function App(): JSX.Element {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [snapshot.sessions, handleMenuCommand]);
+  }, [snapshot.sessions, handleMenuCommand, setIsSearchOpen, setIsSettingsOpen]);
 
   useEffect(() => {
     if (!window.argmax) return;
@@ -774,7 +768,9 @@ export function App(): JSX.Element {
     snapshot.projects,
     selectedSession,
     handleMenuCommand,
-    terminateSession
+    terminateSession,
+    setIsSearchOpen,
+    setIsSettingsOpen
   ]);
 
   const sessionLabelById = useMemo(() => {
@@ -822,7 +818,7 @@ export function App(): JSX.Element {
         }
       }));
     },
-    [sessionLabelById, snapshot.sessions]
+    [sessionLabelById, snapshot.sessions, setIsSettingsOpen]
   );
 
   return (

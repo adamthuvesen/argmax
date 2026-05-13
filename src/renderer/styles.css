@@ -1795,6 +1795,10 @@ button {
   overscroll-behavior-y: contain;
 }
 
+.model-picker-popover .project-picker-item {
+  white-space: nowrap;
+}
+
 .project-picker-item {
   display: flex;
   align-items: center;

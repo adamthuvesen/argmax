@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import {
   ipcSchemas,
@@ -144,5 +144,70 @@ describe("IPC channel rejection rules", () => {
       undefined
     ]);
     expect(result.success).toBe(true);
+  });
+});
+
+/**
+ * Audit-2026-05-11 argv-injection guard: the projects:switch-branch handler
+ * must pass the user-controlled branch ref followed by `--` so git cannot
+ * mistake the value for a flag or pathspec. The zod schema rejects leading
+ * dashes; this test is the defense-in-depth check on the runtime call shape.
+ */
+describe("projects:switch-branch invokes git with the `--` argv separator", () => {
+  let captured: Array<{ channel: string; handler: (event: unknown, ...args: unknown[]) => unknown }>;
+  let gitCalls: Array<{ cwd: string; args: string[] }>;
+  let registerIpcHandlers: typeof import("../ipc.js").registerIpcHandlers;
+
+  beforeEach(async () => {
+    captured = [];
+    gitCalls = [];
+
+    vi.resetModules();
+
+    vi.doMock("electron", () => ({
+      app: { getPath: () => "/tmp" },
+      dialog: {},
+      ipcMain: {
+        handle: (channel: string, handler: (event: unknown, ...args: unknown[]) => unknown) => {
+          captured.push({ channel, handler });
+        }
+      },
+      shell: {}
+    }));
+
+    vi.doMock("../git/exec.js", () => ({
+      runGitText: vi.fn(async (cwd: string, args: string[]) => {
+        gitCalls.push({ cwd, args });
+        return "";
+      }),
+      runGitMaybe: vi.fn(async () => ""),
+      runGitBuffer: vi.fn(async () => Buffer.alloc(0))
+    }));
+
+    registerIpcHandlers = (await import("../ipc.js")).registerIpcHandlers;
+  });
+
+  afterEach(() => {
+    vi.doUnmock("electron");
+    vi.doUnmock("../git/exec.js");
+  });
+
+  it("appends `--` after the validated branch ref", async () => {
+    const stubDatabase = {
+      getProject: () => ({ repoPath: "/tmp/repo" }),
+      updateProjectBranch: (_projectId: string, branch: string) => ({ id: _projectId, currentBranch: branch })
+    } as unknown as Parameters<typeof registerIpcHandlers>[0];
+    const stubProviders = {} as unknown as Parameters<typeof registerIpcHandlers>[1];
+    const stubTerminals = {} as unknown as Parameters<typeof registerIpcHandlers>[2];
+
+    registerIpcHandlers(stubDatabase, stubProviders, stubTerminals);
+
+    const entry = captured.find((c) => c.channel === "projects:switch-branch");
+    expect(entry).toBeDefined();
+    await entry!.handler(null, { projectId: "p-1", branch: "feature/foo" });
+
+    const checkout = gitCalls.find((c) => c.args[0] === "checkout");
+    expect(checkout).toBeDefined();
+    expect(checkout!.args).toEqual(["checkout", "feature/foo", "--"]);
   });
 });

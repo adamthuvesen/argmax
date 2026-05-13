@@ -201,7 +201,10 @@ export function registerIpcHandlers(
     "projects:switch-branch",
     withValidation(switchBranchInputSchema, async (input) => {
       const project = database.getProject(input.projectId);
-      await runGitText(project.repoPath, ["checkout", input.branch]);
+      // `--` separator after the user-controlled ref so git cannot mistake a
+      // future input value for a flag or a pathspec. zod also rejects leading
+      // dashes via gitRefSchema; the separator is defense-in-depth.
+      await runGitText(project.repoPath, ["checkout", input.branch, "--"]);
       return database.updateProjectBranch(input.projectId, input.branch);
     })
   );

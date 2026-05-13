@@ -1,4 +1,7 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import {
@@ -24,6 +27,33 @@ describe("IPC channel schema coverage", () => {
     const channelSet = new Set(REGISTERED_IPC_CHANNELS);
     const orphans = (Object.keys(ipcSchemas) as IpcChannel[]).filter((channel) => !channelSet.has(channel));
     expect(orphans).toEqual([]);
+  });
+});
+
+/**
+ * SPEC P6.04 — tighten the contract beyond "schema exists by name." Walk the
+ * preload bridge source for every `ipcRenderer.invoke("channel-name", …)`
+ * call and assert that name appears in `REGISTERED_IPC_CHANNELS`. A new
+ * registered channel that nobody added a preload method for would otherwise
+ * remain silently uncallable from the renderer.
+ */
+describe("IPC preload coverage", () => {
+  it("every channel invoked by preload is registered + schema-backed", () => {
+    const preloadSource = readFileSync(
+      resolve(fileURLToPath(import.meta.url), "../../../main/preload.ts"),
+      "utf8"
+    );
+    const matches = preloadSource.matchAll(/ipcRenderer\.invoke\(\s*["']([^"']+)["']/g);
+    const invokedChannels = new Set<string>();
+    for (const match of matches) {
+      if (match[1]) invokedChannels.add(match[1]);
+    }
+    // The preload's push-only event channels (`dashboard:delta`, `terminal:*`,
+    // `menu:command`) are subscribed via `ipcRenderer.on`, not invoke — so
+    // they don't land in this set and don't belong in REGISTERED_IPC_CHANNELS.
+    const registeredSet = new Set<string>(REGISTERED_IPC_CHANNELS);
+    const unregistered = [...invokedChannels].filter((channel) => !registeredSet.has(channel));
+    expect(unregistered).toEqual([]);
   });
 });
 

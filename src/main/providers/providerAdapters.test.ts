@@ -366,6 +366,78 @@ describe("provider PTY adapters", () => {
     });
   });
 
+  it("launches Cursor structured probes with stream-json and bypass flags", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+
+    await adapters.get("cursor")?.launch(launchInput("cursor"), () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    expect(processSpawnCalls[0]).toMatchObject({
+      file: "/usr/local/bin/cursor-agent",
+      args: [
+        "agent",
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--stream-partial-output",
+        "--force",
+        "--trust",
+        "--model",
+        "composer-2",
+        "Implement the task"
+      ],
+      cwd: "/repo/worktree"
+    });
+    // Prompt is passed as positional arg, not via stdin.
+    expect(processes[0].stdin.writableEnded).toBe(true);
+  });
+
+  it("drops the Cursor bypass flags when permissionMode is ask-each-time", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+    await adapters
+      .get("cursor")
+      ?.launch({ ...launchInput("cursor"), permissionMode: "ask-each-time" }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    const args = processSpawnCalls[0]?.args ?? [];
+    expect(args).not.toContain("--force");
+    expect(args).not.toContain("--trust");
+  });
+
+  it("resumes Cursor structured sessions with --resume <session_id>", async () => {
+    const { adapters, processSpawnCalls } = createTestAdapters();
+
+    await adapters
+      .get("cursor")
+      ?.launch({ ...launchInput("cursor"), resumeConversationId: "cursor-chat-123" }, () => undefined);
+
+    expect(processSpawnCalls[0]).toMatchObject({
+      file: "/usr/local/bin/cursor-agent",
+      args: [
+        "agent",
+        "-p",
+        "--resume",
+        "cursor-chat-123",
+        "--output-format",
+        "stream-json",
+        "--stream-partial-output",
+        "--force",
+        "--trust",
+        "--model",
+        "composer-2",
+        "Implement the task"
+      ],
+      cwd: "/repo/worktree"
+    });
+  });
+
+  it("rejects Cursor interactive launches with a clear error", async () => {
+    const { adapters } = createTestAdapters();
+    await expect(
+      adapters.get("cursor")?.launch({ ...launchInput("cursor"), mode: "interactive-pty" }, () => undefined)
+    ).rejects.toThrow("Cursor interactive mode");
+  });
+
   it("resumes Codex structured sessions with the provider conversation id", async () => {
     const { adapters, processes, processSpawnCalls } = createTestAdapters();
 
@@ -433,15 +505,23 @@ function createTestAdapters(): {
   };
 }
 
-function launchInput(provider: "claude" | "codex"): ProviderLaunchInput {
+function launchInput(provider: "claude" | "codex" | "cursor"): ProviderLaunchInput {
+  const modelLabel =
+    provider === "claude"
+      ? "Claude Haiku"
+      : provider === "cursor"
+        ? "Cursor Composer 2"
+        : "GPT-5.3 Codex Spark Low";
+  const modelId =
+    provider === "claude" ? "haiku" : provider === "cursor" ? "composer-2" : "gpt-5.3-codex-spark";
   return {
     sessionId: "session-1",
     workspacePath: "/repo/worktree",
     prompt: "Implement the task",
-    modelLabel: provider === "claude" ? "Claude Haiku" : "GPT-5.3 Codex Spark Low",
-    modelId: provider === "claude" ? "haiku" : "gpt-5.3-codex-spark",
+    modelLabel,
+    modelId,
     reasoningEffort: provider === "codex" ? "low" : undefined,
-    mode: "interactive-pty",
+    mode: provider === "cursor" ? "structured-json" : "interactive-pty",
     permissionMode: "auto-approve",
     cols: 100,
     rows: 30

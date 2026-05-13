@@ -47,13 +47,19 @@ const relativeFilePathSchema = z
   );
 
 /**
- * baseRef rules: cannot start with `-` so it does not collide with git flag
- * parsing when forwarded as a positional argument.
+ * git refs (branches / base refs) cannot start with `-` so they do not collide
+ * with git flag parsing when forwarded as positional arguments. Always also
+ * pass `--` as an argv separator AFTER user-controlled refs at every callsite
+ * — the zod refine is the validation, the `--` is the defense in depth.
  */
-const baseRefSchema = z
-  .string()
-  .min(1)
-  .refine((value) => !value.startsWith("-"), { message: "baseRef cannot start with '-'" });
+function gitRefSchema(fieldName: string) {
+  return z
+    .string()
+    .min(1)
+    .refine((value) => !value.startsWith("-"), { message: `${fieldName} cannot start with '-'` });
+}
+
+const baseRefSchema = gitRefSchema("baseRef");
 
 /**
  * Prompt rules: no embedded \r or \n (PTYs interpret newlines as submission)
@@ -81,10 +87,7 @@ export const providersDiscoverInputSchema = z.void();
 export const listBranchesInputSchema = z.object({ projectId: projectIdSchema });
 export const switchBranchInputSchema = z.object({
   projectId: projectIdSchema,
-  branch: z
-    .string()
-    .min(1)
-    .refine((value) => !value.startsWith("-"), { message: "branch cannot start with '-'" })
+  branch: gitRefSchema("branch")
 });
 export const dashboardLoadInputSchema = z.void();
 export const dashboardListInputSchema = z.void();

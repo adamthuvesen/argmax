@@ -111,6 +111,28 @@ describe("createDatabase", () => {
     database.connection.close();
   });
 
+  it("loadPreferredSessionIds query uses the ui_state PK index (audit P1.13)", () => {
+    // audit-2026-05-11 / SPEC P1.13 — the prior `LIKE 'preferred-attempt:%'`
+    // query skipped the PK index unless `case_sensitive_like` was ON. The
+    // current half-open range query uses the PK index regardless. This test
+    // pins that property via `EXPLAIN QUERY PLAN`.
+    const database = createDatabase(":memory:", { seed: true });
+
+    const plan = database.connection
+      .prepare(
+        "EXPLAIN QUERY PLAN SELECT value_json FROM ui_state WHERE key >= 'preferred-attempt:' AND key < 'preferred-attempt;'"
+      )
+      .all() as Array<{ detail: string }>;
+
+    const detail = plan.map((row) => row.detail).join(" | ");
+    // The PK on ui_state is `key`; SQLite reports the plan as `SEARCH … USING
+    // PRIMARY KEY (key>? AND key<?)`. The pre-fix LIKE plan reported `SCAN`.
+    expect(detail).toMatch(/SEARCH|PRIMARY KEY/);
+    expect(detail).not.toMatch(/^SCAN ui_state\b/);
+
+    database.connection.close();
+  });
+
   it("bounds cursor-based session event and raw output pages", () => {
     const database = createDatabase(":memory:", { seed: false });
     const projectId = seedProject(database, "cursor-limit");

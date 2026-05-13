@@ -1096,7 +1096,7 @@ function capRawTruncationMarker(event: ProviderEvent): PersistTimelineEventInput
 }
 
 function extractProviderConversationId(content: string, provider: ProviderId): string | null {
-  if (provider !== "codex") {
+  if (provider !== "codex" && provider !== "cursor") {
     return null;
   }
 
@@ -1105,8 +1105,24 @@ function extractProviderConversationId(content: string, provider: ProviderId): s
     if (!record) {
       continue;
     }
-    if (record.type === "thread.started" && typeof record.thread_id === "string" && record.thread_id.length > 0) {
+    if (
+      provider === "codex" &&
+      record.type === "thread.started" &&
+      typeof record.thread_id === "string" &&
+      record.thread_id.length > 0
+    ) {
       return record.thread_id;
+    }
+    // Cursor emits `{type:"system", subtype:"init", session_id:"<uuid>"}` once
+    // at the start of every run. That session_id is what `--resume` accepts.
+    if (
+      provider === "cursor" &&
+      record.type === "system" &&
+      record.subtype === "init" &&
+      typeof record.session_id === "string" &&
+      record.session_id.length > 0
+    ) {
+      return record.session_id;
     }
   }
 

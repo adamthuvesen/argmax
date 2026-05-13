@@ -5,6 +5,12 @@ import type { ProviderId } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { allModelOptions, effortLabel, modelValue, optionKey, type ModelPickerSelection } from "../lib/models.js";
 
+const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  cursor: "Cursor"
+};
+
 type ChipModelOption<T> = {
   key: string;
   label: string;
@@ -67,7 +73,7 @@ export function LaunchModelSelector({
     key: modelValue(model),
     label: model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label,
     value: model,
-    group: model.provider === "codex" ? "Codex" : "Claude"
+    group: PROVIDER_GROUP_LABEL[model.provider]
   }));
 
   return (
@@ -216,6 +222,13 @@ export function CombinedModelSelector({
         <optgroup label="Claude">
           {PROVIDER_MODELS.claude.map((model) => (
             <option key={optionKey(model)} value={modelValue({ provider: "claude", ...model })}>
+              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Cursor">
+          {PROVIDER_MODELS.cursor.map((model) => (
+            <option key={optionKey(model)} value={modelValue({ provider: "cursor", ...model })}>
               {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
             </option>
           ))}

@@ -65,6 +65,34 @@ Watch for these failure modes:
 
 The in-app `Check for updates` menu item (App menu) and the boot-time auto-check both reach the configured GitHub feed.
 
-## Smoke procedure (covered by P7.04)
+## Verifying the bundle without credentials
 
-Documented placeholder until P7.04 lands the actual procedure. Goal: a fresh Mac (no Argmax history, no developer-mode bypass) double-clicks the DMG, drags Argmax to `/Applications`, opens it, sees no "damaged" dialog, and reaches the launcher within 5 s.
+The build pipeline can be exercised without Apple credentials to confirm the entitlements + hardened-runtime configuration is wired correctly. The bundle will be ad-hoc-signed and Gatekeeper will reject it on a fresh Mac, but the bundling itself is the part the configuration controls.
+
+```bash
+CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --dir
+```
+
+`--dir` skips DMG creation (which would otherwise fail at the signing step). `CSC_IDENTITY_AUTO_DISCOVERY=false` tells electron-builder not to pick up an unrelated certificate from the keychain.
+
+Output lands in `release/mac-arm64/Argmax.app`. Verify with:
+
+```bash
+codesign --display --verbose=2 release/mac-arm64/Argmax.app
+```
+
+Look for `flags=0x10002(adhoc,runtime)` — the `runtime` bit confirms hardened runtime is on; `adhoc` confirms no real signing happened (expected without credentials). `Signature=adhoc` is the ad-hoc fallback. When real credentials are present the signature will be a real Developer ID and the `adhoc` flag will be gone.
+
+## Smoke procedure for the signed DMG (with real credentials)
+
+1. Set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` from 1Password (see above).
+2. `npm run package` — produces `release/Argmax-<version>-{arm64,x64}.dmg`, signed + notarized + stapled.
+3. AirDrop the DMG to a fresh Mac (a different account, or a clean VM) that has never opened Argmax.
+4. Double-click → drag Argmax to `/Applications` → open. Confirm:
+   - No "Argmax is damaged and can't be opened" dialog.
+   - No "Argmax can't be opened because Apple cannot check it for malicious software" Gatekeeper warning.
+   - The launcher renders within ~5 s of double-click.
+5. Confirm `spctl --assess --type execute /Applications/Argmax.app` exits 0 (Gatekeeper accepts the bundle).
+6. Confirm `xattr -p com.apple.quarantine /Applications/Argmax.app` returns nothing meaningful (stapled ticket means Gatekeeper doesn't need to phone home).
+
+When step 4 fails, see the failure modes in the previous section before retrying. Re-running `npm run package` is cheap; iterating on the entitlements or the keychain is the actual fix.

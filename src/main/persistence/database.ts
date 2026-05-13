@@ -420,6 +420,12 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
   connection.pragma("journal_mode = WAL");
   connection.pragma("synchronous = NORMAL");
   connection.pragma("busy_timeout = 5000");
+  // wal_autocheckpoint = 1000: SQLite checkpoints WAL → main DB whenever the
+  // log reaches 1000 pages (default), keeping the WAL file from growing
+  // without bound during long-running sessions. Explicit so a future build
+  // tweaking the global default doesn't silently change behavior. Diagnostics
+  // surfaces this so an unhealthy WAL is visible without shell access.
+  connection.pragma("wal_autocheckpoint = 1000");
   runMigrations(connection);
   // Default `seed` to false: the developer's existing local DB at
   // getDatabasePath() must not be repopulated with demo rows on every

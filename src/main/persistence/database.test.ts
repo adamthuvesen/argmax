@@ -111,6 +111,17 @@ describe("createDatabase", () => {
     database.connection.close();
   });
 
+  it("sets wal_autocheckpoint pragma at boot (audit P1.15)", () => {
+    // audit-2026-05-11 / SPEC P1.15 — without an explicit
+    // `wal_autocheckpoint`, the WAL file can grow without bound on
+    // long-running sessions. Pragma is set in `createDatabase` and
+    // surfaces in the diagnostics panel (Phase 7).
+    const database = createDatabase(":memory:");
+    const value = database.connection.pragma("wal_autocheckpoint", { simple: true });
+    expect(value).toBe(1000);
+    database.connection.close();
+  });
+
   it("loadPreferredSessionIds query uses the ui_state PK index (audit P1.13)", () => {
     // audit-2026-05-11 / SPEC P1.13 — the prior `LIKE 'preferred-attempt:%'`
     // query skipped the PK index unless `case_sensitive_like` was ON. The

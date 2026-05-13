@@ -11,6 +11,9 @@ import { NotificationService } from "./notifications/notificationService.js";
 import { DockBadgeService } from "./dock/dockBadgeService.js";
 import { buildAppMenuTemplate, type MenuCommand } from "./menu.js";
 import { UpdateService } from "./updater/updateService.js";
+import { GhService } from "./gh/ghService.js";
+import { GhPoller } from "./gh/ghPoller.js";
+import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 import type { DashboardDelta, TerminalDataEvent, TerminalExitEvent } from "../shared/types.js";
 
 let mainWindow: BrowserWindow | null = null;
@@ -19,6 +22,7 @@ let providerSessions: ProviderSessionService | null = null;
 let terminals: TerminalService | null = null;
 let dockBadge: DockBadgeService | null = null;
 let updateService: UpdateService | null = null;
+let ghPoller: GhPoller | null = null;
 let shutdownInProgress = false;
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 const iconPath = join(currentDirectory, "..", "..", "assets", "icon.png");
@@ -116,6 +120,34 @@ void app.whenReady().then(async () => {
   dockBadge.update();
   registeredChannels = registerIpcHandlers(database, providerSessions, terminals);
 
+  // CI feedback loop: poll PR check status for every running session; on a
+  // transition into 'failure', fire a notification and launch a follow-up
+  // session in the same worktree pre-filled with the failure context.
+  const ghServiceForPoller = new GhService(database);
+  ghPoller = new GhPoller({
+    database,
+    ghService: ghServiceForPoller,
+    notifications,
+    launchFollowUp: async (context) => {
+      if (!database || !providerSessions) return;
+      const workspace = database.getWorkspace(context.workspaceId);
+      const project = database.getProject(workspace.projectId);
+      const provider = project.settings.defaultProvider;
+      const modelDefault = PROVIDER_MODEL_DEFAULTS[provider];
+      await providerSessions.launch({
+        workspaceId: workspace.id,
+        provider,
+        prompt: `Checks on PR #${context.prNumber} (commit ${context.headSha.slice(0, 12)}) are failing. Run \`gh pr checks ${context.prNumber}\` to see which checks failed, then investigate and fix.`,
+        modelLabel: modelDefault.label,
+        modelId: modelDefault.modelId,
+        ...(modelDefault.reasoningEffort ? { reasoningEffort: modelDefault.reasoningEffort } : {}),
+        cols: 120,
+        rows: 36
+      });
+    }
+  });
+  ghPoller.start();
+
   // electron-updater only works in a packaged build — running it in dev or
   // unsigned would no-op at best and surface confusing errors at worst.
   if (app.isPackaged) {
@@ -207,6 +239,14 @@ async function shutdown(): Promise<void> {
   // Each cleanup step is independent so a failure in one doesn't strand the
   // others — a half-flushed WAL or leaked IPC handler is worse than a logged
   // error in disposeAll.
+  if (ghPoller) {
+    try {
+      ghPoller.stop();
+    } catch (error) {
+      console.error("[argmax] ghPoller.stop failed during shutdown:", error);
+    }
+    ghPoller = null;
+  }
   if (providerSessions) {
     try {
       await providerSessions.disposeAll();

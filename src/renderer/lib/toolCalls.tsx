@@ -115,6 +115,22 @@ export function extractToolUseId(payload: Record<string, unknown>): string | nul
   return null;
 }
 
+/**
+ * Correlate a `command.completed` event back to its `command.started` partner.
+ * Each provider keys the correlation differently:
+ *   - Claude: `tool_result.tool_use_id` → started `tool_use.id`
+ *   - Codex:  `item.completed.id` matches started `item.id`
+ *   - Cursor: `tool_call(completed).call_id` matches started `call_id`
+ * Checked in that order so Claude's `tool_use_id` (which is *not* the
+ * completion's own id) wins over a coincidentally-present `id` field.
+ */
+export function extractCompletionCorrelationId(payload: Record<string, unknown>): string | null {
+  if (typeof payload.tool_use_id === "string" && payload.tool_use_id) return payload.tool_use_id;
+  if (typeof payload.id === "string" && payload.id) return payload.id;
+  if (typeof payload.call_id === "string" && payload.call_id) return payload.call_id;
+  return null;
+}
+
 export function extractToolName(payload: Record<string, unknown>): string {
   if (typeof payload.name === "string" && payload.name) return payload.name;
   if (typeof payload.type === "string" && payload.type !== "command.started") return payload.type;

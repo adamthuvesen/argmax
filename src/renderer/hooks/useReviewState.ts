@@ -188,7 +188,11 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
         setWorkspaceFilesListState("error");
         setWorkspaceFilesListError(error instanceof Error ? error.message : "Could not load files.");
       });
-  }, [mode, isPanelOpen, workspace?.id, workspace?.lastActivityAt]);
+    // Same reason as the changed-files effect above: depend on the workspace
+    // identity + the (stable) `changedFiles` count, not on `lastActivityAt`.
+    // The activity timestamp bumps once per streamed token, which would
+    // re-list the entire workspace file tree on every chat tick.
+  }, [mode, isPanelOpen, workspace?.id, workspace?.changedFiles]);
 
   useEffect(() => {
     const token = ++workspaceReadToken.current;

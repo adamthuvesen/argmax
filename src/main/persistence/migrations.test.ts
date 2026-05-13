@@ -156,9 +156,8 @@ describe("assertMigrationsContiguous", () => {
   it("throws on non-positive or non-integer versions", () => {
     expect(() => assertMigrationsContiguous([stub(0), stub(1)])).toThrow(/positive integer/);
     expect(() => assertMigrationsContiguous([stub(-1), stub(1)])).toThrow(/positive integer/);
-    expect(() => assertMigrationsContiguous([{ version: 1.5, name: "x", up: "" } as Migration])).toThrow(
-      /positive integer/
-    );
+    const fractional: Migration = { version: 1.5, name: "x", up: "" };
+    expect(() => assertMigrationsContiguous([fractional])).toThrow(/positive integer/);
   });
 
   it("accepts an empty array (no migrations declared)", () => {

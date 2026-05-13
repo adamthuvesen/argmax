@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { buildFileTree, WorkspaceTree } from "./WorkspaceTree.js";
+import { buildFileTree } from "../lib/fileTree.js";
+import { WorkspaceTree } from "./WorkspaceTree.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import type { WorkspaceFileEntry } from "../../shared/types.js";
 

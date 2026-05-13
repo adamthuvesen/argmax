@@ -7,7 +7,7 @@ import { useSlashAutocomplete } from "./useSlashAutocomplete.js";
 
 function Harness({
   initialInput = "",
-  provider = "claude" as ProviderId,
+  provider = "claude",
   workspaceId = "workspace-1"
 }: {
   initialInput?: string;
@@ -40,7 +40,7 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
       writable: true,
       value: {
         skills: { list: skillsList }
-      } as unknown as ArgmaxApi
+      } satisfies Partial<ArgmaxApi>
     });
   });
 

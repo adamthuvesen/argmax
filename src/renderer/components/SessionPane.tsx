@@ -164,6 +164,10 @@ export function SessionPane({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isLogOpen]);
 
+  // Destructure so the effect's dep is the stable useCallback from inside
+  // useReviewState — not the parent object, which would expand the effect's
+  // dep audit to the whole review state and trip exhaustive-deps.
+  const reviewTogglePanel = reviewState.togglePanel;
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
@@ -171,11 +175,11 @@ export function SessionPane({
       if (event.key.toLowerCase() !== "b") return;
       if (isTypingTarget(event.target)) return;
       event.preventDefault();
-      reviewState.togglePanel();
+      reviewTogglePanel();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [reviewState.togglePanel]);
+  }, [reviewTogglePanel]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount

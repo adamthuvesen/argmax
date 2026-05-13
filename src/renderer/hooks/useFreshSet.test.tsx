@@ -25,8 +25,9 @@ describe("useFreshSet — ref mutation moved out of render", () => {
     });
 
     // After mount + effect commit, the items present at mount are seen.
-    expect(result.current(initial[0]!)).toBe(false);
-    expect(result.current(initial[1]!)).toBe(false);
+    const [first, second] = initial;
+    expect(result.current(first)).toBe(false);
+    expect(result.current(second)).toBe(false);
   });
 
   it("marks newly-arrived items as seen after the next render+effect cycle", () => {
@@ -36,7 +37,8 @@ describe("useFreshSet — ref mutation moved out of render", () => {
       { initialProps: { list: items }, wrapper: StrictMode }
     );
 
-    expect(result.current(items[0]!)).toBe(false);
+    const [a] = items;
+    expect(result.current(a)).toBe(false);
 
     items = [{ id: "a" }, { id: "b" }];
     rerender({ list: items });

@@ -1,6 +1,14 @@
 # Styling
 
-Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-JS, no Tailwind, no preprocessors.
+Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-JS, no Tailwind, no preprocessors. The look is hand-built on purpose — see the [hard constraints](#hard-constraints) before touching it.
+
+| Want to… | Look here |
+|---|---|
+| Add a color or surface | [Tokens](#tokens) — define on `:root`, never inline hex |
+| Add a status color | `data-status` / `data-state` / `data-risk` attribute selectors |
+| Add an animation | [Patterns](#patterns) — reuse `--ease`, respect `prefers-reduced-motion` |
+| Add a font | `src/renderer/lib/fonts.ts` + matching `:root[data-font="…"]` block |
+| Style markdown | `.markdown <selector>` rules (defined for headings, lists, code, etc.) |
 
 ## Hard constraints
 

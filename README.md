@@ -1,138 +1,131 @@
 # Argmax
 
-Argmax is a local Electron command center for running AI coding agents in parallel git worktrees. It is single-user, on-device, and designed for Claude Code and Codex sessions that need real repo context, persistent transcripts, review tools, checks, and branch/worktree isolation.
+A local Electron command center for running AI coding agents in parallel git worktrees.
 
-## What It Does
+Single-user, on-device, no cloud, no auth. Designed for Claude Code, Codex, and Cursor Agent sessions that need real repo context — persistent transcripts, review tools, checks, approvals, and worktree isolation.
+
+```
+┌────────────────────────────┐         ┌────────────────────────────┐
+│ React renderer (Vite)      │   IPC   │ Electron main (Node)       │
+│ • Focused reads + deltas   │ ◀────▶  │ • SQLite (better-sqlite3)  │
+│ • window.argmax only       │         │ • Provider PTYs / stdio    │
+└────────────────────────────┘         │ • Workspaces, checks, gh   │
+                                       └────────────────────────────┘
+```
+
+## What it does
 
 - Registers local projects and creates task-specific git worktrees.
-- Launches Claude Code or Codex in those worktrees.
-- Persists sessions, timeline events, raw provider output, checks, approvals, checkpoints, and workspace state in local SQLite.
-- Streams normalized provider events into a React dashboard without showing provider protocol JSON as chat.
-- Provides local review/checkpoint flows around git diffs and commits.
+- Launches **Claude Code**, **Codex**, or **Cursor Agent** in those worktrees.
+- Persists sessions, normalized timeline events, raw provider output, approvals, checks, checkpoints, and workspace state in local SQLite.
+- Streams normalized provider events into a React dashboard — protocol JSON never leaks into chat.
+- Reviews diffs, prepares commits, and runs configurable workspace checks.
+- Watches PR check status via `gh` and auto-launches a follow-up session when CI fails.
+- Captures project-scoped learnings and replays them as prompt preambles in future sessions.
 
 ## Stack
 
-- Electron 35 main process
-- React 19 + Vite renderer
-- TypeScript, ESM, NodeNext imports
-- SQLite via `better-sqlite3`
-- PTY support via `node-pty`
-- Vitest + Testing Library
+| Layer | Tooling |
+|---|---|
+| Runtime | Electron 35, Node.js (system Node for tests) |
+| Renderer | React 19 + Vite + plain CSS (light theme only) |
+| Language | TypeScript, ESM, NodeNext imports |
+| Persistence | SQLite via `better-sqlite3`; FTS5 sidecars for events + learnings |
+| PTY | `node-pty` (provider sessions + integrated terminal) |
+| Validation | Zod schemas at the IPC boundary |
+| Tests | Vitest + Testing Library + jsdom |
+| Packaging | `electron-builder` (signed/notarized macOS DMG + ZIP) |
 
 ## Requirements
 
-- Node.js and npm
-- Git
-- Claude Code and/or Codex CLI installed and authenticated, depending on which provider you want to run
+- Node.js and npm.
+- Git.
+- One or more of: Claude Code, Codex, Cursor Agent CLIs — installed and authenticated.
+- (Optional) GitHub CLI (`gh`) for the CI feedback loop.
 
-Native modules are compiled separately for Electron and system Node. Use the npm scripts below instead of calling `vite` or `vitest` directly unless you know the native runtime is already correct.
+Native modules compile separately for Electron and system Node. Use the npm scripts below — `vite` / `vitest` directly will surface `NODE_MODULE_VERSION` errors.
 
-## Setup
+## Setup & run
 
 ```bash
 npm install
+npm run dev          # rebuild:electron, then concurrently: Vite + tsc-watch + electron
 ```
 
-## Run
-
-```bash
-npm run dev
-```
-
-This rebuilds native modules for Electron, starts Vite, watches the main-process TypeScript build, and opens the app when both the main bundle and renderer server are ready.
-
-For fast renderer-only visual work, you can run Vite directly and use the browser-preview fallback data:
+For fast renderer-only visual work without rebuilding native modules:
 
 ```bash
 npx vite --host 127.0.0.1
 ```
 
-The real Electron app communicates with the renderer through `window.argmax`; browser preview mode uses `src/renderer/demoSnapshot.ts`.
+Browser-preview mode detects the missing `window.argmax` and falls back to `src/renderer/demoSnapshot.ts`. The bridge-missing banner is suppressed on `127.0.0.1` / `localhost`.
 
-## Common Commands
+## Common commands
 
 ```bash
 npm run dev          # rebuild native modules for Electron, then run the app
 npm test             # rebuild native modules for Node, then run Vitest
-npm run lint         # run ESLint
+npm run lint         # ESLint
 npm run typecheck    # typecheck renderer/shared and main configs
 npm run build        # build main and renderer output
-npm run package      # build and package a distributable macOS app (output: release/)
+npm run package      # signed/notarized macOS app (output: release/)
 ```
 
 Targeted test runs:
 
 ```bash
-npx vitest run src/renderer/
+npx vitest run src/renderer/                  # renderer + shared only — no native rebuild needed
 npx vitest run src/renderer/App.test.tsx
-npx vitest
+npx vitest                                    # watch mode
 ```
 
-Renderer and shared tests do not touch native modules, so targeted `npx vitest run src/renderer/ src/shared/` is the fast path when iterating on UI. Do not run multiple `npm test` commands in parallel; each starts with a native rebuild.
+**Do not run multiple `npm test` commands in parallel.** Each starts with a native rebuild; concurrent rebuilds can corrupt `better-sqlite3` / `node-pty` build directories.
 
-## Project Layout
+## Project layout
 
-```text
+```
 src/
-├── main/         Electron main process: services, IPC, persistence, lifecycle
+├── main/         Electron main process — services, IPC, persistence, lifecycle
 ├── renderer/     React UI built by Vite
-├── shared/       Types and Zod schemas crossing the main/renderer boundary
+├── shared/       Types + Zod schemas crossing the main/renderer boundary
 └── test/         Vitest setup
 
-agents/docs/      Deeper architecture, provider, Electron, testing, and styling notes
-openspec/         OpenSpec change and spec artifacts
+agents/docs/      Deep-dive docs (architecture, providers, data, …)
+openspec/         OpenSpec change & spec artifacts
 scripts/          Native-module rebuild helpers
-dist/             Build output
+assets/           App icon
+build/            Hardened-runtime entitlements
+dist/             Build output (gitignored)
+release/          Packaged distributable output (gitignored)
 ```
 
-## Architecture Notes
+## Going deeper
 
-The main process owns SQLite, provider child processes, workspace orchestration, checks, approvals, review services, and IPC handlers. The renderer talks to main only through the preload bridge at `window.argmax`.
+Start with the map in [`AGENTS.md`](AGENTS.md) (also reachable as `CLAUDE.md`). It indexes the deep-dive docs under `agents/docs/`:
 
-IPC request/response channels are registered in `src/main/ipc.ts`, validated with schemas from `src/shared/ipcSchemas.ts`, and exposed through `src/main/preload.ts`. When adding a request/response channel, keep `REGISTERED_IPC_CHANNELS`, schemas, preload, and `ArgmaxApi` in sync.
+| Topic | Doc |
+|---|---|
+| Process boundaries, services, dashboard reads | [agents/docs/architecture.md](agents/docs/architecture.md) |
+| IPC channels, schemas, adding a channel | [agents/docs/ipc.md](agents/docs/ipc.md) |
+| SQLite schema, migrations, retention, FTS5 | [agents/docs/data.md](agents/docs/data.md) |
+| Claude / Codex / Cursor adapters | [agents/docs/providers.md](agents/docs/providers.md) |
+| Worktrees, review, checkpoints, file preview | [agents/docs/workspaces.md](agents/docs/workspaces.md) |
+| Risk policy, approvals, workspace checks | [agents/docs/approvals-checks.md](agents/docs/approvals-checks.md) |
+| Integrated terminal panel | [agents/docs/terminal.md](agents/docs/terminal.md) |
+| GitHub CI feedback loop | [agents/docs/gh.md](agents/docs/gh.md) |
+| Project-scoped learnings (memory) | [agents/docs/memory.md](agents/docs/memory.md) |
+| Native rebuilds, lifecycle, preload, packaging | [agents/docs/electron.md](agents/docs/electron.md) |
+| Test conventions and regression tests | [agents/docs/testing.md](agents/docs/testing.md) |
+| Design tokens, motion, the light-theme rule | [agents/docs/styling.md](agents/docs/styling.md) |
+| Signing + notarization | [agents/docs/release.md](agents/docs/release.md) |
+| OpenSpec workflow | [agents/docs/openspec.md](agents/docs/openspec.md) |
 
-Dashboard reads are SQLite-first and focused:
+## Local data
 
-- `dashboard.list()` loads the dashboard shell.
-- `approvals.pending()` loads pending approvals.
-- `workspaces.status()` refreshes workspace/session/check/checkpoint state.
-- `session.eventsSince()` tails selected-session events and raw output with rowid cursors.
-- `dashboard.onDelta()` streams committed provider-session changes.
+Runtime state is stored under `app.getPath("userData")/local-state/argmax.sqlite`. Checkpoint patches live alongside the database under `checkpoints/`. Generated build output lives in `dist/`; packaged distributables land in `release/`.
 
-`dashboard.load()` remains as a compatibility wrapper, but normal renderer refreshes should use focused reads.
+`raw_outputs` rows older than 7 days are pruned daily; everything else is retained indefinitely. The Help menu exposes a one-shot `Vacuum database` action if you need to reclaim space after deleting projects.
 
-## Provider Notes
+## Status
 
-Provider defaults live in `src/shared/providerModels.ts`. Do not duplicate model labels, ids, reasoning effort values, or launch modes elsewhere.
-
-Structured JSON is the default launch mode. Follow-up prompts use each provider's native resume id stored as `sessions.provider_conversation_id`, so Argmax's durable UI session can continue the same provider conversation across turns.
-
-Provider sessions intentionally run with broad local permissions because Argmax is a trusted single-user desktop app. Keep those launch flags centralized in `src/main/providers/providerAdapters.ts`.
-
-## Native Module Gotchas
-
-`better-sqlite3` and `node-pty` must match the runtime:
-
-```bash
-npm run rebuild:electron  # for Electron
-npm run rebuild:node      # for tests and scripts
-```
-
-A `NODE_MODULE_VERSION` error usually means the module was built for the wrong runtime. Re-run the right rebuild command; do not reinstall dependencies as the first move.
-
-## Styling
-
-Renderer styling lives in `src/renderer/styles.css`. Argmax is light-theme only and uses the Lilex Nerd Font tokens defined in CSS. Keep UI tests resilient by querying by role, aria-label, title, or visible text rather than class names.
-
-## Deeper Docs
-
-- `agents/docs/architecture.md` — process boundaries, IPC, persistence, dashboard reads
-- `agents/docs/providers.md` — Claude/Codex launch and resume behavior
-- `agents/docs/electron.md` — native rebuilds, preload bridge, lifecycle
-- `agents/docs/testing.md` — test layout and conventions
-- `agents/docs/styling.md` — design tokens and renderer CSS rules
-- `agents/docs/openspec.md` — OpenSpec workflow
-
-## Local Data
-
-Runtime state is stored under Electron's `app.getPath("userData")/local-state/argmax.sqlite`. Generated build output lives in `dist/`.
+Argmax is pre-1.0. The IPC contract, schema, and main-process surfaces are still moving. The `AGENTS.md` conventions are the load-bearing rules — read them before adding a feature, especially anything touching IPC, the model registry, or SQLite migrations.

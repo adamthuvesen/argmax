@@ -2,75 +2,88 @@
 
 Two processes, three folders, one IPC contract.
 
+```
+┌────────────────────────────┐         ┌────────────────────────────┐
+│ Renderer (React + Vite)    │  IPC    │ Main (Electron, Node)      │
+│ ────────────────────────── │ ◀────▶  │ ────────────────────────── │
+│ • Composes UI from focused │         │ • SQLite (better-sqlite3)  │
+│   IPC reads + live deltas  │         │ • Provider PTYs / stdio    │
+│ • No direct Node access    │         │ • Workspaces, checks,      │
+│   (window.argmax only)     │         │   approvals, review, gh    │
+└────────────────────────────┘         └────────────────────────────┘
+```
+
+Open the right deep dive when you need it:
+
+| Topic | Doc |
+|---|---|
+| IPC contract, channels, schemas | [ipc.md](ipc.md) |
+| Provider adapters, launch/resume | [providers.md](providers.md) |
+| SQLite schema, migrations, retention | [data.md](data.md) |
+| Worktrees, review, checkpoints | [workspaces.md](workspaces.md) |
+| Approvals risk policy, checks | [approvals-checks.md](approvals-checks.md) |
+| Integrated terminal panel | [terminal.md](terminal.md) |
+| GitHub CI feedback loop | [gh.md](gh.md) |
+| Learnings (per-project memory) | [memory.md](memory.md) |
+| Native modules, lifecycle, preload | [electron.md](electron.md) |
+| Styling, tokens, motion | [styling.md](styling.md) |
+| Tests | [testing.md](testing.md) |
+| OpenSpec workflow | [openspec.md](openspec.md) |
+| Signing + notarization | [release.md](release.md) |
+
 ## Main process — `src/main/`
 
-Owns the SQLite database, child processes (provider PTYs, check runs), the IPC surface, and Electron lifecycle.
-
-Entry: [src/main/main.ts](../../src/main/main.ts) — boots `BrowserWindow`, instantiates `ArgmaxDatabase` and `ProviderSessionService` in `app.whenReady()`, registers IPC handlers, binds shutdown to `before-quit`.
-
-Subdirectories:
+Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services, IPC, menu, and `BrowserWindow` inside `app.whenReady()`; binds cleanup to `before-quit`.
 
 | Folder | Role |
 |---|---|
-| `approvals/` | `approvalService` requests + `dangerousActionPolicy` risk classifier |
-| `checks/` | `checkService` spawns commands (5-min timeout, cancellation support) |
-| `persistence/` | `database`, `migrations`, `seed`. SQLite at `app.getPath("userData")/local-state/argmax.sqlite` |
-| `projects/` | Project registration + settings |
-| `providers/` | Claude/Codex adapters and session lifecycle (see [providers.md](providers.md)) |
-| `review/` | `gitReviewService`, `commitPreparationService`, `checkpointService` (binary patches under `${dataDirectory}/checkpoints/`) |
-| `workspaces/` | `workspaceOrchestration`: creates/removes git worktrees under `project.settings.worktreeLocation`, validated to stay inside `repoPath` |
+| `approvals/` | `ApprovalService` + `dangerousActionPolicy` command-risk classifier |
+| `checks/` | `CheckService` — spawns commands with 5-min wall-clock cap and cancellation |
+| `dock/` | macOS dock badge for attention counts |
+| `files/` | Workspace file tree + previews (binary/size-skipped) |
+| `gh/` | `GhService` (gh CLI wrapper) + `GhPoller` (PR check-state polling) |
+| `git/` | `runGitText` / `runGitBuffer` — the only sanctioned git shell-out path |
+| `ide/` | `mdfind`-based IDE detection (VS Code, Cursor, Windsurf, etc.) + launch |
+| `memory/` | `learningExtractor` + `learningInjector` (project-scoped pitfalls) |
+| `notifications/` | OS notifications gated on window-focus state |
+| `persistence/` | `database.ts`, `migrations.ts`, `seed.ts` — SQLite is the source of truth |
+| `projects/` | Project registration, settings, branch switching, gh remote resolution |
+| `providers/` | Claude / Codex / Cursor adapters + `ProviderSessionService` |
+| `review/` | `GitReviewService`, `CommitPreparationService`, `CheckpointService` (binary patches under `${dataDirectory}/checkpoints/`) |
+| `sessions/` | `sessionAttention` (which sessions need a user nudge) |
+| `skills/` | Local skill registry (`~/.claude/skills`, codex prompts, plugins) |
+| `terminal/` | `TerminalService` — user-spawned PTYs for the integrated terminal panel |
+| `updater/` | `UpdateService` — `electron-updater` wrapper (packaged builds only) |
+| `util/` | Pure helpers (e.g. `workspacePaths`) |
+| `workspaces/` | `WorkspaceService` — git worktrees, fs.watch debouncing |
+
+`main.ts` wires services together in this order: `createDatabase()` → `NotificationService` → `DockBadgeService` → `ProviderSessionService` (then `recoverOrphanedSessions()` to mop up sessions left `running` from a previous crash) → `TerminalService` → `registerIpcHandlers()` → `GhPoller.start()` → `UpdateService.runStartupCheck()` (packaged only) → `BrowserWindow`.
 
 ## Renderer — `src/renderer/`
 
-React 19 + Vite. One [App.tsx](../../src/renderer/App.tsx). State starts from focused dashboard reads, then stays fresh through pushed `dashboard.onDelta()` updates, lightweight status refreshes, and selected-session `session.eventsSince()` cursor reads. Browser-preview mode (no Electron bridge) falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts) — see `isBrowserPreview()` in `App.tsx`.
+React 19 + Vite. One [App.tsx](../../src/renderer/App.tsx) composes everything; state hydrates from focused IPC reads and stays current via `dashboard.onDelta()`. Browser-preview mode (Vite without Electron) detects the missing `window.argmax` and falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts) — see `isBrowserPreview()`.
 
-Dashboard freshness is SQLite-first:
+**Dashboard freshness is SQLite-first and read-focused:**
 
-- `dashboard.list()` returns dashboard-level state: projects, workspaces, sessions, checks, and checkpoints. Initial renderer load composes it with `approvals.pending()`.
-- `session.eventsSince({ sessionId, eventCursor?, rawOutputCursor? })` returns one session's timeline events and raw outputs. It uses SQLite `rowid` cursors; omitted cursors return the latest tail (50 events, 100 raw outputs) sorted ascending for rendering.
-- `workspaces.status({ workspaceIds? })` returns refreshed workspaces, sessions, checks, and checkpoints, optionally filtered by workspace ids. Active-work polling uses this plus `approvals.pending()`, not a full dashboard read.
-- `dashboard.load()` remains public as a compatibility wrapper for older callers, tests, and demo/browser compatibility. New renderer work should prefer the focused reads above.
-- `dashboard.onDelta()` is a latency optimization. Main publishes provider-session deltas only after rows are committed, and the renderer upserts by `id`, sorts by timestamp fields, and caps live `events` / `rawOutputs` to match dashboard limits.
+- `dashboard.list()` — projects, workspaces, sessions, checks, checkpoints. Composed with `approvals.pending()` for the initial render.
+- `session.eventsSince({ sessionId, eventCursor?, rawOutputCursor? })` — selected-session timeline events + raw outputs, using SQLite `rowid` cursors. Omitted cursors return the latest tail (50 events, 100 raw outputs).
+- `workspaces.status({ workspaceIds? })` — refreshed workspaces/sessions/checks/checkpoints, optionally filtered. Polled at 1200 ms for active provider sessions.
+- `approvals.pending()` — pending approvals only.
+- `dashboard.onDelta()` — push channel. Main publishes provider-session deltas only **after** rows commit; the renderer upserts by id, sorts by timestamp fields, and caps live `events` / `rawOutputs` to dashboard limits.
+- `dashboard.load()` — compatibility full snapshot. Avoid for active-session refresh; it exists for older callers and the browser-preview path.
 
-The conversation surface intentionally separates normalized chat from raw provider output. Assistant bubbles come from timeline events; the raw transcript fallback is only for human-readable stdout/stderr and filters provider protocol JSON (`type` payloads such as Claude `init` and Codex lifecycle events). The "Thinking" indicator is hidden as soon as visible assistant output exists.
+**Two-track output rendering.** Normalized timeline events drive the visible chat. Raw provider output is persisted for audit/debug but the renderer must filter protocol JSON lines (Claude `init`, Codex `thread.started` / `turn.started`, Cursor `system/init`, etc.) out of the human-readable fallback. The "Thinking" indicator is pre-answer only — hide it the moment any visible assistant event arrives, even if the session is still `running`.
 
 ## Shared — `src/shared/`
 
-The contract layer.
+The contract layer. The renderer imports **types only**; Zod validation runs in main.
 
-- [types.ts](../../src/shared/types.ts) — TS types for dashboard data + the `ArgmaxApi` interface
-- [ipcSchemas.ts](../../src/shared/ipcSchemas.ts) — Zod schemas + parsed-input type aliases
-- [providerModels.ts](../../src/shared/providerModels.ts) — `PROVIDER_MODEL_DEFAULTS` (single source of truth for model id + label + reasoning effort + launch mode)
-- [safeJson.ts](../../src/shared/safeJson.ts) — guarded JSON utilities
+| File | Role |
+|---|---|
+| [types.ts](../../src/shared/types.ts) | All TS types for dashboard data + the `ArgmaxApi` surface |
+| [ipcSchemas.ts](../../src/shared/ipcSchemas.ts) | Zod schemas + parsed-input type aliases + `IPC_CHANNELS` |
+| [providerModels.ts](../../src/shared/providerModels.ts) | `PROVIDER_MODELS`, `PROVIDER_MODEL_DEFAULTS`, `MODEL_PRICING`, `costOf()` |
+| [safeJson.ts](../../src/shared/safeJson.ts) | Guarded JSON parsing for untrusted provider output |
+| [terminalControls.ts](../../src/shared/terminalControls.ts) | ANSI stripping used by the normalizer |
 
-**Renderer imports types only from shared.** Zod schemas are imported by main; the renderer never validates payloads itself.
-
-## IPC contract
-
-[src/main/ipc.ts](../../src/main/ipc.ts) registers request/response channels via `withValidation()` + `ipcMain.handle`. Channel names are kept in sync by `REGISTERED_IPC_CHANNELS` (a regression test enforces parity).
-
-The preload bridge ([src/main/preload.ts](../../src/main/preload.ts)) exposes `window.argmax` with grouped namespaces: `dashboard`, `projects`, `workspaces`, `providers`, `approvals`, `session`, `review`, `checks`, `checkpoints`, `attempts`, `commits`, `health`.
-
-`dashboard:delta` is different: it is a `webContents.send()` / `ipcRenderer.on()` event channel used by `dashboard.onDelta(listener)`, not an `ipcMain.handle` channel. It should be typed in [types.ts](../../src/shared/types.ts) and exposed in preload, but it should not be added to `REGISTERED_IPC_CHANNELS` or `ipcSchemas.ts`.
-
-Focused dashboard request/response channels:
-
-| Channel | Preload method | Purpose |
-|---|---|---|
-| `dashboard:list` | `dashboard.list()` | Initial dashboard shell without events/raw output/approvals |
-| `session:eventsSince` | `session.eventsSince(input)` | Cursor-based selected-session events + raw outputs |
-| `workspace:status` | `workspaces.status(input?)` | Workspaces/sessions/checks/checkpoints refresh, optionally filtered |
-| `approvals:pending` | `approvals.pending()` | Pending approvals only |
-| `dashboard:load` | `dashboard.load()` | Compatibility full snapshot wrapper |
-
-### Adding a new IPC channel
-
-1. Define the input schema in `ipcSchemas.ts` (with a parsed-type alias)
-2. Register the handler in `ipc.ts` using `withValidation()`
-3. Add the channel name to `REGISTERED_IPC_CHANNELS`
-4. Expose it through `preload.ts`
-5. Add the typed method to `ArgmaxApi` in `types.ts`
-
-Skipping any of these will fail the regression test or surface as a runtime `Method not found`.
-
-For push-only events, skip steps 1–3: publish from main with `webContents.send()`, subscribe/unsubscribe in preload with `ipcRenderer.on()` / `removeListener()`, and type the callback surface in `ArgmaxApi`.
+See [ipc.md](ipc.md) for the full IPC channel inventory and the steps to add one safely.

@@ -1,6 +1,6 @@
 # Release & signing
 
-How to produce a signed, notarized macOS build of Argmax.
+How to produce a signed, notarized macOS build of Argmax. For the build pipeline overview (targets, files, entitlements wiring) see [electron.md](electron.md#building-a-distributable); this doc covers credentials, the smoke procedure, and failure modes.
 
 ## Prerequisites
 

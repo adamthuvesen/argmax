@@ -1075,6 +1075,40 @@ describe("App", () => {
     await waitFor(() => expect(input).toHaveFocus());
   });
 
+  it("appends @path references when files are dropped onto the composer", async () => {
+    const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
+    const completeSnapshot = { ...snapshot, sessions: completeSessions };
+    mockDashboardSnapshot(completeSnapshot);
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+    const form = input.closest("form");
+    expect(form).not.toBeNull();
+
+    // Synthesize an Electron-shaped drop: File objects with a `path` field.
+    const insideWorkspace = new File([], "app.ts");
+    Object.defineProperty(insideWorkspace, "path", {
+      value: "/tmp/worktrees/dashboard/src/app.ts"
+    });
+    const outsideWorkspace = new File([], "notes.md");
+    Object.defineProperty(outsideWorkspace, "path", { value: "/tmp/notes.md" });
+
+    fireEvent.drop(form!, {
+      dataTransfer: {
+        files: [insideWorkspace, outsideWorkspace],
+        types: ["Files"]
+      }
+    });
+
+    await waitFor(() => {
+      const value = (input as HTMLTextAreaElement).value;
+      expect(value).toContain("@src/app.ts");
+      expect(value).toContain("@/tmp/notes.md");
+    });
+  });
+
   it("disables follow-up prompts while a structured Codex session is running", async () => {
     render(<App />);
 

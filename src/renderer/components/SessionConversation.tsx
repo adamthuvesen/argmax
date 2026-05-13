@@ -5,12 +5,15 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
+  type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { appendReferencesToPrompt, buildAttachmentReferences } from "../lib/composerAttachments.js";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   CheckRun,
@@ -87,6 +90,7 @@ export function SessionConversation({
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldRefocusInput = useRef(false);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
@@ -297,6 +301,38 @@ export function SessionConversation({
     }
   };
 
+  const attachFiles = useCallback(
+    (files: Iterable<File> | Iterable<{ path?: string }>): void => {
+      const refs = buildAttachmentReferences(files, workspace?.path ?? null);
+      if (refs.length === 0) return;
+      setInput((prev) => appendReferencesToPrompt(prev, refs));
+    },
+    [workspace?.path]
+  );
+
+  const onComposerDragOver = (event: ReactDragEvent<HTMLFormElement>): void => {
+    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    event.preventDefault();
+  };
+
+  const onComposerDrop = (event: ReactDragEvent<HTMLFormElement>): void => {
+    if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
+    event.preventDefault();
+    attachFiles(event.dataTransfer.files);
+  };
+
+  const onAttachmentInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    if (event.target.files && event.target.files.length > 0) {
+      attachFiles(event.target.files);
+    }
+    // Clear the value so the same file can be selected again next time.
+    event.target.value = "";
+  };
+
+  const openFilePicker = (): void => {
+    attachmentInputRef.current?.click();
+  };
+
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedInput = input.trim();
@@ -439,7 +475,22 @@ export function SessionConversation({
         />
         {session ? <CostPanel session={session} /> : null}
       </div>
-      <form className="session-input" ref={inputFormRef} onSubmit={(event) => void submitInput(event)}>
+      <form
+        className="session-input"
+        ref={inputFormRef}
+        onSubmit={(event) => void submitInput(event)}
+        onDragOver={onComposerDragOver}
+        onDrop={onComposerDrop}
+      >
+        <input
+          ref={attachmentInputRef}
+          type="file"
+          multiple
+          hidden
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={onAttachmentInputChange}
+        />
         <div className="session-input-field">
           <textarea
             aria-label="Session prompt"
@@ -457,7 +508,14 @@ export function SessionConversation({
           <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
         </div>
         <div className="session-input-toolbar">
-          <button className="composer-tool" type="button" title="Add context" disabled={!canSend || isSending}>
+          <button
+            className="composer-tool"
+            type="button"
+            title="Attach file"
+            aria-label="Attach file"
+            disabled={!canSend || isSending}
+            onClick={openFilePicker}
+          >
             <Plus size={16} />
           </button>
           {session ? (

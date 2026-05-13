@@ -19,10 +19,10 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { demoSnapshot } from "./demoSnapshot.js";
+import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { useOverlays } from "./hooks/useOverlays.js";
 import { useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
-import { isTypingTarget } from "./lib/typingTarget.js";
 import {
   applyFontToDocument,
   FONT_STORAGE_KEY,
@@ -130,54 +130,25 @@ export function App(): JSX.Element {
     [setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (isTypingTarget(event.target)) return;
-      const digit = parseInt(event.key, 10);
-      if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
-        const targetSession = snapshot.sessions[digit - 1];
-        if (!targetSession) return;
-        event.preventDefault();
-        setIsSettingsOpen(false);
-        setSelectedSessionId(targetSession.id);
-        setSelectedWorkspaceId(targetSession.workspaceId);
-        return;
-      }
-      if (event.key === ",") {
-        event.preventDefault();
-        handleMenuCommand("open-settings");
-        return;
-      }
-      if (event.key.toLowerCase() === "n" && !event.shiftKey) {
-        event.preventDefault();
-        handleMenuCommand("new-session");
-        return;
-      }
-      if (event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        handleMenuCommand("open-command-palette");
-        return;
-      }
-      if (event.key === "/") {
-        event.preventDefault();
-        handleMenuCommand("open-cheat-sheet");
-        return;
-      }
-      if (event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        setIsSearchOpen(true);
-        return;
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [snapshot.sessions, handleMenuCommand, setIsSearchOpen, setIsSettingsOpen]);
-
-  useEffect(() => {
-    if (!window.argmax) return;
-    return window.argmax.menu.onCommand(handleMenuCommand);
-  }, [handleMenuCommand]);
+  const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
+  const selectSessionFromKeybinding = useCallback(
+    (session: { id: string; workspaceId: string }): void => {
+      setSelectedSessionId(session.id);
+      setSelectedWorkspaceId(session.workspaceId);
+    },
+    []
+  );
+  const closeSettingsFromKeybinding = useCallback(
+    (): void => setIsSettingsOpen(false),
+    [setIsSettingsOpen]
+  );
+  useGlobalKeybindings({
+    sessions: snapshot.sessions,
+    onMenuCommand: handleMenuCommand,
+    onOpenSearch: openSearchOverlay,
+    onSelectSession: selectSessionFromKeybinding,
+    onCloseSettings: closeSettingsFromKeybinding
+  });
 
   useEffect(() => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));

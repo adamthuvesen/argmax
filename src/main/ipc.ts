@@ -59,6 +59,7 @@ import { CheckpointService } from "./review/checkpointService.js";
 import { CommitPreparationService } from "./review/commitPreparationService.js";
 import { listSkills } from "./skills/skillRegistry.js";
 import { runGitText } from "./git/exec.js";
+import { GhService } from "./gh/ghService.js";
 
 /**
  * Wraps an IPC handler body so its `input` is validated against a zod schema
@@ -148,6 +149,7 @@ export function registerIpcHandlers(
   const checks = new CheckService(database);
   const checkpoints = new CheckpointService(database);
   const commits = new CommitPreparationService(database);
+  const ghService = new GhService(database);
 
   ipcMain.handle(
     "health:ping",
@@ -302,6 +304,16 @@ export function registerIpcHandlers(
       z.object({ workspaceId: z.string().min(1), pinned: z.boolean() }),
       (input) => database.setWorkspacePinned(input.workspaceId, input.pinned)
     )
+  );
+  ipcMain.handle(
+    "prs:listForSession",
+    withValidation(z.object({ sessionId: z.string().min(1) }), (input) =>
+      ghService.listForSession(input.sessionId)
+    )
+  );
+  ipcMain.handle(
+    "prs:refresh",
+    withValidation(z.object({ sessionId: z.string().min(1) }), (input) => ghService.refresh(input.sessionId))
   );
   ipcMain.handle(
     "workspace:status",

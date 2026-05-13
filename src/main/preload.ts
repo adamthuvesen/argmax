@@ -12,6 +12,7 @@ import type {
   DetectedIde,
   DiagnosticsReport,
   DiscoveredProvider,
+  GhPrRecord,
   LaunchProviderSessionInput,
   Learning,
   ArgmaxApi,
@@ -164,6 +165,11 @@ const api: ArgmaxApi = {
     update: (input: { id: string; summary?: string; verified?: boolean }) =>
       ipcRenderer.invoke("learnings:update", input) as Promise<Learning>,
     delete: (id: string) => ipcRenderer.invoke("learnings:delete", { id }) as Promise<{ ok: true }>
+  },
+  prs: {
+    listForSession: (input: { sessionId: string }) =>
+      ipcRenderer.invoke("prs:listForSession", input) as Promise<GhPrRecord[]>,
+    refresh: (input: { sessionId: string }) => ipcRenderer.invoke("prs:refresh", input) as Promise<GhPrRecord[]>
   },
   terminal: {
     spawn: (input: TerminalSpawnInput) =>

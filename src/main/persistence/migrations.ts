@@ -39,10 +39,10 @@ export const migrations: Migration[] = [
     version: 1,
     name: "initial_local_product_state",
     // workspaces is re-verified by v11's affectedTables (post-v11 manifest);
-    // including it here would compare the v1 column set to the post-v11 shape
-    // and fail. The table creation itself still happens.
+    // projects is re-verified by v12 (after ALTER TABLE adds the gh remote
+    // columns). Including either here would compare the v1 column set to the
+    // post-vN shape and fail. The table creations themselves still happen.
     affectedTables: [
-      "projects",
       "raw_outputs",
       "events",
       "approvals",
@@ -416,6 +416,34 @@ export const migrations: Migration[] = [
       -- sidebar. Boolean encoded as INTEGER per SQLite convention.
       ALTER TABLE workspaces ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1));
     `
+  },
+  {
+    version: 12,
+    name: "projects_remote_and_gh_pr",
+    affectedTables: ["projects", "gh_pr"],
+    up: `
+      -- GitHub remote info for the CI feedback loop (P8.01). Owner + name come
+      -- from 'gh repo view --json owner,name' and are stored once per project
+      -- so PR polling for any session can resolve the repo without re-running
+      -- gh on every refresh.
+      ALTER TABLE projects ADD COLUMN repo_remote_owner TEXT;
+      ALTER TABLE projects ADD COLUMN repo_remote_name TEXT;
+
+      -- One row per (session, PR) pair so a session that's opened more than
+      -- one PR (rare but possible) doesn't lose history. last_seen_check_state
+      -- holds the rolled-up status from 'gh pr checks' so we can notice the
+      -- transition to 'failed' without diffing per-check rows.
+      CREATE TABLE gh_pr (
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        pr_number INTEGER NOT NULL,
+        head_sha TEXT NOT NULL,
+        last_seen_check_state TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (session_id, pr_number)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_gh_pr_session ON gh_pr(session_id);
+    `
   }
 ];
 
@@ -440,11 +468,14 @@ const expectedColumns: Record<string, string[]> = {
     "id",
     "name",
     "repo_path",
+    "repo_remote_name",
+    "repo_remote_owner",
     "setup_command",
     "ui_preferences_json",
     "updated_at",
     "worktree_location"
   ],
+  gh_pr: ["head_sha", "last_seen_check_state", "pr_number", "session_id", "updated_at"],
   workspaces: [
     "base_ref",
     "branch",

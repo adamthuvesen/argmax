@@ -26,9 +26,24 @@ describe("provider discovery", () => {
 
     const providers = await discoverProviders(runner);
 
-    expect(providers).toHaveLength(2);
+    expect(providers).toHaveLength(3);
     expect(providers.every((provider) => !provider.installed)).toBe(true);
     expect(providers.find((provider) => provider.provider === "claude")?.setupGuidance).toContain("Claude Code");
     expect(providers.find((provider) => provider.provider === "codex")?.setupGuidance).toContain("Codex CLI");
+    expect(providers.find((provider) => provider.provider === "cursor")?.setupGuidance).toContain("Cursor CLI");
+  });
+
+  it("reports cursor as structured-json only", async () => {
+    const runner: ProviderDiscoveryRunner = {
+      resolveBinary: (binaryName) => Promise.resolve(`/usr/local/bin/${binaryName}`),
+      readVersion: () => Promise.resolve("2026.05.09")
+    };
+
+    const cursor = await discoverProviderById("cursor", runner);
+
+    expect(cursor.installed).toBe(true);
+    expect(cursor.binaryPath).toBe("/usr/local/bin/cursor-agent");
+    expect(cursor.binaryName).toBe("cursor-agent");
+    expect(cursor.modes).toEqual(["structured-json"]);
   });
 });

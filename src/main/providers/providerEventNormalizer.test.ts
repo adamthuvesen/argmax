@@ -215,6 +215,198 @@ describe("mapProviderType", () => {
     expect(mapProviderType("totally.unknown", null, "claude")).toBeNull();
     expect(mapProviderType("totally.unknown", null, "codex")).toBeNull();
   });
+
+  it("maps Cursor assistant rows by --stream-partial-output marker", () => {
+    // Partial chunks carry timestamp_ms → message.delta.
+    expect(mapProviderType("assistant", null, "cursor", { timestamp_ms: 1778600000000 })).toBe("message.delta");
+    // The final cumulative row has no timestamp_ms → message.completed.
+    expect(mapProviderType("assistant", null, "cursor", {})).toBe("message.completed");
+    expect(mapProviderType("error", null, "cursor")).toBe("error");
+    // Suppressed upstream by isCursorLifecycleEvent, so the map returns null.
+    expect(mapProviderType("user", null, "cursor")).toBeNull();
+    expect(mapProviderType("thinking", null, "cursor")).toBeNull();
+    expect(mapProviderType("system", null, "cursor")).toBeNull();
+    expect(mapProviderType("result", null, "cursor")).toBeNull();
+  });
+});
+
+describe("normalizeProviderEvent — Cursor stream-json", () => {
+  it("suppresses cursor system/init from the timeline", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "system",
+          subtype: "init",
+          session_id: "cursor-uuid-1",
+          model: "composer-2",
+          cwd: "/repo/worktree"
+        }) + "\n"
+      ),
+      { provider: "cursor" }
+    );
+    expect(events).toEqual([]);
+  });
+
+  it("suppresses cursor result/success from the timeline", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          duration_ms: 1234,
+          is_error: false,
+          result: "done",
+          session_id: "cursor-uuid-1"
+        }) + "\n"
+      ),
+      { provider: "cursor" }
+    );
+    expect(events).toEqual([]);
+  });
+
+  it("emits a stream-partial chunk as message.delta when timestamp_ms is present", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant", content: [{ type: "text", text: "Hello" }] },
+          session_id: "cursor-uuid-1",
+          timestamp_ms: 1778600000000
+        }) + "\n"
+      ),
+      { provider: "cursor" }
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "message.delta",
+      message: "Hello"
+    });
+  });
+
+  it("emits the final cumulative cursor assistant row as message.completed", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant", content: [{ type: "text", text: "Hello from Cursor." }] },
+          session_id: "cursor-uuid-1"
+          // No timestamp_ms — this is the final row that lands right before result/success.
+        }) + "\n"
+      ),
+      { provider: "cursor" }
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "message.completed",
+      message: "Hello from Cursor."
+    });
+  });
+
+  it("maps cursor tool_call started/completed to command events", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        [
+          JSON.stringify({
+            type: "tool_call",
+            subtype: "started",
+            call_id: "call-1",
+            tool_call: { readToolCall: { args: { path: "src/index.ts" } } },
+            session_id: "cursor-uuid-1"
+          }),
+          JSON.stringify({
+            type: "tool_call",
+            subtype: "completed",
+            call_id: "call-1",
+            tool_call: {
+              readToolCall: {
+                args: { path: "src/index.ts" },
+                result: { success: { content: "...", totalLines: 54 } }
+              }
+            },
+            session_id: "cursor-uuid-1"
+          })
+        ].join("\n") + "\n"
+      ),
+      { provider: "cursor" }
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      type: "command.started",
+      message: "readToolCall",
+      payload: {
+        name: "readToolCall",
+        input: { path: "src/index.ts" },
+        call_id: "call-1"
+      }
+    });
+    expect(events[1]).toMatchObject({
+      type: "command.completed",
+      message: "readToolCall",
+      payload: {
+        name: "readToolCall",
+        input: { path: "src/index.ts" },
+        call_id: "call-1",
+        result: { success: { content: "...", totalLines: 54 } }
+      }
+    });
+  });
+
+  it("does not emit usage records on cursor assistant rows (only result carries usage)", () => {
+    const result = normalizeProviderEventWithUsage(
+      outputEvent(
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant", content: [{ type: "text", text: "hi" }] },
+          session_id: "cursor-uuid-1"
+        }) + "\n"
+      ),
+      { provider: "cursor", context: createNormalizerSessionContext() }
+    );
+    expect(result.usages).toEqual([]);
+  });
+
+  it("extracts cursor usage from the result/success row using the threaded model id", () => {
+    const result = normalizeProviderEventWithUsage(
+      outputEvent(
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          duration_ms: 2733,
+          is_error: false,
+          result: "ok",
+          session_id: "cursor-uuid-1",
+          usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 0 }
+        }) + "\n"
+      ),
+      { provider: "cursor", context: createNormalizerSessionContext({ cursorCurrentModel: "composer-2" }) }
+    );
+    expect(result.events).toEqual([]);
+    expect(result.usages).toEqual([
+      {
+        modelId: "composer-2",
+        tokens: { input: 100, output: 50, cacheRead: 10, cacheWrite: 0 },
+        costUsd: 0
+      }
+    ]);
+  });
+
+  it("suppresses cursor user echo and thinking deltas", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        [
+          JSON.stringify({
+            type: "user",
+            message: { role: "user", content: [{ type: "text", text: "the prompt" }] },
+            session_id: "cursor-uuid-1"
+          }),
+          JSON.stringify({ type: "thinking", subtype: "delta", text: "let me think", session_id: "cursor-uuid-1" }),
+          JSON.stringify({ type: "thinking", subtype: "completed", session_id: "cursor-uuid-1" })
+        ].join("\n") + "\n"
+      ),
+      { provider: "cursor" }
+    );
+    expect(events).toEqual([]);
+  });
 });
 
 describe("detectPermissionGate (replayed from __fixtures__)", () => {

@@ -105,7 +105,7 @@ function resolveSources(input: ListSkillsInput): SourceDescriptor[] {
       root: join(home, ".claude", "plugins", "cache"),
       source: "plugin"
     });
-  } else {
+  } else if (input.provider === "codex") {
     if (input.workspaceCwd) {
       sources.push({
         kind: "skill-dir",
@@ -136,6 +136,9 @@ function resolveSources(input: ListSkillsInput): SourceDescriptor[] {
       source: "plugin"
     });
   }
+  // Cursor: no skill sources yet. cursor-agent reads rules from ~/.cursor/rules
+  // and the workspace's `.cursor/rules` directory, which are not Argmax skills
+  // and don't map onto the slash-autocomplete contract.
 
   return sources;
 }

@@ -188,7 +188,7 @@ export class ProviderSessionService {
       events: [userMessage, sessionStarted]
     });
 
-    this.initializeBuffer(sessionId, workspace.id, input.provider);
+    this.initializeBuffer(sessionId, workspace.id, input.provider, input.modelId);
     // Register a pending placeholder synchronously so any racing operations are
     // queued into arrival order against the real handle once launch resolves.
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
@@ -305,7 +305,7 @@ export class ProviderSessionService {
       events: [userMessage]
     });
 
-    this.initializeBuffer(sessionId, workspace.id, session.provider);
+    this.initializeBuffer(sessionId, workspace.id, session.provider, session.modelId);
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
     this.handles.set(sessionId, pending);
     const modelDefault = PROVIDER_MODEL_DEFAULTS[session.provider];
@@ -620,7 +620,7 @@ export class ProviderSessionService {
     }
   }
 
-  private initializeBuffer(sessionId: string, workspaceId: string, provider: ProviderId): void {
+  private initializeBuffer(sessionId: string, workspaceId: string, provider: ProviderId, modelId: string): void {
     this.buffers.set(sessionId, {
       streamBuffers: new Map(),
       sequence: 0,
@@ -633,7 +633,9 @@ export class ProviderSessionService {
       lastActivityWriteAt: 0,
       workspaceId,
       provider,
-      normalizerContext: createNormalizerSessionContext()
+      normalizerContext: createNormalizerSessionContext(
+        provider === "cursor" ? { cursorCurrentModel: modelId } : {}
+      )
     });
   }
 

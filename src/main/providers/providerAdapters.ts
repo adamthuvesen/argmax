@@ -152,6 +152,11 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "-p",
       "--output-format",
       "stream-json",
+      // Stream incremental text chunks. Each partial `assistant` row carries
+      // `timestamp_ms`; the final cumulative `assistant` row does not — the
+      // normalizer uses that flag to distinguish a `message.delta` from a
+      // `message.completed`. Without this flag Cursor emits one chunky row
+      // at end of turn and the chat feels frozen during generation.
       "--stream-partial-output",
       ...cursorPermissionArgs(input),
       "--model",
@@ -165,6 +170,11 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       resumeConversationId,
       "--output-format",
       "stream-json",
+      // Stream incremental text chunks. Each partial `assistant` row carries
+      // `timestamp_ms`; the final cumulative `assistant` row does not — the
+      // normalizer uses that flag to distinguish a `message.delta` from a
+      // `message.completed`. Without this flag Cursor emits one chunky row
+      // at end of turn and the chat feels frozen during generation.
       "--stream-partial-output",
       ...cursorPermissionArgs(input),
       "--model",

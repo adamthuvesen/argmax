@@ -9,10 +9,20 @@ import type { ProviderEvent } from "./providerTypes.js";
 export interface NormalizerSessionContext {
   /** Most-recent Codex `turn_context.model` seen for this session. */
   codexCurrentModel: string | null;
+  /**
+   * Model id passed to `--model` when launching the cursor session. Cursor's
+   * stream-json reports `model` as a display name on `system/init` and not at
+   * all on `result/success`, so we thread the canonical id through from launch
+   * to feed `costOf()` when usage arrives.
+   */
+  cursorCurrentModel: string | null;
 }
 
-export function createNormalizerSessionContext(): NormalizerSessionContext {
-  return { codexCurrentModel: null };
+export function createNormalizerSessionContext(initial: { cursorCurrentModel?: string } = {}): NormalizerSessionContext {
+  return {
+    codexCurrentModel: null,
+    cursorCurrentModel: initial.cursorCurrentModel ?? null
+  };
 }
 
 export interface NormalizedUsage {
@@ -190,6 +200,10 @@ function normalizeJsonPayload(
     return { events: [], usages };
   }
 
+  if (provider === "cursor" && isCursorLifecycleEvent(providerType, stringValue(payload.subtype))) {
+    return { events: [], usages };
+  }
+
   const results: PersistTimelineEventInput[] = [];
 
   // Permission gates land before any tool-result extraction so the timeline
@@ -263,7 +277,7 @@ function normalizeJsonPayload(
     }
   }
 
-  const mappedType = mapProviderType(providerType, itemType, provider);
+  const mappedType = mapProviderType(providerType, itemType, provider, payload);
 
   // Don't create a message event if there's nothing to say.
   if (isMessageEvent(mappedType) && !text) {
@@ -445,18 +459,21 @@ const codexEventMap: Record<string, EventType> = {
 
 // Cursor's --output-format stream-json shape is intentionally Claude-like:
 // `assistant` rows carry message.content[].text (handled by the Claude content
-// extractor), and `user` rows mirror the prompt. tool_call rows are routed
-// separately by normalizeCursorToolCall.
+// extractor). `user`, `thinking`, `system/init`, and `result/success` are
+// suppressed earlier by isCursorLifecycleEvent — they do not appear here.
+// `tool_call` rows are routed by normalizeCursorToolCall.
+// `assistant` itself is routed in mapProviderType using the timestamp_ms
+// signal — partial chunks become message.delta, the final cumulative row
+// becomes message.completed.
 const cursorEventMap: Record<string, EventType> = {
-  assistant: "message.completed",
-  user: "message.delta",
   error: "error"
 };
 
 export function mapProviderType(
   providerType: string | null,
   itemType: string | null,
-  provider: ProviderId | undefined
+  provider: ProviderId | undefined,
+  payload?: Record<string, unknown>
 ): EventType | null {
   if (itemType === "agent_message") {
     return "message.completed";
@@ -472,6 +489,15 @@ export function mapProviderType(
     return codexEventMap[providerType] ?? null;
   }
   if (provider === "cursor") {
+    if (providerType === "assistant") {
+      // With --stream-partial-output, every chunk has timestamp_ms; only the
+      // final cumulative `assistant` row (emitted right before result/success)
+      // lacks it. Treat partials as deltas so the renderer can coalesce them
+      // into a single growing bubble; treat the final row as the completed
+      // message so it can replace the running deltas cleanly.
+      const hasTimestamp = payload !== undefined && typeof payload.timestamp_ms === "number";
+      return hasTimestamp ? "message.delta" : "message.completed";
+    }
     return cursorEventMap[providerType] ?? null;
   }
 
@@ -481,19 +507,34 @@ export function mapProviderType(
 }
 
 function isLifecycleEvent(providerType: string | null, itemType: string | null): boolean {
-  if (itemType === "agent_message") return false;
-  // Cursor wraps init/result as `{type:"system"|"result", subtype:"..."}`.
-  // Treat both as lifecycle so they don't surface as raw timeline rows.
-  // Claude never emits a bare `system` or `result` type (only message_*), so
-  // gating by provider is unnecessary.
   return (
-    providerType === "thread.started" ||
-    providerType === "turn.started" ||
-    providerType === "turn.completed" ||
-    providerType === "session.started" ||
-    providerType === "system" ||
-    providerType === "result"
+    itemType !== "agent_message" &&
+    (providerType === "thread.started" ||
+      providerType === "turn.started" ||
+      providerType === "turn.completed" ||
+      providerType === "session.started")
   );
+}
+
+/**
+ * Cursor-only suppression list. Stream-json emits a number of rows that don't
+ * belong on the visible timeline:
+ *   - `system/init` and `result/success` are lifecycle markers.
+ *   - `user` is an echo of the prompt — the launch already persisted a
+ *     `user.message` timeline row from the composer, so re-emitting the same
+ *     text creates a duplicate bubble.
+ *   - `thinking` deltas leak reasoning fragments; Argmax doesn't surface
+ *     reasoning for any provider and rendering each delta produces a wall of
+ *     one-line bubbles.
+ * Subtype gating on `system` matters because Claude's permission-denied
+ * messages also use `type:"system"`, with `subtype:"permission_denied"`.
+ */
+function isCursorLifecycleEvent(providerType: string | null, subtype: string | null): boolean {
+  if (providerType === "system" && subtype === "init") return true;
+  if (providerType === "result" && subtype === "success") return true;
+  if (providerType === "user") return true;
+  if (providerType === "thinking") return true;
+  return false;
 }
 
 interface PermissionGateInfo {
@@ -617,7 +658,40 @@ function extractUsageFromPayload(
   if (provider === "codex") {
     return extractCodexUsage(payload, providerType, context);
   }
+  if (provider === "cursor") {
+    return extractCursorUsage(payload, providerType, context);
+  }
   return null;
+}
+
+function extractCursorUsage(
+  payload: Record<string, unknown>,
+  providerType: string | null,
+  context: NormalizerSessionContext | undefined
+): NormalizedUsage | null {
+  // Cursor only reports usage on the `result/success` row at end of turn.
+  if (providerType !== "result") return null;
+  if (stringValue(payload.subtype) !== "success") return null;
+  const usage = objectValue(payload.usage);
+  if (!usage) return null;
+  const tokens: UsageCounts = {
+    input: numberValue(usage.inputTokens),
+    output: numberValue(usage.outputTokens),
+    cacheRead: numberValue(usage.cacheReadTokens),
+    cacheWrite: numberValue(usage.cacheWriteTokens)
+  };
+  if (tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite === 0) {
+    return null;
+  }
+  // Cursor proxies multiple model families and bills per-request, not per-token.
+  // We surface token counts for visibility and let costOf() return $0 for
+  // unknown ids — a misleading API-price would be worse than no price.
+  const modelId = context?.cursorCurrentModel ?? "cursor-unknown";
+  return {
+    modelId,
+    tokens,
+    costUsd: costOf(tokens, modelId)
+  };
 }
 
 function extractClaudeUsage(

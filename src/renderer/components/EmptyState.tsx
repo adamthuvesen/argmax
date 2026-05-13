@@ -1,5 +1,5 @@
-import { AlertTriangle } from "lucide-react";
 import type { JSX } from "react";
+import { Mascot } from "./Mascot.js";
 
 export function EmptyState({
   message,
@@ -10,7 +10,7 @@ export function EmptyState({
 }): JSX.Element {
   return (
     <section className="empty-state">
-      <AlertTriangle size={24} />
+      <Mascot mood="sad" size={72} />
       <h2>Local state could not be loaded</h2>
       <p>
         {message ??

@@ -1461,6 +1461,13 @@ button {
 
 .chat-bubble-timestamp {
   font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.chat-bubble:hover .chat-bubble-timestamp,
+.chat-bubble:focus-within .chat-bubble-timestamp {
+  opacity: 1;
 }
 
 .chat-bubble-copy {
@@ -1994,7 +2001,7 @@ button {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 28px;
+  gap: 32px;
   overflow: auto;
   padding: 8px var(--session-inline-padding) 28px;
   scroll-behavior: smooth;
@@ -2222,6 +2229,7 @@ button {
 
 .chat-bubble.user {
   align-self: flex-end;
+  max-width: min(62%, 680px);
   color: #ffffff;
   background: var(--ink);
   box-shadow: none;
@@ -2230,6 +2238,339 @@ button {
 
 .chat-bubble.user p {
   color: #ffffff;
+}
+
+/* Floating "scroll to latest" button. Anchors to the conversation list (which
+   is `position: relative`'d below) so it doesn't drift over the composer. */
+.conversation-list {
+  position: relative;
+}
+
+.scroll-to-bottom-fab {
+  position: sticky;
+  bottom: 12px;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-top: -32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+  z-index: 2;
+}
+
+.scroll-to-bottom-fab:hover {
+  background: var(--panel-soft);
+  transform: translateY(-1px);
+}
+
+/* Composer footer — workspace branch + worktree chips, sit under the textarea
+   like Codex's "Work locally" / "main" indicators. */
+.composer-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 2px;
+  flex-wrap: wrap;
+}
+
+.composer-footer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.composer-footer-chip:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.composer-footer-chip svg {
+  opacity: 0.7;
+}
+
+/* Approvals banner — soft amber row above the composer that surfaces pending
+   approvals when the user is scrolled away from the approval surface below. */
+.composer-approvals-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 var(--session-inline-padding) 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.composer-approvals-banner-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.composer-approvals-banner-cta {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.composer-approvals-banner-cta:hover {
+  background: rgba(176, 128, 57, 0.16);
+}
+
+/* Inline file chip — replaces a plain `<code>` pill when the text matches a
+   file-path pattern. Click opens the file in the workspace's IDE. */
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px 1px 5px;
+  margin: 0 1px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  vertical-align: baseline;
+}
+
+.file-chip:hover {
+  background: var(--panel-soft);
+  border-color: var(--line-strong);
+}
+
+.file-chip svg {
+  opacity: 0.65;
+  flex-shrink: 0;
+}
+
+.file-chip-path {
+  white-space: nowrap;
+}
+
+/* Fenced code block — header strip with language label and copy button.
+   Replaces the bare `<pre>` rendering for fenced code in assistant markdown. */
+.code-block {
+  margin: 12px 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--panel-sunken);
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 10px 0 12px;
+  background: var(--panel-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.code-block-lang {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--muted-strong);
+}
+
+.code-block-lang--blank {
+  min-height: 11px;
+}
+
+.code-block-copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.code-block:hover .code-block-copy,
+.code-block:focus-within .code-block-copy {
+  opacity: 1;
+}
+
+.code-block-copy:hover {
+  color: var(--text);
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-x: auto;
+}
+
+.code-block pre code {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* TurnBlock — wraps an assistant turn (one user message → assistant response
+   + tool calls) so the entire run reads as a single "Worked for Xs" beat,
+   matching Codex's calmer chat rhythm. */
+.turn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.turn-block-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 18px;
+}
+
+.turn-block-subtitle {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+
+.turn-block-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: 999px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.turn-block-chip:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.turn-block-chevron {
+  transition: transform var(--duration-fast) var(--ease);
+  opacity: 0.6;
+}
+
+.turn-block-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.turn-block-spinner {
+  animation: turn-block-spin 900ms linear infinite;
+}
+
+@keyframes turn-block-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.turn-block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.turn-block-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Running turn — subtle pulse on the subtitle to confirm activity without
+   yelling. */
+.turn-block[data-running="true"] .turn-block-subtitle {
+  animation: turn-block-pulse 1600ms var(--ease) infinite;
+}
+
+@keyframes turn-block-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.9; }
+}
+
+/* Streaming caret — appended to the last paragraph of a bubble that is still
+   receiving message.delta events. Vanishes when the provider's final
+   message.completed arrives. */
+.markdown-streaming p:last-of-type::after,
+.markdown-streaming li:last-of-type::after,
+.markdown-streaming > *:last-child:not(p):not(li)::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: var(--text);
+  opacity: 0.6;
+  animation: streaming-caret 900ms steps(2, end) infinite;
+}
+
+@keyframes streaming-caret {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 0; }
 }
 
 @keyframes msg-in {
@@ -4464,6 +4805,170 @@ button {
   opacity: 0.42;
 }
 
+.mascot {
+  --mascot-body: #e7a978;
+  --mascot-body-shade: #d99464;
+  --mascot-leg: #b87a4d;
+  --mascot-eye: #1c1b18;
+  --mascot-rain: #7a9fc4;
+
+  display: inline-block;
+  overflow: visible;
+  vertical-align: middle;
+  animation: mascot-bob 2.4s var(--ease) infinite;
+  transform-origin: 50% 100%;
+}
+
+.mascot .mascot-fill rect {
+  fill: var(--mascot-body);
+}
+
+.mascot .mascot-eyes rect {
+  fill: var(--mascot-eye);
+}
+
+.mascot .mascot-legs rect {
+  fill: var(--mascot-leg);
+  transform-box: fill-box;
+}
+
+.mascot .mascot-legs {
+  transform-origin: 8px 11px;
+  transform-box: view-box;
+  animation: mascot-leg-dangle 2.4s var(--ease) infinite;
+}
+
+.mascot .mascot-eyes {
+  transform-origin: 8px 6px;
+  transform-box: view-box;
+  animation: mascot-blink 4.6s var(--ease) infinite;
+}
+
+.mascot .mascot-rain-dot {
+  fill: var(--mascot-rain);
+  opacity: 0;
+}
+
+.mascot[data-mood="happy"] {
+  animation: mascot-hop 0.7s var(--ease) 1, mascot-bob 2.4s var(--ease) 0.7s infinite;
+}
+
+.mascot[data-mood="sad"] {
+  animation: mascot-droop 2.6s var(--ease) infinite;
+  --mascot-body: #c8c7c2;
+  --mascot-body-shade: #aeada8;
+  --mascot-leg: #8c8b86;
+  --mascot-rain: #8c8b86;
+}
+
+.mascot[data-mood="working"] {
+  animation: mascot-squish 1.4s var(--ease) infinite;
+}
+
+.mascot[data-mood="thinking"] .mascot-rain-dot-1 {
+  animation: mascot-rain 1.4s var(--ease) infinite;
+}
+
+.mascot[data-mood="thinking"] .mascot-rain-dot-2 {
+  animation: mascot-rain 1.4s var(--ease) 0.4s infinite;
+}
+
+.mascot[data-mood="thinking"] .mascot-rain-dot-3 {
+  animation: mascot-rain 1.4s var(--ease) 0.8s infinite;
+}
+
+@keyframes mascot-bob {
+  0%, 100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4%);
+  }
+}
+
+@keyframes mascot-leg-dangle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+
+  25% {
+    transform: rotate(4deg);
+  }
+
+  75% {
+    transform: rotate(-4deg);
+  }
+}
+
+@keyframes mascot-blink {
+  0%, 88%, 100% {
+    transform: scaleY(1);
+  }
+
+  92%, 96% {
+    transform: scaleY(0.1);
+  }
+}
+
+@keyframes mascot-hop {
+  0% {
+    transform: translateY(0) scaleY(1) scaleX(1);
+  }
+
+  18% {
+    transform: translateY(0) scaleY(0.82) scaleX(1.14);
+  }
+
+  48% {
+    transform: translateY(-26%) scaleY(1.06) scaleX(0.94);
+  }
+
+  78% {
+    transform: translateY(0) scaleY(0.9) scaleX(1.08);
+  }
+
+  100% {
+    transform: translateY(0) scaleY(1) scaleX(1);
+  }
+}
+
+@keyframes mascot-squish {
+  0%, 100% {
+    transform: scaleY(1) scaleX(1) translateY(0);
+  }
+
+  50% {
+    transform: scaleY(0.9) scaleX(1.06) translateY(3%);
+  }
+}
+
+@keyframes mascot-droop {
+  0%, 100% {
+    transform: translateY(2%) rotate(-1deg);
+  }
+
+  50% {
+    transform: translateY(4%) rotate(-1deg);
+  }
+}
+
+@keyframes mascot-rain {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(220%);
+  }
+}
+
 .empty-state {
   display: grid;
   max-width: 520px;
@@ -4475,7 +4980,7 @@ button {
   gap: 8px;
 }
 
-.empty-state svg {
+.empty-state svg:not(.mascot) {
   color: var(--amber);
 }
 

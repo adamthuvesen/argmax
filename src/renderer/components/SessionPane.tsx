@@ -266,6 +266,7 @@ export function SessionPane({
           onCreateCheckpoint={onCreateCheckpoint}
           onRunCheck={onRunCheck}
           onToggleLog={toggleLog}
+          pendingApprovalCount={visibleApprovals.filter((a) => a.status === "pending").length}
           project={project}
           rawOutputs={rawOutputs}
           review={reviewState}

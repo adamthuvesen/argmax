@@ -1,4 +1,4 @@
-import { Bug, ChevronRight, Folder, GitCommit, Mic, Plus, Square } from "lucide-react";
+import { Bug, ChevronDown, ChevronRight, Folder, GitBranch, GitCommit, Mic, Plus, Square } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -34,6 +34,7 @@ import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import {
   buildToolCallGroup,
   detectToolError,
+  extractCompletionCorrelationId,
   extractToolError,
   extractToolInput,
   extractToolInputPreview,
@@ -45,11 +46,15 @@ import {
 } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { ChatBubble } from "./ChatBubble.js";
+import { CodeBlock } from "./CodeBlock.js";
 import { CostPanel } from "./CostPanel.js";
+import { matchFileChip } from "../lib/fileChipPath.js";
+import { FileChip } from "./FileChip.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { ToolCallBubble } from "./ToolCallBubble.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
+import { TurnBlock, type TurnToolItem } from "./TurnBlock.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
@@ -63,6 +68,7 @@ export function SessionConversation({
   onCreateCheckpoint,
   onRunCheck,
   onToggleLog,
+  pendingApprovalCount = 0,
   project,
   rawOutputs,
   review,
@@ -78,6 +84,7 @@ export function SessionConversation({
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
+  pendingApprovalCount?: number;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   review: ReviewState;
@@ -134,9 +141,7 @@ export function SessionConversation({
         const toolUseId = extractToolUseId(event.payload) ?? event.id;
         starts.set(toolUseId, { event, toolUseId });
       } else if (event.type === "command.completed") {
-        const toolUseId =
-          typeof event.payload.tool_use_id === "string" ? event.payload.tool_use_id :
-          typeof event.payload.id === "string" ? event.payload.id : null;
+        const toolUseId = extractCompletionCorrelationId(event.payload);
         if (toolUseId) completions.set(toolUseId, event);
       }
     }
@@ -212,6 +217,60 @@ export function SessionConversation({
   const now = useNow(anyToolRunning, 250);
   const isFreshTool = useFreshSet(toolCalls, (tool) => tool.id, session?.id ?? "");
 
+  // Second-level fold: group user→assistant→tools into a single "turn" so the
+  // chat has Codex-style rhythm. User messages stay standalone; everything
+  // between two user messages folds under one "Worked for Xs" chip header.
+  type RenderItem =
+    | { kind: "user-message"; event: TimelineEvent }
+    | {
+        kind: "turn";
+        id: string;
+        assistantEvents: TimelineEvent[];
+        toolItems: TurnToolItem[];
+        assistantTimestamps: number[];
+      };
+  const renderItems = useMemo((): RenderItem[] => {
+    const out: RenderItem[] = [];
+    let pending:
+      | { assistantEvents: TimelineEvent[]; toolItems: TurnToolItem[]; firstId: string | null }
+      | null = null;
+    const flush = (): void => {
+      if (!pending) return;
+      if (pending.assistantEvents.length === 0 && pending.toolItems.length === 0) {
+        pending = null;
+        return;
+      }
+      out.push({
+        kind: "turn",
+        id: pending.firstId ?? `turn-${out.length}`,
+        assistantEvents: pending.assistantEvents,
+        toolItems: pending.toolItems,
+        assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt))
+      });
+      pending = null;
+    };
+    for (const item of conversationItems) {
+      if (item.kind === "message" && item.event.type === "user.message") {
+        flush();
+        out.push({ kind: "user-message", event: item.event });
+        continue;
+      }
+      if (!pending) pending = { assistantEvents: [], toolItems: [], firstId: null };
+      if (item.kind === "message") {
+        pending.assistantEvents.push(item.event);
+        if (!pending.firstId) pending.firstId = `turn-${item.event.id}`;
+      } else if (item.kind === "tool") {
+        pending.toolItems.push({ kind: "tool", tool: item.tool });
+        if (!pending.firstId) pending.firstId = `turn-${item.tool.id}`;
+      } else {
+        pending.toolItems.push({ kind: "tool-group", group: item.group });
+        if (!pending.firstId) pending.firstId = `turn-${item.group.id}`;
+      }
+    }
+    flush();
+    return out;
+  }, [conversationItems]);
+
   const canSend = Boolean(
     session &&
       ["complete", "waiting"].includes(session.state)
@@ -233,12 +292,20 @@ export function SessionConversation({
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const metaCardsRef = useRef<HTMLDivElement | null>(null);
   const wasNearBottomRef = useRef<boolean>(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const handleConversationScroll = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     wasNearBottomRef.current = distanceFromBottom < 80;
+    setShowScrollToBottom(distanceFromBottom > 120);
+  }, []);
+
+  const scrollConversationToBottom = useCallback((): void => {
+    const el = conversationListRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
 
   // Snap to the latest content when the session changes — the previous
@@ -420,48 +487,137 @@ export function SessionConversation({
         </div>
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
-        {conversationItems.length > 0 ? (
-          conversationItems.map((item) =>
-            item.kind === "tool" ? (
-              <ToolCallBubble
-                key={item.tool.id}
-                tool={item.tool}
-                now={now}
-                fresh={isFreshTool(item.tool)}
-                defaultExpanded={defaultToolCallsExpanded}
-                workspaceCwd={workspace?.path ?? null}
-              />
-            ) : item.kind === "tool-group" ? (
-              <ToolCallGroupBubble
-                key={item.group.id}
-                group={item.group}
-                now={now}
-                isFreshTool={isFreshTool}
-                defaultExpanded={defaultToolCallsExpanded}
-                workspaceCwd={workspace?.path ?? null}
-              />
-            ) : item.event.type === "user.message" ? (
+        {renderItems.length > 0 ? (
+          renderItems.map((item) => {
+            if (item.kind === "user-message") {
+              return (
+                <ChatBubble
+                  key={item.event.id}
+                  kind="user"
+                  createdAt={item.event.createdAt}
+                  rawMarkdown={item.event.message}
+                >
+                  <p>{item.event.message}</p>
+                </ChatBubble>
+              );
+            }
+            // Coalesce consecutive `message.delta` events into a single
+            // running bubble. Without this, Cursor's --stream-partial-output
+            // would render a separate bubble per token. The buffer flushes on
+            // the next non-delta event (typically `message.completed`).
+            const assistantGroups: Array<{ id: string; createdAt: string; text: string; streaming: boolean }> = [];
+            let deltaBuffer: { id: string; createdAt: string; chunks: string[] } | null = null;
+            for (const event of item.assistantEvents) {
+              if (event.type === "message.delta") {
+                if (!deltaBuffer) deltaBuffer = { id: event.id, createdAt: event.createdAt, chunks: [] };
+                deltaBuffer.chunks.push(event.message);
+                continue;
+              }
+              if (deltaBuffer) {
+                assistantGroups.push({
+                  id: deltaBuffer.id,
+                  createdAt: deltaBuffer.createdAt,
+                  text: deltaBuffer.chunks.join(""),
+                  streaming: true
+                });
+                deltaBuffer = null;
+              }
+              assistantGroups.push({
+                id: event.id,
+                createdAt: event.createdAt,
+                text: event.message,
+                streaming: false
+              });
+            }
+            if (deltaBuffer) {
+              assistantGroups.push({
+                id: deltaBuffer.id,
+                createdAt: deltaBuffer.createdAt,
+                text: deltaBuffer.chunks.join(""),
+                streaming: true
+              });
+            }
+            const assistantNode = assistantGroups.map((group) => (
               <ChatBubble
-                key={item.event.id}
-                kind="user"
-                createdAt={item.event.createdAt}
-                rawMarkdown={item.event.message}
-              >
-                <p>{item.event.message}</p>
-              </ChatBubble>
-            ) : (
-              <ChatBubble
-                key={item.event.id}
+                key={group.id}
                 kind="assistant"
-                createdAt={item.event.createdAt}
-                rawMarkdown={item.event.message}
+                createdAt={group.createdAt}
+                rawMarkdown={group.text}
               >
-                <div className="markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.event.message}</ReactMarkdown>
+                <div className={`markdown${group.streaming ? " markdown-streaming" : ""}`}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code: ({ className, children, ...rest }) => {
+                        const isFenced = typeof className === "string" && className.includes("language-");
+                        if (isFenced) {
+                          return <CodeBlock className={className}>{children}</CodeBlock>;
+                        }
+                        const text = Array.isArray(children)
+                          ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+                          : typeof children === "string"
+                            ? children
+                            : "";
+                        const match = matchFileChip(text);
+                        if (match) {
+                          return (
+                            <FileChip
+                              path={match.path}
+                              line={match.line}
+                              workspaceId={workspace?.id ?? null}
+                              workspaceCwd={workspace?.path ?? null}
+                            />
+                          );
+                        }
+                        return (
+                          <code className={className} {...rest}>
+                            {children}
+                          </code>
+                        );
+                      },
+                      pre: ({ children }) => <>{children}</>
+                    }}
+                  >
+                    {group.text}
+                  </ReactMarkdown>
                 </div>
               </ChatBubble>
-            )
-          )
+            ));
+            const toolsNode = item.toolItems.map((tItem) =>
+              tItem.kind === "tool" ? (
+                <ToolCallBubble
+                  key={tItem.tool.id}
+                  tool={tItem.tool}
+                  now={now}
+                  fresh={isFreshTool(tItem.tool)}
+                  defaultExpanded={defaultToolCallsExpanded}
+                  workspaceCwd={workspace?.path ?? null}
+                />
+              ) : (
+                <ToolCallGroupBubble
+                  key={tItem.group.id}
+                  group={tItem.group}
+                  now={now}
+                  isFreshTool={isFreshTool}
+                  defaultExpanded={defaultToolCallsExpanded}
+                  workspaceCwd={workspace?.path ?? null}
+                />
+              )
+            );
+            return (
+              <TurnBlock
+                key={item.id}
+                toolItems={item.toolItems}
+                assistantTimestamps={item.assistantTimestamps}
+                now={now}
+                {...(session ? { providerLabel: providerLabel(session.provider) } : {})}
+                modelLabel={selectedModel.label}
+                {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
+                assistantNode={assistantNode}
+                toolsNode={toolsNode}
+              />
+            );
+          })
         ) : terminalTranscript ? (
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>
@@ -473,6 +629,17 @@ export function SessionConversation({
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>
           </article>
+        ) : null}
+        {showScrollToBottom ? (
+          <button
+            type="button"
+            className="scroll-to-bottom-fab"
+            aria-label="Scroll to latest"
+            title="Scroll to latest"
+            onClick={scrollConversationToBottom}
+          >
+            <ChevronDown size={16} aria-hidden="true" />
+          </button>
         ) : null}
         {isThinking ? (
           <article className="chat-bubble assistant thinking-indicator" aria-live="polite" aria-label="Thinking">
@@ -504,6 +671,27 @@ export function SessionConversation({
         />
         {session ? <CostPanel session={session} /> : null}
       </div>
+      {pendingApprovalCount > 0 ? (
+        <div className="composer-approvals-banner" role="status" aria-live="polite">
+          <span className="composer-approvals-banner-count" aria-hidden="true">{pendingApprovalCount}</span>
+          <span>
+            {pendingApprovalCount === 1 ? "approval needs review" : "approvals need review"}
+          </span>
+          <button
+            type="button"
+            className="composer-approvals-banner-cta"
+            aria-label="Scroll to approvals"
+            onClick={() => {
+              const el = document.querySelector(".approval-surface");
+              if (el instanceof HTMLElement) {
+                el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+            }}
+          >
+            Review
+          </button>
+        </div>
+      ) : null}
       <form
         className="session-input"
         ref={inputFormRef}
@@ -529,7 +717,7 @@ export function SessionConversation({
             disabled={!canSend || isSending}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={onSessionInputKeyDown}
-            placeholder=""
+            placeholder={canSend ? "Reply to your agent, or @-mention files" : ""}
             ref={inputRef}
             value={input}
             rows={1}
@@ -581,6 +769,32 @@ export function SessionConversation({
             </button>
           )}
         </div>
+        {workspace ? (
+          <div className="composer-footer" aria-label="Workspace context">
+            <button
+              type="button"
+              className="composer-footer-chip"
+              title={`Open worktree: ${workspace.path}`}
+              aria-label={`Open worktree at ${workspace.path}`}
+              onClick={() => {
+                if (!window.argmax) return;
+                void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
+              }}
+            >
+              <Folder size={11} aria-hidden="true" />
+              <span>{workspace.sharedWorkspace ? "Work locally" : "Worktree"}</span>
+            </button>
+            <button
+              type="button"
+              className="composer-footer-chip"
+              title={`Branch: ${workspace.branch}`}
+              aria-label={`Branch ${workspace.branch}`}
+            >
+              <GitBranch size={11} aria-hidden="true" />
+              <span>{workspace.branch}</span>
+            </button>
+          </div>
+        ) : null}
       </form>
       {status ? (
         <p className="composer-status" role="status">

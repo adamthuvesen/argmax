@@ -38,6 +38,15 @@ const providerDefinitions: ProviderDefinition[] = [
     modes: ["interactive-pty", "structured-json"],
     setupGuidance:
       "Install the Codex CLI locally and authenticate it in your normal terminal. Argmax will launch the local `codex` CLI from the selected workspace."
+  },
+  {
+    id: "cursor",
+    displayName: "Cursor",
+    binaryName: "cursor-agent",
+    versionArgs: ["--version"],
+    modes: ["structured-json"],
+    setupGuidance:
+      "Install the Cursor CLI and run `cursor-agent login` (or set CURSOR_API_KEY). Argmax will launch the local `cursor-agent` CLI from the selected workspace."
   }
 ];
 

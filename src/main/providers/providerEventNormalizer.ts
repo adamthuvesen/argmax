@@ -222,6 +222,13 @@ function normalizeJsonPayload(
     }
   }
 
+  if (provider === "cursor") {
+    const cursorToolEvent = normalizeCursorToolCall(event, payload, providerType);
+    if (cursorToolEvent) {
+      return { events: [cursorToolEvent], usages };
+    }
+  }
+
   // Extract inline tool_use / tool_result blocks from Claude's structured output format.
   // Claude Code (stream-json mode) sends complete turns as:
   //   {"type":"assistant","message":{"content":[{"type":"tool_use","id":"...","name":"...","input":{...}}]}}
@@ -280,6 +287,51 @@ function normalizeJsonPayload(
   });
 
   return { events: results, usages };
+}
+
+function normalizeCursorToolCall(
+  event: ProviderEvent,
+  payload: Record<string, unknown>,
+  providerType: string | null
+): PersistTimelineEventInput | null {
+  if (providerType !== "tool_call") return null;
+  const subtype = stringValue(payload.subtype);
+  if (subtype !== "started" && subtype !== "completed") return null;
+
+  // Cursor wraps the tool body in a single-key object like {readToolCall: {...}}
+  // or {writeToolCall: {...}}. Unwrap so the kind name and inner args/result
+  // both surface on the timeline event.
+  const wrapper = objectValue(payload.tool_call);
+  let toolKind: string | null = null;
+  let toolBody: Record<string, unknown> | null = null;
+  if (wrapper) {
+    for (const key of Object.keys(wrapper)) {
+      const body = objectValue(wrapper[key]);
+      if (body) {
+        toolKind = key;
+        toolBody = body;
+        break;
+      }
+    }
+  }
+  const toolName = toolKind ?? "tool_call";
+  const args = toolBody ? objectValue(toolBody.args) ?? {} : {};
+  const callId = stringValue(payload.call_id);
+  const flattened: Record<string, unknown> = {
+    name: toolName,
+    input: args,
+    ...(toolBody && "result" in toolBody ? { result: toolBody.result } : {}),
+    ...(callId ? { call_id: callId } : {}),
+    raw: payload
+  };
+  return {
+    id: randomUUID(),
+    sessionId: event.sessionId,
+    type: subtype === "started" ? "command.started" : "command.completed",
+    message: toolName,
+    payload: flattened,
+    createdAt: event.createdAt
+  };
 }
 
 function normalizeCodexToolItem(
@@ -391,6 +443,16 @@ const codexEventMap: Record<string, EventType> = {
   error: "error"
 };
 
+// Cursor's --output-format stream-json shape is intentionally Claude-like:
+// `assistant` rows carry message.content[].text (handled by the Claude content
+// extractor), and `user` rows mirror the prompt. tool_call rows are routed
+// separately by normalizeCursorToolCall.
+const cursorEventMap: Record<string, EventType> = {
+  assistant: "message.completed",
+  user: "message.delta",
+  error: "error"
+};
+
 export function mapProviderType(
   providerType: string | null,
   itemType: string | null,
@@ -409,6 +471,9 @@ export function mapProviderType(
   if (provider === "codex") {
     return codexEventMap[providerType] ?? null;
   }
+  if (provider === "cursor") {
+    return cursorEventMap[providerType] ?? null;
+  }
 
   // No provider hint: try both maps for back-compat, but prefer no leakage.
   // Look up only in maps where the key is provider-shared.
@@ -416,12 +481,18 @@ export function mapProviderType(
 }
 
 function isLifecycleEvent(providerType: string | null, itemType: string | null): boolean {
+  if (itemType === "agent_message") return false;
+  // Cursor wraps init/result as `{type:"system"|"result", subtype:"..."}`.
+  // Treat both as lifecycle so they don't surface as raw timeline rows.
+  // Claude never emits a bare `system` or `result` type (only message_*), so
+  // gating by provider is unnecessary.
   return (
-    itemType !== "agent_message" &&
-    (providerType === "thread.started" ||
-      providerType === "turn.started" ||
-      providerType === "turn.completed" ||
-      providerType === "session.started")
+    providerType === "thread.started" ||
+    providerType === "turn.started" ||
+    providerType === "turn.completed" ||
+    providerType === "session.started" ||
+    providerType === "system" ||
+    providerType === "result"
   );
 }
 

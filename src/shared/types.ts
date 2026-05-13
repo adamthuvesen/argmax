@@ -29,7 +29,7 @@ import type {
 } from "./ipcSchemas.js";
 import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
 
-export type ProviderId = "claude" | "codex";
+export type ProviderId = "claude" | "codex" | "cursor";
 export type ProviderMode = "interactive-pty" | "structured-json";
 
 export interface DiscoveredProvider {

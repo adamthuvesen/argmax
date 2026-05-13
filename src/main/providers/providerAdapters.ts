@@ -38,6 +38,9 @@ interface ProviderLaunchDefinition {
 
 const CLAUDE_BYPASS_PERMISSION_ARGS = ["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS = ["--dangerously-bypass-approvals-and-sandbox"];
+// Cursor needs both: --force allows file writes without confirmation, --trust
+// skips the workspace-trust prompt that otherwise blocks headless runs.
+const CURSOR_BYPASS_PERMISSION_ARGS = ["--force", "--trust"];
 
 function claudePermissionArgs(input: ProviderLaunchInput): string[] {
   return input.permissionMode === "auto-approve" ? CLAUDE_BYPASS_PERMISSION_ARGS : [];
@@ -45,6 +48,10 @@ function claudePermissionArgs(input: ProviderLaunchInput): string[] {
 
 function codexPermissionArgs(input: ProviderLaunchInput): string[] {
   return input.permissionMode === "auto-approve" ? CODEX_BYPASS_PERMISSION_ARGS : [];
+}
+
+function cursorPermissionArgs(input: ProviderLaunchInput): string[] {
+  return input.permissionMode === "auto-approve" ? CURSOR_BYPASS_PERMISSION_ARGS : [];
 }
 
 /**
@@ -135,6 +142,39 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
     ],
     interactiveArgs: (input) => ["--model", input.modelId, ...codexReasoningArgs(input), ...codexPermissionArgs(input)],
     structuredStdin: (input) => input.prompt
+  },
+  {
+    id: "cursor",
+    displayName: "Cursor",
+    binaryName: "cursor-agent",
+    structuredArgs: (input) => [
+      "agent",
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--stream-partial-output",
+      ...cursorPermissionArgs(input),
+      "--model",
+      input.modelId,
+      input.prompt
+    ],
+    structuredResumeArgs: (input, resumeConversationId) => [
+      "agent",
+      "-p",
+      "--resume",
+      resumeConversationId,
+      "--output-format",
+      "stream-json",
+      "--stream-partial-output",
+      ...cursorPermissionArgs(input),
+      "--model",
+      input.modelId,
+      input.prompt
+    ],
+    interactiveArgs: () => {
+      throw new ProviderLaunchError("Cursor interactive mode is not supported yet.", "cursor");
+    },
+    structuredStdin: () => null
   }
 ];
 

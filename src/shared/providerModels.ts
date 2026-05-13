@@ -41,6 +41,11 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "low" },
     { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "medium" },
     { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "high" }
+  ],
+  cursor: [
+    { label: "Cursor Composer 2", modelId: "composer-2" },
+    { label: "GPT-5.5 (Cursor)", modelId: "gpt-5.5-medium" },
+    { label: "Claude Opus 4.7 (Cursor)", modelId: "claude-opus-4-7-medium" }
   ]
 };
 
@@ -54,6 +59,11 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     label: "Codex Spark",
     modelId: "gpt-5.3-codex-spark",
     reasoningEffort: "medium",
+    launchMode: "structured-json"
+  },
+  cursor: {
+    label: "Cursor Composer 2",
+    modelId: "composer-2",
     launchMode: "structured-json"
   }
 };

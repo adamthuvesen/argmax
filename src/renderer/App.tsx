@@ -18,7 +18,9 @@ import { SessionPane } from "./components/SessionPane.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { demoSnapshot } from "./demoSnapshot.js";
+// demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
+// out of the production renderer bundle. Browser-preview mode (no Electron
+// bridge) is the only consumer; packaged builds always have window.argmax.
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { useOverlays } from "./hooks/useOverlays.js";
 import { useSidebarResize } from "./hooks/useSidebarResize.js";
@@ -925,6 +927,9 @@ export function App(): JSX.Element {
 
 async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
   if (!window.argmax) {
+    // Vite tree-shakes the dynamic import out of the packaged renderer bundle
+    // — only browser-preview loads pull in the demo fixture.
+    const { demoSnapshot } = await import("./demoSnapshot.js");
     return demoSnapshot;
   }
 

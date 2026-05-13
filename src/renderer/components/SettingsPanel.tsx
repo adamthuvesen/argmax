@@ -163,41 +163,20 @@ export function SettingsPanel({
           <p>Pick the monospace font Argmax uses everywhere — chat, code, sidebar, everything.</p>
         </header>
         <div className="settings-card">
-          <div className="settings-row settings-font-row">
-            <span className="settings-font-row-label" id="settings-font-family-label">Font family</span>
-            <div
-              className="settings-font-list"
-              role="radiogroup"
-              aria-labelledby="settings-font-family-label"
+          <div className="settings-row">
+            <label htmlFor="settings-font-family">Font family</label>
+            <select
+              id="settings-font-family"
+              aria-label="Font family"
+              value={fontFamily}
+              onChange={(event) => onFontFamilyChange(event.target.value as FontFamilyId)}
             >
-              {FONT_OPTIONS.map((option) => {
-                const selected = option.id === fontFamily;
-                return (
-                  <label
-                    key={option.id}
-                    className="settings-font-option"
-                    data-selected={selected ? "true" : "false"}
-                  >
-                    <input
-                      type="radio"
-                      name="settings-font-family"
-                      value={option.id}
-                      checked={selected}
-                      onChange={() => onFontFamilyChange(option.id)}
-                      aria-label={option.label}
-                    />
-                    <span className="settings-font-option-name">{option.label}</span>
-                    <span
-                      className="settings-font-option-sample"
-                      style={{ fontFamily: option.stack }}
-                      aria-hidden="true"
-                    >
-                      Aa Gg @ () =&gt; 0123
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+              {FONT_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id} style={{ fontFamily: option.stack }}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
           <p
             className="settings-font-caption"

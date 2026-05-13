@@ -1,10 +1,11 @@
-import { Copy } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { Children, useMemo, useState, type JSX, type ReactNode } from "react";
+import { highlightCode, resolveFenceLang, useHighlighterReady } from "../lib/highlighter.js";
 
 const COPY_FLASH_MS = 1500;
 const LANGUAGE_CLASS_PREFIX = "language-";
 
-function extractLanguage(className: string | undefined): string | null {
+function extractFenceTag(className: string | undefined): string | null {
   if (!className) return null;
   const tokens = className.split(/\s+/);
   for (const token of tokens) {
@@ -45,9 +46,12 @@ export function CodeBlock({
   className?: string;
   children?: ReactNode;
 }): JSX.Element {
-  const language = useMemo(() => extractLanguage(className), [className]);
+  const fenceTag = useMemo(() => extractFenceTag(className), [className]);
   const codeText = useMemo(() => collectText(children).replace(/\n$/, ""), [children]);
   const [copied, setCopied] = useState(false);
+  const ready = useHighlighterReady();
+  const lang = useMemo(() => (ready ? resolveFenceLang(fenceTag) : null), [ready, fenceTag]);
+  const lines = useMemo(() => highlightCode(codeText, lang), [codeText, lang]);
 
   const handleCopy = (): void => {
     if (!navigator.clipboard) return;
@@ -57,10 +61,15 @@ export function CodeBlock({
     });
   };
 
+  const labelTag = fenceTag ?? null;
   return (
-    <div className="code-block">
+    <div className="code-block" data-lang={lang ?? undefined}>
       <div className="code-block-header">
-        {language ? <span className="code-block-lang">{language}</span> : <span className="code-block-lang code-block-lang--blank" aria-hidden="true" />}
+        {labelTag ? (
+          <span className="code-block-lang">{labelTag}</span>
+        ) : (
+          <span className="code-block-lang code-block-lang--blank" aria-hidden="true" />
+        )}
         <button
           type="button"
           className="code-block-copy"
@@ -68,11 +77,32 @@ export function CodeBlock({
           title={copied ? "Copied!" : "Copy code"}
           onClick={handleCopy}
         >
-          <Copy size={11} aria-hidden="true" />
+          {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
         </button>
       </div>
       <pre className={className ?? ""}>
-        <code className={className ?? ""}>{children}</code>
+        <code className={className ?? ""}>
+          {lines.map((line, index) => (
+            <span className="code-block-line" key={index}>
+              {line.length === 0 ? (
+                "\n"
+              ) : (
+                <>
+                  {line.map((token, tIndex) => (
+                    <span
+                      className="hl-token"
+                      key={tIndex}
+                      style={token.color ? { color: token.color } : undefined}
+                    >
+                      {token.content}
+                    </span>
+                  ))}
+                  {index < lines.length - 1 ? "\n" : null}
+                </>
+              )}
+            </span>
+          ))}
+        </code>
       </pre>
     </div>
   );

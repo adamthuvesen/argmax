@@ -79,6 +79,41 @@
   color: var(--text);
 }
 
+:root[data-font="system-mono"] {
+  --font-ui: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
+}
+
+:root[data-font="menlo"] {
+  --font-ui: Menlo, ui-monospace, Consolas, monospace;
+  --font-mono: Menlo, ui-monospace, Consolas, monospace;
+}
+
+:root[data-font="monaco"] {
+  --font-ui: Monaco, Menlo, ui-monospace, Consolas, monospace;
+  --font-mono: Monaco, Menlo, ui-monospace, Consolas, monospace;
+}
+
+:root[data-font="jetbrains-mono"] {
+  --font-ui: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+:root[data-font="fira-code"] {
+  --font-ui: "Fira Code Variable", "Fira Code", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-mono: "Fira Code Variable", "Fira Code", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+:root[data-font="geist-mono"] {
+  --font-ui: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+:root[data-font="ibm-plex-mono"] {
+  --font-ui: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1198,6 +1233,70 @@ button {
 
 .settings-radio-disabled {
   color: var(--muted);
+}
+
+.settings-font-row {
+  align-items: flex-start;
+}
+
+.settings-font-row-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  padding-top: 6px;
+}
+
+.settings-font-list {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-font-option {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.settings-font-option:hover {
+  background: var(--panel-soft);
+}
+
+.settings-font-option[data-selected="true"] {
+  background: var(--panel-sunken);
+}
+
+.settings-font-option input[type="radio"] {
+  accent-color: var(--ink);
+}
+
+.settings-font-option-name {
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.settings-font-option[data-selected="true"] .settings-font-option-name {
+  font-weight: 600;
+}
+
+.settings-font-option-sample {
+  font-size: 13px;
+  color: var(--muted-strong);
+  font-feature-settings: "calt", "tnum";
+  white-space: nowrap;
+}
+
+.settings-font-caption {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-feature-settings: "calt", "ss01", "tnum";
 }
 
 .settings-pill {

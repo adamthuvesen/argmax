@@ -1824,6 +1824,43 @@ describe("App", () => {
 
     await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));
   });
+
+  it("settings Appearance section switches the font family and persists it", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const jetbrains = screen.getByRole("radio", { name: "JetBrains Mono" });
+    fireEvent.click(jetbrains);
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
+    );
+    expect(document.documentElement.getAttribute("data-font")).toBe("jetbrains-mono");
+  });
+
+  it("settings Appearance section wires the macOS-native options through to the document attribute", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    for (const [label, id] of [
+      ["System Mono", "system-mono"],
+      ["Menlo", "menlo"],
+      ["Monaco", "monaco"],
+      ["Lilex", "lilex"]
+    ] as const) {
+      fireEvent.click(screen.getByRole("radio", { name: label }));
+      await waitFor(() =>
+        expect(document.documentElement.getAttribute("data-font")).toBe(id)
+      );
+      expect(window.localStorage.getItem("argmax.font.family")).toBe(id);
+    }
+  });
 });
 
 describe("App without preload bridge", () => {

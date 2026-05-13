@@ -20,6 +20,12 @@ import { Sidebar } from "./components/Sidebar.js";
 import { demoSnapshot } from "./demoSnapshot.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { isTypingTarget } from "./lib/typingTarget.js";
+import {
+  applyFontToDocument,
+  FONT_STORAGE_KEY,
+  readStoredFont,
+  type FontFamilyId
+} from "./lib/fonts.js";
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "./lib/ide.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
 import { titleFromPrompt } from "./lib/projects.js";
@@ -74,6 +80,7 @@ export function App(): JSX.Element {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY) : null;
     return raw === null ? true : raw === "true";
   });
+  const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [isResizing, setIsResizing] = useState(false);
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
@@ -193,6 +200,12 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
   }, [toolCallsExpanded]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(FONT_STORAGE_KEY, fontFamily);
+    applyFontToDocument(fontFamily);
+  }, [fontFamily]);
 
   // Fetch detected IDEs once. Main caches detection across the app lifetime,
   // so the second-mount cost is just one IPC round trip — but we still avoid
@@ -880,6 +893,8 @@ export function App(): JSX.Element {
               onDefaultModelChange={setLaunchModel}
               toolCallsExpanded={toolCallsExpanded}
               onToolCallsExpandedChange={setToolCallsExpanded}
+              fontFamily={fontFamily}
+              onFontFamilyChange={setFontFamily}
               detectedIdes={detectedIdes}
               defaultIde={defaultIde}
               onDefaultIdeChange={setDefaultIde}

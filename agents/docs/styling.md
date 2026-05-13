@@ -5,7 +5,8 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 ## Hard constraints
 
 - **Light theme only.** No dark mode, no `prefers-color-scheme: dark` block.
-- **Lilex Nerd Font** is the only typeface. It's installed system-wide (Nerd Font patch); the renderer references it via `--font-ui` / `--font-mono` and falls back to `ui-monospace`. Do not add `@font-face` blocks or swap fonts.
+- **Monospace everywhere.** The UI and code use the same font family — both read from `--font-ui` / `--font-mono`. Don't introduce a separate sans for chrome.
+- **Lilex is the default**, kept Nerd-Font–patched so terminal-style glyphs still render. Alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) are loaded via `@fontsource` and selected from Settings → Appearance. New fonts live in [src/renderer/lib/fonts.ts](../../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
 
 ## Tokens
 

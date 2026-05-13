@@ -192,6 +192,29 @@ function normalizeJsonPayload(
 
   const results: PersistTimelineEventInput[] = [];
 
+  // Permission gates land before any tool-result extraction so the timeline
+  // shows the request-for-approval *before* the (possibly-denied) tool_result
+  // that follows. The renderer / approval service can read the payload fields
+  // to surface an Approve / Reject UI.
+  const gate = detectPermissionGate(payload, provider);
+  if (gate) {
+    results.push({
+      id: randomUUID(),
+      sessionId: event.sessionId,
+      type: "approval.requested",
+      message: gate.command,
+      payload: {
+        command: gate.command,
+        reason: gate.reason,
+        riskLevel: gate.riskLevel,
+        ...(gate.toolUseId ? { toolUseId: gate.toolUseId } : {}),
+        ...(providerType ? { providerEventType: providerType } : {})
+      },
+      createdAt: event.createdAt
+    });
+    return { events: results, usages };
+  }
+
   if (provider === "codex") {
     const codexToolEvent = normalizeCodexToolItem(event, payload, providerType, item, itemType);
     if (codexToolEvent) {
@@ -400,6 +423,85 @@ function isLifecycleEvent(providerType: string | null, itemType: string | null):
       providerType === "turn.completed" ||
       providerType === "session.started")
   );
+}
+
+interface PermissionGateInfo {
+  command: string;
+  reason: string;
+  riskLevel: "low" | "medium" | "high";
+  toolUseId?: string;
+}
+
+/**
+ * Detects permission-gate events emitted by Claude (`SDKPermissionDeniedMessage`,
+ * v2.1.136+) and Codex (`item/{commandExecution,fileChange}/requestApproval` and
+ * the legacy `applyPatchApproval` / `execCommandApproval` shapes from the
+ * codex-rs app-server). Returns a normalized descriptor so the caller can emit
+ * a single `approval.requested` timeline event regardless of provider.
+ *
+ * Fixtures the schema is verified against live under `__fixtures__/`:
+ *   - `claude_permission_denied.jsonl`
+ *   - `codex_command_approval_request.jsonl`
+ *   - `codex_file_change_approval_request.jsonl`
+ */
+export function detectPermissionGate(
+  payload: Record<string, unknown>,
+  provider: ProviderId | undefined
+): PermissionGateInfo | null {
+  if (provider !== "codex") {
+    if (stringValue(payload.type) === "system" && stringValue(payload.subtype) === "permission_denied") {
+      const tool = stringValue(payload.tool_name) ?? "tool";
+      const reason =
+        stringValue(payload.decision_reason) ?? stringValue(payload.message) ?? "permission denied";
+      return {
+        command: tool,
+        reason,
+        riskLevel: classifyToolRisk(tool),
+        ...(stringValue(payload.tool_use_id) ? { toolUseId: stringValue(payload.tool_use_id) as string } : {})
+      };
+    }
+  }
+
+  if (provider !== "claude") {
+    const method = stringValue(payload.method);
+    if (
+      method &&
+      (method.endsWith("/requestApproval") ||
+        method === "applyPatchApproval" ||
+        method === "execCommandApproval")
+    ) {
+      const params = objectValue(payload.params) ?? {};
+      const isFileChange =
+        method.includes("fileChange") ||
+        method === "applyPatchApproval" ||
+        Boolean(params.fileChanges);
+      const commandArray = arrayValue(params.command);
+      const command = commandArray
+        ? commandArray.map((c) => stringValue(c) ?? "").join(" ").trim()
+        : stringValue(params.command) ?? (isFileChange ? "Apply file changes" : "Execute command");
+      const reason = stringValue(params.reason) ?? "Approval required";
+      return {
+        command: command || (isFileChange ? "Apply file changes" : "Execute command"),
+        reason,
+        riskLevel: isFileChange ? "high" : classifyCommandRisk(command)
+      };
+    }
+  }
+
+  return null;
+}
+
+const HIGH_RISK_TOOLS = new Set(["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"]);
+const HIGH_RISK_COMMAND_RE = /\b(rm\b|sudo\b|dd\b|mkfs|chmod\s+0?7|chown\s)/i;
+
+function classifyToolRisk(tool: string): "low" | "medium" | "high" {
+  if (HIGH_RISK_TOOLS.has(tool)) return "high";
+  return "medium";
+}
+
+function classifyCommandRisk(command: string): "low" | "medium" | "high" {
+  if (HIGH_RISK_COMMAND_RE.test(command)) return "high";
+  return "medium";
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {

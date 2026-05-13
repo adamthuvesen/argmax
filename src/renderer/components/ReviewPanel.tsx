@@ -173,7 +173,13 @@ export function ReviewPanel({
           height={fileTabsHeight}
         />
       )}
-      <div className="review-resize-handle" onMouseDown={handleResizeMouseDown} />
+      <div
+        className="review-resize-handle"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize file list"
+        onMouseDown={handleResizeMouseDown}
+      />
       <div className="review-diff">
         {isChanges ? (
           <>

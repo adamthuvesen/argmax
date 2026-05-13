@@ -138,7 +138,7 @@ function ChipModelPicker<T>({
       </button>
       {open && (
         <ul
-          className="project-picker-popover"
+          className="project-picker-popover model-picker-popover"
           role="listbox"
           aria-label={ariaLabel}
           onClick={(event) => {

@@ -7,6 +7,7 @@ import type {
   IdeId,
   ProjectSummary
 } from "../../shared/types.js";
+import { FONT_OPTIONS, type FontFamilyId } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel.js";
@@ -27,6 +28,8 @@ export function SettingsPanel({
   onDefaultModelChange,
   toolCallsExpanded,
   onToolCallsExpandedChange,
+  fontFamily,
+  onFontFamilyChange,
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
@@ -37,6 +40,8 @@ export function SettingsPanel({
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   toolCallsExpanded: boolean;
   onToolCallsExpandedChange: (v: boolean) => void;
+  fontFamily: FontFamilyId;
+  onFontFamilyChange: (id: FontFamilyId) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
@@ -155,17 +160,55 @@ export function SettingsPanel({
       <section className="settings-section" aria-labelledby="settings-appearance">
         <header className="settings-section-header">
           <h2 id="settings-appearance">Appearance</h2>
-          <p>Fonts are locked to Lilex for consistency.</p>
+          <p>Pick the monospace font Argmax uses everywhere — chat, code, sidebar, everything.</p>
         </header>
         <div className="settings-card">
+          <div className="settings-row settings-font-row">
+            <span className="settings-font-row-label" id="settings-font-family-label">Font family</span>
+            <div
+              className="settings-font-list"
+              role="radiogroup"
+              aria-labelledby="settings-font-family-label"
+            >
+              {FONT_OPTIONS.map((option) => {
+                const selected = option.id === fontFamily;
+                return (
+                  <label
+                    key={option.id}
+                    className="settings-font-option"
+                    data-selected={selected ? "true" : "false"}
+                  >
+                    <input
+                      type="radio"
+                      name="settings-font-family"
+                      value={option.id}
+                      checked={selected}
+                      onChange={() => onFontFamilyChange(option.id)}
+                      aria-label={option.label}
+                    />
+                    <span className="settings-font-option-name">{option.label}</span>
+                    <span
+                      className="settings-font-option-sample"
+                      style={{ fontFamily: option.stack }}
+                      aria-hidden="true"
+                    >
+                      Aa Gg @ () =&gt; 0123
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <p
+            className="settings-font-caption"
+            style={{ fontFamily: FONT_OPTIONS.find((o) => o.id === fontFamily)?.stack }}
+          >
+            {FONT_OPTIONS.find((o) => o.id === fontFamily)?.hint}
+          </p>
           <dl className="settings-keyvals">
             <div>
               <dt>Theme</dt>
               <dd>Light</dd>
-            </div>
-            <div>
-              <dt>Font family</dt>
-              <dd>Lilex Nerd Font</dd>
             </div>
             <div>
               <dt>Reduce motion</dt>

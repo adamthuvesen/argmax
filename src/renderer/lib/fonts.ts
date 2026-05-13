@@ -1,0 +1,92 @@
+export type FontFamilyId =
+  | "lilex"
+  | "system-mono"
+  | "menlo"
+  | "monaco"
+  | "jetbrains-mono"
+  | "fira-code"
+  | "geist-mono"
+  | "ibm-plex-mono";
+
+export type FontOption = {
+  id: FontFamilyId;
+  label: string;
+  hint: string;
+  stack: string;
+};
+
+const SYSTEM_MONO_FALLBACK = '"Lilex Nerd Font", ui-monospace, "SFMono-Regular", Consolas, monospace';
+
+export const FONT_OPTIONS: readonly FontOption[] = [
+  {
+    id: "lilex",
+    label: "Lilex",
+    hint: "Default. Nerd-Font–patched mono with the icon set Argmax was designed around.",
+    stack: `"Lilex Nerd Font", "Lilex Nerd Font Mono", ${SYSTEM_MONO_FALLBACK}`
+  },
+  {
+    id: "system-mono",
+    label: "System Mono",
+    hint: "Your OS's default mono — SF Mono on macOS, Cascadia on Windows. Zero bundle, fully native.",
+    stack: `ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace`
+  },
+  {
+    id: "menlo",
+    label: "Menlo",
+    hint: "macOS-bundled mono — clean grotesque sans with subtly humanist details.",
+    stack: `Menlo, ui-monospace, Consolas, monospace`
+  },
+  {
+    id: "monaco",
+    label: "Monaco",
+    hint: "The classic Mac coding font — distinctive curves on g, 0, 1. Unmistakable.",
+    stack: `Monaco, Menlo, ui-monospace, Consolas, monospace`
+  },
+  {
+    id: "jetbrains-mono",
+    label: "JetBrains Mono",
+    hint: "The IDE-standard mono used in JetBrains products and a popular Cursor choice.",
+    stack: `"JetBrains Mono Variable", "JetBrains Mono", ${SYSTEM_MONO_FALLBACK}`
+  },
+  {
+    id: "fira-code",
+    label: "Fira Code",
+    hint: "Ligature-rich coding font; long a favorite in VS Code and Cursor.",
+    stack: `"Fira Code Variable", "Fira Code", ${SYSTEM_MONO_FALLBACK}`
+  },
+  {
+    id: "geist-mono",
+    label: "Geist Mono",
+    hint: "Vercel's modern mono; clean and rounded, used across v0 and similar AI tools.",
+    stack: `"Geist Mono Variable", "Geist Mono", ${SYSTEM_MONO_FALLBACK}`
+  },
+  {
+    id: "ibm-plex-mono",
+    label: "IBM Plex Mono",
+    hint: "Slightly bookish, pairs well with the paper-grain background.",
+    stack: `"IBM Plex Mono", ${SYSTEM_MONO_FALLBACK}`
+  }
+] as const;
+
+export const DEFAULT_FONT_ID: FontFamilyId = "lilex";
+export const FONT_STORAGE_KEY = "argmax.font.family";
+
+const ALL_FONT_IDS = new Set<string>(FONT_OPTIONS.map((option) => option.id));
+
+export function readStoredFont(): FontFamilyId {
+  if (typeof window === "undefined") return DEFAULT_FONT_ID;
+  const raw = window.localStorage.getItem(FONT_STORAGE_KEY);
+  if (raw && ALL_FONT_IDS.has(raw)) {
+    return raw as FontFamilyId;
+  }
+  return DEFAULT_FONT_ID;
+}
+
+export function getFontOption(id: FontFamilyId): FontOption {
+  return FONT_OPTIONS.find((option) => option.id === id) ?? FONT_OPTIONS[0];
+}
+
+export function applyFontToDocument(id: FontFamilyId): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-font", id);
+}

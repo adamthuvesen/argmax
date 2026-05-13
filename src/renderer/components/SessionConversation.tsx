@@ -346,11 +346,6 @@ export function SessionConversation({
     return () => observer.disconnect();
   }, []);
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
-  const sessionDetails = [
-    session ? providerLabel(session.provider) : null,
-    selectedModel.label,
-    workspace?.branch ?? null
-  ].filter((detail): detail is string => Boolean(detail));
 
   // Depend on session.id rather than the session object: the parent rebuilds
   // SessionSummary references on every dashboard delta, which would otherwise
@@ -445,11 +440,6 @@ export function SessionConversation({
         <div>
           <p className="eyebrow">Repository</p>
           <h2>{repositoryName}</h2>
-          <div className="conversation-meta" aria-label="Session details">
-            {sessionDetails.map((detail) => (
-              <span key={detail}>{detail}</span>
-            ))}
-          </div>
         </div>
         <div className="conversation-header-actions">
           <button

@@ -7,39 +7,26 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("safeJsonParse", () => {
+describe("safeJsonParse — always returns unknown", () => {
   it("returns the parsed value for valid JSON", () => {
-    expect(safeJsonParse('{"a":1}', {})).toEqual({ a: 1 });
-    expect(safeJsonParse("[1,2,3]", [])).toEqual([1, 2, 3]);
-    expect(safeJsonParse('"hello"', "")).toBe("hello");
-    expect(safeJsonParse("42", 0)).toBe(42);
-    expect(safeJsonParse("true", false)).toBe(true);
-    expect(safeJsonParse("null", "fallback")).toBeNull();
+    expect(safeJsonParse('{"a":1}')).toEqual({ a: 1 });
+    expect(safeJsonParse("[1,2,3]")).toEqual([1, 2, 3]);
+    expect(safeJsonParse('"hello"')).toBe("hello");
+    expect(safeJsonParse("42")).toBe(42);
+    expect(safeJsonParse("true")).toBe(true);
+    expect(safeJsonParse("null")).toBeNull();
   });
 
-  it("returns the fallback for malformed JSON", () => {
-    expect(safeJsonParse("{not json", { default: true })).toEqual({ default: true });
-    expect(safeJsonParse("[1,", [99])).toEqual([99]);
-    expect(safeJsonParse("undefined", "fb")).toBe("fb");
-    expect(safeJsonParse("", "fb")).toBe("fb");
+  it("returns undefined for malformed JSON", () => {
+    expect(safeJsonParse("{not json")).toBeUndefined();
+    expect(safeJsonParse("[1,")).toBeUndefined();
+    expect(safeJsonParse("undefined")).toBeUndefined();
+    expect(safeJsonParse("")).toBeUndefined();
   });
 
-  it("returns the fallback for null and undefined inputs", () => {
-    expect(safeJsonParse(null, { empty: true })).toEqual({ empty: true });
-    expect(safeJsonParse(undefined, [])).toEqual([]);
-  });
-
-  it("respects arbitrary fallback types", () => {
-    type Config = { feature: boolean; name: string };
-    const fallback: Config = { feature: false, name: "default" };
-    const parsed = safeJsonParse<Config>("not json at all", fallback);
-    expect(parsed).toBe(fallback);
-
-    const arrFallback: number[] = [];
-    expect(safeJsonParse<number[]>("oops", arrFallback)).toBe(arrFallback);
-
-    const mapFallback = new Map<string, number>();
-    expect(safeJsonParse<Map<string, number>>("nope", mapFallback)).toBe(mapFallback);
+  it("returns undefined for null and undefined inputs", () => {
+    expect(safeJsonParse(null)).toBeUndefined();
+    expect(safeJsonParse(undefined)).toBeUndefined();
   });
 
   it("logs at most once per context within a minute", () => {
@@ -47,19 +34,19 @@ describe("safeJsonParse", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const ctx = `safeJsonParseTest-${Math.random()}`;
 
-    safeJsonParse("{bad", null, ctx);
-    safeJsonParse("{bad", null, ctx);
-    safeJsonParse("{bad", null, ctx);
+    safeJsonParse("{bad", ctx);
+    safeJsonParse("{bad", ctx);
+    safeJsonParse("{bad", ctx);
     expect(warn).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(61_000);
-    safeJsonParse("{bad", null, ctx);
+    safeJsonParse("{bad", ctx);
     expect(warn).toHaveBeenCalledTimes(2);
   });
 
   it("does not log when no context is provided", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    safeJsonParse("{bad", null);
+    safeJsonParse("{bad");
     expect(warn).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import type { TimelineEvent } from "../../shared/types.js";
-import { pruneSupersededDeltas } from "./snapshot.js";
+import type { DashboardSnapshot, TimelineEvent } from "../../shared/types.js";
+import { emptySnapshot, mergeDashboardDelta, pruneSupersededDeltas } from "./snapshot.js";
 
 function event(id: string, type: TimelineEvent["type"], createdAt: string): TimelineEvent {
   return { id, sessionId: "session-1", type, message: "", payload: {}, createdAt };
@@ -49,6 +49,52 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result).not.toBe(events);
     // user.message + message.completed kept; both message.delta dropped.
     expect(result.map((e) => e.id)).toEqual(["e1", "e4"]);
+  });
+
+  // -------------------------------------------------------------------------
+  // audit-2026-05-11 / SPEC P4.06 — mergeDashboardDelta reference stability
+  // -------------------------------------------------------------------------
+
+  it("mergeDashboardDelta returns the same snapshot reference for an empty delta", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      projects: [
+        {
+          id: "p-1",
+          name: "Argmax",
+          repoPath: "/tmp/argmax",
+          currentBranch: "main",
+          defaultBranch: "main",
+          settings: {
+            defaultProvider: "codex",
+            defaultModelLabel: "GPT-5.3 Codex",
+            worktreeLocation: "/tmp",
+            setupCommand: "",
+            checkCommands: []
+          },
+          counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
+          latestActivityAt: "2026-05-12T00:00:00.000Z"
+        }
+      ]
+    };
+    expect(mergeDashboardDelta(base, {})).toBe(base);
+  });
+
+  it("mergeDashboardDelta returns the same reference when a delta only re-sends already-known events", () => {
+    const ev = event("e1", "user.message", "2026-05-12T15:00:00.000Z");
+    const base: DashboardSnapshot = { ...emptySnapshot, events: [ev] };
+    // Same identity → upsertById returns the same array → mergeSlice returns it
+    // → mergeDashboardDelta short-circuits to the input snapshot.
+    expect(mergeDashboardDelta(base, { events: [ev] })).toBe(base);
+  });
+
+  it("mergeDashboardDelta returns a new reference when any slice actually changes", () => {
+    const base: DashboardSnapshot = { ...emptySnapshot };
+    const next = mergeDashboardDelta(base, {
+      events: [event("e1", "user.message", "2026-05-12T15:00:00.000Z")]
+    });
+    expect(next).not.toBe(base);
+    expect(next.events).toHaveLength(1);
   });
 
   it("preserves descending input order on a pruning pass", () => {

@@ -5,10 +5,20 @@ interface SigkillEscalationOptions {
   graceMs?: number;
 }
 
+/** `process.kill(pid, sig)` throws this code when the target is already dead. */
+function isAlreadyExitedError(error: unknown): boolean {
+  return Boolean(
+    error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "ESRCH"
+  );
+}
+
 /**
  * SIGTERM the child, schedule a SIGKILL fallback, and return `cancel()` to call
  * from the exit listener so the SIGKILL doesn't fire after the child has gone.
- * Both kills can throw ESRCH if the process is already gone — that's expected.
+ *
+ * Both kills can throw ESRCH if the process is already gone — that's the only
+ * error we expect and tolerate. Any other error (EPERM, EINVAL, …) propagates
+ * so it stays visible rather than being silently swallowed.
  */
 export function scheduleSigkillEscalation(
   killTerm: () => void,
@@ -17,14 +27,14 @@ export function scheduleSigkillEscalation(
 ): { cancel: () => void } {
   try {
     killTerm();
-  } catch {
-    // ESRCH: child already exited.
+  } catch (error) {
+    if (!isAlreadyExitedError(error)) throw error;
   }
   const timer = setTimeout(() => {
     try {
       killKill();
-    } catch {
-      // ESRCH: child already exited.
+    } catch (error) {
+      if (!isAlreadyExitedError(error)) throw error;
     }
   }, options.graceMs ?? DEFAULT_KILL_GRACE_MS);
   if (typeof timer.unref === "function") {

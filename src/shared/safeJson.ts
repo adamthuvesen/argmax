@@ -30,20 +30,26 @@ function warnRateLimited(context: string | undefined, error: unknown): void {
   console.warn("safeJson.parseError", { context, error: message });
 }
 
-export function safeJsonParse<T>(
+/**
+ * Returns the parsed JSON as `unknown` (never `T`). The previous `<T>`
+ * generic was an unsafe cast that lied about runtime shape — every caller
+ * already used `safeJsonParseArray` / `safeJsonParseRecord` (which narrow
+ * properly) or `safeJsonParse<unknown>`. Drop the trap and force callers
+ * through a narrowing helper.
+ */
+export function safeJsonParse(
   value: string | null | undefined,
-  fallback: T,
   context?: string
-): T {
+): unknown {
   if (value === null || value === undefined) {
-    return fallback;
+    return undefined;
   }
   try {
-    return JSON.parse(value) as T;
+    return JSON.parse(value) as unknown;
   } catch (error) {
     if (error instanceof SyntaxError) {
       warnRateLimited(context, error);
-      return fallback;
+      return undefined;
     }
     throw error;
   }
@@ -58,7 +64,7 @@ export function safeJsonParseArray<T>(
   predicate: (item: unknown) => item is T,
   context?: string
 ): T[] {
-  const parsed = safeJsonParse<unknown>(value, [], context);
+  const parsed = safeJsonParse(value, context);
   if (!Array.isArray(parsed)) {
     return [];
   }
@@ -73,7 +79,7 @@ export function safeJsonParseRecord(
   value: string | null | undefined,
   context?: string
 ): Record<string, unknown> {
-  const parsed = safeJsonParse<unknown>(value, {}, context);
+  const parsed = safeJsonParse(value, context);
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
     return parsed as Record<string, unknown>;
   }

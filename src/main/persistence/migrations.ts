@@ -613,6 +613,42 @@ function ensureSchemaMigrationsShape(database: Database.Database): void {
   }
 }
 
+/**
+ * Refuse to start the runner if the declared migrations contain a gap, a
+ * duplicate version, or a non-positive version. The runner currently
+ * iterates in declaration order, but a future PR can land a v9.5 by mistake
+ * or accidentally renumber a v10 → v8 — both produce silent corruption.
+ * Fail fast at boot so the broken migration is the one we ship a fix for,
+ * not the schema it left behind.
+ */
+export function assertMigrationsContiguous(list: Migration[]): void {
+  if (list.length === 0) return;
+  const versions = list.map((m) => m.version);
+  const seen = new Set<number>();
+  for (const v of versions) {
+    if (!Number.isInteger(v) || v < 1) {
+      throw new MigrationDriftError(`Migration version must be a positive integer, got ${v}`);
+    }
+    if (seen.has(v)) {
+      throw new MigrationDriftError(`Duplicate migration version: v${v}`);
+    }
+    seen.add(v);
+  }
+  const sorted = [...versions].sort((a, b) => a - b);
+  const min = sorted[0] ?? 1;
+  const max = sorted[sorted.length - 1] ?? 1;
+  if (min !== 1) {
+    throw new MigrationDriftError(`Migrations must start at v1, got first version v${min}`);
+  }
+  if (max - min + 1 !== sorted.length) {
+    const missing: number[] = [];
+    for (let v = min; v <= max; v++) {
+      if (!seen.has(v)) missing.push(v);
+    }
+    throw new MigrationDriftError(`Migration version gap detected: missing v${missing.join(", v")}`);
+  }
+}
+
 function verifyTableColumns(database: Database.Database, table: string): void {
   const expected = expectedColumns[table];
   if (!expected) {
@@ -632,6 +668,12 @@ function verifyTableColumns(database: Database.Database, table: string): void {
 }
 
 export function runMigrations(database: Database.Database): void {
+  // Sort by version + assert contiguity. The declaration order of `migrations`
+  // matches the version order today, but a future PR can silently introduce
+  // a gap or a duplicate; assert here so the runner refuses to start instead
+  // of producing an inconsistent schema state.
+  assertMigrationsContiguous(migrations);
+
   database.pragma("foreign_keys = ON");
   ensureSchemaMigrationsShape(database);
 
@@ -690,7 +732,8 @@ export function runMigrations(database: Database.Database): void {
     }
   });
 
-  for (const migration of migrations) {
+  const orderedMigrations = [...migrations].sort((a, b) => a.version - b.version);
+  for (const migration of orderedMigrations) {
     const applied = appliedByVersion.get(migration.version);
     if (!applied) {
       // PRAGMA foreign_keys is a no-op while a transaction is open, so it

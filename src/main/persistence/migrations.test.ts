@@ -1,7 +1,12 @@
 // @vitest-environment node
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { MigrationDriftError, runMigrations } from "./migrations.js";
+import {
+  assertMigrationsContiguous,
+  MigrationDriftError,
+  runMigrations,
+  type Migration
+} from "./migrations.js";
 
 /**
  * Audit-2026-05-11 / SPEC P1.03 — `PRAGMA foreign_key_check` violations in a
@@ -110,5 +115,53 @@ describe("runMigrations — destructive recipe FK guard", () => {
       .prepare("SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 3")
       .get() as { n: number };
     expect(row.n).toBe(1);
+  });
+});
+
+/**
+ * Audit-2026-05-11 / SPEC P1.09 — the runner used to iterate `migrations` in
+ * declaration order with no sort and no contiguity check. A future PR can
+ * silently introduce gaps, duplicates, or non-positive versions. The
+ * `assertMigrationsContiguous` precondition refuses to start when the
+ * declared shape is broken.
+ */
+describe("assertMigrationsContiguous", () => {
+  function stub(version: number): Migration {
+    return { version, name: `stub-${version}`, affectedTables: [], up: "SELECT 1;" };
+  }
+
+  it("accepts a contiguous 1..N sequence (any declaration order)", () => {
+    expect(() => assertMigrationsContiguous([stub(1), stub(2), stub(3)])).not.toThrow();
+    // Order doesn't matter for the assertion; the runner sorts before
+    // iterating.
+    expect(() => assertMigrationsContiguous([stub(3), stub(1), stub(2)])).not.toThrow();
+  });
+
+  it("throws on a duplicate version", () => {
+    expect(() => assertMigrationsContiguous([stub(1), stub(2), stub(2)])).toThrow(
+      /Duplicate migration version: v2/
+    );
+  });
+
+  it("throws on a version gap", () => {
+    expect(() => assertMigrationsContiguous([stub(1), stub(2), stub(4)])).toThrow(
+      /Migration version gap detected: missing v3/
+    );
+  });
+
+  it("throws when versions don't start at v1", () => {
+    expect(() => assertMigrationsContiguous([stub(2), stub(3)])).toThrow(/must start at v1/);
+  });
+
+  it("throws on non-positive or non-integer versions", () => {
+    expect(() => assertMigrationsContiguous([stub(0), stub(1)])).toThrow(/positive integer/);
+    expect(() => assertMigrationsContiguous([stub(-1), stub(1)])).toThrow(/positive integer/);
+    expect(() => assertMigrationsContiguous([{ version: 1.5, name: "x", up: "" } as Migration])).toThrow(
+      /positive integer/
+    );
+  });
+
+  it("accepts an empty array (no migrations declared)", () => {
+    expect(() => assertMigrationsContiguous([])).not.toThrow();
   });
 });

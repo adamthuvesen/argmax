@@ -22,6 +22,8 @@ import type {
   Checkpoint,
   CheckRun,
   DashboardSnapshot,
+  GhCheckState,
+  GhPrRecord,
   Learning,
   ProjectSettings,
   ProjectSummary,
@@ -394,6 +396,10 @@ export interface ArgmaxDatabase {
     rank: number;
   }>;
   setWorkspacePinned: (workspaceId: string, pinned: boolean) => WorkspaceSummary;
+  updateProjectRemote: (projectId: string, remote: { owner: string; name: string } | null) => void;
+  getProjectRemote: (projectId: string) => { owner: string; name: string } | null;
+  upsertGhPr: (input: GhPrRecord) => GhPrRecord;
+  listGhPrForSession: (sessionId: string) => GhPrRecord[];
   /** Cancels the periodic raw_outputs prune timer. Call before close. */
   clearPruneInterval: () => void;
   /** Clears the prune timer and closes the underlying connection. Idempotent. */
@@ -488,6 +494,10 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     deleteLearning: (id) => deleteLearning(connection, id),
     searchEvents: (input) => searchEvents(connection, input.query, input.limit),
     setWorkspacePinned: (workspaceId, pinned) => setWorkspacePinned(connection, workspaceId, pinned),
+    updateProjectRemote: (projectId, remote) => updateProjectRemote(connection, projectId, remote),
+    getProjectRemote: (projectId) => getProjectRemote(connection, projectId),
+    upsertGhPr: (input) => upsertGhPr(connection, input),
+    listGhPrForSession: (sessionId) => listGhPrForSession(connection, sessionId),
     clearPruneInterval: () => clearInterval(pruneTimer),
     close: () => {
       clearInterval(pruneTimer);
@@ -1768,4 +1778,77 @@ function getSessionCostSummary(connection: Database.Database, sessionId: string)
     },
     costUsd: sessionRow.cost_usd
   };
+}
+
+function updateProjectRemote(
+  connection: Database.Database,
+  projectId: string,
+  remote: { owner: string; name: string } | null
+): void {
+  const result = connection
+    .prepare(
+      "UPDATE projects SET repo_remote_owner = ?, repo_remote_name = ?, updated_at = ? WHERE id = ?"
+    )
+    .run(remote?.owner ?? null, remote?.name ?? null, new Date().toISOString(), projectId);
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("project", projectId);
+  }
+}
+
+function getProjectRemote(
+  connection: Database.Database,
+  projectId: string
+): { owner: string; name: string } | null {
+  const row = connection
+    .prepare(
+      "SELECT repo_remote_owner AS owner, repo_remote_name AS name FROM projects WHERE id = ?"
+    )
+    .get(projectId) as { owner: string | null; name: string | null } | undefined;
+  if (!row) {
+    throw new RecordNotFoundError("project", projectId);
+  }
+  if (!row.owner || !row.name) return null;
+  return { owner: row.owner, name: row.name };
+}
+
+function upsertGhPr(connection: Database.Database, input: GhPrRecord): GhPrRecord {
+  connection
+    .prepare(
+      `INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at)
+       VALUES (@sessionId, @prNumber, @headSha, @lastSeenCheckState, @updatedAt)
+       ON CONFLICT(session_id, pr_number) DO UPDATE SET
+         head_sha = excluded.head_sha,
+         last_seen_check_state = excluded.last_seen_check_state,
+         updated_at = excluded.updated_at`
+    )
+    .run({
+      sessionId: input.sessionId,
+      prNumber: input.prNumber,
+      headSha: input.headSha,
+      lastSeenCheckState: input.lastSeenCheckState,
+      updatedAt: input.updatedAt
+    });
+  return input;
+}
+
+function listGhPrForSession(connection: Database.Database, sessionId: string): GhPrRecord[] {
+  const rows = connection
+    .prepare(
+      `SELECT session_id AS sessionId,
+              pr_number AS prNumber,
+              head_sha AS headSha,
+              last_seen_check_state AS lastSeenCheckState,
+              updated_at AS updatedAt
+       FROM gh_pr
+       WHERE session_id = ?
+       ORDER BY pr_number ASC`
+    )
+    .all(sessionId) as Array<{
+    sessionId: string;
+    prNumber: number;
+    headSha: string;
+    lastSeenCheckState: GhCheckState;
+    updatedAt: string;
+  }>;
+  return rows;
 }

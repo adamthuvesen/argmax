@@ -345,7 +345,9 @@ export const ipcSchemas = {
   "workspaces:set-pinned": z.object({
     workspaceId: workspaceIdSchema,
     pinned: z.boolean()
-  })
+  }),
+  "prs:listForSession": z.object({ sessionId: sessionIdSchema }),
+  "prs:refresh": z.object({ sessionId: sessionIdSchema })
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;

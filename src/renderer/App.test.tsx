@@ -311,6 +311,10 @@ describe("App", () => {
           }),
         delete: () => Promise.resolve({ ok: true })
       },
+      prs: {
+        listForSession: () => Promise.resolve([]),
+        refresh: () => Promise.resolve([])
+      },
       terminal: {
         spawn: () => Promise.resolve({ terminalId: "test-terminal" }),
         write: () => Promise.resolve({ ok: true }),

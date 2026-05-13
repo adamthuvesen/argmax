@@ -398,6 +398,10 @@ export interface ArgmaxApi {
     update: (input: { id: string; summary?: string; verified?: boolean }) => Promise<Learning>;
     delete: (id: string) => Promise<{ ok: true }>;
   };
+  prs: {
+    listForSession: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
+    refresh: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
+  };
   terminal: {
     spawn: (input: TerminalSpawnInput) => Promise<{ terminalId: string }>;
     write: (input: TerminalWriteInput) => Promise<{ ok: true }>;
@@ -407,6 +411,23 @@ export interface ArgmaxApi {
     onExit: (listener: (event: TerminalExitEvent) => void) => () => void;
   };
 }
+
+export interface GhPrRecord {
+  sessionId: string;
+  prNumber: number;
+  headSha: string;
+  lastSeenCheckState: GhCheckState;
+  updatedAt: string;
+}
+
+export type GhCheckState =
+  | "unknown"
+  | "pending"
+  | "success"
+  | "failure"
+  | "neutral"
+  | "cancelled"
+  | "skipped";
 
 export type LearningKind = "pitfall" | "convention" | "command";
 

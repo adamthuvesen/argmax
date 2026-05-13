@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
   CommitPreparation,
@@ -19,6 +19,7 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { demoSnapshot } from "./demoSnapshot.js";
+import { useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { isTypingTarget } from "./lib/typingTarget.js";
 import {
@@ -40,12 +41,7 @@ import {
 type ToastMessage = { kind: "error" | "info"; message: string };
 type SessionCursor = { eventCursor?: number; rawOutputCursor?: number };
 
-const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
-
-const SIDEBAR_MIN = 180;
-const SIDEBAR_MAX = 500;
-const SIDEBAR_DEFAULT = 272;
 
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
@@ -72,17 +68,12 @@ export function App(): JSX.Element {
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(SIDEBAR_WIDTH_KEY) : null;
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
-  });
+  const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize();
   const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY) : null;
     return raw === null ? true : raw === "true";
   });
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
-  const [isResizing, setIsResizing] = useState(false);
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
 
@@ -195,10 +186,6 @@ export function App(): JSX.Element {
   }, [handleMenuCommand]);
 
   useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
-  }, [sidebarWidth]);
-
-  useEffect(() => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
   }, [toolCallsExpanded]);
 
@@ -232,44 +219,6 @@ export function App(): JSX.Element {
       window.localStorage.setItem(DEFAULT_IDE_KEY, defaultIde);
     }
   }, [defaultIde]);
-
-  // Captures the listener-removal + body-style-reset for any drag currently
-  // in flight. Used by the unmount cleanup below so a mid-drag unmount
-  // doesn't leave document-level listeners or a frozen cursor behind.
-  const dragCleanupRef = useRef<(() => void) | null>(null);
-  useEffect(
-    () => () => {
-      dragCleanupRef.current?.();
-      dragCleanupRef.current = null;
-    },
-    []
-  );
-
-  const handleResizeMouseDown = useCallback((event: ReactMouseEvent): void => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = sidebarWidth;
-    setIsResizing(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const onMouseMove = (e: MouseEvent): void => {
-      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + (e.clientX - startX)));
-      setSidebarWidth(next);
-    };
-    const cleanup = (): void => {
-      setIsResizing(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      dragCleanupRef.current = null;
-    };
-    const onMouseUp = (): void => cleanup();
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    dragCleanupRef.current = cleanup;
-  }, [sidebarWidth]);
 
   const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
     if (!window.argmax) {
@@ -936,7 +885,7 @@ export function App(): JSX.Element {
           setIsSettingsOpen(false);
           openWorkspaceChat(workspaceId);
         }}
-        onResizeMouseDown={handleResizeMouseDown}
+        onResizeMouseDown={onResizeMouseDown}
         isSettingsActive={isSettingsOpen}
         selectedProjectId={selectedProject?.id ?? null}
         selectedWorkspaceId={selectedWorkspace?.id ?? null}

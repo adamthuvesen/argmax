@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   createNormalizerSessionContext,
@@ -214,6 +216,67 @@ describe("mapProviderType", () => {
     expect(mapProviderType("totally.unknown", null, "codex")).toBeNull();
   });
 });
+
+describe("detectPermissionGate (replayed from __fixtures__)", () => {
+  it("emits approval.requested for a Claude SDKPermissionDeniedMessage", () => {
+    const fixtureLine = readFixture("claude_permission_denied.jsonl");
+    const events = normalizeProviderEvent(outputEvent(`${fixtureLine}\n`), { provider: "claude" });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "approval.requested",
+      message: "Bash",
+      payload: {
+        command: "Bash",
+        reason: "Ask mode requires user approval for Bash",
+        riskLevel: "high",
+        toolUseId: "toolu_01ABC123"
+      }
+    });
+  });
+
+  it("emits approval.requested for a Codex item/commandExecution/requestApproval", () => {
+    const fixtureLine = readFixture("codex_command_approval_request.jsonl");
+    const events = normalizeProviderEvent(outputEvent(`${fixtureLine}\n`), { provider: "codex" });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "approval.requested",
+      message: "rm -rf /tmp/build",
+      payload: {
+        command: "rm -rf /tmp/build",
+        reason: "Clean build artifacts",
+        riskLevel: "high"
+      }
+    });
+  });
+
+  it("emits approval.requested for a Codex item/fileChange/requestApproval", () => {
+    const fixtureLine = readFixture("codex_file_change_approval_request.jsonl");
+    const events = normalizeProviderEvent(outputEvent(`${fixtureLine}\n`), { provider: "codex" });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "approval.requested",
+      message: "Apply file changes",
+      payload: {
+        command: "Apply file changes",
+        reason: "Apply generated patch",
+        riskLevel: "high"
+      }
+    });
+  });
+
+  it("ignores non-approval events (no false positives)", () => {
+    const events = normalizeProviderEvent(
+      outputEvent('{"type":"item.completed","item":{"type":"agent_message","text":"hi"}}\n'),
+      { provider: "codex" }
+    );
+    expect(events.some((event) => event.type === "approval.requested")).toBe(false);
+  });
+});
+
+function readFixture(name: string): string {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  return readFileSync(`${here}/__fixtures__/${name}`, "utf8").trim();
+}
 
 function outputEvent(message: string, stream: ProviderEvent["stream"] = "stdout"): ProviderEvent {
   return {

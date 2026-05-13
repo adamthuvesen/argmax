@@ -37,7 +37,12 @@ async function createWindow(): Promise<void> {
     title: "Argmax",
     icon: iconPath,
     backgroundColor: "#fbfbfa",
+    // The first paint of the renderer lands ~150 ms after window construction.
+    // Hide the window until `ready-to-show` fires (handler below) so the user
+    // never sees the empty Electron-default chrome flash before the React
+    // shell mounts.
     show: false,
+    paintWhenInitiallyHidden: true,
     // hiddenInset draws the traffic lights inside a flush titlebar so the
     // sidebar header sits beside them. x/y tuned so the lights align with the
     // sidebar's "Argmax" header baseline at default zoom.

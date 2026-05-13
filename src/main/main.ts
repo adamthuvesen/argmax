@@ -15,6 +15,7 @@ import { GhService } from "./gh/ghService.js";
 import { GhPoller } from "./gh/ghPoller.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 import type { DashboardDelta, TerminalDataEvent, TerminalExitEvent } from "../shared/types.js";
+import { mark as markStartupPhase } from "./util/startupTimer.js";
 
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
@@ -62,6 +63,7 @@ async function createWindow(): Promise<void> {
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
+    markStartupPhase("window.ready-to-show");
   });
 
   // Block any window.open / target=_blank attempts. External links should
@@ -102,6 +104,7 @@ void app.whenReady().then(async () => {
     app.dock.setIcon(iconPath);
   }
   database = createDatabase();
+  markStartupPhase("db.open");
   const notifications = new NotificationService({
     isWindowFocused: () => mainWindow?.isFocused() === true
   });
@@ -123,7 +126,9 @@ void app.whenReady().then(async () => {
     emitExit: publishTerminalExit
   });
   dockBadge.update();
+  markStartupPhase("services.construct");
   registeredChannels = registerIpcHandlers(database, providerSessions, terminals);
+  markStartupPhase("ipc.register");
 
   // CI feedback loop: poll PR check status for every running session; on a
   // transition into 'failure', fire a notification and launch a follow-up
@@ -192,6 +197,7 @@ void app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
   await createWindow();
+  markStartupPhase("window.create");
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

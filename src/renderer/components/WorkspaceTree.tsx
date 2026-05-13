@@ -18,7 +18,7 @@ type VisibleRow = {
 const ROW_HEIGHT = 24;
 const OVERSCAN_ROWS = 8;
 
-function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
+export function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
   const root: TreeNode = { name: "", path: "", kind: "dir", children: [] };
   // Per-cursor `Map<segment, TreeNode>` makes the inner lookup O(1). The
   // previous `cursor.children.find(...)` made the build O(n²) for wide

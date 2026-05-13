@@ -112,7 +112,9 @@ export function titleFromPrompt(prompt: string): string {
 }
 
 export function providerLabel(provider: ProviderId): string {
-  return provider === "codex" ? "Codex" : "Claude";
+  if (provider === "codex") return "Codex";
+  if (provider === "cursor") return "Cursor";
+  return "Claude";
 }
 
 export function repoNameFromPath(path: string | null | undefined): string | null {

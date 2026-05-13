@@ -586,7 +586,16 @@ button {
 }
 
 .session-row .session-link {
-  padding-right: 56px;
+  padding-right: 44px;
+}
+
+.session-row:has(.session-archive-btn) .session-link,
+.session-row:has(.session-pin-btn) .session-link {
+  padding-right: 68px;
+}
+
+.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link {
+  padding-right: 92px;
 }
 
 .session-ide-cluster {
@@ -740,11 +749,6 @@ button {
 
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-ide-cluster {
   right: 54px;
-}
-
-.session-row:has(.session-pin-btn) .session-link,
-.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link {
-  padding-right: 56px;
 }
 
 .session-cost {

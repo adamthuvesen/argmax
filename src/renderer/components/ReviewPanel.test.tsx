@@ -75,3 +75,50 @@ describe("ReviewPanel side-by-side toggle", () => {
     expect(next.container.querySelector(".diff-sbs-grid")).not.toBeNull();
   });
 });
+
+/**
+ * audit-2026-05-11 / SPEC P1.10 — mid-drag unmount used to leave document
+ * mousemove/mouseup listeners attached and the body cursor frozen at
+ * `ns-resize`. The fix tracks the active drag in a ref; the unmount effect
+ * replays the cleanup so listeners detach and body styles reset.
+ */
+describe("ReviewPanel — drag listener cleanup on unmount", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+
+  afterEach(() => {
+    cleanup();
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+
+  it("removes document listeners and resets body styles when unmounted mid-drag", () => {
+    const removeListener = vi.spyOn(document, "removeEventListener");
+
+    const { unmount } = render(<ReviewPanel review={reviewStub()} />);
+
+    // Start a drag: mousedown on the resize handle activates the cursor
+    // grab and registers two document-level listeners.
+    fireEvent.mouseDown(screen.getByRole("separator", { name: "Resize file list" }), {
+      clientY: 120
+    });
+    expect(document.body.style.cursor).toBe("ns-resize");
+    expect(document.body.style.userSelect).toBe("none");
+
+    // Mid-drag unmount — without the cleanup ref, listeners would survive.
+    unmount();
+
+    // Body styles must be reset to whatever they were before the drag.
+    expect(document.body.style.cursor).toBe("");
+    expect(document.body.style.userSelect).toBe("");
+    // Both mousemove and mouseup listeners were detached by the cleanup.
+    const detached = removeListener.mock.calls.map(([eventName]) => eventName);
+    expect(detached).toContain("mousemove");
+    expect(detached).toContain("mouseup");
+
+    removeListener.mockRestore();
+  });
+});

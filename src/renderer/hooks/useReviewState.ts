@@ -37,6 +37,7 @@ export interface ReviewState {
   openFile: (filePath: string) => void;
   openPanelInFilesMode: () => void;
   closePanel: () => void;
+  togglePanel: () => void;
   toggleSummary: () => void;
 }
 
@@ -233,6 +234,10 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
     setIsPanelOpen(false);
   }, []);
 
+  const togglePanel = useCallback((): void => {
+    setIsPanelOpen((open) => !open);
+  }, []);
+
   const toggleSummary = useCallback((): void => {
     setIsSummaryCollapsed((current) => !current);
   }, []);
@@ -264,6 +269,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
     openFile,
     openPanelInFilesMode,
     closePanel,
+    togglePanel,
     toggleSummary
   };
 }

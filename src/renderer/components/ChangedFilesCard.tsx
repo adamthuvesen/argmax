@@ -1,4 +1,4 @@
-import { ChevronRight, Folder, Play } from "lucide-react";
+import { ChevronRight, Play } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
@@ -23,24 +23,11 @@ export function ChangedFilesCard({
     return null;
   }
 
-  const browseFilesButton = (
-    <button
-      className="changed-files-browse"
-      type="button"
-      aria-label="Browse workspace files"
-      title="Browse workspace files"
-      onClick={review.openPanelInFilesMode}
-    >
-      <Folder size={13} />
-    </button>
-  );
-
   let filesSection: JSX.Element | null = null;
   if (review.filesState === "loading") {
     filesSection = (
       <div className="changed-files-header changed-files-header-static">
         <span className="changed-files-title">Loading changed files</span>
-        {browseFilesButton}
       </div>
     );
   } else if (review.filesState === "error") {
@@ -48,7 +35,6 @@ export function ChangedFilesCard({
       <div className="changed-files-header changed-files-header-static">
         <span className="changed-files-title">Changed files unavailable</span>
         <span className="review-error">{review.filesError}</span>
-        {browseFilesButton}
       </div>
     );
   } else if (review.filesState === "idle") {
@@ -57,29 +43,25 @@ export function ChangedFilesCard({
     filesSection = (
       <div className="changed-files-header changed-files-header-static">
         <span className="changed-files-title">No changes yet</span>
-        {browseFilesButton}
       </div>
     );
   } else {
     const totals = summarizeChangedFiles(review.files);
     filesSection = (
       <>
-        <div className="changed-files-header-row">
-          <button
-            className="changed-files-header"
-            type="button"
-            aria-expanded={!review.isSummaryCollapsed}
-            aria-label="Toggle changed files"
-            onClick={review.toggleSummary}
-          >
-            <span className="changed-files-title">{review.files.length} files changed</span>
-            <span className="changed-files-actions">
-              <ChangeCount additions={totals.additions} deletions={totals.deletions} />
-            </span>
-            <ChevronRight size={11} className={`changed-files-chevron${!review.isSummaryCollapsed ? " expanded" : ""}`} />
-          </button>
-          {browseFilesButton}
-        </div>
+        <button
+          className="changed-files-header"
+          type="button"
+          aria-expanded={!review.isSummaryCollapsed}
+          aria-label="Toggle changed files"
+          onClick={review.toggleSummary}
+        >
+          <span className="changed-files-title">{review.files.length} files changed</span>
+          <span className="changed-files-actions">
+            <ChangeCount additions={totals.additions} deletions={totals.deletions} />
+          </span>
+          <ChevronRight size={11} className={`changed-files-chevron${!review.isSummaryCollapsed ? " expanded" : ""}`} />
+        </button>
         {!review.isSummaryCollapsed ? (
           <div className="changed-files-list">
             {review.files.map((file) => (

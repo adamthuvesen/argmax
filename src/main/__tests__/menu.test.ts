@@ -1,6 +1,8 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { buildAppMenuTemplate, type MenuCommand } from "../menu.js";
+import { MENU_KEYBINDINGS } from "../../shared/menuKeybindings.js";
+import { KEYBOARD_BINDINGS } from "../../renderer/lib/keyboardBindings.js";
 
 function findItem(
   template: readonly MenuItemConstructorOptions[],
@@ -69,5 +71,42 @@ describe("buildAppMenuTemplate", () => {
     expect(item).not.toBeNull();
     (item?.click as ((...args: unknown[]) => void) | undefined)?.();
     expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * audit-2026-05-11 / SPEC P3.03 — every menu-routed accelerator must also
+ * appear in the renderer cheat sheet. Both surfaces derive from
+ * `MENU_KEYBINDINGS`; if a future PR adds a binding to one without the
+ * other, this contract fails.
+ */
+describe("menu ↔ cheat-sheet single-source-of-truth", () => {
+  it("renders every MENU_KEYBINDINGS entry in the cheat sheet's display strings", () => {
+    const cheatSheetAccelerators = KEYBOARD_BINDINGS.map((entry) => entry.accelerator);
+    for (const binding of MENU_KEYBINDINGS) {
+      expect(cheatSheetAccelerators).toContain(binding.displayAccelerator);
+    }
+  });
+
+  it("exposes every MENU_KEYBINDINGS entry as a menu-template item with matching accelerator", () => {
+    const onCommand = vi.fn<(command: MenuCommand) => void>();
+    const template = buildAppMenuTemplate({ onCommand });
+
+    function walk(items: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
+      const out: MenuItemConstructorOptions[] = [];
+      for (const item of items) {
+        out.push(item);
+        if (Array.isArray(item.submenu)) {
+          out.push(...walk(item.submenu));
+        }
+      }
+      return out;
+    }
+
+    const flat = walk(template);
+    for (const binding of MENU_KEYBINDINGS) {
+      const found = flat.find((item) => item.accelerator === binding.accelerator);
+      expect(found, `missing menu entry for ${binding.accelerator}`).not.toBeUndefined();
+    }
   });
 });

@@ -1,16 +1,21 @@
+import { MENU_KEYBINDINGS, RENDERER_ONLY_KEYBINDINGS } from "../../shared/menuKeybindings.js";
+
 export interface KeyBinding {
   accelerator: string;
   label: string;
 }
 
-export const KEYBOARD_BINDINGS: KeyBinding[] = [
-  { accelerator: "⌘K", label: "Open command palette" },
-  { accelerator: "⌘,", label: "Open Settings" },
-  { accelerator: "⌘N", label: "New session" },
-  { accelerator: "⌘1 – ⌘9", label: "Jump to session 1–9" },
-  { accelerator: "⌘B", label: "Toggle review panel" },
-  { accelerator: "⌘J", label: "Toggle integrated terminal" },
-  { accelerator: "⌘⇧D", label: "Toggle debug log" },
-  { accelerator: "⌘/", label: "Show keyboard shortcuts" },
-  { accelerator: "Esc", label: "Close the topmost overlay" }
-];
+/**
+ * Derived from `src/shared/menuKeybindings.ts` so the native macOS menu and
+ * the in-app cheat sheet can never drift. Order: menu-routed bindings first
+ * (top-of-cheat-sheet matches top-of-menu ordering in
+ * `buildAppMenuTemplate`), then renderer-only chords (`⌘1..9`, `⌘F`, `⌘J`,
+ * `Esc`).
+ */
+export const KEYBOARD_BINDINGS: readonly KeyBinding[] = [
+  ...MENU_KEYBINDINGS.map((entry) => ({ accelerator: entry.displayAccelerator, label: entry.label })),
+  ...RENDERER_ONLY_KEYBINDINGS.map((entry) => ({
+    accelerator: entry.displayAccelerator,
+    label: entry.label
+  }))
+] as const;

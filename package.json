@@ -12,7 +12,7 @@
     "build:preload": "NODE_ENV=production node scripts/build-preload.mjs",
     "package": "npm run build && electron-builder --mac",
     "lint": "eslint .",
-    "rebuild:electron": "npm_config_runtime=electron npm_config_target=35.7.5 npm_config_disturl=https://electronjs.org/headers npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
+    "rebuild:electron": "electron-rebuild -o better-sqlite3,node-pty && node scripts/ensure-node-pty-helper.cjs",
     "rebuild:node": "npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
     "test": "npm run rebuild:node && vitest run",
     "test:watch": "vitest",
@@ -38,6 +38,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@eslint/js": "^9.17.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",

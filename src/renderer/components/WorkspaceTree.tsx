@@ -1,14 +1,7 @@
 import { ChevronRight, FileText, Folder } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
-import type { WorkspaceFileEntry } from "../../shared/types.js";
+import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
-
-type TreeNode = {
-  name: string;
-  path: string;
-  kind: "dir" | "file";
-  children: TreeNode[];
-};
 
 type VisibleRow = {
   node: TreeNode;
@@ -17,54 +10,6 @@ type VisibleRow = {
 
 const ROW_HEIGHT = 24;
 const OVERSCAN_ROWS = 8;
-
-export function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
-  const root: TreeNode = { name: "", path: "", kind: "dir", children: [] };
-  // Per-cursor `Map<segment, TreeNode>` makes the inner lookup O(1). The
-  // previous `cursor.children.find(...)` made the build O(n²) for wide
-  // directories with many siblings.
-  const indexes = new WeakMap<TreeNode, Map<string, TreeNode>>();
-  indexes.set(root, new Map());
-  for (const entry of entries) {
-    const segments = entry.path.split("/").filter(Boolean);
-    let cursor = root;
-    for (let i = 0; i < segments.length; i += 1) {
-      const segment = segments[i];
-      if (!segment) continue;
-      const isLast = i === segments.length - 1;
-      const childPath = cursor.path ? `${cursor.path}/${segment}` : segment;
-      const cursorIndex = indexes.get(cursor);
-      if (!cursorIndex) {
-        throw new Error("buildFileTree: missing index for cursor");
-      }
-      let next = cursorIndex.get(segment);
-      if (!next) {
-        next = {
-          name: segment,
-          path: childPath,
-          kind: isLast ? "file" : "dir",
-          children: []
-        };
-        cursor.children.push(next);
-        cursorIndex.set(segment, next);
-        indexes.set(next, new Map());
-      }
-      cursor = next;
-    }
-  }
-  sortTree(root);
-  return root;
-}
-
-function sortTree(node: TreeNode): void {
-  node.children.sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-  for (const child of node.children) {
-    if (child.kind === "dir") sortTree(child);
-  }
-}
 
 function flattenVisible(root: TreeNode, expanded: Set<string>): VisibleRow[] {
   const rows: VisibleRow[] = [];

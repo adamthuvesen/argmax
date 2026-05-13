@@ -6,6 +6,7 @@ import {
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
 import { REGISTERED_IPC_CHANNELS, withValidation } from "../ipc.js";
+import type { registerIpcHandlers as RegisterIpcHandlersFn } from "../ipc.js";
 
 /**
  * Each registered channel must have a corresponding schema in
@@ -156,7 +157,7 @@ describe("IPC channel rejection rules", () => {
 describe("projects:switch-branch invokes git with the `--` argv separator", () => {
   let captured: Array<{ channel: string; handler: (event: unknown, ...args: unknown[]) => unknown }>;
   let gitCalls: Array<{ cwd: string; args: string[] }>;
-  let registerIpcHandlers: typeof import("../ipc.js").registerIpcHandlers;
+  let registerIpcHandlers: typeof RegisterIpcHandlersFn;
 
   beforeEach(async () => {
     captured = [];
@@ -176,12 +177,12 @@ describe("projects:switch-branch invokes git with the `--` argv separator", () =
     }));
 
     vi.doMock("../git/exec.js", () => ({
-      runGitText: vi.fn(async (cwd: string, args: string[]) => {
+      runGitText: vi.fn((cwd: string, args: string[]) => {
         gitCalls.push({ cwd, args });
-        return "";
+        return Promise.resolve("");
       }),
-      runGitMaybe: vi.fn(async () => ""),
-      runGitBuffer: vi.fn(async () => Buffer.alloc(0))
+      runGitMaybe: vi.fn(() => Promise.resolve("")),
+      runGitBuffer: vi.fn(() => Promise.resolve(Buffer.alloc(0)))
     }));
 
     registerIpcHandlers = (await import("../ipc.js")).registerIpcHandlers;

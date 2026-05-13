@@ -21,7 +21,7 @@ import { z } from "zod";
 // Shared building blocks
 // ---------------------------------------------------------------------------
 
-export const providerIdSchema = z.enum(["claude", "codex"]);
+export const providerIdSchema = z.enum(["claude", "codex", "cursor"]);
 export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
 
 const projectSettingsSchema = z.object({

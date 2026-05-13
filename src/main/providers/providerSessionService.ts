@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { RecordNotFoundError, type ArgmaxDatabase, type PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import { PROVIDER_MODEL_DEFAULTS, type ReasoningEffort } from "../../shared/providerModels.js";
+import { logger } from "../../shared/logger.js";
 import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type {
   DashboardDelta,
@@ -124,7 +125,11 @@ export class ProviderSessionService {
 
   private logHandleCount(action: string, sessionId: string): void {
     if (!DEBUG) return;
-    console.log(`[argmax] handles: ${this.openHandleCount} (${action} ${sessionId})`);
+    logger.debug("providers.session", "handle count", {
+      handles: this.openHandleCount,
+      action,
+      sessionId
+    });
   }
 
   async launch(input: LaunchProviderSessionInput): Promise<SessionSummary> {
@@ -459,7 +464,9 @@ export class ProviderSessionService {
         }
       })();
     } catch (error) {
-      console.warn("[argmax] bumpInjectedLearningHits failed:", error instanceof Error ? error.message : error);
+      logger.warn("providers.memory", "bumpInjectedLearningHits failed", {
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 
@@ -479,7 +486,9 @@ export class ProviderSessionService {
       }
     } catch (error) {
       // Synthesizer is non-critical; log and move on.
-      console.warn("[argmax] synthesizeLearnings failed:", error instanceof Error ? error.message : error);
+      logger.warn("providers.memory", "synthesizeLearnings failed", {
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 
@@ -563,7 +572,7 @@ export class ProviderSessionService {
   async disposeAll(): Promise<void> {
     const sessions = [...this.handles.keys()];
     if (DEBUG && sessions.length > 0) {
-      console.log(`[argmax] disposeAll: terminating ${sessions.length} handle(s)`);
+      logger.debug("providers.session", "disposeAll terminating handles", { count: sessions.length });
     }
     await Promise.allSettled(
       sessions.map(async (sessionId) => {

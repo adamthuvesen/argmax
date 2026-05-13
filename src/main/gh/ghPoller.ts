@@ -1,3 +1,4 @@
+import { logger } from "../../shared/logger.js";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { GhService } from "./ghService.js";
 import type { NotificationService } from "../notifications/notificationService.js";
@@ -98,7 +99,7 @@ export class GhPoller {
         headSha: latest.headSha
       });
     } catch (error) {
-      console.warn("[argmax] gh-poller: launchFollowUp failed", {
+      logger.warn("gh.poller", "launchFollowUp failed", {
         sessionId,
         prNumber: latest.prNumber,
         error: error instanceof Error ? error.message : String(error)

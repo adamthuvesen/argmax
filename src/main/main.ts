@@ -15,6 +15,7 @@ import { GhService } from "./gh/ghService.js";
 import { GhPoller } from "./gh/ghPoller.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 import type { DashboardDelta, TerminalDataEvent, TerminalExitEvent } from "../shared/types.js";
+import { logger } from "../shared/logger.js";
 import { mark as markStartupPhase } from "./util/startupTimer.js";
 
 let mainWindow: BrowserWindow | null = null;
@@ -206,6 +207,10 @@ void app.whenReady().then(async () => {
   });
 });
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function publishDashboardDelta(delta: DashboardDelta): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
@@ -254,7 +259,7 @@ async function shutdown(): Promise<void> {
     try {
       ghPoller.stop();
     } catch (error) {
-      console.error("[argmax] ghPoller.stop failed during shutdown:", error);
+      logger.error("shutdown", "ghPoller.stop failed", { error: errorMessage(error) });
     }
     ghPoller = null;
   }
@@ -262,14 +267,14 @@ async function shutdown(): Promise<void> {
     try {
       await providerSessions.disposeAll();
     } catch (error) {
-      console.error("[argmax] disposeAll failed during shutdown:", error);
+      logger.error("shutdown", "disposeAll failed", { error: errorMessage(error) });
     }
   }
   if (terminals) {
     try {
       terminals.disposeAll();
     } catch (error) {
-      console.error("[argmax] terminals.disposeAll failed during shutdown:", error);
+      logger.error("shutdown", "terminals.disposeAll failed", { error: errorMessage(error) });
     }
   }
   for (const channel of registeredChannels) {
@@ -280,7 +285,7 @@ async function shutdown(): Promise<void> {
       database.clearPruneInterval();
       database.connection.close();
     } catch (error) {
-      console.error("[argmax] database close failed during shutdown:", error);
+      logger.error("shutdown", "database close failed", { error: errorMessage(error) });
     }
     database = null;
   }

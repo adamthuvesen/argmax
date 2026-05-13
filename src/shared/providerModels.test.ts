@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { readLogBuffer, resetLogBufferForTesting } from "./logger.js";
 import {
   __resetUnknownModelLog,
   costOf,
@@ -84,15 +85,9 @@ describe("costOf — golden fixtures", () => {
 });
 
 describe("costOf — unknown model", () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     __resetUnknownModelLog();
-    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    warnSpy.mockRestore();
+    resetLogBufferForTesting();
   });
 
   it("returns 0 and does not throw", () => {
@@ -103,11 +98,10 @@ describe("costOf — unknown model", () => {
     costOf(million, "gpt-99-ultra");
     costOf(million, "gpt-99-ultra");
     costOf({ input: 5, output: 5, cacheRead: 0, cacheWrite: 0 }, "gpt-99-ultra");
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith(
-      "pricing.unknownModel",
-      expect.objectContaining({ modelId: "gpt-99-ultra" })
-    );
+    const warns = readLogBuffer().filter((entry) => entry.scope === "pricing");
+    expect(warns).toHaveLength(1);
+    expect(warns[0]?.message).toBe("unknown model id");
+    expect(warns[0]?.fields.modelId).toBe("gpt-99-ultra");
   });
 });
 

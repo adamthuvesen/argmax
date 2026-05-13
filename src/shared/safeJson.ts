@@ -13,6 +13,8 @@
  * flood logs during a single dashboard load.
  */
 
+import { logger } from "./logger.js";
+
 const WARNING_INTERVAL_MS = 60_000;
 const lastWarnedAt = new Map<string, number>();
 
@@ -27,7 +29,7 @@ function warnRateLimited(context: string | undefined, error: unknown): void {
   }
   lastWarnedAt.set(context, now);
   const message = error instanceof Error ? error.message : String(error);
-  console.warn("safeJson.parseError", { context, error: message });
+  logger.warn("safeJson", "parse error", { context, error: message });
 }
 
 /**

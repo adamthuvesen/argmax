@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readLogBuffer, resetLogBufferForTesting } from "./logger.js";
 import { safeJsonParse, safeJsonParseArray, safeJsonParseRecord } from "./safeJson.js";
 
 afterEach(() => {
@@ -31,23 +32,26 @@ describe("safeJsonParse — always returns unknown", () => {
 
   it("logs at most once per context within a minute", () => {
     vi.useFakeTimers();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resetLogBufferForTesting();
     const ctx = `safeJsonParseTest-${Math.random()}`;
 
     safeJsonParse("{bad", ctx);
     safeJsonParse("{bad", ctx);
     safeJsonParse("{bad", ctx);
-    expect(warn).toHaveBeenCalledTimes(1);
+    const warnsAfterBurst = readLogBuffer().filter((e) => e.scope === "safeJson");
+    expect(warnsAfterBurst).toHaveLength(1);
 
     vi.advanceTimersByTime(61_000);
     safeJsonParse("{bad", ctx);
-    expect(warn).toHaveBeenCalledTimes(2);
+    const warnsAfterWait = readLogBuffer().filter((e) => e.scope === "safeJson");
+    expect(warnsAfterWait).toHaveLength(2);
   });
 
   it("does not log when no context is provided", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resetLogBufferForTesting();
     safeJsonParse("{bad");
-    expect(warn).not.toHaveBeenCalled();
+    const warns = readLogBuffer().filter((e) => e.scope === "safeJson");
+    expect(warns).toHaveLength(0);
   });
 });
 

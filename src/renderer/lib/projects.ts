@@ -1,3 +1,4 @@
+import { logger } from "../../shared/logger.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 
@@ -30,7 +31,7 @@ function writeStorageJson(storageKey: string, value: unknown): void {
     // some browsers / Electron edge cases). Log and continue — losing a
     // sidebar preference is preferable to an unhandled rejection burying
     // the click handler that triggered the write.
-    console.warn("projects.writeStorageJson.failed", {
+    logger.warn("renderer.projects", "writeStorageJson failed", {
       storageKey,
       error: error instanceof Error ? error.message : String(error)
     });

@@ -13,6 +13,7 @@
  */
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
+import { logger } from "../../shared/logger.js";
 import { getDatabasePath } from "../paths.js";
 import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
@@ -444,7 +445,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
         .prepare(`DELETE FROM raw_outputs WHERE created_at < datetime('now', '${RAW_OUTPUT_RETENTION}')`)
         .run();
     } catch (error) {
-      console.warn("database.pruneRawOutputs.failed", {
+      logger.warn("database.prune", "pruneRawOutputs failed", {
         error: error instanceof Error ? error.message : String(error)
       });
     }

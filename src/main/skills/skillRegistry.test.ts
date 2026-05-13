@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readLogBuffer, resetLogBufferForTesting } from "../../shared/logger.js";
 
 const fakeHome = mkdtempSync(join(tmpdir(), "argmax-skills-home-"));
 
@@ -183,16 +184,16 @@ describe("listSkills", () => {
     const oversizedBody = "x".repeat(257 * 1024);
     writeSkill(claudeSkillsDir, "huge", `name: huge\ndescription: too big\n---\n${oversizedBody}`);
     writeSkill(claudeSkillsDir, "small", "name: small\ndescription: fine");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    resetLogBufferForTesting();
 
     const result = await listSkills({ provider: "claude", workspaceCwd: null });
 
     expect(result.map((s) => s.name)).toEqual(["small"]);
-    expect(warn).toHaveBeenCalledWith(
-      "skillRegistry.skillFile.oversized",
-      expect.objectContaining({ cap: 262_144 })
-    );
-    warn.mockRestore();
+    const warns = readLogBuffer().filter((entry) => entry.level === "warn");
+    expect(warns).toHaveLength(1);
+    expect(warns[0]?.scope).toBe("skills.registry");
+    expect(warns[0]?.message).toBe("skill file oversized");
+    expect(warns[0]?.fields.cap).toBe(262_144);
   });
 
   it("returns empty list when source directories are missing", async () => {

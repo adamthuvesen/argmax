@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type JSX, type ReactNode } from "react";
+import { logger } from "../../shared/logger.js";
 
 interface State {
   error: Error | null;
@@ -12,7 +13,10 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("[argmax] renderer error boundary caught:", error, info.componentStack);
+    logger.error("renderer.error-boundary", "caught render error", {
+      error: error.message,
+      stack: info.componentStack ?? null
+    });
   }
 
   private handleReload = (): void => {

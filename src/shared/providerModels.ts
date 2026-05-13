@@ -1,3 +1,4 @@
+import { logger } from "./logger.js";
 import type { ProviderId } from "./types.js";
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
@@ -151,7 +152,7 @@ const loggedUnknownModels = new Set<string>();
 
 /**
  * Returns USD cost for the given usage. Unknown model ids resolve to 0 and
- * log once via console.warn — never throw, never block streaming.
+ * log once via logger.warn — never throw, never block streaming.
  */
 export function costOf(usage: UsageCounts, modelId: string): number {
   const key = normalizeModelId(modelId);
@@ -159,7 +160,7 @@ export function costOf(usage: UsageCounts, modelId: string): number {
   if (!price) {
     if (!loggedUnknownModels.has(key)) {
       loggedUnknownModels.add(key);
-      console.warn("pricing.unknownModel", { modelId, normalized: key });
+      logger.warn("pricing", "unknown model id", { modelId, normalized: key });
     }
     return 0;
   }

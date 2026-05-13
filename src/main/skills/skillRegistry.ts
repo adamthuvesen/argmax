@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
+import { logger } from "../../shared/logger.js";
 import type { ProviderId, SkillSource, SkillSummary } from "../../shared/types.js";
 
 /**
@@ -240,7 +241,11 @@ async function parseSkillFile(
     return null;
   }
   if (size > SKILL_FILE_SIZE_CAP_BYTES) {
-    console.warn("skillRegistry.skillFile.oversized", { filePath, size, cap: SKILL_FILE_SIZE_CAP_BYTES });
+    logger.warn("skills.registry", "skill file oversized", {
+      filePath,
+      size,
+      cap: SKILL_FILE_SIZE_CAP_BYTES
+    });
     return null;
   }
   const content = await safeReadFile(filePath);

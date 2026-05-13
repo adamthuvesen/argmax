@@ -646,6 +646,24 @@ export function runMigrations(database: Database.Database): void {
   const applyMigration = database.transaction((migration: Migration) => {
     const checksum = computeMigrationChecksum(migration.up);
     database.exec(migration.up);
+
+    // Destructive recipes drop + recreate tables. A bug in the SELECT/INSERT
+    // copy step can leave orphaned FK references. `PRAGMA foreign_key_check`
+    // returns one row per violation; `exec()` discards rows so the inline
+    // pragma at the end of a v3-style migration can't actually fail the
+    // migration on its own — we have to read the result here.
+    if (migration.requiresForeignKeysOff) {
+      const violations = database
+        .prepare("PRAGMA foreign_key_check")
+        .all() as Array<Record<string, unknown>>;
+      if (violations.length > 0) {
+        throw new MigrationDriftError(
+          `Migration v${migration.version} (${migration.name}) produced ${violations.length} foreign-key violation(s): ` +
+            JSON.stringify(violations.slice(0, 5))
+        );
+      }
+    }
+
     database
       .prepare(
         "INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES (?, ?, ?, ?)"

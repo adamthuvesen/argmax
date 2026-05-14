@@ -39,6 +39,7 @@ import { isBrowserPreview } from "./lib/env.js";
 import {
   applyFontToDocument,
   FONT_STORAGE_KEY,
+  loadFontAssets,
   readStoredFont,
   type FontFamilyId
 } from "./lib/fonts.js";
@@ -212,6 +213,9 @@ export function App(): JSX.Element {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(FONT_STORAGE_KEY, fontFamily);
     applyFontToDocument(fontFamily);
+    // Non-default font families dynamic-import their @fontsource CSS so the
+    // cold-launch bundle doesn't ship every alternative (ralph B6).
+    void loadFontAssets(fontFamily);
   }, [fontFamily]);
 
   // Fetch detected IDEs once. Main caches detection across the app lifetime,

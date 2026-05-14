@@ -90,3 +90,34 @@ export function applyFontToDocument(id: FontFamilyId): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-font", id);
 }
+
+// Per-font CSS loaders. Default Lilex + system fonts (system-mono, menlo,
+// monaco) need no JS-loaded assets; the rest pull in @fontsource bundles
+// only when the user actually picks them (ralph B6 — defers ~80 kB of
+// CSS-embedded font URLs from cold launch).
+const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = {
+  "jetbrains-mono": () => import("@fontsource-variable/jetbrains-mono/wght.css"),
+  "fira-code": () => import("@fontsource-variable/fira-code/wght.css"),
+  "geist-mono": () => import("@fontsource-variable/geist-mono/wght.css"),
+  "ibm-plex-mono": () =>
+    Promise.all([
+      import("@fontsource/ibm-plex-mono/latin-400.css"),
+      import("@fontsource/ibm-plex-mono/latin-500.css"),
+      import("@fontsource/ibm-plex-mono/latin-700.css")
+    ])
+};
+
+const loadedFonts = new Set<FontFamilyId>();
+
+export async function loadFontAssets(id: FontFamilyId): Promise<void> {
+  if (loadedFonts.has(id)) return;
+  loadedFonts.add(id);
+  const loader = FONT_CSS_LOADERS[id];
+  if (!loader) return;
+  await loader();
+}
+
+/** Test-only: clear the loaded-font cache between fixtures. */
+export function resetLoadedFontsForTesting(): void {
+  loadedFonts.clear();
+}

@@ -30,6 +30,15 @@ import {
   type InsertUsageEventInput
 } from "./usage.js";
 import { listGhPrForSession, upsertGhPr } from "./gh.js";
+import {
+  findPendingApproval,
+  listApprovals,
+  listPendingApprovals,
+  persistApproval,
+  resolveApproval,
+  type FindPendingApprovalInput,
+  type PersistApprovalInput
+} from "./approvals.js";
 import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
@@ -56,6 +65,7 @@ import type { ReasoningEffort, UsageCounts } from "../../shared/providerModels.j
 export { RecordNotFoundError } from "./errors.js";
 export type { InsertLearningInput } from "./learnings.js";
 export type { InsertUsageEventInput } from "./usage.js";
+export type { FindPendingApprovalInput, PersistApprovalInput } from "./approvals.js";
 
 export interface PersistProjectInput {
   id: string;
@@ -135,17 +145,6 @@ export interface PersistRawOutputInput {
   sessionId: string;
   stream: "stdout" | "stderr" | "pty" | "system";
   content: string;
-  createdAt?: string;
-}
-
-export interface PersistApprovalInput {
-  id: string;
-  sessionId: string;
-  command: string;
-  cwd: string;
-  provider: ApprovalRequest["provider"];
-  riskLevel: ApprovalRequest["riskLevel"];
-  status: ApprovalRequest["status"];
   createdAt?: string;
 }
 
@@ -266,18 +265,6 @@ interface RawOutputRow {
   created_at: string;
 }
 
-interface ApprovalRow {
-  id: string;
-  session_id: string;
-  command: string;
-  cwd: string;
-  provider: ApprovalRequest["provider"];
-  risk_level: ApprovalRequest["riskLevel"];
-  status: ApprovalRequest["status"];
-  created_at: string;
-  resolved_at: string | null;
-}
-
 interface CheckRow {
   id: string;
   workspace_id: string;
@@ -297,13 +284,6 @@ interface CheckpointRow {
   git_ref: string | null;
   patch_path: string | null;
   created_at: string;
-}
-
-export interface FindPendingApprovalInput {
-  sessionId: string;
-  command: string;
-  cwd: string;
-  provider: ApprovalRequest["provider"];
 }
 
 export interface SessionEventsSinceInput {
@@ -459,7 +439,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     listDashboard: () => listDashboard(connection),
     listSessionEventsSince: (input) => listSessionEventsSince(connection, input),
     listWorkspaceStatus: (input) => listWorkspaceStatus(connection, input),
-    listPendingApprovals: () => listPendingApprovals(connection),
+    listPendingApprovals: () => listPendingApprovals(connection, DASHBOARD_ROW_LIMIT),
     countAttention: () => countAttention(connection),
     listRunningSessionIds: () => listRunningSessionIds(connection),
     loadDashboard: () => loadDashboard(connection),
@@ -947,70 +927,6 @@ function persistRawOutput(connection: Database.Database, input: PersistRawOutput
     });
 }
 
-function persistApproval(connection: Database.Database, input: PersistApprovalInput): ApprovalRequest {
-  const createdAt = input.createdAt ?? new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at)
-        VALUES (@id, @sessionId, @command, @cwd, @provider, @riskLevel, @status, @createdAt, NULL)
-      `
-    )
-    .run({
-      id: input.id,
-      sessionId: input.sessionId,
-      command: input.command,
-      cwd: input.cwd,
-      provider: input.provider,
-      riskLevel: input.riskLevel,
-      status: input.status,
-      createdAt
-    });
-
-  return findApprovalById(connection, input.id);
-}
-
-function findPendingApproval(
-  connection: Database.Database,
-  input: FindPendingApprovalInput
-): ApprovalRequest | null {
-  const row = connection
-    .prepare(
-      `
-        SELECT * FROM approvals
-        WHERE session_id = ? AND command = ? AND cwd = ? AND provider = ? AND status = 'pending'
-        LIMIT 1
-      `
-    )
-    .get(input.sessionId, input.command, input.cwd, input.provider) as ApprovalRow | undefined;
-  if (!row) {
-    return null;
-  }
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    command: row.command,
-    cwd: row.cwd,
-    provider: row.provider,
-    riskLevel: row.risk_level,
-    status: row.status,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at
-  };
-}
-
-function resolveApproval(
-  connection: Database.Database,
-  approvalId: string,
-  status: Extract<ApprovalRequest["status"], "approved" | "rejected">
-): ApprovalRequest {
-  connection
-    .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?")
-    .run(status, new Date().toISOString(), approvalId);
-
-  return findApprovalById(connection, approvalId);
-}
-
 function persistCheck(connection: Database.Database, input: PersistCheckInput): CheckRun {
   const startedAt = input.startedAt ?? new Date().toISOString();
   connection
@@ -1128,25 +1044,6 @@ function findCheckById(connection: Database.Database, checkId: string): CheckRun
     summary: row.summary,
     startedAt: row.started_at,
     completedAt: row.completed_at
-  };
-}
-
-function findApprovalById(connection: Database.Database, approvalId: string): ApprovalRequest {
-  const row = connection.prepare("SELECT * FROM approvals WHERE id = ?").get(approvalId) as ApprovalRow | undefined;
-  if (!row) {
-    throw new RecordNotFoundError("approval", approvalId);
-  }
-
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    command: row.command,
-    cwd: row.cwd,
-    provider: row.provider,
-    riskLevel: row.risk_level,
-    status: row.status,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at
   };
 }
 
@@ -1340,7 +1237,7 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
   // Cap dashboard reads at 200 rows for approvals/checks/checkpoints.
   // Older rows remain in storage; pagination ships separately via dedicated
   // handlers when needed.
-  const approvals = listApprovals(connection);
+  const approvals = listApprovals(connection, DASHBOARD_ROW_LIMIT);
 
   return {
     ...dashboard,
@@ -1348,20 +1245,6 @@ function loadDashboard(connection: Database.Database): DashboardSnapshot {
     rawOutputs,
     approvals
   };
-}
-
-function listApprovals(connection: Database.Database): ApprovalRequest[] {
-  return (
-    connection.prepare(`SELECT * FROM approvals ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`).all() as ApprovalRow[]
-  ).map(approvalRowToRequest);
-}
-
-function listPendingApprovals(connection: Database.Database): ApprovalRequest[] {
-  return (
-    connection
-      .prepare(`SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
-      .all() as ApprovalRow[]
-  ).map(approvalRowToRequest);
 }
 
 function listRunningSessionIds(connection: Database.Database): string[] {
@@ -1421,20 +1304,6 @@ function rawOutputRowToProviderOutput(row: RawOutputRow): RawProviderOutput {
     stream: row.stream,
     content: row.content,
     createdAt: row.created_at
-  };
-}
-
-function approvalRowToRequest(row: ApprovalRow): ApprovalRequest {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    command: row.command,
-    cwd: row.cwd,
-    provider: row.provider,
-    riskLevel: row.risk_level,
-    status: row.status,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at
   };
 }
 

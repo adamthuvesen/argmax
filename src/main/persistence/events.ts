@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { UsageCounts } from "../../shared/providerModels.js";
 import type { RawProviderOutput, TimelineEvent } from "../../shared/types.js";
+import { prepared } from "./preparedStatements.js";
 
 export interface EventRow {
   row_cursor?: number;
@@ -92,21 +93,20 @@ export function persistTimelineEvent(
   input: PersistTimelineEventInput
 ): TimelineEvent {
   const createdAt = input.createdAt ?? new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO events (id, session_id, type, message, payload_json, created_at)
-        VALUES (@id, @sessionId, @type, @message, @payloadJson, @createdAt)
-      `
-    )
-    .run({
-      id: input.id,
-      sessionId: input.sessionId,
-      type: input.type,
-      message: input.message,
-      payloadJson: JSON.stringify(input.payload),
-      createdAt
-    });
+  prepared(
+    connection,
+    `
+      INSERT INTO events (id, session_id, type, message, payload_json, created_at)
+      VALUES (@id, @sessionId, @type, @message, @payloadJson, @createdAt)
+    `
+  ).run({
+    id: input.id,
+    sessionId: input.sessionId,
+    type: input.type,
+    message: input.message,
+    payloadJson: JSON.stringify(input.payload),
+    createdAt
+  });
 
   return {
     id: input.id,
@@ -122,20 +122,19 @@ export function persistRawOutput(
   connection: Database.Database,
   input: PersistRawOutputInput
 ): void {
-  connection
-    .prepare(
-      `
-        INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
-        VALUES (@id, @sessionId, @stream, @content, @createdAt)
-      `
-    )
-    .run({
-      id: input.id,
-      sessionId: input.sessionId,
-      stream: input.stream,
-      content: input.content,
-      createdAt: input.createdAt ?? new Date().toISOString()
-    });
+  prepared(
+    connection,
+    `
+      INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
+      VALUES (@id, @sessionId, @stream, @content, @createdAt)
+    `
+  ).run({
+    id: input.id,
+    sessionId: input.sessionId,
+    stream: input.stream,
+    content: input.content,
+    createdAt: input.createdAt ?? new Date().toISOString()
+  });
 }
 
 export function listSessionEventsSince(
@@ -145,54 +144,50 @@ export function listSessionEventsSince(
   rawOutputPageLimit: number
 ): SessionEventsSinceResult {
   const eventRows = input.eventCursor === undefined
-    ? (connection
-        .prepare(
-          `
-            SELECT * FROM (
-              SELECT rowid AS row_cursor, * FROM events
-              WHERE session_id = ?
-              ORDER BY rowid DESC
-              LIMIT ?
-            )
-            ORDER BY row_cursor ASC
-          `
-        )
-        .all(input.sessionId, eventPageLimit) as EventRow[])
-    : (connection
-        .prepare(
-          `
+    ? (prepared(
+        connection,
+        `
+          SELECT * FROM (
             SELECT rowid AS row_cursor, * FROM events
-            WHERE session_id = ? AND rowid > ?
-            ORDER BY rowid ASC
+            WHERE session_id = ?
+            ORDER BY rowid DESC
             LIMIT ?
-          `
-        )
-        .all(input.sessionId, input.eventCursor, eventPageLimit) as EventRow[]);
+          )
+          ORDER BY row_cursor ASC
+        `
+      ).all(input.sessionId, eventPageLimit) as EventRow[])
+    : (prepared(
+        connection,
+        `
+          SELECT rowid AS row_cursor, * FROM events
+          WHERE session_id = ? AND rowid > ?
+          ORDER BY rowid ASC
+          LIMIT ?
+        `
+      ).all(input.sessionId, input.eventCursor, eventPageLimit) as EventRow[]);
 
   const rawOutputRows = input.rawOutputCursor === undefined
-    ? (connection
-        .prepare(
-          `
-            SELECT * FROM (
-              SELECT rowid AS row_cursor, * FROM raw_outputs
-              WHERE session_id = ?
-              ORDER BY rowid DESC
-              LIMIT ?
-            )
-            ORDER BY row_cursor ASC
-          `
-        )
-        .all(input.sessionId, rawOutputPageLimit) as RawOutputRow[])
-    : (connection
-        .prepare(
-          `
+    ? (prepared(
+        connection,
+        `
+          SELECT * FROM (
             SELECT rowid AS row_cursor, * FROM raw_outputs
-            WHERE session_id = ? AND rowid > ?
-            ORDER BY rowid ASC
+            WHERE session_id = ?
+            ORDER BY rowid DESC
             LIMIT ?
-          `
-        )
-        .all(input.sessionId, input.rawOutputCursor, rawOutputPageLimit) as RawOutputRow[]);
+          )
+          ORDER BY row_cursor ASC
+        `
+      ).all(input.sessionId, rawOutputPageLimit) as RawOutputRow[])
+    : (prepared(
+        connection,
+        `
+          SELECT rowid AS row_cursor, * FROM raw_outputs
+          WHERE session_id = ? AND rowid > ?
+          ORDER BY rowid ASC
+          LIMIT ?
+        `
+      ).all(input.sessionId, input.rawOutputCursor, rawOutputPageLimit) as RawOutputRow[]);
 
   return {
     events: eventRows.map(eventRowToTimelineEvent),

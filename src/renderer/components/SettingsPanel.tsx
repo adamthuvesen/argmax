@@ -656,6 +656,45 @@ export function SettingsPanel({
             </p>
           ) : null}
         </div>
+        {diagnostics?.startupPhases?.length ? (
+          <div className="settings-card" aria-labelledby="settings-diagnostics-startup">
+            <h3 id="settings-diagnostics-startup" className="settings-card-title">
+              Startup phases
+            </h3>
+            <p className="settings-hint">
+              Cold-start timing for the current boot. Budget: 1500&nbsp;ms to <code>ready-to-show</code>.
+              See <code>agents/docs/performance.md</code>.
+            </p>
+            <table className="settings-startup-table" aria-label="Startup phase timings">
+              <thead>
+                <tr>
+                  <th scope="col">Phase</th>
+                  <th scope="col">Elapsed</th>
+                  <th scope="col">Δ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diagnostics.startupPhases.map((phase) => {
+                  const overBudget = phase.phase === "window.ready-to-show" && phase.elapsedMs > 1500;
+                  return (
+                    <tr key={phase.phase} data-over-budget={overBudget || undefined}>
+                      <td>
+                        <code>{phase.phase}</code>
+                        {overBudget ? (
+                          <span className="settings-badge" role="status">
+                            over budget
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>{phase.elapsedMs.toFixed(2)} ms</td>
+                      <td>{phase.deltaMs.toFixed(2)} ms</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
 
       <section className="settings-section" aria-labelledby="settings-about">

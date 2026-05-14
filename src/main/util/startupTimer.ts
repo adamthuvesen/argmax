@@ -1,20 +1,7 @@
 import { performance } from "node:perf_hooks";
+import type { StartupPhase, StartupPhaseRecord } from "../../shared/types.js";
 
-export type StartupPhase =
-  | "boot"
-  | "db.open"
-  | "services.construct"
-  | "ipc.register"
-  | "window.create"
-  | "window.ready-to-show";
-
-export interface StartupPhaseRecord {
-  phase: StartupPhase;
-  /** ms since the process started (always rounded to 2 decimals). */
-  elapsedMs: number;
-  /** ms since the previous phase marked (or 0 for the first mark). */
-  deltaMs: number;
-}
+export type { StartupPhase, StartupPhaseRecord };
 
 const ROUND = (ms: number): number => Math.round(ms * 100) / 100;
 

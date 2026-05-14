@@ -166,7 +166,15 @@ describe("App", () => {
       databasePath: "/tmp/argmax.sqlite",
       platform: "darwin",
       arch: "arm64",
-      generatedAt: "2026-05-12T00:00:00.000Z"
+      generatedAt: "2026-05-12T00:00:00.000Z",
+      startupPhases: [
+        { phase: "boot", elapsedMs: 0, deltaMs: 0 },
+        { phase: "db.open", elapsedMs: 80, deltaMs: 80 },
+        { phase: "services.construct", elapsedMs: 140, deltaMs: 60 },
+        { phase: "ipc.register", elapsedMs: 180, deltaMs: 40 },
+        { phase: "window.create", elapsedMs: 400, deltaMs: 220 },
+        { phase: "window.ready-to-show", elapsedMs: 1100, deltaMs: 700 }
+      ]
     });
     vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
     createCheckpointStub = vi.fn<ArgmaxApi["checkpoints"]["create"]>().mockResolvedValue({
@@ -1251,6 +1259,46 @@ describe("App", () => {
         });
       }
     }
+  });
+
+  it("renders Settings → Diagnostics → Startup phases with an over-budget badge (P7.04)", async () => {
+    // Re-stub diagnostics with an over-budget ready-to-show timing so the
+    // badge appears. The default fixture is under 1500 ms.
+    diagnosticsStub.mockResolvedValueOnce({
+      appVersion: "0.1.0",
+      electronVersion: "35.0.0",
+      nodeVersion: "20.0.0",
+      sqliteVersion: "3.45.0",
+      databasePath: "/tmp/argmax.sqlite",
+      platform: "darwin",
+      arch: "arm64",
+      generatedAt: "2026-05-14T00:00:00.000Z",
+      startupPhases: [
+        { phase: "boot", elapsedMs: 0, deltaMs: 0 },
+        { phase: "db.open", elapsedMs: 80, deltaMs: 80 },
+        { phase: "services.construct", elapsedMs: 140, deltaMs: 60 },
+        { phase: "ipc.register", elapsedMs: 180, deltaMs: 40 },
+        { phase: "window.create", elapsedMs: 400, deltaMs: 220 },
+        { phase: "window.ready-to-show", elapsedMs: 1800, deltaMs: 1400 }
+      ]
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+
+    const table = await screen.findByRole("table", { name: "Startup phase timings" });
+    expect(table).toBeInTheDocument();
+    expect(within(table).getByText("db.open")).toBeInTheDocument();
+    expect(within(table).getByText("window.ready-to-show")).toBeInTheDocument();
+
+    // Over-budget row has the badge.
+    const badge = within(table).getByText("over budget");
+    expect(badge).toBeInTheDocument();
+    // The badge is attached to the over-budget ready-to-show row.
+    const overRow = badge.closest("tr");
+    expect(overRow?.getAttribute("data-over-budget")).toBe("true");
   });
 
   it("renders Settings → Providers with install hint when a provider is missing", async () => {

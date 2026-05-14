@@ -530,6 +530,22 @@ export interface McpClientListing {
   error: string | null;
 }
 
+export type StartupPhase =
+  | "boot"
+  | "db.open"
+  | "services.construct"
+  | "ipc.register"
+  | "window.create"
+  | "window.ready-to-show";
+
+export interface StartupPhaseRecord {
+  phase: StartupPhase;
+  /** Milliseconds since the main process started. */
+  elapsedMs: number;
+  /** Milliseconds since the previous phase mark (0 for the first). */
+  deltaMs: number;
+}
+
 export interface DiagnosticsReport {
   appVersion: string;
   electronVersion: string;
@@ -539,6 +555,12 @@ export interface DiagnosticsReport {
   platform: string;
   arch: string;
   generatedAt: string;
+  /**
+   * Per-phase timings for the current boot. Diagnostics → Startup panel
+   * (SPEC P7.04) renders these and flags any phase that exceeds the budget
+   * documented in `agents/docs/performance.md`.
+   */
+  startupPhases: StartupPhaseRecord[];
 }
 
 export type MenuCommand =

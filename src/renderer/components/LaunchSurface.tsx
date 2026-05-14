@@ -1,5 +1,7 @@
-import { ChevronDown, ChevronRight, Folder, GitBranch, Mic, Plus } from "lucide-react";
+import { ChevronDown, CornerDownLeft, Folder, GitBranch, Mic, Plus } from "lucide-react";
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -21,9 +23,20 @@ import { FileSearchOverlay } from "./FileSearchOverlay.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { SkillPopover } from "./SkillPopover.js";
-import { WelcomePane } from "./WelcomePane.js";
+// WelcomePane only renders on a fresh install (no projects) — lazy-mounted
+// (ralph B2) so its provider-discovery code path doesn't ship in the main
+// launcher bundle for the common case.
+const WelcomePane = lazy(async () => ({
+  default: (await import("./WelcomePane.js")).WelcomePane
+}));
 
 const PROMPT_MAX_HEIGHT_PX = 140;
+
+const LAUNCH_STARTERS = [
+  "Add a test for…",
+  "Investigate why…",
+  "Refactor…"
+] as const;
 
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
@@ -238,12 +251,40 @@ export function LaunchSurface({
     }
   };
 
+  const [headingBefore, headingAfter] = useMemo(() => {
+    const token = "{name}";
+    const idx = headingTemplate.indexOf(token);
+    if (idx === -1) return [headingTemplate, ""] as const;
+    return [headingTemplate.slice(0, idx), headingTemplate.slice(idx + token.length)] as const;
+  }, [headingTemplate]);
+
+  const heroEyebrowDate = useMemo(() => {
+    const d = new Date();
+    const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${month} ${day}`;
+  }, []);
+
+  const applyStarter = useCallback((seed: string): void => {
+    setPrompt(seed);
+    requestAnimationFrame(() => {
+      const node = promptInputRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(seed.length, seed.length);
+    });
+  }, []);
+
   if (!project) {
     // Fresh-install surface: setup checklist + provider discovery + the
     // disabled-until-a-provider-is-detected Add Project CTA. The component
     // owns its own discovery call so the cold-launch path doesn't pay for it
     // when the user already has a project registered.
-    return <WelcomePane onAddProject={onAddProject} />;
+    return (
+      <Suspense fallback={null}>
+        <WelcomePane onAddProject={onAddProject} />
+      </Suspense>
+    );
   }
 
   const isReviewOpen = reviewState.isPanelOpen && project !== null;
@@ -262,9 +303,25 @@ export function LaunchSurface({
         />,
         document.body
       )}
-      <h1>{headingTemplate.replace("{name}", project.name)}</h1>
+      <header className="launcher-hero">
+        <div className="launcher-hero-meta">
+          <span className="launcher-hero-dot" aria-hidden="true" />
+          <span className="launcher-hero-eyebrow">
+            New session · {project.currentBranch} · {heroEyebrowDate}
+          </span>
+        </div>
+        <h1 className="launcher-hero-headline">
+          {headingBefore}
+          <span className="launcher-hero-project">{project.name}</span>
+          {headingAfter}
+        </h1>
+        <p className="launcher-hero-lede">
+          Type a task. Press <kbd className="launcher-hero-kbd">⏎</kbd> and I'll spin up a fresh worktree, branch it, and stream the agent back here.
+        </p>
+      </header>
       <form className="composer" ref={formRef} onSubmit={(event) => void submitPrompt(event)}>
         <div className="composer-input">
+          <span className="composer-marker" aria-hidden="true">▍</span>
           <textarea
             aria-label="Task prompt"
             aria-autocomplete="list"
@@ -279,17 +336,24 @@ export function LaunchSurface({
             rows={1}
           />
           <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
-          <button className="composer-tool" type="button" title="Add context">
+          <button className="composer-tool" type="button" title="Add context" aria-label="Add context">
             <Plus size={18} />
           </button>
-          <button className="composer-tool" type="button" title="Voice input">
+          <button className="composer-tool" type="button" title="Voice input" aria-label="Voice input">
             <Mic size={18} />
           </button>
-          <button className="send-button" disabled={isSubmitting || !prompt.trim()} type="submit" title="Start agent">
-            <ChevronRight size={20} />
+          <button
+            className="send-button"
+            disabled={isSubmitting || !prompt.trim()}
+            type="submit"
+            title="Start agent"
+            aria-label="Start agent"
+          >
+            <CornerDownLeft size={18} aria-hidden="true" />
           </button>
         </div>
         <div className="composer-context">
+          <span className="composer-context-tree" aria-hidden="true">└─</span>
           <div className="project-picker-anchor" ref={projectPickerRef}>
             <button
               className="composer-context-chip"
@@ -389,10 +453,28 @@ export function LaunchSurface({
         </div>
         {status ? (
           <p className="composer-status" role="status">
+            <span className="composer-status-dot" aria-hidden="true" />
             {status}
           </p>
         ) : null}
       </form>
+      <aside className="launcher-starters" aria-label="Starter prompts">
+        <span className="launcher-starters-eyebrow">try</span>
+        <ul>
+          {LAUNCH_STARTERS.map((seed) => (
+            <li key={seed}>
+              <button
+                type="button"
+                className="launcher-starter-chip"
+                onClick={() => applyStarter(seed)}
+                title={`Use: ${seed}`}
+              >
+                {seed}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </aside>
       </div>
       {isReviewOpen ? <ReviewPanel review={reviewState} /> : null}
       {project ? (

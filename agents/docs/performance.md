@@ -30,8 +30,9 @@ Documented budgets:
 - `mergeDashboardDelta` over a 200-session payload: p95 < 5 ms.
 - `buildFileTree` over 10 000 entries: < 50 ms.
 - `runMigrations` on an empty DB: < 200 ms.
+- `parseUnifiedDiff` over a 500-hunk synthetic diff (50 files × 10 hunks × 20 lines): p95 < 10 ms.
 
-These are pinned in [src/test/perf.test.ts](../../src/test/perf.test.ts). The file-tree budget exercises `buildFileTree` directly; `WorkspaceTree.test.tsx` covers renderer virtualization behavior separately.
+These are pinned in [src/test/perf.test.ts](../../src/test/perf.test.ts) and run on every `npm test`. The file-tree budget exercises `buildFileTree` directly; `WorkspaceTree.test.tsx` covers renderer virtualization behavior separately. The diff budget guards the ReviewPanel hot path — any regression in the parser fails CI before the user sees the slowdown.
 
 ## IPC latency
 

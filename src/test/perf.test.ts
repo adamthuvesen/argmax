@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 import { runMigrations } from "../main/persistence/migrations.js";
+import { parseUnifiedDiff } from "../renderer/lib/diff.js";
 import { buildFileTree } from "../renderer/lib/fileTree.js";
 import { mergeDashboardDelta, emptySnapshot } from "../renderer/lib/snapshot.js";
 import type { DashboardSnapshot, SessionSummary } from "../shared/types.js";
@@ -81,5 +82,40 @@ describe("perf budgets", () => {
     const elapsed = performance.now() - start;
     database.close();
     expect(elapsed).toBeLessThan(200);
+  });
+
+  it("parseUnifiedDiff over a 500-hunk synthetic diff completes p95 < 10 ms", () => {
+    // Build a synthetic diff that mirrors what `git diff` would emit for a
+    // 50-file changeset with 10 hunks per file and 20 lines per hunk.
+    // ReviewPanel parses this exact format on every "open diff" — pinning
+    // the budget here means a regression in the parser fails CI.
+    const sections: string[] = [];
+    for (let file = 0; file < 50; file++) {
+      sections.push(`diff --git a/file-${file}.ts b/file-${file}.ts`);
+      sections.push(`--- a/file-${file}.ts`);
+      sections.push(`+++ b/file-${file}.ts`);
+      for (let hunk = 0; hunk < 10; hunk++) {
+        const start = hunk * 30 + 1;
+        sections.push(`@@ -${start},20 +${start},20 @@ fn ${file}_${hunk}`);
+        for (let line = 0; line < 20; line++) {
+          // Mix of context, additions, deletions so the parser visits every
+          // branch on the hot path, not just the cheap "context" arm.
+          if (line % 5 === 0) sections.push(`+added line ${line} in hunk ${hunk} file ${file}`);
+          else if (line % 7 === 0) sections.push(`-removed line ${line} in hunk ${hunk} file ${file}`);
+          else sections.push(` context line ${line} in hunk ${hunk} file ${file}`);
+        }
+      }
+    }
+    const diff = sections.join("\n");
+
+    const durations: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      const start = performance.now();
+      parseUnifiedDiff(diff);
+      durations.push(performance.now() - start);
+    }
+    durations.sort((a, b) => a - b);
+    const p95 = durations[Math.floor(durations.length * 0.95)] ?? 0;
+    expect(p95).toBeLessThan(10);
   });
 });

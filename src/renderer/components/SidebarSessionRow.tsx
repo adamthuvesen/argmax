@@ -30,6 +30,8 @@ type SidebarSessionRowProps = {
   workspace: WorkspaceSummary;
   workspaceTokens: WorkspaceTokenBreakdown | null;
   isSelected: boolean;
+  isOpenInGrid: boolean;
+  canDragToGrid: boolean;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
@@ -45,6 +47,8 @@ function SidebarSessionRowInner({
   workspace,
   workspaceTokens,
   isSelected,
+  isOpenInGrid,
+  canDragToGrid,
   onOpenWorkspaceChat,
   onArchiveWorkspace,
   onOpenInIde,
@@ -118,9 +122,14 @@ function SidebarSessionRowInner({
   };
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled session";
+  const title = `${displayLabel} — ${workspace.state}${isOpenInGrid ? " — in view" : ""}`;
 
   const handleWorkspaceDragStart = (event: ReactDragEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
+    if (!canDragToGrid) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspace.id);
     event.dataTransfer.effectAllowed = "copyMove";
     // Use the row button itself as the drag image so the OS preview shows
@@ -147,10 +156,11 @@ function SidebarSessionRowInner({
       <button
         aria-pressed={isSelected}
         className={isSelected ? "session-link active" : "session-link"}
+        data-open={isOpenInGrid ? "true" : undefined}
         data-status={workspace.state}
         type="button"
-        title={`${displayLabel} — ${workspace.state}`}
-        draggable
+        title={title}
+        draggable={canDragToGrid}
         onClick={(event) =>
           onOpenWorkspaceChat(workspace.id, {
             ctrlOrMeta: event.metaKey || event.ctrlKey,
@@ -290,6 +300,8 @@ export function sidebarSessionRowEqual(
   next: SidebarSessionRowProps
 ): boolean {
   if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isOpenInGrid !== next.isOpenInGrid) return false;
+  if (prev.canDragToGrid !== next.canDragToGrid) return false;
   if (prev.showTokens !== next.showTokens) return false;
   if (prev.defaultIde !== next.defaultIde) return false;
   if (prev.detectedIdes !== next.detectedIdes) return false;

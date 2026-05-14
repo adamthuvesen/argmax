@@ -48,6 +48,8 @@ export function Sidebar({
   isSettingsActive,
   selectedProjectId,
   selectedWorkspaceId,
+  openWorkspaceIds,
+  canDragWorkspaceToGrid,
   snapshot,
   detectedIdes,
   defaultIde,
@@ -70,6 +72,8 @@ export function Sidebar({
   isSettingsActive: boolean;
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
+  openWorkspaceIds: Set<string>;
+  canDragWorkspaceToGrid: boolean;
   snapshot: DashboardSnapshot;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
@@ -339,7 +343,7 @@ export function Sidebar({
                       <div
                         key={workspace.id}
                         className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
-                        draggable={Boolean(onToggleWorkspacePinned)}
+                        draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
                         onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
                         onDragOver={handleWorkspaceDragOver}
                         onDrop={(event) =>
@@ -358,6 +362,8 @@ export function Sidebar({
                           workspace={workspace}
                           workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                           isSelected={selectedWorkspaceId === workspace.id}
+                          isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                          canDragToGrid={canDragWorkspaceToGrid}
                           onOpenWorkspaceChat={onOpenWorkspaceChat}
                           onArchiveWorkspace={onArchiveWorkspace}
                           onOpenInIde={onOpenInIde}

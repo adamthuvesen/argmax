@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
 import type { ProjectSettings, ProjectSummary, RegisterProjectInput, UpdateProjectSettingsInput } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
 import { runGitMaybe, runGitText } from "../git/exec.js";
 
 const execFileAsync = promisify(execFile);
@@ -20,6 +21,21 @@ export class ProjectRegistrationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ProjectRegistrationError";
+  }
+}
+
+/**
+ * Run a filesystem op (realpath/stat/etc.) and convert any throw into a
+ * `ProjectRegistrationError` with the supplied prefix. The two raw `try`
+ * blocks this replaces were structurally identical — only the error prefix
+ * differed.
+ */
+async function runFsOp<T>(op: () => Promise<T>, prefix: string): Promise<T> {
+  try {
+    return await op();
+  } catch (error) {
+    const detail = errorMessage(error) || "Unknown filesystem error";
+    throw new ProjectRegistrationError(`${prefix} ${detail}`);
   }
 }
 
@@ -53,20 +69,8 @@ export class ProjectService {
 }
 
 async function canonicalizeRepoPath(candidatePath: string): Promise<string> {
-  let resolved: string;
-  try {
-    resolved = await realpath(candidatePath);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown filesystem error";
-    throw new ProjectRegistrationError(`Argmax could not resolve ${candidatePath}. ${detail}`);
-  }
-  let stats;
-  try {
-    stats = await stat(resolved);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown filesystem error";
-    throw new ProjectRegistrationError(`Argmax could not stat ${resolved}. ${detail}`);
-  }
+  const resolved = await runFsOp(() => realpath(candidatePath), `Argmax could not resolve ${candidatePath}.`);
+  const stats = await runFsOp(() => stat(resolved), `Argmax could not stat ${resolved}.`);
   if (!stats.isDirectory()) {
     throw new ProjectRegistrationError(`${resolved} is not a directory.`);
   }
@@ -106,8 +110,9 @@ async function readGitMetadata(candidatePath: string): Promise<GitMetadata> {
       defaultBranch
     };
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown git error";
-    throw new ProjectRegistrationError(`Argmax requires a local git repository. ${detail}`);
+    throw new ProjectRegistrationError(
+      `Argmax requires a local git repository. ${errorMessage(error) || "Unknown git error"}`
+    );
   }
 }
 

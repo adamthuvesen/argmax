@@ -28,7 +28,12 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 | Status | `--sage` (running/online), `--amber` (waiting), `--rose` (error/risk) — each with a `*-soft` companion; plus `--sage-deep` for the Approve button |
 | Elevation | `--shadow-1`, `--shadow-2`, `--shadow-3` |
 | Radii | `--radius-sm/md/lg/xl` |
-| Motion | `--ease` (cubic-bezier), `--duration-fast` (140ms), `--duration-base` (220ms) |
+| Motion | `--ease` (cubic-bezier), `--duration-fast` (140ms), `--duration-base` (220ms); newer code prefers `--motion-fast` (120ms), `--motion-base` (180ms), `--motion-slow` (240ms), `--ease-out`, `--ease-in-out` |
+| Spacing | `--space-1` (4px) through `--space-8` (32px). Use these for paddings, gaps, and margins; reserve raw `px` for one-off optical adjustments. |
+| Type | `--text-xs` (11px) → `--text-sm` (12px) → `--text-base` (13px) → `--text-md` (15px) → `--text-lg` (18px). |
+| Focus | `--ring` — single source of truth for every `:focus-visible` ring. |
+
+A loop-wide sweep replacing every existing raw value would land 700+ line edits. The tokens above were introduced in the 2026-05-14 quality sweep; future changes should reach for the token first, and legacy raw values get migrated incrementally as files are touched. Reduced-motion users get a zero override on the motion tokens via `@media (prefers-reduced-motion: reduce)`.
 
 ## Patterns
 

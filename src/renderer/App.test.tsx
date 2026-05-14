@@ -1492,6 +1492,27 @@ describe("App", () => {
     // The badge is attached to the over-budget ready-to-show row.
     const overRow = badge.closest("tr");
     expect(overRow?.getAttribute("data-over-budget")).toBe("true");
+
+    // Ralph A3: summary tile flips to over-budget for the same fixture.
+    const summary = screen.getByRole("status", { name: "Cold start budget summary" });
+    expect(summary).toHaveAttribute("data-over-budget", "true");
+    expect(summary).toHaveTextContent("1800 ms");
+    expect(summary).toHaveTextContent("budget: 1500 ms");
+  });
+
+  it("renders the cold-start summary tile under budget for a fast boot (ralph A3)", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+
+    // The default diagnostics fixture has window.ready-to-show at 1100 ms,
+    // which is comfortably under the 1500 ms budget.
+    const summary = await screen.findByRole("status", { name: "Cold start budget summary" });
+    expect(summary).not.toHaveAttribute("data-over-budget");
+    expect(summary).toHaveTextContent("1100 ms");
+    expect(summary).toHaveTextContent("budget: 1500 ms");
+    expect(within(summary).queryByText("over budget")).toBeNull();
   });
 
   it("renders Settings → Providers with install hint when a provider is missing", async () => {

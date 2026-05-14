@@ -4,6 +4,7 @@ import type { IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
+import { safeKill } from "../processControl.js";
 
 const require = createRequire(import.meta.url);
 const nodePty = require("node-pty") as typeof NodePty;
@@ -94,20 +95,12 @@ export class TerminalService {
   terminate(terminalId: string): void {
     const entry = this.terminals.get(terminalId);
     if (!entry) return;
-    try {
-      entry.pty.kill();
-    } catch {
-      // PTY may already be dead; onExit handler will clean up the map.
-    }
+    safeKill(entry.pty);
   }
 
   disposeAll(): void {
     for (const [, entry] of this.terminals) {
-      try {
-        entry.pty.kill();
-      } catch {
-        // Ignore — shutdown path.
-      }
+      safeKill(entry.pty);
     }
     this.terminals.clear();
   }

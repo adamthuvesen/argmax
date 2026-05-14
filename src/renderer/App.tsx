@@ -740,7 +740,22 @@ export function App(): JSX.Element {
           ) : (
             <LaunchSurface
               onAddProject={() => void addProject()}
-              onBranchSwitch={(updated) => setSnapshot((s) => ({ ...s, projects: s.projects.map((p) => p.id === updated.id ? updated : p) }))}
+              onBranchSwitch={(updated) =>
+                setSnapshot((s) => {
+                  // Skip reallocation when nothing actually changed (ralph
+                  // E4) — `git switch` to the same branch is a no-op.
+                  const existing = s.projects.find((p) => p.id === updated.id);
+                  if (existing === updated) return s;
+                  let mutated = false;
+                  const projects = s.projects.map((p) => {
+                    if (p.id !== updated.id) return p;
+                    if (p === updated) return p;
+                    mutated = true;
+                    return updated;
+                  });
+                  return mutated ? { ...s, projects } : s;
+                })
+              }
               onLaunchTask={launchTask}
               model={launchModel}
               onModelChange={setLaunchModel}

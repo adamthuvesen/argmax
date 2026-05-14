@@ -19,6 +19,7 @@ import type {
 } from "../../shared/types.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../lib/fonts.js";
 import { formatBytes } from "../lib/formatBytes.js";
+import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import { readFirstContentMeasure } from "../lib/paintTimings.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -113,55 +114,28 @@ export function SettingsPanel({
   projects: ProjectSummary[];
   onClose: () => void;
 }): JSX.Element {
-  const [providers, setProviders] = useState<DiscoveredProvider[] | null>(null);
-  const [providerLoadError, setProviderLoadError] = useState<string | null>(null);
-  const [refreshingProviders, setRefreshingProviders] = useState(false);
-
-  const refreshProviders = useCallback(async (): Promise<void> => {
-    if (!window.argmax) {
-      setProviderLoadError("Open the Electron app window to detect providers.");
-      return;
+  const {
+    data: providers,
+    error: providerLoadError,
+    isLoading: refreshingProviders,
+    retry: refreshProviders
+  } = useAsyncLoad<DiscoveredProvider[]>(
+    () => window.argmax!.providers.discover(),
+    {
+      missingApiMessage: "Open the Electron app window to detect providers.",
+      fallbackMessage: "Provider discovery failed."
     }
-    setRefreshingProviders(true);
-    setProviderLoadError(null);
-    try {
-      const discovered = await window.argmax.providers.discover();
-      setProviders(discovered);
-    } catch (error) {
-      setProviderLoadError(error instanceof Error ? error.message : "Provider discovery failed.");
-    } finally {
-      setRefreshingProviders(false);
-    }
-  }, []);
+  );
 
-  useEffect(() => {
-    void refreshProviders();
-  }, [refreshProviders]);
-
-  const [mcpListings, setMcpListings] = useState<McpClientListing[] | null>(null);
-  const [mcpLoadError, setMcpLoadError] = useState<string | null>(null);
-  const [refreshingMcp, setRefreshingMcp] = useState(false);
-
-  const refreshMcp = useCallback(async (): Promise<void> => {
-    if (!window.argmax) {
-      setMcpLoadError("Open the Electron app window to read MCP configs.");
-      return;
-    }
-    setRefreshingMcp(true);
-    setMcpLoadError(null);
-    try {
-      const listings = await window.argmax.mcp.list();
-      setMcpListings(listings);
-    } catch (error) {
-      setMcpLoadError(error instanceof Error ? error.message : "MCP discovery failed.");
-    } finally {
-      setRefreshingMcp(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshMcp();
-  }, [refreshMcp]);
+  const {
+    data: mcpListings,
+    error: mcpLoadError,
+    isLoading: refreshingMcp,
+    retry: refreshMcp
+  } = useAsyncLoad<McpClientListing[]>(() => window.argmax!.mcp.list(), {
+    missingApiMessage: "Open the Electron app window to read MCP configs.",
+    fallbackMessage: "MCP discovery failed."
+  });
 
   const revealMcpConfig = useCallback(async (path: string): Promise<void> => {
     if (!window.argmax) return;

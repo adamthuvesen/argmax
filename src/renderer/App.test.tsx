@@ -105,6 +105,7 @@ describe("App", () => {
   let dashboardDeltaUnsubscribe: ReturnType<typeof vi.fn<() => void>>;
   let launchProvider: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["launch"]>>;
   let approvalsPending: ReturnType<typeof vi.fn<ArgmaxApi["approvals"]["pending"]>>;
+  let approvalsResolve: ReturnType<typeof vi.fn<ArgmaxApi["approvals"]["resolve"]>>;
   let pickProjectFolder: ReturnType<typeof vi.fn<ArgmaxApi["projects"]["pickFolder"]>>;
   let listChangedFiles: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFiles"]>>;
   let loadDiff: ReturnType<typeof vi.fn<ArgmaxApi["review"]["loadDiff"]>>;
@@ -139,6 +140,19 @@ describe("App", () => {
     dashboardDeltaUnsubscribe = vi.fn<() => void>();
     launchProvider = vi.fn<ArgmaxApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
     approvalsPending = vi.fn<ArgmaxApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
+    approvalsResolve = vi.fn<ArgmaxApi["approvals"]["resolve"]>().mockImplementation(({ approvalId, status }) =>
+      Promise.resolve({
+        id: approvalId,
+        sessionId: "session-1",
+        command: "rm -rf /tmp/x",
+        cwd: "/tmp",
+        provider: "codex",
+        riskLevel: "high",
+        status,
+        createdAt: "2026-05-14T10:00:00.000Z",
+        resolvedAt: new Date().toISOString()
+      })
+    );
     pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
       cancelled: false,
       project: primaryProject()
@@ -286,7 +300,7 @@ describe("App", () => {
       },
       approvals: {
         pending: approvalsPending,
-        resolve: () => Promise.resolve(missingApproval())
+        resolve: approvalsResolve
       },
       session: {
         eventsSince: sessionEventsSince,
@@ -1295,6 +1309,43 @@ describe("App", () => {
         });
       }
     }
+  });
+
+  it("renders Approve / Reject for a pending approval and pipes back through approvals:resolve (P8.02)", async () => {
+    // Seed a pending approval in the snapshot AND in the approvalsPending mock
+    // so the SessionPane picks it up after the workspace is selected.
+    const pendingApproval = {
+      id: "approval-1",
+      sessionId: "session-1",
+      command: "rm -rf /tmp/x",
+      cwd: "/tmp",
+      provider: "codex" as const,
+      riskLevel: "high" as const,
+      status: "pending" as const,
+      createdAt: "2026-05-14T10:00:00.000Z",
+      resolvedAt: null
+    };
+    const seeded = { ...snapshot, approvals: [pendingApproval] };
+    dashboardList.mockResolvedValue(dashboardListSnapshot(seeded));
+    approvalsPending.mockResolvedValue([pendingApproval]);
+
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
+
+    // The risk-gate surface lives in SessionPane once a workspace is selected.
+    const approveButton = await screen.findByRole("button", { name: "Approve" });
+    const rejectButton = await screen.findByRole("button", { name: "Reject" });
+    expect(approveButton).toBeEnabled();
+    expect(rejectButton).toBeEnabled();
+
+    fireEvent.click(approveButton);
+
+    await waitFor(() => expect(approvalsResolve).toHaveBeenCalledTimes(1));
+    expect(approvalsResolve).toHaveBeenCalledWith({
+      approvalId: "approval-1",
+      status: "approved"
+    });
   });
 
   it("Save log file downloads a JSONL of recent logs (P8.04)", async () => {

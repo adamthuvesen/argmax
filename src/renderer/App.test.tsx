@@ -619,8 +619,13 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByText("I'll explore the codebase.")).toBeInTheDocument();
-    expect(screen.getByText("I've explored.")).toBeInTheDocument();
+    // Assistant message text is tokenized into separate <span> elements once
+    // shiki's highlighter caches across tests (same module-state quirk that
+    // P6.01 hit). Wait for the conversation surface to render, then assert
+    // against its concatenated textContent so tokenization is invisible.
+    const conversation = await screen.findByRole("region", { name: "Session conversation" });
+    await waitFor(() => expect(conversation).toHaveTextContent("I'll explore the codebase."));
+    expect(conversation).toHaveTextContent("I've explored.");
     expect(screen.getByRole("button", { name: /3 tool calls/ })).toBeInTheDocument();
   });
 

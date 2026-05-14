@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { GhCheckState, GhPrRecord } from "../../shared/types.js";
+import { safeJsonParseObject } from "../../shared/safeJson.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -65,7 +66,7 @@ export class GhService {
     } catch {
       return null;
     }
-    const parsed = safeJsonObject<RepoViewResponse>(stdout);
+    const parsed = safeJsonParseObject<RepoViewResponse>(stdout);
     const owner = parsed?.owner?.login ?? null;
     const name = parsed?.name ?? null;
     if (!owner || !name) return null;
@@ -109,7 +110,7 @@ export class GhService {
       // caller treats absence as "still no PR" and the timeline stays empty.
       return this.database.listGhPrForSession(sessionId);
     }
-    const parsed = safeJsonObject<PrViewResponse>(stdout);
+    const parsed = safeJsonParseObject<PrViewResponse>(stdout);
     if (!parsed || typeof parsed.number !== "number" || !parsed.headRefOid) {
       return this.database.listGhPrForSession(sessionId);
     }
@@ -122,18 +123,6 @@ export class GhService {
     };
     this.database.upsertGhPr(record);
     return this.database.listGhPrForSession(sessionId);
-  }
-}
-
-function safeJsonObject<T>(text: string): T | null {
-  try {
-    const value: unknown = JSON.parse(text);
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      return value as T;
-    }
-    return null;
-  } catch {
-    return null;
   }
 }
 

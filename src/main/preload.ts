@@ -13,6 +13,14 @@ import type {
   DiagnosticsReport,
   DiscoveredProvider,
   GhPrRecord,
+  GitCommitInput,
+  GitCommitResult,
+  GitCreateBranchInput,
+  GitCreateBranchResult,
+  GitPushInput,
+  GitPushResult,
+  GitViewOrCreatePrInput,
+  GitViewOrCreatePrResult,
   LaunchProviderSessionInput,
   Learning,
   McpClientListing,
@@ -120,7 +128,11 @@ const api: ArgmaxApi = {
     listChangedFiles: (workspaceId: string) =>
       ipcRenderer.invoke("review:list-changed-files", workspaceId) as Promise<ChangedFileSummary[]>,
     loadDiff: (workspaceId: string, filePath?: string) =>
-      ipcRenderer.invoke("review:load-diff", workspaceId, filePath) as Promise<WorkspaceDiff>
+      ipcRenderer.invoke("review:load-diff", workspaceId, filePath) as Promise<WorkspaceDiff>,
+    listChangedFilesForProject: (projectId: string) =>
+      ipcRenderer.invoke("review:list-changed-files-for-project", projectId) as Promise<ChangedFileSummary[]>,
+    loadDiffForProject: (projectId: string, filePath?: string) =>
+      ipcRenderer.invoke("review:load-diff-for-project", projectId, filePath) as Promise<WorkspaceDiff>
   },
   workspace: {
     listFiles: (workspaceId: string) =>
@@ -140,7 +152,11 @@ const api: ArgmaxApi = {
         expectedMtimeMs
       }) as Promise<WorkspaceFileWriteResult>,
     statFile: (workspaceId: string, filePath: string) =>
-      ipcRenderer.invoke("workspace:stat-file", { workspaceId, filePath }) as Promise<WorkspaceFileStat>
+      ipcRenderer.invoke("workspace:stat-file", { workspaceId, filePath }) as Promise<WorkspaceFileStat>,
+    listFilesForProject: (projectId: string) =>
+      ipcRenderer.invoke("workspace:list-files-for-project", { projectId }) as Promise<WorkspaceFileEntry[]>,
+    readFileForProject: (projectId: string, filePath: string) =>
+      ipcRenderer.invoke("workspace:read-file-for-project", { projectId, filePath }) as Promise<WorkspaceFilePreview>
   },
   checks: {
     run: (input: RunCheckInput) => ipcRenderer.invoke("checks:run", input) as Promise<DashboardSnapshot["checks"][number]>
@@ -190,6 +206,14 @@ const api: ArgmaxApi = {
     listForSession: (input: { sessionId: string }) =>
       ipcRenderer.invoke("prs:listForSession", input) as Promise<GhPrRecord[]>,
     refresh: (input: { sessionId: string }) => ipcRenderer.invoke("prs:refresh", input) as Promise<GhPrRecord[]>
+  },
+  git: {
+    commit: (input: GitCommitInput) => ipcRenderer.invoke("git:commit", input) as Promise<GitCommitResult>,
+    push: (input: GitPushInput) => ipcRenderer.invoke("git:push", input) as Promise<GitPushResult>,
+    createBranch: (input: GitCreateBranchInput) =>
+      ipcRenderer.invoke("git:createBranch", input) as Promise<GitCreateBranchResult>,
+    viewOrCreatePr: (input: GitViewOrCreatePrInput) =>
+      ipcRenderer.invoke("git:viewOrCreatePr", input) as Promise<GitViewOrCreatePrResult>
   },
   terminal: {
     spawn: (input: TerminalSpawnInput) =>

@@ -21,7 +21,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
-import { useReviewState } from "../hooks/useReviewState.js";
+import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
@@ -73,7 +73,13 @@ export function SessionPane({
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
-  const reviewState = useReviewState(workspace);
+  // Wrap in useMemo so the hook's source identity is stable between renders —
+  // otherwise a fresh object every render would invalidate downstream deps.
+  const reviewSource = useMemo<ReviewSource | null>(
+    () => (workspace ? { kind: "workspace", workspace } : null),
+    [workspace]
+  );
+  const reviewState = useReviewState(reviewSource);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {

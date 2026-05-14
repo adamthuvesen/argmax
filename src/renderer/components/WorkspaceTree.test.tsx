@@ -21,6 +21,7 @@ function makeState(entries: WorkspaceFileEntry[]): WorkspaceFilesState {
     externalChange: false,
     saveState: "idle",
     saveError: null,
+    canEdit: true,
     editFile: () => undefined,
     saveFile: () => Promise.resolve(),
     reloadFile: () => undefined,

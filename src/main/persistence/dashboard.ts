@@ -54,7 +54,7 @@ export function listWorkspaceStatus(
   input?: WorkspaceStatusInputFilter
 ): WorkspaceStatusSnapshot {
   const preferredSessionIds = loadPreferredSessionIds(connection);
-  const workspaceIds = input?.workspaceIds;
+  const workspaceIds = input?.workspaceIds ? [...new Set(input.workspaceIds)].slice(0, DASHBOARD_ROW_LIMIT) : undefined;
   const workspaceFilter = buildWorkspaceFilter(workspaceIds, "id");
   const sessionFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
   const checkFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");

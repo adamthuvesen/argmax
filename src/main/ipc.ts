@@ -9,11 +9,16 @@ import {
   approvalsPendingInputSchema,
   dashboardListInputSchema,
   dashboardLoadInputSchema,
+  gitCommitInputSchema,
+  gitCreateBranchInputSchema,
+  gitPushInputSchema,
+  gitViewOrCreatePrInputSchema,
   healthPingInputSchema,
   IPC_CHANNELS,
   launchProviderSessionInputSchema,
   listDetectedIdesInputSchema,
   loadDiffInputSchema,
+  loadDiffForProjectInputSchema,
   openInIdeInputSchema,
   prepareCommitInputSchema,
   projectsListInputSchema,
@@ -38,7 +43,10 @@ import {
   terminalWriteInputSchema,
   updateProjectSettingsInputSchema,
   workspaceListFilesInputSchema,
+  workspaceListFilesForProjectInputSchema,
   workspaceReadFileInputSchema,
+  workspaceReadFileForProjectInputSchema,
+  reviewListChangedFilesForProjectInputSchema,
   workspaceStatFileInputSchema,
   workspaceWriteFileInputSchema,
   workspaceStatusInputSchema,
@@ -62,6 +70,7 @@ import { CommitPreparationService } from "./review/commitPreparationService.js";
 import { listSkills } from "./skills/skillRegistry.js";
 import { listMcpServers } from "./mcp/mcpRegistry.js";
 import { runGitText } from "./git/exec.js";
+import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
 
 /**
@@ -71,7 +80,7 @@ import { GhService } from "./gh/ghService.js";
  * `invoke()` rejects with a structured payload instead of crashing inside
  * the service.
  *
- * Use as: `ipcMain.handle("channel", withValidation(schema, (input) => ...))`.
+ * Use as: `register("channel", withValidation(schema, (input) => ...))`.
  */
 export interface IpcInvalidInputError extends Error {
   code: "INVALID_INPUT";
@@ -153,16 +162,22 @@ export function registerIpcHandlers(
   const checkpoints = new CheckpointService(database);
   const commits = new CommitPreparationService(database);
   const ghService = new GhService(database);
+  const gitOps = new GitOpsService(database, ghService);
+  const registeredChannels: IpcChannel[] = [];
+  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
+    ipcMain.handle(channel, listener);
+    registeredChannels.push(channel);
+  };
 
-  ipcMain.handle(
+  register(
     "health:ping",
     withValidation(healthPingInputSchema, () => ({
       ok: true,
       timestamp: new Date().toISOString()
     }))
   );
-  ipcMain.handle("projects:list", withValidation(projectsListInputSchema, () => database.listProjects()));
-  ipcMain.handle(
+  register("projects:list", withValidation(projectsListInputSchema, () => database.listProjects()));
+  register(
     "projects:pick-folder",
     withValidation(projectsPickFolderInputSchema, async () => {
       const result = await dialog.showOpenDialog({
@@ -180,19 +195,19 @@ export function registerIpcHandlers(
       } as const;
     })
   );
-  ipcMain.handle("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
-  ipcMain.handle("dashboard:load", withValidation(dashboardLoadInputSchema, () => database.loadDashboard()));
-  ipcMain.handle("providers:discover", withValidation(providersDiscoverInputSchema, () => discoverProviders()));
+  register("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
+  register("dashboard:load", withValidation(dashboardLoadInputSchema, () => database.loadDashboard()));
+  register("providers:discover", withValidation(providersDiscoverInputSchema, () => discoverProviders()));
 
-  ipcMain.handle(
+  register(
     "projects:register",
     withValidation(registerProjectInputSchema, (input) => projects.registerProject(input))
   );
-  ipcMain.handle(
+  register(
     "projects:update-settings",
     withValidation(updateProjectSettingsInputSchema, (input) => projects.updateSettings(input))
   );
-  ipcMain.handle(
+  register(
     "projects:list-branches",
     withValidation(listBranchesInputSchema, async (input) => {
       const project = database.getProject(input.projectId);
@@ -200,7 +215,7 @@ export function registerIpcHandlers(
       return raw.split("\n").map((b) => b.replace(/^\*\s*/, "").trim()).filter(Boolean);
     })
   );
-  ipcMain.handle(
+  register(
     "projects:switch-branch",
     withValidation(switchBranchInputSchema, async (input) => {
       const project = database.getProject(input.projectId);
@@ -211,27 +226,30 @@ export function registerIpcHandlers(
       return database.updateProjectBranch(input.projectId, input.branch);
     })
   );
-  ipcMain.handle(
+  register(
     "workspaces:create-isolated",
     withValidation(createWorkspaceInputSchema, (input) => workspaces.createIsolatedWorkspace(input))
   );
-  ipcMain.handle(
+  register(
     "workspaces:create-current",
     withValidation(createCurrentWorkspaceInputSchema, (input) => workspaces.createCurrentWorkspaceSession(input))
   );
-  ipcMain.handle(
+  register(
     "workspaces:refresh-status",
     withValidation(workspaceIdInputSchema, (workspaceId) => workspaces.refreshGitStatus(workspaceId))
   );
-  ipcMain.handle(
+  register(
     "workspaces:keep",
     withValidation(workspaceIdInputSchema, (workspaceId) => workspaces.keepWorkspace(workspaceId))
   );
-  ipcMain.handle(
+  register(
     "workspaces:archive",
-    withValidation(workspaceIdInputSchema, (workspaceId) => workspaces.archiveWorkspace(workspaceId))
+    withValidation(workspaceIdInputSchema, (workspaceId) => {
+      checks.cancelWorkspaceChecks(workspaceId);
+      return workspaces.archiveWorkspace(workspaceId);
+    })
   );
-  ipcMain.handle(
+  register(
     "workspaces:openInIde",
     withValidation(openInIdeInputSchema, async (input) => {
       const workspace = database.getWorkspace(input.workspaceId);
@@ -244,11 +262,11 @@ export function registerIpcHandlers(
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "system:listDetectedIdes",
     withValidation(listDetectedIdesInputSchema, () => detectInstalledIdes())
   );
-  ipcMain.handle("system:diagnostics", withValidation(z.void(), () => {
+  register("system:diagnostics", withValidation(z.void(), () => {
     const require = createRequire(import.meta.url);
     const pkg = require("../../package.json") as { version?: string };
     let sqliteVersion = "";
@@ -269,18 +287,18 @@ export function registerIpcHandlers(
       generatedAt: new Date().toISOString()
     };
   }));
-  ipcMain.handle("system:vacuumDatabase", withValidation(z.void(), () => {
+  register("system:vacuumDatabase", withValidation(z.void(), () => {
     database.connection.exec("VACUUM");
     return { ok: true } as const;
   }));
-  ipcMain.handle("mcp:list", withValidation(z.void(), () => listMcpServers()));
-  ipcMain.handle(
+  register("mcp:list", withValidation(z.void(), () => listMcpServers()));
+  register(
     "learnings:list",
     withValidation(z.object({ projectId: z.string().min(1), limit: z.number().int().min(1).max(200).optional() }), (input) =>
       database.listLearnings(input.projectId, input.limit)
     )
   );
-  ipcMain.handle(
+  register(
     "learnings:update",
     withValidation(
       z.object({
@@ -291,46 +309,68 @@ export function registerIpcHandlers(
       (input) => database.updateLearning(input)
     )
   );
-  ipcMain.handle(
+  register(
     "learnings:delete",
     withValidation(z.object({ id: z.string().min(1) }), (input) => {
       database.deleteLearning(input.id);
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "session:search",
     withValidation(
       z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(200).optional() }),
       (input) => database.searchEvents(input)
     )
   );
-  ipcMain.handle(
+  register(
     "workspaces:set-pinned",
     withValidation(
       z.object({ workspaceId: z.string().min(1), pinned: z.boolean() }),
       (input) => database.setWorkspacePinned(input.workspaceId, input.pinned)
     )
   );
-  ipcMain.handle(
+  register(
     "prs:listForSession",
     withValidation(z.object({ sessionId: z.string().min(1) }), (input) =>
       ghService.listForSession(input.sessionId)
     )
   );
-  ipcMain.handle(
+  register(
     "prs:refresh",
     withValidation(z.object({ sessionId: z.string().min(1) }), (input) => ghService.refresh(input.sessionId))
   );
-  ipcMain.handle(
+  register(
+    "git:commit",
+    withValidation(gitCommitInputSchema, (input) => gitOps.commitAll(input))
+  );
+  register(
+    "git:push",
+    withValidation(gitPushInputSchema, (input) => gitOps.push(input))
+  );
+  register(
+    "git:createBranch",
+    withValidation(gitCreateBranchInputSchema, (input) => gitOps.createBranch(input))
+  );
+  register(
+    "git:viewOrCreatePr",
+    withValidation(gitViewOrCreatePrInputSchema, async (input) => {
+      const result = await gitOps.viewOrCreatePr(input);
+      // Defer to Electron's default browser handler so the PR opens in the
+      // user's chosen browser instead of a new Electron window.
+      await shell.openExternal(result.url);
+      return result;
+    })
+  );
+  register(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
   );
-  ipcMain.handle(
+  register(
     "providers:launch",
     withValidation(launchProviderSessionInputSchema, (input) => providerSessions.launch(input))
   );
-  ipcMain.handle(
+  register(
     "providers:send-input",
     withValidation(providerSessionInputSchema, async (input) => {
       await providerSessions.sendInput(
@@ -347,105 +387,130 @@ export function registerIpcHandlers(
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "providers:resize",
     withValidation(providerSessionResizeInputSchema, (input) => {
       providerSessions.resize(input.sessionId, input.cols, input.rows);
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "providers:terminate",
     withValidation(providerSessionTerminateInputSchema, async (sessionId) => {
       await providerSessions.terminate(sessionId);
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "terminal:spawn",
     withValidation(terminalSpawnInputSchema, (input) => terminals.spawn(input))
   );
-  ipcMain.handle(
+  register(
     "terminal:write",
     withValidation(terminalWriteInputSchema, (input) => {
       terminals.write(input);
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "terminal:resize",
     withValidation(terminalResizeInputSchema, (input) => {
       terminals.resize(input);
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "terminal:terminate",
     withValidation(terminalTerminateInputSchema, (terminalId) => {
       terminals.terminate(terminalId);
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "approvals:resolve",
     withValidation(resolveApprovalInputSchema, (input) => database.resolveApproval(input.approvalId, input.status))
   );
-  ipcMain.handle("approvals:pending", withValidation(approvalsPendingInputSchema, () => database.listPendingApprovals()));
-  ipcMain.handle(
+  register("approvals:pending", withValidation(approvalsPendingInputSchema, () => database.listPendingApprovals()));
+  register(
     "session:eventsSince",
     withValidation(sessionEventsSinceInputSchema, (input) => database.listSessionEventsSince(input))
   );
   // Cost & token transparency (additive — see SPEC_COST_TRANSPARENCY.md)
-  ipcMain.handle(
+  register(
     "session:costSummary",
     withValidation(sessionCostSummaryInputSchema, (input) => database.getSessionCostSummary(input.sessionId))
   );
-  ipcMain.handle(
+  register(
     "review:list-changed-files",
     withValidation(workspaceIdInputSchema, (workspaceId) => review.listChangedFiles(workspaceId))
   );
   // `review:load-diff` is invoked positionally as (workspaceId, filePath?).
-  ipcMain.handle(
+  register(
     "review:load-diff",
     withTupleValidation(loadDiffInputSchema, ([workspaceId, filePath]) => review.loadDiff(workspaceId, filePath))
   );
-  ipcMain.handle(
+  register(
+    "review:list-changed-files-for-project",
+    withValidation(reviewListChangedFilesForProjectInputSchema, (projectId) =>
+      review.listChangedFilesForProject(projectId)
+    )
+  );
+  // Mirrors `review:load-diff`'s positional invocation — `(projectId, filePath?)`.
+  register(
+    "review:load-diff-for-project",
+    withTupleValidation(loadDiffForProjectInputSchema, ([projectId, filePath]) =>
+      review.loadDiffForProject(projectId, filePath)
+    )
+  );
+  register(
     "workspace:list-files",
     withValidation(workspaceListFilesInputSchema, (input) => workspaceFiles.listFiles(input.workspaceId))
   );
-  ipcMain.handle(
+  register(
     "workspace:read-file",
     withValidation(workspaceReadFileInputSchema, (input) => workspaceFiles.readFile(input.workspaceId, input.filePath))
   );
-  ipcMain.handle(
+  register(
+    "workspace:list-files-for-project",
+    withValidation(workspaceListFilesForProjectInputSchema, (input) =>
+      workspaceFiles.listFilesForProject(input.projectId)
+    )
+  );
+  register(
+    "workspace:read-file-for-project",
+    withValidation(workspaceReadFileForProjectInputSchema, (input) =>
+      workspaceFiles.readFileForProject(input.projectId, input.filePath)
+    )
+  );
+  register(
     "workspace:write-file",
     withValidation(workspaceWriteFileInputSchema, (input) =>
       workspaceFiles.writeFile(input.workspaceId, input.filePath, input.content, input.expectedMtimeMs)
     )
   );
-  ipcMain.handle(
+  register(
     "workspace:stat-file",
     withValidation(workspaceStatFileInputSchema, (input) =>
       workspaceFiles.statFile(input.workspaceId, input.filePath)
     )
   );
-  ipcMain.handle(
+  register(
     "checks:run",
     withValidation(runCheckInputSchema, (input) => checks.runWorkspaceCheck(input))
   );
-  ipcMain.handle(
+  register(
     "checkpoints:create",
     withValidation(createCheckpointInputSchema, (input) => checkpoints.createCheckpoint(input))
   );
-  ipcMain.handle(
+  register(
     "attempts:select-preferred",
     withValidation(selectPreferredAttemptInputSchema, (input) => database.selectPreferredAttempt(input.sessionId))
   );
-  ipcMain.handle(
+  register(
     "commits:prepare",
     withValidation(prepareCommitInputSchema, (input) => commits.prepareCommit(input))
   );
-  ipcMain.handle(
+  register(
     "system:open-path",
     withValidation(systemOpenPathInputSchema, async (input) => {
       const target = isAbsolute(input.path)
@@ -458,7 +523,7 @@ export function registerIpcHandlers(
       return { ok: true } as const;
     })
   );
-  ipcMain.handle(
+  register(
     "skills:list",
     withValidation(skillsListInputSchema, (input) => {
       // Resolve workspace path so workspace-local .claude/.codex skill dirs
@@ -476,7 +541,7 @@ export function registerIpcHandlers(
     })
   );
 
-  return REGISTERED_IPC_CHANNELS;
+  return registeredChannels;
 }
 
 /**

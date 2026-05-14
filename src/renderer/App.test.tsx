@@ -51,6 +51,7 @@ const snapshot: DashboardSnapshot = {
       modelLabel: "GPT-5.3 Codex",
       modelId: "gpt-5.3-codex",
       reasoningEffort: "medium",
+      permissionMode: "auto-approve",
       providerConversationId: null,
       prompt: "Build dashboard",
       state: "running",
@@ -250,13 +251,19 @@ describe("App", () => {
       },
       review: {
         listChangedFiles,
-        loadDiff
+        loadDiff,
+        listChangedFilesForProject: () => Promise.resolve([]),
+        loadDiffForProject: () =>
+          Promise.resolve({ workspaceId: "", filePath: null, content: "" })
       },
       workspace: {
         listFiles: listWorkspaceFiles,
         readFile: readWorkspaceFile,
         writeFile: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
-        statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 })
+        statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
+        listFilesForProject: () => Promise.resolve([]),
+        readFileForProject: () =>
+          Promise.resolve({ kind: "skipped", reason: "not-a-file" } as const)
       },
       checks: {
         run: () => Promise.resolve(missingCheck())
@@ -320,6 +327,12 @@ describe("App", () => {
       prs: {
         listForSession: () => Promise.resolve([]),
         refresh: () => Promise.resolve([])
+      },
+      git: {
+        commit: () => Promise.resolve({ commitSha: "deadbeef", branch: "main" }),
+        push: () => Promise.resolve({ branch: "main", upstreamSet: false }),
+        createBranch: () => Promise.resolve({ branch: "feature/x" }),
+        viewOrCreatePr: () => Promise.resolve({ action: "opened", url: "https://x", prNumber: 1 })
       },
       terminal: {
         spawn: () => Promise.resolve({ terminalId: "test-terminal" }),
@@ -735,6 +748,7 @@ describe("App", () => {
       modelLabel: "GPT-5.3 Codex",
       modelId: "gpt-5.3-codex",
       reasoningEffort: "medium",
+      permissionMode: "auto-approve",
       providerConversationId: null,
       prompt: "New chat",
       state: "running",
@@ -973,6 +987,7 @@ describe("App", () => {
       provider: "claude",
       modelLabel: "Claude Sonnet 4.6",
       modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "Second chat",
       state: "complete",

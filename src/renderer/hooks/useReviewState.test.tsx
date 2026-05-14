@@ -1,7 +1,11 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, WorkspaceSummary } from "../../shared/types.js";
-import { useReviewState } from "./useReviewState.js";
+import { useReviewState, type ReviewSource } from "./useReviewState.js";
+
+function workspaceSource(workspace: WorkspaceSummary): ReviewSource {
+  return { kind: "workspace", workspace };
+}
 
 function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
   return {
@@ -37,12 +41,19 @@ describe("useReviewState — IPC fan-out resistance", () => {
       configurable: true,
       writable: true,
       value: {
-        review: { listChangedFiles, loadDiff: vi.fn().mockResolvedValue(null) },
+        review: {
+          listChangedFiles,
+          loadDiff: vi.fn().mockResolvedValue(null),
+          listChangedFilesForProject: vi.fn().mockResolvedValue([]),
+          loadDiffForProject: vi.fn().mockResolvedValue(null)
+        },
         workspace: {
           listFiles: listWorkspaceFiles,
           readFile: vi.fn(),
           writeFile: vi.fn(),
-          statFile: vi.fn()
+          statFile: vi.fn(),
+          listFilesForProject: vi.fn().mockResolvedValue([]),
+          readFileForProject: vi.fn()
         }
       } satisfies Partial<ArgmaxApi>
     });
@@ -59,7 +70,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     // caused ~1 IPC roundtrip per token. Fix: depend on a stable signal
     // (workspace.id + changedFiles count).
     const initial = makeWorkspace({ lastActivityAt: "2026-05-12T15:54:00.000Z" });
-    const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(ws), {
+    const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)), {
       initialProps: { ws: initial }
     });
 
@@ -79,7 +90,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("does refetch listChangedFiles when changedFiles count changes", async () => {
     const initial = makeWorkspace({ changedFiles: 3 });
-    const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(ws), {
+    const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)), {
       initialProps: { ws: initial }
     });
 
@@ -91,7 +102,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("does refetch when the workspace id changes", async () => {
-    const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(ws), {
+    const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)), {
       initialProps: { ws: makeWorkspace({ id: "workspace-1" }) }
     });
 
@@ -108,7 +119,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     // re-fetched on every `lastActivityAt` change too.
     const initial = makeWorkspace();
     const { result, rerender } = renderHook(
-      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(ws),
+      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
       { initialProps: { ws: initial } }
     );
 

@@ -317,7 +317,8 @@ export const migrations: Migration[] = [
   {
     version: 8,
     name: "sessions_last_model_id",
-    affectedTables: ["sessions"],
+    // sessions is re-verified by v14's affectedTables (post-v14 manifest).
+    affectedTables: [],
     up: `
       -- Denormalized fallback for the most recently observed provider model id.
       -- Populated from Codex turn_context events (and any usage event) so the
@@ -467,6 +468,15 @@ export const migrations: Migration[] = [
       SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', created_at_ms_legacy / 1000.0, 'unixepoch');
       ALTER TABLE usage_events DROP COLUMN created_at_ms_legacy;
     `
+  },
+  {
+    version: 14,
+    name: "sessions_permission_mode",
+    affectedTables: ["sessions"],
+    up: `
+      ALTER TABLE sessions ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'auto-approve'
+        CHECK (permission_mode IN ('auto-approve', 'ask-each-time'));
+    `
   }
 ];
 
@@ -540,6 +550,7 @@ const expectedColumns: Record<string, string[]> = {
     "model_id",
     "model_label",
     "output_tokens",
+    "permission_mode",
     "prompt",
     "provider",
     "provider_conversation_id",

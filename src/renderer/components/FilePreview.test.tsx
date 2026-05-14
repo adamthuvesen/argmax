@@ -36,6 +36,7 @@ function makeState(overrides: Partial<WorkspaceFilesState> = {}): WorkspaceFiles
     externalChange: false,
     saveState: "idle",
     saveError: null,
+    canEdit: true,
     editFile: () => undefined,
     saveFile: () => Promise.resolve(),
     reloadFile: () => undefined,

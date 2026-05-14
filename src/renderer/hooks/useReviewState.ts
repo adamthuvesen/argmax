@@ -1,15 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ChangedFileSummary,
+  ProjectSummary,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
+  WorkspaceFileStat,
+  WorkspaceFileWriteResult,
   WorkspaceSummary
 } from "../../shared/types.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
 export type ReviewPanelMode = "changes" | "files";
 export type WorkspaceFileSaveState = "idle" | "saving" | "error";
+
+/**
+ * Either a workspace (worktree-backed, full read/write) or the project's
+ * main checkout (read-only, surfaced on the LaunchSurface before a session
+ * exists). Both render the same Changes + Files panel; the project variant
+ * disables write/stat polling because the main repo shouldn't be edited from
+ * the landing page.
+ */
+export type ReviewSource =
+  | { kind: "workspace"; workspace: WorkspaceSummary }
+  | { kind: "project"; project: ProjectSummary };
+
+type SourceKind = ReviewSource["kind"];
 
 export interface WorkspaceFilesState {
   entries: WorkspaceFileEntry[];
@@ -31,6 +47,8 @@ export interface WorkspaceFilesState {
   /** Save lifecycle (writeFile in flight / errored). */
   saveState: WorkspaceFileSaveState;
   saveError: string | null;
+  /** False when the panel is rendered for a project (main checkout, read-only). */
+  canEdit: boolean;
   editFile: (content: string) => void;
   saveFile: () => Promise<void>;
   reloadFile: () => void;
@@ -57,7 +75,64 @@ export interface ReviewState {
   toggleSummary: () => void;
 }
 
-export function useReviewState(workspace: WorkspaceSummary | null): ReviewState {
+function ipcListChangedFiles(kind: SourceKind, id: string): Promise<ChangedFileSummary[]> {
+  if (!window.argmax) return Promise.resolve([]);
+  return kind === "workspace"
+    ? window.argmax.review.listChangedFiles(id)
+    : window.argmax.review.listChangedFilesForProject(id);
+}
+
+function ipcLoadDiff(kind: SourceKind, id: string, filePath: string): Promise<WorkspaceDiff> {
+  if (!window.argmax) return Promise.reject(new Error("bridge unavailable"));
+  return kind === "workspace"
+    ? window.argmax.review.loadDiff(id, filePath)
+    : window.argmax.review.loadDiffForProject(id, filePath);
+}
+
+function ipcListFiles(kind: SourceKind, id: string): Promise<WorkspaceFileEntry[]> {
+  if (!window.argmax) return Promise.resolve([]);
+  return kind === "workspace"
+    ? window.argmax.workspace.listFiles(id)
+    : window.argmax.workspace.listFilesForProject(id);
+}
+
+function ipcReadFile(kind: SourceKind, id: string, filePath: string): Promise<WorkspaceFilePreview> {
+  if (!window.argmax) return Promise.reject(new Error("bridge unavailable"));
+  return kind === "workspace"
+    ? window.argmax.workspace.readFile(id, filePath)
+    : window.argmax.workspace.readFileForProject(id, filePath);
+}
+
+function ipcStatFile(kind: SourceKind, id: string, filePath: string): Promise<WorkspaceFileStat> | null {
+  if (kind !== "workspace" || !window.argmax) return null;
+  return window.argmax.workspace.statFile(id, filePath);
+}
+
+function ipcWriteFile(
+  kind: SourceKind,
+  id: string,
+  filePath: string,
+  content: string,
+  expectedMtimeMs: number | null
+): Promise<WorkspaceFileWriteResult> | null {
+  if (kind !== "workspace" || !window.argmax) return null;
+  return window.argmax.workspace.writeFile(id, filePath, content, expectedMtimeMs);
+}
+
+export function useReviewState(source: ReviewSource | null): ReviewState {
+  const sourceKind: SourceKind | null = source?.kind ?? null;
+  const sourceId: string | null = source
+    ? source.kind === "workspace"
+      ? source.workspace.id
+      : source.project.id
+    : null;
+  // Project sources have no live activity counter — workspace mode reuses the
+  // workspace.changedFiles dep to refetch when an agent edits files; project
+  // mode refetches only on source id change (manual reload otherwise).
+  const changedFilesKey: number | null =
+    source?.kind === "workspace" ? source.workspace.changedFiles : null;
+  const canEdit = sourceKind === "workspace";
+
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
   const [filesError, setFilesError] = useState<string | null>(null);
@@ -86,17 +161,21 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
   const workspaceListToken = useRef(0);
   const workspaceReadToken = useRef(0);
   const workspaceSaveToken = useRef(0);
-  const previousWorkspaceId = useRef<string | null>(null);
+  const previousSourceId = useRef<string | null>(null);
   const isPanelOpenRef = useRef(false);
   // Refs mirror the latest values for use inside event listeners (focus,
   // dashboard:delta) so we don't need to re-bind the listener on every keystroke.
-  const workspaceIdRef = useRef<string | null>(null);
+  const sourceIdRef = useRef<string | null>(null);
+  const sourceKindRef = useRef<SourceKind | null>(null);
+  const canEditRef = useRef(false);
   const workspaceFileSelectedRef = useRef<string | null>(null);
   const workspaceFileDiskMtimeMsRef = useRef<number | null>(null);
 
   useEffect(() => {
-    workspaceIdRef.current = workspace?.id ?? null;
-  }, [workspace?.id]);
+    sourceIdRef.current = sourceId;
+    sourceKindRef.current = sourceKind;
+    canEditRef.current = canEdit;
+  }, [sourceId, sourceKind, canEdit]);
   useEffect(() => {
     workspaceFileSelectedRef.current = workspaceFileSelected;
   }, [workspaceFileSelected]);
@@ -110,9 +189,8 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
 
   useEffect(() => {
     const token = ++fileLoadToken.current;
-    const workspaceId = workspace?.id ?? null;
-    if (previousWorkspaceId.current !== workspaceId) {
-      previousWorkspaceId.current = workspaceId;
+    if (previousSourceId.current !== sourceId) {
+      previousSourceId.current = sourceId;
       setSelectedFilePath(null);
       setDiff(null);
       setDiffState("idle");
@@ -135,7 +213,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
       setWorkspaceFileSaveError(null);
     }
 
-    if (!workspace?.id || !window.argmax) {
+    if (!sourceId || !sourceKind || !window.argmax) {
       setFiles([]);
       setFilesState("idle");
       setFilesError(null);
@@ -146,8 +224,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
 
     setFilesState("loading");
     setFilesError(null);
-    void window.argmax.review
-      .listChangedFiles(workspace.id)
+    void ipcListChangedFiles(sourceKind, sourceId)
       .then((result) => {
         if (token !== fileLoadToken.current) {
           return;
@@ -173,14 +250,15 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
         setFilesState("error");
         setFilesError(error instanceof Error ? error.message : "Could not load changed files.");
       });
-    // Depend on the changed-file count, not on lastActivityAt — the activity
-    // timestamp bumps for every event delta, which would re-fetch the changed
-    // files list ~once per streamed token.
-  }, [workspace?.id, workspace?.changedFiles]);
+    // Depend on the changed-file count (workspace mode only), not on
+    // lastActivityAt — the activity timestamp bumps for every event delta,
+    // which would re-fetch the changed files list ~once per streamed token.
+    // Project mode has no live counter; we refetch only on source id change.
+  }, [sourceId, sourceKind, changedFilesKey]);
 
   useEffect(() => {
     const token = ++diffLoadToken.current;
-    if (!workspace?.id || !selectedFilePath || !window.argmax) {
+    if (!sourceId || !sourceKind || !selectedFilePath || !window.argmax) {
       setDiff(null);
       setDiffState("idle");
       setDiffError(null);
@@ -189,8 +267,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
 
     setDiffState("loading");
     setDiffError(null);
-    void window.argmax.review
-      .loadDiff(workspace.id, selectedFilePath)
+    void ipcLoadDiff(sourceKind, sourceId, selectedFilePath)
       .then((result) => {
         if (token !== diffLoadToken.current) {
           return;
@@ -206,12 +283,12 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
         setDiffState("error");
         setDiffError(error instanceof Error ? error.message : "Could not load diff.");
       });
-  }, [workspace?.id, selectedFilePath]);
+  }, [sourceId, sourceKind, selectedFilePath]);
 
   useEffect(() => {
     if (mode !== "files" || !isPanelOpen) return;
     const token = ++workspaceListToken.current;
-    if (!workspace?.id || !window.argmax) {
+    if (!sourceId || !sourceKind || !window.argmax) {
       setWorkspaceFileEntries([]);
       setWorkspaceFilesListState("idle");
       setWorkspaceFilesListError(null);
@@ -219,8 +296,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
     }
     setWorkspaceFilesListState("loading");
     setWorkspaceFilesListError(null);
-    void window.argmax.workspace
-      .listFiles(workspace.id)
+    void ipcListFiles(sourceKind, sourceId)
       .then((entries) => {
         if (token !== workspaceListToken.current) return;
         setWorkspaceFileEntries(entries);
@@ -232,15 +308,12 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
         setWorkspaceFilesListState("error");
         setWorkspaceFilesListError(error instanceof Error ? error.message : "Could not load files.");
       });
-    // Same reason as the changed-files effect above: depend on the workspace
-    // identity + the (stable) `changedFiles` count, not on `lastActivityAt`.
-    // The activity timestamp bumps once per streamed token, which would
-    // re-list the entire workspace file tree on every chat tick.
-  }, [mode, isPanelOpen, workspace?.id, workspace?.changedFiles]);
+    // Same reason as the changed-files effect above.
+  }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey]);
 
   useEffect(() => {
     const token = ++workspaceReadToken.current;
-    if (!workspace?.id || !workspaceFileSelected || !window.argmax || mode !== "files") {
+    if (!sourceId || !sourceKind || !workspaceFileSelected || !window.argmax || mode !== "files") {
       setWorkspaceFilePreview(null);
       setWorkspaceFilePreviewState("idle");
       setWorkspaceFilePreviewError(null);
@@ -253,8 +326,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
     setWorkspaceFilePreviewState("loading");
     setWorkspaceFilePreviewError(null);
     setWorkspaceFileExternalChange(false);
-    void window.argmax.workspace
-      .readFile(workspace.id, workspaceFileSelected)
+    void ipcReadFile(sourceKind, sourceId, workspaceFileSelected)
       .then((preview) => {
         if (token !== workspaceReadToken.current) return;
         setWorkspaceFilePreview(preview);
@@ -278,7 +350,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
         setWorkspaceFileOriginal(null);
         setWorkspaceFileDiskMtimeMs(null);
       });
-  }, [workspace?.id, workspaceFileSelected, mode]);
+  }, [sourceId, sourceKind, workspaceFileSelected, mode]);
 
   const openFile = useCallback((filePath: string): void => {
     setSelectedFilePath(filePath);
@@ -291,6 +363,9 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
   }, []);
 
   const editWorkspaceFile = useCallback((content: string): void => {
+    // Read-only sources (project main checkout) drop edits on the floor so
+    // CodeMirror's `onChange` from a stray keystroke can't dirty the buffer.
+    if (!canEditRef.current) return;
     setWorkspaceFileBuffer(content);
     // Clear a stale save-error as soon as the user keeps typing — the next
     // save attempt will produce a fresh error if it still applies.
@@ -299,14 +374,14 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
   }, []);
 
   const reloadWorkspaceFile = useCallback((): void => {
-    const workspaceId = workspaceIdRef.current;
+    const id = sourceIdRef.current;
+    const kind = sourceKindRef.current;
     const filePath = workspaceFileSelectedRef.current;
-    if (!workspaceId || !filePath || !window.argmax) return;
+    if (!id || !kind || !filePath || !window.argmax) return;
     const token = ++workspaceReadToken.current;
     setWorkspaceFilePreviewState("loading");
     setWorkspaceFileExternalChange(false);
-    void window.argmax.workspace
-      .readFile(workspaceId, filePath)
+    void ipcReadFile(kind, id, filePath)
       .then((preview) => {
         if (token !== workspaceReadToken.current) return;
         setWorkspaceFilePreview(preview);
@@ -327,12 +402,19 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
   const dismissExternalChange = useCallback((): void => {
     // "Keep my edits" — bump our notion of disk mtime to whatever stat last
     // reported so the next save passes the guard and overwrites the file.
-    if (!workspaceIdRef.current || !workspaceFileSelectedRef.current || !window.argmax) {
+    const id = sourceIdRef.current;
+    const kind = sourceKindRef.current;
+    const filePath = workspaceFileSelectedRef.current;
+    if (!id || !kind || !filePath) {
       setWorkspaceFileExternalChange(false);
       return;
     }
-    void window.argmax.workspace
-      .statFile(workspaceIdRef.current, workspaceFileSelectedRef.current)
+    const statPromise = ipcStatFile(kind, id, filePath);
+    if (!statPromise) {
+      setWorkspaceFileExternalChange(false);
+      return;
+    }
+    void statPromise
       .then((latest) => {
         setWorkspaceFileDiskMtimeMs(latest.mtimeMs);
         setWorkspaceFileExternalChange(false);
@@ -345,21 +427,31 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
   }, []);
 
   const saveWorkspaceFile = useCallback(async (): Promise<void> => {
-    const workspaceId = workspaceIdRef.current;
+    const id = sourceIdRef.current;
+    const kind = sourceKindRef.current;
     const filePath = workspaceFileSelectedRef.current;
-    if (!workspaceId || !filePath || !window.argmax) return;
+    if (!id || !kind || !filePath || !canEditRef.current) return;
     if (workspaceFileBuffer === null) return;
     if (workspaceFileBuffer === workspaceFileOriginal) return;
     const token = ++workspaceSaveToken.current;
     setWorkspaceFileSaveState("saving");
     setWorkspaceFileSaveError(null);
     try {
-      const result = await window.argmax.workspace.writeFile(
-        workspaceId,
+      const writePromise = ipcWriteFile(
+        kind,
+        id,
         filePath,
         workspaceFileBuffer,
         workspaceFileDiskMtimeMsRef.current
       );
+      if (!writePromise) {
+        // Read-only source — should never reach here given the canEdit guard
+        // above, but if a race lands us here, treat it as a no-op rather than
+        // throwing through the save UI.
+        setWorkspaceFileSaveState("idle");
+        return;
+      }
+      const result = await writePromise;
       if (token !== workspaceSaveToken.current) return;
       if (!result.ok) {
         setWorkspaceFileSaveState("idle");
@@ -385,16 +477,22 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
    * window focus and after every `dashboard:delta` (which fires whenever a
    * provider session does anything — the most likely source of out-of-band
    * file edits). If disk mtime moved past our baseline, set the banner flag.
+   *
+   * Project-source mode skips polling entirely: the main checkout has no
+   * session-driven mutations, and we don't expose stat-file-for-project.
    */
   useEffect(() => {
     if (mode !== "files") return;
+    if (!canEdit) return;
     const checkExternalChange = (): void => {
-      const workspaceId = workspaceIdRef.current;
+      const id = sourceIdRef.current;
+      const kind = sourceKindRef.current;
       const filePath = workspaceFileSelectedRef.current;
       const baseline = workspaceFileDiskMtimeMsRef.current;
-      if (!workspaceId || !filePath || baseline === null || !window.argmax) return;
-      void window.argmax.workspace
-        .statFile(workspaceId, filePath)
+      if (!id || !kind || !filePath || baseline === null) return;
+      const statPromise = ipcStatFile(kind, id, filePath);
+      if (!statPromise) return;
+      void statPromise
         .then((latest) => {
           if (latest.mtimeMs > baseline) {
             setWorkspaceFileExternalChange(true);
@@ -414,7 +512,7 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
       window.removeEventListener("focus", handleFocus);
       offDelta?.();
     };
-  }, [mode]);
+  }, [mode, canEdit]);
 
   const openPanelInFilesMode = useCallback((): void => {
     setMode("files");
@@ -443,11 +541,12 @@ export function useReviewState(workspace: WorkspaceSummary | null): ReviewState 
     previewError: workspaceFilePreviewError,
     openFile: openWorkspaceFile,
     buffer: workspaceFileBuffer,
-    isDirty: workspaceFileBuffer !== null && workspaceFileBuffer !== workspaceFileOriginal,
+    isDirty: canEdit && workspaceFileBuffer !== null && workspaceFileBuffer !== workspaceFileOriginal,
     diskMtimeMs: workspaceFileDiskMtimeMs,
     externalChange: workspaceFileExternalChange,
     saveState: workspaceFileSaveState,
     saveError: workspaceFileSaveError,
+    canEdit,
     editFile: editWorkspaceFile,
     saveFile: saveWorkspaceFile,
     reloadFile: reloadWorkspaceFile,

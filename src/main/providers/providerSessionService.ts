@@ -8,7 +8,8 @@ import type {
   DashboardDelta,
   LaunchProviderSessionInput,
   ProviderId,
-  SessionSummary
+  SessionSummary,
+  TimelineEvent
 } from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
 import {
@@ -26,9 +27,7 @@ import {
   capEventPayload,
   capRawContent,
   capRawTruncationMarker,
-  EVENT_PAYLOAD_CAP,
-  extractProviderConversationId,
-  RAW_OUTPUT_CAP
+  extractProviderConversationId
 } from "./sessionPayloadCaps.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 import type { NotificationService } from "../notifications/notificationService.js";
@@ -156,6 +155,7 @@ export class ProviderSessionService {
       modelLabel: input.modelLabel,
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort,
+      permissionMode: input.permissionMode ?? "auto-approve",
       prompt: input.prompt,
       state: "running",
       attention: computeSessionAttention({ state: "running" })
@@ -271,6 +271,10 @@ export class ProviderSessionService {
 
     let session = this.database.getSession(sessionId);
     const workspace = this.database.getWorkspace(session.workspaceId);
+    const existingEntry = this.handles.get(sessionId);
+    if (existingEntry?.kind === "pending") {
+      throw new Error("Wait for the current response before sending another prompt.");
+    }
     const liveHandle = this.getLiveHandle(sessionId);
     if (liveHandle) {
       if (!liveHandle.acceptsInput) {
@@ -330,10 +334,7 @@ export class ProviderSessionService {
           reasoningEffort: session.reasoningEffort,
           ...(session.providerConversationId ? { resumeConversationId: session.providerConversationId } : {}),
           mode: modelDefault.launchMode,
-          // Follow-ups inherit the current default permission mode. Stage 2
-          // (P3.02) will read the per-session value from the sessions row
-          // once it's persisted there.
-          permissionMode: "auto-approve",
+          permissionMode: session.permissionMode,
           cols: 120,
           rows: 32
         },
@@ -477,7 +478,7 @@ export class ProviderSessionService {
   private synthesizeLearnings(sessionId: string, workspaceId: string): void {
     try {
       const workspace = this.database.getWorkspace(workspaceId);
-      const { events } = this.database.listSessionEventsSince({ sessionId });
+      const events = this.listAllSessionEvents(sessionId);
       const candidates = extractLearningCandidates(events);
       for (const candidate of candidates) {
         this.database.insertLearning({
@@ -493,6 +494,23 @@ export class ProviderSessionService {
       logger.warn("providers.memory", "synthesizeLearnings failed", {
         error: error instanceof Error ? error.message : String(error)
       });
+    }
+  }
+
+  private listAllSessionEvents(sessionId: string): TimelineEvent[] {
+    const events: TimelineEvent[] = [];
+    let eventCursor = 0;
+    while (true) {
+      const page = this.database.listSessionEventsSince({
+        sessionId,
+        eventCursor,
+        rawOutputCursor: Number.MAX_SAFE_INTEGER
+      });
+      events.push(...page.events);
+      if (page.events.length === 0 || page.eventCursor <= eventCursor) {
+        return events;
+      }
+      eventCursor = page.eventCursor;
     }
   }
 
@@ -585,6 +603,7 @@ export class ProviderSessionService {
           return;
         }
         if (entry.kind === "pending") {
+          entry.cancelled = true;
           entry.rejected = true;
           this.handles.delete(sessionId);
           this.deleteBuffer(sessionId);
@@ -974,4 +993,3 @@ export class ProviderSessionService {
     this.publishDelta(delta);
   }
 }
-

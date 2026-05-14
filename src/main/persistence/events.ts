@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { safeJsonParseRecord } from "../../shared/safeJson.js";
+import type { UsageCounts } from "../../shared/providerModels.js";
 import type { RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 
 export interface EventRow {
@@ -34,7 +35,7 @@ export interface PersistTimelineEventInput {
    */
   usage?: {
     modelId: string;
-    tokens: import("../../shared/providerModels.js").UsageCounts;
+    tokens: UsageCounts;
     costUsd: number;
     eventId?: string;
   };

@@ -241,4 +241,15 @@ describe("projects:switch-branch invokes git with the `--` argv separator", () =
     expect(checkout).toBeDefined();
     expect(checkout!.args).toEqual(["checkout", "feature/foo", "--"]);
   });
+
+  it("returns the actual ipcMain.handle registrations, not the schema-derived list (audit-2026-05-14 M15)", () => {
+    const stubDatabase = {} as unknown as Parameters<typeof registerIpcHandlers>[0];
+    const stubProviders = {} as unknown as Parameters<typeof registerIpcHandlers>[1];
+    const stubTerminals = {} as unknown as Parameters<typeof registerIpcHandlers>[2];
+
+    const registered = registerIpcHandlers(stubDatabase, stubProviders, stubTerminals);
+
+    expect(registered).toEqual(captured.map((entry) => entry.channel));
+    expect(new Set(registered)).toEqual(new Set(REGISTERED_IPC_CHANNELS));
+  });
 });

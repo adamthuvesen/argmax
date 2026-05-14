@@ -71,12 +71,16 @@ export class CheckService {
       const capture = (chunk: Buffer): void => {
         const text = chunk.toString();
         output.push(text);
-        outputBytes += text.length;
+        outputBytes += chunk.byteLength;
         // Drop oldest chunks once we exceed the tail cap. Keep at least one
         // chunk so summarizeOutput always has something to slice.
         while (outputBytes > OUTPUT_TAIL_BYTES && output.length > 1) {
           const dropped = output.shift();
-          if (dropped) outputBytes -= dropped.length;
+          if (dropped) outputBytes -= Buffer.byteLength(dropped);
+        }
+        if (outputBytes > OUTPUT_TAIL_BYTES && output.length === 1) {
+          output[0] = output[0].slice(-OUTPUT_TAIL_BYTES);
+          outputBytes = Buffer.byteLength(output[0]);
         }
         input.onOutput?.(text);
       };

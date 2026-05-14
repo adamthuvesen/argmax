@@ -39,6 +39,68 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
+  it("reuses the persisted permission mode for follow-up launches (audit-2026-05-14 H2)", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Start",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      permissionMode: "ask-each-time",
+      cols: 80,
+      rows: 24
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    await service.sendInput(session.id, "Continue");
+
+    expect(fakeProvider.launchInput?.permissionMode).toBe("ask-each-time");
+    expect(database.getSession(session.id).permissionMode).toBe("ask-each-time");
+
+    database.connection.close();
+  });
+
+  it("rejects follow-up input while the provider launch handle is still pending (audit-2026-05-14 H3)", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const pendingProvider = createPendingProvider("codex");
+    const service = new ProviderSessionService(database, () => pendingProvider.adapter);
+
+    const launchPromise = service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Start",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      cols: 80,
+      rows: 24
+    });
+    const sessionId = pendingProvider.launchInput?.sessionId;
+    expect(sessionId).toBeDefined();
+
+    await expect(service.sendInput(sessionId!, "Too soon")).rejects.toThrow(
+      "Wait for the current response before sending another prompt."
+    );
+    expect(pendingProvider.launchCalls).toBe(1);
+
+    pendingProvider.resolve();
+    await launchPromise;
+
+    database.connection.close();
+  });
+
   it("publishes output micro-batches as dashboard deltas", async () => {
     vi.useFakeTimers();
     const database = createDatabase(":memory:", { seed: false });
@@ -1118,6 +1180,58 @@ describe("ProviderSessionService", () => {
     expect(service.recoverOrphanedSessions().recoveredCount).toBe(0);
     database.connection.close();
   });
+
+  it("synthesizes learnings from the whole session, not just the latest event page (audit-2026-05-14 M9)", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      cols: 80,
+      rows: 24
+    });
+    for (let i = 0; i < 2; i += 1) {
+      database.persistTimelineEvent({
+        id: `old-failure-${i}`,
+        sessionId: session.id,
+        type: "command.completed",
+        message: "npm test",
+        payload: { is_error: true },
+        createdAt: `2026-05-08T15:00:${String(i).padStart(2, "0")}.000Z`
+      });
+    }
+    for (let i = 0; i < 501; i += 1) {
+      database.persistTimelineEvent({
+        id: `filler-${i}`,
+        sessionId: session.id,
+        type: "message.delta",
+        message: `filler ${i}`,
+        payload: {},
+        createdAt: "2026-05-08T15:10:00.000Z"
+      });
+    }
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    expect(database.listLearnings(workspace.projectId).some((learning) => learning.summary.includes("npm test"))).toBe(
+      true
+    );
+
+    database.connection.close();
+  });
 });
 
 function createFakeProvider(provider: ProviderId): {
@@ -1191,6 +1305,56 @@ function createFakeProvider(provider: ProviderId): {
     },
     get terminatedCalls() {
       return fake.terminatedCalls;
+    }
+  };
+}
+
+function createPendingProvider(provider: ProviderId): {
+  adapter: ProviderAdapter;
+  launchInput: ProviderLaunchInput | null;
+  launchCalls: number;
+  resolve: () => void;
+} {
+  let resolveLaunch: (() => void) | null = null;
+  let launchInput: ProviderLaunchInput | null = null;
+  let launchCalls = 0;
+
+  return {
+    adapter: {
+      id: provider,
+      displayName: provider,
+      binaryName: provider,
+      discover: () => {
+        throw new Error("Not used by ProviderSessionService tests");
+      },
+      launch: (input) => {
+        launchInput = input;
+        launchCalls += 1;
+        return new Promise<ProviderSessionHandle>((resolve) => {
+          resolveLaunch = () =>
+            resolve({
+              sessionId: input.sessionId,
+              provider,
+              acceptsInput: false,
+              disposed: false,
+              sendInput: () => undefined,
+              resize: () => undefined,
+              terminate: () => Promise.resolve()
+            });
+        });
+      }
+    },
+    get launchInput() {
+      return launchInput;
+    },
+    get launchCalls() {
+      return launchCalls;
+    },
+    resolve: () => {
+      if (!resolveLaunch) {
+        throw new Error("Provider launch was not pending");
+      }
+      resolveLaunch();
     }
   };
 }

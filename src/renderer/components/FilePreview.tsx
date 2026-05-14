@@ -150,6 +150,7 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
           onChange={state.editFile}
           onSave={state.saveFile}
           saving={state.saveState === "saving"}
+          editable={state.canEdit}
         />
       )}
     </div>
@@ -238,13 +239,15 @@ function SourceEditor({
   value,
   onChange,
   onSave,
-  saving
+  saving,
+  editable
 }: {
   path: string;
   value: string;
   onChange: (next: string) => void;
   onSave: () => Promise<void>;
   saving: boolean;
+  editable: boolean;
 }): JSX.Element {
   const handleSave = useCallback((): boolean => {
     void onSave();
@@ -255,15 +258,16 @@ function SourceEditor({
   }, [onSave]);
 
   const extensions = useMemo<Extension[]>(
-    () => [
-      ...editorLanguageFor(path),
-      keymap.of([
-        { key: "Mod-s", preventDefault: true, run: handleSave }
-      ]),
-      editorTheme,
-      EditorView.lineWrapping
-    ],
-    [path, handleSave]
+    () =>
+      editable
+        ? [
+            ...editorLanguageFor(path),
+            keymap.of([{ key: "Mod-s", preventDefault: true, run: handleSave }]),
+            editorTheme,
+            EditorView.lineWrapping
+          ]
+        : [...editorLanguageFor(path), editorTheme, EditorView.lineWrapping],
+    [path, handleSave, editable]
   );
 
   return (
@@ -271,11 +275,12 @@ function SourceEditor({
       <CodeMirror
         value={value}
         onChange={onChange}
+        editable={editable}
         extensions={extensions}
         basicSetup={{
           lineNumbers: true,
           foldGutter: false,
-          highlightActiveLine: true,
+          highlightActiveLine: editable,
           highlightSelectionMatches: false,
           autocompletion: false
         }}

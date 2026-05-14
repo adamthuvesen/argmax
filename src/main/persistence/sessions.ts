@@ -12,6 +12,7 @@ export interface SessionRow {
   model_label: string;
   model_id: string | null;
   reasoning_effort: ReasoningEffort | null;
+  permission_mode: SessionSummary["permissionMode"];
   provider_conversation_id: string | null;
   prompt: string;
   state: SessionSummary["state"];
@@ -33,6 +34,7 @@ export interface PersistSessionInput {
   modelLabel: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+  permissionMode?: SessionSummary["permissionMode"];
   prompt: string;
   state: SessionSummary["state"];
   attention: SessionSummary["attention"];
@@ -65,6 +67,7 @@ export function sessionRowToSummary(row: SessionRow, preferred: boolean): Sessio
     modelLabel: row.model_label,
     modelId: row.model_id,
     ...(row.reasoning_effort ? { reasoningEffort: row.reasoning_effort } : {}),
+    permissionMode: row.permission_mode,
     providerConversationId: row.provider_conversation_id,
     prompt: row.prompt,
     state: row.state,
@@ -92,10 +95,12 @@ export function persistSession(
     .prepare(
       `
         INSERT INTO sessions (
-          id, workspace_id, provider, model_label, model_id, reasoning_effort, provider_conversation_id, prompt, state, attention,
+          id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode,
+          provider_conversation_id, prompt, state, attention,
           started_at, completed_at, last_activity_at
         ) VALUES (
-          @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, NULL, @prompt, @state, @attention,
+          @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, @permissionMode,
+          NULL, @prompt, @state, @attention,
           @startedAt, NULL, @lastActivityAt
         )
       `
@@ -107,6 +112,7 @@ export function persistSession(
       modelLabel: input.modelLabel,
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort ?? null,
+      permissionMode: input.permissionMode ?? "auto-approve",
       prompt: input.prompt,
       state: input.state,
       attention: input.attention,

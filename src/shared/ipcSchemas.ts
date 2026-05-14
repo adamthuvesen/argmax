@@ -100,7 +100,7 @@ export const sessionEventsSinceInputSchema = z.object({
 
 export const workspaceStatusInputSchema = z
   .object({
-    workspaceIds: z.array(workspaceIdSchema).optional()
+    workspaceIds: z.array(workspaceIdSchema).max(200).optional()
   })
   .optional();
 
@@ -172,7 +172,7 @@ export const terminalSpawnInputSchema = z.object({
 
 export const terminalWriteInputSchema = z.object({
   terminalId: terminalIdSchema,
-  data: z.string()
+  data: z.string().max(64 * 1024)
 });
 
 export const terminalResizeInputSchema = z.object({
@@ -203,6 +203,26 @@ export const workspaceListFilesInputSchema = z.object({
 
 export const workspaceReadFileInputSchema = z.object({
   workspaceId: workspaceIdSchema,
+  filePath: relativeFilePathSchema
+});
+
+// Project-scoped read-only variants. Render the same Changes + Files panel
+// against the project's main checkout (selected on the launch surface, before
+// any session/worktree exists). Write/stat are intentionally workspace-only —
+// the main checkout shouldn't be edited from the landing page.
+export const reviewListChangedFilesForProjectInputSchema = projectIdSchema;
+
+export const loadDiffForProjectInputSchema = z.tuple([
+  projectIdSchema,
+  relativeFilePathSchema.optional()
+]);
+
+export const workspaceListFilesForProjectInputSchema = z.object({
+  projectId: projectIdSchema
+});
+
+export const workspaceReadFileForProjectInputSchema = z.object({
+  projectId: projectIdSchema,
   filePath: relativeFilePathSchema
 });
 
@@ -250,6 +270,49 @@ export const prepareCommitInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   selectedFiles: z.array(relativeFilePathSchema),
   message: z.string().min(1)
+});
+
+// ---------------------------------------------------------------------------
+// Git actions (commit / push / branch / PR)
+// ---------------------------------------------------------------------------
+
+/**
+ * Commit message rules: non-empty after trim, capped to 64 KB so a runaway
+ * paste cannot blow past argv length limits.
+ */
+export const gitCommitInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  message: z
+    .string()
+    .min(1)
+    .max(65536)
+    .refine((value) => value.trim().length > 0, { message: "message cannot be blank" })
+});
+
+export const gitPushInputSchema = z.object({
+  workspaceId: workspaceIdSchema
+});
+
+/**
+ * Branch names follow the same git-ref shape as `gitRefSchema` plus an
+ * additional character-set guard. We accept letters, digits, `_./-` (the
+ * common subset that `git check-ref-format --branch` allows) and reject
+ * leading `-` to keep argv-safety identical to other refs.
+ */
+export const gitCreateBranchInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  branch: z
+    .string()
+    .min(1)
+    .max(255)
+    .refine((value) => !value.startsWith("-"), { message: "branch cannot start with '-'" })
+    .refine((value) => /^[A-Za-z0-9._/-]+$/.test(value), {
+      message: "branch name contains illegal characters"
+    })
+});
+
+export const gitViewOrCreatePrInputSchema = z.object({
+  sessionId: sessionIdSchema
 });
 
 export const skillsListInputSchema = z.object({
@@ -342,8 +405,12 @@ export const ipcSchemas = {
   "session:eventsSince": sessionEventsSinceInputSchema,
   "review:list-changed-files": reviewListChangedFilesInputSchema,
   "review:load-diff": loadDiffInputSchema,
+  "review:list-changed-files-for-project": reviewListChangedFilesForProjectInputSchema,
+  "review:load-diff-for-project": loadDiffForProjectInputSchema,
   "workspace:list-files": workspaceListFilesInputSchema,
   "workspace:read-file": workspaceReadFileInputSchema,
+  "workspace:list-files-for-project": workspaceListFilesForProjectInputSchema,
+  "workspace:read-file-for-project": workspaceReadFileForProjectInputSchema,
   "workspace:write-file": workspaceWriteFileInputSchema,
   "workspace:stat-file": workspaceStatFileInputSchema,
   "checks:run": runCheckInputSchema,
@@ -379,7 +446,11 @@ export const ipcSchemas = {
     pinned: z.boolean()
   }),
   "prs:listForSession": z.object({ sessionId: sessionIdSchema }),
-  "prs:refresh": z.object({ sessionId: sessionIdSchema })
+  "prs:refresh": z.object({ sessionId: sessionIdSchema }),
+  "git:commit": gitCommitInputSchema,
+  "git:push": gitPushInputSchema,
+  "git:createBranch": gitCreateBranchInputSchema,
+  "git:viewOrCreatePr": gitViewOrCreatePrInputSchema
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -407,6 +478,9 @@ export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type WorkspaceListFilesInputParsed = z.infer<typeof workspaceListFilesInputSchema>;
 export type WorkspaceReadFileInputParsed = z.infer<typeof workspaceReadFileInputSchema>;
+export type LoadDiffForProjectInputParsed = z.infer<typeof loadDiffForProjectInputSchema>;
+export type WorkspaceListFilesForProjectInputParsed = z.infer<typeof workspaceListFilesForProjectInputSchema>;
+export type WorkspaceReadFileForProjectInputParsed = z.infer<typeof workspaceReadFileForProjectInputSchema>;
 export type WorkspaceWriteFileInputParsed = z.infer<typeof workspaceWriteFileInputSchema>;
 export type WorkspaceStatFileInputParsed = z.infer<typeof workspaceStatFileInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
@@ -418,3 +492,7 @@ export type DetectedIdeParsed = z.infer<typeof listDetectedIdesOutputSchema>[num
 export type TerminalSpawnInputParsed = z.infer<typeof terminalSpawnInputSchema>;
 export type TerminalWriteInputParsed = z.infer<typeof terminalWriteInputSchema>;
 export type TerminalResizeInputParsed = z.infer<typeof terminalResizeInputSchema>;
+export type GitCommitInputParsed = z.infer<typeof gitCommitInputSchema>;
+export type GitPushInputParsed = z.infer<typeof gitPushInputSchema>;
+export type GitCreateBranchInputParsed = z.infer<typeof gitCreateBranchInputSchema>;
+export type GitViewOrCreatePrInputParsed = z.infer<typeof gitViewOrCreatePrInputSchema>;

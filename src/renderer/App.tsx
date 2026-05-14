@@ -41,6 +41,11 @@ import {
 } from "./lib/fonts.js";
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "./lib/ide.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
+import {
+  PERMISSION_MODE_KEY,
+  readStoredPermissionMode,
+  type PermissionMode
+} from "./lib/permissionMode.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 
@@ -73,6 +78,7 @@ export function App(): JSX.Element {
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
 
   const showErrorToast = useCallback((message: string): void => {
     setToast({ kind: "error", message });
@@ -193,6 +199,11 @@ export function App(): JSX.Element {
       window.localStorage.setItem(DEFAULT_IDE_KEY, defaultIde);
     }
   }, [defaultIde]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(PERMISSION_MODE_KEY, permissionMode);
+  }, [permissionMode]);
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
     if (!window.argmax) {
@@ -403,6 +414,7 @@ export function App(): JSX.Element {
         modelLabel: model.label,
         modelId: model.modelId,
         ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        permissionMode,
         cols: 120,
         rows: 32
       });
@@ -420,6 +432,7 @@ export function App(): JSX.Element {
       refreshDashboardStatus,
       loadSessionEvents,
       pendingSelectionRef,
+      permissionMode,
       setSelectedSessionId,
       setSelectedWorkspaceId
     ]
@@ -668,6 +681,8 @@ export function App(): JSX.Element {
               detectedIdes={detectedIdes}
               defaultIde={defaultIde}
               onDefaultIdeChange={setDefaultIde}
+              permissionMode={permissionMode}
+              onPermissionModeChange={setPermissionMode}
               projects={snapshot.projects}
               onClose={() => setIsSettingsOpen(false)}
             />

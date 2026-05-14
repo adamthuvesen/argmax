@@ -11,6 +11,7 @@ import type {
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../lib/fonts.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { PermissionMode } from "../lib/permissionMode.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel.js";
 
@@ -48,6 +49,8 @@ export function SettingsPanel({
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
+  permissionMode,
+  onPermissionModeChange,
   projects,
   onClose
 }: {
@@ -60,6 +63,8 @@ export function SettingsPanel({
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
+  permissionMode: PermissionMode;
+  onPermissionModeChange: (mode: PermissionMode) => void;
   projects: ProjectSummary[];
   onClose: () => void;
 }): JSX.Element {
@@ -319,6 +324,53 @@ export function SettingsPanel({
               No supported IDEs detected. Install VS Code, Cursor, Windsurf, or Zed to enable this.
             </p>
           ) : null}
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-permissions">
+        <header className="settings-section-header">
+          <h2 id="settings-permissions">Permissions</h2>
+          <p>
+            Controls how each provider session treats commands the agent wants to run.
+          </p>
+        </header>
+        <div className="settings-card">
+          <fieldset className="settings-radio-group" aria-label="Permission mode">
+            <legend>When the agent wants to run a command</legend>
+            <label>
+              <input
+                type="radio"
+                name="permission-mode"
+                value="auto-approve"
+                checked={permissionMode === "auto-approve"}
+                onChange={() => onPermissionModeChange("auto-approve")}
+              />
+              <span>Auto-approve (default)</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="permission-mode"
+                value="ask-each-time"
+                checked={permissionMode === "ask-each-time"}
+                onChange={() => onPermissionModeChange("ask-each-time")}
+              />
+              <span>Ask each time</span>
+            </label>
+          </fieldset>
+          {permissionMode === "auto-approve" ? (
+            <p className="settings-hint">
+              Argmax launches each provider with broad permissions
+              (<code>bypassPermissions</code> / <code>--dangerously-bypass-approvals-and-sandbox</code> /
+              <code> --force --trust</code>). Suitable for a trusted single-user desktop —
+              switch to "Ask each time" if you want an explicit gate per tool call.
+            </p>
+          ) : (
+            <p className="settings-hint">
+              The bypass flags are dropped. Each tool invocation goes through the provider's
+              native approval gate; Argmax surfaces it as an in-app Approve / Reject prompt.
+            </p>
+          )}
         </div>
       </section>
 

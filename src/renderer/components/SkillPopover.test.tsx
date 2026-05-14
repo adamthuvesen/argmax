@@ -20,6 +20,7 @@ function makeState(selectionIndex: number): SlashAutocompleteState {
 }
 
 describe("SkillPopover", () => {
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- captured purely to restore after the test; never invoked unbound.
   const originalScrollIntoView = Element.prototype.scrollIntoView;
 
   afterEach(() => {

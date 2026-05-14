@@ -3,6 +3,7 @@ import { RecordNotFoundError, type ArgmaxDatabase, type PersistTimelineEventInpu
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import { PROVIDER_MODEL_DEFAULTS, type ReasoningEffort } from "../../shared/providerModels.js";
 import { logger } from "../../shared/logger.js";
+import { errorMessage } from "../../shared/error.js";
 import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type {
   DashboardDelta,
@@ -470,7 +471,7 @@ export class ProviderSessionService {
       })();
     } catch (error) {
       logger.warn("providers.memory", "bumpInjectedLearningHits failed", {
-        error: error instanceof Error ? error.message : String(error)
+        error: errorMessage(error)
       });
     }
   }
@@ -492,7 +493,7 @@ export class ProviderSessionService {
     } catch (error) {
       // Synthesizer is non-critical; log and move on.
       logger.warn("providers.memory", "synthesizeLearnings failed", {
-        error: error instanceof Error ? error.message : String(error)
+        error: errorMessage(error)
       });
     }
   }

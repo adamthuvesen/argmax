@@ -12,12 +12,7 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
-
-function formatBytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { formatBytes } from "../lib/formatBytes.js";
 
 function isMarkdownPath(path: string | null): boolean {
   if (!path) return false;

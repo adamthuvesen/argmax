@@ -18,6 +18,7 @@ import type {
   ProjectSummary
 } from "../../shared/types.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../lib/fonts.js";
+import { formatBytes } from "../lib/formatBytes.js";
 import { readFirstContentMeasure } from "../lib/paintTimings.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -1192,18 +1193,6 @@ function saveLogsFile(entries: ReadonlyArray<LogEntry>, setStatus: (status: stri
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Could not save log file.");
   }
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex++;
-  }
-  return `${value.toFixed(value >= 100 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
 function FontFamilyPicker({

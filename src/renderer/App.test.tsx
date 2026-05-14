@@ -1477,7 +1477,12 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("treeitem", { name: /^index\.ts$/ }));
 
     await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/index.ts"));
-    expect(await screen.findByText("export const hello = 'world';")).toBeInTheDocument();
+    // The shiki highlighter tokenizes lines into per-token spans, so the line
+    // text spans multiple DOM nodes. Query the preview wrapper by aria-label
+    // and assert against its concatenated textContent — matches the real
+    // production rendering regardless of how the line is carved into tokens.
+    const preview = await screen.findByLabelText("Preview of src/main/index.ts");
+    expect(preview).toHaveTextContent("export const hello = 'world';");
   });
 
   it("shows a placeholder when a previewed file is binary or too large", async () => {

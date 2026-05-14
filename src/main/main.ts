@@ -23,6 +23,7 @@ import type {
   TerminalExitEvent
 } from "../shared/types.js";
 import { logger } from "../shared/logger.js";
+import { DeltaCoalescer } from "./util/deltaCoalescer.js";
 import { mark as markStartupPhase } from "./util/startupTimer.js";
 import { isAllowedAppNavigation, rendererFileNavigationPrefix } from "./util/appNavigation.js";
 
@@ -234,13 +235,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function publishDashboardDelta(delta: DashboardDelta): void {
+// Coalesce dashboard:delta pushes at ~60 fps (ralph C7). Provider session
+// flushes can emit several deltas per second under load; without this cap,
+// the renderer commits per push and re-walks the snapshot for each tick.
+const dashboardDeltaCoalescer = new DeltaCoalescer((delta: DashboardDelta) => {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
       window.webContents.send("dashboard:delta", delta);
     }
   }
   dockBadge?.update();
+});
+
+function publishDashboardDelta(delta: DashboardDelta): void {
+  dashboardDeltaCoalescer.publish(delta);
 }
 
 function publishTerminalData(event: TerminalDataEvent): void {

@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangedFileSummary,
   ProjectSummary,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
-  WorkspaceFileStat,
-  WorkspaceFileWriteResult,
   WorkspaceSummary
 } from "../../shared/types.js";
+import { reviewIpcDispatch, type ReviewIpcDispatch } from "../lib/reviewIpc.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
 export type ReviewPanelMode = "changes" | "files";
@@ -76,54 +75,6 @@ export interface ReviewState {
   toggleSummary: () => void;
 }
 
-function ipcListChangedFiles(kind: SourceKind, id: string): Promise<ChangedFileSummary[]> {
-  if (!window.argmax) return Promise.resolve([]);
-  return kind === "workspace"
-    ? window.argmax.review.listChangedFiles(id)
-    : window.argmax.review.listChangedFilesForProject(id);
-}
-
-function ipcLoadDiff(kind: SourceKind, id: string, filePath: string): Promise<WorkspaceDiff> {
-  if (!window.argmax) return Promise.reject(new Error("bridge unavailable"));
-  return kind === "workspace"
-    ? window.argmax.review.loadDiff(id, filePath)
-    : window.argmax.review.loadDiffForProject(id, filePath);
-}
-
-function ipcListFiles(kind: SourceKind, id: string): Promise<WorkspaceFileEntry[]> {
-  if (!window.argmax) return Promise.resolve([]);
-  return kind === "workspace"
-    ? window.argmax.workspace.listFiles(id)
-    : window.argmax.workspace.listFilesForProject(id);
-}
-
-function ipcReadFile(kind: SourceKind, id: string, filePath: string): Promise<WorkspaceFilePreview> {
-  if (!window.argmax) return Promise.reject(new Error("bridge unavailable"));
-  return kind === "workspace"
-    ? window.argmax.workspace.readFile(id, filePath)
-    : window.argmax.workspace.readFileForProject(id, filePath);
-}
-
-function ipcStatFile(kind: SourceKind, id: string, filePath: string): Promise<WorkspaceFileStat> | null {
-  if (!window.argmax) return null;
-  return kind === "workspace"
-    ? window.argmax.workspace.statFile(id, filePath)
-    : window.argmax.workspace.statFileForProject(id, filePath);
-}
-
-function ipcWriteFile(
-  kind: SourceKind,
-  id: string,
-  filePath: string,
-  content: string,
-  expectedMtimeMs: number | null
-): Promise<WorkspaceFileWriteResult> | null {
-  if (!window.argmax) return null;
-  return kind === "workspace"
-    ? window.argmax.workspace.writeFile(id, filePath, content, expectedMtimeMs)
-    : window.argmax.workspace.writeFileForProject(id, filePath, content, expectedMtimeMs);
-}
-
 export function useReviewState(source: ReviewSource | null): ReviewState {
   const sourceKind: SourceKind | null = source?.kind ?? null;
   const sourceId: string | null = source
@@ -137,6 +88,20 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const changedFilesKey: number | null =
     source?.kind === "workspace" ? source.workspace.changedFiles : null;
   const canEdit = sourceKind === "workspace" || sourceKind === "project";
+
+  // Single dispatch object bound to the active source. Cached per (kind, id)
+  // so the six closures keep stable identities until the user navigates to
+  // a different workspace/project. The ref mirrors the latest dispatch for
+  // callbacks that intentionally do not re-bind on source change — they read
+  // the current ref value at call time instead of capturing a stale closure.
+  const dispatch: ReviewIpcDispatch | null = useMemo(
+    () => (sourceKind && sourceId ? reviewIpcDispatch({ kind: sourceKind, id: sourceId }) : null),
+    [sourceKind, sourceId]
+  );
+  const dispatchRef = useRef<ReviewIpcDispatch | null>(null);
+  useEffect(() => {
+    dispatchRef.current = dispatch;
+  }, [dispatch]);
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
@@ -234,7 +199,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
 
     setFilesState("loading");
     setFilesError(null);
-    void ipcListChangedFiles(sourceKind, sourceId)
+    void dispatch!.listChangedFiles()
       .then((result) => {
         if (token !== fileLoadToken.current) {
           return;
@@ -264,7 +229,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     // lastActivityAt — the activity timestamp bumps for every event delta,
     // which would re-fetch the changed files list ~once per streamed token.
     // Project mode has no live counter; we refetch only on source id change.
-  }, [sourceId, sourceKind, changedFilesKey]);
+  }, [sourceId, sourceKind, changedFilesKey, dispatch]);
 
   useEffect(() => {
     const token = ++diffLoadToken.current;
@@ -277,7 +242,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
 
     setDiffState("loading");
     setDiffError(null);
-    void ipcLoadDiff(sourceKind, sourceId, selectedFilePath)
+    void dispatch!.loadDiff(selectedFilePath)
       .then((result) => {
         if (token !== diffLoadToken.current) {
           return;
@@ -293,7 +258,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
         setDiffState("error");
         setDiffError(error instanceof Error ? error.message : "Could not load diff.");
       });
-  }, [sourceId, sourceKind, selectedFilePath]);
+  }, [sourceId, sourceKind, selectedFilePath, dispatch]);
 
   useEffect(() => {
     if (mode !== "files" || !isPanelOpen) return;
@@ -306,7 +271,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     }
     setWorkspaceFilesListState("loading");
     setWorkspaceFilesListError(null);
-    void ipcListFiles(sourceKind, sourceId)
+    void dispatch!.listFiles()
       .then((entries) => {
         if (token !== workspaceListToken.current) return;
         setWorkspaceFileEntries(entries);
@@ -319,7 +284,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
         setWorkspaceFilesListError(error instanceof Error ? error.message : "Could not load files.");
       });
     // Same reason as the changed-files effect above.
-  }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey]);
+  }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey, dispatch]);
 
   useEffect(() => {
     const token = ++workspaceReadToken.current;
@@ -336,7 +301,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     setWorkspaceFilePreviewState("loading");
     setWorkspaceFilePreviewError(null);
     setWorkspaceFileExternalChange(false);
-    void ipcReadFile(sourceKind, sourceId, workspaceFileSelected)
+    void dispatch!.readFile(workspaceFileSelected)
       .then((preview) => {
         if (token !== workspaceReadToken.current) return;
         setWorkspaceFilePreview(preview);
@@ -360,7 +325,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
         setWorkspaceFileOriginal(null);
         setWorkspaceFileDiskMtimeMs(null);
       });
-  }, [sourceId, sourceKind, workspaceFileSelected, mode]);
+  }, [sourceId, sourceKind, workspaceFileSelected, mode, dispatch]);
 
   const openFile = useCallback((filePath: string): void => {
     setSelectedFilePath(filePath);
@@ -394,10 +359,12 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     const kind = sourceKindRef.current;
     const filePath = workspaceFileSelectedRef.current;
     if (!id || !kind || !filePath || !window.argmax) return;
+    const ipc = dispatchRef.current;
+    if (!ipc) return;
     const token = ++workspaceReadToken.current;
     setWorkspaceFilePreviewState("loading");
     setWorkspaceFileExternalChange(false);
-    void ipcReadFile(kind, id, filePath)
+    void ipc.readFile(filePath)
       .then((preview) => {
         if (token !== workspaceReadToken.current) return;
         setWorkspaceFilePreview(preview);
@@ -425,7 +392,8 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       setWorkspaceFileExternalChange(false);
       return;
     }
-    const statPromise = ipcStatFile(kind, id, filePath);
+    const ipc = dispatchRef.current;
+    const statPromise = ipc?.statFile(filePath);
     if (!statPromise) {
       setWorkspaceFileExternalChange(false);
       return;
@@ -453,9 +421,8 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     setWorkspaceFileSaveState("saving");
     setWorkspaceFileSaveError(null);
     try {
-      const writePromise = ipcWriteFile(
-        kind,
-        id,
+      const ipc = dispatchRef.current;
+      const writePromise = ipc?.writeFile(
         filePath,
         workspaceFileBuffer,
         workspaceFileDiskMtimeMsRef.current
@@ -507,7 +474,8 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       const filePath = workspaceFileSelectedRef.current;
       const baseline = workspaceFileDiskMtimeMsRef.current;
       if (!id || !kind || !filePath || baseline === null) return;
-      const statPromise = ipcStatFile(kind, id, filePath);
+      const ipc = dispatchRef.current;
+      const statPromise = ipc?.statFile(filePath);
       if (!statPromise) return;
       void statPromise
         .then((latest) => {

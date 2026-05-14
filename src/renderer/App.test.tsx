@@ -335,7 +335,9 @@ describe("App", () => {
         writeFile: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
         statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
         listFilesForProject: listProjectFiles,
-        readFileForProject: readProjectFile
+        readFileForProject: readProjectFile,
+        writeFileForProject: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
+        statFileForProject: () => Promise.resolve({ mtimeMs: 0, size: 0 })
       },
       checks: {
         run: () => Promise.resolve(missingCheck())

@@ -105,8 +105,10 @@ function ipcReadFile(kind: SourceKind, id: string, filePath: string): Promise<Wo
 }
 
 function ipcStatFile(kind: SourceKind, id: string, filePath: string): Promise<WorkspaceFileStat> | null {
-  if (kind !== "workspace" || !window.argmax) return null;
-  return window.argmax.workspace.statFile(id, filePath);
+  if (!window.argmax) return null;
+  return kind === "workspace"
+    ? window.argmax.workspace.statFile(id, filePath)
+    : window.argmax.workspace.statFileForProject(id, filePath);
 }
 
 function ipcWriteFile(
@@ -116,8 +118,10 @@ function ipcWriteFile(
   content: string,
   expectedMtimeMs: number | null
 ): Promise<WorkspaceFileWriteResult> | null {
-  if (kind !== "workspace" || !window.argmax) return null;
-  return window.argmax.workspace.writeFile(id, filePath, content, expectedMtimeMs);
+  if (!window.argmax) return null;
+  return kind === "workspace"
+    ? window.argmax.workspace.writeFile(id, filePath, content, expectedMtimeMs)
+    : window.argmax.workspace.writeFileForProject(id, filePath, content, expectedMtimeMs);
 }
 
 export function useReviewState(source: ReviewSource | null): ReviewState {
@@ -132,7 +136,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   // mode refetches only on source id change (manual reload otherwise).
   const changedFilesKey: number | null =
     source?.kind === "workspace" ? source.workspace.changedFiles : null;
-  const canEdit = sourceKind === "workspace";
+  const canEdit = sourceKind === "workspace" || sourceKind === "project";
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
@@ -490,8 +494,9 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
    * provider session does anything — the most likely source of out-of-band
    * file edits). If disk mtime moved past our baseline, set the banner flag.
    *
-   * Project-source mode skips polling entirely: the main checkout has no
-   * session-driven mutations, and we don't expose stat-file-for-project.
+   * Project-source mode also polls (so editing files in the main checkout
+   * still catches external edits from another editor); the delta listener is
+   * a no-op there since no provider session is mutating the project.
    */
   useEffect(() => {
     if (mode !== "files") return;

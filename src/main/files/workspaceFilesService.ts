@@ -116,19 +116,12 @@ export class WorkspaceFilesService {
    */
   async statFile(workspaceId: string, filePath: string): Promise<WorkspaceFileStat> {
     const workspace = this.database.getWorkspace(workspaceId);
-    assertSafeRelativePath(workspace.path, filePath);
-    const resolved = resolve(workspace.path, filePath);
+    return this.statFileAtPath(workspace.path, filePath);
+  }
 
-    const stats = await lstat(resolved);
-    if (!stats.isFile()) {
-      throw new Error("filePath does not point to a regular file");
-    }
-
-    const workspaceRealPath = await realpath(workspace.path);
-    const fileRealPath = await realpath(resolved);
-    assertContainedPath(workspaceRealPath, fileRealPath, "filePath escapes the workspace root");
-
-    return { mtimeMs: stats.mtimeMs, size: stats.size };
+  async statFileForProject(projectId: string, filePath: string): Promise<WorkspaceFileStat> {
+    const project = this.database.getProject(projectId);
+    return this.statFileAtPath(project.repoPath, filePath);
   }
 
   /**
@@ -151,27 +144,59 @@ export class WorkspaceFilesService {
     content: string,
     expectedMtimeMs: number | null
   ): Promise<WorkspaceFileWriteResult> {
-    if (content.length > MAX_WRITE_BYTES) {
-      throw new Error(`content exceeds ${MAX_WRITE_BYTES} bytes`);
-    }
     const workspace = this.database.getWorkspace(workspaceId);
-    assertSafeRelativePath(workspace.path, filePath);
-    const resolved = resolve(workspace.path, filePath);
+    return this.writeFileAtPath(workspace.path, filePath, content, expectedMtimeMs);
+  }
+
+  async writeFileForProject(
+    projectId: string,
+    filePath: string,
+    content: string,
+    expectedMtimeMs: number | null
+  ): Promise<WorkspaceFileWriteResult> {
+    const project = this.database.getProject(projectId);
+    return this.writeFileAtPath(project.repoPath, filePath, content, expectedMtimeMs);
+  }
+
+  private async statFileAtPath(repoPath: string, filePath: string): Promise<WorkspaceFileStat> {
+    assertSafeRelativePath(repoPath, filePath);
+    const resolved = resolve(repoPath, filePath);
 
     const stats = await lstat(resolved);
     if (!stats.isFile()) {
       throw new Error("filePath does not point to a regular file");
     }
 
-    const workspaceRealPath = await realpath(workspace.path);
+    const repoRealPath = await realpath(repoPath);
     const fileRealPath = await realpath(resolved);
-    assertContainedPath(workspaceRealPath, fileRealPath, "filePath escapes the workspace root");
+    assertContainedPath(repoRealPath, fileRealPath, "filePath escapes the workspace root");
 
-    // Defense in depth: the realpath landed inside the worktree, but if the
-    // path's *parent directory* points outside via a symlink swap, a future
-    // write could still escape. Check the parent's realpath too.
+    return { mtimeMs: stats.mtimeMs, size: stats.size };
+  }
+
+  private async writeFileAtPath(
+    repoPath: string,
+    filePath: string,
+    content: string,
+    expectedMtimeMs: number | null
+  ): Promise<WorkspaceFileWriteResult> {
+    if (content.length > MAX_WRITE_BYTES) {
+      throw new Error(`content exceeds ${MAX_WRITE_BYTES} bytes`);
+    }
+    assertSafeRelativePath(repoPath, filePath);
+    const resolved = resolve(repoPath, filePath);
+
+    const stats = await lstat(resolved);
+    if (!stats.isFile()) {
+      throw new Error("filePath does not point to a regular file");
+    }
+
+    const repoRealPath = await realpath(repoPath);
+    const fileRealPath = await realpath(resolved);
+    assertContainedPath(repoRealPath, fileRealPath, "filePath escapes the workspace root");
+
     const parentRealPath = await realpath(dirname(fileRealPath));
-    assertContainedPath(workspaceRealPath, parentRealPath, "filePath parent escapes the workspace root");
+    assertContainedPath(repoRealPath, parentRealPath, "filePath parent escapes the workspace root");
 
     if (expectedMtimeMs !== null && stats.mtimeMs !== expectedMtimeMs) {
       return {

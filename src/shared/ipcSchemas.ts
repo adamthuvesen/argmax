@@ -280,6 +280,18 @@ export const workspaceStatFileInputSchema = z.object({
   filePath: relativeFilePathSchema
 });
 
+export const workspaceWriteFileForProjectInputSchema = z.object({
+  projectId: projectIdSchema,
+  filePath: relativeFilePathSchema,
+  content: z.string().max(4_194_304),
+  expectedMtimeMs: z.number().nonnegative().nullable()
+});
+
+export const workspaceStatFileForProjectInputSchema = z.object({
+  projectId: projectIdSchema,
+  filePath: relativeFilePathSchema
+});
+
 export const runCheckInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   command: z.string().min(1)
@@ -441,6 +453,8 @@ export const ipcSchemas = {
   "workspace:read-file-for-project": workspaceReadFileForProjectInputSchema,
   "workspace:write-file": workspaceWriteFileInputSchema,
   "workspace:stat-file": workspaceStatFileInputSchema,
+  "workspace:write-file-for-project": workspaceWriteFileForProjectInputSchema,
+  "workspace:stat-file-for-project": workspaceStatFileForProjectInputSchema,
   "checks:run": runCheckInputSchema,
   "checkpoints:create": createCheckpointInputSchema,
   "attempts:select-preferred": selectPreferredAttemptInputSchema,
@@ -513,6 +527,8 @@ export type WorkspaceListFilesForProjectInputParsed = z.infer<typeof workspaceLi
 export type WorkspaceReadFileForProjectInputParsed = z.infer<typeof workspaceReadFileForProjectInputSchema>;
 export type WorkspaceWriteFileInputParsed = z.infer<typeof workspaceWriteFileInputSchema>;
 export type WorkspaceStatFileInputParsed = z.infer<typeof workspaceStatFileInputSchema>;
+export type WorkspaceWriteFileForProjectInputParsed = z.infer<typeof workspaceWriteFileForProjectInputSchema>;
+export type WorkspaceStatFileForProjectInputParsed = z.infer<typeof workspaceStatFileForProjectInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
 export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;
 export type SessionCostSummaryInputParsed = z.infer<typeof sessionCostSummaryInputSchema>;

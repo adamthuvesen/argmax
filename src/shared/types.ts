@@ -426,6 +426,13 @@ export interface ArgmaxApi {
     statFile: (workspaceId: string, filePath: string) => Promise<WorkspaceFileStat>;
     listFilesForProject: (projectId: string) => Promise<WorkspaceFileEntry[]>;
     readFileForProject: (projectId: string, filePath: string) => Promise<WorkspaceFilePreview>;
+    writeFileForProject: (
+      projectId: string,
+      filePath: string,
+      content: string,
+      expectedMtimeMs: number | null
+    ) => Promise<WorkspaceFileWriteResult>;
+    statFileForProject: (projectId: string, filePath: string) => Promise<WorkspaceFileStat>;
   };
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;

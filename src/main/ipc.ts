@@ -72,6 +72,7 @@ import { listMcpServers } from "./mcp/mcpRegistry.js";
 import { runGitText } from "./git/exec.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
+import { readPhases as readStartupPhases } from "./util/startupTimer.js";
 
 /**
  * Wraps an IPC handler body so its `input` is validated against a zod schema
@@ -284,7 +285,8 @@ export function registerIpcHandlers(
       databasePath: app.getPath("userData") + "/local-state/argmax.sqlite",
       platform: process.platform,
       arch: process.arch,
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
+      startupPhases: readStartupPhases()
     };
   }));
   register("system:vacuumDatabase", withValidation(z.void(), () => {

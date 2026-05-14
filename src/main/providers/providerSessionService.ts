@@ -8,8 +8,7 @@ import type {
   DashboardDelta,
   LaunchProviderSessionInput,
   ProviderId,
-  SessionSummary,
-  TimelineEvent
+  SessionSummary
 } from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
 import {
@@ -18,6 +17,11 @@ import {
   type NormalizedUsage,
   type NormalizerSessionContext
 } from "./providerEventNormalizer.js";
+import {
+  flushSessionBuffer,
+  isSessionGoneError,
+  scheduleFlush as scheduleFlushQueue
+} from "./sessionFlushQueue.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 import type { NotificationService } from "../notifications/notificationService.js";
 import { extractLearningCandidates } from "../memory/learningExtractor.js";
@@ -79,8 +83,6 @@ interface ResolvedHandleEntry {
 
 type HandleEntry = PendingHandleEntry | ResolvedHandleEntry;
 
-/** 16 ms micro-batch coalescing window — one frame at 60Hz. */
-const MICRO_BATCH_MS = 16;
 /** 2 s minimum interval between lastActivityAt writes per session. */
 const ACTIVITY_THROTTLE_MS = 2_000;
 /** 256 KB cap on raw_outputs.content per row. */
@@ -912,17 +914,7 @@ export class ProviderSessionService {
     if (!sessionState) {
       return;
     }
-    if (sessionState.flushTimer) {
-      return;
-    }
-    sessionState.flushTimer = setTimeout(() => {
-      sessionState.flushTimer = null;
-      this.flushBatch(sessionId);
-    }, MICRO_BATCH_MS);
-    // Allow Node.js process to exit even when the timer is pending.
-    if (typeof sessionState.flushTimer.unref === "function") {
-      sessionState.flushTimer.unref();
-    }
+    scheduleFlushQueue(sessionState, sessionId, (sid) => this.flushBatch(sid));
   }
 
   private flushTrailingFragment(sessionId: string): void {
@@ -973,107 +965,12 @@ export class ProviderSessionService {
     if (!sessionState) {
       return;
     }
-    if (sessionState.flushTimer) {
-      clearTimeout(sessionState.flushTimer);
-      sessionState.flushTimer = null;
-    }
-    if (
-      sessionState.pendingRawOutputs.length === 0 &&
-      sessionState.pendingEvents.length === 0 &&
-      sessionState.pendingUsages.length === 0 &&
-      !sessionState.pendingSessionUpdate
-    ) {
-      return;
-    }
-
-    // Snapshot the pending buffers without draining them. We only splice them
-    // off after the transaction commits — if it throws, the items stay in the
-    // buffer (transient errors retry on the next flush; session-deleted races
-    // are detected below and the batch is dropped explicitly).
-    const rawOutputs = sessionState.pendingRawOutputs.slice();
-    const events = sessionState.pendingEvents.slice();
-    const usages = sessionState.pendingUsages.slice();
-    let sessionUpdate = sessionState.pendingSessionUpdate;
-    const persistedEvents: TimelineEvent[] = [];
-
-    const persist = this.database.connection.transaction(() => {
-      for (const raw of rawOutputs) {
-        this.database.persistRawOutput(raw);
-      }
-      for (const event of events) {
-        persistedEvents.push(this.database.persistTimelineEvent(event));
-      }
-      for (const usage of usages) {
-        this.database.insertUsageEvent({
-          sessionId,
-          ...(usage.eventId ? { eventId: usage.eventId } : {}),
-          modelId: usage.modelId,
-          tokens: usage.tokens,
-          costUsd: usage.costUsd
-        });
-      }
-    });
-    try {
-      persist();
-    } catch (error) {
-      if (isSessionGoneError(error, sessionId)) {
-        // Session was deleted mid-stream. Drop the whole batch — the renderer
-        // will pick up the deletion via the next status poll.
-        sessionState.pendingRawOutputs.length = 0;
-        sessionState.pendingEvents.length = 0;
-        sessionState.pendingUsages.length = 0;
-        sessionState.pendingSessionUpdate = null;
-        return;
-      }
-      throw error;
-    }
-
-    sessionState.pendingRawOutputs.splice(0, rawOutputs.length);
-    sessionState.pendingEvents.splice(0, events.length);
-    sessionState.pendingUsages.splice(0, usages.length);
-    sessionState.pendingSessionUpdate = null;
-
-    if (usages.length > 0) {
-      try {
-        sessionUpdate = this.database.getSession(sessionId);
-      } catch (error) {
-        if (!(error instanceof RecordNotFoundError && error.kind === "session")) {
-          throw error;
-        }
-      }
-    }
-    sessionState.lastFlushAt = Date.now();
-    this.publishDashboardDelta({
-      ...(sessionUpdate ? { sessions: [sessionUpdate] } : {}),
-      ...(persistedEvents.length > 0 ? { events: persistedEvents } : {}),
-      ...(rawOutputs.length > 0 ? { rawOutputs } : {})
-    });
+    flushSessionBuffer(sessionState, sessionId, this.database, (delta) => this.publishDelta(delta));
   }
 
   private publishDashboardDelta(delta: DashboardDelta): void {
     this.publishDelta(delta);
   }
-}
-
-/**
- * True when an error from the flush transaction indicates the session row
- * vanished mid-stream (workspace archived, CASCADE delete). Either the typed
- * `RecordNotFoundError` from `insertUsageEvent`, or a foreign-key violation
- * from a timeline/raw-output INSERT.
- */
-function isSessionGoneError(error: unknown, sessionId: string): boolean {
-  if (error instanceof RecordNotFoundError && error.kind === "session" && error.id === sessionId) {
-    return true;
-  }
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "SQLITE_CONSTRAINT_FOREIGNKEY"
-  ) {
-    return true;
-  }
-  return false;
 }
 
 function capRawContent(content: string): { content: string; droppedBytes: number } {

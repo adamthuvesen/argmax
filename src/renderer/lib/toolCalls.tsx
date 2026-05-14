@@ -100,7 +100,7 @@ export function summarizeToolGroup(tools: ToolCall[]): { headline: string; previ
     previewParts.push(trimmed.slice(0, 28));
     if (previewParts.length === 3) break;
   }
-  const preview = previewParts.join(", ") + (tools.length > previewParts.length ? ", …" : "");
+  const preview = previewParts.join(" / ") + (tools.length > previewParts.length ? " / …" : "");
   const worstStatus: ToolCall["status"] = tools.some((t) => t.status === "error")
     ? "error"
     : tools.some((t) => t.status === "running")

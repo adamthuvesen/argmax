@@ -1,9 +1,5 @@
-import { ChevronRight } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 import {
-  BUCKET_ICON_NAME,
-  buildGroupIconBuckets,
-  getToolIcon,
   summarizeToolGroup,
   type ToolCall,
   type ToolCallGroup
@@ -39,7 +35,7 @@ export function ToolCallGroupBubble({
   const elapsedMs = Number.isFinite(earliestStart) ? Math.max(0, latestEnd - earliestStart) : 0;
 
   return (
-    <div className="tool-call-group" data-status={summary.worstStatus}>
+    <div className="tool-call-group" data-status={summary.worstStatus} data-expanded={expanded}>
       <button
         className="tool-call-group-header"
         type="button"
@@ -47,35 +43,39 @@ export function ToolCallGroupBubble({
         aria-label={`${summary.headline}${summary.preview ? ": " + summary.preview : ""}`}
         onClick={() => setUserToggle(!expanded)}
       >
-        <span className="tool-call-group-stack" aria-hidden="true">
-          {buildGroupIconBuckets(group.tools).map((bucket) => (
-            <span key={bucket} className="tool-call-group-stack-icon">
-              {getToolIcon(BUCKET_ICON_NAME[bucket])}
-            </span>
-          ))}
+        <span className="tool-call-group-eyebrow" aria-hidden="true">
+          <span className="tool-call-group-eyebrow-label">{summary.headline}</span>
         </span>
-        <span className="tool-call-group-headline">{summary.headline}</span>
-        {summary.preview ? <span className="tool-call-group-preview">· {summary.preview}</span> : null}
+        {summary.preview ? (
+          <span className="tool-call-group-preview" aria-hidden="true">{summary.preview}</span>
+        ) : null}
         <ToolStatusChip status={summary.worstStatus} elapsedMs={elapsedMs} />
-        <ChevronRight size={11} className={`tool-call-chevron${expanded ? " expanded" : ""}`} />
+        <span className={`tool-call-group-toggle${expanded ? " expanded" : ""}`} aria-hidden="true">
+          {expanded ? "−" : "+"}
+        </span>
       </button>
       {expanded ? (
         <div className="tool-call-group-body">
-          {group.tools.map((tool) => (
-            <ToolCallBubble
+          {group.tools.map((tool, index) => (
+            <div
+              className="tool-call-group-row"
               key={tool.id}
-              tool={tool}
-              now={now}
-              fresh={isFreshTool(tool)}
-              nested
-              workspaceCwd={workspaceCwd ?? null}
-              {...(group.parallelPositions.get(tool.id)
-                ? { parallelPosition: group.parallelPositions.get(tool.id)! }
-                : {})}
-              {...(group.parallelGroupId.get(tool.id)
-                ? { parallelGroupId: group.parallelGroupId.get(tool.id)! }
-                : {})}
-            />
+              style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
+            >
+              <ToolCallBubble
+                tool={tool}
+                now={now}
+                fresh={isFreshTool(tool)}
+                nested
+                workspaceCwd={workspaceCwd ?? null}
+                {...(group.parallelPositions.get(tool.id)
+                  ? { parallelPosition: group.parallelPositions.get(tool.id)! }
+                  : {})}
+                {...(group.parallelGroupId.get(tool.id)
+                  ? { parallelGroupId: group.parallelGroupId.get(tool.id)! }
+                  : {})}
+              />
+            </div>
           ))}
         </div>
       ) : null}

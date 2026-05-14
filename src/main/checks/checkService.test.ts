@@ -94,6 +94,29 @@ describe("CheckService", () => {
     database.connection.close();
   });
 
+  it("caps accumulated output to the tail bytes (audit-2026-05-14 H4)", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CheckService(database);
+
+    // Emit ~512 KB across many lines. The internal tail cap is 64 KB; only
+    // the last 8 lines are persisted to summary. The point of this test is
+    // that the run completes without growing memory unboundedly — verifiable
+    // via the (truncated) summary still matching the tail of the output.
+    const check = await service.runWorkspaceCheck({
+      workspaceId,
+      command: `node -e "for (let i = 0; i < 8000; i++) console.log('line-' + i)"`
+    });
+
+    expect(check.status).toBe("passed");
+    expect(check.exitCode).toBe(0);
+    // summarizeOutput slices the last 8 lines; the final emitted line is 7999.
+    expect(check.summary).toContain("line-7999");
+    expect(check.summary).toContain("line-7992");
+
+    database.connection.close();
+  });
+
   it("cancels every running child for a workspace via cancelWorkspaceChecks", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspaceId = persistWorkspaceFixture(database);

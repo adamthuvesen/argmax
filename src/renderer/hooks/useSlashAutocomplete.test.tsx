@@ -74,6 +74,37 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     expect(screen.getByTestId("selection-index").textContent).toBe("2");
   });
 
+  it("fires exactly one skills.list IPC for repeated keystrokes during an in-flight fetch (audit-2026-05-14 A7)", async () => {
+    // SPEC A7 — `fetchedFor.current = cacheKey` must be set *before* `api.list`,
+    // not inside `.then`, otherwise every keystroke during the in-flight window
+    // would re-enter the effect and refire IPC. We hold the first promise open
+    // so the effect's cache-latch is the only thing preventing duplicate calls.
+    let resolveFirst: (skills: SkillSummary[]) => void = () => undefined;
+    skillsList.mockReturnValueOnce(
+      new Promise<SkillSummary[]>((resolve) => {
+        resolveFirst = resolve;
+      })
+    );
+
+    render(<Harness initialInput="/r" />);
+
+    await waitFor(() => expect(skillsList).toHaveBeenCalledTimes(1));
+
+    const probe = screen.getByLabelText("probe");
+    fireEvent.change(probe, { target: { value: "/re" } });
+    fireEvent.change(probe, { target: { value: "/rev" } });
+    fireEvent.change(probe, { target: { value: "/revi" } });
+    fireEvent.change(probe, { target: { value: "/revie" } });
+
+    // The in-flight cache-latch must suppress further IPC calls until the
+    // first promise settles. cacheKey is stable across these keystrokes
+    // because provider+workspaceId did not change.
+    expect(skillsList).toHaveBeenCalledTimes(1);
+
+    // Resolve so the in-flight handle doesn't leak between tests.
+    resolveFirst([{ name: "review", description: "review code", source: "user" }]);
+  });
+
   it("retries the skills fetch after a transient failure (no permanent latch)", async () => {
     // audit-2026-05-11 / SPEC P1.07 — `fetchedFor.current = cacheKey` was
     // set before the promise resolved and never cleared in `.catch`, so

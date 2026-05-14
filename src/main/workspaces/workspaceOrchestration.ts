@@ -6,6 +6,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { WorkspaceSummary } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
 import { runGitText } from "../git/exec.js";
 
 const execFileAsync = promisify(execFile);
@@ -96,7 +97,7 @@ export class WorkspaceService {
       // refactor cannot accidentally let a `-`-prefixed argument become a flag.
       await runGitText(project.repoPath, ["worktree", "add", "-b", branch, worktreePath, baseRef]);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Unknown git error";
+      const detail = errorMessage(error) || "Unknown git error";
       throw new WorkspaceError(`Could not create worktree for ${branch}. ${detail}`, "Choose another base ref or branch name and retry.");
     }
 
@@ -181,7 +182,7 @@ export class WorkspaceService {
       try {
         await runGitText(project.repoPath, ["worktree", "remove", workspace.path]);
       } catch (error) {
-        const detail = error instanceof Error ? error.message : "Unknown git error";
+        const detail = errorMessage(error) || "Unknown git error";
         throw new WorkspaceError(`Could not archive clean worktree. ${detail}`, "Review the worktree and retry archive.");
       }
     } else {

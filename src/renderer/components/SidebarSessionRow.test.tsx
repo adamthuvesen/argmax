@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
-import { SidebarSessionRow } from "./SidebarSessionRow.js";
+import { SidebarSessionRow, sidebarSessionRowEqual } from "./SidebarSessionRow.js";
 
 const workspaceBase: WorkspaceSummary = {
   id: "workspace-1",
@@ -47,6 +47,50 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByRole("button", { name: "Open in IDE" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose IDE" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Archive session" })).toBeInTheDocument();
+  });
+
+  it("memo comparator skips re-render when a new workspace object has identical visible fields (ralph C1)", () => {
+    const onOpenWorkspaceChat = vi.fn();
+    const onArchiveWorkspace = vi.fn();
+    const onOpenInIde = vi.fn();
+    const sharedIdes = detectedIdes;
+    const prev = {
+      workspace: { ...workspaceBase },
+      workspaceTokens: null,
+      isSelected: false,
+      onOpenWorkspaceChat,
+      onArchiveWorkspace,
+      onOpenInIde,
+      detectedIdes: sharedIdes,
+      defaultIde: "vscode" as const,
+      showTokens: false
+    };
+    const next = { ...prev, workspace: { ...workspaceBase } };
+
+    // Same relevant fields → comparator says "equal", React skips render.
+    expect(sidebarSessionRowEqual(prev, next)).toBe(true);
+
+    // Mutating lastActivityAt (the per-token-tick churn signal) by itself
+    // also doesn't matter for the row's visible state when nothing else
+    // changed — but the comparator does include lastActivityAt because the
+    // row reads it for sorting context. Keep this test honest:
+    expect(
+      sidebarSessionRowEqual(prev, {
+        ...prev,
+        workspace: { ...workspaceBase, lastActivityAt: "2026-05-01T00:02:00.000Z" }
+      })
+    ).toBe(false);
+
+    // State change → re-render.
+    expect(
+      sidebarSessionRowEqual(prev, {
+        ...prev,
+        workspace: { ...workspaceBase, state: "running" }
+      })
+    ).toBe(false);
+
+    // Selection toggle → re-render.
+    expect(sidebarSessionRowEqual(prev, { ...prev, isSelected: true })).toBe(false);
   });
 
   it("ships sidebar action CSS that is visible at rest", () => {

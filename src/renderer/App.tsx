@@ -77,7 +77,6 @@ import { mergeDashboardDelta } from "./lib/snapshot.js";
 
 type ToastMessage = { kind: "error" | "info"; message: string };
 
-const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
 
 function readStoredSidebarTokensVisible(): boolean {
@@ -103,10 +102,11 @@ export function App(): JSX.Element {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize();
-  const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(() => {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY) : null;
-    return raw === null ? true : raw === "true";
-  });
+  // Tool-call expansion defaults to ON for every new session: a collapsed
+  // preference is treated as an in-session override (the Settings toggle still
+  // flips it for the current session) but doesn't carry across launches, so
+  // each app start shows tool calls expanded.
+  const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(true);
   const [sidebarTokensVisible, setSidebarTokensVisible] = useState<boolean>(() => readStoredSidebarTokensVisible());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
@@ -384,10 +384,6 @@ export function App(): JSX.Element {
     onSelectSession: selectSessionFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
   });
-
-  useEffect(() => {
-    window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
-  }, [toolCallsExpanded]);
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_TOKENS_KEY, String(sidebarTokensVisible));

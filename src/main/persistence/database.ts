@@ -51,6 +51,19 @@ import {
   type PersistCheckpointInput,
   type UpdateCheckInput
 } from "./checks.js";
+import {
+  eventRowToTimelineEvent,
+  listSessionEventsSince,
+  persistRawOutput,
+  persistTimelineEvent,
+  rawOutputRowToProviderOutput,
+  type EventRow,
+  type PersistRawOutputInput,
+  type PersistTimelineEventInput,
+  type RawOutputRow,
+  type SessionEventsSinceInput,
+  type SessionEventsSinceResult
+} from "./events.js";
 import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
@@ -79,6 +92,12 @@ export type { InsertLearningInput } from "./learnings.js";
 export type { InsertUsageEventInput } from "./usage.js";
 export type { FindPendingApprovalInput, PersistApprovalInput } from "./approvals.js";
 export type { PersistCheckInput, PersistCheckpointInput, UpdateCheckInput } from "./checks.js";
+export type {
+  PersistRawOutputInput,
+  PersistTimelineEventInput,
+  SessionEventsSinceInput,
+  SessionEventsSinceResult
+} from "./events.js";
 
 export interface PersistProjectInput {
   id: string;
@@ -132,33 +151,6 @@ export interface SessionStateInput {
   attention: SessionSummary["attention"];
   completedAt?: string | null;
   lastActivityAt?: string;
-}
-
-export interface PersistTimelineEventInput {
-  id: string;
-  sessionId: string;
-  type: TimelineEvent["type"];
-  message: string;
-  payload: Record<string, unknown>;
-  createdAt?: string;
-  /**
-   * Optional usage sidecar. Not persisted to the events row; consumed by
-   * the provider session service to drive `insertUsageEvent`.
-   */
-  usage?: {
-    modelId: string;
-    tokens: UsageCounts;
-    costUsd: number;
-    eventId?: string;
-  };
-}
-
-export interface PersistRawOutputInput {
-  id: string;
-  sessionId: string;
-  stream: "stdout" | "stderr" | "pty" | "system";
-  content: string;
-  createdAt?: string;
 }
 
 interface ProjectAggregateRow {
@@ -232,38 +224,6 @@ interface SessionRow {
   cache_read_tokens: number;
   cache_write_tokens: number;
   cost_usd: number;
-}
-
-interface EventRow {
-  row_cursor?: number;
-  id: string;
-  session_id: string;
-  type: TimelineEvent["type"];
-  message: string;
-  payload_json: string;
-  created_at: string;
-}
-
-interface RawOutputRow {
-  row_cursor?: number;
-  id: string;
-  session_id: string;
-  stream: RawProviderOutput["stream"];
-  content: string;
-  created_at: string;
-}
-
-export interface SessionEventsSinceInput {
-  sessionId: string;
-  eventCursor?: number;
-  rawOutputCursor?: number;
-}
-
-export interface SessionEventsSinceResult {
-  events: TimelineEvent[];
-  rawOutputs: RawProviderOutput[];
-  eventCursor: number;
-  rawOutputCursor: number;
 }
 
 export interface WorkspaceStatusInputFilter {
@@ -404,7 +364,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     connection,
     listProjects: () => listProjects(connection),
     listDashboard: () => listDashboard(connection),
-    listSessionEventsSince: (input) => listSessionEventsSince(connection, input),
+    listSessionEventsSince: (input) => listSessionEventsSince(connection, input, SESSION_EVENT_PAGE_LIMIT, SESSION_RAW_OUTPUT_PAGE_LIMIT),
     listWorkspaceStatus: (input) => listWorkspaceStatus(connection, input),
     listPendingApprovals: () => listPendingApprovals(connection, DASHBOARD_ROW_LIMIT),
     countAttention: () => countAttention(connection),
@@ -849,51 +809,6 @@ function updateSessionProviderConversationId(
   return findSessionByIdNoPreferred(connection, sessionId);
 }
 
-function persistTimelineEvent(connection: Database.Database, input: PersistTimelineEventInput): TimelineEvent {
-  const createdAt = input.createdAt ?? new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO events (id, session_id, type, message, payload_json, created_at)
-        VALUES (@id, @sessionId, @type, @message, @payloadJson, @createdAt)
-      `
-    )
-    .run({
-      id: input.id,
-      sessionId: input.sessionId,
-      type: input.type,
-      message: input.message,
-      payloadJson: JSON.stringify(input.payload),
-      createdAt
-    });
-
-  return {
-    id: input.id,
-    sessionId: input.sessionId,
-    type: input.type,
-    message: input.message,
-    payload: input.payload,
-    createdAt
-  };
-}
-
-function persistRawOutput(connection: Database.Database, input: PersistRawOutputInput): void {
-  connection
-    .prepare(
-      `
-        INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
-        VALUES (@id, @sessionId, @stream, @content, @createdAt)
-      `
-    )
-    .run({
-      id: input.id,
-      sessionId: input.sessionId,
-      stream: input.stream,
-      content: input.content,
-      createdAt: input.createdAt ?? new Date().toISOString()
-    });
-}
-
 function findWorkspaceById(connection: Database.Database, workspaceId: string): WorkspaceSummary {
   const row = connection.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as WorkspaceRow | undefined;
   if (!row) {
@@ -1038,68 +953,6 @@ function listWorkspaceStatus(
   };
 }
 
-function listSessionEventsSince(
-  connection: Database.Database,
-  input: SessionEventsSinceInput
-): SessionEventsSinceResult {
-  const eventRows = input.eventCursor === undefined
-    ? (connection
-        .prepare(
-          `
-            SELECT * FROM (
-              SELECT rowid AS row_cursor, * FROM events
-              WHERE session_id = ?
-              ORDER BY rowid DESC
-              LIMIT ${SESSION_EVENT_PAGE_LIMIT}
-            )
-            ORDER BY row_cursor ASC
-          `
-        )
-        .all(input.sessionId) as EventRow[])
-    : (connection
-        .prepare(
-          `
-            SELECT rowid AS row_cursor, * FROM events
-            WHERE session_id = ? AND rowid > ?
-            ORDER BY rowid ASC
-            LIMIT ${SESSION_EVENT_PAGE_LIMIT}
-          `
-        )
-        .all(input.sessionId, input.eventCursor) as EventRow[]);
-
-  const rawOutputRows = input.rawOutputCursor === undefined
-    ? (connection
-        .prepare(
-          `
-            SELECT * FROM (
-              SELECT rowid AS row_cursor, * FROM raw_outputs
-              WHERE session_id = ?
-              ORDER BY rowid DESC
-              LIMIT ${SESSION_RAW_OUTPUT_PAGE_LIMIT}
-            )
-            ORDER BY row_cursor ASC
-          `
-        )
-        .all(input.sessionId) as RawOutputRow[])
-    : (connection
-        .prepare(
-          `
-            SELECT rowid AS row_cursor, * FROM raw_outputs
-            WHERE session_id = ? AND rowid > ?
-            ORDER BY rowid ASC
-            LIMIT ${SESSION_RAW_OUTPUT_PAGE_LIMIT}
-          `
-        )
-        .all(input.sessionId, input.rawOutputCursor) as RawOutputRow[]);
-
-  return {
-    events: eventRows.map(eventRowToTimelineEvent),
-    rawOutputs: rawOutputRows.map(rawOutputRowToProviderOutput),
-    eventCursor: maxRowCursor(eventRows, input.eventCursor ?? 0),
-    rawOutputCursor: maxRowCursor(rawOutputRows, input.rawOutputCursor ?? 0)
-  };
-}
-
 function loadDashboard(connection: Database.Database): DashboardSnapshot {
   const dashboard = listDashboard(connection);
 
@@ -1161,32 +1014,6 @@ function buildWorkspaceFilter(
     where: ` WHERE ${columnName} IN (${workspaceIds.map(() => "?").join(", ")})`,
     params: workspaceIds
   };
-}
-
-function eventRowToTimelineEvent(row: EventRow): TimelineEvent {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    type: row.type,
-    message: row.message,
-    payload: parseJsonRecord(row.payload_json, "database.eventPayload"),
-    createdAt: row.created_at
-  };
-}
-
-function rawOutputRowToProviderOutput(row: RawOutputRow): RawProviderOutput {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    stream: row.stream,
-    content: row.content,
-    createdAt: row.created_at
-  };
-}
-
-
-function maxRowCursor(rows: Array<{ row_cursor?: number }>, fallback: number): number {
-  return rows.reduce((max, row) => Math.max(max, row.row_cursor ?? max), fallback);
 }
 
 function selectPreferredAttempt(connection: Database.Database, sessionId: string): SessionSummary {

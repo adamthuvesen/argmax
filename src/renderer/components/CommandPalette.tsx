@@ -17,6 +17,13 @@ const MIN_MESSAGE_QUERY_LENGTH = 3;
 
 const GROUP_ORDER: PaletteGroup[] = ["Actions", "Sessions", "Projects", "Messages"];
 
+const GROUP_SIGIL: Record<PaletteGroup, string> = {
+  Actions: "A",
+  Sessions: "S",
+  Projects: "P",
+  Messages: "M"
+};
+
 export interface MessageHit {
   /** Stable key — `${sessionId}:${eventId}`. */
   id: string;
@@ -142,6 +149,14 @@ export function CommandPalette({
     }
   }, [flatRows, selectedIndex]);
 
+  const groupCounts = useMemo(() => {
+    const counts: Partial<Record<PaletteGroup, number>> = {};
+    for (const row of flatRows) {
+      counts[row.group] = (counts[row.group] ?? 0) + 1;
+    }
+    return counts;
+  }, [flatRows]);
+
   if (!open) return null;
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
@@ -179,6 +194,7 @@ export function CommandPalette({
     !messagesRunning &&
     (trimmedQuery.length === 0 || trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH);
 
+  const totalCount = flatRows.length;
   let lastGroup: PaletteGroup | null = null;
 
   return (
@@ -191,23 +207,46 @@ export function CommandPalette({
       }}
     >
       <div className="command-palette">
-        <input
-          ref={inputRef}
-          className="command-palette-input"
-          type="search"
-          placeholder="Type a command, session, project, or message…"
-          aria-label="Command palette query"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setSelectedIndex(0);
-          }}
-          onKeyDown={handleKeyDown}
-        />
+        <div className="command-palette-header" aria-hidden="true">
+          <span className="command-palette-scope">
+            <span className="command-palette-scope-mark">cmd</span>
+            <kbd className="command-palette-scope-kbd">⌘K</kbd>
+          </span>
+          <span className="command-palette-count">
+            {messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH
+              ? "searching…"
+              : totalCount > 0
+                ? `${totalCount} found`
+                : trimmedQuery.length === 0
+                  ? "type to filter"
+                  : "no matches"}
+          </span>
+        </div>
+        <label className="command-palette-input-wrap">
+          <span className="command-palette-prompt" aria-hidden="true">&gt;</span>
+          <input
+            ref={inputRef}
+            className="command-palette-input"
+            type="search"
+            placeholder="command, session, project, or message"
+            aria-label="Command palette query"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelectedIndex(0);
+            }}
+            onKeyDown={handleKeyDown}
+          />
+        </label>
         <ul className="command-palette-results" role="listbox" aria-label="Command results">
           {showingEmptyState ? (
             <li className="command-palette-empty" role="status">
-              No matches.
+              <span className="command-palette-empty-mark" aria-hidden="true">∅</span>
+              <span className="command-palette-empty-text">
+                {trimmedQuery.length === 0
+                  ? "Start typing to filter actions, sessions, projects, or messages."
+                  : "No matches — try shorter terms or a different scope."}
+              </span>
             </li>
           ) : null}
           {flatRows.map((row, index) => {
@@ -219,7 +258,12 @@ export function CommandPalette({
               <Fragment key={key}>
                 {groupHeader ? (
                   <li className="command-palette-group" role="presentation">
-                    {row.group}
+                    <span className="command-palette-group-rule" aria-hidden="true" />
+                    <span className="command-palette-group-label">{row.group}</span>
+                    <span className="command-palette-group-count" aria-hidden="true">
+                      / {String(groupCounts[row.group] ?? 0).padStart(2, "0")}
+                    </span>
+                    <span className="command-palette-group-rule" aria-hidden="true" />
                   </li>
                 ) : null}
                 <li
@@ -237,21 +281,35 @@ export function CommandPalette({
                   }}
                   onMouseEnter={() => setSelectedIndex(index)}
                 >
-                  {row.kind === "hit" ? (
-                    <PaletteHitRow hit={row.hit} />
-                  ) : (
-                    <MessageHitRow hit={row.hit} />
-                  )}
+                  <span className="command-palette-sigil" aria-hidden="true">{GROUP_SIGIL[row.group]}</span>
+                  <span className="command-palette-result-body">
+                    {row.kind === "hit" ? (
+                      <PaletteHitRow hit={row.hit} />
+                    ) : (
+                      <MessageHitRow hit={row.hit} />
+                    )}
+                  </span>
+                  <span className="command-palette-result-hint" aria-hidden="true">
+                    <kbd>⏎</kbd>
+                  </span>
                 </li>
               </Fragment>
             );
           })}
           {messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH ? (
             <li className="command-palette-loading" role="status">
+              <span className="command-palette-loading-dot" aria-hidden="true" />
               Searching messages…
             </li>
           ) : null}
         </ul>
+        <footer className="command-palette-footer" aria-hidden="true">
+          <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+          <span className="command-palette-footer-sep">·</span>
+          <span><kbd>⏎</kbd> open</span>
+          <span className="command-palette-footer-sep">·</span>
+          <span><kbd>esc</kbd> close</span>
+        </footer>
       </div>
     </div>
   );

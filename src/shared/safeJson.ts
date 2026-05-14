@@ -15,6 +15,7 @@
 
 import { logger } from "./logger.js";
 import { errorMessage } from "./error.js";
+import { isPlainObject } from "./typeGuards.js";
 
 const WARNING_INTERVAL_MS = 60_000;
 const lastWarnedAt = new Map<string, number>();
@@ -82,10 +83,7 @@ export function safeJsonParseRecord(
   context?: string
 ): Record<string, unknown> {
   const parsed = safeJsonParse(value, context);
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-    return parsed as Record<string, unknown>;
-  }
-  return {};
+  return isPlainObject(parsed) ? parsed : {};
 }
 
 /**
@@ -110,9 +108,7 @@ export function tryParseJsonObject(line: string): Record<string, unknown> | null
 export function safeJsonParseObject<T = Record<string, unknown>>(text: string): T | null {
   try {
     const parsed = JSON.parse(text) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as T)
-      : null;
+    return isPlainObject(parsed) ? (parsed as T) : null;
   } catch {
     return null;
   }

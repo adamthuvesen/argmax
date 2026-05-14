@@ -30,6 +30,7 @@ import type { ReviewState } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
 import { providerLabel, repoNameFromPath } from "../lib/projects.js";
+import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
 import {
@@ -62,18 +63,6 @@ import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { TurnBlock, type TurnToolItem } from "./TurnBlock.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
-
-function objectValue(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function arrayValue(value: unknown): unknown[] | null {
-  return Array.isArray(value) ? value : null;
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
   if (event.type !== "message.delta" || event.payload.type !== "assistant") {

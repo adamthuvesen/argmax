@@ -20,6 +20,18 @@ import {
 } from "../lib/projects.js";
 import { SidebarSessionRow } from "./SidebarSessionRow.js";
 
+function projectMonogram(name: string): string {
+  const letter = name.replace(/[^a-z0-9]/gi, "").slice(0, 1);
+  return (letter || "·").toUpperCase();
+}
+
+function formatNameplateDate(): string {
+  const d = new Date();
+  const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${month}·${day}`;
+}
+
 export function Sidebar({
   loadState,
   onAddProject,
@@ -206,25 +218,45 @@ export function Sidebar({
     setDraggingWorkspaceId(null);
   }, []);
 
+  const visibleProjectCount = orderedProjects.length;
+  const nameplateDate = useMemo(() => formatNameplateDate(), []);
+  const footerState =
+    loadState === "ready" ? "ready" : loadState === "loading" ? "loading" : "issue";
+
   return (
     <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
       <div className="window-controls" />
+      <div className="sidebar-nameplate" aria-hidden="true">
+        <div className="sidebar-nameplate-line">
+          <span className="sidebar-nameplate-mark">argmax</span>
+          <span className="sidebar-nameplate-slash">//</span>
+          <span className="sidebar-nameplate-dot" data-state={footerState} />
+        </div>
+        <div className="sidebar-nameplate-sub">{nameplateDate} · local</div>
+      </div>
       <nav className="rail-nav" aria-label="Primary">
         <button
-          className="rail-nav-item"
+          className="rail-nav-item rail-nav-cta"
           type="button"
           title="New session"
           aria-label="New session"
           onClick={onOpenLauncher}
         >
-          <Plus size={16} />
-          <span>New session</span>
+          <span className="rail-nav-glyph" aria-hidden="true">
+            <Plus size={14} />
+          </span>
+          <span className="rail-nav-label">New session</span>
+          <kbd className="rail-nav-kbd" aria-hidden="true">⌘⏎</kbd>
         </button>
       </nav>
 
       <div className="project-list">
         <div className="rail-heading">
-          <p className="rail-label">Projects</p>
+          <p className="rail-label">
+            <span className="rail-label-text">Projects</span>
+            <span className="rail-label-rule" aria-hidden="true" />
+            <span className="rail-label-count" aria-hidden="true">{visibleProjectCount.toString().padStart(2, "0")}</span>
+          </p>
           <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
             <Plus size={16} />
           </button>
@@ -270,7 +302,10 @@ export function Sidebar({
                     onOpenLauncher();
                   }}
                 >
-                  <span className="project-bullet" aria-hidden="true" />
+                  <span className="project-monogram" aria-hidden="true">
+                    <span className="project-bullet" />
+                    <span className="project-monogram-glyph">{projectMonogram(project.name)}</span>
+                  </span>
                   <span className="project-name-text">{project.name}</span>
                 </button>
                 <button
@@ -286,32 +321,42 @@ export function Sidebar({
               </div>
               {isCollapsed
                 ? null
-                : projectWorkspaces.map((workspace) => (
-                    <div
-                      key={workspace.id}
-                      className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
-                      draggable={Boolean(onToggleWorkspacePinned)}
-                      onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
-                      onDragOver={handleWorkspaceDragOver}
-                      onDrop={(event) =>
-                        handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
-                      }
-                      onDragEnd={handleWorkspaceDragEnd}
-                    >
-                      <SidebarSessionRow
-                        workspace={workspace}
-                        workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
-                        isSelected={selectedWorkspaceId === workspace.id}
-                        onOpenWorkspaceChat={onOpenWorkspaceChat}
-                        onArchiveWorkspace={onArchiveWorkspace}
-                        onOpenInIde={onOpenInIde}
-                        onTogglePin={onToggleWorkspacePinned}
-                        detectedIdes={detectedIdes}
-                        defaultIde={defaultIde}
-                        showTokens={showSessionTokens}
-                      />
-                    </div>
-                  ))}
+                : projectWorkspaces.map((workspace, workspaceIndex) => {
+                    const isLast = workspaceIndex === projectWorkspaces.length - 1;
+                    return (
+                      <div
+                        key={workspace.id}
+                        className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                        draggable={Boolean(onToggleWorkspacePinned)}
+                        onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
+                        onDragOver={handleWorkspaceDragOver}
+                        onDrop={(event) =>
+                          handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
+                        }
+                        onDragEnd={handleWorkspaceDragEnd}
+                      >
+                        <span
+                          className="session-connector"
+                          aria-hidden="true"
+                          data-last={isLast ? "true" : "false"}
+                        >
+                          {isLast ? "└─" : "├─"}
+                        </span>
+                        <SidebarSessionRow
+                          workspace={workspace}
+                          workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
+                          isSelected={selectedWorkspaceId === workspace.id}
+                          onOpenWorkspaceChat={onOpenWorkspaceChat}
+                          onArchiveWorkspace={onArchiveWorkspace}
+                          onOpenInIde={onOpenInIde}
+                          onTogglePin={onToggleWorkspacePinned}
+                          detectedIdes={detectedIdes}
+                          defaultIde={defaultIde}
+                          showTokens={showSessionTokens}
+                        />
+                      </div>
+                    );
+                  })}
             </div>
           );
         })}
@@ -319,11 +364,14 @@ export function Sidebar({
 
       <div className="sidebar-footer">
         <div className="identity-chip" data-state={loadState}>
-          <span className="identity-avatar" aria-hidden="true">M</span>
+          <span className="identity-avatar" aria-hidden="true">
+            <span className="identity-avatar-glyph">▲</span>
+          </span>
           <span className="identity-meta">
-            <span className="identity-name">Argmax</span>
+            <span className="identity-name">argmax@local</span>
             <span className="identity-sub">
-              {loadState === "ready" ? "Local · Online" : loadState === "loading" ? "Local · Loading" : "Local · Issue"}
+              <span className="identity-sub-dot" aria-hidden="true" />
+              {loadState === "ready" ? "ready" : loadState === "loading" ? "booting" : "issue"}
             </span>
           </span>
         </div>

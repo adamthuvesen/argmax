@@ -1,4 +1,4 @@
-import { Columns2, FileText, Folder, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
+import { Columns2, Folder, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
@@ -7,6 +7,20 @@ import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks, type DiffView } from "./DiffBlocks.js";
 import { FilePreview } from "./FilePreview.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
+
+function fileBasename(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? path : path.slice(slash + 1);
+}
+
+function fileDirname(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? "" : path.slice(0, slash);
+}
+
+function statusGlyph(status: string): string {
+  return statusLabel(status).slice(0, 1).toUpperCase();
+}
 
 const DIFF_VIEW_KEY = "argmax.diffView";
 const LEFT_COL_WIDTH_KEY = "argmax.reviewPanel.leftColumnWidth";
@@ -95,6 +109,10 @@ export function ReviewPanel({
   const subtitle = isChanges
     ? `${review.files.length} files changed`
     : "Files";
+  const eyebrow = isChanges ? "Review // Changes" : "Review // Files";
+  const summaryStrip = isChanges && review.files.length > 0
+    ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
+    : null;
 
   return (
     <aside className="review-panel" aria-label="Review panel" ref={panelRef}>
@@ -103,6 +121,7 @@ export function ReviewPanel({
       ) : null}
       <div className="review-toolbar">
         <div className="review-toolbar-titles">
+          <p className="review-eyebrow" aria-hidden="true">{eyebrow}</p>
           <div className="review-mode-tabs" role="tablist" aria-label="Review panel mode">
             <button
               role="tab"
@@ -128,7 +147,7 @@ export function ReviewPanel({
             </button>
           </div>
           <h2>
-            {subtitle}
+            <span className="review-title-text">{subtitle}</span>
             {isChanges && review.files.length > 0 ? (
               <ChangeCount additions={totals.additions} deletions={totals.deletions} />
             ) : null}
@@ -154,19 +173,28 @@ export function ReviewPanel({
         <div className="review-list-col" style={{ width: leftColumnWidth }}>
           {isChanges ? (
             <div className="review-file-tabs" aria-label="Changed file list">
-              {review.files.map((file) => (
-                <button
-                  aria-pressed={review.selectedFilePath === file.path}
-                  key={file.path}
-                  type="button"
-                  title={file.path}
-                  onClick={() => review.openFile(file.path)}
-                >
-                  <FileText size={15} />
-                  <span>{file.path}</span>
-                  <ChangeCount additions={file.additions} deletions={file.deletions} />
-                </button>
-              ))}
+              {review.files.map((file) => {
+                const name = fileBasename(file.path);
+                const dir = fileDirname(file.path);
+                const glyph = statusGlyph(file.status);
+                return (
+                  <button
+                    aria-pressed={review.selectedFilePath === file.path}
+                    key={file.path}
+                    type="button"
+                    title={`${statusLabel(file.status)} · ${file.path}`}
+                    data-status={glyph.toLowerCase()}
+                    onClick={() => review.openFile(file.path)}
+                  >
+                    <span className="review-file-row-status" aria-hidden="true">{glyph}</span>
+                    <span className="review-file-row-meta">
+                      <span className="review-file-row-name">{name}</span>
+                      {dir ? <span className="review-file-row-dir">{dir}</span> : null}
+                    </span>
+                    <ChangeCount additions={file.additions} deletions={file.deletions} />
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <WorkspaceTree state={review.workspaceFiles} />
@@ -183,7 +211,7 @@ export function ReviewPanel({
           {isChanges ? (
             <>
               {selectedFile ? (
-                <div className="review-diff-heading">
+                <div className="review-diff-heading" data-status={statusGlyph(selectedFile.status).toLowerCase()}>
                   <div>
                     <span className="changed-file-status">{statusLabel(selectedFile.status)}</span>
                     <strong>{selectedFile.path}</strong>
@@ -194,9 +222,24 @@ export function ReviewPanel({
                   </button>
                 </div>
               ) : null}
-              {review.diffState === "loading" ? <p className="review-empty">Loading diff...</p> : null}
-              {review.diffState === "error" ? <p className="review-empty review-error">{review.diffError}</p> : null}
-              {review.diffState === "ready" && diffBlocks.length === 0 ? <p className="review-empty">No textual diff.</p> : null}
+              {review.diffState === "loading" ? (
+                <p className="review-empty">
+                  <span className="review-empty-mark" aria-hidden="true">∅</span>
+                  <span>Loading diff…</span>
+                </p>
+              ) : null}
+              {review.diffState === "error" ? (
+                <p className="review-empty review-error" role="alert">
+                  <span className="review-empty-mark" aria-hidden="true">!</span>
+                  <span>{review.diffError}</span>
+                </p>
+              ) : null}
+              {review.diffState === "ready" && diffBlocks.length === 0 ? (
+                <p className="review-empty">
+                  <span className="review-empty-mark" aria-hidden="true">∅</span>
+                  <span>No textual diff.</span>
+                </p>
+              ) : null}
               {review.diffState === "ready" && diffBlocks.length > 0 ? (
                 <DiffBlocks blocks={diffBlocks} filePath={selectedFile?.path ?? null} view={diffView} />
               ) : null}
@@ -206,6 +249,12 @@ export function ReviewPanel({
           )}
         </div>
       </div>
+      {summaryStrip ? (
+        <footer className="review-footer" aria-hidden="true">
+          <span className="review-footer-mark">└─</span>
+          <span className="review-footer-text">{summaryStrip}</span>
+        </footer>
+      ) : null}
     </aside>
   );
 }

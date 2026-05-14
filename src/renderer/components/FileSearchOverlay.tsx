@@ -1,8 +1,15 @@
-import { Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { listFilesFor, type ReviewSourceKind } from "../lib/listFiles.js";
 
 const MAX_VISIBLE_RESULTS = 100;
+
+const CODE_EXTENSIONS = new Set([
+  "ts", "tsx", "js", "jsx", "mjs", "cjs",
+  "py", "rb", "go", "rs", "java", "kt", "swift",
+  "c", "cc", "cpp", "h", "hpp",
+  "sh", "bash", "zsh",
+  "css", "scss", "less", "html", "json", "yaml", "yml", "toml", "sql", "xml"
+]);
 
 function basename(path: string): string {
   const slash = path.lastIndexOf("/");
@@ -12,6 +19,20 @@ function basename(path: string): string {
 function dirname(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash === -1 ? "" : path.slice(0, slash);
+}
+
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  if (dot === -1 || dot === 0) return "";
+  return name.slice(dot + 1).toLowerCase();
+}
+
+function fileGlyph(name: string): string {
+  const ext = extensionOf(name);
+  if (!ext) return "≡";
+  if (CODE_EXTENSIONS.has(ext)) return "</>";
+  if (ext === "md" || ext === "mdx" || ext === "txt") return "¶";
+  return "≡";
 }
 
 function filterFiles(paths: string[], query: string): string[] {
@@ -116,6 +137,19 @@ export function FileSearchOverlay({
     }
   };
 
+  const countLabel =
+    loadState === "loading"
+      ? "loading…"
+      : loadState === "error"
+        ? "error"
+        : results.length === 0
+          ? query.trim().length === 0
+            ? `${paths.length} files`
+            : "no matches"
+          : `${results.length}${results.length === MAX_VISIBLE_RESULTS ? "+" : ""} found`;
+
+  const scopeLabel = sourceKind === "workspace" ? "workspace" : "project";
+
   return (
     <div
       className="search-overlay"
@@ -129,8 +163,16 @@ export function FileSearchOverlay({
       tabIndex={-1}
     >
       <div className="search-modal">
-        <div className="search-input-wrap">
-          <Search size={14} aria-hidden="true" />
+        <div className="search-header" aria-hidden="true">
+          <span className="search-scope">
+            <span className="search-scope-mark">files</span>
+            <span className="search-scope-target">/ {scopeLabel}</span>
+            <kbd className="search-scope-kbd">⌘P</kbd>
+          </span>
+          <span className="search-count">{countLabel}</span>
+        </div>
+        <label className="search-input-wrap">
+          <span className="search-prompt" aria-hidden="true">~/</span>
           <input
             ref={inputRef}
             className="search-input"
@@ -140,7 +182,7 @@ export function FileSearchOverlay({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-        </div>
+        </label>
         {loadState === "error" ? (
           <p className="search-error" role="alert">
             {loadError}
@@ -149,12 +191,18 @@ export function FileSearchOverlay({
         <ul className="search-results" role="listbox" aria-label="File search results">
           {loadState === "ready" && results.length === 0 ? (
             <li className="search-empty" role="status">
-              No matches.
+              <span className="search-empty-mark" aria-hidden="true">∅</span>
+              <span className="search-empty-text">
+                {query.trim().length === 0
+                  ? "Type a filename, path fragment, or extension (e.g. .ts)."
+                  : "No matches — try shorter terms or an extension."}
+              </span>
             </li>
           ) : null}
           {results.map((path, index) => {
             const name = basename(path);
             const dir = dirname(path);
+            const dirParts = dir ? dir.split("/") : [];
             return (
               <li
                 key={path}
@@ -167,12 +215,36 @@ export function FileSearchOverlay({
                 }}
                 onMouseEnter={() => setSelectedIndex(index)}
               >
-                <span className="file-search-result-name">{name}</span>
-                {dir ? <span className="file-search-result-path">{dir}</span> : null}
+                <span className="file-search-glyph" aria-hidden="true">{fileGlyph(name)}</span>
+                <span className="file-search-meta">
+                  <span className="file-search-result-name">{name}</span>
+                  {dirParts.length > 0 ? (
+                    <span className="file-search-result-path">
+                      {dirParts.map((part, partIndex) => (
+                        <span key={partIndex} className="file-search-result-crumb">
+                          {partIndex > 0 ? (
+                            <span className="file-search-result-sep" aria-hidden="true">/</span>
+                          ) : null}
+                          <span>{part}</span>
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="file-search-hint" aria-hidden="true">
+                  <kbd>⏎</kbd>
+                </span>
               </li>
             );
           })}
         </ul>
+        <footer className="search-footer" aria-hidden="true">
+          <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+          <span className="search-footer-sep">·</span>
+          <span><kbd>⏎</kbd> open</span>
+          <span className="search-footer-sep">·</span>
+          <span><kbd>esc</kbd> close</span>
+        </footer>
       </div>
     </div>
   );

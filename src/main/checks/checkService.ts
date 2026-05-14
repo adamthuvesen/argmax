@@ -21,6 +21,13 @@ export interface RunWorkspaceCheckInput {
 }
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * Cap on accumulated stdout+stderr text. summarizeOutput only persists the
+ * last 8 lines anyway; without this cap a noisy command (npm install logs,
+ * test output) can hold tens of MB in the Electron main process for the full
+ * run lifetime. The tail drops oldest chunks once the cap is exceeded.
+ */
+const OUTPUT_TAIL_BYTES = 64 * 1024;
 
 export class CheckService {
   /**
@@ -42,9 +49,11 @@ export class CheckService {
     });
 
     const output: string[] = [];
+    let outputBytes = 0;
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     let timedOut = false;
     let aborted = false;
+    let escalation: { cancel: () => void } | null = null;
 
     const exitCode = await new Promise<number>((resolve) => {
       // detached: true puts the child in its own process group so we can
@@ -62,6 +71,13 @@ export class CheckService {
       const capture = (chunk: Buffer): void => {
         const text = chunk.toString();
         output.push(text);
+        outputBytes += text.length;
+        // Drop oldest chunks once we exceed the tail cap. Keep at least one
+        // chunk so summarizeOutput always has something to slice.
+        while (outputBytes > OUTPUT_TAIL_BYTES && output.length > 1) {
+          const dropped = output.shift();
+          if (dropped) outputBytes -= dropped.length;
+        }
         input.onOutput?.(text);
       };
 
@@ -86,7 +102,9 @@ export class CheckService {
         const pid = child.pid;
         // Negative pid signals the entire process group created by detached: true.
         // SIGTERM first; SIGKILL after a 2s grace period to defeat children that ignore TERM.
-        scheduleSigkillEscalation(
+        // Capture the cancel handle so finish() can stop the SIGKILL from firing
+        // against a (possibly recycled) pid after the child has already exited.
+        escalation = scheduleSigkillEscalation(
           () => process.kill(-pid, "SIGTERM"),
           () => process.kill(-pid, "SIGKILL")
         );
@@ -112,6 +130,11 @@ export class CheckService {
 
       const finish = (code: number): void => {
         clearTimeout(timer);
+        // Cancel any pending SIGKILL escalation — the child has exited.
+        // Without this, the 2s SIGKILL timer keeps firing against an
+        // already-dead (or, worse, recycled) pid.
+        escalation?.cancel();
+        escalation = null;
         if (input.signal) input.signal.removeEventListener("abort", onAbort);
         this.untrackChild(workspace.id, child);
         resolve(code);

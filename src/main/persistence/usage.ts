@@ -9,8 +9,13 @@ export interface InsertUsageEventInput {
   modelId: string;
   tokens: UsageCounts;
   costUsd: number;
-  /** Optional epoch-ms timestamp; defaults to Date.now() at insert time. */
-  createdAt?: number;
+  /**
+   * Optional ISO-8601 timestamp; defaults to `new Date().toISOString()` at
+   * insert time. Accepts epoch-ms for back-compat — the helper coerces to ISO.
+   * Migration v13 unified usage_events.created_at to TEXT to match every other
+   * timestamp column in the schema.
+   */
+  createdAt?: number | string;
 }
 
 interface UsageEventRow {
@@ -58,6 +63,12 @@ export function insertUsageEvent(connection: Database.Database, input: InsertUsa
   const modelStmt = connection.prepare(
     "UPDATE sessions SET last_model_id = @modelId WHERE id = @sessionId"
   );
+  const createdAtIso =
+    typeof input.createdAt === "string"
+      ? input.createdAt
+      : typeof input.createdAt === "number"
+        ? new Date(input.createdAt).toISOString()
+        : new Date().toISOString();
   connection.transaction(() => {
     insertStmt.run({
       sessionId: input.sessionId,
@@ -68,7 +79,7 @@ export function insertUsageEvent(connection: Database.Database, input: InsertUsa
       cacheReadTokens: input.tokens.cacheRead,
       cacheWriteTokens: input.tokens.cacheWrite,
       costUsd: input.costUsd,
-      createdAt: input.createdAt ?? Date.now()
+      createdAt: createdAtIso
     });
     const result = updateStmt.run({
       sessionId: input.sessionId,

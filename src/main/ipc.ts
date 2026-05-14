@@ -1,7 +1,5 @@
-import { app, dialog, ipcMain, shell } from "electron";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { dialog, ipcMain, shell } from "electron";
 import { ZodError, z, type ZodIssue, type ZodType } from "zod";
-import { createRequire } from "node:module";
 import {
   createCheckpointInputSchema,
   createCurrentWorkspaceInputSchema,
@@ -16,7 +14,6 @@ import {
   healthPingInputSchema,
   IPC_CHANNELS,
   launchProviderSessionInputSchema,
-  listDetectedIdesInputSchema,
   loadDiffInputSchema,
   loadDiffForProjectInputSchema,
   mcpAuthResizeInputSchema,
@@ -39,7 +36,6 @@ import {
   sessionCostSummaryInputSchema,
   sessionEventsSinceInputSchema,
   skillsListInputSchema,
-  systemOpenPathInputSchema,
   terminalResizeInputSchema,
   terminalSpawnInputSchema,
   terminalTerminateInputSchema,
@@ -60,6 +56,7 @@ import {
 } from "../shared/ipcSchemas.js";
 import { detectInstalledIdes } from "./ide/ideDetection.js";
 import { launchIde } from "./ide/ideLaunch.js";
+import { registerSystemHandlers } from "./ipc/system.js";
 import type { DetectedIde, IdeId } from "../shared/types.js";
 import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
@@ -77,11 +74,7 @@ import { listMcpServers } from "./mcp/mcpRegistry.js";
 import { runGitText } from "./git/exec.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
-import { readPhases as readStartupPhases } from "./util/startupTimer.js";
-import { readHistogram as readIpcHistogram, timed } from "./util/ipcLatency.js";
-import { readLogBuffer } from "../shared/logger.js";
-import { statSync } from "node:fs";
-import type { DatabaseStats } from "../shared/types.js";
+import { timed } from "./util/ipcLatency.js";
 
 /**
  * Wraps an IPC handler body so its `input` is validated against a zod schema
@@ -276,42 +269,9 @@ export function registerIpcHandlers(
       return { ok: true } as const;
     })
   );
-  register(
-    "system:listDetectedIdes",
-    withValidation(listDetectedIdesInputSchema, () => detectInstalledIdes())
-  );
-  register("system:diagnostics", withValidation(z.void(), () => {
-    const require = createRequire(import.meta.url);
-    const pkg = require("../../package.json") as { version?: string };
-    let sqliteVersion = "";
-    try {
-      const row = database.connection.prepare("SELECT sqlite_version() AS v").get() as { v: string };
-      sqliteVersion = row.v;
-    } catch {
-      sqliteVersion = "unknown";
-    }
-    const databasePath = app.getPath("userData") + "/local-state/argmax.sqlite";
-    return {
-      appVersion: pkg.version ?? "0.0.0",
-      electronVersion: process.versions.electron ?? "",
-      nodeVersion: process.versions.node,
-      sqliteVersion,
-      databasePath,
-      platform: process.platform,
-      arch: process.arch,
-      generatedAt: new Date().toISOString(),
-      startupPhases: readStartupPhases(),
-      databaseStats: collectDatabaseStats(database, databasePath),
-      ipcStats: readIpcHistogram(),
-      // Tail the most recent 200 entries. The buffer caps at 1000; the panel
-      // only needs the recent slice and a 200-row table stays scannable.
-      recentLogs: readLogBuffer().slice(-200)
-    };
-  }));
-  register("system:vacuumDatabase", withValidation(z.void(), () => {
-    database.connection.exec("VACUUM");
-    return { ok: true } as const;
-  }));
+  for (const channel of registerSystemHandlers(database)) {
+    registeredChannels.push(channel);
+  }
   register("mcp:list", withValidation(z.void(), () => listMcpServers()));
   register(
     "mcp:auth:start",
@@ -565,19 +525,6 @@ export function registerIpcHandlers(
     withValidation(selectPreferredAttemptInputSchema, (input) => database.selectPreferredAttempt(input.sessionId))
   );
   register(
-    "system:open-path",
-    withValidation(systemOpenPathInputSchema, async (input) => {
-      const target = isAbsolute(input.path)
-        ? input.path
-        : input.cwd
-          ? resolvePath(input.cwd, input.path)
-          : input.path;
-      const error = await shell.openPath(target);
-      if (error) throw new Error(error);
-      return { ok: true } as const;
-    })
-  );
-  register(
     "skills:list",
     withValidation(skillsListInputSchema, (input) => {
       // Resolve workspace path so workspace-local .claude/.codex skill dirs
@@ -612,51 +559,6 @@ export const REGISTERED_IPC_CHANNELS: readonly IpcChannel[] = IPC_CHANNELS;
  * have disabled the button, so we throw a useful error instead of guessing.
  */
 const DEFAULT_IDE_PRIORITY: readonly IdeId[] = ["vscode", "cursor", "windsurf", "zed", "iterm", "terminal"];
-
-/**
- * SPEC P7.03 — collect database health stats for Diagnostics → Database.
- * Per-table row counts, WAL sidecar size, and the configured
- * `wal_autocheckpoint` pragma. All reads are cheap (`COUNT(*)` against
- * indexed tables, single pragma read, single `fs.stat`).
- */
-function collectDatabaseStats(database: ArgmaxDatabase, databasePath: string): DatabaseStats {
-  const count = (table: string): number => {
-    try {
-      const row = database.connection.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
-      return row.n;
-    } catch {
-      return 0;
-    }
-  };
-  let walBytes = 0;
-  try {
-    walBytes = statSync(`${databasePath}-wal`).size;
-  } catch {
-    /* sidecar missing or unreadable */
-  }
-  let walAutocheckpoint = 0;
-  try {
-    walAutocheckpoint = Number(database.connection.pragma("wal_autocheckpoint", { simple: true })) || 0;
-  } catch {
-    /* pragma read failed */
-  }
-  return {
-    rowCounts: {
-      projects: count("projects"),
-      workspaces: count("workspaces"),
-      sessions: count("sessions"),
-      events: count("events"),
-      rawOutputs: count("raw_outputs"),
-      approvals: count("approvals"),
-      checks: count("checks"),
-      checkpoints: count("checkpoints"),
-      learnings: count("learnings"),
-      usageEvents: count("usage_events")
-    },
-    walBytes,
-    walAutocheckpoint
-  };
-}
 
 export function resolveDefaultIde(detected: readonly DetectedIde[]): IdeId {
   if (detected.length === 0) {

@@ -20,17 +20,8 @@
  * a fatal stays visible without an extra env var.
  */
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
-
-export interface LogEntry {
-  /** ISO-8601 UTC timestamp. */
-  timestamp: string;
-  level: LogLevel;
-  scope: string;
-  message: string;
-  /** Always present; empty object when caller omitted fields. */
-  fields: Record<string, unknown>;
-}
+import type { LogEntry, LogLevel } from "./types.js";
+export type { LogEntry, LogLevel };
 
 const LOG_BUFFER_SIZE = 1000;
 const buffer: LogEntry[] = [];

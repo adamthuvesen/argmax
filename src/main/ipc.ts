@@ -74,6 +74,7 @@ import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
 import { readPhases as readStartupPhases } from "./util/startupTimer.js";
 import { readHistogram as readIpcHistogram, timed } from "./util/ipcLatency.js";
+import { readLogBuffer } from "../shared/logger.js";
 import { statSync } from "node:fs";
 import type { DatabaseStats } from "../shared/types.js";
 
@@ -296,7 +297,10 @@ export function registerIpcHandlers(
       generatedAt: new Date().toISOString(),
       startupPhases: readStartupPhases(),
       databaseStats: collectDatabaseStats(database, databasePath),
-      ipcStats: readIpcHistogram()
+      ipcStats: readIpcHistogram(),
+      // Tail the most recent 200 entries. The buffer caps at 1000; the panel
+      // only needs the recent slice and a 200-row table stays scannable.
+      recentLogs: readLogBuffer().slice(-200)
     };
   }));
   register("system:vacuumDatabase", withValidation(z.void(), () => {

@@ -546,6 +546,18 @@ export interface StartupPhaseRecord {
   deltaMs: number;
 }
 
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
+export interface LogEntry {
+  /** ISO-8601 timestamp. */
+  timestamp: string;
+  level: LogLevel;
+  scope: string;
+  message: string;
+  /** JSON-serializable structured fields. Always present (may be empty). */
+  fields: Record<string, unknown>;
+}
+
 export interface IpcChannelStats {
   channel: string;
   /** Samples in the rolling 100-call window. */
@@ -603,6 +615,11 @@ export interface DiagnosticsReport {
    * renders this. Empty array when no channels have been sampled yet.
    */
   ipcStats: IpcChannelStats[];
+  /**
+   * Tail of the main-process log ring buffer (most recent 200 entries).
+   * Diagnostics → Logs panel (SPEC P7.01) renders this.
+   */
+  recentLogs: LogEntry[];
 }
 
 export type MenuCommand =

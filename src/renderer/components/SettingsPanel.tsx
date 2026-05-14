@@ -713,6 +713,31 @@ export function SettingsPanel({
             </dl>
           </div>
         ) : null}
+        {diagnostics?.recentLogs?.length ? (
+          <div className="settings-card" aria-labelledby="settings-diagnostics-logs">
+            <h3 id="settings-diagnostics-logs" className="settings-card-title">
+              Recent logs
+            </h3>
+            <p className="settings-hint">
+              Main-process ring buffer tail. Refreshes when this panel re-opens. Use{" "}
+              <em>Copy diagnostics</em> to capture the full payload for a bug report.
+            </p>
+            <ul className="settings-logs-list" aria-label="Recent log entries">
+              {diagnostics.recentLogs.map((entry, index) => (
+                <li
+                  key={`${entry.timestamp}-${index}`}
+                  data-log-level={entry.level}
+                  className="settings-logs-entry"
+                >
+                  <span className="settings-logs-timestamp">{entry.timestamp}</span>
+                  <span className="settings-logs-level">{entry.level}</span>
+                  <code className="settings-logs-scope">{entry.scope}</code>
+                  <span className="settings-logs-message">{entry.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {diagnostics?.ipcStats?.length ? (
           <div className="settings-card" aria-labelledby="settings-diagnostics-ipc">
             <h3 id="settings-diagnostics-ipc" className="settings-card-title">

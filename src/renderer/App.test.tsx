@@ -194,6 +194,22 @@ describe("App", () => {
       ipcStats: [
         { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
         { channel: "providers:launch", count: 3, totalRecorded: 3, p50: 18.5, p99: 32.1 }
+      ],
+      recentLogs: [
+        {
+          timestamp: "2026-05-14T11:00:00.000Z",
+          level: "info",
+          scope: "providers.session",
+          message: "session launched",
+          fields: { sessionId: "session-1" }
+        },
+        {
+          timestamp: "2026-05-14T11:00:05.000Z",
+          level: "warn",
+          scope: "gh.poller",
+          message: "ghService.refresh failed",
+          fields: {}
+        }
       ]
     });
     vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
@@ -1281,6 +1297,19 @@ describe("App", () => {
     }
   });
 
+  it("renders Settings → Diagnostics → Recent logs (P7.01)", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+
+    const list = await screen.findByRole("list", { name: "Recent log entries" });
+    expect(within(list).getByText("session launched")).toBeInTheDocument();
+    expect(within(list).getByText("ghService.refresh failed")).toBeInTheDocument();
+    // The warn entry's level tag.
+    expect(within(list).getByText("warn")).toBeInTheDocument();
+  });
+
   it("renders Settings → Diagnostics → IPC latency stats (P7.02)", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -1346,7 +1375,8 @@ describe("App", () => {
         walBytes: 0,
         walAutocheckpoint: 1000
       },
-      ipcStats: []
+      ipcStats: [],
+      recentLogs: []
     });
 
     render(<App />);

@@ -22,6 +22,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState } from "../hooks/useReviewState.js";
+import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
 import { ReviewPanel } from "./ReviewPanel.js";
@@ -52,6 +53,7 @@ export function SessionPane({
   project,
   rawOutputs,
   session,
+  thinkingStyle,
   workspace
 }: {
   approvals: ApprovalRequest[];
@@ -67,6 +69,7 @@ export function SessionPane({
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   session: SessionSummary | null;
+  thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
@@ -275,6 +278,7 @@ export function SessionPane({
           rawOutputs={rawOutputs}
           review={reviewState}
           session={session}
+          {...(thinkingStyle ? { thinkingStyle } : {})}
           workspace={workspace}
         />
 

@@ -14,7 +14,17 @@ function makeState(entries: WorkspaceFileEntry[]): WorkspaceFilesState {
     preview: null,
     previewState: "idle",
     previewError: null,
-    openFile: () => undefined
+    openFile: () => undefined,
+    buffer: null,
+    isDirty: false,
+    diskMtimeMs: null,
+    externalChange: false,
+    saveState: "idle",
+    saveError: null,
+    editFile: () => undefined,
+    saveFile: () => Promise.resolve(),
+    reloadFile: () => undefined,
+    dismissExternalChange: () => undefined
   };
 }
 

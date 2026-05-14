@@ -38,7 +38,12 @@ describe("useReviewState — IPC fan-out resistance", () => {
       writable: true,
       value: {
         review: { listChangedFiles, loadDiff: vi.fn().mockResolvedValue(null) },
-        workspace: { listFiles: listWorkspaceFiles, readFile: vi.fn() }
+        workspace: {
+          listFiles: listWorkspaceFiles,
+          readFile: vi.fn(),
+          writeFile: vi.fn(),
+          statFile: vi.fn()
+        }
       } satisfies Partial<ArgmaxApi>
     });
   });

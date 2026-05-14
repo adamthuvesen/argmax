@@ -66,7 +66,6 @@ export function TurnBlock({
   assistantTimestamps,
   toolsNode,
   assistantNode,
-  now,
   providerLabel: providerLabelText,
   modelLabel,
   defaultExpanded
@@ -75,15 +74,15 @@ export function TurnBlock({
   assistantTimestamps: number[];
   toolsNode: ReactNode;
   assistantNode: ReactNode;
-  now: number;
   providerLabel?: string;
   modelLabel?: string;
   defaultExpanded?: boolean;
 }): JSX.Element {
   const running = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
   const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
-  const endMs = bounds.endedAt ?? now;
-  const elapsedMs = Math.max(0, endMs - bounds.startedAt);
+  // When running, the chip shows "Working…" and elapsedMs is unused; when
+  // not running, bounds.endedAt is guaranteed non-null.
+  const elapsedMs = bounds.endedAt !== null ? Math.max(0, bounds.endedAt - bounds.startedAt) : 0;
 
   // Expanded while running so users see live progress; auto-collapse on
   // completion. The user's manual toggle (userToggle) wins after that.

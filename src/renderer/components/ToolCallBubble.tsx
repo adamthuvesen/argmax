@@ -8,11 +8,10 @@ import {
   type ParallelPosition,
   type ToolCall
 } from "../lib/toolCalls.js";
-import { ToolStatusChip } from "./ToolStatusChip.js";
+import { LiveElapsedChip } from "./LiveElapsedChip.js";
 
 export function ToolCallBubble({
   tool,
-  now,
   fresh,
   parallelPosition,
   parallelGroupId,
@@ -21,7 +20,6 @@ export function ToolCallBubble({
   workspaceCwd
 }: {
   tool: ToolCall;
-  now: number;
   fresh: boolean;
   parallelPosition?: ParallelPosition;
   parallelGroupId?: string;
@@ -48,9 +46,8 @@ export function ToolCallBubble({
     }
   }, [tool.status, shouldAutoExpandOnError]);
 
-  const startedMs = Date.parse(tool.createdAt);
-  const endedMs = tool.completedAt ? Date.parse(tool.completedAt) : now;
-  const elapsedMs = Number.isFinite(startedMs) ? Math.max(0, endedMs - startedMs) : 0;
+  const startedAtMs = Date.parse(tool.createdAt);
+  const completedAtMs = tool.completedAt ? Date.parse(tool.completedAt) : null;
 
   const showFlash = fresh && !didFlash;
   const rootClass = [
@@ -86,7 +83,12 @@ export function ToolCallBubble({
         <span className="tool-call-icon" aria-hidden="true">{getToolIcon(tool.name)}</span>
         <span className="tool-call-name">{tool.name}</span>
         {tool.inputPreview ? <code className="tool-call-preview">{tool.inputPreview}</code> : null}
-        <ToolStatusChip status={tool.status} elapsedMs={elapsedMs} showFastFailureText />
+        <LiveElapsedChip
+          status={tool.status}
+          startedAtMs={startedAtMs}
+          completedAtMs={completedAtMs}
+          showFastFailureText
+        />
         <ChevronRight size={11} className={`tool-call-chevron${expanded ? " expanded" : ""}`} />
       </button>
       {expanded ? (

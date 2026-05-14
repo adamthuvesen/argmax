@@ -46,6 +46,11 @@ import {
   readStoredPermissionMode,
   type PermissionMode
 } from "./lib/permissionMode.js";
+import {
+  THINKING_STYLE_KEY,
+  readStoredThinkingStyle,
+  type ThinkingStyle
+} from "./lib/thinkingStyle.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 
@@ -79,6 +84,7 @@ export function App(): JSX.Element {
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
+  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>(() => readStoredThinkingStyle());
 
   const showErrorToast = useCallback((message: string): void => {
     setToast({ kind: "error", message });
@@ -204,6 +210,11 @@ export function App(): JSX.Element {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(PERMISSION_MODE_KEY, permissionMode);
   }, [permissionMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(THINKING_STYLE_KEY, thinkingStyle);
+  }, [thinkingStyle]);
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
     if (!window.argmax) {
@@ -683,6 +694,8 @@ export function App(): JSX.Element {
               onDefaultIdeChange={setDefaultIde}
               permissionMode={permissionMode}
               onPermissionModeChange={setPermissionMode}
+              thinkingStyle={thinkingStyle}
+              onThinkingStyleChange={setThinkingStyle}
               projects={snapshot.projects}
               onClose={() => setIsSettingsOpen(false)}
             />
@@ -701,6 +714,7 @@ export function App(): JSX.Element {
               project={selectedProject}
               rawOutputs={snapshot.rawOutputs}
               session={selectedSession}
+              thinkingStyle={thinkingStyle}
               workspace={selectedWorkspace}
             />
           ) : (

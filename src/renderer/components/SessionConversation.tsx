@@ -25,12 +25,12 @@ import type {
 } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useFreshSet } from "../hooks/useFreshSet.js";
-import { useNow } from "../hooks/useNow.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
 import { providerLabel, repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
+import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
 import {
   buildToolCallGroup,
   detectToolError,
@@ -51,8 +51,10 @@ import { CostPanel } from "./CostPanel.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
 import { FileChip } from "./FileChip.js";
 import { ModelSelector } from "./ModelSelector.js";
+import { NowProvider } from "./NowProvider.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { ThinkingTranscript } from "./ThinkingTranscript.js";
+import { ThinkingVerbs } from "./ThinkingVerbs.js";
 import { ToolCallBubble } from "./ToolCallBubble.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { TurnBlock, type TurnToolItem } from "./TurnBlock.js";
@@ -74,6 +76,7 @@ export function SessionConversation({
   rawOutputs,
   review,
   session,
+  thinkingStyle = DEFAULT_THINKING_STYLE,
   workspace
 }: {
   checks?: CheckRun[];
@@ -90,6 +93,7 @@ export function SessionConversation({
   rawOutputs: RawProviderOutput[];
   review: ReviewState;
   session: SessionSummary | null;
+  thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [input, setInput] = useState("");
@@ -215,7 +219,6 @@ export function SessionConversation({
   }, [conversationEvents, toolCalls]);
 
   const anyToolRunning = toolCalls.some((tool) => tool.status === "running");
-  const now = useNow(anyToolRunning, 250);
   const isFreshTool = useFreshSet(toolCalls, (tool) => tool.id, session?.id ?? "");
 
   // Second-level fold: group user→assistant→tools into a single "turn" so the
@@ -478,6 +481,7 @@ export function SessionConversation({
         </div>
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
+        <NowProvider active={anyToolRunning}>
         {renderItems.length > 0 ? (
           renderItems.map((item) => {
             if (item.kind === "user-message") {
@@ -579,7 +583,6 @@ export function SessionConversation({
                 <ToolCallBubble
                   key={tItem.tool.id}
                   tool={tItem.tool}
-                  now={now}
                   fresh={isFreshTool(tItem.tool)}
                   defaultExpanded={defaultToolCallsExpanded}
                   workspaceCwd={workspace?.path ?? null}
@@ -588,7 +591,6 @@ export function SessionConversation({
                 <ToolCallGroupBubble
                   key={tItem.group.id}
                   group={tItem.group}
-                  now={now}
                   isFreshTool={isFreshTool}
                   defaultExpanded={defaultToolCallsExpanded}
                   workspaceCwd={workspace?.path ?? null}
@@ -600,7 +602,6 @@ export function SessionConversation({
                 key={item.id}
                 toolItems={item.toolItems}
                 assistantTimestamps={item.assistantTimestamps}
-                now={now}
                 {...(session ? { providerLabel: providerLabel(session.provider) } : {})}
                 modelLabel={selectedModel.label}
                 {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
@@ -633,8 +634,13 @@ export function SessionConversation({
           </button>
         ) : null}
         {isThinking ? (
-          <ThinkingTranscript command={`run --model ${thinkingModelSlug(selectedModel)}`} />
+          thinkingStyle === "verbs" ? (
+            <ThinkingVerbs />
+          ) : (
+            <ThinkingTranscript command={`run --model ${thinkingModelSlug(selectedModel)}`} />
+          )
         ) : null}
+        </NowProvider>
       </div>
       <div className="session-meta-cards" ref={metaCardsRef}>
         <ChangedFilesCard

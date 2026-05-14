@@ -25,7 +25,17 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       preview: null,
       previewState: "idle",
       previewError: null,
-      openFile: () => {}
+      openFile: () => {},
+      buffer: null,
+      isDirty: false,
+      diskMtimeMs: null,
+      externalChange: false,
+      saveState: "idle",
+      saveError: null,
+      editFile: () => {},
+      saveFile: () => Promise.resolve(),
+      reloadFile: () => {},
+      dismissExternalChange: () => {}
     },
     openFile: () => {},
     openPanelInFilesMode: () => {},

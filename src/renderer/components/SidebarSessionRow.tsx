@@ -9,12 +9,18 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js";
-import { formatCostUsd } from "../formatCost.js";
+import { formatTokens } from "../formatTokens.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+
+export interface WorkspaceTokenBreakdown {
+  input: number;
+  output: number;
+  cached: number;
+}
 
 export function SidebarSessionRow({
   workspace,
-  workspaceCost,
+  workspaceTokens,
   isSelected,
   onOpenWorkspaceChat,
   onArchiveWorkspace,
@@ -24,7 +30,7 @@ export function SidebarSessionRow({
   defaultIde
 }: {
   workspace: WorkspaceSummary;
-  workspaceCost: number;
+  workspaceTokens: WorkspaceTokenBreakdown | null;
   isSelected: boolean;
   onOpenWorkspaceChat: (workspaceId: string) => void;
   onArchiveWorkspace: (workspaceId: string) => void;
@@ -108,14 +114,24 @@ export function SidebarSessionRow({
         <span className="status-dot" aria-hidden="true" />
         <span>{workspace.taskLabel}</span>
       </button>
-      <span
-        className="session-cost"
-        aria-label={`Cost: ${formatCostUsd(workspaceCost)}`}
-        title={`Session cost so far: ${formatCostUsd(workspaceCost)}`}
-        data-zero={workspaceCost === 0 ? "true" : undefined}
-      >
-        {formatCostUsd(workspaceCost)}
-      </span>
+      {(() => {
+        const inputOutput = (workspaceTokens?.input ?? 0) + (workspaceTokens?.output ?? 0);
+        const display = formatTokens(inputOutput);
+        const cached = workspaceTokens?.cached ?? 0;
+        const tooltip = workspaceTokens
+          ? `Tokens so far — ${formatTokens(workspaceTokens.input)} in · ${formatTokens(workspaceTokens.output)} out${cached > 0 ? ` · ${formatTokens(cached)} cached` : ""}`
+          : "No tokens recorded yet";
+        return (
+          <span
+            className="session-tokens"
+            aria-label={`Tokens: ${display}`}
+            title={tooltip}
+            data-zero={inputOutput === 0 ? "true" : undefined}
+          >
+            {display}
+          </span>
+        );
+      })()}
       <div className="session-ide-cluster" ref={pickerRef}>
         <button
           className="session-row-action session-ide-btn"

@@ -36,7 +36,17 @@ function reviewStub(): ReviewState {
       preview: null,
       previewState: "idle",
       previewError: null,
-      openFile: vi.fn()
+      openFile: vi.fn(),
+      buffer: null,
+      isDirty: false,
+      diskMtimeMs: null,
+      externalChange: false,
+      saveState: "idle",
+      saveError: null,
+      editFile: vi.fn(),
+      saveFile: vi.fn().mockResolvedValue(undefined),
+      reloadFile: vi.fn(),
+      dismissExternalChange: vi.fn()
     },
     openFile: vi.fn(),
     openPanelInFilesMode: vi.fn(),

@@ -30,7 +30,6 @@ describe("TurnBlock", () => {
         assistantTimestamps={[]}
         toolsNode={<div data-testid="tools">tools</div>}
         assistantNode={<p data-testid="assistant">assistant text</p>}
-        now={Date.parse("2026-05-12T15:00:03.000Z")}
         providerLabel="Cursor"
         modelLabel="Composer 2"
       />
@@ -49,7 +48,6 @@ describe("TurnBlock", () => {
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
         toolsNode={<div data-testid="tools">tools</div>}
         assistantNode={<p data-testid="assistant">reply</p>}
-        now={Date.parse("2026-05-12T15:00:03.000Z")}
       />
     );
     // Chip reads "Worked for {elapsed}" (formatElapsed renders seconds).
@@ -68,7 +66,6 @@ describe("TurnBlock", () => {
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
         toolsNode={<div data-testid="tools">tools</div>}
         assistantNode={<p data-testid="assistant">reply</p>}
-        now={Date.parse("2026-05-12T15:00:03.000Z")}
       />
     );
     expect(screen.queryByTestId("tools")).not.toBeInTheDocument();
@@ -83,7 +80,6 @@ describe("TurnBlock", () => {
         assistantTimestamps={[Date.parse("2026-05-12T15:00:00.000Z")]}
         toolsNode={null}
         assistantNode={<p data-testid="assistant">just text</p>}
-        now={Date.parse("2026-05-12T15:00:01.000Z")}
       />
     );
     expect(screen.queryByRole("button", { name: /Worked|Working/ })).not.toBeInTheDocument();

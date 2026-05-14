@@ -1,3 +1,25 @@
+/**
+ * Architectural decision — 2026-05-14 quality sweep (Ralph SPEC D5).
+ *
+ * This service is ~1000 lines because it owns the full provider-session
+ * lifecycle: launch, sendInput, terminate, the event flush queue, learning
+ * synthesis, conversation-id capture, dashboard delta publishing, and crash
+ * recovery. The prior Snappy SPEC proposed splitting flush/orchestration into
+ * a separate class; deferred here because:
+ *
+ * - The flush queue reads private `buffers` and writes per-session state on
+ *   `handleProviderEvent`; an extracted class would have to expose ~half of
+ *   the current private surface and the indirection adds boilerplate without
+ *   simplifying any single call site.
+ * - Tests cover the integrated surface (launch + sendInput + terminate +
+ *   flush) end-to-end. Splitting now would require restructuring those tests
+ *   without changing the behaviour they assert.
+ *
+ * Revisit if a future change to flush orchestration needs to touch the class
+ * in a way that conflicts with concurrent lifecycle work — until then the
+ * cohesion is genuine.
+ */
+
 import { randomUUID } from "node:crypto";
 import { RecordNotFoundError, type ArgmaxDatabase, type PersistTimelineEventInput } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";

@@ -1,3 +1,22 @@
+/**
+ * Architectural decision — 2026-05-14 quality sweep (Ralph SPEC D4).
+ *
+ * This file is 800+ lines because it dispatches over three provider event
+ * shapes (Claude, Codex, Cursor) plus shared usage normalization. Splitting
+ * into per-provider files was considered and deferred:
+ *
+ * - The dispatcher's runtime cost is one switch over `provider`; a multi-file
+ *   layout adds an indirection per event for negligible readability gain.
+ * - The dispatcher closures share session context (`NormalizerSessionContext`)
+ *   that would have to thread through three module boundaries instead of one.
+ * - Cursor's stream-json shape is still stabilizing; per-provider splits made
+ *   *now* would lock in a layout that may need to re-merge once we know the
+ *   final boundaries.
+ *
+ * Revisit once Cursor support is stable and per-provider normalizer changes
+ * collide with each other on review — until then, keep this file unified.
+ */
+
 import { randomUUID } from "node:crypto";
 import type { PersistTimelineEventInput } from "../persistence/database.js";
 import type { EventType, ProviderId } from "../../shared/types.js";

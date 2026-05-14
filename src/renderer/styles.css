@@ -344,6 +344,8 @@ button {
   border-radius: 10px;
   background: var(--panel);
   color: var(--text);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.003em;
@@ -568,6 +570,7 @@ button {
   align-items: center;
   gap: 10px;
   width: 100%;
+  min-width: 0;
   min-height: 30px;
   padding: 0 6px 0 8px;
   color: var(--text);
@@ -1300,7 +1303,6 @@ button {
   position: absolute;
   inset: 0;
   z-index: 120;
-  padding: 20px 16px 0;
   border-left: 0;
 }
 
@@ -1661,10 +1663,14 @@ button {
   content: " ▍";
   margin-left: 1px;
   color: var(--ink);
-  animation: settings-caret 1.4s steps(2) infinite;
+  animation: inkwell-caret 1.4s steps(2) infinite;
+  animation-delay: 600ms;
 }
 
-@keyframes settings-caret {
+/* Shared caret blink for every prompt/marker across the app (Settings hero
+   tail, Settings footer, LaunchSurface composer marker, command palette
+   prompt). One keyframe, one cadence — no competing phases. */
+@keyframes inkwell-caret {
   0%, 49% { opacity: 1; }
   50%, 100% { opacity: 0; }
 }
@@ -1674,6 +1680,7 @@ button {
 .settings-section {
   display: grid;
   gap: 16px;
+  scroll-margin-top: clamp(24px, 4dvh, 56px);
   animation: settings-section-in 360ms var(--ease) both;
 }
 
@@ -2048,15 +2055,6 @@ button {
   outline-offset: 2px;
 }
 
-/* Keep older .settings-radio-group selectors as a no-op for forward-compat. */
-.settings-radio-group {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
 /* ---- Toggle switch row ---- */
 
 .settings-checkbox-row {
@@ -2272,21 +2270,6 @@ button {
   letter-spacing: 0;
   overflow-x: auto;
   font-feature-settings: "calt", "ss01", "tnum";
-}
-
-.settings-radio-disabled {
-  color: var(--muted);
-}
-
-.settings-pill {
-  margin-left: auto;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: var(--panel-sunken);
-  color: var(--muted-strong);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
 }
 
 /* ---- Refresh button ---- */
@@ -2835,7 +2818,7 @@ button {
 .settings-footer-caret {
   color: var(--ink);
   margin-left: auto;
-  animation: settings-caret 1.2s steps(2) infinite;
+  animation: inkwell-caret 1.4s steps(2) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3086,12 +3069,7 @@ button {
   color: var(--ink);
   letter-spacing: 0;
   user-select: none;
-  animation: composer-marker-blink 1.6s steps(2) infinite;
-}
-
-@keyframes composer-marker-blink {
-  0%, 49%   { opacity: 1; }
-  50%, 100% { opacity: 0.18; }
+  animation: inkwell-caret 1.4s steps(2) infinite;
 }
 
 .composer-input:focus-within .composer-marker {
@@ -3621,6 +3599,119 @@ button {
 
 .session-scroll {
   overflow: hidden;
+}
+
+/* Multi-pane session grid — outer flex-of-flex. Rows share vertical space,
+   cells within a row share horizontal space. Each cell hosts a full
+   SessionPane (which has its own internal .session-grid for review/log
+   docking). 1px gap + var(--line) backdrop draws hairline dividers without
+   needing per-cell borders. */
+.session-multigrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  height: 100%;
+  background: var(--line);
+}
+
+.session-multigrid-row {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 1px;
+}
+
+.session-multigrid-cell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.session-multigrid-cell[data-focused="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2px solid var(--accent, #2563eb);
+  border-radius: var(--radius-md, 12px);
+  z-index: 5;
+}
+
+/* Nested SessionPane: override the single-pane assumption (height: 100dvh)
+   so the inner grid fills the multigrid cell instead of the whole viewport. */
+.session-multigrid-cell .session-grid {
+  height: 100%;
+}
+
+/* Drop-zone overlay — appears inside each cell while a sidebar drag is in
+   flight. Five absolutely-positioned regions: top/right/bottom/left edge
+   bands plus a central replace zone. Hovered zones tint with the accent
+   color so the user can preview where the drop will land. */
+.multigrid-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.multigrid-drop-zone {
+  position: absolute;
+  pointer-events: auto;
+  background: transparent;
+  transition: background var(--duration-fast, 140ms) var(--ease, ease);
+}
+
+.multigrid-drop-zone[data-position="above"] {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 25%;
+}
+
+.multigrid-drop-zone[data-position="below"] {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 25%;
+}
+
+.multigrid-drop-zone[data-position="left"] {
+  top: 25%;
+  bottom: 25%;
+  left: 0;
+  width: 25%;
+}
+
+.multigrid-drop-zone[data-position="right"] {
+  top: 25%;
+  bottom: 25%;
+  right: 0;
+  width: 25%;
+}
+
+.multigrid-drop-zone[data-position="replace"] {
+  top: 25%;
+  bottom: 25%;
+  left: 25%;
+  right: 25%;
+}
+
+.multigrid-drop-zone[data-hovered="true"] {
+  background: rgba(37, 99, 235, 0.18);
+  outline: 2px dashed rgba(37, 99, 235, 0.55);
+  outline-offset: -4px;
+}
+
+/* Launcher accepts a workspace drop when the grid is empty — soft hint that
+   the launcher area is a valid drop target while a drag is active. */
+.launcher-shell[data-drop-target="true"] {
+  outline: 2px dashed rgba(37, 99, 235, 0.35);
+  outline-offset: -10px;
+  border-radius: var(--radius-md, 12px);
 }
 
 .session-grid {
@@ -5490,7 +5581,7 @@ button {
   color: var(--ink);
   user-select: none;
   letter-spacing: 0;
-  animation: composer-marker-blink 1.6s steps(2) infinite;
+  animation: inkwell-caret 1.4s steps(2) infinite;
 }
 
 .command-palette-input-wrap:focus-within .command-palette-prompt {
@@ -6415,7 +6506,7 @@ button {
   color: var(--text);
 }
 
-.review-mode-tabs button[aria-pressed="true"] {
+.review-mode-tabs button[aria-selected="true"] {
   background: var(--ink);
   color: #fff;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset,
@@ -8160,6 +8251,17 @@ button {
 
   .thinking-verb {
     animation: none;
+  }
+
+  /* The blink keyframe collapses to "off" under the global `animation-duration:
+     0.001ms` rule, leaving carets at whichever step landed (often invisible).
+     Force them back to a solid character for reduced-motion users. */
+  .composer-marker,
+  .command-palette-prompt,
+  .settings-hero-rule-tail::after,
+  .settings-footer-caret {
+    animation: none !important;
+    opacity: 1 !important;
   }
 }
 

@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
@@ -17,6 +18,7 @@ import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
+import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { type ModelPickerSelection } from "../lib/models.js";
 import { FileSearchOverlay } from "./FileSearchOverlay.js";
@@ -27,6 +29,7 @@ import { LaunchModelSelector } from "./ModelSelector.js";
 const ReviewPanel = lazy(async () => ({
   default: (await import("./ReviewPanel.js")).ReviewPanel
 }));
+import { SkeletonPane } from "./SkeletonPane.js";
 import { SkillPopover } from "./SkillPopover.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
@@ -48,22 +51,28 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 }
 
 export function LaunchSurface({
+  dragActive = false,
   model,
   onAddProject,
   onBranchSwitch,
   onLaunchTask,
   onModelChange,
   onSelectProject,
+  onWorkspaceDrop,
   project,
   projects,
   rightPanelToggleSignal
 }: {
+  /** Mirrors App.tsx's sidebar drag state — when true, the launch surface accepts a workspace drop. */
+  dragActive?: boolean;
   model: ModelPickerSelection;
   onAddProject: () => void;
   onBranchSwitch: (updated: ProjectSummary) => void;
   onLaunchTask: (prompt: string, model: ModelPickerSelection) => Promise<void>;
   onModelChange: (model: ModelPickerSelection) => void;
   onSelectProject: (id: string) => void;
+  /** Called when a sidebar workspace is dropped onto the empty launcher surface. */
+  onWorkspaceDrop?: (workspaceId: string) => void;
   project: ProjectSummary | null;
   projects: ProjectSummary[];
   rightPanelToggleSignal?: number;
@@ -286,7 +295,7 @@ export function LaunchSurface({
     // owns its own discovery call so the cold-launch path doesn't pay for it
     // when the user already has a project registered.
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<SkeletonPane />}>
         <WelcomePane onAddProject={onAddProject} />
       </Suspense>
     );
@@ -294,10 +303,29 @@ export function LaunchSurface({
 
   const isReviewOpen = reviewState.isPanelOpen && project !== null;
 
+  const handleWorkspaceDragOver = (event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!onWorkspaceDrop) return;
+    const types = Array.from(event.dataTransfer.types);
+    if (!types.includes(WORKSPACE_DRAG_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  };
+
+  const handleWorkspaceDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!onWorkspaceDrop) return;
+    const workspaceId = event.dataTransfer.getData(WORKSPACE_DRAG_MIME);
+    if (!workspaceId) return;
+    event.preventDefault();
+    onWorkspaceDrop(workspaceId);
+  };
+
   return (
     <div
       className="launcher-shell"
       data-review-open={isReviewOpen ? "true" : undefined}
+      data-drop-target={dragActive && onWorkspaceDrop ? "true" : undefined}
+      onDragOver={handleWorkspaceDragOver}
+      onDrop={handleWorkspaceDrop}
     >
       <div className="launcher-surface">
       {anyContextPickerOpen && createPortal(

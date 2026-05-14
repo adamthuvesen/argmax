@@ -70,9 +70,19 @@ export function FileSearchOverlay({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const tokenRef = useRef(0);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      const previous = previousActiveElementRef.current;
+      previousActiveElementRef.current = null;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      }
+      return;
+    }
+    previousActiveElementRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setQuery("");
     setSelectedIndex(0);
     inputRef.current?.focus();

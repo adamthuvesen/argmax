@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
@@ -12,6 +13,7 @@ import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js";
 import { formatTokens } from "../formatTokens.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 
 export interface WorkspaceTokenBreakdown {
   input: number;
@@ -19,14 +21,21 @@ export interface WorkspaceTokenBreakdown {
   cached: number;
 }
 
+export interface WorkspaceClickModifiers {
+  ctrlOrMeta: boolean;
+  alt: boolean;
+}
+
 type SidebarSessionRowProps = {
   workspace: WorkspaceSummary;
   workspaceTokens: WorkspaceTokenBreakdown | null;
   isSelected: boolean;
-  onOpenWorkspaceChat: (workspaceId: string) => void;
+  onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => void;
+  onWorkspaceDragStart?: (workspaceId: string) => void;
+  onWorkspaceDragEnd?: () => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   showTokens: boolean;
@@ -40,6 +49,8 @@ function SidebarSessionRowInner({
   onArchiveWorkspace,
   onOpenInIde,
   onTogglePin,
+  onWorkspaceDragStart,
+  onWorkspaceDragEnd,
   detectedIdes,
   defaultIde,
   showTokens
@@ -106,6 +117,20 @@ function SidebarSessionRowInner({
     setPickerOpen((open) => !open);
   };
 
+  const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled session";
+
+  const handleWorkspaceDragStart = (event: ReactDragEvent<HTMLButtonElement>): void => {
+    event.stopPropagation();
+    event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspace.id);
+    event.dataTransfer.effectAllowed = "copyMove";
+    onWorkspaceDragStart?.(workspace.id);
+  };
+
+  const handleWorkspaceDragEnd = (event: ReactDragEvent<HTMLButtonElement>): void => {
+    event.stopPropagation();
+    onWorkspaceDragEnd?.();
+  };
+
   return (
     <div className="session-row">
       <button
@@ -113,11 +138,19 @@ function SidebarSessionRowInner({
         className={isSelected ? "session-link active" : "session-link"}
         data-status={workspace.state}
         type="button"
-        title={`${workspace.taskLabel} — ${workspace.state}`}
-        onClick={() => onOpenWorkspaceChat(workspace.id)}
+        title={`${displayLabel} — ${workspace.state}`}
+        draggable
+        onClick={(event) =>
+          onOpenWorkspaceChat(workspace.id, {
+            ctrlOrMeta: event.metaKey || event.ctrlKey,
+            alt: event.altKey
+          })
+        }
+        onDragStart={handleWorkspaceDragStart}
+        onDragEnd={handleWorkspaceDragEnd}
       >
         <span className="status-dot" aria-hidden="true" />
-        <span>{workspace.taskLabel}</span>
+        <span>{displayLabel}</span>
       </button>
       {showTokens ? (() => {
         const inputOutput = (workspaceTokens?.input ?? 0) + (workspaceTokens?.output ?? 0);
@@ -253,6 +286,8 @@ export function sidebarSessionRowEqual(
   if (prev.onArchiveWorkspace !== next.onArchiveWorkspace) return false;
   if (prev.onOpenInIde !== next.onOpenInIde) return false;
   if (prev.onTogglePin !== next.onTogglePin) return false;
+  if (prev.onWorkspaceDragStart !== next.onWorkspaceDragStart) return false;
+  if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
   const pw = prev.workspace;
   const nw = next.workspace;
   if (pw === nw) {

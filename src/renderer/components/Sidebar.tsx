@@ -18,7 +18,7 @@ import {
   saveWorkspaceOrders,
   sortWorkspaceGroup
 } from "../lib/projects.js";
-import { SidebarSessionRow } from "./SidebarSessionRow.js";
+import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
 function projectMonogram(name: string): string {
   const letter = name.replace(/[^a-z0-9]/gi, "").slice(0, 1);
@@ -43,6 +43,8 @@ export function Sidebar({
   onOpenWorkspaceChat,
   onResizeMouseDown,
   onToggleWorkspacePinned,
+  onWorkspaceDragStart,
+  onWorkspaceDragEnd,
   isSettingsActive,
   selectedProjectId,
   selectedWorkspaceId,
@@ -58,9 +60,13 @@ export function Sidebar({
   onOpenLauncher: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenSettings: () => void;
-  onOpenWorkspaceChat: (workspaceId: string) => void;
+  onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
+  /** Notifies the parent that a sidebar drag started carrying this workspace. */
+  onWorkspaceDragStart?: (workspaceId: string) => void;
+  /** Notifies the parent that a sidebar drag finished (drop or cancel). */
+  onWorkspaceDragEnd?: () => void;
   isSettingsActive: boolean;
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
@@ -254,8 +260,14 @@ export function Sidebar({
         <div className="rail-heading">
           <p className="rail-label">
             <span className="rail-label-text">Projects</span>
-            <span className="rail-label-rule" aria-hidden="true" />
-            <span className="rail-label-count" aria-hidden="true">{visibleProjectCount.toString().padStart(2, "0")}</span>
+            {visibleProjectCount > 0 ? (
+              <>
+                <span className="rail-label-rule" aria-hidden="true" />
+                <span className="rail-label-count" aria-hidden="true">
+                  {visibleProjectCount.toString().padStart(2, "0")}
+                </span>
+              </>
+            ) : null}
           </p>
           <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
             <Plus size={16} />
@@ -350,6 +362,8 @@ export function Sidebar({
                           onArchiveWorkspace={onArchiveWorkspace}
                           onOpenInIde={onOpenInIde}
                           onTogglePin={onToggleWorkspacePinned}
+                          onWorkspaceDragStart={onWorkspaceDragStart}
+                          onWorkspaceDragEnd={onWorkspaceDragEnd}
                           detectedIdes={detectedIdes}
                           defaultIde={defaultIde}
                           showTokens={showSessionTokens}

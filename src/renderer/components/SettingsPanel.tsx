@@ -245,12 +245,14 @@ export function SettingsPanel({
     return () => observer.disconnect();
   }, []);
 
-  const platformLabel = useMemo(() => {
-    if (!diagnostics) return "loading";
-    return `${diagnostics.platform}/${diagnostics.arch}`;
+  const heroMetaParts = useMemo(() => {
+    const parts: string[] = ["Preferences", "Local"];
+    if (diagnostics) {
+      parts.push(`v${diagnostics.appVersion}`);
+      parts.push(`${diagnostics.platform}/${diagnostics.arch}`);
+    }
+    return parts;
   }, [diagnostics]);
-
-  const appVersion = diagnostics?.appVersion ?? "—";
 
   return (
     <div className="settings-surface" ref={surfaceRef}>
@@ -261,7 +263,7 @@ export function SettingsPanel({
           <div className="settings-hero-meta-top">
             <span className="settings-hero-dot" aria-hidden="true" />
             <span className="eyebrow settings-hero-eyebrow">
-              Preferences · Local · v{appVersion} · {platformLabel}
+              {heroMetaParts.join(" · ")}
             </span>
             <button
               className="settings-hero-close"

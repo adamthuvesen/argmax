@@ -58,6 +58,7 @@ Start in **[architecture.md](agents/docs/architecture.md)** — it's the map. Fo
 - [architecture.md](agents/docs/architecture.md) — main/renderer/shared boundaries, services, dashboard reads
 - [ipc.md](agents/docs/ipc.md) — IPC channels, schemas, push events, adding a channel
 - [data.md](agents/docs/data.md) — SQLite schema, migrations, retention, FTS5 sidecars
+- [performance.md](agents/docs/performance.md) — startup, IPC, and renderer/database perf budgets
 
 ### Subsystems
 - [providers.md](agents/docs/providers.md) — Claude / Codex / Cursor adapters, launch & resume, model registry

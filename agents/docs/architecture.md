@@ -25,6 +25,7 @@ Open the right deep dive when you need it:
 | Integrated terminal panel | [terminal.md](terminal.md) |
 | GitHub CI feedback loop | [gh.md](gh.md) |
 | Learnings (per-project memory) | [memory.md](memory.md) |
+| Startup, IPC, and renderer perf budgets | [performance.md](performance.md) |
 | Native modules, lifecycle, preload | [electron.md](electron.md) |
 | Styling, tokens, motion | [styling.md](styling.md) |
 | Tests | [testing.md](testing.md) |
@@ -42,14 +43,15 @@ Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services,
 | `dock/` | macOS dock badge for attention counts |
 | `files/` | Workspace file tree + previews (binary/size-skipped) |
 | `gh/` | `GhService` (gh CLI wrapper) + `GhPoller` (PR check-state polling) |
-| `git/` | `runGitText` / `runGitBuffer` — the only sanctioned git shell-out path |
+| `git/` | `runGitText` / `runGitBuffer` + `GitOpsService` for commit/push/branch/PR actions |
 | `ide/` | `mdfind`-based IDE detection (VS Code, Cursor, Windsurf, etc.) + launch |
+| `mcp/` | User-scope MCP registry for Claude Code, Codex, and Cursor settings |
 | `memory/` | `learningExtractor` + `learningInjector` (project-scoped pitfalls) |
 | `notifications/` | OS notifications gated on window-focus state |
 | `persistence/` | `database.ts`, `migrations.ts`, `seed.ts` — SQLite is the source of truth |
 | `projects/` | Project registration, settings, branch switching, gh remote resolution |
 | `providers/` | Claude / Codex / Cursor adapters + `ProviderSessionService` |
-| `review/` | `GitReviewService`, `CommitPreparationService`, `CheckpointService` (binary patches under `${dataDirectory}/checkpoints/`) |
+| `review/` | `GitReviewService` + `CheckpointService` (binary patches under `${dataDirectory}/checkpoints/`) |
 | `sessions/` | `sessionAttention` (which sessions need a user nudge) |
 | `skills/` | Local skill registry (`~/.claude/skills`, codex prompts, plugins) |
 | `terminal/` | `TerminalService` — user-spawned PTYs for the integrated terminal panel |
@@ -66,7 +68,7 @@ React 19 + Vite. One [App.tsx](../../src/renderer/App.tsx) composes everything; 
 **Dashboard freshness is SQLite-first and read-focused:**
 
 - `dashboard.list()` — projects, workspaces, sessions, checks, checkpoints. Composed with `approvals.pending()` for the initial render.
-- `session.eventsSince({ sessionId, eventCursor?, rawOutputCursor? })` — selected-session timeline events + raw outputs, using SQLite `rowid` cursors. Omitted cursors return the latest tail (50 events, 100 raw outputs).
+- `session.eventsSince({ sessionId, eventCursor?, rawOutputCursor? })` — selected-session timeline events + raw outputs, using SQLite `rowid` cursors. Omitted cursors return the latest tail (500 events, 100 raw outputs).
 - `workspaces.status({ workspaceIds? })` — refreshed workspaces/sessions/checks/checkpoints, optionally filtered. Polled at 1200 ms for active provider sessions.
 - `approvals.pending()` — pending approvals only.
 - `dashboard.onDelta()` — push channel. Main publishes provider-session deltas only **after** rows commit; the renderer upserts by id, sorts by timestamp fields, and caps live `events` / `rawOutputs` to dashboard limits.

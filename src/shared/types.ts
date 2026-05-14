@@ -546,6 +546,18 @@ export interface StartupPhaseRecord {
   deltaMs: number;
 }
 
+export interface IpcChannelStats {
+  channel: string;
+  /** Samples in the rolling 100-call window. */
+  count: number;
+  /** Total samples ever recorded for the channel. */
+  totalRecorded: number;
+  /** p50 latency in milliseconds (rolling window). */
+  p50: number;
+  /** p99 latency in milliseconds (rolling window). */
+  p99: number;
+}
+
 export interface DatabaseStats {
   /** Row counts per major table. */
   rowCounts: {
@@ -586,6 +598,11 @@ export interface DiagnosticsReport {
    * renders row counts + WAL size + autocheckpoint pragma.
    */
   databaseStats: DatabaseStats;
+  /**
+   * Per-channel IPC latency stats. Diagnostics → IPC panel (SPEC P7.02)
+   * renders this. Empty array when no channels have been sampled yet.
+   */
+  ipcStats: IpcChannelStats[];
 }
 
 export type MenuCommand =

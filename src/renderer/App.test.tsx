@@ -190,7 +190,11 @@ describe("App", () => {
         },
         walBytes: 1024 * 128,
         walAutocheckpoint: 1000
-      }
+      },
+      ipcStats: [
+        { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
+        { channel: "providers:launch", count: 3, totalRecorded: 3, p50: 18.5, p99: 32.1 }
+      ]
     });
     vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
     createCheckpointStub = vi.fn<ArgmaxApi["checkpoints"]["create"]>().mockResolvedValue({
@@ -1277,6 +1281,21 @@ describe("App", () => {
     }
   });
 
+  it("renders Settings → Diagnostics → IPC latency stats (P7.02)", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+
+    const table = await screen.findByRole("table", { name: "IPC channel latency" });
+    expect(within(table).getByText("dashboard:list")).toBeInTheDocument();
+    expect(within(table).getByText("providers:launch")).toBeInTheDocument();
+    // p50 = 1.2 ms for dashboard:list per the fixture.
+    expect(within(table).getByText("1.20 ms")).toBeInTheDocument();
+    // p99 = 32.1 ms for providers:launch per the fixture.
+    expect(within(table).getByText("32.10 ms")).toBeInTheDocument();
+  });
+
   it("renders Settings → Diagnostics → Database row counts (P7.03)", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -1326,7 +1345,8 @@ describe("App", () => {
         },
         walBytes: 0,
         walAutocheckpoint: 1000
-      }
+      },
+      ipcStats: []
     });
 
     render(<App />);

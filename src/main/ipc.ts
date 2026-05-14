@@ -73,6 +73,7 @@ import { runGitText } from "./git/exec.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
 import { readPhases as readStartupPhases } from "./util/startupTimer.js";
+import { readHistogram as readIpcHistogram, timed } from "./util/ipcLatency.js";
 import { statSync } from "node:fs";
 import type { DatabaseStats } from "../shared/types.js";
 
@@ -168,7 +169,11 @@ export function registerIpcHandlers(
   const gitOps = new GitOpsService(database, ghService);
   const registeredChannels: IpcChannel[] = [];
   const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, listener);
+    // SPEC P4.02 / P7.02 — every channel funnels through `timed()` so the
+    // IPC latency histogram populates without needing per-call instrumentation.
+    // The wrapper runs `performance.now()` deltas on both success and failure
+    // paths; cost is one `Map.get` + one push on the hot path.
+    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
     registeredChannels.push(channel);
   };
 
@@ -290,7 +295,8 @@ export function registerIpcHandlers(
       arch: process.arch,
       generatedAt: new Date().toISOString(),
       startupPhases: readStartupPhases(),
-      databaseStats: collectDatabaseStats(database, databasePath)
+      databaseStats: collectDatabaseStats(database, databasePath),
+      ipcStats: readIpcHistogram()
     };
   }));
   register("system:vacuumDatabase", withValidation(z.void(), () => {

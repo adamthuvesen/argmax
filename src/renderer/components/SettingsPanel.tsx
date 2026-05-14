@@ -649,6 +649,14 @@ export function SettingsPanel({
             <button type="button" onClick={() => void vacuumDatabase()} aria-label="Vacuum database">
               <span>Vacuum database</span>
             </button>
+            <button
+              type="button"
+              onClick={() => saveLogsFile(diagnostics?.recentLogs ?? [], setDiagnosticsStatus)}
+              disabled={!diagnostics || diagnostics.recentLogs.length === 0}
+              aria-label="Save log file"
+            >
+              <span>Save log file</span>
+            </button>
           </div>
           {diagnosticsStatus ? (
             <p className="settings-hint" role="status">
@@ -835,6 +843,38 @@ export function SettingsPanel({
       </section>
     </div>
   );
+}
+
+/**
+ * SPEC P8.04 — "Save log file" writes the in-memory log buffer as JSONL and
+ * triggers a browser-style download via Blob + anchor click. The renderer
+ * can't reach `shell.openPath` without a new main-process IPC; the download
+ * dialog is the contained renderer-only path.
+ */
+function saveLogsFile(
+  entries: ReadonlyArray<import("../../shared/types.js").LogEntry>,
+  setStatus: (status: string | null) => void
+): void {
+  if (entries.length === 0) {
+    setStatus("No log entries to save.");
+    return;
+  }
+  try {
+    const jsonl = entries.map((entry) => JSON.stringify(entry)).join("\n");
+    const blob = new Blob([jsonl], { type: "application/jsonl" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    anchor.download = `argmax-logs-${stamp}.jsonl`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    setStatus(`Saved ${entries.length} log entries.`);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Could not save log file.");
+  }
 }
 
 function formatBytes(bytes: number): string {

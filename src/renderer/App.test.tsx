@@ -1297,6 +1297,41 @@ describe("App", () => {
     }
   });
 
+  it("Save log file downloads a JSONL of recent logs (P8.04)", async () => {
+    // jsdom doesn't implement URL.createObjectURL by default. Stub it.
+    const createObjectURL = vi.fn<(blob: Blob) => string>().mockReturnValue("blob:argmax/fixture");
+    const revokeObjectURL = vi.fn<(url: string) => void>();
+    const prevCreate = (URL as unknown as { createObjectURL?: typeof createObjectURL }).createObjectURL;
+    const prevRevoke = (URL as unknown as { revokeObjectURL?: typeof revokeObjectURL }).revokeObjectURL;
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+
+    // Spy on anchor click — we don't want the test to actually navigate.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    try {
+      render(<App />);
+      await screen.findByRole("button", { name: "Build dashboard" });
+      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+      const saveButton = await screen.findByRole("button", { name: "Save log file" });
+      await waitFor(() => expect(saveButton).toBeEnabled());
+      fireEvent.click(saveButton);
+
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0]?.[0];
+      expect(blob).toBeInstanceOf(Blob);
+      expect(blob?.type).toBe("application/jsonl");
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:argmax/fixture");
+
+      // Status confirms the save.
+      expect(await screen.findByText(/Saved 2 log entries\./)).toBeInTheDocument();
+    } finally {
+      Object.assign(URL, { createObjectURL: prevCreate, revokeObjectURL: prevRevoke });
+      clickSpy.mockRestore();
+    }
+  });
+
   it("renders Settings → Diagnostics → Recent logs (P7.01)", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });

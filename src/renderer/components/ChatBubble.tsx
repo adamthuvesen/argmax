@@ -1,5 +1,5 @@
 import { Copy } from "lucide-react";
-import { useMemo, useState, type JSX, type ReactNode } from "react";
+import { memo, useMemo, useState, type JSX, type ReactNode } from "react";
 
 const COPY_FLASH_MS = 1500;
 
@@ -18,17 +18,19 @@ function formatBubbleTimestamp(iso: string): string {
   return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-export function ChatBubble({
-  kind,
-  createdAt,
-  rawMarkdown,
-  children
-}: {
+type ChatBubbleProps = {
   kind: "user" | "assistant";
   createdAt: string;
   rawMarkdown: string;
   children: ReactNode;
-}): JSX.Element {
+};
+
+function ChatBubbleInner({
+  kind,
+  createdAt,
+  rawMarkdown,
+  children
+}: ChatBubbleProps): JSX.Element {
   const [copied, setCopied] = useState(false);
   const label = useMemo(() => formatBubbleTimestamp(createdAt), [createdAt]);
 
@@ -65,3 +67,17 @@ export function ChatBubble({
     </article>
   );
 }
+
+// Memoize on kind + createdAt + rawMarkdown only (ralph C2). `children` is
+// intentionally excluded from the comparator: SessionConversation derives
+// children from the same rawMarkdown string, so when rawMarkdown is equal
+// the rendered children are equivalent for our purposes. A token tick that
+// updates only the active assistant bubble's text will re-render that one
+// bubble; all prior bubbles in the conversation skip the re-render.
+export const ChatBubble = memo(ChatBubbleInner, (prev, next) => {
+  return (
+    prev.kind === next.kind &&
+    prev.createdAt === next.createdAt &&
+    prev.rawMarkdown === next.rawMarkdown
+  );
+});

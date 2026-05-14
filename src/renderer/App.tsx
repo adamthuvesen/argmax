@@ -21,7 +21,11 @@ const SearchOverlay = lazy(async () => ({
 }));
 import { PerfOverlay } from "./components/PerfOverlay.js";
 import { SessionPane } from "./components/SessionPane.js";
-import { SettingsPanel } from "./components/SettingsPanel.js";
+// SettingsPanel is lazy-mounted (ralph B1) — heavy diagnostics tiles, MCP
+// dialog, and provider discovery shouldn't ship in the launcher's first paint.
+const SettingsPanel = lazy(async () => ({
+  default: (await import("./components/SettingsPanel.js")).SettingsPanel
+}));
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
@@ -690,25 +694,27 @@ export function App(): JSX.Element {
           ) : loadState === "loading" && !selectedSession && !isSettingsOpen ? (
             <SkeletonPane />
           ) : isSettingsOpen ? (
-            <SettingsPanel
-              defaultModel={launchModel}
-              onDefaultModelChange={setLaunchModel}
-              toolCallsExpanded={toolCallsExpanded}
-              onToolCallsExpandedChange={setToolCallsExpanded}
-              sidebarTokensVisible={sidebarTokensVisible}
-              onSidebarTokensVisibleChange={setSidebarTokensVisible}
-              fontFamily={fontFamily}
-              onFontFamilyChange={setFontFamily}
-              detectedIdes={detectedIdes}
-              defaultIde={defaultIde}
-              onDefaultIdeChange={setDefaultIde}
-              permissionMode={permissionMode}
-              onPermissionModeChange={setPermissionMode}
-              thinkingStyle={thinkingStyle}
-              onThinkingStyleChange={setThinkingStyle}
-              projects={snapshot.projects}
-              onClose={() => setIsSettingsOpen(false)}
-            />
+            <Suspense fallback={<SkeletonPane />}>
+              <SettingsPanel
+                defaultModel={launchModel}
+                onDefaultModelChange={setLaunchModel}
+                toolCallsExpanded={toolCallsExpanded}
+                onToolCallsExpandedChange={setToolCallsExpanded}
+                sidebarTokensVisible={sidebarTokensVisible}
+                onSidebarTokensVisibleChange={setSidebarTokensVisible}
+                fontFamily={fontFamily}
+                onFontFamilyChange={setFontFamily}
+                detectedIdes={detectedIdes}
+                defaultIde={defaultIde}
+                onDefaultIdeChange={setDefaultIde}
+                permissionMode={permissionMode}
+                onPermissionModeChange={setPermissionMode}
+                thinkingStyle={thinkingStyle}
+                onThinkingStyleChange={setThinkingStyle}
+                projects={snapshot.projects}
+                onClose={() => setIsSettingsOpen(false)}
+              />
+            </Suspense>
           ) : selectedSession ? (
             <SessionPane
               approvals={snapshot.approvals}

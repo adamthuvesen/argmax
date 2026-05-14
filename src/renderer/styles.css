@@ -73,10 +73,56 @@
   --duration-fast: 140ms;
   --duration-base: 220ms;
 
+  /* Motion tokens (Ralph SPEC F1). Future migrations should reference these
+     instead of inlining a duration + easing in each `transition:` declaration.
+     Existing `--duration-fast`/`--duration-base` predate the audit; keeping
+     them as aliases avoids a sweep through 90+ call sites this loop. */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 240ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Spacing tokens (Ralph SPEC F2). New code should prefer these over raw
+     pixel values. agents/docs/styling.md documents the full scale. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+
+  /* Type-size tokens (Ralph SPEC F3). Matches the existing UI scale: xs is
+     used for badges + chips, sm for sidebar/secondary text, base for body,
+     md for section headings, lg for panel titles. */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+
+  /* Focus ring (Ralph SPEC F4). Single source for every focus-visible style. */
+  --ring: 0 0 0 2px rgba(90, 143, 114, 0.5);
+
   font-family: var(--font-ui);
   font-feature-settings: "calt", "ss01", "tnum";
   background: var(--bg);
   color: var(--text);
+}
+
+/* Honor the OS reduced-motion preference globally. Components that explicitly
+   override `animation` / `transition` still win — this just zeroes the shared
+   tokens so anything using `var(--motion-*)` becomes instant. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
 }
 
 :root[data-font="system-mono"] {

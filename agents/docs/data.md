@@ -16,9 +16,9 @@ Schema is owned by [src/main/persistence/migrations.ts](../../src/main/persisten
 
 | Table | Purpose |
 |---|---|
-| `projects` | Registered repos + settings (default provider/model, worktree location, setup command, check commands, optional `gh` remote owner/name) |
+| `projects` | Registered repos + settings (default provider/model, worktree location, setup command, check commands, optional `gh` remote owner/name, `ui_preferences_json` blob) |
 | `workspaces` | Git worktrees per project; carries dirty/changed-files counts, sticky-pinned flag, `last_activity_at` |
-| `sessions` | Durable provider conversations: model + reasoning, resume id, totals (tokens, cost), `last_model_id` fallback |
+| `sessions` | Durable provider conversations: model + reasoning, resume id, totals (tokens, cost), `last_model_id` fallback, `permission_mode` (`auto-approve` \| `ask-each-time`) |
 | `events` | Normalized timeline events (what the chat renders) |
 | `raw_outputs` | Per-stream raw provider output (stdout/stderr/pty/system) — debug/audit only |
 | `approvals` | Pending and resolved command approval requests |
@@ -43,7 +43,7 @@ Hot paths are deliberately narrow:
 |---|---|---|
 | `listDashboard()` | `DashboardListSnapshot` (no events/raw/approvals) | `dashboard:list` — initial render |
 | `listSessionEventsSince({ sessionId, eventCursor?, rawOutputCursor? })` | `SessionEventsSinceResult` with new `eventCursor` / `rawOutputCursor` | `session:eventsSince` — selected-session tail |
-| `listWorkspaceStatus({ workspaceIds? })` | `WorkspaceStatusSnapshot` | `workspace:status` — 1200 ms polling |
+| `listWorkspaceStatus({ workspaceIds? })` | `WorkspaceStatusSnapshot` | `workspace:status` — on-demand refresh (renderer fires it on `visibilitychange`; otherwise stays delta-driven) |
 | `listPendingApprovals()` | `ApprovalRequest[]` | `approvals:pending` |
 | `loadDashboard()` | Full `DashboardSnapshot` | `dashboard:load` (compat wrapper) |
 | `countAttention()` | `{ pendingApprovals, waitingSessions, total }` | Dock badge |
@@ -61,7 +61,7 @@ Hot paths are deliberately narrow:
 | `SESSION_EVENT_PAGE_LIMIT` | 500 | Per-page tail for `session:eventsSince` |
 | `SESSION_RAW_OUTPUT_PAGE_LIMIT` | 100 | Per-page raw tail for `session:eventsSince` |
 
-The renderer is responsible for capping its own live `events` / `rawOutputs` arrays to the same limits when applying deltas; see `pruneSupersededDeltas` / `mergeByCreatedAt` in `src/renderer/lib/snapshot.ts`.
+The renderer is responsible for capping its own live `events` / `rawOutputs` arrays to the same limits when applying deltas; see `pruneSupersededDeltas` / `mergeByCreatedAt` in `src/renderer/lib/snapshot.ts`. Main also runs the per-statement cache from [src/main/persistence/preparedStatements.ts](../../src/main/persistence/preparedStatements.ts) so dashboard reads don't reprepare on every poll, and `listWorkspaceStatus` batches its sub-reads into a single transaction.
 
 ## Retention
 

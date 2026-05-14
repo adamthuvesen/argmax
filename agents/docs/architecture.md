@@ -45,7 +45,7 @@ Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services,
 | `gh/` | `GhService` (gh CLI wrapper) + `GhPoller` (PR check-state polling) |
 | `git/` | `runGitText` / `runGitBuffer` + `GitOpsService` for commit/push/branch/PR actions |
 | `ide/` | `mdfind`-based IDE detection (VS Code, Cursor, Windsurf, etc.) + launch |
-| `mcp/` | User-scope MCP registry for Claude Code, Codex, and Cursor settings |
+| `mcp/` | User-scope MCP registry + `McpAuthService` (interactive PTY for OAuth-style MCP server enrollment) |
 | `memory/` | `learningExtractor` + `learningInjector` (project-scoped pitfalls) |
 | `notifications/` | OS notifications gated on window-focus state |
 | `persistence/` | `database.ts`, `migrations.ts`, `seed.ts` — SQLite is the source of truth |
@@ -53,25 +53,24 @@ Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services,
 | `providers/` | Claude / Codex / Cursor adapters + `ProviderSessionService` |
 | `review/` | `GitReviewService` + `CheckpointService` (binary patches under `${dataDirectory}/checkpoints/`) |
 | `sessions/` | `sessionAttention` (which sessions need a user nudge) |
-| `skills/` | Local skill registry (`~/.claude/skills`, codex prompts, plugins) |
+| `skills/` | Local skill registry — `~/.claude/skills`, `~/.codex/{skills,prompts}`, `~/.cursor/skills`, plugin caches, plus per-workspace `.claude` / `.codex` / `.cursor` directories. Precedence: workspace > user > codex-prompt > system > plugin |
 | `terminal/` | `TerminalService` — user-spawned PTYs for the integrated terminal panel |
 | `updater/` | `UpdateService` — `electron-updater` wrapper (packaged builds only) |
-| `util/` | Pure helpers (e.g. `workspacePaths`) |
+| `util/` | Pure helpers: `workspacePaths`, `appNavigation`, `deltaCoalescer` (60 fps push throttle), `ipcLatency` (per-channel histogram), `startupTimer` (phase marks for diagnostics) |
 | `workspaces/` | `WorkspaceService` — git worktrees, fs.watch debouncing |
 
-`main.ts` wires services together in this order: `createDatabase()` → `NotificationService` → `DockBadgeService` → `ProviderSessionService` (then `recoverOrphanedSessions()` to mop up sessions left `running` from a previous crash) → `TerminalService` → `registerIpcHandlers()` → `GhPoller.start()` → `UpdateService.runStartupCheck()` (packaged only) → `BrowserWindow`.
+`main.ts` wires services together in this order: `createDatabase()` → `NotificationService` → `DockBadgeService` → `ProviderSessionService` (then `recoverOrphanedSessions()` to mop up sessions left `running` from a previous crash) → `TerminalService` → `McpAuthService` → `registerIpcHandlers()` → `GhPoller.start()` → `UpdateService.runStartupCheck()` (packaged only) → application menu → `BrowserWindow`. The `dashboard:delta` publisher runs every push through `DeltaCoalescer` at ~60 fps so streaming-heavy turns don't pin the renderer.
 
 ## Renderer — `src/renderer/`
 
-React 19 + Vite. One [App.tsx](../../src/renderer/App.tsx) composes everything; state hydrates from focused IPC reads and stays current via `dashboard.onDelta()`. Browser-preview mode (Vite without Electron) detects the missing `window.argmax` and falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts) — see `isBrowserPreview()`.
+React 19 + Vite. [App.tsx](../../src/renderer/App.tsx) composes everything; state hydrates from focused IPC reads and stays current via `dashboard.onDelta()`. Multi-pane work goes through [SessionMultiGrid.tsx](../../src/renderer/components/SessionMultiGrid.tsx) — a 3×3 grid with drag-and-drop and edge-only split, backed by the pure [gridState](../../src/renderer/lib/gridState.ts) reducer. Heavy panels (`SettingsPanel`, `WelcomePane`, `McpAuthDialog`, `ReviewPanel`, `TerminalPanel`, command palette + search overlays) are `React.lazy`-mounted so the prod bundle ships them as separate chunks. Browser-preview mode (Vite without Electron) detects the missing `window.argmax` and falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts) — see `isBrowserPreview()`.
 
 **Dashboard freshness is SQLite-first and read-focused:**
 
 - `dashboard.list()` — projects, workspaces, sessions, checks, checkpoints. Composed with `approvals.pending()` for the initial render.
 - `session.eventsSince({ sessionId, eventCursor?, rawOutputCursor? })` — selected-session timeline events + raw outputs, using SQLite `rowid` cursors. Omitted cursors return the latest tail (500 events, 100 raw outputs).
-- `workspaces.status({ workspaceIds? })` — refreshed workspaces/sessions/checks/checkpoints, optionally filtered. Polled at 1200 ms for active provider sessions.
-- `approvals.pending()` — pending approvals only.
-- `dashboard.onDelta()` — push channel. Main publishes provider-session deltas only **after** rows commit; the renderer upserts by id, sorts by timestamp fields, and caps live `events` / `rawOutputs` to dashboard limits.
+- `workspaces.status({ workspaceIds? })` + `approvals.pending()` — focused refresh used when the window regains visibility (`document.visibilitychange`). There is no recurring `setInterval` poll today; streaming `dashboard.onDelta()` is the steady-state.
+- `dashboard.onDelta()` — push channel. Main publishes provider-session deltas only **after** rows commit, then funnels every push through `DeltaCoalescer` at ~60 fps. The renderer upserts by id, sorts by timestamp fields, and caps live `events` / `rawOutputs` to dashboard limits.
 - `dashboard.load()` — compatibility full snapshot. Avoid for active-session refresh; it exists for older callers and the browser-preview path.
 
 **Two-track output rendering.** Normalized timeline events drive the visible chat. Raw provider output is persisted for audit/debug but the renderer must filter protocol JSON lines (Claude `init`, Codex `thread.started` / `turn.started`, Cursor `system/init`, etc.) out of the human-readable fallback. The "Thinking" indicator is pre-answer only — hide it the moment any visible assistant event arrives, even if the session is still `running`.

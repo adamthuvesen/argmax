@@ -71,14 +71,18 @@ Checkpoints are deliberately one-way today — restoring a patch isn't surfaced 
 
 Branch-name validation lives in the IPC schema, and git calls still use argv arrays plus `--` separators where git supports them. Keep new branch/PR actions here unless they grow their own lifecycle or background poller.
 
-## File preview
+## File preview & inline editor
 
-[src/main/files/workspaceFilesService.ts](../../src/main/files/workspaceFilesService.ts) — the file tree the renderer uses in the composer (`@path` references) and the review panel (browse-files).
+[src/main/files/workspaceFilesService.ts](../../src/main/files/workspaceFilesService.ts) — the file tree the renderer uses in the composer (`@path` references), the review panel (browse-files), and the inline CodeMirror editor.
 
 - `listFiles(workspaceId)` returns the workspace file list, virtualized in the renderer (`SessionConversation` uses `@leeoniya/ufuzzy` for picker filtering).
 - `readFile(workspaceId, filePath)` returns either `{ kind: "text", content, size }` or `{ kind: "skipped", reason: "binary" | "too-large" | "not-a-file", size? }`. The renderer surfaces the skip reason rather than trying to render binary blobs.
+- `statFile(workspaceId, filePath)` returns `{ mtimeMs, size }` — used by the editor to detect upstream writes between read and save.
+- `writeFile(workspaceId, filePath, content, expectedMtimeMs)` is mtime-checked: if the on-disk `mtimeMs` no longer matches `expectedMtimeMs`, the call returns `{ ok: false, reason: "stale", currentMtimeMs, size }` so the renderer can surface a "their changes vs yours" prompt instead of clobbering.
 
-Path resolution is validated through `workspacePaths` ([src/main/util/workspacePaths.ts](../../src/main/util/workspacePaths.ts)) to refuse escapes outside the worktree.
+Each method has a `…ForProject` sibling (`listFilesForProject`, `readFileForProject`, `statFileForProject`, `writeFileForProject`) that resolves against `project.repoPath` instead of a workspace path — the renderer uses these for the project-level review-files surface and the shared-workspace flow.
+
+Path resolution is validated through `workspacePaths` ([src/main/util/workspacePaths.ts](../../src/main/util/workspacePaths.ts)) to refuse escapes outside the worktree (and outside the repo root for the project variant).
 
 ## When to add a method here vs a new file
 

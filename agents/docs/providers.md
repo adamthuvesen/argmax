@@ -64,6 +64,7 @@ Union: `"low" | "medium" | "high" | "xhigh"` (matches the Codex CLI — don't in
 - Normalized timeline events (`message.delta`, `message.completed`, `error`, `command.*`, `approval.*`, etc.) are the chat source of truth.
 - Raw output is persisted for audit and a human-readable fallback, but it must filter provider-protocol JSON lines (anything with a `type` field carrying a provider lifecycle keyword). The normalizer handles per-provider quirks in [providerEventNormalizer.ts](../../src/main/providers/providerEventNormalizer.ts).
 - PTY streams stay out of the chat fallback — too noisy.
+- **Cursor cumulative deltas.** Cursor's `--stream-partial-output` emits each assistant row as a *cumulative snapshot* of the message so far, not an incremental chunk. The normalizer tracks the prior cumulative text per session and strips it from each new row before emitting `message.delta` — otherwise the renderer would render "ExplExplorinExploring…". The final cumulative row (no `timestamp_ms`) becomes `message.completed` and resets the per-session state.
 - The "Thinking" bubble appears only before visible assistant output; the first `message.delta`/`message.completed`/`error` for that turn removes it, even if the session is still `running`.
 
 ## Adding a provider

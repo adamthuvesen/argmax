@@ -41,17 +41,19 @@ Request/response IPC uses `ipcRenderer.invoke`; pushed events (`dashboard:delta`
 3. Construct `NotificationService` (window-focus aware) and `DockBadgeService`.
 4. Construct `ProviderSessionService` and call `recoverOrphanedSessions()` — any session still `running` from a previous crash is reconciled before IPC handlers register, so the renderer never sees a phantom live session.
 5. Construct `TerminalService` (integrated terminal panel — see [terminal.md](terminal.md)).
-6. `registerIpcHandlers()` wires every channel; the returned list is later used to remove handlers on shutdown.
-7. Start the `GhPoller` (CI feedback loop — see [gh.md](gh.md)).
-8. In packaged builds only, instantiate `UpdateService` and call `runStartupCheck()`. Auto-update no-ops in dev.
-9. Build the application menu (`buildAppMenuTemplate`); menu items forward `menu:command` events to the focused window.
-10. `createWindow()`.
+6. Construct `McpAuthService` (interactive PTY for OAuth-style MCP enrollment).
+7. `registerIpcHandlers()` wires every channel; the returned list is later used to remove handlers on shutdown.
+8. Start the `GhPoller` (CI feedback loop — see [gh.md](gh.md)).
+9. In packaged builds only, instantiate `UpdateService` and call `runStartupCheck()`. Auto-update no-ops in dev.
+10. Build the application menu (`buildAppMenuTemplate`); menu items forward `menu:command` events to the focused window.
+11. `createWindow()`.
 
 `before-quit` is intercepted exactly once (`shutdownInProgress` flag), `event.preventDefault()`'d, and routed through `shutdown()`. Each step is independent so one failure doesn't strand the others:
 
 - `ghPoller.stop()`
 - `providerSessions.disposeAll()` (awaited — gracefully terminates every PTY/child, then SIGKILL-escalates stragglers)
 - `terminals.disposeAll()`
+- `mcpAuth.disposeAll()` (any open MCP auth PTY)
 - `ipcMain.removeHandler()` for every channel in the registered list
 - `database.clearPruneInterval()` + `database.connection.close()`
 - `app.exit(0)`
@@ -60,9 +62,11 @@ Request/response IPC uses `ipcRenderer.invoke`; pushed events (`dashboard:delta`
 
 | Channel | Sender | Renderer API |
 |---|---|---|
-| `dashboard:delta` | `ProviderSessionService` → `BrowserWindow.webContents.send` | `dashboard.onDelta(listener)` returns unsubscribe |
+| `dashboard:delta` | `ProviderSessionService` → `DeltaCoalescer` → `BrowserWindow.webContents.send` (~60 fps) | `dashboard.onDelta(listener)` returns unsubscribe |
 | `terminal:data` | `TerminalService` | `terminal.onData(listener)` |
 | `terminal:exit` | `TerminalService` | `terminal.onExit(listener)` |
+| `mcp:auth:data` | `McpAuthService` | `mcp.auth.onData(listener)` |
+| `mcp:auth:exit` | `McpAuthService` | `mcp.auth.onExit(listener)` |
 | `menu:command` | Application menu | `menu.onCommand(listener)` |
 
 These are **not** in `IPC_CHANNELS` / `REGISTERED_IPC_CHANNELS` (those are request/response only). Keep listener cleanup intact in components and tests — leaked subscriptions show up as duplicate UI updates after hot-reload or window re-creation.

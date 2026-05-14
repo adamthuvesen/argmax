@@ -2,10 +2,10 @@
 import { describe, expect, it } from "vitest";
 import {
   createWorkspaceInputSchema,
+  gitCommitInputSchema,
   ipcSchemas,
   launchProviderSessionInputSchema,
   loadDiffInputSchema,
-  prepareCommitInputSchema,
   providerSessionInputSchema,
   registerProjectInputSchema,
   resolveApprovalInputSchema,
@@ -25,6 +25,28 @@ describe("ipcSchemas", () => {
     expect(channels).toContain("session:costSummary");
     expect(channels).toContain("workspace:status");
     expect(channels).toContain("approvals:pending");
+    expect(channels).toContain("mcp:auth:start");
+    expect(channels).toContain("mcp:auth:write");
+    expect(channels).toContain("mcp:auth:resize");
+    expect(channels).toContain("mcp:auth:terminate");
+  });
+
+  it("validates mcp:auth:* payloads (cols/rows bounded, sessionId non-empty)", () => {
+    expect(ipcSchemas["mcp:auth:start"].parse({ cols: 80, rows: 24 })).toEqual({ cols: 80, rows: 24 });
+    expect(() => ipcSchemas["mcp:auth:start"].parse({ cols: 10, rows: 24 })).toThrow();
+    expect(() => ipcSchemas["mcp:auth:start"].parse({ cols: 80.5, rows: 24 })).toThrow();
+
+    expect(
+      ipcSchemas["mcp:auth:write"].parse({ sessionId: "s-1", data: "hi" })
+    ).toEqual({ sessionId: "s-1", data: "hi" });
+    expect(() => ipcSchemas["mcp:auth:write"].parse({ sessionId: "", data: "x" })).toThrow();
+
+    expect(
+      ipcSchemas["mcp:auth:resize"].parse({ sessionId: "s-1", cols: 120, rows: 40 })
+    ).toEqual({ sessionId: "s-1", cols: 120, rows: 40 });
+
+    expect(ipcSchemas["mcp:auth:terminate"].parse("s-1")).toBe("s-1");
+    expect(() => ipcSchemas["mcp:auth:terminate"].parse("")).toThrow();
   });
 
   it("rejects session:costSummary with an empty or non-string sessionId", () => {
@@ -258,12 +280,53 @@ describe("ipcSchemas", () => {
     expect(() => loadDiffInputSchema.parse(["ws-1", "-rf"])).toThrow();
   });
 
-  it("rejects prepareCommit with absolute paths in selectedFiles", () => {
-    expect(() =>
-      prepareCommitInputSchema.parse({
+  it("accepts gitCommit with omitted selectedFiles (whole-worktree mode)", () => {
+    expect(gitCommitInputSchema.parse({ workspaceId: "ws-1", message: "msg" })).toEqual({
+      workspaceId: "ws-1",
+      message: "msg"
+    });
+  });
+
+  it("accepts gitCommit with a list of relative selectedFiles", () => {
+    expect(
+      gitCommitInputSchema.parse({
         workspaceId: "ws-1",
-        selectedFiles: ["/etc/passwd"],
-        message: "msg"
+        message: "msg",
+        selectedFiles: ["src/a.ts", "src/b.ts"]
+      })
+    ).toEqual({
+      workspaceId: "ws-1",
+      message: "msg",
+      selectedFiles: ["src/a.ts", "src/b.ts"]
+    });
+  });
+
+  it("rejects gitCommit with absolute paths in selectedFiles", () => {
+    expect(() =>
+      gitCommitInputSchema.parse({
+        workspaceId: "ws-1",
+        message: "msg",
+        selectedFiles: ["/etc/passwd"]
+      })
+    ).toThrow();
+  });
+
+  it("rejects gitCommit with selectedFiles entries containing parent traversal", () => {
+    expect(() =>
+      gitCommitInputSchema.parse({
+        workspaceId: "ws-1",
+        message: "msg",
+        selectedFiles: ["src/../secret"]
+      })
+    ).toThrow();
+  });
+
+  it("rejects gitCommit with selectedFiles entries starting with '-'", () => {
+    expect(() =>
+      gitCommitInputSchema.parse({
+        workspaceId: "ws-1",
+        message: "msg",
+        selectedFiles: ["-rf"]
       })
     ).toThrow();
   });

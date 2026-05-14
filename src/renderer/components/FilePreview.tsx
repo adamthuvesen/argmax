@@ -7,7 +7,7 @@ import { python } from "@codemirror/lang-python";
 import { EditorView, keymap } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
-import { Code, Eye, RotateCcw } from "lucide-react";
+import { Code, Eye, RotateCcw, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -113,6 +113,18 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
         </strong>
         <div className="file-preview-heading-meta">
           <span className="file-preview-size">{formatBytes(preview.size)}</span>
+          {state.canEdit ? (
+            <button
+              type="button"
+              className="small-icon"
+              disabled={!state.isDirty || state.saveState === "saving"}
+              aria-label={state.saveState === "saving" ? "Saving file" : "Save file"}
+              title="Save file"
+              onClick={() => void state.saveFile()}
+            >
+              <Save size={14} />
+            </button>
+          ) : null}
           {markdownFile ? (
             <button
               type="button"

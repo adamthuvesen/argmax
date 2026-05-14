@@ -68,6 +68,7 @@ export function SessionConversation({
   defaultToolCallsExpanded,
   events,
   isLogOpen,
+  onOpenCommitDialog,
   onSendSessionInput,
   onTerminateSession,
   onCreateCheckpoint,
@@ -85,6 +86,7 @@ export function SessionConversation({
   defaultToolCallsExpanded?: boolean;
   events: TimelineEvent[];
   isLogOpen: boolean;
+  onOpenCommitDialog?: () => void;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
@@ -407,6 +409,14 @@ export function SessionConversation({
     inputRef.current?.focus();
   }, [canSend, isSending]);
 
+  // Auto-focus the chat input when the session view is the active surface —
+  // on mount, when the session becomes sendable, and again whenever the
+  // right-side review panel closes, so typing resumes without a click.
+  useEffect(() => {
+    if (review.isPanelOpen || isSending || !canSend) return;
+    inputRef.current?.focus();
+  }, [review.isPanelOpen, canSend, isSending]);
+
   const slashAutocomplete = useSlashAutocomplete({
     input,
     setInput,
@@ -512,6 +522,7 @@ export function SessionConversation({
             session={session}
             workspace={workspace}
             onPrsRefresh={refreshPrs}
+            onOpenCommitDialog={onOpenCommitDialog}
           />
           <button
             className="small-icon"
@@ -769,6 +780,32 @@ export function SessionConversation({
               ariaLabel="Session model"
             />
           ) : null}
+          {workspace ? (
+            <div className="composer-footer" aria-label="Workspace context">
+              <button
+                type="button"
+                className="composer-footer-chip"
+                title={`Open worktree: ${workspace.path}`}
+                aria-label={`Open worktree at ${workspace.path}`}
+                onClick={() => {
+                  if (!window.argmax) return;
+                  void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
+                }}
+              >
+                <Folder size={11} aria-hidden="true" />
+                <span>{workspace.sharedWorkspace ? "Work locally" : "Worktree"}</span>
+              </button>
+              <button
+                type="button"
+                className="composer-footer-chip"
+                title={`Branch: ${workspace.branch}`}
+                aria-label={`Branch ${workspace.branch}`}
+              >
+                <GitBranch size={11} aria-hidden="true" />
+                <span>{workspace.branch}</span>
+              </button>
+            </div>
+          ) : null}
           <span className="session-toolbar-spacer" />
           <button className="composer-tool" type="button" title="Voice input" disabled={!canSend || isSending}>
             <Mic size={16} />
@@ -795,32 +832,6 @@ export function SessionConversation({
             </button>
           )}
         </div>
-        {workspace ? (
-          <div className="composer-footer" aria-label="Workspace context">
-            <button
-              type="button"
-              className="composer-footer-chip"
-              title={`Open worktree: ${workspace.path}`}
-              aria-label={`Open worktree at ${workspace.path}`}
-              onClick={() => {
-                if (!window.argmax) return;
-                void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
-              }}
-            >
-              <Folder size={11} aria-hidden="true" />
-              <span>{workspace.sharedWorkspace ? "Work locally" : "Worktree"}</span>
-            </button>
-            <button
-              type="button"
-              className="composer-footer-chip"
-              title={`Branch: ${workspace.branch}`}
-              aria-label={`Branch ${workspace.branch}`}
-            >
-              <GitBranch size={11} aria-hidden="true" />
-              <span>{workspace.branch}</span>
-            </button>
-          </div>
-        ) : null}
       </form>
       {status ? (
         <p className="composer-status" role="status">

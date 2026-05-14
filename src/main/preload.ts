@@ -3,7 +3,6 @@ import type { IpcRendererEvent } from "electron";
 import type {
   DashboardSnapshot,
   ChangedFileSummary,
-  CommitPreparation,
   CreateCheckpointInput,
   CreateCurrentWorkspaceInput,
   CreateWorkspaceInput,
@@ -23,11 +22,15 @@ import type {
   GitViewOrCreatePrResult,
   LaunchProviderSessionInput,
   Learning,
+  McpAuthDataEvent,
+  McpAuthExitEvent,
+  McpAuthResizeInput,
+  McpAuthStartInput,
+  McpAuthWriteInput,
   McpClientListing,
   ArgmaxApi,
   MenuCommand,
   OpenInIdeInput,
-  PrepareCommitInput,
   ProviderSessionInput,
   ProviderSessionResizeInput,
   ProjectFolderPickResult,
@@ -169,9 +172,6 @@ const api: ArgmaxApi = {
     selectPreferred: (input: SelectPreferredAttemptInput) =>
       ipcRenderer.invoke("attempts:select-preferred", input) as Promise<DashboardSnapshot["sessions"][number]>
   },
-  commits: {
-    prepare: (input: PrepareCommitInput) => ipcRenderer.invoke("commits:prepare", input) as Promise<CommitPreparation>
-  },
   health: {
     ping: () => ipcRenderer.invoke("health:ping") as Promise<{ ok: true; timestamp: string }>
   },
@@ -186,7 +186,27 @@ const api: ArgmaxApi = {
     vacuumDatabase: () => ipcRenderer.invoke("system:vacuumDatabase") as Promise<{ ok: true }>
   },
   mcp: {
-    list: () => ipcRenderer.invoke("mcp:list") as Promise<McpClientListing[]>
+    list: () => ipcRenderer.invoke("mcp:list") as Promise<McpClientListing[]>,
+    auth: {
+      start: (input: McpAuthStartInput) =>
+        ipcRenderer.invoke("mcp:auth:start", input) as Promise<{ sessionId: string }>,
+      write: (input: McpAuthWriteInput) =>
+        ipcRenderer.invoke("mcp:auth:write", input) as Promise<{ ok: true }>,
+      resize: (input: McpAuthResizeInput) =>
+        ipcRenderer.invoke("mcp:auth:resize", input) as Promise<{ ok: true }>,
+      terminate: (sessionId: string) =>
+        ipcRenderer.invoke("mcp:auth:terminate", sessionId) as Promise<{ ok: true }>,
+      onData: (listener: (event: McpAuthDataEvent) => void) => {
+        const handler = (_event: IpcRendererEvent, payload: McpAuthDataEvent): void => listener(payload);
+        ipcRenderer.on("mcp:auth:data", handler);
+        return () => ipcRenderer.removeListener("mcp:auth:data", handler);
+      },
+      onExit: (listener: (event: McpAuthExitEvent) => void) => {
+        const handler = (_event: IpcRendererEvent, payload: McpAuthExitEvent): void => listener(payload);
+        ipcRenderer.on("mcp:auth:exit", handler);
+        return () => ipcRenderer.removeListener("mcp:auth:exit", handler);
+      }
+    }
   },
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => {

@@ -183,6 +183,34 @@ export const terminalResizeInputSchema = z.object({
 
 export const terminalTerminateInputSchema = terminalIdSchema;
 
+// ---------------------------------------------------------------------------
+// MCP auth — interactive in-app PTY that runs `claude` and auto-types `/mcp`
+// so the user can complete OAuth from Settings. The PTY is sized by xterm in
+// the renderer; same cols/rows bounds as the integrated terminal. Only the
+// Claude provider has an in-CLI auth flow today; Codex/Cursor configs are
+// file-only and have no button. See agents/docs/ipc.md.
+// ---------------------------------------------------------------------------
+
+const mcpAuthSessionIdSchema = z.string().min(1);
+
+export const mcpAuthStartInputSchema = z.object({
+  cols: z.number().int().min(20).max(400),
+  rows: z.number().int().min(5).max(200)
+});
+
+export const mcpAuthWriteInputSchema = z.object({
+  sessionId: mcpAuthSessionIdSchema,
+  data: z.string().max(64 * 1024)
+});
+
+export const mcpAuthResizeInputSchema = z.object({
+  sessionId: mcpAuthSessionIdSchema,
+  cols: z.number().int().min(20).max(400),
+  rows: z.number().int().min(5).max(200)
+});
+
+export const mcpAuthTerminateInputSchema = mcpAuthSessionIdSchema;
+
 export const resolveApprovalInputSchema = z.object({
   approvalId: approvalIdSchema,
   status: z.enum(["approved", "rejected"])
@@ -266,12 +294,6 @@ export const selectPreferredAttemptInputSchema = z.object({
   sessionId: sessionIdSchema
 });
 
-export const prepareCommitInputSchema = z.object({
-  workspaceId: workspaceIdSchema,
-  selectedFiles: z.array(relativeFilePathSchema),
-  message: z.string().min(1)
-});
-
 // ---------------------------------------------------------------------------
 // Git actions (commit / push / branch / PR)
 // ---------------------------------------------------------------------------
@@ -286,7 +308,13 @@ export const gitCommitInputSchema = z.object({
     .string()
     .min(1)
     .max(65536)
-    .refine((value) => value.trim().length > 0, { message: "message cannot be blank" })
+    .refine((value) => value.trim().length > 0, { message: "message cannot be blank" }),
+  // Optional per-file selection. When omitted or empty, the handler falls back
+  // to `git add -A` (stage the whole worktree). When present, only the listed
+  // paths are staged via `git add -- <paths>`; the schema reuses the
+  // relative-path guard that rejects absolute paths, parent traversal, and
+  // leading `-` so the argv stays safe.
+  selectedFiles: z.array(relativeFilePathSchema).optional()
 });
 
 export const gitPushInputSchema = z.object({
@@ -416,7 +444,6 @@ export const ipcSchemas = {
   "checks:run": runCheckInputSchema,
   "checkpoints:create": createCheckpointInputSchema,
   "attempts:select-preferred": selectPreferredAttemptInputSchema,
-  "commits:prepare": prepareCommitInputSchema,
   "dashboard:load": dashboardLoadInputSchema,
   "skills:list": skillsListInputSchema,
   "system:open-path": systemOpenPathInputSchema,
@@ -424,6 +451,10 @@ export const ipcSchemas = {
   "system:diagnostics": z.void(),
   "system:vacuumDatabase": z.void(),
   "mcp:list": z.void(),
+  "mcp:auth:start": mcpAuthStartInputSchema,
+  "mcp:auth:write": mcpAuthWriteInputSchema,
+  "mcp:auth:resize": mcpAuthResizeInputSchema,
+  "mcp:auth:terminate": mcpAuthTerminateInputSchema,
   "session:costSummary": sessionCostSummaryInputSchema,
   "learnings:list": z.object({
     projectId: projectIdSchema,
@@ -474,7 +505,6 @@ export type WorkspaceStatusInputParsed = z.infer<typeof workspaceStatusInputSche
 export type RunCheckInputParsed = z.infer<typeof runCheckInputSchema>;
 export type CreateCheckpointInputParsed = z.infer<typeof createCheckpointInputSchema>;
 export type SelectPreferredAttemptInputParsed = z.infer<typeof selectPreferredAttemptInputSchema>;
-export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type WorkspaceListFilesInputParsed = z.infer<typeof workspaceListFilesInputSchema>;
 export type WorkspaceReadFileInputParsed = z.infer<typeof workspaceReadFileInputSchema>;
@@ -492,6 +522,9 @@ export type DetectedIdeParsed = z.infer<typeof listDetectedIdesOutputSchema>[num
 export type TerminalSpawnInputParsed = z.infer<typeof terminalSpawnInputSchema>;
 export type TerminalWriteInputParsed = z.infer<typeof terminalWriteInputSchema>;
 export type TerminalResizeInputParsed = z.infer<typeof terminalResizeInputSchema>;
+export type McpAuthStartInputParsed = z.infer<typeof mcpAuthStartInputSchema>;
+export type McpAuthWriteInputParsed = z.infer<typeof mcpAuthWriteInputSchema>;
+export type McpAuthResizeInputParsed = z.infer<typeof mcpAuthResizeInputSchema>;
 export type GitCommitInputParsed = z.infer<typeof gitCommitInputSchema>;
 export type GitPushInputParsed = z.infer<typeof gitPushInputSchema>;
 export type GitCreateBranchInputParsed = z.infer<typeof gitCreateBranchInputSchema>;

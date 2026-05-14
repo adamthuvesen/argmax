@@ -7,6 +7,7 @@ import { registerIpcHandlers } from "./ipc.js";
 let registeredChannels: readonly string[] = [];
 import { ProviderSessionService } from "./providers/providerSessionService.js";
 import { TerminalService } from "./terminal/terminalService.js";
+import { McpAuthService } from "./mcp/mcpAuthService.js";
 import { NotificationService } from "./notifications/notificationService.js";
 import { DockBadgeService } from "./dock/dockBadgeService.js";
 import { buildAppMenuTemplate, type MenuCommand } from "./menu.js";
@@ -14,7 +15,13 @@ import { UpdateService } from "./updater/updateService.js";
 import { GhService } from "./gh/ghService.js";
 import { GhPoller } from "./gh/ghPoller.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
-import type { DashboardDelta, TerminalDataEvent, TerminalExitEvent } from "../shared/types.js";
+import type {
+  DashboardDelta,
+  McpAuthDataEvent,
+  McpAuthExitEvent,
+  TerminalDataEvent,
+  TerminalExitEvent
+} from "../shared/types.js";
 import { logger } from "../shared/logger.js";
 import { mark as markStartupPhase } from "./util/startupTimer.js";
 import { isAllowedAppNavigation, rendererFileNavigationPrefix } from "./util/appNavigation.js";
@@ -23,6 +30,7 @@ let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
 let providerSessions: ProviderSessionService | null = null;
 let terminals: TerminalService | null = null;
+let mcpAuth: McpAuthService | null = null;
 let dockBadge: DockBadgeService | null = null;
 let updateService: UpdateService | null = null;
 let ghPoller: GhPoller | null = null;
@@ -128,9 +136,13 @@ void app.whenReady().then(async () => {
     emitData: publishTerminalData,
     emitExit: publishTerminalExit
   });
+  mcpAuth = new McpAuthService({
+    emitData: publishMcpAuthData,
+    emitExit: publishMcpAuthExit
+  });
   dockBadge.update();
   markStartupPhase("services.construct");
-  registeredChannels = registerIpcHandlers(database, providerSessions, terminals);
+  registeredChannels = registerIpcHandlers(database, providerSessions, terminals, mcpAuth);
   markStartupPhase("ipc.register");
 
   // CI feedback loop: poll PR check status for every running session; on a
@@ -247,6 +259,22 @@ function publishTerminalExit(event: TerminalExitEvent): void {
   }
 }
 
+function publishMcpAuthData(event: McpAuthDataEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("mcp:auth:data", event);
+    }
+  }
+}
+
+function publishMcpAuthExit(event: McpAuthExitEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("mcp:auth:exit", event);
+    }
+  }
+}
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
@@ -287,6 +315,14 @@ async function shutdown(exitCode = 0): Promise<void> {
     } catch (error) {
       logger.error("shutdown", "terminals.disposeAll failed", { error: errorMessage(error) });
     }
+  }
+  if (mcpAuth) {
+    try {
+      mcpAuth.disposeAll();
+    } catch (error) {
+      logger.error("shutdown", "mcpAuth.disposeAll failed", { error: errorMessage(error) });
+    }
+    mcpAuth = null;
   }
   for (const channel of registeredChannels) {
     ipcMain.removeHandler(channel);

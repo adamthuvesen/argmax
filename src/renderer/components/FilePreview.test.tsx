@@ -66,6 +66,13 @@ describe("FilePreview", () => {
     expect(editFile).toHaveBeenCalledWith("export const ok = false;\n");
   });
 
+  it("calls saveFile from the header save button when the file is dirty", () => {
+    const saveFile = vi.fn().mockResolvedValue(undefined);
+    render(<FilePreview state={makeState({ isDirty: true, saveFile })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
+    expect(saveFile).toHaveBeenCalled();
+  });
+
   it("surfaces the stale banner with both actions when dirty and externally changed", () => {
     const reloadFile = vi.fn();
     const dismissExternalChange = vi.fn();

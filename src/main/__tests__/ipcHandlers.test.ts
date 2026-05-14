@@ -230,8 +230,9 @@ describe("projects:switch-branch invokes git with the `--` argv separator", () =
     } as unknown as Parameters<typeof registerIpcHandlers>[0];
     const stubProviders = {} as unknown as Parameters<typeof registerIpcHandlers>[1];
     const stubTerminals = {} as unknown as Parameters<typeof registerIpcHandlers>[2];
+    const stubMcpAuth = {} as unknown as Parameters<typeof registerIpcHandlers>[3];
 
-    registerIpcHandlers(stubDatabase, stubProviders, stubTerminals);
+    registerIpcHandlers(stubDatabase, stubProviders, stubTerminals, stubMcpAuth);
 
     const entry = captured.find((c) => c.channel === "projects:switch-branch");
     expect(entry).toBeDefined();
@@ -246,8 +247,9 @@ describe("projects:switch-branch invokes git with the `--` argv separator", () =
     const stubDatabase = {} as unknown as Parameters<typeof registerIpcHandlers>[0];
     const stubProviders = {} as unknown as Parameters<typeof registerIpcHandlers>[1];
     const stubTerminals = {} as unknown as Parameters<typeof registerIpcHandlers>[2];
+    const stubMcpAuth = {} as unknown as Parameters<typeof registerIpcHandlers>[3];
 
-    const registered = registerIpcHandlers(stubDatabase, stubProviders, stubTerminals);
+    const registered = registerIpcHandlers(stubDatabase, stubProviders, stubTerminals, stubMcpAuth);
 
     expect(registered).toEqual(captured.map((entry) => entry.channel));
     expect(new Set(registered)).toEqual(new Set(REGISTERED_IPC_CHANNELS));

@@ -86,6 +86,7 @@ describe("Sidebar — localStorage write isolation", () => {
           snapshot={snapshot}
           detectedIdes={[]}
           defaultIde={null}
+          showSessionTokens={false}
         />
       </StrictMode>
     );
@@ -124,6 +125,7 @@ describe("Sidebar — localStorage write isolation", () => {
           snapshot={snapshot}
           detectedIdes={[]}
           defaultIde={null}
+          showSessionTokens={false}
         />
       </StrictMode>
     );

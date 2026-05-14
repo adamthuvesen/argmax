@@ -19,8 +19,11 @@ import {
   listDetectedIdesInputSchema,
   loadDiffInputSchema,
   loadDiffForProjectInputSchema,
+  mcpAuthResizeInputSchema,
+  mcpAuthStartInputSchema,
+  mcpAuthTerminateInputSchema,
+  mcpAuthWriteInputSchema,
   openInIdeInputSchema,
-  prepareCommitInputSchema,
   projectsListInputSchema,
   providersDiscoverInputSchema,
   providerSessionInputSchema,
@@ -62,11 +65,11 @@ import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
 import { discoverProviders } from "./providers/providerDiscovery.js";
 import type { ProviderSessionService } from "./providers/providerSessionService.js";
 import type { TerminalService } from "./terminal/terminalService.js";
+import type { McpAuthService } from "./mcp/mcpAuthService.js";
 import { GitReviewService } from "./review/gitReviewService.js";
 import { WorkspaceFilesService } from "./files/workspaceFilesService.js";
 import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
-import { CommitPreparationService } from "./review/commitPreparationService.js";
 import { listSkills } from "./skills/skillRegistry.js";
 import { listMcpServers } from "./mcp/mcpRegistry.js";
 import { runGitText } from "./git/exec.js";
@@ -157,7 +160,8 @@ export function withTupleValidation<TTuple extends readonly unknown[], TOut>(
 export function registerIpcHandlers(
   database: ArgmaxDatabase,
   providerSessions: ProviderSessionService,
-  terminals: TerminalService
+  terminals: TerminalService,
+  mcpAuth: McpAuthService
 ): readonly string[] {
   const projects = new ProjectService(database);
   const workspaces = new WorkspaceService(database);
@@ -165,7 +169,6 @@ export function registerIpcHandlers(
   const workspaceFiles = new WorkspaceFilesService(database);
   const checks = new CheckService(database);
   const checkpoints = new CheckpointService(database);
-  const commits = new CommitPreparationService(database);
   const ghService = new GhService(database);
   const gitOps = new GitOpsService(database, ghService);
   const registeredChannels: IpcChannel[] = [];
@@ -308,6 +311,31 @@ export function registerIpcHandlers(
     return { ok: true } as const;
   }));
   register("mcp:list", withValidation(z.void(), () => listMcpServers()));
+  register(
+    "mcp:auth:start",
+    withValidation(mcpAuthStartInputSchema, (input) => mcpAuth.start(input))
+  );
+  register(
+    "mcp:auth:write",
+    withValidation(mcpAuthWriteInputSchema, (input) => {
+      mcpAuth.write(input);
+      return { ok: true } as const;
+    })
+  );
+  register(
+    "mcp:auth:resize",
+    withValidation(mcpAuthResizeInputSchema, (input) => {
+      mcpAuth.resize(input);
+      return { ok: true } as const;
+    })
+  );
+  register(
+    "mcp:auth:terminate",
+    withValidation(mcpAuthTerminateInputSchema, (sessionId) => {
+      mcpAuth.terminate(sessionId);
+      return { ok: true } as const;
+    })
+  );
   register(
     "learnings:list",
     withValidation(z.object({ projectId: z.string().min(1), limit: z.number().int().min(1).max(200).optional() }), (input) =>
@@ -521,10 +549,6 @@ export function registerIpcHandlers(
   register(
     "attempts:select-preferred",
     withValidation(selectPreferredAttemptInputSchema, (input) => database.selectPreferredAttempt(input.sessionId))
-  );
-  register(
-    "commits:prepare",
-    withValidation(prepareCommitInputSchema, (input) => commits.prepareCommit(input))
   );
   register(
     "system:open-path",

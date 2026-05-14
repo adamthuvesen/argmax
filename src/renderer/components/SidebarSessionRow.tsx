@@ -27,7 +27,8 @@ export function SidebarSessionRow({
   onOpenInIde,
   onTogglePin,
   detectedIdes,
-  defaultIde
+  defaultIde,
+  showTokens
 }: {
   workspace: WorkspaceSummary;
   workspaceTokens: WorkspaceTokenBreakdown | null;
@@ -38,6 +39,7 @@ export function SidebarSessionRow({
   onTogglePin?: (workspaceId: string, pinned: boolean) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
+  showTokens: boolean;
 }): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
@@ -114,7 +116,7 @@ export function SidebarSessionRow({
         <span className="status-dot" aria-hidden="true" />
         <span>{workspace.taskLabel}</span>
       </button>
-      {(() => {
+      {showTokens ? (() => {
         const inputOutput = (workspaceTokens?.input ?? 0) + (workspaceTokens?.output ?? 0);
         const display = formatTokens(inputOutput);
         const cached = workspaceTokens?.cached ?? 0;
@@ -131,7 +133,7 @@ export function SidebarSessionRow({
             {display}
           </span>
         );
-      })()}
+      })() : null}
       <div className="session-ide-cluster" ref={pickerRef}>
         <button
           className="session-row-action session-ide-btn"

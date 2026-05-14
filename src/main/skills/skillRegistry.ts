@@ -1,8 +1,8 @@
-import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { logger } from "../../shared/logger.js";
 import type { ProviderId, SkillSource, SkillSummary } from "../../shared/types.js";
+import { tryFileSize, tryIsDirectory, tryReaddir, tryReadFile } from "../util/safeFs.js";
 
 /**
  * Skill registry — discovers slash-invokable skills/prompts on disk for a
@@ -183,12 +183,12 @@ async function loadSkillDir(
   sourceKind: SkillSource,
   excludeDotDirs: boolean
 ): Promise<SkillSummary[]> {
-  const entries = await safeReaddir(root);
+  const entries = await tryReaddir(root);
   const candidates = excludeDotDirs ? entries.filter((entry) => !entry.startsWith(".")) : entries;
   const results = await Promise.all(
     candidates.map(async (entry) => {
       const dirPath = join(root, entry);
-      if (!(await isDirectory(dirPath))) {
+      if (!(await tryIsDirectory(dirPath))) {
         return null;
       }
       return parseSkillFile(join(dirPath, "SKILL.md"), entry, sourceKind);
@@ -198,7 +198,7 @@ async function loadSkillDir(
 }
 
 async function loadPromptDir(root: string, sourceKind: SkillSource): Promise<SkillSummary[]> {
-  const entries = await safeReaddir(root);
+  const entries = await tryReaddir(root);
   const markdownEntries = entries.filter((entry) => extname(entry).toLowerCase() === ".md");
   const results = await Promise.all(
     markdownEntries.map((entry) =>
@@ -213,25 +213,25 @@ async function loadPromptDir(root: string, sourceKind: SkillSource): Promise<Ski
  * plugin cache root. Tolerates missing directories at any level.
  */
 async function loadPluginCache(root: string, sourceKind: SkillSource): Promise<SkillSummary[]> {
-  const distributions = await safeReaddir(root);
+  const distributions = await tryReaddir(root);
   const distSummaries = await Promise.all(
     distributions.map(async (dist) => {
       const distPath = join(root, dist);
-      if (!(await isDirectory(distPath))) {
+      if (!(await tryIsDirectory(distPath))) {
         return [] as SkillSummary[];
       }
-      const plugins = await safeReaddir(distPath);
+      const plugins = await tryReaddir(distPath);
       const pluginSummaries = await Promise.all(
         plugins.map(async (plugin) => {
           const pluginPath = join(distPath, plugin);
-          if (!(await isDirectory(pluginPath))) {
+          if (!(await tryIsDirectory(pluginPath))) {
             return [] as SkillSummary[];
           }
-          const versions = await safeReaddir(pluginPath);
+          const versions = await tryReaddir(pluginPath);
           const versionSummaries = await Promise.all(
             versions.map(async (version) => {
               const skillsRoot = join(pluginPath, version, "skills");
-              if (!(await isDirectory(skillsRoot))) {
+              if (!(await tryIsDirectory(skillsRoot))) {
                 return [] as SkillSummary[];
               }
               return loadSkillDir(skillsRoot, sourceKind, false);
@@ -254,10 +254,8 @@ async function parseSkillFile(
   // Stat first so a pathological multi-MiB SKILL.md cannot blow up the
   // discovery walk. Anything over the cap is skipped with a warning rather
   // than rejected loudly — discovery should still surface other skills.
-  let size: number;
-  try {
-    size = (await stat(filePath)).size;
-  } catch {
+  const size = await tryFileSize(filePath);
+  if (size === null) {
     return null;
   }
   if (size > SKILL_FILE_SIZE_CAP_BYTES) {
@@ -268,7 +266,7 @@ async function parseSkillFile(
     });
     return null;
   }
-  const content = await safeReadFile(filePath);
+  const content = await tryReadFile(filePath);
   if (content === null) {
     return null;
   }
@@ -343,27 +341,3 @@ function unquote(value: string): string {
   return value;
 }
 
-async function safeReaddir(path: string): Promise<string[]> {
-  try {
-    return await readdir(path);
-  } catch {
-    return [];
-  }
-}
-
-async function safeReadFile(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return null;
-  }
-}
-
-async function isDirectory(path: string): Promise<boolean> {
-  try {
-    const stats = await stat(path);
-    return stats.isDirectory();
-  } catch {
-    return false;
-  }
-}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, type JSX } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { tryFit } from "../lib/xtermFit.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import "@xterm/xterm/css/xterm.css";
 
@@ -65,11 +66,8 @@ export function TerminalPanel({
     fitRef.current = fit;
 
     // Initial fit before spawn so cols/rows match what the user will see.
-    try {
-      fit.fit();
-    } catch {
-      // ResizeObserver below will retry once the container has dimensions.
-    }
+    // ResizeObserver below retries once the container has dimensions.
+    tryFit(fit);
     const { cols, rows } = term;
 
     let disposed = false;
@@ -116,11 +114,7 @@ export function TerminalPanel({
       const xterm = xtermRef.current;
       const tid = terminalIdRef.current;
       if (!fitAddon || !xterm) return;
-      try {
-        fitAddon.fit();
-      } catch {
-        return;
-      }
+      if (!tryFit(fitAddon)) return;
       if (tid) {
         void window.argmax?.terminal.resize({ terminalId: tid, cols: xterm.cols, rows: xterm.rows });
       }
@@ -151,11 +145,7 @@ export function TerminalPanel({
     const fit = fitRef.current;
     const term = xtermRef.current;
     if (!fit || !term) return;
-    try {
-      fit.fit();
-    } catch {
-      return;
-    }
+    if (!tryFit(fit)) return;
     const tid = terminalIdRef.current;
     if (tid) {
       void window.argmax?.terminal.resize({ terminalId: tid, cols: term.cols, rows: term.rows });

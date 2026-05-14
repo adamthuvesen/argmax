@@ -1,16 +1,11 @@
-import { dialog, ipcMain, shell } from "electron";
+import { dialog, ipcMain } from "electron";
 import { ZodError, z, type ZodIssue, type ZodType } from "zod";
 import {
   createCheckpointInputSchema,
   createCurrentWorkspaceInputSchema,
   createWorkspaceInputSchema,
-  approvalsPendingInputSchema,
   dashboardListInputSchema,
   dashboardLoadInputSchema,
-  gitCommitInputSchema,
-  gitCreateBranchInputSchema,
-  gitPushInputSchema,
-  gitViewOrCreatePrInputSchema,
   healthPingInputSchema,
   IPC_CHANNELS,
   launchProviderSessionInputSchema,
@@ -26,7 +21,6 @@ import {
   registerProjectInputSchema,
   listBranchesInputSchema,
   switchBranchInputSchema,
-  resolveApprovalInputSchema,
   runCheckInputSchema,
   selectPreferredAttemptInputSchema,
   sessionCostSummaryInputSchema,
@@ -48,6 +42,8 @@ import {
 } from "../shared/ipcSchemas.js";
 import { detectInstalledIdes } from "./ide/ideDetection.js";
 import { launchIde } from "./ide/ideLaunch.js";
+import { registerApprovalsHandlers } from "./ipc/approvals.js";
+import { registerGitHandlers } from "./ipc/git.js";
 import { registerMcpHandlers } from "./ipc/mcp.js";
 import { registerSystemHandlers } from "./ipc/system.js";
 import { registerTerminalHandlers } from "./ipc/terminal.js";
@@ -306,38 +302,9 @@ export function registerIpcHandlers(
       (input) => database.setWorkspacePinned(input.workspaceId, input.pinned)
     )
   );
-  register(
-    "prs:listForSession",
-    withValidation(z.object({ sessionId: z.string().min(1) }), (input) =>
-      ghService.listForSession(input.sessionId)
-    )
-  );
-  register(
-    "prs:refresh",
-    withValidation(z.object({ sessionId: z.string().min(1) }), (input) => ghService.refresh(input.sessionId))
-  );
-  register(
-    "git:commit",
-    withValidation(gitCommitInputSchema, (input) => gitOps.commitAll(input))
-  );
-  register(
-    "git:push",
-    withValidation(gitPushInputSchema, (input) => gitOps.push(input))
-  );
-  register(
-    "git:createBranch",
-    withValidation(gitCreateBranchInputSchema, (input) => gitOps.createBranch(input))
-  );
-  register(
-    "git:viewOrCreatePr",
-    withValidation(gitViewOrCreatePrInputSchema, async (input) => {
-      const result = await gitOps.viewOrCreatePr(input);
-      // Defer to Electron's default browser handler so the PR opens in the
-      // user's chosen browser instead of a new Electron window.
-      await shell.openExternal(result.url);
-      return result;
-    })
-  );
+  for (const channel of registerGitHandlers(ghService, gitOps)) {
+    registeredChannels.push(channel);
+  }
   register(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
@@ -380,11 +347,9 @@ export function registerIpcHandlers(
   for (const channel of registerTerminalHandlers(terminals)) {
     registeredChannels.push(channel);
   }
-  register(
-    "approvals:resolve",
-    withValidation(resolveApprovalInputSchema, (input) => database.resolveApproval(input.approvalId, input.status))
-  );
-  register("approvals:pending", withValidation(approvalsPendingInputSchema, () => database.listPendingApprovals()));
+  for (const channel of registerApprovalsHandlers(database)) {
+    registeredChannels.push(channel);
+  }
   register(
     "session:eventsSince",
     withValidation(sessionEventsSinceInputSchema, (input) => database.listSessionEventsSince(input))

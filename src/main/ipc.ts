@@ -16,10 +16,6 @@ import {
   launchProviderSessionInputSchema,
   loadDiffInputSchema,
   loadDiffForProjectInputSchema,
-  mcpAuthResizeInputSchema,
-  mcpAuthStartInputSchema,
-  mcpAuthTerminateInputSchema,
-  mcpAuthWriteInputSchema,
   openInIdeInputSchema,
   projectsListInputSchema,
   providersDiscoverInputSchema,
@@ -36,10 +32,6 @@ import {
   sessionCostSummaryInputSchema,
   sessionEventsSinceInputSchema,
   skillsListInputSchema,
-  terminalResizeInputSchema,
-  terminalSpawnInputSchema,
-  terminalTerminateInputSchema,
-  terminalWriteInputSchema,
   updateProjectSettingsInputSchema,
   workspaceListFilesInputSchema,
   workspaceListFilesForProjectInputSchema,
@@ -56,7 +48,9 @@ import {
 } from "../shared/ipcSchemas.js";
 import { detectInstalledIdes } from "./ide/ideDetection.js";
 import { launchIde } from "./ide/ideLaunch.js";
+import { registerMcpHandlers } from "./ipc/mcp.js";
 import { registerSystemHandlers } from "./ipc/system.js";
+import { registerTerminalHandlers } from "./ipc/terminal.js";
 import type { DetectedIde, IdeId } from "../shared/types.js";
 import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
@@ -70,7 +64,6 @@ import { WorkspaceFilesService } from "./files/workspaceFilesService.js";
 import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
 import { listSkills } from "./skills/skillRegistry.js";
-import { listMcpServers } from "./mcp/mcpRegistry.js";
 import { runGitText } from "./git/exec.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
@@ -272,32 +265,9 @@ export function registerIpcHandlers(
   for (const channel of registerSystemHandlers(database)) {
     registeredChannels.push(channel);
   }
-  register("mcp:list", withValidation(z.void(), () => listMcpServers()));
-  register(
-    "mcp:auth:start",
-    withValidation(mcpAuthStartInputSchema, (input) => mcpAuth.start(input))
-  );
-  register(
-    "mcp:auth:write",
-    withValidation(mcpAuthWriteInputSchema, (input) => {
-      mcpAuth.write(input);
-      return { ok: true } as const;
-    })
-  );
-  register(
-    "mcp:auth:resize",
-    withValidation(mcpAuthResizeInputSchema, (input) => {
-      mcpAuth.resize(input);
-      return { ok: true } as const;
-    })
-  );
-  register(
-    "mcp:auth:terminate",
-    withValidation(mcpAuthTerminateInputSchema, (sessionId) => {
-      mcpAuth.terminate(sessionId);
-      return { ok: true } as const;
-    })
-  );
+  for (const channel of registerMcpHandlers(mcpAuth)) {
+    registeredChannels.push(channel);
+  }
   register(
     "learnings:list",
     withValidation(z.object({ projectId: z.string().min(1), limit: z.number().int().min(1).max(200).optional() }), (input) =>
@@ -407,31 +377,9 @@ export function registerIpcHandlers(
       return { ok: true } as const;
     })
   );
-  register(
-    "terminal:spawn",
-    withValidation(terminalSpawnInputSchema, (input) => terminals.spawn(input))
-  );
-  register(
-    "terminal:write",
-    withValidation(terminalWriteInputSchema, (input) => {
-      terminals.write(input);
-      return { ok: true } as const;
-    })
-  );
-  register(
-    "terminal:resize",
-    withValidation(terminalResizeInputSchema, (input) => {
-      terminals.resize(input);
-      return { ok: true } as const;
-    })
-  );
-  register(
-    "terminal:terminate",
-    withValidation(terminalTerminateInputSchema, (terminalId) => {
-      terminals.terminate(terminalId);
-      return { ok: true } as const;
-    })
-  );
+  for (const channel of registerTerminalHandlers(terminals)) {
+    registeredChannels.push(channel);
+  }
   register(
     "approvals:resolve",
     withValidation(resolveApprovalInputSchema, (input) => database.resolveApproval(input.approvalId, input.status))

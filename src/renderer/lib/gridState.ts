@@ -1,10 +1,18 @@
 // State helpers for the multi-pane session grid. Pure functions so they can
 // be unit-tested without React, and so App.tsx stays focused on wiring.
 
-export interface GridCell {
+export interface SessionGridCell {
+  kind?: "session";
   sessionId: string;
   workspaceId: string;
 }
+
+export interface LauncherGridCell {
+  kind: "launcher";
+  projectId: string;
+}
+
+export type GridCell = SessionGridCell | LauncherGridCell;
 
 export interface GridCoord {
   row: number;
@@ -26,6 +34,10 @@ export const MAX_CELLS = MAX_ROWS * MAX_COLS;
 
 export const WORKSPACE_DRAG_MIME = "application/x-argmax-workspace";
 
+export function isSessionCell(cell: GridCell): cell is SessionGridCell {
+  return cell.kind !== "launcher";
+}
+
 function totalCells(grid: GridState): number {
   let n = 0;
   for (const row of grid.rows) n += row.length;
@@ -37,7 +49,19 @@ export function findWorkspaceCell(grid: GridState, workspaceId: string): GridCoo
     const row = grid.rows[r];
     if (!row) continue;
     for (let c = 0; c < row.length; c++) {
-      if (row[c]?.workspaceId === workspaceId) return { row: r, col: c };
+      const cell = row[c];
+      if (cell && isSessionCell(cell) && cell.workspaceId === workspaceId) return { row: r, col: c };
+    }
+  }
+  return null;
+}
+
+export function findLauncherCell(grid: GridState): GridCoord | null {
+  for (let r = 0; r < grid.rows.length; r++) {
+    const row = grid.rows[r];
+    if (!row) continue;
+    for (let c = 0; c < row.length; c++) {
+      if (row[c]?.kind === "launcher") return { row: r, col: c };
     }
   }
   return null;
@@ -76,7 +100,7 @@ function insertRow(rows: GridCell[][], at: number, cell: GridCell): GridCell[][]
  */
 export function openWorkspaceInGrid(
   grid: GridState,
-  cell: GridCell,
+  cell: SessionGridCell,
   modifiers: { ctrlOrMeta: boolean; alt: boolean }
 ): GridState {
   const existing = findWorkspaceCell(grid, cell.workspaceId);
@@ -108,13 +132,48 @@ export function openWorkspaceInGrid(
 }
 
 /**
+ * Open a blank launcher inside an existing grid. Prefer splitting to the
+ * right of the focused pane; when the focused row is already at 3 columns,
+ * insert a new row below. If the grid is full, leave it unchanged.
+ */
+export function openLauncherInGrid(grid: GridState, cell: LauncherGridCell): GridState {
+  const existing = findLauncherCell(grid);
+  if (existing) return { ...grid, focused: existing };
+
+  if (grid.rows.length === 0 || grid.focused === null) {
+    return grid;
+  }
+
+  const { row: fr, col: fc } = grid.focused;
+  const focusedRow = grid.rows[fr];
+  const canSplit = totalCells(grid) < MAX_CELLS;
+  if (!canSplit || !focusedRow) return grid;
+
+  if (focusedRow.length < MAX_COLS) {
+    return {
+      rows: insertCellInRow(grid.rows, fr, fc + 1, cell),
+      focused: { row: fr, col: fc + 1 }
+    };
+  }
+
+  if (grid.rows.length < MAX_ROWS) {
+    return {
+      rows: insertRow(grid.rows, fr + 1, cell),
+      focused: { row: fr + 1, col: 0 }
+    };
+  }
+
+  return grid;
+}
+
+/**
  * Drop a workspace at an explicit target+position (from a drag). Same caps
  * and duplicate-guard as `openWorkspaceInGrid`. Falls back to replace if a
  * split would exceed the cap.
  */
 export function dropWorkspaceInGrid(
   grid: GridState,
-  cell: GridCell,
+  cell: SessionGridCell,
   target: GridCoord & { position: SplitPosition }
 ): GridState {
   const existing = findWorkspaceCell(grid, cell.workspaceId);

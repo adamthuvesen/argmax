@@ -4,7 +4,7 @@ import { useNow } from "../hooks/useNow.js";
 
 export function NowProvider({
   active,
-  intervalMs = 250,
+  intervalMs = 100,
   children
 }: {
   active: boolean;

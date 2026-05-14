@@ -63,6 +63,52 @@ import { TurnBlock, type TurnToolItem } from "./TurnBlock.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function arrayValue(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function cursorAssistantSnapshot(event: TimelineEvent): string | null {
+  if (event.type !== "message.delta" || event.payload.type !== "assistant") {
+    return null;
+  }
+  const message = objectValue(event.payload.message);
+  const content = arrayValue(message?.content);
+  if (!content) {
+    return null;
+  }
+  const text = content
+    .map((entry) => stringValue(objectValue(entry)?.text))
+    .filter((value): value is string => Boolean(value))
+    .join("");
+  return text || null;
+}
+
+function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
+  const snapshot = cursorAssistantSnapshot(event);
+  if (snapshot === null) {
+    return event.message;
+  }
+  if (snapshot.startsWith(currentText)) {
+    return snapshot.slice(currentText.length);
+  }
+  if (currentText.startsWith(snapshot)) {
+    return "";
+  }
+  return event.message;
+}
+
+function isPayloadTruncationMarker(event: TimelineEvent): boolean {
+  return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
+}
+
 export function SessionConversation({
   checks,
   defaultToolCallsExpanded,
@@ -120,6 +166,7 @@ export function SessionConversation({
         .filter(
           (event) =>
             event.payload.raw !== true &&
+            !isPayloadTruncationMarker(event) &&
             ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
             event.message !== "turn.completed"
         )
@@ -295,11 +342,15 @@ export function SessionConversation({
         event.type === "message.completed" ||
         event.type === "command.completed")
   );
+  // Keep the "Thinking" affordance visible alongside tool rows so the user
+  // always has a live signal that the agent is working. Only suppress it
+  // once an assistant message is on screen — at that point the streaming
+  // reply bubble is the activity indicator and a parallel "Thinking" row
+  // below it would be redundant.
   const lastIsAssistantMessage =
     lastSignificantEvent?.type === "message.delta" ||
     lastSignificantEvent?.type === "message.completed";
-  const isThinking =
-    session?.state === "running" && !anyToolRunning && !lastIsAssistantMessage;
+  const isThinking = session?.state === "running" && !lastIsAssistantMessage;
 
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const metaCardsRef = useRef<HTMLDivElement | null>(null);
@@ -571,18 +622,18 @@ export function SessionConversation({
             // would render a separate bubble per token. The buffer flushes on
             // the next non-delta event (typically `message.completed`).
             const assistantGroups: Array<{ id: string; createdAt: string; text: string; streaming: boolean }> = [];
-            let deltaBuffer: { id: string; createdAt: string; chunks: string[] } | null = null;
+            let deltaBuffer: { id: string; createdAt: string; text: string } | null = null;
             for (const event of item.assistantEvents) {
               if (event.type === "message.delta") {
-                if (!deltaBuffer) deltaBuffer = { id: event.id, createdAt: event.createdAt, chunks: [] };
-                deltaBuffer.chunks.push(event.message);
+                if (!deltaBuffer) deltaBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
+                deltaBuffer.text += deltaTextForBuffer(event, deltaBuffer.text);
                 continue;
               }
               if (deltaBuffer) {
                 assistantGroups.push({
                   id: deltaBuffer.id,
                   createdAt: deltaBuffer.createdAt,
-                  text: deltaBuffer.chunks.join(""),
+                  text: deltaBuffer.text,
                   streaming: true
                 });
                 deltaBuffer = null;
@@ -598,7 +649,7 @@ export function SessionConversation({
               assistantGroups.push({
                 id: deltaBuffer.id,
                 createdAt: deltaBuffer.createdAt,
-                text: deltaBuffer.chunks.join(""),
+                text: deltaBuffer.text,
                 streaming: true
               });
             }

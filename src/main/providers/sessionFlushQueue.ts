@@ -1,5 +1,5 @@
 import { RecordNotFoundError, type ArgmaxDatabase, type PersistTimelineEventInput } from "../persistence/database.js";
-import type { DashboardDelta, SessionSummary, TimelineEvent } from "../../shared/types.js";
+import type { DashboardDelta, RawProviderOutput, SessionSummary, TimelineEvent } from "../../shared/types.js";
 import type { NormalizedUsage } from "./providerEventNormalizer.js";
 import type { ProviderEvent } from "./providerTypes.js";
 
@@ -91,10 +91,11 @@ export function flushSessionBuffer(
   const usages = state.pendingUsages.slice();
   let sessionUpdate = state.pendingSessionUpdate;
   const persistedEvents: TimelineEvent[] = [];
+  const persistedRawOutputs: RawProviderOutput[] = [];
 
   const persist = database.connection.transaction(() => {
     for (const raw of rawOutputs) {
-      database.persistRawOutput(raw);
+      persistedRawOutputs.push(database.persistRawOutput(raw));
     }
     for (const event of events) {
       persistedEvents.push(database.persistTimelineEvent(event));
@@ -140,7 +141,7 @@ export function flushSessionBuffer(
   publishDelta({
     ...(sessionUpdate ? { sessions: [sessionUpdate] } : {}),
     ...(persistedEvents.length > 0 ? { events: persistedEvents } : {}),
-    ...(rawOutputs.length > 0 ? { rawOutputs } : {})
+    ...(persistedRawOutputs.length > 0 ? { rawOutputs: persistedRawOutputs } : {})
   });
 }
 

@@ -108,6 +108,7 @@ import type {
   Learning,
   ProjectSettings,
   ProjectSummary,
+  RawProviderOutput,
   SessionCostSummary,
   SessionSummary,
   TimelineEvent,
@@ -197,7 +198,7 @@ export interface ArgmaxDatabase {
   updateSessionProviderConversationId: (sessionId: string, providerConversationId: string) => SessionSummary;
   updateSessionState: (sessionId: string, input: SessionStateInput) => SessionSummary;
   persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
-  persistRawOutput: (input: PersistRawOutputInput) => void;
+  persistRawOutput: (input: PersistRawOutputInput) => RawProviderOutput;
   insertUsageEvent: (input: InsertUsageEventInput) => void;
   updateSessionLastModelId: (sessionId: string, modelId: string) => void;
   getSessionCostSummary: (sessionId: string) => SessionCostSummary;
@@ -321,4 +322,3 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     }
   };
 }
-

@@ -22,6 +22,8 @@ const claudePluginCache = join(fakeHome, ".claude", "plugins", "cache");
 const codexSkillsDir = join(fakeHome, ".codex", "skills");
 const codexPromptsDir = join(fakeHome, ".codex", "prompts");
 const codexPluginCache = join(fakeHome, ".codex", "plugins", "cache");
+const cursorSkillsDir = join(fakeHome, ".cursor", "skills");
+const cursorPluginCache = join(fakeHome, ".cursor", "plugins", "cache");
 
 let workspaceCwd: string;
 
@@ -56,11 +58,14 @@ beforeEach(() => {
   mkdirSync(codexSkillsDir, { recursive: true });
   mkdirSync(codexPromptsDir, { recursive: true });
   mkdirSync(codexPluginCache, { recursive: true });
+  mkdirSync(cursorSkillsDir, { recursive: true });
+  mkdirSync(cursorPluginCache, { recursive: true });
 });
 
 afterEach(() => {
   rmSync(join(fakeHome, ".claude"), { recursive: true, force: true });
   rmSync(join(fakeHome, ".codex"), { recursive: true, force: true });
+  rmSync(join(fakeHome, ".cursor"), { recursive: true, force: true });
   rmSync(workspaceCwd, { recursive: true, force: true });
   clearSkillsCache();
 });

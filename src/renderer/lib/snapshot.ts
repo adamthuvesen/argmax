@@ -26,7 +26,7 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   if (events.length < 2) return events;
   const first = events[0];
   const last = events[events.length - 1];
-  const isDescending = !!first && !!last && first.createdAt > last.createdAt;
+  const isDescending = !!first && !!last && isAfter(first, last);
   const ascending = isDescending ? [...events].reverse() : events;
   const kept: TimelineEvent[] = [];
   let mutated = false;
@@ -71,9 +71,15 @@ export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: Dashboar
   const workspaces = mergeSlice(snapshot.workspaces, delta.workspaces, (workspace) => workspace.lastActivityAt);
   const sessions = mergeSlice(snapshot.sessions, delta.sessions, (session) => session.lastActivityAt);
   const events = pruneSupersededDeltas(
-    mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 500)
+    mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 500, (event) => event.rowCursor)
   );
-  const rawOutputs = mergeSlice(snapshot.rawOutputs, delta.rawOutputs, (output) => output.createdAt, 100);
+  const rawOutputs = mergeSlice(
+    snapshot.rawOutputs,
+    delta.rawOutputs,
+    (output) => output.createdAt,
+    100,
+    (output) => output.rowCursor
+  );
   const approvals = mergeSlice(snapshot.approvals, delta.approvals, (approval) => approval.createdAt, 200);
   const checks = mergeSlice(snapshot.checks, delta.checks, (check) => check.startedAt, 200);
   const checkpoints = mergeSlice(snapshot.checkpoints, delta.checkpoints, (checkpoint) => checkpoint.createdAt, 200);
@@ -102,7 +108,8 @@ function mergeSlice<T extends { id: string }>(
   current: T[],
   updates: T[] | undefined,
   sortBy: (item: T) => string,
-  limit?: number
+  limit?: number,
+  orderBy?: (item: T) => number | undefined
 ): T[] {
   if (!updates) {
     return current;
@@ -111,7 +118,7 @@ function mergeSlice<T extends { id: string }>(
   if (merged === current) {
     return current;
   }
-  const sorted = sortByTimestamp(merged, sortBy);
+  const sorted = sortByTimestamp(merged, sortBy, orderBy);
   return limit !== undefined ? sorted.slice(0, limit) : sorted;
 }
 
@@ -130,17 +137,39 @@ function upsertById<T extends { id: string }>(current: T[], updates: T[]): T[] {
   return changed ? [...byId.values()] : current;
 }
 
-function sortByTimestamp<T>(items: T[], getTimestamp: (item: T) => string): T[] {
-  return [...items].sort((left, right) => getTimestamp(right).localeCompare(getTimestamp(left)));
+function sortByTimestamp<T>(
+  items: T[],
+  getTimestamp: (item: T) => string,
+  getOrder?: (item: T) => number | undefined
+): T[] {
+  return [...items].sort((left, right) => {
+    const leftOrder = getOrder?.(left);
+    const rightOrder = getOrder?.(right);
+    if (leftOrder !== undefined && rightOrder !== undefined && leftOrder !== rightOrder) {
+      return rightOrder - leftOrder;
+    }
+    return getTimestamp(right).localeCompare(getTimestamp(left));
+  });
 }
 
-export function mergeByCreatedAt<T extends { id: string; createdAt: string }>(
+export function mergeByCreatedAt<T extends { id: string; createdAt: string; rowCursor?: number }>(
   current: T[],
   updates: T[],
   limit: number,
   direction: "asc" | "desc"
 ): T[] {
-  const sorted = sortByTimestamp(upsertById(current, updates), (item) => item.createdAt).reverse();
+  const sorted = sortByTimestamp(
+    upsertById(current, updates),
+    (item) => item.createdAt,
+    (item) => item.rowCursor
+  ).reverse();
   const limited = sorted.slice(-limit);
   return direction === "asc" ? limited : limited.reverse();
+}
+
+function isAfter(left: TimelineEvent, right: TimelineEvent): boolean {
+  if (left.rowCursor !== undefined && right.rowCursor !== undefined) {
+    return left.rowCursor > right.rowCursor;
+  }
+  return left.createdAt > right.createdAt;
 }

@@ -751,14 +751,14 @@ export class ProviderSessionService {
     const succeeded = event.type === "exit" && event.exitCode === 0;
     const state = succeeded ? "complete" : "failed";
     try {
-      const rawOutput = {
+      const rawOutputInput = {
         id: randomUUID(),
         sessionId: event.sessionId,
         stream: event.stream,
         content: capRawContent(event.message).content,
         createdAt: event.createdAt
       };
-      this.database.persistRawOutput(rawOutput);
+      const rawOutput = this.database.persistRawOutput(rawOutputInput);
       const session = this.database.updateSessionState(event.sessionId, {
         state,
         attention: computeSessionAttention({ state }),
@@ -821,14 +821,14 @@ export class ProviderSessionService {
       }
     } else {
       // Defensive: persist directly when no buffer exists.
-      const rawOutput = {
+      const rawOutputInput = {
         id,
         sessionId: event.sessionId,
         stream: event.stream,
         content,
         createdAt: event.createdAt
       };
-      this.database.persistRawOutput(rawOutput);
+      const rawOutput = this.database.persistRawOutput(rawOutputInput);
       this.publishDashboardDelta({ rawOutputs: [rawOutput] });
       if (truncatedDelta) {
         const persisted = this.database.persistTimelineEvent(truncatedDelta);

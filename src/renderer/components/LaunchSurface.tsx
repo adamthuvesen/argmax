@@ -16,6 +16,7 @@ import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { type ModelPickerSelection } from "../lib/models.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
+import { WelcomePane } from "./WelcomePane.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
@@ -148,15 +149,11 @@ export function LaunchSurface({
   };
 
   if (!project) {
-    return (
-      <div className="launcher-surface empty-project-launcher">
-        <h1>Add a project to start</h1>
-        <button className="primary-action" type="button" onClick={onAddProject}>
-          <Plus size={18} />
-          Add Project
-        </button>
-      </div>
-    );
+    // Fresh-install surface: setup checklist + provider discovery + the
+    // disabled-until-a-provider-is-detected Add Project CTA. The component
+    // owns its own discovery call so the cold-launch path doesn't pay for it
+    // when the user already has a project registered.
+    return <WelcomePane onAddProject={onAddProject} />;
   }
 
   return (

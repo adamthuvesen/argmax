@@ -189,7 +189,8 @@ describe("App", () => {
     readWorkspaceFile = vi.fn<ArgmaxApi["workspace"]["readFile"]>().mockResolvedValue({
       kind: "text",
       content: "",
-      size: 0
+      size: 0,
+      mtimeMs: 0
     });
     skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
     openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
@@ -891,7 +892,7 @@ describe("App", () => {
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
-  it("offers Add Project before any projects are registered", async () => {
+  it("renders the WelcomePane before any projects are registered and gates the CTA on provider discovery", async () => {
     mockDashboardSnapshot({
       ...snapshot,
       projects: [],
@@ -899,12 +900,51 @@ describe("App", () => {
       sessions: [],
       events: []
     });
+    // Empty discovery: the launcher CTA stays disabled until at least one
+    // provider is detected — Argmax can't launch a session without a CLI.
+    providersDiscover.mockResolvedValue([]);
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Add a project to start" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Add Project" })).toHaveLength(2);
+    expect(await screen.findByRole("heading", { name: "Welcome to Argmax" })).toBeInTheDocument();
     expect(screen.queryByTitle("Start agent")).not.toBeInTheDocument();
+
+    // Two "Add Project" buttons exist: the sidebar's (always enabled) and the
+    // launcher CTA inside WelcomePane (gated on discovery). Pick the launcher
+    // one and assert it is disabled until a provider is detected.
+    const launcherCta = await screen.findByTitle("Install at least one provider CLI first");
+    expect(launcherCta).toHaveAttribute("aria-disabled", "true");
+    expect(launcherCta).toBeDisabled();
+  });
+
+  it("enables the WelcomePane CTA once at least one provider is detected", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      projects: [],
+      workspaces: [],
+      sessions: [],
+      events: []
+    });
+    providersDiscover.mockResolvedValue([
+      {
+        provider: "claude",
+        displayName: "Claude Code",
+        binaryName: "claude",
+        installed: true,
+        binaryPath: "/usr/local/bin/claude",
+        version: "1.2.3",
+        modes: ["structured-json"],
+        setupGuidance: null
+      }
+    ]);
+
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Welcome to Argmax" });
+    // Once discovery resolves with an installed provider, the launcher CTA
+    // switches to the "Pick a local git repository" title and becomes enabled.
+    const launcherCta = await screen.findByTitle("Pick a local git repository");
+    expect(launcherCta).not.toBeDisabled();
   });
 
   it("opens a sidebar session", async () => {
@@ -1462,7 +1502,8 @@ describe("App", () => {
     readWorkspaceFile.mockResolvedValue({
       kind: "text",
       content: "export const hello = 'world';\n",
-      size: 30
+      size: 30,
+      mtimeMs: 0
     });
 
     render(<App />);

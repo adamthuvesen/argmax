@@ -8,6 +8,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { reviewIpcDispatch, type ReviewIpcDispatch } from "../lib/reviewIpc.js";
+import { errorMessage } from "../../shared/error.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
 export type ReviewPanelMode = "changes" | "files";
@@ -98,10 +99,13 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     () => (sourceKind && sourceId ? reviewIpcDispatch({ kind: sourceKind, id: sourceId }) : null),
     [sourceKind, sourceId]
   );
-  const dispatchRef = useRef<ReviewIpcDispatch | null>(null);
-  useEffect(() => {
-    dispatchRef.current = dispatch;
-  }, [dispatch]);
+  // Mirror dispatch into a ref so the stable callbacks below (`reloadWorkspaceFile`,
+  // `dismissExternalChange`, `saveWorkspaceFile`) read the current value at call
+  // time instead of capturing a closure. Initialized synchronously (not via
+  // useEffect) so the very first call lands against the right dispatch, not
+  // null — the effect-based mirror was the M4 finding from /review.
+  const dispatchRef = useRef<ReviewIpcDispatch | null>(dispatch);
+  dispatchRef.current = dispatch;
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
@@ -223,7 +227,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
         }
         setFiles([]);
         setFilesState("error");
-        setFilesError(error instanceof Error ? error.message : "Could not load changed files.");
+        setFilesError(errorMessage(error) || "Could not load changed files.");
       });
     // Depend on the changed-file count (workspace mode only), not on
     // lastActivityAt — the activity timestamp bumps for every event delta,
@@ -256,7 +260,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
         }
         setDiff(null);
         setDiffState("error");
-        setDiffError(error instanceof Error ? error.message : "Could not load diff.");
+        setDiffError(errorMessage(error) || "Could not load diff.");
       });
   }, [sourceId, sourceKind, selectedFilePath, dispatch]);
 
@@ -281,7 +285,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
         if (token !== workspaceListToken.current) return;
         setWorkspaceFileEntries([]);
         setWorkspaceFilesListState("error");
-        setWorkspaceFilesListError(error instanceof Error ? error.message : "Could not load files.");
+        setWorkspaceFilesListError(errorMessage(error) || "Could not load files.");
       });
     // Same reason as the changed-files effect above.
   }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey, dispatch]);
@@ -320,7 +324,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
         if (token !== workspaceReadToken.current) return;
         setWorkspaceFilePreview(null);
         setWorkspaceFilePreviewState("error");
-        setWorkspaceFilePreviewError(error instanceof Error ? error.message : "Could not read file.");
+        setWorkspaceFilePreviewError(errorMessage(error) || "Could not read file.");
         setWorkspaceFileBuffer(null);
         setWorkspaceFileOriginal(null);
         setWorkspaceFileDiskMtimeMs(null);
@@ -378,7 +382,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       .catch((error) => {
         if (token !== workspaceReadToken.current) return;
         setWorkspaceFilePreviewState("error");
-        setWorkspaceFilePreviewError(error instanceof Error ? error.message : "Could not reload file.");
+        setWorkspaceFilePreviewError(errorMessage(error) || "Could not reload file.");
       });
   }, []);
 
@@ -451,7 +455,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     } catch (error) {
       if (token !== workspaceSaveToken.current) return;
       setWorkspaceFileSaveState("error");
-      setWorkspaceFileSaveError(error instanceof Error ? error.message : "Could not save file.");
+      setWorkspaceFileSaveError(errorMessage(error) || "Could not save file.");
     }
   }, [workspaceFileBuffer, workspaceFileOriginal]);
 

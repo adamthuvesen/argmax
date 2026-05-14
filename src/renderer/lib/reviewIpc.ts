@@ -39,27 +39,36 @@ export interface ReviewIpcDispatch {
  */
 export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
   const { kind, id } = target;
+  // Consistent contract: every async method *rejects* when the bridge is
+  // missing instead of resolving with an empty default. The list flavors
+  // previously resolved `[]` while the diff/read flavors rejected, which
+  // made jsdom callers that forget to mock get silent empty lists from one
+  // call and visible errors from another. Sync flavors (`statFile`,
+  // `writeFile`) keep returning `null` so callers can gate the work without
+  // catching — the editor never wants to hit "save failed" because vitest
+  // didn't install a bridge.
+  const noBridge = (): Promise<never> => Promise.reject(new Error("bridge unavailable"));
   return {
     listChangedFiles: () => {
-      if (!window.argmax) return Promise.resolve([]);
+      if (!window.argmax) return noBridge();
       return kind === "workspace"
         ? window.argmax.review.listChangedFiles(id)
         : window.argmax.review.listChangedFilesForProject(id);
     },
     loadDiff: (filePath) => {
-      if (!window.argmax) return Promise.reject(new Error("bridge unavailable"));
+      if (!window.argmax) return noBridge();
       return kind === "workspace"
         ? window.argmax.review.loadDiff(id, filePath)
         : window.argmax.review.loadDiffForProject(id, filePath);
     },
     listFiles: () => {
-      if (!window.argmax) return Promise.resolve([]);
+      if (!window.argmax) return noBridge();
       return kind === "workspace"
         ? window.argmax.workspace.listFiles(id)
         : window.argmax.workspace.listFilesForProject(id);
     },
     readFile: (filePath) => {
-      if (!window.argmax) return Promise.reject(new Error("bridge unavailable"));
+      if (!window.argmax) return noBridge();
       return kind === "workspace"
         ? window.argmax.workspace.readFile(id, filePath)
         : window.argmax.workspace.readFileForProject(id, filePath);

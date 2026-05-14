@@ -74,45 +74,24 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
 
 /**
  * Renderer-only chords (no native-menu equivalent). Surfaced in the cheat
- * sheet alongside the menu-routed bindings. Use the same shape so the cheat
- * sheet can render them with a single component path.
+ * sheet alongside the menu-routed bindings. These never dispatch a menu
+ * command — they're handled inside the renderer via `useGlobalKeybindings`
+ * or pane-local effects — so the shape omits `command` and `accelerator`
+ * to make that contract explicit (and prevent a future refactor from
+ * silently wiring the wrong command).
  */
-export const RENDERER_ONLY_KEYBINDINGS: ReadonlyArray<Omit<MenuKeybinding, "menuLocation"> & { menuLocation: null }> = [
-  {
-    command: "new-session",
-    accelerator: "",
-    displayAccelerator: "⌘1 – ⌘9",
-    label: "Jump to session 1–9",
-    menuLocation: null
-  },
-  {
-    command: "new-session",
-    accelerator: "",
-    displayAccelerator: "⌘P",
-    label: "Open file search",
-    menuLocation: null
-  },
-  {
-    command: "new-session",
-    accelerator: "",
-    displayAccelerator: "⌘F",
-    label: "Global search",
-    menuLocation: null
-  },
-  {
-    command: "new-session",
-    accelerator: "",
-    displayAccelerator: "⌘J",
-    label: "Toggle integrated terminal",
-    menuLocation: null
-  },
-  {
-    command: "new-session",
-    accelerator: "",
-    displayAccelerator: "Esc",
-    label: "Close the topmost overlay",
-    menuLocation: null
-  }
+export interface RendererOnlyKeybinding {
+  displayAccelerator: string;
+  label: string;
+}
+
+export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
+  { displayAccelerator: "⌘1 – ⌘9", label: "Jump to session 1–9" },
+  { displayAccelerator: "⌘P", label: "Open file search" },
+  { displayAccelerator: "⌘F", label: "Global search" },
+  { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },
+  { displayAccelerator: "⌘W", label: "Close focused session pane" },
+  { displayAccelerator: "Esc", label: "Close the topmost overlay" }
 ] as const;
 
 export function findMenuKeybinding(command: MenuCommand): MenuKeybinding | undefined {

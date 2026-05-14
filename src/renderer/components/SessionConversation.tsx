@@ -1,4 +1,4 @@
-import { Bug, ChevronDown, ChevronRight, Folder, GitBranch, GitCommit, Mic, Plus, Square } from "lucide-react";
+import { Bug, ChevronDown, ChevronRight, Folder, GitBranch, GitCommit, Mic, Plus, Square, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -68,6 +68,7 @@ export function SessionConversation({
   defaultToolCallsExpanded,
   events,
   isLogOpen,
+  onClose,
   onOpenCommitDialog,
   onSendSessionInput,
   onTerminateSession,
@@ -86,6 +87,8 @@ export function SessionConversation({
   defaultToolCallsExpanded?: boolean;
   events: TimelineEvent[];
   isLogOpen: boolean;
+  /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
+  onClose?: () => void;
   onOpenCommitDialog?: () => void;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
@@ -534,6 +537,17 @@ export function SessionConversation({
           >
             <Bug size={16} />
           </button>
+          {onClose ? (
+            <button
+              className="small-icon session-pane-close"
+              type="button"
+              title="Close pane (⌘W)"
+              aria-label="Close pane"
+              onClick={onClose}
+            >
+              <X size={16} />
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>

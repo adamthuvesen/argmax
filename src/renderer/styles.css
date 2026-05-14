@@ -3632,12 +3632,15 @@ button {
 }
 
 .session-multigrid-cell[data-focused="true"]::after {
+  /* Inset by 1px so the 2px border sits entirely inside the cell (which
+     uses overflow: hidden). No border-radius — the cell itself has square
+     corners; rounding here would leave the underlying background visible
+     in 12px shoulders at each corner. */
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 1px;
   pointer-events: none;
-  border: 2px solid var(--accent, #2563eb);
-  border-radius: var(--radius-md, 12px);
+  border: 2px solid var(--sage-deep);
   z-index: 5;
 }
 
@@ -3665,32 +3668,37 @@ button {
   transition: background var(--duration-fast, 140ms) var(--ease, ease);
 }
 
-.multigrid-drop-zone[data-position="above"] {
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 25%;
-}
-
-.multigrid-drop-zone[data-position="below"] {
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 25%;
-}
-
+/* Five exclusive zones — no overlap, full coverage. Left and right take
+   the corners (full cell height, 25% wide); above/below get the inset
+   horizontal strips between them; replace fills the central 50% × 50%.
+   No zone is reachable through another's hit area, so drag-and-drop
+   resolves to one intent per drop. */
 .multigrid-drop-zone[data-position="left"] {
-  top: 25%;
-  bottom: 25%;
+  top: 0;
+  bottom: 0;
   left: 0;
   width: 25%;
 }
 
 .multigrid-drop-zone[data-position="right"] {
-  top: 25%;
-  bottom: 25%;
+  top: 0;
+  bottom: 0;
   right: 0;
   width: 25%;
+}
+
+.multigrid-drop-zone[data-position="above"] {
+  top: 0;
+  left: 25%;
+  right: 25%;
+  height: 25%;
+}
+
+.multigrid-drop-zone[data-position="below"] {
+  bottom: 0;
+  left: 25%;
+  right: 25%;
+  height: 25%;
 }
 
 .multigrid-drop-zone[data-position="replace"] {
@@ -3701,15 +3709,15 @@ button {
 }
 
 .multigrid-drop-zone[data-hovered="true"] {
-  background: rgba(37, 99, 235, 0.18);
-  outline: 2px dashed rgba(37, 99, 235, 0.55);
+  background: var(--sage-soft);
+  outline: 2px dashed var(--sage);
   outline-offset: -4px;
 }
 
 /* Launcher accepts a workspace drop when the grid is empty — soft hint that
    the launcher area is a valid drop target while a drag is active. */
 .launcher-shell[data-drop-target="true"] {
-  outline: 2px dashed rgba(37, 99, 235, 0.35);
+  outline: 2px dashed var(--sage);
   outline-offset: -10px;
   border-radius: var(--radius-md, 12px);
 }

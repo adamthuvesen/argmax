@@ -13,6 +13,12 @@ interface GlobalKeybindingArgs {
   onSelectSession: (session: SessionSummary) => void;
   /** Cmd+1..9 also closes the settings panel. */
   onCloseSettings: () => void;
+  /**
+   * Cmd+W closes the focused session pane. Returns `true` if a pane was
+   * closed (suppresses the browser/Electron default of closing the window).
+   * No-ops when the grid is empty.
+   */
+  onCloseFocusedPane?: () => boolean;
 }
 
 /**
@@ -35,11 +41,24 @@ export function useGlobalKeybindings({
   onMenuCommand,
   onOpenSearch,
   onSelectSession,
-  onCloseSettings
+  onCloseSettings,
+  onCloseFocusedPane
 }: GlobalKeybindingArgs): void {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
+      // Cmd+W closes the focused pane — fires regardless of typing context so
+      // the shortcut works while the user is in a composer textarea. Skip
+      // during IME composition (some Linux IMEs send `w` while modifying)
+      // and on autorepeat so holding Cmd+W doesn't close every pane in a
+      // burst.
+      if (event.key.toLowerCase() === "w" && !event.shiftKey && !event.altKey) {
+        if (event.isComposing || event.repeat) return;
+        if (onCloseFocusedPane?.()) {
+          event.preventDefault();
+        }
+        return;
+      }
       if (isTypingTarget(event.target)) return;
       const digit = parseInt(event.key, 10);
       if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
@@ -78,7 +97,7 @@ export function useGlobalKeybindings({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [sessions, onMenuCommand, onOpenSearch, onSelectSession, onCloseSettings]);
+  }, [sessions, onMenuCommand, onOpenSearch, onSelectSession, onCloseSettings, onCloseFocusedPane]);
 
   // Bind to the main-process menu-command channel separately so the same
   // shortcut works whether the renderer or the native menu has focus.

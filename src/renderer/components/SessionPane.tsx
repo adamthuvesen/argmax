@@ -55,11 +55,14 @@ export function SessionPane({
   checks,
   defaultToolCallsExpanded,
   events,
+  isFocused = true,
+  onClose,
+  onCreateCheckpoint,
+  onLoadSessionEvents,
   onResolveApproval,
+  onRunCheck,
   onSendSessionInput,
   onTerminateSession,
-  onCreateCheckpoint,
-  onRunCheck,
   project,
   rawOutputs,
   rightPanelToggleSignal,
@@ -71,11 +74,17 @@ export function SessionPane({
   checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
   events: TimelineEvent[];
+  /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
+  isFocused?: boolean;
+  /** Close button is shown when provided. Used by the multi-pane grid; absent in single-pane mode. */
+  onClose?: () => void;
+  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
+  /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
+  onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
+  onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
-  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
-  onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   rightPanelToggleSignal?: number;
@@ -157,6 +166,7 @@ export function SessionPane({
   }, [terminalHeight]);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
@@ -171,10 +181,10 @@ export function SessionPane({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isFocused]);
 
   useEffect(() => {
-    if (!isLogOpen) return;
+    if (!isFocused || !isLogOpen) return;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       if (isTypingTarget(event.target)) return;
@@ -183,7 +193,7 @@ export function SessionPane({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isLogOpen]);
+  }, [isFocused, isLogOpen]);
 
   // Destructure so the effect's dep is the stable useCallback from inside
   // useReviewState — not the parent object, which would expand the effect's
@@ -197,6 +207,7 @@ export function SessionPane({
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   useEffect(() => {
+    if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
@@ -206,19 +217,20 @@ export function SessionPane({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [reviewTogglePanel]);
+  }, [isFocused, reviewTogglePanel]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
     lastRightPanelToggleSignal.current = rightPanelToggleSignal;
+    if (!isFocused) return;
     if (!workspace) return;
     reviewTogglePanel();
-  }, [reviewTogglePanel, rightPanelToggleSignal, workspace]);
+  }, [isFocused, reviewTogglePanel, rightPanelToggleSignal, workspace]);
 
   // Cmd/Ctrl+P opens file quick-open for the current workspace. Picking a
   // result opens the right panel in Files mode, matching the launcher flow.
   useEffect(() => {
-    if (!workspace) return undefined;
+    if (!isFocused || !workspace) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
@@ -228,14 +240,14 @@ export function SessionPane({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [workspace]);
+  }, [isFocused, workspace]);
 
   useEffect(() => {
     if (!workspace) setIsQuickOpenOpen(false);
   }, [workspace]);
 
   useEffect(() => {
-    if (!reviewIsPanelOpen || isQuickOpenOpen) return undefined;
+    if (!isFocused || !reviewIsPanelOpen || isQuickOpenOpen) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       if (isTypingTarget(event.target)) return;
@@ -244,7 +256,16 @@ export function SessionPane({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [reviewClosePanel, reviewIsPanelOpen, isQuickOpenOpen]);
+  }, [isFocused, reviewClosePanel, reviewIsPanelOpen, isQuickOpenOpen]);
+
+  // Backfill timeline events for this pane on mount and whenever the session
+  // changes. Each pane backfills independently of the focused-pane selection,
+  // so non-focused panes still stream live messages. `loadSessionEvents` is
+  // sessionId-keyed and uses a cursor map, so concurrent callers are safe.
+  useEffect(() => {
+    if (!sessionId || !onLoadSessionEvents) return;
+    void onLoadSessionEvents(sessionId);
+  }, [sessionId, onLoadSessionEvents]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -330,6 +351,7 @@ export function SessionPane({
           defaultToolCallsExpanded={defaultToolCallsExpanded}
           events={visibleEvents}
           isLogOpen={isLogOpen}
+          onClose={onClose}
           onOpenCommitDialog={handleOpenCommitDialog}
           onSendSessionInput={onSendSessionInput}
           onTerminateSession={onTerminateSession}

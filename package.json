@@ -76,6 +76,7 @@
   "build": {
     "appId": "com.menti.argmax",
     "productName": "Argmax",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },

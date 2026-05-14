@@ -9,6 +9,7 @@ function makeSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
     provider: "claude",
     modelLabel: "Claude Haiku 4.5",
     modelId: "claude-haiku-4-5",
+    permissionMode: "auto-approve",
     providerConversationId: null,
     prompt: "Build the thing",
     state: "complete",

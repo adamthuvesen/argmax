@@ -30,11 +30,15 @@ export function WorkspaceTree({
   height
 }: {
   state: WorkspaceFilesState;
-  height: number;
+  height?: number;
 }): JSX.Element {
   const tree = useMemo(() => buildFileTree(state.entries), [state.entries]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [scrollTop, setScrollTop] = useState(0);
+  // Fallback used when `height` is omitted — the tree fills a flex parent and
+  // measures its own scroll container. Seed at 400px so the first paint shows
+  // rows before the ResizeObserver fires (it yields 0 for one frame on mount).
+  const [measuredHeight, setMeasuredHeight] = useState(400);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const toggleDir = useCallback((path: string): void => {
@@ -46,6 +50,19 @@ export function WorkspaceTree({
     });
   }, []);
 
+  useEffect(() => {
+    if (height !== undefined) return;
+    const node = scrollRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[0]?.contentRect.height;
+      if (typeof next === "number" && next > 0) setMeasuredHeight(next);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [height]);
+
+  const effectiveHeight = height ?? measuredHeight;
   const visibleRows = useMemo(() => flattenVisible(tree, expanded), [tree, expanded]);
 
   // Recompute window bounds whenever scroll or content changes. The slice is
@@ -55,7 +72,7 @@ export function WorkspaceTree({
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
   const endIndex = Math.min(
     visibleRows.length,
-    Math.ceil((scrollTop + height) / ROW_HEIGHT) + OVERSCAN_ROWS
+    Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT) + OVERSCAN_ROWS
   );
   const visibleSlice = visibleRows.slice(startIndex, endIndex);
   const topPad = startIndex * ROW_HEIGHT;
@@ -70,9 +87,11 @@ export function WorkspaceTree({
     setScrollTop(0);
   }, [tree]);
 
+  const containerStyle = height === undefined ? { height: "100%" as const } : { height };
+
   if (state.listState === "loading") {
     return (
-      <div className="workspace-tree workspace-tree-empty" style={{ height }} aria-label="Workspace files">
+      <div className="workspace-tree workspace-tree-empty" style={containerStyle} aria-label="Workspace files">
         <p className="review-empty">Loading files…</p>
       </div>
     );
@@ -80,7 +99,7 @@ export function WorkspaceTree({
 
   if (state.listState === "error") {
     return (
-      <div className="workspace-tree workspace-tree-empty" style={{ height }} aria-label="Workspace files">
+      <div className="workspace-tree workspace-tree-empty" style={containerStyle} aria-label="Workspace files">
         <p className="review-empty review-error">{state.listError}</p>
       </div>
     );
@@ -88,7 +107,7 @@ export function WorkspaceTree({
 
   if (state.listState === "ready" && state.entries.length === 0) {
     return (
-      <div className="workspace-tree workspace-tree-empty" style={{ height }} aria-label="Workspace files">
+      <div className="workspace-tree workspace-tree-empty" style={containerStyle} aria-label="Workspace files">
         <p className="review-empty">No files in this workspace.</p>
       </div>
     );
@@ -98,7 +117,7 @@ export function WorkspaceTree({
     <div
       ref={scrollRef}
       className="workspace-tree"
-      style={{ height, overflowY: "auto" }}
+      style={{ ...containerStyle, overflowY: "auto" }}
       aria-label="Workspace files"
       role="tree"
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}

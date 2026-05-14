@@ -17,6 +17,7 @@ import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 import type { DashboardDelta, TerminalDataEvent, TerminalExitEvent } from "../shared/types.js";
 import { logger } from "../shared/logger.js";
 import { mark as markStartupPhase } from "./util/startupTimer.js";
+import { isAllowedAppNavigation, rendererFileNavigationPrefix } from "./util/appNavigation.js";
 
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
@@ -30,6 +31,7 @@ const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 const iconPath = join(currentDirectory, "..", "..", "assets", "icon.png");
 
 async function createWindow(): Promise<void> {
+  const rendererIndexPath = join(currentDirectory, "../renderer/index.html");
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -83,9 +85,9 @@ async function createWindow(): Promise<void> {
       ? new URL(process.env.ELECTRON_RENDERER_URL).origin
       : is.dev
         ? "http://127.0.0.1:5173"
-        : "file://";
+        : rendererFileNavigationPrefix(rendererIndexPath);
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    const allowed = loadedOrigin === "file://" ? url.startsWith("file://") : url.startsWith(loadedOrigin);
+    const allowed = isAllowedAppNavigation(url, loadedOrigin);
     if (!allowed) {
       event.preventDefault();
     }
@@ -96,7 +98,7 @@ async function createWindow(): Promise<void> {
   } else if (is.dev) {
     await mainWindow.loadURL("http://127.0.0.1:5173");
   } else {
-    await mainWindow.loadFile(join(currentDirectory, "../renderer/index.html"));
+    await mainWindow.loadFile(rendererIndexPath);
   }
 }
 
@@ -205,6 +207,15 @@ void app.whenReady().then(async () => {
       void createWindow();
     }
   });
+}).catch((error) => {
+  const message = errorMessage(error);
+  logger.error("startup", "boot failed", { error: message });
+  try {
+    dialog.showErrorBox("Argmax failed to start", message);
+  } catch {
+    /* dialog may be unavailable during early boot */
+  }
+  void shutdown(1);
 });
 
 function errorMessage(error: unknown): string {
@@ -248,10 +259,10 @@ app.on("before-quit", (event) => {
   }
   shutdownInProgress = true;
   event.preventDefault();
-  void shutdown();
+  void shutdown(0);
 });
 
-async function shutdown(): Promise<void> {
+async function shutdown(exitCode = 0): Promise<void> {
   // Each cleanup step is independent so a failure in one doesn't strand the
   // others — a half-flushed WAL or leaked IPC handler is worse than a logged
   // error in disposeAll.
@@ -289,5 +300,5 @@ async function shutdown(): Promise<void> {
     }
     database = null;
   }
-  app.exit(0);
+  app.exit(exitCode);
 }

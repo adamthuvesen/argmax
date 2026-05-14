@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { buildSafeFtsPrefixQuery } from "../lib/ftsQuery.js";
 import { parseFtsSnippet } from "../lib/paletteSearch.js";
 
 export interface SearchHit {
@@ -56,22 +57,11 @@ export function SearchOverlay({
     setRunning(true);
     setError(null);
     try {
-      // Build an FTS5 query that combines phrase relevance with prefix recall:
-      // `"foo bar"` returns exact-phrase hits (ranked best by BM25), and
-      // `foo* bar*` catches partial typing (e.g. "dash" → "dashboard"). Tokens
-      // are stripped of FTS5 operators so a stray quote or dash can't break
-      // the syntax.
-      const tokens = trimmed
-        .split(/\s+/)
-        .map((token) => token.replace(/["'()*-]/g, ""))
-        .filter((token) => token.length > 0);
-      if (tokens.length === 0) {
+      const ftsQuery = buildSafeFtsPrefixQuery(trimmed);
+      if (!ftsQuery) {
         setHits([]);
         return;
       }
-      const phrase = `"${tokens.join(" ")}"`;
-      const prefixed = tokens.map((token) => `${token}*`).join(" ");
-      const ftsQuery = `${phrase} OR (${prefixed})`;
       const result = await window.argmax.session.search({ query: ftsQuery, limit: 50 });
       if (token !== tokenRef.current) return;
       setHits(result);
@@ -195,4 +185,3 @@ export function SearchOverlay({
     </div>
   );
 }
-

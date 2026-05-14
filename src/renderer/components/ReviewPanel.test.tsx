@@ -43,6 +43,7 @@ function reviewStub(): ReviewState {
       externalChange: false,
       saveState: "idle",
       saveError: null,
+      canEdit: true,
       editFile: vi.fn(),
       saveFile: vi.fn().mockResolvedValue(undefined),
       reloadFile: vi.fn(),

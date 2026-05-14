@@ -41,6 +41,7 @@ import {
 } from "./lib/fonts.js";
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "./lib/ide.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
+import { buildSafeFtsPrefixQuery } from "./lib/ftsQuery.js";
 import {
   PERMISSION_MODE_KEY,
   readStoredPermissionMode,
@@ -221,7 +222,13 @@ export function App(): JSX.Element {
       setToast({ kind: "error", message: "Open the Electron app window to archive workspaces." });
       return;
     }
-    const result = await window.argmax.workspaces.archive(workspaceId);
+    let result: Awaited<ReturnType<typeof window.argmax.workspaces.archive>>;
+    try {
+      result = await window.argmax.workspaces.archive(workspaceId);
+    } catch (error) {
+      setToast({ kind: "error", message: error instanceof Error ? error.message : "Workspace archive failed." });
+      return;
+    }
     setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
     // Backend refuses to remove a dirty worktree and falls back to "kept" —
     // the row stays in the sidebar (filter only hides "archived"). Tell the
@@ -555,17 +562,8 @@ export function App(): JSX.Element {
       if (!window.argmax) return [];
       const trimmed = rawQuery.trim();
       if (!trimmed) return [];
-      // Build an FTS5 query that supports the user's tokens both as a phrase
-      // (relevance) and as prefix-matched terms (recall). Tokens are stripped
-      // of FTS5 operator chars so a stray quote or dash can't break the query.
-      const tokens = trimmed
-        .split(/\s+/)
-        .map((token) => token.replace(/["'()*-]/g, ""))
-        .filter((token) => token.length > 0);
-      if (tokens.length === 0) return [];
-      const phrase = `"${tokens.join(" ")}"`;
-      const prefixed = tokens.map((token) => `${token}*`).join(" ");
-      const ftsQuery = `${phrase} OR (${prefixed})`;
+      const ftsQuery = buildSafeFtsPrefixQuery(trimmed);
+      if (!ftsQuery) return [];
       const hits = await window.argmax.session.search({ query: ftsQuery, limit });
       return hits.map((hit) => ({
         id: `${hit.sessionId}:${hit.eventId}`,

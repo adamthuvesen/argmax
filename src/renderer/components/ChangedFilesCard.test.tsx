@@ -32,6 +32,7 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       externalChange: false,
       saveState: "idle",
       saveError: null,
+      canEdit: true,
       editFile: () => {},
       saveFile: () => Promise.resolve(),
       reloadFile: () => {},

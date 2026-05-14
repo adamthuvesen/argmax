@@ -1040,6 +1040,37 @@ button {
   app-region: no-drag;
 }
 
+/* Bare wrapper that lets the launcher surface coexist with the right-side
+   ReviewPanel (toggled by ⌘B) without disturbing the centered layout when
+   the panel is closed. The parent `.launcher-scroll` does
+   `display: grid; place-items: center`, so by default the shell takes its
+   intrinsic width and is centered. When the review panel opens we widen
+   the shell to full width and split into [launcher | panel].
+
+   The parent also sets `-webkit-app-region: drag` so the empty launcher
+   pad is a window drag handle; the launcher-surface explicitly opts out,
+   and we mirror that here so the new ReviewPanel sibling stays clickable
+   instead of swallowing pointer events as drag gestures. */
+.launcher-shell[data-review-open="true"] {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  /* Override the parent's `place-items: center` so the shell fills the
+     entire scroll area rather than shrinking to its content width. */
+  justify-self: stretch;
+  align-self: stretch;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 520px);
+  align-items: stretch;
+  gap: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.launcher-shell[data-review-open="true"] .launcher-surface {
+  justify-self: center;
+  align-self: center;
+}
+
 .launcher-surface h1 {
   margin: 0 auto;
   width: fit-content;
@@ -1125,7 +1156,6 @@ button {
   border-radius: 14px;
   background: var(--panel);
   box-shadow: var(--shadow-1);
-  overflow: hidden;
 }
 
 .settings-card > * {
@@ -1952,10 +1982,155 @@ button {
   font-weight: 600;
 }
 
+.project-picker-item:disabled,
+.project-picker-item[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.project-picker-item:disabled:hover,
+.project-picker-item[disabled]:hover {
+  background: transparent;
+  color: var(--text-soft);
+}
+
 .project-picker-divider {
   height: 1px;
   background: var(--line-soft);
   margin: 4px 6px;
+}
+
+/* Git actions dropdown — opens DOWNWARD from the conversation header. */
+.git-actions-popover {
+  top: calc(100% + 8px);
+  bottom: auto;
+  right: 0;
+  left: auto;
+  min-width: 300px;
+  padding: 10px;
+}
+
+.git-actions-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.git-actions-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 6px 8px;
+}
+
+.git-actions-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 -2px 2px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.git-actions-back:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+.git-actions-label {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.git-actions-textarea,
+.git-actions-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.git-actions-textarea {
+  min-height: 88px;
+}
+
+.git-actions-textarea:focus,
+.git-actions-input:focus {
+  outline: 2px solid var(--sage);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.git-actions-submit {
+  align-self: flex-end;
+  margin-top: 4px;
+  padding: 7px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--sage);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.git-actions-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.git-actions-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.git-actions-feedback svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.git-actions-feedback--success {
+  background: var(--sage-soft);
+  border-color: color-mix(in srgb, var(--sage) 30%, transparent);
+  color: var(--sage-deep);
+}
+
+.git-actions-feedback--error {
+  background: var(--rose-soft);
+  border-color: color-mix(in srgb, var(--rose) 35%, transparent);
+  color: var(--rose);
+}
+
+.git-actions-busy {
+  margin: 8px 6px 0;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-style: italic;
 }
 
 .project-picker-group-label {

@@ -8,6 +8,8 @@ import type { ProviderEvent } from "./providerTypes.js";
 export const RAW_OUTPUT_CAP = 256 * 1024;
 /** 64 KB cap on per-event payload_json. */
 export const EVENT_PAYLOAD_CAP = 64 * 1024;
+/** Max JSON line considered during lightweight conversation-id sniffing. */
+const CONVERSATION_ID_LINE_PARSE_CAP = 64 * 1024;
 /** Truncated-payload preview slice (kept inline on the original event). */
 const EVENT_PAYLOAD_PREVIEW = 4 * 1024;
 
@@ -62,7 +64,11 @@ export function extractProviderConversationId(content: string, provider: Provide
   }
 
   for (const rawLine of content.split(/\r?\n/)) {
-    const record = tryParseJsonObject(rawLine.trim());
+    const line = rawLine.trim();
+    if (line.length > CONVERSATION_ID_LINE_PARSE_CAP) {
+      continue;
+    }
+    const record = tryParseJsonObject(line);
     if (!record) {
       continue;
     }

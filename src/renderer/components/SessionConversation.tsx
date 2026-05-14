@@ -17,6 +17,7 @@ import { appendReferencesToPrompt, buildAttachmentReferences } from "../lib/comp
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   CheckRun,
+  GhPrRecord,
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
@@ -45,6 +46,7 @@ import {
   type ToolCall
 } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
+import { GitActionsDropdown } from "./GitActionsDropdown.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { CostPanel } from "./CostPanel.js";
@@ -99,6 +101,7 @@ export function SessionConversation({
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [prs, setPrs] = useState<GhPrRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
@@ -359,6 +362,42 @@ export function SessionConversation({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [session?.id]);
 
+  // Cached PR rows for the git-actions dropdown. Cheap (DB-backed), so we just
+  // reload on session change. The dropdown's "view PR" action calls back via
+  // refreshPrs after creating a PR so the next click opens the existing one.
+  const sessionId = session?.id ?? null;
+  useEffect(() => {
+    if (!sessionId || !window.argmax) {
+      setPrs([]);
+      return;
+    }
+    let cancelled = false;
+    void window.argmax.prs
+      .listForSession({ sessionId })
+      .then((rows) => {
+        if (!cancelled) setPrs(rows);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setPrs([]);
+        setStatus(error instanceof Error ? error.message : "Could not load pull requests.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  const refreshPrs = useCallback((): void => {
+    if (!sessionId || !window.argmax) return;
+    void window.argmax.prs
+      .listForSession({ sessionId })
+      .then(setPrs)
+      .catch((error) => {
+        setPrs([]);
+        setStatus(error instanceof Error ? error.message : "Could not refresh pull requests.");
+      });
+  }, [sessionId]);
+
   useEffect(() => {
     if (!shouldRefocusInput.current || isSending || !canSend) {
       return;
@@ -468,6 +507,12 @@ export function SessionConversation({
           >
             <GitCommit size={16} />
           </button>
+          <GitActionsDropdown
+            prs={prs}
+            session={session}
+            workspace={workspace}
+            onPrsRefresh={refreshPrs}
+          />
           <button
             className="small-icon"
             type="button"

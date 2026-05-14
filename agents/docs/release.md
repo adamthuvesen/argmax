@@ -46,7 +46,7 @@ npm run package
 `npm run package` runs `npm run build` then `electron-builder --mac`, which signs every binary, calls `notarytool submit --wait`, and staples the ticket. Output lands in `release/`:
 
 - `Argmax-<version>-arm64.dmg` / `-x64.dmg`
-- `Argmax-<version>-mac.zip` (used by `electron-updater`)
+- `Argmax-<version>-arm64.zip` / `-x64.zip` (used by `electron-updater`)
 - `latest-mac.yml` (auto-update manifest)
 
 Watch for these failure modes:

@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Folder, GitBranch, Mic, Plus } from "lucide-react";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -12,9 +13,12 @@ import { createPortal } from "react-dom";
 import type { ProjectSummary } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
+import { isTypingTarget } from "../lib/typingTarget.js";
 import { type ModelPickerSelection } from "../lib/models.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
+import { ReviewPanel } from "./ReviewPanel.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { WelcomePane } from "./WelcomePane.js";
 
@@ -53,6 +57,30 @@ export function LaunchSurface({
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
+  // Read-only Changes + Files review against the selected project's main
+  // checkout. Lets the user inspect what's already in the repo before
+  // starting a session. Cmd/Ctrl+B toggles it (same shortcut as inside
+  // a session); no menu icon today, just the keyboard shortcut.
+  const reviewSource = useMemo<ReviewSource | null>(
+    () => (project ? { kind: "project", project } : null),
+    [project]
+  );
+  const reviewState = useReviewState(reviewSource);
+  const reviewTogglePanel = reviewState.togglePanel;
+  useEffect(() => {
+    if (!project) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "b") return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      reviewTogglePanel();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [project, reviewTogglePanel]);
+
   useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
   useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
   const anyContextPickerOpen = projectPickerOpen || branchPickerOpen || modelPickerOpen;
@@ -65,9 +93,14 @@ export function LaunchSurface({
 
   const openBranchPicker = useCallback(async (): Promise<void> => {
     if (!window.argmax || !project) return;
-    const list = await window.argmax.projects.listBranches(project.id);
-    setBranches(list);
-    setBranchPickerOpen(true);
+    try {
+      const list = await window.argmax.projects.listBranches(project.id);
+      setBranches(list);
+      setBranchPickerOpen(true);
+    } catch (error) {
+      setBranchPickerOpen(false);
+      setStatus(error instanceof Error ? error.message : "Could not load branches.");
+    }
   }, [project]);
 
   const switchBranch = useCallback(async (branch: string): Promise<void> => {
@@ -156,8 +189,11 @@ export function LaunchSurface({
     return <WelcomePane onAddProject={onAddProject} />;
   }
 
+  const isReviewOpen = reviewState.isPanelOpen && project !== null;
+
   return (
-    <div className="launcher-surface">
+    <div className="launcher-shell" data-review-open={isReviewOpen ? "true" : undefined}>
+      <div className="launcher-surface">
       {anyContextPickerOpen && createPortal(
         <div
           className="picker-dismiss-layer"
@@ -297,6 +333,8 @@ export function LaunchSurface({
           </p>
         ) : null}
       </form>
+      </div>
+      {isReviewOpen ? <ReviewPanel review={reviewState} /> : null}
     </div>
   );
 }

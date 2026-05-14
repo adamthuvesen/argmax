@@ -8,6 +8,10 @@ import type {
   CreateCheckpointInputParsed,
   CreateCurrentWorkspaceInputParsed,
   CreateWorkspaceInputParsed,
+  GitCommitInputParsed,
+  GitCreateBranchInputParsed,
+  GitPushInputParsed,
+  GitViewOrCreatePrInputParsed,
   IdeIdParsed,
   LaunchProviderSessionInputParsed,
   OpenInIdeInputParsed,
@@ -31,6 +35,7 @@ import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
 
 export type ProviderId = "claude" | "codex" | "cursor";
 export type ProviderMode = "interactive-pty" | "structured-json";
+export type PermissionMode = "auto-approve" | "ask-each-time";
 
 export interface DiscoveredProvider {
   provider: ProviderId;
@@ -160,6 +165,28 @@ export type RunCheckInput = RunCheckInputParsed;
 export type CreateCheckpointInput = CreateCheckpointInputParsed;
 export type SelectPreferredAttemptInput = SelectPreferredAttemptInputParsed;
 export type PrepareCommitInput = PrepareCommitInputParsed;
+export type GitCommitInput = GitCommitInputParsed;
+export type GitPushInput = GitPushInputParsed;
+export type GitCreateBranchInput = GitCreateBranchInputParsed;
+export type GitViewOrCreatePrInput = GitViewOrCreatePrInputParsed;
+
+export interface GitCommitResult {
+  commitSha: string;
+  branch: string;
+}
+
+export interface GitPushResult {
+  branch: string;
+  upstreamSet: boolean;
+}
+
+export interface GitCreateBranchResult {
+  branch: string;
+}
+
+export type GitViewOrCreatePrResult =
+  | { action: "opened"; url: string; prNumber: number }
+  | { action: "created"; url: string; prNumber: number | null };
 export type SkillsListInput = SkillsListInputParsed;
 export type OpenInIdeInput = OpenInIdeInputParsed;
 export type IdeId = IdeIdParsed;
@@ -234,6 +261,7 @@ export interface SessionSummary {
   modelLabel: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+  permissionMode: PermissionMode;
   providerConversationId: string | null;
   prompt: string;
   state: SessionState;
@@ -376,6 +404,8 @@ export interface ArgmaxApi {
   review: {
     listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;
     loadDiff: (workspaceId: string, filePath?: string) => Promise<WorkspaceDiff>;
+    listChangedFilesForProject: (projectId: string) => Promise<ChangedFileSummary[]>;
+    loadDiffForProject: (projectId: string, filePath?: string) => Promise<WorkspaceDiff>;
   };
   workspace: {
     listFiles: (workspaceId: string) => Promise<WorkspaceFileEntry[]>;
@@ -387,6 +417,8 @@ export interface ArgmaxApi {
       expectedMtimeMs: number | null
     ) => Promise<WorkspaceFileWriteResult>;
     statFile: (workspaceId: string, filePath: string) => Promise<WorkspaceFileStat>;
+    listFilesForProject: (projectId: string) => Promise<WorkspaceFileEntry[]>;
+    readFileForProject: (projectId: string, filePath: string) => Promise<WorkspaceFilePreview>;
   };
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;
@@ -426,6 +458,12 @@ export interface ArgmaxApi {
   prs: {
     listForSession: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
     refresh: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
+  };
+  git: {
+    commit: (input: GitCommitInput) => Promise<GitCommitResult>;
+    push: (input: GitPushInput) => Promise<GitPushResult>;
+    createBranch: (input: GitCreateBranchInput) => Promise<GitCreateBranchResult>;
+    viewOrCreatePr: (input: GitViewOrCreatePrInput) => Promise<GitViewOrCreatePrResult>;
   };
   terminal: {
     spawn: (input: TerminalSpawnInput) => Promise<{ terminalId: string }>;

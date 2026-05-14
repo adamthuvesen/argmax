@@ -19,39 +19,65 @@ export class GitReviewService {
 
   async listChangedFiles(workspaceId: string): Promise<ChangedFileSummary[]> {
     const workspace = this.database.getWorkspace(workspaceId);
+    return this.listChangedFilesAtPath(workspace.path);
+  }
+
+  async loadDiff(workspaceId: string, filePath?: string): Promise<WorkspaceDiff> {
+    const workspace = this.database.getWorkspace(workspaceId);
+    return this.loadDiffAtPath(workspace.path, workspaceId, filePath);
+  }
+
+  async listChangedFilesForProject(projectId: string): Promise<ChangedFileSummary[]> {
+    const project = this.database.getProject(projectId);
+    return this.listChangedFilesAtPath(project.repoPath);
+  }
+
+  async loadDiffForProject(projectId: string, filePath?: string): Promise<WorkspaceDiff> {
+    const project = this.database.getProject(projectId);
+    // The WorkspaceDiff response shape still uses `workspaceId` as the key —
+    // we reuse it for the project's repoPath-rooted view; the renderer never
+    // round-trips this id back to the main process, so keeping the type
+    // unchanged is safer than forking the shape.
+    return this.loadDiffAtPath(project.repoPath, projectId, filePath);
+  }
+
+  private async listChangedFilesAtPath(repoPath: string): Promise<ChangedFileSummary[]> {
     // `--porcelain=v1 -z` emits NUL-delimited records with literal paths
     // (no quoting, no octal escapes), so we don't have to unquote git's
     // human-readable form. The byte after each path is NUL, not LF.
-    const porcelain = await runGitText(workspace.path, ["status", "--porcelain=v1", "-z"]);
+    const porcelain = await runGitText(repoPath, ["status", "--porcelain=v1", "-z"]);
     // Untracked directories arrive as `?? dirname/` — drop them; readFile
     // on a directory would crash, and a 0/0 placeholder row is junk.
     const files = parsePorcelainZ(porcelain).filter((file) => !file.path.endsWith("/"));
     return mapWithConcurrency(files, DIFF_FANOUT_LIMIT, async (file) => {
-      const content = await this.loadFileDiff(workspace.path, file);
+      const content = await this.loadFileDiff(repoPath, file);
       const counts = countDiffLines(content);
       return { ...file, ...counts };
     });
   }
 
-  async loadDiff(workspaceId: string, filePath?: string): Promise<WorkspaceDiff> {
-    const workspace = this.database.getWorkspace(workspaceId);
+  private async loadDiffAtPath(
+    repoPath: string,
+    diffWorkspaceId: string,
+    filePath?: string
+  ): Promise<WorkspaceDiff> {
     let content: string;
     if (filePath !== undefined) {
-      assertSafeRelativePath(workspace.path, filePath);
+      assertSafeRelativePath(repoPath, filePath);
       const file = parsePorcelainZ(
-        await runGitText(workspace.path, ["status", "--porcelain=v1", "-z", "--", filePath])
+        await runGitText(repoPath, ["status", "--porcelain=v1", "-z", "--", filePath])
       ).find((item) => item.path === filePath);
       content = file
-        ? await this.loadFileDiff(workspace.path, file)
-        : await runGitText(workspace.path, ["diff", "HEAD", "--", filePath]);
+        ? await this.loadFileDiff(repoPath, file)
+        : await runGitText(repoPath, ["diff", "HEAD", "--", filePath]);
     } else {
-      const files = parsePorcelainZ(await runGitText(workspace.path, ["status", "--porcelain=v1", "-z"]));
-      const diffs = await mapWithConcurrency(files, DIFF_FANOUT_LIMIT, (file) => this.loadFileDiff(workspace.path, file));
+      const files = parsePorcelainZ(await runGitText(repoPath, ["status", "--porcelain=v1", "-z"]));
+      const diffs = await mapWithConcurrency(files, DIFF_FANOUT_LIMIT, (file) => this.loadFileDiff(repoPath, file));
       content = diffs.filter(Boolean).join("\n");
     }
 
     return {
-      workspaceId,
+      workspaceId: diffWorkspaceId,
       filePath: filePath ?? null,
       content
     };
@@ -148,6 +174,9 @@ async function synthesizeUntrackedDiff(workspacePath: string, filePath: string):
   if (stats.isDirectory()) {
     return "";
   }
+  if (stats.size > PER_FILE_DIFF_CAP_BYTES) {
+    return synthesizeSkippedUntrackedDiff(filePath, stats.size, "file exceeds diff preview cap");
+  }
   const workspaceRealPath = await realpath(workspacePath);
   const fileRealPath = await realpath(safeAbsolutePath);
   assertContainedPath(workspaceRealPath, fileRealPath, "filePath escapes the workspace root");
@@ -163,6 +192,9 @@ async function synthesizeUntrackedDiff(workspacePath: string, filePath: string):
       return "";
     }
     throw error;
+  }
+  if (content.includes("\0")) {
+    return synthesizeSkippedUntrackedDiff(filePath, stats.size, "binary file skipped");
   }
   const lines = content.split("\n");
   const hasTrailingNewline = content.endsWith("\n");
@@ -182,6 +214,19 @@ async function synthesizeUntrackedDiff(workspacePath: string, filePath: string):
   ].join("\n");
 }
 
+function synthesizeSkippedUntrackedDiff(filePath: string, sizeBytes: number, reason: string): string {
+  return [
+    `diff --git a/${filePath} b/${filePath}`,
+    "new file mode 100644",
+    "index 0000000..0000000",
+    "--- /dev/null",
+    `+++ b/${filePath}`,
+    "@@ -0,0 +1 @@",
+    `+[untracked file not loaded: ${reason}; size ${sizeBytes} bytes]`,
+    "\\ No newline at end of file"
+  ].join("\n");
+}
+
 function synthesizeUntrackedSymlinkDiff(filePath: string, target: string): string {
   return [
     `diff --git a/${filePath} b/${filePath}`,
@@ -194,4 +239,3 @@ function synthesizeUntrackedSymlinkDiff(filePath: string, target: string): strin
     "\\ No newline at end of file"
   ].join("\n");
 }
-

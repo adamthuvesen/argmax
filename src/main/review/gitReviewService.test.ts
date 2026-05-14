@@ -115,6 +115,47 @@ describe("GitReviewService", () => {
     database.connection.close();
   });
 
+  it("skips oversized untracked files before synthesizing diff text (audit-2026-05-14 H6)", async () => {
+    const repoPath = createCommittedGitRepo();
+    writeFileSync(join(repoPath, "src/huge.txt"), "x".repeat(1_048_577));
+    const database = createDatabase(":memory:", { seed: false });
+    database.persistProject({
+      id: "project-1",
+      name: "Fixture",
+      repoPath,
+      currentBranch: "main",
+      defaultBranch: "main",
+      settings: {
+        defaultProvider: "codex",
+        defaultModelLabel: "GPT-5.3 Codex Spark Low",
+        worktreeLocation: join(repoPath, ".worktrees"),
+        setupCommand: "",
+        checkCommands: []
+      }
+    });
+    const workspace = database.persistWorkspace({
+      id: "workspace-1",
+      projectId: "project-1",
+      taskLabel: "Review",
+      branch: "main",
+      baseRef: "main",
+      path: repoPath,
+      state: "complete",
+      sharedWorkspace: true,
+      dirty: true,
+      changedFiles: 1
+    });
+    const service = new GitReviewService(database);
+
+    const diff = await service.loadDiff(workspace.id, "src/huge.txt");
+
+    expect(diff.content).toContain("untracked file not loaded");
+    expect(diff.content).toContain("file exceeds diff preview cap");
+    expect(diff.content).not.toContain("x".repeat(1000));
+
+    database.connection.close();
+  });
+
   it("shows untracked symlink targets without reading outside-workspace contents", async () => {
     const repoPath = createCommittedGitRepo();
     const outsidePath = join(tmpdir(), `argmax-secret-${Date.now()}.txt`);

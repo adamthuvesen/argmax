@@ -35,11 +35,30 @@ export class WorkspaceFilesService {
 
   async listFiles(workspaceId: string): Promise<WorkspaceFileEntry[]> {
     const workspace = this.database.getWorkspace(workspaceId);
+    return this.listFilesAtPath(workspace.path);
+  }
+
+  async readFile(workspaceId: string, filePath: string): Promise<WorkspaceFilePreview> {
+    const workspace = this.database.getWorkspace(workspaceId);
+    return this.readFileAtPath(workspace.path, filePath);
+  }
+
+  async listFilesForProject(projectId: string): Promise<WorkspaceFileEntry[]> {
+    const project = this.database.getProject(projectId);
+    return this.listFilesAtPath(project.repoPath);
+  }
+
+  async readFileForProject(projectId: string, filePath: string): Promise<WorkspaceFilePreview> {
+    const project = this.database.getProject(projectId);
+    return this.readFileAtPath(project.repoPath, filePath);
+  }
+
+  private async listFilesAtPath(repoPath: string): Promise<WorkspaceFileEntry[]> {
     // `ls-files -z` emits NUL-terminated paths; combining `--cached` (tracked)
     // with `--others --exclude-standard` (untracked but not gitignored) gives
     // the same set a developer sees in their IDE. Duplicates can appear if a
     // file is tracked AND modified in the index, so we de-dupe.
-    const output = await runGitText(workspace.path, [
+    const output = await runGitText(repoPath, [
       "ls-files",
       "-z",
       "--cached",
@@ -57,10 +76,9 @@ export class WorkspaceFilesService {
     return entries;
   }
 
-  async readFile(workspaceId: string, filePath: string): Promise<WorkspaceFilePreview> {
-    const workspace = this.database.getWorkspace(workspaceId);
-    assertSafeRelativePath(workspace.path, filePath);
-    const resolved = resolve(workspace.path, filePath);
+  private async readFileAtPath(repoPath: string, filePath: string): Promise<WorkspaceFilePreview> {
+    assertSafeRelativePath(repoPath, filePath);
+    const resolved = resolve(repoPath, filePath);
 
     const stats = await lstat(resolved);
     // Symlinks and directories are not previewable text. We never follow
@@ -71,9 +89,9 @@ export class WorkspaceFilesService {
 
     // Realpath check defends against TOCTOU where the path resolved cleanly
     // but the inode points outside the worktree (e.g. via a parent symlink).
-    const workspaceRealPath = await realpath(workspace.path);
+    const repoRealPath = await realpath(repoPath);
     const fileRealPath = await realpath(resolved);
-    assertContainedPath(workspaceRealPath, fileRealPath, "filePath escapes the workspace root");
+    assertContainedPath(repoRealPath, fileRealPath, "filePath escapes the workspace root");
 
     if (stats.size > MAX_PREVIEW_BYTES) {
       return { kind: "skipped", reason: "too-large", size: stats.size };

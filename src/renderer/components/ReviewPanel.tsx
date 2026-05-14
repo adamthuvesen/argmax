@@ -11,11 +11,24 @@ import { FilePreview } from "./FilePreview.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 
 const DIFF_VIEW_KEY = "argmax.diffView";
+const LEFT_COL_WIDTH_KEY = "argmax.reviewPanel.leftColumnWidth";
+const LEFT_COL_MIN = 200;
+const LEFT_COL_MAX = 600;
+const LEFT_COL_DEFAULT = 280;
 
 function readStoredDiffView(): DiffView {
   if (typeof window === "undefined") return "unified";
   const raw = window.localStorage.getItem(DIFF_VIEW_KEY);
   return raw === "side-by-side" ? "side-by-side" : "unified";
+}
+
+function readStoredLeftColumnWidth(): number {
+  if (typeof window === "undefined") return LEFT_COL_DEFAULT;
+  const raw = window.localStorage.getItem(LEFT_COL_WIDTH_KEY);
+  if (!raw) return LEFT_COL_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return LEFT_COL_DEFAULT;
+  return Math.max(LEFT_COL_MIN, Math.min(LEFT_COL_MAX, parsed));
 }
 
 export function ReviewPanel({
@@ -32,7 +45,7 @@ export function ReviewPanel({
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
-  const [fileTabsHeight, setFileTabsHeight] = useState(168);
+  const [leftColumnWidth, setLeftColumnWidth] = useState<number>(() => readStoredLeftColumnWidth());
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [diffView, setDiffView] = useState<DiffView>(() => readStoredDiffView());
   const panelRef = useRef<HTMLElement>(null);
@@ -42,6 +55,11 @@ export function ReviewPanel({
     if (typeof window === "undefined") return;
     window.localStorage.setItem(DIFF_VIEW_KEY, diffView);
   }, [diffView]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LEFT_COL_WIDTH_KEY, String(leftColumnWidth));
+  }, [leftColumnWidth]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -57,17 +75,16 @@ export function ReviewPanel({
 
   const handleResizeMouseDown = (e: ReactMouseEvent): void => {
     e.preventDefault();
-    const startY = e.clientY;
-    const startH = fileTabsHeight;
-    // Cap so the diff area always gets at least 120px (toolbar ~80px + handle 5px + diff min).
-    const maxH = (panelRef.current?.clientHeight ?? 800) - 160;
+    const startX = e.clientX;
+    const startW = leftColumnWidth;
+    // Cap so the diff column always retains at least half the panel width.
+    const maxW = Math.max(LEFT_COL_MIN, (panelRef.current?.clientWidth ?? 800) * 0.5);
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "ns-resize";
+    document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     const onMove = (me: MouseEvent) => {
-      // Minimum of ~80px gives the user at least two file tabs to scan.
-      setFileTabsHeight(Math.max(80, Math.min(startH + me.clientY - startY, maxH)));
+      setLeftColumnWidth(Math.max(LEFT_COL_MIN, Math.min(startW + me.clientX - startX, maxW)));
     };
     const cleanup = () => {
       document.body.style.cursor = previousCursor;
@@ -151,60 +168,61 @@ export function ReviewPanel({
           </button>
         </div>
       </div>
-      {isChanges ? (
-        <div className="review-file-tabs" aria-label="Changed file list" style={{ height: fileTabsHeight }}>
-          {review.files.map((file) => (
-            <button
-              aria-pressed={review.selectedFilePath === file.path}
-              key={file.path}
-              type="button"
-              title={file.path}
-              onClick={() => review.openFile(file.path)}
-            >
-              <FileText size={15} />
-              <span>{file.path}</span>
-              <ChangeCount additions={file.additions} deletions={file.deletions} />
-            </button>
-          ))}
-        </div>
-      ) : (
-        <WorkspaceTree
-          state={review.workspaceFiles}
-          height={fileTabsHeight}
-        />
-      )}
-      <div
-        className="review-resize-handle"
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize file list"
-        onMouseDown={handleResizeMouseDown}
-      />
-      <div className="review-diff">
-        {isChanges ? (
-          <>
-            {selectedFile ? (
-              <div className="review-diff-heading">
-                <div>
-                  <span className="changed-file-status">{statusLabel(selectedFile.status)}</span>
-                  <strong>{selectedFile.path}</strong>
-                  <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
-                </div>
-                <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
-                  <X size={16} />
+      <div className="review-body">
+        <div className="review-list-col" style={{ width: leftColumnWidth }}>
+          {isChanges ? (
+            <div className="review-file-tabs" aria-label="Changed file list">
+              {review.files.map((file) => (
+                <button
+                  aria-pressed={review.selectedFilePath === file.path}
+                  key={file.path}
+                  type="button"
+                  title={file.path}
+                  onClick={() => review.openFile(file.path)}
+                >
+                  <FileText size={15} />
+                  <span>{file.path}</span>
+                  <ChangeCount additions={file.additions} deletions={file.deletions} />
                 </button>
-              </div>
-            ) : null}
-            {review.diffState === "loading" ? <p className="review-empty">Loading diff...</p> : null}
-            {review.diffState === "error" ? <p className="review-empty review-error">{review.diffError}</p> : null}
-            {review.diffState === "ready" && diffBlocks.length === 0 ? <p className="review-empty">No textual diff.</p> : null}
-            {review.diffState === "ready" && diffBlocks.length > 0 ? (
-              <DiffBlocks blocks={diffBlocks} filePath={selectedFile?.path ?? null} view={diffView} />
-            ) : null}
-          </>
-        ) : (
-          <FilePreview state={review.workspaceFiles} />
-        )}
+              ))}
+            </div>
+          ) : (
+            <WorkspaceTree state={review.workspaceFiles} />
+          )}
+        </div>
+        <div
+          className="review-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize file list width"
+          onMouseDown={handleResizeMouseDown}
+        />
+        <div className="review-diff">
+          {isChanges ? (
+            <>
+              {selectedFile ? (
+                <div className="review-diff-heading">
+                  <div>
+                    <span className="changed-file-status">{statusLabel(selectedFile.status)}</span>
+                    <strong>{selectedFile.path}</strong>
+                    <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
+                  </div>
+                  <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : null}
+              {review.diffState === "loading" ? <p className="review-empty">Loading diff...</p> : null}
+              {review.diffState === "error" ? <p className="review-empty review-error">{review.diffError}</p> : null}
+              {review.diffState === "ready" && diffBlocks.length === 0 ? <p className="review-empty">No textual diff.</p> : null}
+              {review.diffState === "ready" && diffBlocks.length > 0 ? (
+                <DiffBlocks blocks={diffBlocks} filePath={selectedFile?.path ?? null} view={diffView} />
+              ) : null}
+            </>
+          ) : (
+            <FilePreview state={review.workspaceFiles} />
+          )}
+        </div>
       </div>
       {workspace && onPrepareCommit ? (
         <CommitDialog

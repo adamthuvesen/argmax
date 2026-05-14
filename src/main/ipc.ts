@@ -2,13 +2,10 @@ import { dialog, ipcMain } from "electron";
 import { ZodError, z, type ZodIssue, type ZodType } from "zod";
 import {
   createCheckpointInputSchema,
-  createCurrentWorkspaceInputSchema,
-  createWorkspaceInputSchema,
   dashboardListInputSchema,
   dashboardLoadInputSchema,
   healthPingInputSchema,
   IPC_CHANNELS,
-  openInIdeInputSchema,
   projectsListInputSchema,
   projectsPickFolderInputSchema,
   registerProjectInputSchema,
@@ -20,12 +17,8 @@ import {
   sessionEventsSinceInputSchema,
   skillsListInputSchema,
   updateProjectSettingsInputSchema,
-  workspaceStatusInputSchema,
-  workspaceIdInputSchema,
   type IpcChannel
 } from "../shared/ipcSchemas.js";
-import { detectInstalledIdes } from "./ide/ideDetection.js";
-import { launchIde } from "./ide/ideLaunch.js";
 import { registerApprovalsHandlers } from "./ipc/approvals.js";
 import { registerGitHandlers } from "./ipc/git.js";
 import { registerMcpHandlers } from "./ipc/mcp.js";
@@ -33,7 +26,7 @@ import { registerProviderHandlers } from "./ipc/providers.js";
 import { registerReviewHandlers } from "./ipc/review.js";
 import { registerSystemHandlers } from "./ipc/system.js";
 import { registerTerminalHandlers } from "./ipc/terminal.js";
-import type { DetectedIde, IdeId } from "../shared/types.js";
+import { registerWorkspaceHandlers } from "./ipc/workspaces.js";
 import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
 import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
@@ -205,42 +198,9 @@ export function registerIpcHandlers(
       return database.updateProjectBranch(input.projectId, input.branch);
     })
   );
-  register(
-    "workspaces:create-isolated",
-    withValidation(createWorkspaceInputSchema, (input) => workspaces.createIsolatedWorkspace(input))
-  );
-  register(
-    "workspaces:create-current",
-    withValidation(createCurrentWorkspaceInputSchema, (input) => workspaces.createCurrentWorkspaceSession(input))
-  );
-  register(
-    "workspaces:refresh-status",
-    withValidation(workspaceIdInputSchema, (workspaceId) => workspaces.refreshGitStatus(workspaceId))
-  );
-  register(
-    "workspaces:keep",
-    withValidation(workspaceIdInputSchema, (workspaceId) => workspaces.keepWorkspace(workspaceId))
-  );
-  register(
-    "workspaces:archive",
-    withValidation(workspaceIdInputSchema, (workspaceId) => {
-      checks.cancelWorkspaceChecks(workspaceId);
-      return workspaces.archiveWorkspace(workspaceId);
-    })
-  );
-  register(
-    "workspaces:openInIde",
-    withValidation(openInIdeInputSchema, async (input) => {
-      const workspace = database.getWorkspace(input.workspaceId);
-      if (!workspace.path) {
-        throw new Error("Workspace has no path on disk yet.");
-      }
-      const detected = await detectInstalledIdes();
-      const target: IdeId = input.ide === "default" ? resolveDefaultIde(detected) : input.ide;
-      await launchIde(target, workspace.path, detected);
-      return { ok: true } as const;
-    })
-  );
+  for (const channel of registerWorkspaceHandlers(database, workspaces, checks)) {
+    registeredChannels.push(channel);
+  }
   for (const channel of registerSystemHandlers(database)) {
     registeredChannels.push(channel);
   }
@@ -278,20 +238,9 @@ export function registerIpcHandlers(
       (input) => database.searchEvents(input)
     )
   );
-  register(
-    "workspaces:set-pinned",
-    withValidation(
-      z.object({ workspaceId: z.string().min(1), pinned: z.boolean() }),
-      (input) => database.setWorkspacePinned(input.workspaceId, input.pinned)
-    )
-  );
   for (const channel of registerGitHandlers(ghService, gitOps)) {
     registeredChannels.push(channel);
   }
-  register(
-    "workspace:status",
-    withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
-  );
   for (const channel of registerProviderHandlers(providerSessions)) {
     registeredChannels.push(channel);
   }
@@ -352,30 +301,6 @@ export function registerIpcHandlers(
  */
 export const REGISTERED_IPC_CHANNELS: readonly IpcChannel[] = IPC_CHANNELS;
 
-/**
- * Fallback when the renderer asks main to "open in default IDE" but the
- * caller has not yet persisted a preference (`localStorage["argmax.defaultIde"]`
- * is empty). Order matches the user-facing chevron menu: GUI IDEs first, then
- * Terminal. If somehow the detected list is empty the renderer should already
- * have disabled the button, so we throw a useful error instead of guessing.
- */
-const DEFAULT_IDE_PRIORITY: readonly IdeId[] = ["vscode", "cursor", "windsurf", "zed", "iterm", "terminal"];
-
-export function resolveDefaultIde(detected: readonly DetectedIde[]): IdeId {
-  if (detected.length === 0) {
-    throw new Error("No IDEs detected on this machine.");
-  }
-  for (const id of DEFAULT_IDE_PRIORITY) {
-    if (detected.some((entry) => entry.id === id)) {
-      return id;
-    }
-  }
-  // Detected has at least one entry whose id is one of the schema-allowed
-  // values, so this is unreachable in practice. We narrow to a concrete
-  // IdeId anyway to keep the return type honest.
-  const first = detected[0];
-  if (!first) {
-    throw new Error("No IDEs detected on this machine.");
-  }
-  return first.id;
-}
+// `resolveDefaultIde` now lives in `./ipc/workspaces.ts` alongside the
+// workspaces:openInIde handler that uses it.
+export { resolveDefaultIde } from "./ipc/workspaces.js";

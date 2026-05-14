@@ -22,6 +22,14 @@ import {
   isSessionGoneError,
   scheduleFlush as scheduleFlushQueue
 } from "./sessionFlushQueue.js";
+import {
+  capEventPayload,
+  capRawContent,
+  capRawTruncationMarker,
+  EVENT_PAYLOAD_CAP,
+  extractProviderConversationId,
+  RAW_OUTPUT_CAP
+} from "./sessionPayloadCaps.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 import type { NotificationService } from "../notifications/notificationService.js";
 import { extractLearningCandidates } from "../memory/learningExtractor.js";
@@ -85,12 +93,6 @@ type HandleEntry = PendingHandleEntry | ResolvedHandleEntry;
 
 /** 2 s minimum interval between lastActivityAt writes per session. */
 const ACTIVITY_THROTTLE_MS = 2_000;
-/** 256 KB cap on raw_outputs.content per row. */
-const RAW_OUTPUT_CAP = 256 * 1024;
-/** 64 KB cap on per-event payload_json. */
-const EVENT_PAYLOAD_CAP = 64 * 1024;
-/** 4 KB preview window in truncated payload markers. */
-const EVENT_PAYLOAD_PREVIEW = 4 * 1024;
 /** Timeout to wait for natural exit during disposeAll before resolving. */
 const DISPOSE_GRACE_MS = 2_500;
 /**
@@ -973,128 +975,3 @@ export class ProviderSessionService {
   }
 }
 
-function capRawContent(content: string): { content: string; droppedBytes: number } {
-  if (content.length <= RAW_OUTPUT_CAP) {
-    return { content, droppedBytes: 0 };
-  }
-  const droppedBytes = content.length - RAW_OUTPUT_CAP;
-  return {
-    content: `${content.slice(0, RAW_OUTPUT_CAP)}[truncated ${droppedBytes} bytes]`,
-    droppedBytes
-  };
-}
-
-function capRawTruncationMarker(event: ProviderEvent): PersistTimelineEventInput | null {
-  if (event.message.length <= RAW_OUTPUT_CAP) {
-    return null;
-  }
-  const droppedBytes = event.message.length - RAW_OUTPUT_CAP;
-  return {
-    id: randomUUID(),
-    sessionId: event.sessionId,
-    type: "message.delta",
-    message: `Output truncated: ${droppedBytes} bytes dropped`,
-    payload: {
-      truncated: true,
-      droppedBytes,
-      stream: event.stream
-    },
-    createdAt: event.createdAt
-  };
-}
-
-function extractProviderConversationId(content: string, provider: ProviderId): string | null {
-  if (provider !== "codex" && provider !== "cursor") {
-    return null;
-  }
-
-  for (const rawLine of content.split(/\r?\n/)) {
-    const record = tryParseJsonObject(rawLine.trim());
-    if (!record) {
-      continue;
-    }
-    if (
-      provider === "codex" &&
-      record.type === "thread.started" &&
-      typeof record.thread_id === "string" &&
-      record.thread_id.length > 0
-    ) {
-      return record.thread_id;
-    }
-    // Cursor emits `{type:"system", subtype:"init", session_id:"<uuid>"}` once
-    // at the start of every run. That session_id is what `--resume` accepts.
-    if (
-      provider === "cursor" &&
-      record.type === "system" &&
-      record.subtype === "init" &&
-      typeof record.session_id === "string" &&
-      record.session_id.length > 0
-    ) {
-      return record.session_id;
-    }
-  }
-
-  return null;
-}
-
-interface CappedPayload {
-  payload: Record<string, unknown>;
-  sibling: Omit<PersistTimelineEventInput, "sessionId"> | null;
-}
-
-// Keys that must survive truncation so downstream consumers (renderer, tests)
-// can still reconcile state. For command.completed especially: without
-// tool_use_id/id the renderer can't match the result back to its
-// command.started event, and the tool call hangs in "running" forever.
-const STRUCTURAL_KEYS_BY_TYPE: Partial<Record<string, readonly string[]>> = {
-  "command.started": ["id", "call_id", "tool_use_id", "name", "type"],
-  "command.completed": [
-    "id",
-    "call_id",
-    "tool_use_id",
-    "name",
-    "type",
-    "is_error",
-    "isError",
-    "status"
-  ]
-};
-
-function capEventPayload(
-  payload: Record<string, unknown>,
-  eventType?: string
-): CappedPayload {
-  let serialized: string;
-  try {
-    serialized = JSON.stringify(payload);
-  } catch {
-    return { payload: { truncated: true, originalSize: 0, preview: "" }, sibling: null };
-  }
-  if (serialized.length <= EVENT_PAYLOAD_CAP) {
-    return { payload, sibling: null };
-  }
-  const truncatedEventId = randomUUID();
-  const preserved: Record<string, unknown> = {};
-  const preserveKeys = (eventType && STRUCTURAL_KEYS_BY_TYPE[eventType]) ?? [];
-  for (const key of preserveKeys) {
-    if (key in payload) preserved[key] = payload[key];
-  }
-  return {
-    payload: {
-      ...preserved,
-      truncated: true,
-      originalSize: serialized.length,
-      preview: serialized.slice(0, EVENT_PAYLOAD_PREVIEW),
-      truncatedEventId
-    },
-    sibling: {
-      id: randomUUID(),
-      type: "error",
-      message: "event payload truncated",
-      payload: {
-        truncatedEventId,
-        originalSize: serialized.length
-      }
-    }
-  };
-}

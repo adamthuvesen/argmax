@@ -8,10 +8,15 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary.js";
 // a non-default font in Settings → Appearance.
 import "./styles.css";
 
+// StrictMode double-invokes effects + commit in development so it catches
+// unsafe lifecycles early. In production it's pure overhead — the same
+// effect runs twice on every mount. Ralph B8 strips it from prod builds.
+const root = (
+  <AppErrorBoundary>
+    <App />
+  </AppErrorBoundary>
+);
+
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <StrictMode>
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>
-  </StrictMode>
+  import.meta.env.DEV ? <StrictMode>{root}</StrictMode> : root
 );

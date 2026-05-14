@@ -1,5 +1,5 @@
 import { ChevronRight, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
+import { useMemo, useState, type JSX, type ReactNode } from "react";
 import { formatElapsed } from "../formatElapsed.js";
 import type { ToolCall, ToolCallGroup } from "../lib/toolCalls.js";
 
@@ -84,22 +84,12 @@ export function TurnBlock({
   // not running, bounds.endedAt is guaranteed non-null.
   const elapsedMs = bounds.endedAt !== null ? Math.max(0, bounds.endedAt - bounds.startedAt) : 0;
 
-  // Expanded while running so users see live progress; auto-collapse on
-  // completion. The user's manual toggle (userToggle) wins after that.
+  // Expanded while running so users see live progress; when done, falls back
+  // to defaultExpanded. The user's manual toggle wins in both directions and
+  // sticks for the lifetime of the turn.
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const autoExpanded = running || (defaultExpanded ?? false);
   const expanded = userToggle ?? autoExpanded;
-
-  // When a turn transitions from running → done, reset userToggle so the
-  // auto-collapse fires once. Subsequent user clicks then stick.
-  useEffect(() => {
-    if (!running && userToggle === true) {
-      // user had explicitly expanded a still-running turn; once it finishes,
-      // we don't yank it closed under them.
-      return;
-    }
-    if (!running) setUserToggle(null);
-  }, [running, userToggle]);
 
   const subtitleParts = [providerLabelText, modelLabel].filter((v): v is string => Boolean(v));
   const subtitle = subtitleParts.join(" · ");

@@ -295,50 +295,42 @@ app.on("before-quit", (event) => {
   void shutdown(0);
 });
 
+/**
+ * Run one cleanup step in isolation. Each step is independent so a failure
+ * in one doesn't strand the others — a half-flushed WAL or leaked IPC
+ * handler is worse than a logged error in disposeAll.
+ */
+async function safeDispose(label: string, fn: () => void | Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (error) {
+    logger.error("shutdown", `${label} failed`, { error: errorMessage(error) });
+  }
+}
+
 async function shutdown(exitCode = 0): Promise<void> {
-  // Each cleanup step is independent so a failure in one doesn't strand the
-  // others — a half-flushed WAL or leaked IPC handler is worse than a logged
-  // error in disposeAll.
   if (ghPoller) {
-    try {
-      ghPoller.stop();
-    } catch (error) {
-      logger.error("shutdown", "ghPoller.stop failed", { error: errorMessage(error) });
-    }
+    await safeDispose("ghPoller.stop", () => ghPoller?.stop());
     ghPoller = null;
   }
   if (providerSessions) {
-    try {
-      await providerSessions.disposeAll();
-    } catch (error) {
-      logger.error("shutdown", "disposeAll failed", { error: errorMessage(error) });
-    }
+    await safeDispose("disposeAll", () => providerSessions?.disposeAll());
   }
   if (terminals) {
-    try {
-      terminals.disposeAll();
-    } catch (error) {
-      logger.error("shutdown", "terminals.disposeAll failed", { error: errorMessage(error) });
-    }
+    await safeDispose("terminals.disposeAll", () => terminals?.disposeAll());
   }
   if (mcpAuth) {
-    try {
-      mcpAuth.disposeAll();
-    } catch (error) {
-      logger.error("shutdown", "mcpAuth.disposeAll failed", { error: errorMessage(error) });
-    }
+    await safeDispose("mcpAuth.disposeAll", () => mcpAuth?.disposeAll());
     mcpAuth = null;
   }
   for (const channel of registeredChannels) {
     ipcMain.removeHandler(channel);
   }
   if (database) {
-    try {
-      database.clearPruneInterval();
-      database.connection.close();
-    } catch (error) {
-      logger.error("shutdown", "database close failed", { error: errorMessage(error) });
-    }
+    await safeDispose("database close", () => {
+      database?.clearPruneInterval();
+      database?.connection.close();
+    });
     database = null;
   }
   app.exit(exitCode);

@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -10,6 +9,7 @@ import type {
 import { errorMessage } from "../../shared/error.js";
 import { safeJsonParseObject } from "../../shared/safeJson.js";
 import { isPlainObject } from "../../shared/typeGuards.js";
+import { tryReadFile } from "../util/safeFs.js";
 
 /**
  * MCP server registry — discovers user-scope MCP servers configured for each
@@ -69,7 +69,7 @@ async function listCursorMcp(home: string): Promise<McpClientListing> {
  * false`; a parse failure surfaces as `configExists: true` + `error`.
  */
 async function readJsonMcpServers(configPath: string, client: ProviderId): Promise<McpClientListing> {
-  const raw = await safeReadFile(configPath);
+  const raw = await tryReadFile(configPath);
   if (raw === null) {
     return baseListing(client, configPath, false);
   }
@@ -128,7 +128,7 @@ function extractJsonMcpServers(
 
 async function listCodexMcp(home: string): Promise<McpClientListing> {
   const configPath = join(home, ".codex", "config.toml");
-  const raw = await safeReadFile(configPath);
+  const raw = await tryReadFile(configPath);
   if (raw === null) {
     return baseListing("codex", configPath, false);
   }
@@ -321,10 +321,3 @@ function baseListing(
   };
 }
 
-async function safeReadFile(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return null;
-  }
-}

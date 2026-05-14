@@ -75,7 +75,7 @@ import { titleFromPrompt } from "./lib/projects.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 
-type ToastMessage = { kind: "error" | "info"; message: string };
+import { withToast, type ToastMessage } from "./lib/withToast.js";
 
 const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
 
@@ -536,15 +536,12 @@ export function App(): JSX.Element {
         setToast({ kind: "error", message: "Open the Electron app window to pin a session." });
         return;
       }
-      try {
-        await window.argmax.workspaces.setPinned({ workspaceId, pinned });
-        await refreshDashboardStatus();
-      } catch (error) {
-        setToast({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not toggle pin."
-        });
-      }
+      const ok = await withToast(
+        () => window.argmax!.workspaces.setPinned({ workspaceId, pinned }),
+        setToast,
+        "Could not toggle pin."
+      );
+      if (ok) await refreshDashboardStatus();
     },
     [refreshDashboardStatus]
   );
@@ -555,15 +552,12 @@ export function App(): JSX.Element {
         setToast({ kind: "error", message: "Open the Electron app window to run a check." });
         return;
       }
-      try {
-        await window.argmax.checks.run({ workspaceId, command });
-        await refreshDashboardStatus();
-      } catch (error) {
-        setToast({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not run check."
-        });
-      }
+      const ok = await withToast(
+        () => window.argmax!.checks.run({ workspaceId, command }),
+        setToast,
+        "Could not run check."
+      );
+      if (ok) await refreshDashboardStatus();
     },
     [refreshDashboardStatus]
   );
@@ -575,15 +569,14 @@ export function App(): JSX.Element {
         return;
       }
       const label = `Checkpoint ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-      try {
-        await window.argmax.checkpoints.create({ workspaceId, label });
+      const ok = await withToast(
+        () => window.argmax!.checkpoints.create({ workspaceId, label }),
+        setToast,
+        "Could not save checkpoint."
+      );
+      if (ok) {
         setToast({ kind: "info", message: `Saved ${label}.` });
         await refreshDashboardStatus();
-      } catch (error) {
-        setToast({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not save checkpoint."
-        });
       }
     },
     [refreshDashboardStatus]
@@ -594,14 +587,13 @@ export function App(): JSX.Element {
       if (!window.argmax) {
         throw new Error("Open the Electron app window to stop a live session.");
       }
-      try {
-        await window.argmax.providers.terminate(sessionId);
+      const ok = await withToast(
+        () => window.argmax!.providers.terminate(sessionId),
+        setToast,
+        "Could not stop session."
+      );
+      if (ok) {
         await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
-      } catch (error) {
-        setToast({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not stop session."
-        });
       }
     },
     [refreshDashboardStatus, loadSessionEvents]

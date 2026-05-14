@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { AlertCircle } from "lucide-react";
+import { tryFit } from "../lib/xtermFit.js";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
 import "@xterm/xterm/css/xterm.css";
 
@@ -89,11 +90,8 @@ export function McpAuthDialog({
     xtermRef.current = term;
     fitRef.current = fit;
 
-    try {
-      fit.fit();
-    } catch {
-      // ResizeObserver below will retry once the container has dimensions.
-    }
+    // ResizeObserver below retries once the container has dimensions.
+    tryFit(fit);
     const { cols, rows } = term;
 
     let disposed = false;
@@ -143,11 +141,7 @@ export function McpAuthDialog({
       const xterm = xtermRef.current;
       const sid = sessionIdRef.current;
       if (!fitAddon || !xterm) return;
-      try {
-        fitAddon.fit();
-      } catch {
-        return;
-      }
+      if (!tryFit(fitAddon)) return;
       if (sid) {
         void window.argmax?.mcp.auth.resize({ sessionId: sid, cols: xterm.cols, rows: xterm.rows });
       }

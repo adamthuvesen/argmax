@@ -247,11 +247,7 @@ export class ProviderSessionService {
       // If the placeholder was rejected (e.g., a concurrent launch failure path
       // ran), drop the resolved handle and terminate the freshly spawned child.
       if (pending.rejected) {
-        try {
-          void handle.terminate();
-        } catch {
-          /* ignore */
-        }
+        void handle.terminate();
         throw new Error("Provider launch was cancelled before handle registration.");
       }
       this.handles.set(sessionId, { kind: "resolved", handle });
@@ -364,11 +360,7 @@ export class ProviderSessionService {
         (event) => this.handleProviderEvent(workspace.id, session.provider, event)
       );
       if (pending.rejected) {
-        try {
-          void handle.terminate();
-        } catch {
-          /* ignore */
-        }
+        void handle.terminate();
         throw new Error("Provider launch was cancelled before handle registration.");
       }
       this.handles.set(sessionId, { kind: "resolved", handle });

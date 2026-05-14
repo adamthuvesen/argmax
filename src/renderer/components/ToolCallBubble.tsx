@@ -1,5 +1,5 @@
 import { ChevronRight, ExternalLink } from "lucide-react";
-import { useEffect, useRef, useState, type JSX } from "react";
+import { memo, useEffect, useRef, useState, type JSX } from "react";
 import {
   extractOpenablePath,
   getToolIcon,
@@ -10,7 +10,7 @@ import {
 } from "../lib/toolCalls.js";
 import { LiveElapsedChip } from "./LiveElapsedChip.js";
 
-export function ToolCallBubble({
+function ToolCallBubbleInner({
   tool,
   fresh,
   parallelPosition,
@@ -145,3 +145,23 @@ export function ToolCallBubble({
     </div>
   );
 }
+
+// Memoize on tool identity + status + fresh-flag (ralph C2). The `tool`
+// object is rebuilt by SessionConversation's `toolCalls` memo per render,
+// so a referential check on tool would always miss — compare its id and
+// the rendered-status fields (status, error, completedAt) instead.
+export const ToolCallBubble = memo(ToolCallBubbleInner, (prev, next) => {
+  if (prev.fresh !== next.fresh) return false;
+  if (prev.parallelPosition !== next.parallelPosition) return false;
+  if (prev.parallelGroupId !== next.parallelGroupId) return false;
+  if (prev.nested !== next.nested) return false;
+  if (prev.defaultExpanded !== next.defaultExpanded) return false;
+  if (prev.workspaceCwd !== next.workspaceCwd) return false;
+  if (prev.tool === next.tool) return true;
+  return (
+    prev.tool.id === next.tool.id &&
+    prev.tool.status === next.tool.status &&
+    prev.tool.error === next.tool.error &&
+    prev.tool.completedAt === next.tool.completedAt
+  );
+});

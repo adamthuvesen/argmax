@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX } from "react";
+import { memo, useMemo, useState, type JSX } from "react";
 import {
   summarizeToolGroup,
   type ToolCall,
@@ -7,17 +7,19 @@ import {
 import { LiveElapsedChip } from "./LiveElapsedChip.js";
 import { ToolCallBubble } from "./ToolCallBubble.js";
 
-export function ToolCallGroupBubble({
-  group,
-  isFreshTool,
-  defaultExpanded,
-  workspaceCwd
-}: {
+type ToolCallGroupBubbleProps = {
   group: ToolCallGroup;
   isFreshTool: (tool: ToolCall) => boolean;
   defaultExpanded?: boolean;
   workspaceCwd?: string | null;
-}): JSX.Element {
+};
+
+function ToolCallGroupBubbleInner({
+  group,
+  isFreshTool,
+  defaultExpanded,
+  workspaceCwd
+}: ToolCallGroupBubbleProps): JSX.Element {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
   // Default to expanded so users can see what the agent did, even after the
@@ -84,3 +86,26 @@ export function ToolCallGroupBubble({
     </div>
   );
 }
+
+// Memoize on group identity + per-tool status (ralph C2). Group object is
+// rebuilt by SessionConversation each render, so compare its id + the
+// tools array's status/id list.
+export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) => {
+  if (prev.defaultExpanded !== next.defaultExpanded) return false;
+  if (prev.workspaceCwd !== next.workspaceCwd) return false;
+  if (prev.isFreshTool !== next.isFreshTool) return false;
+  if (prev.group === next.group) return true;
+  if (prev.group.id !== next.group.id) return false;
+  const pt = prev.group.tools;
+  const nt = next.group.tools;
+  if (pt === nt) return true;
+  if (pt.length !== nt.length) return false;
+  for (let i = 0; i < pt.length; i++) {
+    const a = pt[i];
+    const b = nt[i];
+    if (a.id !== b.id || a.status !== b.status || a.completedAt !== b.completedAt) {
+      return false;
+    }
+  }
+  return true;
+});

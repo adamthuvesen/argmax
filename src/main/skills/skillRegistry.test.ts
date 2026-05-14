@@ -209,4 +209,27 @@ describe("listSkills", () => {
 
     expect(result).toEqual([]);
   });
+
+  it("returns Cursor user, workspace, and plugin skills together", async () => {
+    writeSkill(cursorSkillsDir, "impl", "name: impl\ndescription: cursor impl");
+    writePluginSkill(
+      cursorPluginCache,
+      "cursor-public",
+      "notion",
+      "abc123",
+      "create-page",
+      "name: create-page\ndescription: Notion page"
+    );
+    const wsCursor = join(workspaceCwd, ".cursor", "skills");
+    writeSkill(wsCursor, "ship", "name: ship\ndescription: workspace ship");
+    // Claude skill must not bleed in when provider is cursor.
+    writeSkill(claudeSkillsDir, "claude-only", "name: claude-only\ndescription: claude");
+
+    const result = await listSkills({ provider: "cursor", workspaceCwd });
+
+    expect(result.map((s) => s.name)).toEqual(["create-page", "impl", "ship"]);
+    expect(result.find((s) => s.name === "impl")?.source).toBe("user");
+    expect(result.find((s) => s.name === "ship")?.source).toBe("workspace");
+    expect(result.find((s) => s.name === "create-page")?.source).toBe("plugin");
+  });
 });

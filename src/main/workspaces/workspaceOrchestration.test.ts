@@ -125,6 +125,39 @@ describe("WorkspaceService", () => {
     database.connection.close();
   });
 
+  it("does not create the worktree directory when location is outside the repo (audit-2026-05-14 M4)", async () => {
+    const { existsSync, rmSync } = await import("node:fs");
+    const repoPath = createCommittedGitRepo();
+    const database = createDatabase(":memory:", { seed: false });
+    const project = await new ProjectService(database).registerProject({ repoPath });
+
+    // Point worktreeLocation at a path OUTSIDE the repo that does NOT exist
+    // yet. Pre-fix, mkdir would side-effect create it before the validation
+    // rejected the request. Post-fix, the path-string containment check runs
+    // first and the directory is never created.
+    const escapedLocation = join(tmpdir(), `argmax-oops-${Date.now()}-${Math.random()}`);
+    database.updateProjectSettings(project.id, {
+      ...project.settings,
+      worktreeLocation: escapedLocation
+    });
+
+    const service = new WorkspaceService(database);
+    await expect(
+      service.createIsolatedWorkspace({
+        projectId: project.id,
+        taskLabel: "outside repo no mkdir"
+      })
+    ).rejects.toBeInstanceOf(WorkspaceError);
+
+    // The bad location must NOT exist after the rejected call.
+    expect(existsSync(escapedLocation)).toBe(false);
+
+    // Defensive cleanup in case a regression creates it.
+    if (existsSync(escapedLocation)) rmSync(escapedLocation, { recursive: true, force: true });
+
+    database.connection.close();
+  });
+
   it("keeps a workspace if untracked files appear between dirty-check and remove", async () => {
     const repoPath = createCommittedGitRepo();
     const database = createDatabase(":memory:", { seed: false });

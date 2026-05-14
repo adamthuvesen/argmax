@@ -4,6 +4,7 @@ import type { EventType, ProviderId } from "../../shared/types.js";
 import { tryParseJsonObject } from "../../shared/safeJson.js";
 import { stripTerminalControls } from "../../shared/terminalControls.js";
 import { costOf, type UsageCounts } from "../../shared/providerModels.js";
+import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import type { ProviderEvent } from "./providerTypes.js";
 
 export interface NormalizerSessionContext {
@@ -662,18 +663,6 @@ function classifyToolRisk(tool: string): "low" | "medium" | "high" {
 function classifyCommandRisk(command: string): "low" | "medium" | "high" {
   if (HIGH_RISK_COMMAND_RE.test(command)) return "high";
   return "medium";
-}
-
-function objectValue(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function arrayValue(value: unknown): unknown[] | null {
-  return Array.isArray(value) ? value : null;
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function isMessageEvent(eventType: EventType | null): boolean {

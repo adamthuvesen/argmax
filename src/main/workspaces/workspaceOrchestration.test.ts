@@ -125,6 +125,27 @@ describe("WorkspaceService", () => {
     database.connection.close();
   });
 
+  it("fires the cancelChecks hook before tearing down the worktree (audit-2026-05-14 M5)", async () => {
+    const repoPath = createCommittedGitRepo();
+    const database = createDatabase(":memory:", { seed: false });
+    const project = await new ProjectService(database).registerProject({ repoPath });
+    const service = new WorkspaceService(database);
+    const workspace = await service.createIsolatedWorkspace({
+      projectId: project.id,
+      taskLabel: "M5 hook"
+    });
+
+    const cancelCalls: string[] = [];
+    const archived = await service.archiveWorkspace(workspace.id, {
+      cancelChecks: (id) => cancelCalls.push(id)
+    });
+
+    expect(archived.state).toBe("archived");
+    expect(cancelCalls).toEqual([workspace.id]);
+
+    database.connection.close();
+  });
+
   it("does not create the worktree directory when location is outside the repo (audit-2026-05-14 M4)", async () => {
     const { existsSync, rmSync } = await import("node:fs");
     const repoPath = createCommittedGitRepo();

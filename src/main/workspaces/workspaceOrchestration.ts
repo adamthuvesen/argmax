@@ -139,7 +139,19 @@ export class WorkspaceService {
     return this.database.updateWorkspaceState(workspaceId, "kept");
   }
 
-  async archiveWorkspace(workspaceId: string): Promise<WorkspaceSummary> {
+  /**
+   * Audit-2026-05-14 M5 — archive previously had no hook to cancel running
+   * workspace checks, so an in-flight `npm test` could keep writing into a
+   * worktree directory while git was removing it. Callers pass
+   * `options.cancelChecks` (e.g. `(id) => checkService.cancelWorkspaceChecks(id)`)
+   * and the cancel fires AFTER the dirty-check decisions but BEFORE the
+   * filesystem teardown. The hook is optional so existing callers that don't
+   * have a CheckService handy stay unchanged.
+   */
+  async archiveWorkspace(
+    workspaceId: string,
+    options: { cancelChecks?: (workspaceId: string) => void } = {}
+  ): Promise<WorkspaceSummary> {
     const workspace = await this.refreshGitStatus(workspaceId);
     if (workspace.dirty) {
       this.closeWatcher(workspaceId);
@@ -157,6 +169,11 @@ export class WorkspaceService {
         return this.database.updateWorkspaceState(workspaceId, "kept");
       }
 
+      // Cancel checks BEFORE closing the watcher and removing the worktree.
+      // A SIGTERM'd check process is allowed to exit naturally; we just stop
+      // it from continuing to write into the disappearing directory.
+      options.cancelChecks?.(workspaceId);
+
       // Close the watcher before remove so file events from the disappearing
       // worktree don't fire ENOENT-spam refresh attempts during teardown.
       this.closeWatcher(workspaceId);
@@ -168,6 +185,7 @@ export class WorkspaceService {
         throw new WorkspaceError(`Could not archive clean worktree. ${detail}`, "Review the worktree and retry archive.");
       }
     } else {
+      options.cancelChecks?.(workspaceId);
       this.closeWatcher(workspaceId);
     }
 

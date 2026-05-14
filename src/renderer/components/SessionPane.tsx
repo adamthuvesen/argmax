@@ -33,7 +33,12 @@ const ReviewPanel = lazy(async () => ({
   default: (await import("./ReviewPanel.js")).ReviewPanel
 }));
 import { SessionConversation } from "./SessionConversation.js";
-import { TerminalPanel } from "./TerminalPanel.js";
+// TerminalPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and only
+// loaded when the user opens the integrated terminal. Lazy-mounted (ralph
+// B5) so xterm leaves the main chunk.
+const TerminalPanel = lazy(async () => ({
+  default: (await import("./TerminalPanel.js")).TerminalPanel
+}));
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 const SESSION_RIGHT_PANEL_MIN = 260;
@@ -413,7 +418,9 @@ export function SessionPane({
                 ×
               </button>
             </div>
-            <TerminalPanel workspaceId={workspace.id} visible={terminalOpen} />
+            <Suspense fallback={null}>
+              <TerminalPanel workspaceId={workspace.id} visible={terminalOpen} />
+            </Suspense>
           </div>
         ) : null}
       </div>

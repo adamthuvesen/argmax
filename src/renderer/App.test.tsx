@@ -174,7 +174,23 @@ describe("App", () => {
         { phase: "ipc.register", elapsedMs: 180, deltaMs: 40 },
         { phase: "window.create", elapsedMs: 400, deltaMs: 220 },
         { phase: "window.ready-to-show", elapsedMs: 1100, deltaMs: 700 }
-      ]
+      ],
+      databaseStats: {
+        rowCounts: {
+          projects: 1,
+          workspaces: 2,
+          sessions: 4,
+          events: 120,
+          rawOutputs: 60,
+          approvals: 0,
+          checks: 3,
+          checkpoints: 1,
+          learnings: 5,
+          usageEvents: 18
+        },
+        walBytes: 1024 * 128,
+        walAutocheckpoint: 1000
+      }
     });
     vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
     createCheckpointStub = vi.fn<ArgmaxApi["checkpoints"]["create"]>().mockResolvedValue({
@@ -1261,6 +1277,27 @@ describe("App", () => {
     }
   });
 
+  it("renders Settings → Diagnostics → Database row counts (P7.03)", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+
+    const databaseHeading = await screen.findByRole("heading", { name: "Database" });
+    const card = databaseHeading.closest(".settings-card") as HTMLElement;
+    expect(card).toBeTruthy();
+    // Default fixture: 1 project, 2 workspaces, 4 sessions, 120 events.
+    expect(within(card).getByText("Projects").nextElementSibling?.textContent).toBe("1");
+    expect(within(card).getByText("Workspaces").nextElementSibling?.textContent).toBe("2");
+    expect(within(card).getByText("Sessions").nextElementSibling?.textContent).toBe("4");
+    expect(within(card).getByText("Events").nextElementSibling?.textContent).toBe("120");
+    // 128 KB WAL → renders as "128 KB" (formatBytes drops decimals at the KB boundary).
+    expect(within(card).getByText("WAL size").nextElementSibling?.textContent).toBe("128 KB");
+    expect(within(card).getByText("WAL autocheckpoint").nextElementSibling?.textContent).toBe(
+      "1,000 pages"
+    );
+  });
+
   it("renders Settings → Diagnostics → Startup phases with an over-budget badge (P7.04)", async () => {
     // Re-stub diagnostics with an over-budget ready-to-show timing so the
     // badge appears. The default fixture is under 1500 ms.
@@ -1280,7 +1317,16 @@ describe("App", () => {
         { phase: "ipc.register", elapsedMs: 180, deltaMs: 40 },
         { phase: "window.create", elapsedMs: 400, deltaMs: 220 },
         { phase: "window.ready-to-show", elapsedMs: 1800, deltaMs: 1400 }
-      ]
+      ],
+      databaseStats: {
+        rowCounts: {
+          projects: 1, workspaces: 2, sessions: 4, events: 120,
+          rawOutputs: 60, approvals: 0, checks: 3, checkpoints: 1,
+          learnings: 5, usageEvents: 18
+        },
+        walBytes: 0,
+        walAutocheckpoint: 1000
+      }
     });
 
     render(<App />);

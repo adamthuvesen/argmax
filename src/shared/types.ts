@@ -546,6 +546,26 @@ export interface StartupPhaseRecord {
   deltaMs: number;
 }
 
+export interface DatabaseStats {
+  /** Row counts per major table. */
+  rowCounts: {
+    projects: number;
+    workspaces: number;
+    sessions: number;
+    events: number;
+    rawOutputs: number;
+    approvals: number;
+    checks: number;
+    checkpoints: number;
+    learnings: number;
+    usageEvents: number;
+  };
+  /** Bytes — size of the WAL sidecar file. 0 when missing or unreadable. */
+  walBytes: number;
+  /** Value of `PRAGMA wal_autocheckpoint` (pages between auto-checkpoints). */
+  walAutocheckpoint: number;
+}
+
 export interface DiagnosticsReport {
   appVersion: string;
   electronVersion: string;
@@ -561,6 +581,11 @@ export interface DiagnosticsReport {
    * documented in `agents/docs/performance.md`.
    */
   startupPhases: StartupPhaseRecord[];
+  /**
+   * Live database health stats. Diagnostics → Database panel (SPEC P7.03)
+   * renders row counts + WAL size + autocheckpoint pragma.
+   */
+  databaseStats: DatabaseStats;
 }
 
 export type MenuCommand =

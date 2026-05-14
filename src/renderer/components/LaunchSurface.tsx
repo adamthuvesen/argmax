@@ -21,7 +21,12 @@ import { isTypingTarget } from "../lib/typingTarget.js";
 import { type ModelPickerSelection } from "../lib/models.js";
 import { FileSearchOverlay } from "./FileSearchOverlay.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
-import { ReviewPanel } from "./ReviewPanel.js";
+// ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
+// the right-side review pane is open. Lazy-mounted (ralph B4) so the
+// launcher's first paint doesn't ship the highlighter.
+const ReviewPanel = lazy(async () => ({
+  default: (await import("./ReviewPanel.js")).ReviewPanel
+}));
 import { SkillPopover } from "./SkillPopover.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
@@ -476,7 +481,11 @@ export function LaunchSurface({
         </ul>
       </aside>
       </div>
-      {isReviewOpen ? <ReviewPanel review={reviewState} /> : null}
+      {isReviewOpen ? (
+        <Suspense fallback={null}>
+          <ReviewPanel review={reviewState} />
+        </Suspense>
+      ) : null}
       {project ? (
         <FileSearchOverlay
           open={isQuickOpenOpen}

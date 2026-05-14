@@ -1766,11 +1766,15 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /src\/renderer\/App\.tsx/ }));
 
-    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" });
+    expect(reviewPanel).toBeInTheDocument();
     expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/renderer/App.tsx");
     expect(await screen.findByText("16 unmodified lines")).toBeInTheDocument();
-    expect(screen.getByText("const oldValue = true;")).toBeInTheDocument();
-    expect(screen.getByText("const newValue = true;")).toBeInTheDocument();
+    // shiki tokenizes lines into per-token <span> children, so getByText on
+    // the full source line misses. toHaveTextContent matches concatenated
+    // textContent regardless of token carving (same workaround P6.01 used).
+    expect(reviewPanel).toHaveTextContent("const oldValue = true;");
+    expect(reviewPanel).toHaveTextContent("const newValue = true;");
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() =>

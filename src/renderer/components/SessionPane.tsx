@@ -1,5 +1,7 @@
 import { ShieldAlert } from "lucide-react";
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -25,7 +27,11 @@ import { isTypingTarget } from "../lib/typingTarget.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
 import { FileSearchOverlay } from "./FileSearchOverlay.js";
-import { ReviewPanel } from "./ReviewPanel.js";
+// ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
+// chunk shared with the LaunchSurface call site.
+const ReviewPanel = lazy(async () => ({
+  default: (await import("./ReviewPanel.js")).ReviewPanel
+}));
 import { SessionConversation } from "./SessionConversation.js";
 import { TerminalPanel } from "./TerminalPanel.js";
 
@@ -412,10 +418,12 @@ export function SessionPane({
         ) : null}
       </div>
       {reviewState.isPanelOpen ? (
-        <ReviewPanel
-          review={reviewState}
-          onResizePanelMouseDown={onRightPanelResizeMouseDown}
-        />
+        <Suspense fallback={null}>
+          <ReviewPanel
+            review={reviewState}
+            onResizePanelMouseDown={onRightPanelResizeMouseDown}
+          />
+        </Suspense>
       ) : null}
       {workspace ? (
         <CommitDialog

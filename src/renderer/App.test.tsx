@@ -286,6 +286,9 @@ describe("App", () => {
         diagnostics: diagnosticsStub,
         vacuumDatabase: vacuumDatabaseStub
       },
+      mcp: {
+        list: () => Promise.resolve([])
+      },
       menu: {
         onCommand: (listener) => {
           menuCommandListener = listener;

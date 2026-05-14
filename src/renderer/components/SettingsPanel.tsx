@@ -5,6 +5,7 @@ import type {
   DiagnosticsReport,
   DiscoveredProvider,
   IdeId,
+  McpClientListing,
   ProjectSummary
 } from "../../shared/types.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../lib/fonts.js";
@@ -22,6 +23,19 @@ const PROVIDER_INSTALL_HINTS: Record<string, { label: string; url: string }> = {
     label: "Install Codex CLI",
     url: "https://github.com/openai/codex"
   }
+};
+
+const MCP_TRANSPORT_LABELS: Record<string, string> = {
+  stdio: "stdio",
+  http: "http",
+  sse: "sse",
+  unknown: "unknown"
+};
+
+const MCP_CLIENT_HINTS: Record<string, string> = {
+  claude: "Configured via the `claude mcp add` CLI or by editing `~/.claude.json`.",
+  codex: "Configured under `[mcp_servers.NAME]` in `~/.codex/config.toml`.",
+  cursor: "Configured via Cursor's MCP settings or by editing `~/.cursor/mcp.json`."
 };
 
 export function SettingsPanel({
@@ -73,6 +87,40 @@ export function SettingsPanel({
   useEffect(() => {
     void refreshProviders();
   }, [refreshProviders]);
+
+  const [mcpListings, setMcpListings] = useState<McpClientListing[] | null>(null);
+  const [mcpLoadError, setMcpLoadError] = useState<string | null>(null);
+  const [refreshingMcp, setRefreshingMcp] = useState(false);
+
+  const refreshMcp = useCallback(async (): Promise<void> => {
+    if (!window.argmax) {
+      setMcpLoadError("Open the Electron app window to read MCP configs.");
+      return;
+    }
+    setRefreshingMcp(true);
+    setMcpLoadError(null);
+    try {
+      const listings = await window.argmax.mcp.list();
+      setMcpListings(listings);
+    } catch (error) {
+      setMcpLoadError(error instanceof Error ? error.message : "MCP discovery failed.");
+    } finally {
+      setRefreshingMcp(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMcp();
+  }, [refreshMcp]);
+
+  const revealMcpConfig = useCallback(async (path: string): Promise<void> => {
+    if (!window.argmax) return;
+    try {
+      await window.argmax.system.openPath({ path });
+    } catch {
+      // Silently swallow — the UI shows the path inline so the user has a fallback.
+    }
+  }, []);
 
   const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
   const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
@@ -337,6 +385,112 @@ export function SettingsPanel({
             <p className="settings-hint">No providers reported by discovery.</p>
           ) : (
             <p className="settings-hint">Detecting providers…</p>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-mcp">
+        <header className="settings-section-header settings-section-header-row">
+          <div>
+            <h2 id="settings-mcp">MCP servers</h2>
+            <p>
+              MCP servers configured for each CLI. Argmax reads the user-scope config files —
+              auth lives inside each CLI, so use its own commands to log in or out.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="settings-refresh"
+            onClick={() => void refreshMcp()}
+            disabled={refreshingMcp}
+            aria-label="Refresh MCP server list"
+          >
+            <RefreshCcw size={14} />
+            <span>{refreshingMcp ? "Refreshing…" : "Refresh"}</span>
+          </button>
+        </header>
+        <div className="settings-mcp-body">
+          {mcpLoadError ? (
+            <p className="settings-hint" role="alert">
+              {mcpLoadError}
+            </p>
+          ) : null}
+          {mcpListings ? (
+            mcpListings.map((listing) => (
+              <div key={listing.client} className="settings-mcp-client">
+                <div className="settings-mcp-client-header">
+                  <span className="settings-mcp-client-name">{listing.displayName}</span>
+                  <span className="settings-mcp-client-count">
+                    {listing.configExists
+                      ? `${listing.servers.length} ${listing.servers.length === 1 ? "server" : "servers"}`
+                      : "No config file"}
+                  </span>
+                </div>
+                {listing.error ? (
+                  <p className="settings-hint" role="alert">
+                    Couldn’t read this config: {listing.error}
+                  </p>
+                ) : null}
+                {listing.configExists && listing.servers.length === 0 && !listing.error ? (
+                  <p className="settings-hint">
+                    No MCP servers configured. {MCP_CLIENT_HINTS[listing.client]}
+                  </p>
+                ) : null}
+                {!listing.configExists ? (
+                  <p className="settings-hint">
+                    {listing.configPath
+                      ? `Argmax checked ${listing.configPath} — not found yet. ${MCP_CLIENT_HINTS[listing.client] ?? ""}`
+                      : MCP_CLIENT_HINTS[listing.client]}
+                  </p>
+                ) : null}
+                {listing.servers.length > 0 ? (
+                  <ul className="settings-mcp-server-list">
+                    {listing.servers.map((server) => {
+                      const detail = server.url ?? server.command ?? "";
+                      return (
+                        <li key={`${listing.client}:${server.name}`} className="settings-mcp-server-row">
+                          <div className="settings-mcp-server-meta">
+                            <div className="settings-mcp-server-line">
+                              <span className="settings-mcp-server-name">{server.name}</span>
+                              <span
+                                className="settings-mcp-server-badge"
+                                data-transport={server.transport}
+                                title={`Transport: ${server.transport}`}
+                              >
+                                {MCP_TRANSPORT_LABELS[server.transport] ?? server.transport}
+                              </span>
+                            </div>
+                            {detail ? (
+                              <span className="settings-mcp-server-detail" title={detail}>
+                                {detail}
+                              </span>
+                            ) : null}
+                            {server.envKeys.length > 0 ? (
+                              <span className="settings-mcp-server-envs">
+                                env: {server.envKeys.join(", ")}
+                              </span>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+                {listing.configPath ? (
+                  <button
+                    type="button"
+                    className="settings-mcp-config-link"
+                    onClick={() => void revealMcpConfig(listing.configPath as string)}
+                    title={listing.configPath}
+                  >
+                    <FolderOpen size={12} />
+                    <span>Reveal config</span>
+                  </button>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <p className="settings-hint">Reading MCP configs…</p>
           )}
         </div>
       </section>

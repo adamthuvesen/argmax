@@ -58,6 +58,7 @@ import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
 import { CommitPreparationService } from "./review/commitPreparationService.js";
 import { listSkills } from "./skills/skillRegistry.js";
+import { listMcpServers } from "./mcp/mcpRegistry.js";
 import { runGitText } from "./git/exec.js";
 import { GhService } from "./gh/ghService.js";
 
@@ -270,6 +271,7 @@ export function registerIpcHandlers(
     database.connection.exec("VACUUM");
     return { ok: true } as const;
   }));
+  ipcMain.handle("mcp:list", withValidation(z.void(), () => listMcpServers()));
   ipcMain.handle(
     "learnings:list",
     withValidation(z.object({ projectId: z.string().min(1), limit: z.number().int().min(1).max(200).optional() }), (input) =>

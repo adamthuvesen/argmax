@@ -1439,6 +1439,136 @@ button {
   opacity: 0.6;
 }
 
+.settings-mcp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-mcp-client {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.settings-mcp-client-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-mcp-client-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-mcp-client-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.settings-mcp-server-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.settings-mcp-server-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.06));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.settings-mcp-server-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-mcp-server-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-mcp-server-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-mcp-server-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.settings-mcp-server-badge[data-transport="stdio"] {
+  border-color: rgba(46, 160, 67, 0.4);
+  color: rgb(38, 120, 50);
+  background: rgba(46, 160, 67, 0.08);
+}
+
+.settings-mcp-server-badge[data-transport="http"],
+.settings-mcp-server-badge[data-transport="sse"] {
+  border-color: rgba(54, 116, 217, 0.4);
+  color: rgb(40, 95, 180);
+  background: rgba(54, 116, 217, 0.08);
+}
+
+.settings-mcp-server-detail {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-mcp-server-envs {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.settings-mcp-config-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.1));
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-mcp-config-link:hover {
+  color: var(--text);
+}
+
 .chat-bubble {
   position: relative;
 }

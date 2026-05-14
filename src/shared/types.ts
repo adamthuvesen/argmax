@@ -390,6 +390,9 @@ export interface ArgmaxApi {
     diagnostics: () => Promise<DiagnosticsReport>;
     vacuumDatabase: () => Promise<{ ok: true }>;
   };
+  mcp: {
+    list: () => Promise<McpClientListing[]>;
+  };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
   };
@@ -442,6 +445,29 @@ export interface Learning {
   hits: number;
   createdAt: string;
   lastSeenAt: string;
+}
+
+export type McpTransport = "stdio" | "http" | "sse" | "unknown";
+export type McpScope = "user" | "project";
+
+export interface McpServerEntry {
+  client: ProviderId;
+  name: string;
+  transport: McpTransport;
+  scope: McpScope;
+  source: string;
+  command?: string;
+  url?: string;
+  envKeys: string[];
+}
+
+export interface McpClientListing {
+  client: ProviderId;
+  displayName: string;
+  configPath: string | null;
+  configExists: boolean;
+  servers: McpServerEntry[];
+  error: string | null;
 }
 
 export interface DiagnosticsReport {

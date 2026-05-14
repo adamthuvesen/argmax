@@ -128,7 +128,6 @@ export function ReviewPanel({
               type="button"
               aria-label="Changes"
               aria-selected={isChanges}
-              aria-pressed={isChanges}
               title="Changes"
               onClick={() => review.setMode("changes")}
             >
@@ -139,7 +138,6 @@ export function ReviewPanel({
               type="button"
               aria-label="Files"
               aria-selected={!isChanges}
-              aria-pressed={!isChanges}
               title="Files"
               onClick={() => review.setMode("files")}
             >
@@ -231,7 +229,7 @@ export function ReviewPanel({
               {review.diffState === "error" ? (
                 <p className="review-empty review-error" role="alert">
                   <span className="review-empty-mark" aria-hidden="true">!</span>
-                  <span>{review.diffError}</span>
+                  <span>{review.diffError ?? "Couldn't load this diff."}</span>
                 </p>
               ) : null}
               {review.diffState === "ready" && diffBlocks.length === 0 ? (

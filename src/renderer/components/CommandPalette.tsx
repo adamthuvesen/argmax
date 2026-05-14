@@ -58,6 +58,10 @@ export function CommandPalette({
   const [messagesRunning, setMessagesRunning] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const messageTokenRef = useRef(0);
+  // Capture the element that had focus before the palette opened so we can
+  // restore it on close — otherwise focus drops to <body> and the keyboard
+  // user loses their place.
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -65,8 +69,15 @@ export function CommandPalette({
       setSelectedIndex(0);
       setMessageHits([]);
       setMessagesRunning(false);
+      const previous = previousActiveElementRef.current;
+      previousActiveElementRef.current = null;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      }
       return;
     }
+    previousActiveElementRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     inputRef.current?.focus();
   }, [open]);
 

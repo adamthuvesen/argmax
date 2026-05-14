@@ -11,6 +11,7 @@ import type {
 } from "../../shared/types.js";
 import type { GhRunner, GhService } from "../gh/ghService.js";
 import { defaultGhRunner } from "../gh/ghService.js";
+import { errorMessage } from "../../shared/error.js";
 import { runGitText } from "./exec.js";
 
 /**
@@ -132,8 +133,7 @@ export class GitOpsService {
 }
 
 function isMissingUpstreamError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /no upstream branch|set-upstream|has no upstream/i.test(message);
+  return /no upstream branch|set-upstream|has no upstream/i.test(errorMessage(error));
 }
 
 function mostRecent<T extends { updatedAt: string }>(rows: T[]): T | undefined {

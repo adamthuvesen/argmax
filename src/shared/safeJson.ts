@@ -14,6 +14,7 @@
  */
 
 import { logger } from "./logger.js";
+import { errorMessage } from "./error.js";
 
 const WARNING_INTERVAL_MS = 60_000;
 const lastWarnedAt = new Map<string, number>();
@@ -28,8 +29,7 @@ function warnRateLimited(context: string | undefined, error: unknown): void {
     return;
   }
   lastWarnedAt.set(context, now);
-  const message = error instanceof Error ? error.message : String(error);
-  logger.warn("safeJson", "parse error", { context, error: message });
+  logger.warn("safeJson", "parse error", { context, error: errorMessage(error) });
 }
 
 /**

@@ -1,4 +1,5 @@
 import { logger } from "../../shared/logger.js";
+import { errorMessage } from "../../shared/error.js";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { GhService } from "./ghService.js";
 import type { NotificationService } from "../notifications/notificationService.js";
@@ -118,7 +119,7 @@ export class GhPoller {
       logger.warn("gh.poller", "launchFollowUp failed", {
         sessionId,
         prNumber: latest.prNumber,
-        error: error instanceof Error ? error.message : String(error)
+        error: errorMessage(error)
       });
     }
   }

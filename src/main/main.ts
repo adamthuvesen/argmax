@@ -23,6 +23,7 @@ import type {
   TerminalExitEvent
 } from "../shared/types.js";
 import { logger } from "../shared/logger.js";
+import { errorMessage } from "../shared/error.js";
 import { DeltaCoalescer } from "./util/deltaCoalescer.js";
 import { mark as markStartupPhase } from "./util/startupTimer.js";
 import { isAllowedAppNavigation, rendererFileNavigationPrefix } from "./util/appNavigation.js";
@@ -230,10 +231,6 @@ void app.whenReady().then(async () => {
   }
   void shutdown(1);
 });
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 // Coalesce dashboard:delta pushes at ~60 fps (ralph C7). Provider session
 // flushes can emit several deltas per second under load; without this cap,

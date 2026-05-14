@@ -1,4 +1,5 @@
 import { logger } from "../../shared/logger.js";
+import { errorMessage } from "../../shared/error.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 
@@ -33,7 +34,7 @@ function writeStorageJson(storageKey: string, value: unknown): void {
     // the click handler that triggered the write.
     logger.warn("renderer.projects", "writeStorageJson failed", {
       storageKey,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorMessage(error)
     });
   }
 }

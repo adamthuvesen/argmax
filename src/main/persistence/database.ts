@@ -13,6 +13,7 @@
  */
 import Database from "better-sqlite3";
 import { logger } from "../../shared/logger.js";
+import { errorMessage } from "../../shared/error.js";
 import { getDatabasePath } from "../paths.js";
 import {
   deleteLearning,
@@ -160,7 +161,7 @@ export function pruneOldRawOutputs(connection: Database.Database): void {
       .run();
   } catch (error) {
     logger.warn("database.prune", "pruneRawOutputs failed", {
-      error: error instanceof Error ? error.message : String(error)
+      error: errorMessage(error)
     });
   }
 }

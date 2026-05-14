@@ -73,6 +73,24 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("tools")).toBeInTheDocument();
   });
 
+  it("collapses on click when defaultExpanded is true (user toggle wins both directions)", () => {
+    const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
+        toolsNode={<div data-testid="tools">tools</div>}
+        assistantNode={<p data-testid="assistant">reply</p>}
+        defaultExpanded
+      />
+    );
+    // Starts expanded because defaultExpanded=true.
+    expect(screen.getByTestId("tools")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    // User collapse must stick — earlier bug reset the toggle on the next render.
+    expect(screen.queryByTestId("tools")).not.toBeInTheDocument();
+  });
+
   it("omits the chip when there are no tool items", () => {
     render(
       <TurnBlock

@@ -30,7 +30,6 @@ import {
 import { listGhPrForSession, upsertGhPr } from "./gh.js";
 import {
   findPendingApproval,
-  listApprovals,
   listPendingApprovals,
   persistApproval,
   resolveApproval,
@@ -38,27 +37,19 @@ import {
   type PersistApprovalInput
 } from "./approvals.js";
 import {
-  checkpointRowToSummary,
-  checkRowToRun,
   persistCheck,
   persistCheckpoint,
   updateCheck,
-  type CheckRow,
-  type CheckpointRow,
   type PersistCheckInput,
   type PersistCheckpointInput,
   type UpdateCheckInput
 } from "./checks.js";
 import {
-  eventRowToTimelineEvent,
   listSessionEventsSince,
   persistRawOutput,
   persistTimelineEvent,
-  rawOutputRowToProviderOutput,
-  type EventRow,
   type PersistRawOutputInput,
   type PersistTimelineEventInput,
-  type RawOutputRow,
   type SessionEventsSinceInput,
   type SessionEventsSinceResult
 } from "./events.js";
@@ -68,24 +59,19 @@ import {
   setWorkspacePinned,
   updateWorkspaceState,
   updateWorkspaceStatus,
-  workspaceRowToSummary,
   type PersistWorkspaceInput,
-  type WorkspaceRow,
   type WorkspaceStatusInput
 } from "./workspaces.js";
 import {
   findSessionById,
-  loadPreferredSessionIds,
   persistSession,
   selectPreferredAttempt,
-  sessionRowToSummary,
   updateSessionLastModelId,
   updateSessionModel,
   updateSessionProviderConversationId,
   updateSessionState,
   type PersistSessionInput,
   type SessionModelInput,
-  type SessionRow,
   type SessionStateInput
 } from "./sessions.js";
 import {
@@ -100,6 +86,17 @@ import {
   updateProjectSettings,
   type PersistProjectInput
 } from "./projects.js";
+import {
+  countAttention,
+  DASHBOARD_ROW_LIMIT,
+  listDashboard,
+  listRunningSessionIds,
+  listWorkspaceStatus,
+  loadDashboard,
+  type DashboardListSnapshot,
+  type WorkspaceStatusInputFilter,
+  type WorkspaceStatusSnapshot
+} from "./dashboard.js";
 import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
 import type {
@@ -134,32 +131,18 @@ export type {
 export type { PersistWorkspaceInput, WorkspaceStatusInput } from "./workspaces.js";
 export type { PersistSessionInput, SessionModelInput, SessionStateInput } from "./sessions.js";
 export type { PersistProjectInput } from "./projects.js";
-
-export interface WorkspaceStatusInputFilter {
-  workspaceIds?: string[];
-}
+export type {
+  DashboardListSnapshot,
+  WorkspaceStatusInputFilter,
+  WorkspaceStatusSnapshot
+} from "./dashboard.js";
 
 const SESSION_EVENT_PAGE_LIMIT = 500;
 const SESSION_RAW_OUTPUT_PAGE_LIMIT = 100;
-/** Cap on dashboard rows per resource (workspaces, sessions, approvals, checks, checkpoints). */
-const DASHBOARD_ROW_LIMIT = 200;
-/** Dashboard timeline tail size and raw-output tail size. */
-const DASHBOARD_EVENT_LIMIT = 500;
-const DASHBOARD_RAW_OUTPUT_LIMIT = 100;
 /** How often the prune timer fires (raw_outputs retention sweep). */
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** SQLite datetime modifier matching PRUNE_INTERVAL_MS retention. */
 const RAW_OUTPUT_RETENTION = "-7 days";
-
-export type DashboardListSnapshot = Pick<
-  DashboardSnapshot,
-  "projects" | "workspaces" | "sessions" | "checks" | "checkpoints"
->;
-
-export type WorkspaceStatusSnapshot = Pick<
-  DashboardSnapshot,
-  "workspaces" | "sessions" | "checks" | "checkpoints"
->;
 
 export interface ArgmaxDatabase {
   connection: Database.Database;
@@ -324,124 +307,6 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
         connection.close();
       }
     }
-  };
-}
-
-function listDashboard(connection: Database.Database): DashboardListSnapshot {
-  return {
-    projects: listProjects(connection),
-    ...listWorkspaceStatus(connection)
-  };
-}
-
-function listWorkspaceStatus(
-  connection: Database.Database,
-  input?: WorkspaceStatusInputFilter
-): WorkspaceStatusSnapshot {
-  const preferredSessionIds = loadPreferredSessionIds(connection);
-  const workspaceIds = input?.workspaceIds;
-  const workspaceFilter = buildWorkspaceFilter(workspaceIds, "id");
-  const sessionFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
-  const checkFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
-  const checkpointFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
-
-  // Cap unfiltered dashboard reads at 200 rows each, sorted newest first. The
-  // renderer's sidebar truncates further (7 per project) so older rows are
-  // unreachable in the UI anyway; without this the read grows linearly with
-  // local history. Filtered reads (explicit workspaceIds) still respect the
-  // cap because passing > 200 IDs would not render either.
-  const workspaces = (
-    connection
-      .prepare(`SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
-      .all(...workspaceFilter.params) as WorkspaceRow[]
-  ).map((row) => workspaceRowToSummary(row));
-
-  const sessions = (
-    connection
-      .prepare(`SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
-      .all(...sessionFilter.params) as SessionRow[]
-  ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
-
-  const checks = (
-    connection
-      .prepare(`SELECT * FROM checks${checkFilter.where} ORDER BY started_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
-      .all(...checkFilter.params) as CheckRow[]
-  ).map(checkRowToRun);
-
-  const checkpoints = (
-    connection
-      .prepare(`SELECT * FROM checkpoints${checkpointFilter.where} ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`)
-      .all(...checkpointFilter.params) as CheckpointRow[]
-  ).map(checkpointRowToSummary);
-
-  return {
-    workspaces,
-    sessions,
-    checks,
-    checkpoints
-  };
-}
-
-function loadDashboard(connection: Database.Database): DashboardSnapshot {
-  const dashboard = listDashboard(connection);
-
-  const events = (
-    connection.prepare(`SELECT * FROM events ORDER BY created_at DESC LIMIT ${DASHBOARD_EVENT_LIMIT}`).all() as EventRow[]
-  ).map(eventRowToTimelineEvent);
-
-  const rawOutputs = (
-    connection.prepare(`SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT ${DASHBOARD_RAW_OUTPUT_LIMIT}`).all() as RawOutputRow[]
-  ).map(rawOutputRowToProviderOutput);
-
-  // Cap dashboard reads at 200 rows for approvals/checks/checkpoints.
-  // Older rows remain in storage; pagination ships separately via dedicated
-  // handlers when needed.
-  const approvals = listApprovals(connection, DASHBOARD_ROW_LIMIT);
-
-  return {
-    ...dashboard,
-    events,
-    rawOutputs,
-    approvals
-  };
-}
-
-function listRunningSessionIds(connection: Database.Database): string[] {
-  const rows = connection
-    .prepare("SELECT id FROM sessions WHERE state = 'running'")
-    .all() as { id: string }[];
-  return rows.map((row) => row.id);
-}
-
-function countAttention(
-  connection: Database.Database
-): { pendingApprovals: number; waitingSessions: number; total: number } {
-  const approvalsRow = connection
-    .prepare("SELECT COUNT(*) AS count FROM approvals WHERE status = 'pending'")
-    .get() as { count: number };
-  const sessionsRow = connection
-    .prepare("SELECT COUNT(*) AS count FROM sessions WHERE state = 'waiting'")
-    .get() as { count: number };
-  const pendingApprovals = approvalsRow.count;
-  const waitingSessions = sessionsRow.count;
-  return {
-    pendingApprovals,
-    waitingSessions,
-    total: pendingApprovals + waitingSessions
-  };
-}
-
-function buildWorkspaceFilter(
-  workspaceIds: string[] | undefined,
-  columnName: "id" | "workspace_id"
-): { where: string; params: string[] } {
-  if (!workspaceIds || workspaceIds.length === 0) {
-    return { where: "", params: [] };
-  }
-
-  return {
-    where: ` WHERE ${columnName} IN (${workspaceIds.map(() => "?").join(", ")})`,
-    params: workspaceIds
   };
 }
 

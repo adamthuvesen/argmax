@@ -98,10 +98,20 @@ export function tryParseJsonObject(line: string): Record<string, unknown> | null
   if (!line.startsWith("{")) {
     return null;
   }
+  return safeJsonParseObject(line);
+}
+
+/**
+ * Parse a JSON document as a plain object (not an array, not a primitive).
+ * Returns null on parse failure or wrong shape. Unlike `tryParseJsonObject`,
+ * this does not require a `{` prefix — use it for whole `gh`/`codex` stdout
+ * blobs that may have leading whitespace.
+ */
+export function safeJsonParseObject<T = Record<string, unknown>>(text: string): T | null {
   try {
-    const parsed = JSON.parse(line) as unknown;
+    const parsed = JSON.parse(text) as unknown;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
+      ? (parsed as T)
       : null;
   } catch {
     return null;

@@ -8,15 +8,10 @@ import {
   dashboardLoadInputSchema,
   healthPingInputSchema,
   IPC_CHANNELS,
-  launchProviderSessionInputSchema,
   loadDiffInputSchema,
   loadDiffForProjectInputSchema,
   openInIdeInputSchema,
   projectsListInputSchema,
-  providersDiscoverInputSchema,
-  providerSessionInputSchema,
-  providerSessionResizeInputSchema,
-  providerSessionTerminateInputSchema,
   projectsPickFolderInputSchema,
   registerProjectInputSchema,
   listBranchesInputSchema,
@@ -45,13 +40,13 @@ import { launchIde } from "./ide/ideLaunch.js";
 import { registerApprovalsHandlers } from "./ipc/approvals.js";
 import { registerGitHandlers } from "./ipc/git.js";
 import { registerMcpHandlers } from "./ipc/mcp.js";
+import { registerProviderHandlers } from "./ipc/providers.js";
 import { registerSystemHandlers } from "./ipc/system.js";
 import { registerTerminalHandlers } from "./ipc/terminal.js";
 import type { DetectedIde, IdeId } from "../shared/types.js";
 import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
 import { WorkspaceService } from "./workspaces/workspaceOrchestration.js";
-import { discoverProviders } from "./providers/providerDiscovery.js";
 import type { ProviderSessionService } from "./providers/providerSessionService.js";
 import type { TerminalService } from "./terminal/terminalService.js";
 import type { McpAuthService } from "./mcp/mcpAuthService.js";
@@ -193,8 +188,6 @@ export function registerIpcHandlers(
   );
   register("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
   register("dashboard:load", withValidation(dashboardLoadInputSchema, () => database.loadDashboard()));
-  register("providers:discover", withValidation(providersDiscoverInputSchema, () => discoverProviders()));
-
   register(
     "projects:register",
     withValidation(registerProjectInputSchema, (input) => projects.registerProject(input))
@@ -309,41 +302,9 @@ export function registerIpcHandlers(
     "workspace:status",
     withValidation(workspaceStatusInputSchema, (input) => database.listWorkspaceStatus(input))
   );
-  register(
-    "providers:launch",
-    withValidation(launchProviderSessionInputSchema, (input) => providerSessions.launch(input))
-  );
-  register(
-    "providers:send-input",
-    withValidation(providerSessionInputSchema, async (input) => {
-      await providerSessions.sendInput(
-        input.sessionId,
-        input.input,
-        input.modelLabel && input.modelId
-          ? {
-              modelLabel: input.modelLabel,
-              modelId: input.modelId,
-              ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {})
-            }
-          : undefined
-      );
-      return { ok: true } as const;
-    })
-  );
-  register(
-    "providers:resize",
-    withValidation(providerSessionResizeInputSchema, (input) => {
-      providerSessions.resize(input.sessionId, input.cols, input.rows);
-      return { ok: true } as const;
-    })
-  );
-  register(
-    "providers:terminate",
-    withValidation(providerSessionTerminateInputSchema, async (sessionId) => {
-      await providerSessions.terminate(sessionId);
-      return { ok: true } as const;
-    })
-  );
+  for (const channel of registerProviderHandlers(providerSessions)) {
+    registeredChannels.push(channel);
+  }
   for (const channel of registerTerminalHandlers(terminals)) {
     registeredChannels.push(channel);
   }

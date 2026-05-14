@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import type { IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
+import { safeKill } from "../processControl.js";
 import { discoverProviderById } from "../providers/providerDiscovery.js";
 import { buildProviderEnvironment } from "../providers/providerEnvironment.js";
 
@@ -122,20 +123,12 @@ export class McpAuthService {
   terminate(sessionId: string): void {
     const entry = this.sessions.get(sessionId);
     if (!entry) return;
-    try {
-      entry.pty.kill();
-    } catch {
-      // PTY may already be dead; onExit handler cleans up the map.
-    }
+    safeKill(entry.pty);
   }
 
   disposeAll(): void {
     for (const [, entry] of this.sessions) {
-      try {
-        entry.pty.kill();
-      } catch {
-        // Ignore — shutdown path.
-      }
+      safeKill(entry.pty);
     }
     this.sessions.clear();
   }

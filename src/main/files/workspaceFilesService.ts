@@ -8,6 +8,7 @@ import type {
   WorkspaceFileWriteResult
 } from "../../shared/types.js";
 import { runGitText } from "../git/exec.js";
+import { MAX_FILE_CONTENT_BYTES } from "../../shared/ipcSchemas.js";
 import { assertContainedPath, assertSafeRelativePath } from "../util/workspacePaths.js";
 
 /** Files larger than this are skipped — preview is not a download manager. */
@@ -17,11 +18,11 @@ const MAX_PREVIEW_BYTES = 1_048_576;
 const BINARY_SNIFF_BYTES = 4096;
 
 /**
- * Writes larger than this are rejected. 4× the preview cap so a user can paste
- * a sizeable blob and still save, but bounded enough that a runaway buffer
- * can't ship megabytes across the IPC boundary.
+ * Writes larger than this are rejected. Shared with the IPC schema cap
+ * (`MAX_FILE_CONTENT_BYTES` in `src/shared/ipcSchemas.ts`) so the schema
+ * boundary and the file-IO boundary agree.
  */
-const MAX_WRITE_BYTES = 4_194_304;
+const MAX_WRITE_BYTES = MAX_FILE_CONTENT_BYTES;
 
 /**
  * File-tree + file-content service backing the right-panel "Files" view.

@@ -18,11 +18,31 @@ import { z } from "zod";
  */
 
 // ---------------------------------------------------------------------------
+// Shared size caps. Hoisted here so terminal-write, mcp-auth-write, and
+// workspace file IO all agree on a single budget — bumping the cap in one
+// place propagates everywhere instead of drifting per channel.
+// ---------------------------------------------------------------------------
+
+/** Per-write streaming chunk (PTY input, mcp-auth keystrokes). */
+export const MAX_STREAM_CHUNK_BYTES = 64 * 1024;
+/**
+ * Per-file content payload over IPC (write-file). 4 MB is ~4× the read cap;
+ * writes can grow by an order of magnitude if the user pastes a large blob.
+ */
+export const MAX_FILE_CONTENT_BYTES = 4 * 1024 * 1024;
+
+// ---------------------------------------------------------------------------
 // Shared building blocks
 // ---------------------------------------------------------------------------
 
 export const providerIdSchema = z.enum(["claude", "codex", "cursor"]);
 export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
+
+// Terminal/PTY size bounds. xterm sizes both grids and the underlying PTY
+// from the same numbers; the renderer measures its viewport in cells and
+// clamps before sending these to main.
+const terminalCols = z.number().int().min(20).max(400);
+const terminalRows = z.number().int().min(5).max(200);
 
 const projectSettingsSchema = z.object({
   defaultProvider: providerIdSchema,
@@ -142,8 +162,8 @@ export const launchProviderSessionInputSchema = z.object({
   modelId: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
-  cols: z.number().int().min(20).max(400),
-  rows: z.number().int().min(5).max(200)
+  cols: terminalCols,
+  rows: terminalRows
 });
 
 export const providerSessionInputSchema = z.object({
@@ -156,8 +176,8 @@ export const providerSessionInputSchema = z.object({
 
 export const providerSessionResizeInputSchema = z.object({
   sessionId: sessionIdSchema,
-  cols: z.number().int().min(20).max(400),
-  rows: z.number().int().min(5).max(200)
+  cols: terminalCols,
+  rows: terminalRows
 });
 
 export const providerSessionTerminateInputSchema = sessionIdSchema;
@@ -166,19 +186,19 @@ const terminalIdSchema = z.string().min(1);
 
 export const terminalSpawnInputSchema = z.object({
   workspaceId: workspaceIdSchema,
-  cols: z.number().int().min(20).max(400),
-  rows: z.number().int().min(5).max(200)
+  cols: terminalCols,
+  rows: terminalRows
 });
 
 export const terminalWriteInputSchema = z.object({
   terminalId: terminalIdSchema,
-  data: z.string().max(64 * 1024)
+  data: z.string().max(MAX_STREAM_CHUNK_BYTES)
 });
 
 export const terminalResizeInputSchema = z.object({
   terminalId: terminalIdSchema,
-  cols: z.number().int().min(20).max(400),
-  rows: z.number().int().min(5).max(200)
+  cols: terminalCols,
+  rows: terminalRows
 });
 
 export const terminalTerminateInputSchema = terminalIdSchema;
@@ -194,19 +214,19 @@ export const terminalTerminateInputSchema = terminalIdSchema;
 const mcpAuthSessionIdSchema = z.string().min(1);
 
 export const mcpAuthStartInputSchema = z.object({
-  cols: z.number().int().min(20).max(400),
-  rows: z.number().int().min(5).max(200)
+  cols: terminalCols,
+  rows: terminalRows
 });
 
 export const mcpAuthWriteInputSchema = z.object({
   sessionId: mcpAuthSessionIdSchema,
-  data: z.string().max(64 * 1024)
+  data: z.string().max(MAX_STREAM_CHUNK_BYTES)
 });
 
 export const mcpAuthResizeInputSchema = z.object({
   sessionId: mcpAuthSessionIdSchema,
-  cols: z.number().int().min(20).max(400),
-  rows: z.number().int().min(5).max(200)
+  cols: terminalCols,
+  rows: terminalRows
 });
 
 export const mcpAuthTerminateInputSchema = mcpAuthSessionIdSchema;
@@ -271,7 +291,7 @@ export const workspaceReadFileForProjectInputSchema = z.object({
 export const workspaceWriteFileInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   filePath: relativeFilePathSchema,
-  content: z.string().max(4_194_304),
+  content: z.string().max(MAX_FILE_CONTENT_BYTES),
   expectedMtimeMs: z.number().nonnegative().nullable()
 });
 
@@ -283,7 +303,7 @@ export const workspaceStatFileInputSchema = z.object({
 export const workspaceWriteFileForProjectInputSchema = z.object({
   projectId: projectIdSchema,
   filePath: relativeFilePathSchema,
-  content: z.string().max(4_194_304),
+  content: z.string().max(MAX_FILE_CONTENT_BYTES),
   expectedMtimeMs: z.number().nonnegative().nullable()
 });
 

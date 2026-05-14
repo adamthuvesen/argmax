@@ -40,6 +40,7 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     },
     openFile: () => {},
     openPanelInFilesMode: () => {},
+    openInFilesView: () => {},
     closePanel: () => {},
     togglePanel: () => {},
     toggleSummary: () => {},

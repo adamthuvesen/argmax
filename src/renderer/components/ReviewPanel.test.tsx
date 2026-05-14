@@ -51,6 +51,7 @@ function reviewStub(): ReviewState {
     },
     openFile: vi.fn(),
     openPanelInFilesMode: vi.fn(),
+    openInFilesView: vi.fn(),
     closePanel: vi.fn(),
     togglePanel: vi.fn(),
     toggleSummary: vi.fn()
@@ -87,6 +88,43 @@ describe("ReviewPanel side-by-side toggle", () => {
   });
 });
 
+describe("ReviewPanel side-by-side layout", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders file list and diff as siblings inside .review-body with an inline width on the left column", () => {
+    const { container } = render(<ReviewPanel review={reviewStub()} />);
+    const body = container.querySelector(".review-body");
+    const leftCol = container.querySelector<HTMLElement>(".review-list-col");
+    const diff = container.querySelector(".review-diff");
+
+    expect(body).not.toBeNull();
+    expect(leftCol).not.toBeNull();
+    expect(diff).not.toBeNull();
+    expect(body?.contains(leftCol)).toBe(true);
+    expect(body?.contains(diff)).toBe(true);
+    expect(leftCol?.style.width).toMatch(/px$/);
+  });
+
+  it("persists left column width to localStorage when the handle is dragged", () => {
+    render(<ReviewPanel review={reviewStub()} />);
+    const handle = screen.getByRole("separator", { name: "Resize file list width" });
+
+    fireEvent.mouseDown(handle, { clientX: 600 });
+    fireEvent.mouseMove(document, { clientX: 700 });
+    fireEvent.mouseUp(document);
+
+    const stored = window.localStorage.getItem("argmax.reviewPanel.leftColumnWidth");
+    expect(stored).not.toBeNull();
+    expect(Number.parseInt(stored ?? "0", 10)).toBeGreaterThanOrEqual(200);
+  });
+});
+
 /**
  * audit-2026-05-11 / SPEC P1.10 — mid-drag unmount used to leave document
  * mousemove/mouseup listeners attached and the body cursor frozen at
@@ -113,10 +151,10 @@ describe("ReviewPanel — drag listener cleanup on unmount", () => {
 
     // Start a drag: mousedown on the resize handle activates the cursor
     // grab and registers two document-level listeners.
-    fireEvent.mouseDown(screen.getByRole("separator", { name: "Resize file list" }), {
-      clientY: 120
+    fireEvent.mouseDown(screen.getByRole("separator", { name: "Resize file list width" }), {
+      clientX: 120
     });
-    expect(document.body.style.cursor).toBe("ns-resize");
+    expect(document.body.style.cursor).toBe("col-resize");
     expect(document.body.style.userSelect).toBe("none");
 
     // Mid-drag unmount — without the cleanup ref, listeners would survive.

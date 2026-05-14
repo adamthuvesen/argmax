@@ -70,6 +70,7 @@ export interface ReviewState {
   workspaceFiles: WorkspaceFilesState;
   openFile: (filePath: string) => void;
   openPanelInFilesMode: () => void;
+  openInFilesView: (filePath: string) => void;
   closePanel: () => void;
   togglePanel: () => void;
   toggleSummary: () => void;
@@ -163,6 +164,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const workspaceSaveToken = useRef(0);
   const previousSourceId = useRef<string | null>(null);
   const isPanelOpenRef = useRef(false);
+  const filesCountRef = useRef(0);
   // Refs mirror the latest values for use inside event listeners (focus,
   // dashboard:delta) so we don't need to re-bind the listener on every keystroke.
   const sourceIdRef = useRef<string | null>(null);
@@ -186,6 +188,10 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   useEffect(() => {
     isPanelOpenRef.current = isPanelOpen;
   }, [isPanelOpen]);
+
+  useEffect(() => {
+    filesCountRef.current = files.length;
+  }, [files]);
 
   useEffect(() => {
     const token = ++fileLoadToken.current;
@@ -362,6 +368,12 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     setWorkspaceFileSelected(filePath);
   }, []);
 
+  const openInFilesView = useCallback((filePath: string): void => {
+    setMode("files");
+    setIsPanelOpen(true);
+    setWorkspaceFileSelected(filePath);
+  }, []);
+
   const editWorkspaceFile = useCallback((content: string): void => {
     // Read-only sources (project main checkout) drop edits on the floor so
     // CodeMirror's `onChange` from a stray keystroke can't dirty the buffer.
@@ -524,6 +536,11 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, []);
 
   const togglePanel = useCallback((): void => {
+    // Opening with nothing in Changes? Land on the file tree instead of an
+    // empty Changes view — the user almost certainly wants to browse files.
+    if (!isPanelOpenRef.current && filesCountRef.current === 0) {
+      setMode("files");
+    }
     setIsPanelOpen((open) => !open);
   }, []);
 
@@ -568,6 +585,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     workspaceFiles,
     openFile,
     openPanelInFilesMode,
+    openInFilesView,
     closePanel,
     togglePanel,
     toggleSummary

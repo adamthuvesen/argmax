@@ -89,4 +89,21 @@ describe("WorkspaceTree virtualization", () => {
     expect(screen.getByText("src")).toBeTruthy();
     expect(screen.getByText("README.md")).toBeTruthy();
   });
+
+  it("auto-expands the ancestors of selectedPath so the row is visible", () => {
+    const entries: WorkspaceFileEntry[] = [
+      { path: "src/renderer/components/FilePreview.tsx" },
+      { path: "src/renderer/components/SessionPane.tsx" },
+      { path: "README.md" }
+    ];
+    const state = { ...makeState(entries), selectedPath: "src/renderer/components/FilePreview.tsx" };
+
+    render(<WorkspaceTree state={state} height={600} />);
+
+    // Ancestors and the selected leaf must all be present.
+    expect(screen.getByText("src")).toBeTruthy();
+    expect(screen.getByText("renderer")).toBeTruthy();
+    expect(screen.getByText("components")).toBeTruthy();
+    expect(screen.getByText("FilePreview.tsx")).toBeTruthy();
+  });
 });

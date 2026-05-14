@@ -50,6 +50,27 @@ export function WorkspaceTree({
     });
   }, []);
 
+  // When a file is selected from outside (quick-open, restored state),
+  // make sure every ancestor directory is expanded so the row is visible.
+  useEffect(() => {
+    const path = state.selectedPath;
+    if (!path) return;
+    const segments = path.split("/");
+    if (segments.length <= 1) return;
+    setExpanded((current) => {
+      let changed = false;
+      const next = new Set(current);
+      for (let i = 1; i < segments.length; i++) {
+        const ancestor = segments.slice(0, i).join("/");
+        if (!next.has(ancestor)) {
+          next.add(ancestor);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [state.selectedPath]);
+
   useEffect(() => {
     if (height !== undefined) return;
     const node = scrollRef.current;
@@ -86,6 +107,23 @@ export function WorkspaceTree({
     }
     setScrollTop(0);
   }, [tree]);
+
+  // Center the selected row when it sits outside the current scroll window.
+  useEffect(() => {
+    const path = state.selectedPath;
+    const node = scrollRef.current;
+    if (!path || !node) return;
+    const index = visibleRows.findIndex((row) => row.node.path === path);
+    if (index < 0) return;
+    const rowTop = index * ROW_HEIGHT;
+    const rowBottom = rowTop + ROW_HEIGHT;
+    const viewTop = node.scrollTop;
+    const viewBottom = viewTop + effectiveHeight;
+    if (rowTop >= viewTop && rowBottom <= viewBottom) return;
+    const target = Math.max(0, rowTop - effectiveHeight / 2);
+    node.scrollTop = target;
+    setScrollTop(target);
+  }, [state.selectedPath, visibleRows, effectiveHeight]);
 
   const containerStyle = height === undefined ? { height: "100%" as const } : { height };
 

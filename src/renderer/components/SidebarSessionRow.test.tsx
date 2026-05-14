@@ -87,4 +87,17 @@ describe("styles.css startup contract", () => {
     const fontFace = /font-family:\s*["']Lilex Nerd Font["'][\s\S]{0,300}?url\(["']?\.\/fonts\/Lilex\//i.exec(css);
     expect(fontFace, "expected Lilex Nerd Font @font-face with local URL").not.toBeNull();
   });
+
+  it("opens the settings font picker below its trigger", () => {
+    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
+    const css = readFileSync(cssPath, "utf8");
+    const genericPopoverIndex = css.indexOf(".project-picker-popover {");
+    const settingsPopoverIndex = css.indexOf(".project-picker-popover.settings-picker-popover");
+    const settingsRule = /\.project-picker-popover\.settings-picker-popover\s*\{(?<body>[^}]+)\}/i.exec(css);
+
+    expect(genericPopoverIndex, "expected generic project picker popover rule").toBeGreaterThanOrEqual(0);
+    expect(settingsPopoverIndex, "expected settings font picker override after generic rule").toBeGreaterThan(genericPopoverIndex);
+    expect(settingsRule?.groups?.body).toMatch(/top:\s*calc\(100%\s*\+\s*6px\)/i);
+    expect(settingsRule?.groups?.body).toMatch(/bottom:\s*auto/i);
+  });
 });

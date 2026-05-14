@@ -1059,7 +1059,7 @@ button {
      entire scroll area rather than shrinking to its content width. */
   justify-self: stretch;
   align-self: stretch;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 520px);
+  grid-template-columns: minmax(0, 1fr) var(--session-review-panel-width, clamp(320px, 34vw, 520px));
   align-items: stretch;
   gap: 0;
   -webkit-app-region: no-drag;
@@ -1349,15 +1349,6 @@ button {
 .settings-picker-trigger svg {
   color: var(--muted);
   flex-shrink: 0;
-}
-
-.settings-picker-popover {
-  top: calc(100% + 6px);
-  bottom: auto;
-  left: auto;
-  right: 0;
-  min-width: 100%;
-  max-height: 280px;
 }
 
 .settings-hint {
@@ -1938,6 +1929,15 @@ button {
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow-2);
+}
+
+.project-picker-popover.settings-picker-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  min-width: 100%;
+  max-height: 280px;
 }
 
 /* New-session composer chips: open menu below the trigger (default .project-picker-popover is upward). */
@@ -4116,10 +4116,27 @@ button {
   font-weight: 560;
 }
 
+.review-body {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+}
+
+.review-list-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .review-file-tabs {
   display: grid;
   align-content: start;
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: auto;
   border-bottom: none;
 }
@@ -4158,20 +4175,33 @@ button {
 }
 
 .review-resize-handle {
+  position: relative;
   flex: 0 0 5px;
-  cursor: ns-resize;
-  background: var(--line);
+  cursor: col-resize;
+  background: transparent;
+}
+
+.review-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--line-soft);
   transition: background var(--duration-fast) var(--ease);
 }
 
-.review-resize-handle:hover,
-.review-resize-handle:active {
+.review-resize-handle:hover::after,
+.review-resize-handle:active::after {
   background: var(--line-strong);
 }
 
 .review-diff {
   flex: 1 1 0;
-  min-height: 60px;
+  min-width: 200px;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -4454,7 +4484,8 @@ button {
 
 .workspace-tree {
   display: block;
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: auto;
   padding: 4px 0;
   font-size: 12.5px;
@@ -5052,6 +5083,26 @@ button {
 
 .search-result.selected .search-result-snippet mark {
   background: rgba(176, 128, 57, 0.36);
+}
+
+.search-result.file-search {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 2px;
+}
+
+.file-search-result-name {
+  font-weight: 560;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-search-result-path {
+  font-size: 12px;
+  color: var(--muted-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-row-wrap {
@@ -5977,4 +6028,3 @@ button {
 .terminal-panel-surface .xterm-viewport {
   background-color: transparent !important;
 }
-

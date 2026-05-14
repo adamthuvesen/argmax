@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { watch, type FSWatcher } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
-import { isAbsolute, join, sep } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { WorkspaceSummary } from "../../shared/types.js";
@@ -70,10 +70,11 @@ export class WorkspaceService {
     // around 9,000 branches — too narrow for power users.
     const worktreePath = join(project.settings.worktreeLocation, branch.replace(/\//g, "-"));
 
-    // Validate worktreeLocation lies inside repoPath (or under it). We resolve
-    // both via realpath after creating the directory so symlinks cannot
-    // smuggle the worktree outside the repo. Also requires the project's
-    // repoPath to remain readable on disk.
+    // Audit-2026-05-14 M4 — path-string containment check BEFORE mkdir so a
+    // bad persisted setting (e.g. `/tmp/argmax-oops`) doesn't side-effect a
+    // directory on disk that then gets rejected on the next line. The
+    // post-mkdir realpath-based check below still defeats symlinks.
+    assertWorktreeLocationPathContained(project.repoPath, project.settings.worktreeLocation);
     await mkdir(project.settings.worktreeLocation, { recursive: true });
     await assertWorktreeLocationContained(project.repoPath, project.settings.worktreeLocation);
 
@@ -305,6 +306,30 @@ export class WorkspaceService {
   }
 }
 
+
+/**
+ * Path-string containment check that does NOT touch the filesystem. Validates
+ * before the directory exists so mkdir doesn't side-effect a bad path. The
+ * post-mkdir realpath-based `assertWorktreeLocationContained` runs after and
+ * additionally defeats symlinks.
+ */
+function assertWorktreeLocationPathContained(repoPath: string, worktreeLocation: string): void {
+  if (!isAbsolute(worktreeLocation)) {
+    throw new WorkspaceError(
+      `worktreeLocation must be absolute, got ${worktreeLocation}`,
+      "Configure project.worktreeLocation to an absolute path inside the repo."
+    );
+  }
+  const repoResolved = resolve(repoPath);
+  const worktreeResolved = resolve(worktreeLocation);
+  const repoPrefix = repoResolved.endsWith(sep) ? repoResolved : repoResolved + sep;
+  if (worktreeResolved !== repoResolved && !worktreeResolved.startsWith(repoPrefix)) {
+    throw new WorkspaceError(
+      `worktreeLocation ${worktreeResolved} must be inside repoPath ${repoResolved}`,
+      "Choose a worktree location inside the project's repo and retry."
+    );
+  }
+}
 
 async function assertWorktreeLocationContained(repoPath: string, worktreeLocation: string): Promise<void> {
   if (!isAbsolute(worktreeLocation)) {

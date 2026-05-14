@@ -25,13 +25,14 @@ import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
+import { FileSearchOverlay } from "./FileSearchOverlay.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { SessionConversation } from "./SessionConversation.js";
 import { TerminalPanel } from "./TerminalPanel.js";
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 const SESSION_RIGHT_PANEL_MIN = 260;
-const SESSION_RIGHT_PANEL_MAX = 760;
+const SESSION_RIGHT_PANEL_MAX = 1400;
 const SESSION_RIGHT_PANEL_DEFAULT = 420;
 
 const TERMINAL_HEIGHT_KEY = "argmax.terminal.height";
@@ -177,6 +178,9 @@ export function SessionPane({
   // useReviewState — not the parent object, which would expand the effect's
   // dep audit to the whole review state and trip exhaustive-deps.
   const reviewTogglePanel = reviewState.togglePanel;
+  const reviewOpenInFilesView = reviewState.openInFilesView;
+  const reviewIsPanelOpen = reviewState.isPanelOpen;
+  const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
@@ -189,6 +193,25 @@ export function SessionPane({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [reviewTogglePanel]);
+
+  // Cmd/Ctrl+P opens the file quick-open overlay — gated on the panel being open.
+  useEffect(() => {
+    if (!reviewIsPanelOpen) return undefined;
+    const handler = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "p") return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      setIsQuickOpenOpen(true);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [reviewIsPanelOpen]);
+
+  useEffect(() => {
+    if (!reviewIsPanelOpen) setIsQuickOpenOpen(false);
+  }, [reviewIsPanelOpen]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -371,6 +394,15 @@ export function SessionPane({
           onResizePanelMouseDown={onRightPanelResizeMouseDown}
           workspace={workspace}
           onPrepareCommit={onPrepareCommit}
+        />
+      ) : null}
+      {reviewState.isPanelOpen && workspace ? (
+        <FileSearchOverlay
+          open={isQuickOpenOpen}
+          onClose={() => setIsQuickOpenOpen(false)}
+          sourceKind="workspace"
+          sourceId={workspace.id}
+          onPick={reviewOpenInFilesView}
         />
       ) : null}
       {isLogOpen ? (

@@ -40,6 +40,7 @@ function reviewStub(): ReviewState {
     },
     openFile: () => {},
     openPanelInFilesMode: () => {},
+    openInFilesView: () => {},
     closePanel: () => {},
     togglePanel: () => {},
     toggleSummary: () => {}

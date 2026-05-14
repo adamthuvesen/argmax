@@ -16,12 +16,23 @@ export interface NormalizerSessionContext {
    * to feed `costOf()` when usage arrives.
    */
   cursorCurrentModel: string | null;
+  /**
+   * Cursor's `--stream-partial-output` emits each `assistant` row as a
+   * *cumulative snapshot* of the message so far, not an incremental chunk.
+   * We track the most recent snapshot per turn so we can derive a true
+   * suffix-only delta — otherwise the renderer's chunk concatenation
+   * produces "ExplExploring the repository..." style duplication.
+   * Reset to `null` when the final cumulative row (no timestamp_ms) lands
+   * as `message.completed`, signalling end of turn.
+   */
+  cursorAssistantText: string | null;
 }
 
 export function createNormalizerSessionContext(initial: { cursorCurrentModel?: string } = {}): NormalizerSessionContext {
   return {
     codexCurrentModel: null,
-    cursorCurrentModel: initial.cursorCurrentModel ?? null
+    cursorCurrentModel: initial.cursorCurrentModel ?? null,
+    cursorAssistantText: null
   };
 }
 
@@ -181,7 +192,8 @@ function normalizeJsonPayload(
   const providerType = stringValue(payload.type);
   const item = objectValue(payload.item);
   const itemType = stringValue(item?.type);
-  const text = extractMessageText(payload, item);
+  const rawText = extractMessageText(payload, item);
+  const text = normalizeCursorAssistantText(rawText, payload, providerType, provider, context);
 
   // Codex turn_context updates the session-scoped current model. token_count
   // events carry usage but no model id; the parser threads the latest model
@@ -408,6 +420,42 @@ function extractMessageText(payload: Record<string, unknown>, item: Record<strin
     extractClaudeMessageContent(payload) ??
     extractClaudeDeltaText(payload)
   );
+}
+
+/**
+ * Cursor's `--stream-partial-output` emits cumulative snapshots on every
+ * `assistant` row. The renderer concatenates `message.delta` chunks, so
+ * passing the cumulative text through would render "ExplExploring the
+ * repositoryExploring the repository structure..." (each later snapshot
+ * piled onto the earlier ones). We strip the prior cumulative prefix so the
+ * emitted delta is the true suffix; the final cumulative row (no
+ * timestamp_ms → `message.completed`) resets state and emits the full text
+ * so it can replace the running stream cleanly.
+ */
+function normalizeCursorAssistantText(
+  text: string | null,
+  payload: Record<string, unknown>,
+  providerType: string | null,
+  provider: ProviderId | undefined,
+  context: NormalizerSessionContext | undefined
+): string | null {
+  if (provider !== "cursor" || !context || providerType !== "assistant" || text === null) {
+    return text;
+  }
+  const hasTimestamp = typeof payload.timestamp_ms === "number";
+  if (!hasTimestamp) {
+    // Final cumulative row → message.completed. Emit full text, reset state
+    // so the next turn's partials start fresh.
+    context.cursorAssistantText = null;
+    return text;
+  }
+  const prior = context.cursorAssistantText ?? "";
+  context.cursorAssistantText = text;
+  // Defensive: if Cursor ever emits a delta that *doesn't* extend the prior
+  // snapshot (truncation, model retry, etc.), fall back to the full text so
+  // we don't drop content. The renderer's coalesced bubble will reset on the
+  // next message.completed.
+  return text.startsWith(prior) ? text.slice(prior.length) : text;
 }
 
 function extractClaudeMessageContent(payload: Record<string, unknown>): string | null {

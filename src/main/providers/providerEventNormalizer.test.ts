@@ -283,6 +283,42 @@ describe("normalizeProviderEvent — Cursor stream-json", () => {
     });
   });
 
+  it("strips the cumulative prefix from successive cursor partials and resets on completion", () => {
+    const context = createNormalizerSessionContext();
+    const partial = (text: string, ts: number): ReturnType<typeof outputEvent> =>
+      outputEvent(
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant", content: [{ type: "text", text }] },
+          session_id: "cursor-uuid-1",
+          timestamp_ms: ts
+        }) + "\n"
+      );
+    const first = normalizeProviderEvent(partial("Expl", 1), { provider: "cursor", context });
+    const second = normalizeProviderEvent(partial("Exploring the repo", 2), { provider: "cursor", context });
+    const third = normalizeProviderEvent(partial("Exploring the repo structure", 3), { provider: "cursor", context });
+    expect(first[0]).toMatchObject({ type: "message.delta", message: "Expl" });
+    expect(second[0]).toMatchObject({ type: "message.delta", message: "oring the repo" });
+    expect(third[0]).toMatchObject({ type: "message.delta", message: " structure" });
+    // Final cumulative row (no timestamp_ms) emits as message.completed with the
+    // full text and resets the per-turn prefix so the next turn starts fresh.
+    const final = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant", content: [{ type: "text", text: "Exploring the repo structure." }] },
+          session_id: "cursor-uuid-1"
+        }) + "\n"
+      ),
+      { provider: "cursor", context }
+    );
+    expect(final[0]).toMatchObject({ type: "message.completed", message: "Exploring the repo structure." });
+    expect(context.cursorAssistantText).toBeNull();
+    // Next turn's first partial should not see the prior cumulative prefix.
+    const nextTurn = normalizeProviderEvent(partial("Next answer", 4), { provider: "cursor", context });
+    expect(nextTurn[0]).toMatchObject({ type: "message.delta", message: "Next answer" });
+  });
+
   it("emits the final cumulative cursor assistant row as message.completed", () => {
     const events = normalizeProviderEvent(
       outputEvent(

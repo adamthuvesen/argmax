@@ -39,6 +39,18 @@ import {
   type FindPendingApprovalInput,
   type PersistApprovalInput
 } from "./approvals.js";
+import {
+  checkpointRowToSummary,
+  checkRowToRun,
+  persistCheck,
+  persistCheckpoint,
+  updateCheck,
+  type CheckRow,
+  type CheckpointRow,
+  type PersistCheckInput,
+  type PersistCheckpointInput,
+  type UpdateCheckInput
+} from "./checks.js";
 import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
@@ -66,6 +78,7 @@ export { RecordNotFoundError } from "./errors.js";
 export type { InsertLearningInput } from "./learnings.js";
 export type { InsertUsageEventInput } from "./usage.js";
 export type { FindPendingApprovalInput, PersistApprovalInput } from "./approvals.js";
+export type { PersistCheckInput, PersistCheckpointInput, UpdateCheckInput } from "./checks.js";
 
 export interface PersistProjectInput {
   id: string;
@@ -145,31 +158,6 @@ export interface PersistRawOutputInput {
   sessionId: string;
   stream: "stdout" | "stderr" | "pty" | "system";
   content: string;
-  createdAt?: string;
-}
-
-export interface PersistCheckInput {
-  id: string;
-  workspaceId: string;
-  command: string;
-  status: CheckRun["status"];
-  startedAt?: string;
-}
-
-export interface UpdateCheckInput {
-  status: CheckRun["status"];
-  exitCode: number | null;
-  summary: string | null;
-  completedAt?: string | null;
-}
-
-export interface PersistCheckpointInput {
-  id: string;
-  workspaceId: string;
-  label: string;
-  branch: string;
-  gitRef: string | null;
-  patchPath: string | null;
   createdAt?: string;
 }
 
@@ -262,27 +250,6 @@ interface RawOutputRow {
   session_id: string;
   stream: RawProviderOutput["stream"];
   content: string;
-  created_at: string;
-}
-
-interface CheckRow {
-  id: string;
-  workspace_id: string;
-  command: string;
-  status: CheckRun["status"];
-  exit_code: number | null;
-  summary: string | null;
-  started_at: string;
-  completed_at: string | null;
-}
-
-interface CheckpointRow {
-  id: string;
-  workspace_id: string;
-  label: string;
-  branch: string;
-  git_ref: string | null;
-  patch_path: string | null;
   created_at: string;
 }
 
@@ -927,62 +894,6 @@ function persistRawOutput(connection: Database.Database, input: PersistRawOutput
     });
 }
 
-function persistCheck(connection: Database.Database, input: PersistCheckInput): CheckRun {
-  const startedAt = input.startedAt ?? new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO checks (id, workspace_id, command, status, exit_code, summary, started_at, completed_at)
-        VALUES (@id, @workspaceId, @command, @status, NULL, NULL, @startedAt, NULL)
-      `
-    )
-    .run({
-      id: input.id,
-      workspaceId: input.workspaceId,
-      command: input.command,
-      status: input.status,
-      startedAt
-    });
-
-  return findCheckById(connection, input.id);
-}
-
-function updateCheck(connection: Database.Database, checkId: string, input: UpdateCheckInput): CheckRun {
-  connection
-    .prepare(
-      `
-        UPDATE checks
-        SET status = ?, exit_code = ?, summary = ?, completed_at = ?
-        WHERE id = ?
-      `
-    )
-    .run(input.status, input.exitCode, input.summary, input.completedAt ?? new Date().toISOString(), checkId);
-
-  return findCheckById(connection, checkId);
-}
-
-function persistCheckpoint(connection: Database.Database, input: PersistCheckpointInput): Checkpoint {
-  const createdAt = input.createdAt ?? new Date().toISOString();
-  connection
-    .prepare(
-      `
-        INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
-        VALUES (@id, @workspaceId, @label, @branch, @gitRef, @patchPath, @createdAt)
-      `
-    )
-    .run({
-      id: input.id,
-      workspaceId: input.workspaceId,
-      label: input.label,
-      branch: input.branch,
-      gitRef: input.gitRef,
-      patchPath: input.patchPath,
-      createdAt
-    });
-
-  return findCheckpointById(connection, input.id);
-}
-
 function findWorkspaceById(connection: Database.Database, workspaceId: string): WorkspaceSummary {
   const row = connection.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as WorkspaceRow | undefined;
   if (!row) {
@@ -1012,40 +923,6 @@ function workspaceRowToSummary(row: WorkspaceRow): WorkspaceSummary {
   };
 }
 
-function findCheckpointById(connection: Database.Database, checkpointId: string): Checkpoint {
-  const row = connection.prepare("SELECT * FROM checkpoints WHERE id = ?").get(checkpointId) as CheckpointRow | undefined;
-  if (!row) {
-    throw new RecordNotFoundError("checkpoint", checkpointId);
-  }
-
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id,
-    label: row.label,
-    branch: row.branch,
-    gitRef: row.git_ref,
-    patchPath: row.patch_path,
-    createdAt: row.created_at
-  };
-}
-
-function findCheckById(connection: Database.Database, checkId: string): CheckRun {
-  const row = connection.prepare("SELECT * FROM checks WHERE id = ?").get(checkId) as CheckRow | undefined;
-  if (!row) {
-    throw new RecordNotFoundError("check", checkId);
-  }
-
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id,
-    command: row.command,
-    status: row.status,
-    exitCode: row.exit_code,
-    summary: row.summary,
-    startedAt: row.started_at,
-    completedAt: row.completed_at
-  };
-}
 
 function findSessionById(connection: Database.Database, sessionId: string): SessionSummary {
   const row = connection.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as SessionRow | undefined;
@@ -1307,30 +1184,6 @@ function rawOutputRowToProviderOutput(row: RawOutputRow): RawProviderOutput {
   };
 }
 
-function checkRowToRun(row: CheckRow): CheckRun {
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id,
-    command: row.command,
-    status: row.status,
-    exitCode: row.exit_code,
-    summary: row.summary,
-    startedAt: row.started_at,
-    completedAt: row.completed_at
-  };
-}
-
-function checkpointRowToSummary(row: CheckpointRow): Checkpoint {
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id,
-    label: row.label,
-    branch: row.branch,
-    gitRef: row.git_ref,
-    patchPath: row.patch_path,
-    createdAt: row.created_at
-  };
-}
 
 function maxRowCursor(rows: Array<{ row_cursor?: number }>, fallback: number): number {
   return rows.reduce((max, row) => Math.max(max, row.row_cursor ?? max), fallback);

@@ -444,6 +444,29 @@ export const migrations: Migration[] = [
 
       CREATE INDEX IF NOT EXISTS idx_gh_pr_session ON gh_pr(session_id);
     `
+  },
+  {
+    version: 13,
+    name: "usage_events_created_at_iso",
+    // The column set is unchanged after this migration — only the type
+    // affinity of created_at flips from INTEGER to TEXT. SQLite is loosely
+    // typed at the storage layer, so a manifest column-name check passes
+    // regardless. The intent is documented for readers.
+    affectedTables: ["usage_events"],
+    up: `
+      -- Convert usage_events.created_at from epoch-ms INTEGER to ISO-8601 TEXT
+      -- to match every other timestamp in the schema. The column is write-only
+      -- today (no read path consults it), so the format change is observation-
+      -- ally invisible. New writes from insertUsageEvent emit ISO directly.
+      --
+      -- Backfill via SQLite strftime: legacy column is epoch-ms, divide by
+      -- 1000.0 for unixepoch's seconds, format with millisecond precision.
+      ALTER TABLE usage_events RENAME COLUMN created_at TO created_at_ms_legacy;
+      ALTER TABLE usage_events ADD COLUMN created_at TEXT NOT NULL DEFAULT '';
+      UPDATE usage_events
+      SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', created_at_ms_legacy / 1000.0, 'unixepoch');
+      ALTER TABLE usage_events DROP COLUMN created_at_ms_legacy;
+    `
   }
 ];
 

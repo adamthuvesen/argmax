@@ -20,14 +20,26 @@ const SearchOverlay = lazy(async () => ({
   default: (await import("./components/SearchOverlay.js")).SearchOverlay
 }));
 import { PerfOverlay } from "./components/PerfOverlay.js";
-import { SessionPane } from "./components/SessionPane.js";
 // SettingsPanel is lazy-mounted (ralph B1) — heavy diagnostics tiles, MCP
 // dialog, and provider discovery shouldn't ship in the launcher's first paint.
 const SettingsPanel = lazy(async () => ({
   default: (await import("./components/SettingsPanel.js")).SettingsPanel
 }));
+import { SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
+import type { WorkspaceClickModifiers } from "./components/SidebarSessionRow.js";
+import {
+  EMPTY_GRID,
+  closeCell,
+  dropWorkspaceInGrid,
+  focusedCell,
+  openWorkspaceInGrid,
+  setFocus,
+  type GridCoord,
+  type GridState,
+  type SplitPosition
+} from "./lib/gridState.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Electron
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -99,6 +111,9 @@ export function App(): JSX.Element {
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>(() => readStoredThinkingStyle());
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
+  const [grid, setGrid] = useState<GridState>(EMPTY_GRID);
+  const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
+  const dragActive = draggingWorkspaceId !== null;
 
   const showErrorToast = useCallback((message: string): void => {
     setToast({ kind: "error", message });
@@ -126,11 +141,152 @@ export function App(): JSX.Element {
     refresh: refreshDashboardStatus,
     loadDashboard,
     loadSessionEvents,
-    openWorkspaceChat,
     openProjectLauncher,
     resolveApproval,
     pendingSelectionRef
   } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: showErrorToast });
+
+  // Lookups consumed by SessionMultiGrid so each cell can resolve its
+  // session/workspace/project without scanning the snapshot per pane.
+  const sessionsById = useMemo(
+    () => new Map(snapshot.sessions.map((s) => [s.id, s])),
+    [snapshot.sessions]
+  );
+  const workspacesById = useMemo(
+    () => new Map(snapshot.workspaces.map((w) => [w.id, w])),
+    [snapshot.workspaces]
+  );
+  const projectsById = useMemo(
+    () => new Map(snapshot.projects.map((p) => [p.id, p])),
+    [snapshot.projects]
+  );
+
+  // Mirror the focused grid cell into the dashboard hook's single-selection
+  // state so palette/search/IDE-open code paths (which still look at
+  // `selectedSession`) keep working. Also drops grid cells whose session
+  // disappeared (archive, restart) so the grid stays in sync with the
+  // snapshot without stale panes.
+  useEffect(() => {
+    setGrid((current) => {
+      if (current.rows.length === 0) return current;
+      let mutated = false;
+      const rows = current.rows
+        .map((row) => {
+          const next = row.filter((cell) => sessionsById.has(cell.sessionId) && workspacesById.has(cell.workspaceId));
+          if (next.length !== row.length) mutated = true;
+          return next;
+        })
+        .filter((row) => row.length > 0);
+      if (!mutated) return current;
+      if (rows.length === 0) return EMPTY_GRID;
+      const focused = current.focused;
+      if (focused) {
+        const nextRow = Math.min(focused.row, rows.length - 1);
+        const targetRow = rows[nextRow];
+        if (targetRow) {
+          const nextCol = Math.min(focused.col, targetRow.length - 1);
+          return { rows, focused: { row: nextRow, col: Math.max(nextCol, 0) } };
+        }
+      }
+      return { rows, focused: { row: 0, col: 0 } };
+    });
+  }, [sessionsById, workspacesById]);
+
+  // Mirror grid.focused → hook selection state. Avoids racing on initial
+  // mount by skipping when the focused cell already matches what the hook
+  // last produced.
+  useEffect(() => {
+    const cell = focusedCell(grid);
+    if (cell) {
+      setSelectedSessionId(cell.sessionId);
+      setSelectedWorkspaceId(cell.workspaceId);
+      return;
+    }
+    setSelectedSessionId(null);
+    setSelectedWorkspaceId(null);
+  }, [grid, setSelectedSessionId, setSelectedWorkspaceId]);
+
+  const openWorkspaceChat = useCallback(
+    (workspaceId: string, modifiers: WorkspaceClickModifiers = { ctrlOrMeta: false, alt: false }): void => {
+      const workspace = workspacesById.get(workspaceId);
+      if (!workspace) return;
+      const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
+      if (!sessionForWorkspace) return;
+      setSelectedProjectId(workspace.projectId);
+      setGrid((current) =>
+        openWorkspaceInGrid(
+          current,
+          { sessionId: sessionForWorkspace.id, workspaceId },
+          modifiers
+        )
+      );
+    },
+    [snapshot.sessions, workspacesById, setSelectedProjectId]
+  );
+
+  const closePane = useCallback((coord: GridCoord): void => {
+    setGrid((current) => closeCell(current, coord.row, coord.col));
+  }, []);
+
+  const focusPane = useCallback((coord: GridCoord): void => {
+    setGrid((current) => setFocus(current, coord));
+  }, []);
+
+  const closeFocusedPane = useCallback((): boolean => {
+    const focused = grid.focused;
+    if (!focused) return false;
+    closePane(focused);
+    return true;
+  }, [grid.focused, closePane]);
+
+  const handleDropWorkspace = useCallback(
+    (workspaceId: string, target: GridCoord & { position: SplitPosition }): void => {
+      const workspace = workspacesById.get(workspaceId);
+      if (!workspace) return;
+      const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
+      if (!sessionForWorkspace) return;
+      setSelectedProjectId(workspace.projectId);
+      setGrid((current) =>
+        dropWorkspaceInGrid(
+          current,
+          { sessionId: sessionForWorkspace.id, workspaceId },
+          target
+        )
+      );
+    },
+    [snapshot.sessions, workspacesById, setSelectedProjectId]
+  );
+
+  const handleEmptyLauncherDrop = useCallback(
+    (workspaceId: string): void => {
+      openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
+    },
+    [openWorkspaceChat]
+  );
+
+  const handleWorkspaceDragStart = useCallback((workspaceId: string): void => {
+    setDraggingWorkspaceId(workspaceId);
+  }, []);
+
+  const handleWorkspaceDragEnd = useCallback((): void => {
+    setDraggingWorkspaceId(null);
+  }, []);
+
+  // Watchdog: some browsers/Electron versions skip `dragend` on the source
+  // element when the user cancels with Esc at the OS level, leaving
+  // draggingWorkspaceId stuck and every cell painting the drop overlay
+  // forever. Subscribe to dragend at the document level (capture) while
+  // a drag is active so we always clear on whatever fires the end.
+  useEffect(() => {
+    if (!draggingWorkspaceId) return;
+    const clear = (): void => setDraggingWorkspaceId(null);
+    document.addEventListener("dragend", clear, true);
+    document.addEventListener("drop", clear, true);
+    return () => {
+      document.removeEventListener("dragend", clear, true);
+      document.removeEventListener("drop", clear, true);
+    };
+  }, [draggingWorkspaceId]);
 
   useEffect(() => {
     // First non-loading render is the renderer's "first content" mark.
@@ -158,8 +314,7 @@ export function App(): JSX.Element {
         case "new-session":
           setIsPaletteOpen(false);
           setIsSettingsOpen(false);
-          setSelectedSessionId(null);
-          setSelectedWorkspaceId(null);
+          setGrid(EMPTY_GRID);
           return;
         case "open-command-palette":
           setIsPaletteOpen(true);
@@ -178,16 +333,16 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen, setSelectedSessionId, setSelectedWorkspaceId]
+    [setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
   const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
   const selectSessionFromKeybinding = useCallback(
     (session: { id: string; workspaceId: string }): void => {
-      setSelectedSessionId(session.id);
-      setSelectedWorkspaceId(session.workspaceId);
+      // Cmd+1..9 always replaces the focused pane (no split modifier).
+      openWorkspaceChat(session.workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [setSelectedSessionId, setSelectedWorkspaceId]
+    [openWorkspaceChat]
   );
   const closeSettingsFromKeybinding = useCallback(
     (): void => setIsSettingsOpen(false),
@@ -196,6 +351,7 @@ export function App(): JSX.Element {
   useGlobalKeybindings({
     sessions: snapshot.sessions,
     onMenuCommand: handleMenuCommand,
+    onCloseFocusedPane: closeFocusedPane,
     onOpenSearch: openSearchOverlay,
     onSelectSession: selectSessionFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
@@ -280,6 +436,8 @@ export function App(): JSX.Element {
       setSelectedWorkspaceId(null);
       setSelectedSessionId(null);
     }
+    // The grid-reconcile effect drops cells whose session/workspace vanished
+    // from the snapshot — no manual prune here.
   }, [selectedWorkspaceId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
 
   const handleOpenInIde = useCallback(
@@ -319,8 +477,7 @@ export function App(): JSX.Element {
       }
 
       setSelectedProjectId(result.project.id);
-      setSelectedSessionId(null);
-      setSelectedWorkspaceId(null);
+      setGrid(EMPTY_GRID);
       setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
       setToast({ kind: "info", message: `Added ${result.project.name}.` });
     } catch (error) {
@@ -329,7 +486,7 @@ export function App(): JSX.Element {
         message: error instanceof Error ? error.message : "Argmax requires a local git repository."
       });
     }
-  }, [setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
+  }, [setSelectedProjectId, setSnapshot]);
 
   const sendSessionInput = useCallback(
     async (sessionId: string, input: string, model: ProviderModelSelection): Promise<void> => {
@@ -457,8 +614,13 @@ export function App(): JSX.Element {
         sessionId: launchedSession.id,
         workspaceId: workspace.id
       };
-      setSelectedWorkspaceId(workspace.id);
-      setSelectedSessionId(launchedSession.id);
+      setGrid((current) =>
+        openWorkspaceInGrid(
+          current,
+          { sessionId: launchedSession.id, workspaceId: workspace.id },
+          { ctrlOrMeta: false, alt: false }
+        )
+      );
       await Promise.all([refreshDashboardStatus(), loadSessionEvents(launchedSession.id)]);
     },
     [
@@ -466,9 +628,7 @@ export function App(): JSX.Element {
       refreshDashboardStatus,
       loadSessionEvents,
       pendingSelectionRef,
-      permissionMode,
-      setSelectedSessionId,
-      setSelectedWorkspaceId
+      permissionMode
     ]
   );
 
@@ -526,8 +686,7 @@ export function App(): JSX.Element {
         group: "Sessions",
         run: () => {
           setIsSettingsOpen(false);
-          setSelectedSessionId(session.id);
-          setSelectedWorkspaceId(session.workspaceId);
+          openWorkspaceChat(session.workspaceId);
         }
       };
     });
@@ -540,8 +699,7 @@ export function App(): JSX.Element {
       run: () => {
         setIsSettingsOpen(false);
         setSelectedProjectId(project.id);
-        setSelectedSessionId(null);
-        setSelectedWorkspaceId(null);
+        setGrid(EMPTY_GRID);
       }
     }));
 
@@ -553,11 +711,10 @@ export function App(): JSX.Element {
     selectedSession,
     handleMenuCommand,
     terminateSession,
+    openWorkspaceChat,
     setIsSearchOpen,
     setIsSettingsOpen,
-    setSelectedProjectId,
-    setSelectedSessionId,
-    setSelectedWorkspaceId
+    setSelectedProjectId
   ]);
 
   const sessionLabelById = useMemo(() => {
@@ -589,14 +746,11 @@ export function App(): JSX.Element {
         run: () => {
           const target = snapshot.sessions.find((session) => session.id === hit.sessionId);
           setIsSettingsOpen(false);
-          setSelectedSessionId(hit.sessionId);
-          if (target) {
-            setSelectedWorkspaceId(target.workspaceId);
-          }
+          if (target) openWorkspaceChat(target.workspaceId);
         }
       }));
     },
-    [sessionLabelById, snapshot.sessions, setIsSettingsOpen, setSelectedSessionId, setSelectedWorkspaceId]
+    [sessionLabelById, snapshot.sessions, setIsSettingsOpen, openWorkspaceChat]
   );
 
   return (
@@ -638,10 +792,7 @@ export function App(): JSX.Element {
             onSelectSession={(sessionId) => {
               const target = snapshot.sessions.find((session) => session.id === sessionId);
               setIsSettingsOpen(false);
-              setSelectedSessionId(sessionId);
-              if (target) {
-                setSelectedWorkspaceId(target.workspaceId);
-              }
+              if (target) openWorkspaceChat(target.workspaceId);
             }}
           />
         </Suspense>
@@ -659,8 +810,7 @@ export function App(): JSX.Element {
         loadState={loadState}
         onToggleWorkspacePinned={(workspaceId, pinned) => void toggleWorkspacePinned(workspaceId, pinned)}
         onOpenLauncher={() => {
-          setSelectedSessionId(null);
-          setSelectedWorkspaceId(null);
+          setGrid(EMPTY_GRID);
           setIsSettingsOpen(false);
         }}
         onAddProject={() => void addProject()}
@@ -671,10 +821,12 @@ export function App(): JSX.Element {
           openProjectLauncher(projectId);
         }}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenWorkspaceChat={(workspaceId) => {
+        onOpenWorkspaceChat={(workspaceId, modifiers) => {
           setIsSettingsOpen(false);
-          openWorkspaceChat(workspaceId);
+          openWorkspaceChat(workspaceId, modifiers);
         }}
+        onWorkspaceDragStart={handleWorkspaceDragStart}
+        onWorkspaceDragEnd={handleWorkspaceDragEnd}
         onResizeMouseDown={onResizeMouseDown}
         isSettingsActive={isSettingsOpen}
         selectedProjectId={selectedProject?.id ?? null}
@@ -689,13 +841,13 @@ export function App(): JSX.Element {
         <div className={
           isSettingsOpen
             ? "work-scroll settings-scroll"
-            : selectedSession
+            : grid.rows.length > 0
               ? "work-scroll session-scroll"
               : "work-scroll launcher-scroll"
         }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
-          ) : loadState === "loading" && !selectedSession && !isSettingsOpen ? (
+          ) : loadState === "loading" && grid.rows.length === 0 && !isSettingsOpen ? (
             <SkeletonPane />
           ) : isSettingsOpen ? (
             <Suspense fallback={<SkeletonPane />}>
@@ -719,26 +871,33 @@ export function App(): JSX.Element {
                 onClose={() => setIsSettingsOpen(false)}
               />
             </Suspense>
-          ) : selectedSession ? (
-            <SessionPane
+          ) : grid.rows.length > 0 ? (
+            <SessionMultiGrid
+              grid={grid}
               approvals={snapshot.approvals}
-              defaultToolCallsExpanded={toolCallsExpanded}
               events={snapshot.events}
+              rawOutputs={snapshot.rawOutputs}
+              checks={snapshot.checks}
+              projectsById={projectsById}
+              workspacesById={workspacesById}
+              sessionsById={sessionsById}
+              defaultToolCallsExpanded={toolCallsExpanded}
+              thinkingStyle={thinkingStyle}
+              rightPanelToggleSignal={rightPanelToggleSignal}
+              dragActive={dragActive}
+              onFocusPane={focusPane}
+              onClosePane={closePane}
+              onDropWorkspace={handleDropWorkspace}
+              onLoadSessionEvents={loadSessionEvents}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
               onTerminateSession={terminateSession}
               onCreateCheckpoint={createCheckpoint}
               onRunCheck={runCheck}
-              checks={snapshot.checks}
-              project={selectedProject}
-              rawOutputs={snapshot.rawOutputs}
-              rightPanelToggleSignal={rightPanelToggleSignal}
-              session={selectedSession}
-              thinkingStyle={thinkingStyle}
-              workspace={selectedWorkspace}
             />
           ) : (
             <LaunchSurface
+              dragActive={dragActive}
               onAddProject={() => void addProject()}
               onBranchSwitch={(updated) =>
                 setSnapshot((s) => {
@@ -760,6 +919,7 @@ export function App(): JSX.Element {
               model={launchModel}
               onModelChange={setLaunchModel}
               onSelectProject={openProjectLauncher}
+              onWorkspaceDrop={handleEmptyLauncherDrop}
               project={selectedProject}
               projects={snapshot.projects}
               rightPanelToggleSignal={rightPanelToggleSignal}

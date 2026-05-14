@@ -2359,6 +2359,171 @@ describe("App", () => {
       expect(window.localStorage.getItem("argmax.font.family")).toBe(id);
     }
   });
+
+  it("⌘-click on a sidebar session splits the focused pane to the right", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Split target",
+      branch: "argmax/split-target",
+      baseRef: "main",
+      path: "/tmp/worktrees/split-target",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Split target",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      preferred: false
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+
+    render(<App />);
+
+    // Open the first session by clicking its sidebar row.
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+
+    // ⌘-click the second session to split the grid to the right.
+    fireEvent.click(screen.getByRole("button", { name: "Split target" }), { metaKey: true });
+
+    // Both panes are now mounted simultaneously — heading appears twice.
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+    });
+
+    // Each pane has a close (×) button.
+    expect(screen.getAllByRole("button", { name: "Close pane" })).toHaveLength(2);
+
+    // Closing one via the × leaves a single pane.
+    fireEvent.click(screen.getAllByRole("button", { name: "Close pane" })[1]);
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
+    });
+  });
+
+  it("⌥-click on a sidebar session splits below into a new row", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Below target",
+      branch: "argmax/below-target",
+      baseRef: "main",
+      path: "/tmp/worktrees/below-target",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Below target",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      preferred: false
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Below target" }), { altKey: true });
+
+    await waitFor(() => {
+      // Two .session-multigrid-row elements (one per row).
+      const rows = document.querySelectorAll(".session-multigrid-row");
+      expect(rows).toHaveLength(2);
+    });
+  });
+
+  it("⌘W closes the focused pane", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "CmdW target",
+      branch: "argmax/cmd-w",
+      baseRef: "main",
+      path: "/tmp/worktrees/cmd-w",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "CmdW target",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      preferred: false
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.click(screen.getByRole("button", { name: "CmdW target" }), { metaKey: true });
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+    });
+
+    fireEvent.keyDown(document, { key: "w", metaKey: true });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
+    });
+  });
 });
 
 describe("App without preload bridge", () => {

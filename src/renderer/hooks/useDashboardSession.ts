@@ -204,15 +204,21 @@ export function useDashboardSession(
   // Reconcile selectedSessionId against the snapshot without clobbering a
   // just-launched session while its dashboard refresh is still in flight.
   useEffect(() => {
+    // Clear the pending-launch ref as soon as its target lands in the
+    // snapshot, even if focus has moved elsewhere in the multi-pane grid.
+    // Otherwise a sidebar click mid-launch leaves the ref orphaned until
+    // the next launchTask overwrites it.
+    const pending = pendingSelectionRef.current;
+    if (pending && snapshot.sessions.some((session) => session.id === pending.sessionId)) {
+      pendingSelectionRef.current = null;
+    }
+
     if (!selectedSessionId) {
       return;
     }
 
     const selectedSession = snapshot.sessions.find((session) => session.id === selectedSessionId);
     if (selectedSession) {
-      if (pendingSelectionRef.current?.sessionId === selectedSessionId) {
-        pendingSelectionRef.current = null;
-      }
       if (selectedWorkspaceId !== selectedSession.workspaceId) {
         setSelectedWorkspaceIdState(selectedSession.workspaceId);
       }
@@ -268,12 +274,11 @@ export function useDashboardSession(
     setSelectedProjectIdState(snapshot.projects[0]?.id ?? null);
   }, [snapshot.projects, selectedProjectId, selectedWorkspace]);
 
-  useEffect(() => {
-    if (!selectedSession?.id) {
-      return;
-    }
-    void loadSessionEvents(selectedSession.id);
-  }, [selectedSession?.id, loadSessionEvents]);
+  // Per-session backfill is owned by SessionPane's mount-effect (one call
+  // per visible pane). The hook used to also fire loadSessionEvents on
+  // every selection change; with the multi-pane grid that doubled the IPC
+  // for the focused pane. Removed — the visibility-change effect above
+  // still refreshes the currently selected session on tab refocus.
 
   const openWorkspaceChat = useCallback(
     (workspaceId: string): void => {

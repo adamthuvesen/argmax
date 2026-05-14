@@ -123,6 +123,17 @@ function SidebarSessionRowInner({
     event.stopPropagation();
     event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspace.id);
     event.dataTransfer.effectAllowed = "copyMove";
+    // Use the row button itself as the drag image so the OS preview shows
+    // the workspace label instead of the default button rendering with
+    // its sibling action chrome stripped.
+    if (event.currentTarget instanceof HTMLElement) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      event.dataTransfer.setDragImage(
+        event.currentTarget,
+        Math.max(0, event.clientX - rect.left),
+        Math.max(0, event.clientY - rect.top)
+      );
+    }
     onWorkspaceDragStart?.(workspace.id);
   };
 

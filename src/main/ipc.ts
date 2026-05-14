@@ -73,6 +73,8 @@ import { runGitText } from "./git/exec.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
 import { readPhases as readStartupPhases } from "./util/startupTimer.js";
+import { statSync } from "node:fs";
+import type { DatabaseStats } from "../shared/types.js";
 
 /**
  * Wraps an IPC handler body so its `input` is validated against a zod schema
@@ -277,16 +279,18 @@ export function registerIpcHandlers(
     } catch {
       sqliteVersion = "unknown";
     }
+    const databasePath = app.getPath("userData") + "/local-state/argmax.sqlite";
     return {
       appVersion: pkg.version ?? "0.0.0",
       electronVersion: process.versions.electron ?? "",
       nodeVersion: process.versions.node,
       sqliteVersion,
-      databasePath: app.getPath("userData") + "/local-state/argmax.sqlite",
+      databasePath,
       platform: process.platform,
       arch: process.arch,
       generatedAt: new Date().toISOString(),
-      startupPhases: readStartupPhases()
+      startupPhases: readStartupPhases(),
+      databaseStats: collectDatabaseStats(database, databasePath)
     };
   }));
   register("system:vacuumDatabase", withValidation(z.void(), () => {
@@ -560,6 +564,51 @@ export const REGISTERED_IPC_CHANNELS: readonly IpcChannel[] = IPC_CHANNELS;
  * have disabled the button, so we throw a useful error instead of guessing.
  */
 const DEFAULT_IDE_PRIORITY: readonly IdeId[] = ["vscode", "cursor", "windsurf", "zed", "iterm", "terminal"];
+
+/**
+ * SPEC P7.03 — collect database health stats for Diagnostics → Database.
+ * Per-table row counts, WAL sidecar size, and the configured
+ * `wal_autocheckpoint` pragma. All reads are cheap (`COUNT(*)` against
+ * indexed tables, single pragma read, single `fs.stat`).
+ */
+function collectDatabaseStats(database: ArgmaxDatabase, databasePath: string): DatabaseStats {
+  const count = (table: string): number => {
+    try {
+      const row = database.connection.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
+      return row.n;
+    } catch {
+      return 0;
+    }
+  };
+  let walBytes = 0;
+  try {
+    walBytes = statSync(`${databasePath}-wal`).size;
+  } catch {
+    /* sidecar missing or unreadable */
+  }
+  let walAutocheckpoint = 0;
+  try {
+    walAutocheckpoint = Number(database.connection.pragma("wal_autocheckpoint", { simple: true })) || 0;
+  } catch {
+    /* pragma read failed */
+  }
+  return {
+    rowCounts: {
+      projects: count("projects"),
+      workspaces: count("workspaces"),
+      sessions: count("sessions"),
+      events: count("events"),
+      rawOutputs: count("raw_outputs"),
+      approvals: count("approvals"),
+      checks: count("checks"),
+      checkpoints: count("checkpoints"),
+      learnings: count("learnings"),
+      usageEvents: count("usage_events")
+    },
+    walBytes,
+    walAutocheckpoint
+  };
+}
 
 export function resolveDefaultIde(detected: readonly DetectedIde[]): IdeId {
   if (detected.length === 0) {

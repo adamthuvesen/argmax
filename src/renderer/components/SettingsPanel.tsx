@@ -656,6 +656,63 @@ export function SettingsPanel({
             </p>
           ) : null}
         </div>
+        {diagnostics?.databaseStats ? (
+          <div className="settings-card" aria-labelledby="settings-diagnostics-database">
+            <h3 id="settings-diagnostics-database" className="settings-card-title">
+              Database
+            </h3>
+            <dl className="settings-keyvals">
+              <div>
+                <dt>Projects</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.projects.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Workspaces</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.workspaces.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Sessions</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.sessions.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Events</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.events.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Raw outputs</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.rawOutputs.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Approvals</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.approvals.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Checks</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.checks.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Checkpoints</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.checkpoints.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Learnings</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.learnings.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Usage events</dt>
+                <dd>{diagnostics.databaseStats.rowCounts.usageEvents.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>WAL size</dt>
+                <dd>{formatBytes(diagnostics.databaseStats.walBytes)}</dd>
+              </div>
+              <div>
+                <dt>WAL autocheckpoint</dt>
+                <dd>{diagnostics.databaseStats.walAutocheckpoint.toLocaleString()} pages</dd>
+              </div>
+            </dl>
+          </div>
+        ) : null}
         {diagnostics?.startupPhases?.length ? (
           <div className="settings-card" aria-labelledby="settings-diagnostics-startup">
             <h3 id="settings-diagnostics-startup" className="settings-card-title">
@@ -720,6 +777,18 @@ export function SettingsPanel({
       </section>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(value >= 100 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
 function FontFamilyPicker({

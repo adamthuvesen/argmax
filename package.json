@@ -8,7 +8,7 @@
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "npm run rebuild:electron && npm run build:preload && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"node scripts/build-preload.mjs --watch\" \"wait-on dist/main/main.js dist/main/preload.cjs tcp:5173 && electron .\"",
-    "build": "tsc -p tsconfig.main.json && npm run build:preload && vite build",
+    "build": "tsc -p tsconfig.main.json && npm run build:preload && vite build && npm run check:bundle",
     "check:bundle": "node scripts/check-bundle-size.mjs",
     "build:preload": "NODE_ENV=production node scripts/build-preload.mjs",
     "package": "npm run build && electron-builder --mac",

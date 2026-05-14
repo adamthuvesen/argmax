@@ -315,7 +315,6 @@ export function Sidebar({
                     }
                     expandProjectVisibility(project.id);
                     onOpenProject(project.id);
-                    onOpenLauncher();
                   }}
                 >
                   <span className="project-monogram" aria-hidden="true">

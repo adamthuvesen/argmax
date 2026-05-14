@@ -3,8 +3,21 @@ import { describe, expect, it } from "vitest";
 import type { DashboardSnapshot, TimelineEvent } from "../../shared/types.js";
 import { emptySnapshot, mergeDashboardDelta, pruneSupersededDeltas } from "./snapshot.js";
 
-function event(id: string, type: TimelineEvent["type"], createdAt: string): TimelineEvent {
-  return { id, sessionId: "session-1", type, message: "", payload: {}, createdAt };
+function event(
+  id: string,
+  type: TimelineEvent["type"],
+  createdAt: string,
+  rowCursor?: number
+): TimelineEvent {
+  return {
+    id,
+    sessionId: "session-1",
+    type,
+    message: "",
+    payload: {},
+    createdAt,
+    ...(rowCursor !== undefined ? { rowCursor } : {})
+  };
 }
 
 /**
@@ -106,6 +119,35 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
       event("e1", "user.message", "2026-05-12T15:00:00.000Z")
     ];
+    const result = pruneSupersededDeltas(events);
+    expect(result).not.toBe(events);
+    expect(result.map((e) => e.id)).toEqual(["e4", "e1"]);
+  });
+
+  it("sorts same-timestamp events by row cursor so streaming chunks display in insert order", () => {
+    const createdAt = "2026-05-12T15:00:01.000Z";
+    const base: DashboardSnapshot = { ...emptySnapshot };
+    const next = mergeDashboardDelta(base, {
+      events: [
+        event("e1", "message.delta", createdAt, 1),
+        event("e2", "message.delta", createdAt, 2),
+        event("e3", "message.delta", createdAt, 3)
+      ]
+    });
+
+    expect(next.events.map((e) => e.id)).toEqual(["e3", "e2", "e1"]);
+    expect([...next.events].reverse().map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
+  });
+
+  it("prunes same-timestamp deltas when row cursor shows a later completed event", () => {
+    const createdAt = "2026-05-12T15:00:01.000Z";
+    const events = [
+      event("e4", "message.completed", createdAt, 4),
+      event("e3", "message.delta", createdAt, 3),
+      event("e2", "message.delta", createdAt, 2),
+      event("e1", "user.message", createdAt, 1)
+    ];
+
     const result = pruneSupersededDeltas(events);
     expect(result).not.toBe(events);
     expect(result.map((e) => e.id)).toEqual(["e4", "e1"]);

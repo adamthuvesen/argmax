@@ -5,12 +5,14 @@ import {
   closeCell,
   dropWorkspaceInGrid,
   focusedCell,
+  openLauncherInGrid,
   openWorkspaceInGrid,
   setFocus,
   type GridState
 } from "./gridState.js";
 
 const cell = (n: number) => ({ sessionId: `s${n}`, workspaceId: `w${n}` });
+const launcher = (n = 1) => ({ kind: "launcher" as const, projectId: `p${n}` });
 
 describe("openWorkspaceInGrid", () => {
   it("creates the first cell when the grid is empty", () => {
@@ -87,6 +89,39 @@ describe("openWorkspaceInGrid", () => {
     let total2 = 0;
     for (const row of g.rows) total2 += row.length;
     expect(total2).toBe(MAX_CELLS);
+  });
+});
+
+describe("openLauncherInGrid", () => {
+  it("splits a launcher to the right of the focused pane", () => {
+    const start: GridState = { rows: [[cell(1)]], focused: { row: 0, col: 0 } };
+    const next = openLauncherInGrid(start, launcher());
+    expect(next.rows).toEqual([[cell(1), launcher()]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("adds the launcher below when the focused row already has 3 columns", () => {
+    const start: GridState = {
+      rows: [[cell(1), cell(2), cell(3)]],
+      focused: { row: 0, col: 1 }
+    };
+    const next = openLauncherInGrid(start, launcher());
+    expect(next.rows).toEqual([[cell(1), cell(2), cell(3)], [launcher()]]);
+    expect(next.focused).toEqual({ row: 1, col: 0 });
+  });
+
+  it("refocuses an existing launcher instead of adding another blank pane", () => {
+    const start: GridState = {
+      rows: [[cell(1), launcher()]],
+      focused: { row: 0, col: 0 }
+    };
+    const next = openLauncherInGrid(start, launcher(2));
+    expect(next.rows).toEqual([[cell(1), launcher()]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("does nothing when the grid is empty", () => {
+    expect(openLauncherInGrid(EMPTY_GRID, launcher())).toBe(EMPTY_GRID);
   });
 });
 

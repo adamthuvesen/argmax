@@ -288,6 +288,7 @@ export interface TimelineEvent {
   message: string;
   payload: Record<string, unknown>;
   createdAt: string;
+  rowCursor?: number;
 }
 
 export interface RawProviderOutput {
@@ -296,6 +297,7 @@ export interface RawProviderOutput {
   stream: "stdout" | "stderr" | "pty" | "system";
   content: string;
   createdAt: string;
+  rowCursor?: number;
 }
 
 export interface ApprovalRequest {

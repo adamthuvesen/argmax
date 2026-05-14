@@ -121,7 +121,8 @@ const STRUCTURAL_KEYS_BY_TYPE: Partial<Record<TimelineEvent["type"], readonly st
  * Apply the `EVENT_PAYLOAD_CAP` payload size limit. For oversized events,
  * returns a truncated payload (with structural keys preserved per the event
  * type's `STRUCTURAL_KEYS_BY_TYPE` allowlist) plus a sibling `error` event
- * that documents the truncation in the timeline.
+ * that documents the truncation in the debug timeline. The sibling is marked
+ * raw/internal so it never renders as a chat bubble.
  */
 export function capEventPayload(
   payload: Record<string, unknown>,
@@ -155,6 +156,8 @@ export function capEventPayload(
       type: "error",
       message: "event payload truncated",
       payload: {
+        raw: true,
+        internal: true,
         truncatedEventId,
         originalSize: serialized.length
       }

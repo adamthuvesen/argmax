@@ -2497,6 +2497,107 @@ describe("App", () => {
     expect(document.querySelector(".multigrid-drop-overlay")).toBeNull();
   });
 
+  it("keeps the current session and opens a launcher pane to the right from New session", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    expect(await screen.findByRole("region", { name: "New session for Argmax" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
+    const rows = document.querySelectorAll(".session-multigrid-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
+  });
+
+  it("opens the Cmd+N launcher below when the focused row already has 3 panes", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Second pane",
+      branch: "argmax/second-pane",
+      baseRef: "main",
+      path: "/tmp/worktrees/second-pane",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-3",
+      projectId: "project-1",
+      taskLabel: "Third pane",
+      branch: "argmax/third-pane",
+      baseRef: "main",
+      path: "/tmp/worktrees/third-pane",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:05:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Second pane",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      preferred: false
+    };
+    const thirdSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-3",
+      workspaceId: "workspace-3",
+      provider: "claude",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-3",
+      prompt: "Third pane",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:05:00.000Z",
+      lastActivityAt: "2026-05-08T16:05:00.000Z",
+      preferred: false
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace, thirdWorkspace],
+      sessions: [...snapshot.sessions, secondSession, thirdSession]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.click(screen.getByRole("button", { name: "Second pane" }), { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Third pane" }), { metaKey: true });
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(3);
+    });
+
+    fireEvent.keyDown(document, { key: "n", metaKey: true });
+
+    expect(await screen.findByRole("region", { name: "New session for Argmax" })).toBeInTheDocument();
+    const rows = document.querySelectorAll(".session-multigrid-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(3);
+    expect(rows[1]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(1);
+  });
+
   it("drops a sidebar session onto a grid zone even when dataTransfer getData is empty", async () => {
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",

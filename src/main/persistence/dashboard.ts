@@ -116,14 +116,14 @@ export function loadDashboard(connection: Database.Database): DashboardSnapshot 
   const events = (
     prepared(
       connection,
-      `SELECT * FROM events ORDER BY created_at DESC LIMIT ${DASHBOARD_EVENT_LIMIT}`
+      `SELECT rowid AS row_cursor, * FROM events ORDER BY rowid DESC LIMIT ${DASHBOARD_EVENT_LIMIT}`
     ).all() as EventRow[]
   ).map(eventRowToTimelineEvent);
 
   const rawOutputs = (
     prepared(
       connection,
-      `SELECT * FROM raw_outputs ORDER BY created_at DESC LIMIT ${DASHBOARD_RAW_OUTPUT_LIMIT}`
+      `SELECT rowid AS row_cursor, * FROM raw_outputs ORDER BY rowid DESC LIMIT ${DASHBOARD_RAW_OUTPUT_LIMIT}`
     ).all() as RawOutputRow[]
   ).map(rawOutputRowToProviderOutput);
 

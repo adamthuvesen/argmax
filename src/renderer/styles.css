@@ -3074,10 +3074,12 @@ button {
 .composer-marker {
   flex: 0 0 auto;
   align-self: flex-start;
-  margin-top: 13px;
+  /* Match the textarea's first-line box (padding-top + line-height) so the
+     caret glyph sits centered on the input text instead of floating above it. */
+  margin-top: 11px;
   font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1;
+  font-size: 15px;
+  line-height: 1.45;
   color: var(--ink);
   letter-spacing: 0;
   user-select: none;
@@ -3654,6 +3656,44 @@ button {
    so the inner grid fills the multigrid cell instead of the whole viewport. */
 .session-multigrid-cell .session-grid {
   height: 100%;
+}
+
+.session-multigrid-cell .launcher-shell {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: clamp(22px, 4vw, 34px);
+  overflow: auto;
+}
+
+.session-multigrid-cell .launcher-surface {
+  width: min(100%, 920px);
+  gap: 18px;
+  transform: none;
+  animation: none;
+}
+
+.session-multigrid-cell .launcher-shell[data-review-open="true"] {
+  place-items: stretch;
+  padding: 0;
+}
+
+.session-multigrid-cell .launcher-hero {
+  gap: 8px;
+  padding: 0;
+}
+
+.session-multigrid-cell .launcher-hero-headline {
+  max-width: 34ch;
+  font-size: clamp(20px, 2vw, 26px);
+  line-height: 1.18;
+}
+
+.session-multigrid-cell .launcher-hero-lede {
+  max-width: 58ch;
+  font-size: 12.5px;
 }
 
 .session-multigrid-resizer {
@@ -4545,6 +4585,13 @@ button {
   animation: thinking-fade-in 220ms var(--ease) both;
 }
 
+/* The conversation list has a 32px gap between bubbles. When the thinking
+   indicator follows a tool group / message, that's too much air — pull it
+   up so it visually anchors to the activity above. */
+.conversation-list .thinking-indicator:not(:first-child) {
+  margin-top: -16px;
+}
+
 .command-stream {
   display: inline-flex;
   align-items: baseline;
@@ -5122,6 +5169,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-top: 16px;
   margin-inline: var(--session-inline-padding);
 }
 
@@ -5351,7 +5399,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 20px;
+  margin-top: 28px;
   margin-inline: var(--session-inline-padding);
   padding: 14px 14px 10px;
   border: 1px solid var(--line);

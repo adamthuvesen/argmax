@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ProjectSummary, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type { ProjectSummary, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { SessionConversation } from "./SessionConversation.js";
 
@@ -100,10 +100,36 @@ const project: ProjectSummary = {
   latestActivityAt: "2026-05-12T15:54:00.000Z"
 };
 
-function renderConversation(session: SessionSummary) {
+function event(
+  id: string,
+  type: TimelineEvent["type"],
+  message: string,
+  createdAt: string,
+  payload: Record<string, unknown> = {}
+): TimelineEvent {
+  return {
+    id,
+    sessionId: "session-a",
+    type,
+    message,
+    payload,
+    createdAt
+  };
+}
+
+function cursorAssistantPayload(text: string): Record<string, unknown> {
+  return {
+    type: "assistant",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+    session_id: "cursor-uuid-1",
+    timestamp_ms: 1778771186474
+  };
+}
+
+function renderConversation(session: SessionSummary, events: TimelineEvent[] = []) {
   return render(
     <SessionConversation
-      events={[]}
+      events={events}
       isLogOpen={false}
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}
@@ -212,5 +238,36 @@ describe("SessionConversation — model selection persistence", () => {
     expect(
       modelPicker.compareDocumentPosition(workspaceContext) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  it("renders repeated Cursor assistant snapshots once while streaming", () => {
+    const text = "Reading the repo's key documentation and structure.";
+    renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event("e2", "message.delta", text, "2026-05-12T15:00:01.000Z", cursorAssistantPayload(text)),
+        event("e1", "message.delta", text, "2026-05-12T15:00:00.000Z", cursorAssistantPayload(text)),
+        event("u1", "user.message", "summarize this repo", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.getAllByText(text)).toHaveLength(1);
+  });
+
+  it("hides oversized-payload truncation markers from chat", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("e2", "error", "event payload truncated", "2026-05-12T15:00:01.000Z", {
+          truncatedEventId: "truncated-1",
+          originalSize: 70_000
+        }),
+        event("e1", "message.completed", "Done", "2026-05-12T15:00:00.000Z"),
+        event("u1", "user.message", "summarize this repo", "2026-05-12T14:59:59.000Z")
+      ]
+    );
+
+    expect(screen.queryByText("event payload truncated")).not.toBeInTheDocument();
+    expect(screen.getByText("Done")).toBeInTheDocument();
   });
 });

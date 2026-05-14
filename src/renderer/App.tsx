@@ -4,7 +4,8 @@ import type {
   DashboardSnapshot,
   DetectedIde,
   IdeId,
-  MenuCommand
+  MenuCommand,
+  ProjectSummary
 } from "../shared/types.js";
 import type { MessageHit as PaletteMessageHit, PaletteCommand } from "./components/CommandPalette.js";
 // Heavy overlays are dynamic-imported on first open so the launcher's first
@@ -34,6 +35,8 @@ import {
   closeCell,
   dropWorkspaceInGrid,
   focusedCell,
+  isSessionCell,
+  openLauncherInGrid,
   openWorkspaceInGrid,
   setFocus,
   type GridCoord,
@@ -160,10 +163,10 @@ export function App(): JSX.Element {
     [snapshot.projects]
   );
   const openWorkspaceIds = useMemo(
-    () => new Set(grid.rows.flatMap((row) => row.map((cell) => cell.workspaceId))),
+    () => new Set(grid.rows.flatMap((row) => row.filter(isSessionCell).map((cell) => cell.workspaceId))),
     [grid.rows]
   );
-  const canDragWorkspaceToGrid = grid.rows.length > 0;
+  const canDragWorkspaceToGrid = openWorkspaceIds.size > 0;
 
   // Mirror the focused grid cell into the dashboard hook's single-selection
   // state so palette/search/IDE-open code paths (which still look at
@@ -176,7 +179,10 @@ export function App(): JSX.Element {
       let mutated = false;
       const rows = current.rows
         .map((row) => {
-          const next = row.filter((cell) => sessionsById.has(cell.sessionId) && workspacesById.has(cell.workspaceId));
+          const next = row.filter((cell) => {
+            if (!isSessionCell(cell)) return projectsById.has(cell.projectId);
+            return sessionsById.has(cell.sessionId) && workspacesById.has(cell.workspaceId);
+          });
           if (next.length !== row.length) mutated = true;
           return next;
         })
@@ -194,21 +200,29 @@ export function App(): JSX.Element {
       }
       return { rows, focused: { row: 0, col: 0 } };
     });
-  }, [sessionsById, workspacesById]);
+  }, [projectsById, sessionsById, workspacesById]);
 
   // Mirror grid.focused → hook selection state. Avoids racing on initial
   // mount by skipping when the focused cell already matches what the hook
   // last produced.
   useEffect(() => {
     const cell = focusedCell(grid);
-    if (cell) {
+    if (cell && isSessionCell(cell)) {
       setSelectedSessionId(cell.sessionId);
       setSelectedWorkspaceId(cell.workspaceId);
+      const workspace = workspacesById.get(cell.workspaceId);
+      if (workspace) setSelectedProjectId(workspace.projectId);
+      return;
+    }
+    if (cell?.kind === "launcher") {
+      setSelectedSessionId(null);
+      setSelectedWorkspaceId(null);
+      setSelectedProjectId(cell.projectId);
       return;
     }
     setSelectedSessionId(null);
     setSelectedWorkspaceId(null);
-  }, [grid, setSelectedSessionId, setSelectedWorkspaceId]);
+  }, [grid, setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, workspacesById]);
 
   const openWorkspaceChat = useCallback(
     (workspaceId: string, modifiers: WorkspaceClickModifiers = { ctrlOrMeta: false, alt: false }): void => {
@@ -303,6 +317,21 @@ export function App(): JSX.Element {
     return () => clearTimeout(t);
   }, [toast]);
 
+  const openNewSessionPane = useCallback((): void => {
+    setGrid((current) => {
+      if (current.rows.length === 0) return EMPTY_GRID;
+      const focused = focusedCell(current);
+      let projectId = selectedProject?.id ?? selectedWorkspace?.projectId ?? snapshot.projects[0]?.id ?? null;
+      if (focused && isSessionCell(focused)) {
+        projectId = workspacesById.get(focused.workspaceId)?.projectId ?? projectId;
+      } else if (focused?.kind === "launcher") {
+        projectId = focused.projectId;
+      }
+      if (!projectId) return current;
+      return openLauncherInGrid(current, { kind: "launcher", projectId });
+    });
+  }, [selectedProject?.id, selectedWorkspace?.projectId, snapshot.projects, workspacesById]);
+
   const handleMenuCommand = useCallback(
     (command: MenuCommand): void => {
       switch (command) {
@@ -313,7 +342,7 @@ export function App(): JSX.Element {
         case "new-session":
           setIsPaletteOpen(false);
           setIsSettingsOpen(false);
-          setGrid(EMPTY_GRID);
+          openNewSessionPane();
           return;
         case "open-command-palette":
           setIsPaletteOpen(true);
@@ -332,7 +361,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
+    [openNewSessionPane, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
   const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
@@ -583,17 +612,18 @@ export function App(): JSX.Element {
   );
 
   const launchTask = useCallback(
-    async (prompt: string, model: ModelPickerSelection): Promise<void> => {
+    async (prompt: string, model: ModelPickerSelection, projectIdOverride?: string): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Electron app window to launch local agents.");
       }
 
-      if (!selectedProject) {
+      const projectId = projectIdOverride ?? selectedProject?.id;
+      if (!projectId) {
         throw new Error("Register a project before launching an agent.");
       }
 
       const workspace = await window.argmax.workspaces.createCurrent({
-        projectId: selectedProject.id,
+        projectId,
         taskLabel: titleFromPrompt(prompt)
       });
 
@@ -623,7 +653,7 @@ export function App(): JSX.Element {
       await Promise.all([refreshDashboardStatus(), loadSessionEvents(launchedSession.id)]);
     },
     [
-      selectedProject,
+      selectedProject?.id,
       refreshDashboardStatus,
       loadSessionEvents,
       pendingSelectionRef,
@@ -752,6 +782,52 @@ export function App(): JSX.Element {
     [sessionLabelById, snapshot.sessions, setIsSettingsOpen, openWorkspaceChat]
   );
 
+  const handleBranchSwitch = useCallback(
+    (updated: ProjectSummary): void => {
+      setSnapshot((s) => {
+        // Skip reallocation when nothing actually changed (ralph E4) —
+        // `git switch` to the same branch is a no-op.
+        const existing = s.projects.find((p) => p.id === updated.id);
+        if (existing === updated) return s;
+        let mutated = false;
+        const projects = s.projects.map((p) => {
+          if (p.id !== updated.id) return p;
+          if (p === updated) return p;
+          mutated = true;
+          return updated;
+        });
+        return mutated ? { ...s, projects } : s;
+      });
+    },
+    [setSnapshot]
+  );
+
+  const renderLaunchSurface = useCallback(
+    (project: ProjectSummary | null): JSX.Element => (
+      <LaunchSurface
+        onAddProject={() => void addProject()}
+        onBranchSwitch={handleBranchSwitch}
+        onLaunchTask={(prompt, model) => launchTask(prompt, model, project?.id)}
+        model={launchModel}
+        onModelChange={setLaunchModel}
+        onSelectProject={openProjectLauncher}
+        project={project ?? selectedProject}
+        projects={snapshot.projects}
+        rightPanelToggleSignal={rightPanelToggleSignal}
+      />
+    ),
+    [
+      addProject,
+      handleBranchSwitch,
+      launchModel,
+      launchTask,
+      openProjectLauncher,
+      rightPanelToggleSignal,
+      selectedProject,
+      snapshot.projects
+    ]
+  );
+
   return (
     <main
       className="app-shell"
@@ -809,14 +885,15 @@ export function App(): JSX.Element {
         loadState={loadState}
         onToggleWorkspacePinned={(workspaceId, pinned) => void toggleWorkspacePinned(workspaceId, pinned)}
         onOpenLauncher={() => {
-          setGrid(EMPTY_GRID);
           setIsSettingsOpen(false);
+          openNewSessionPane();
         }}
         onAddProject={() => void addProject()}
         onArchiveWorkspace={(id) => void handleArchiveWorkspace(id)}
         onOpenInIde={(workspaceId, ide, options) => void handleOpenInIde(workspaceId, ide, options)}
         onOpenProject={(projectId) => {
           setIsSettingsOpen(false);
+          setGrid(EMPTY_GRID);
           openProjectLauncher(projectId);
         }}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -885,6 +962,7 @@ export function App(): JSX.Element {
               defaultToolCallsExpanded={toolCallsExpanded}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
+              renderLauncher={renderLaunchSurface}
               dragSourceWorkspaceId={draggingWorkspaceId}
               onFocusPane={focusPane}
               onClosePane={closePane}
@@ -897,32 +975,7 @@ export function App(): JSX.Element {
               onRunCheck={runCheck}
             />
           ) : (
-            <LaunchSurface
-              onAddProject={() => void addProject()}
-              onBranchSwitch={(updated) =>
-                setSnapshot((s) => {
-                  // Skip reallocation when nothing actually changed (ralph
-                  // E4) — `git switch` to the same branch is a no-op.
-                  const existing = s.projects.find((p) => p.id === updated.id);
-                  if (existing === updated) return s;
-                  let mutated = false;
-                  const projects = s.projects.map((p) => {
-                    if (p.id !== updated.id) return p;
-                    if (p === updated) return p;
-                    mutated = true;
-                    return updated;
-                  });
-                  return mutated ? { ...s, projects } : s;
-                })
-              }
-              onLaunchTask={launchTask}
-              model={launchModel}
-              onModelChange={setLaunchModel}
-              onSelectProject={openProjectLauncher}
-              project={selectedProject}
-              projects={snapshot.projects}
-              rightPanelToggleSignal={rightPanelToggleSignal}
-            />
+            renderLaunchSurface(selectedProject)
           )}
         </div>
       </section>

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { extractProviderConversationId } from "./sessionPayloadCaps.js";
+import { capEventPayload, extractProviderConversationId } from "./sessionPayloadCaps.js";
 
 describe("extractProviderConversationId", () => {
   it("skips oversized JSON-like lines before parsing (audit-2026-05-14 M8)", () => {
@@ -8,5 +8,23 @@ describe("extractProviderConversationId", () => {
     const validLine = '{"type":"thread.started","thread_id":"thread-123"}';
 
     expect(extractProviderConversationId(`${hugeLine}\n${validLine}`, "codex")).toBe("thread-123");
+  });
+});
+
+describe("capEventPayload", () => {
+  it("marks oversized-payload sibling events as internal raw debug events", () => {
+    const result = capEventPayload({ output: "x".repeat(70_000) }, "message.delta");
+
+    expect(result.payload).toMatchObject({ truncated: true });
+    expect(result.sibling).toMatchObject({
+      type: "error",
+      message: "event payload truncated",
+      payload: {
+        raw: true,
+        internal: true
+      }
+    });
+    expect(typeof result.sibling?.payload.originalSize).toBe("number");
+    expect(typeof result.sibling?.payload.truncatedEventId).toBe("string");
   });
 });

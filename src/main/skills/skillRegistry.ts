@@ -19,6 +19,10 @@ import type { ProviderId, SkillSource, SkillSummary } from "../../shared/types.j
  *     - ~/.codex/prompts/<name>.md                                    (codex-prompt)
  *     - ~/.codex/plugins/cache/<dist>/<plugin>/<v>/skills/<name>/     (plugin)
  *     - <workspaceCwd>/.codex/skills/<name>/SKILL.md                  (workspace)
+ *   cursor:
+ *     - ~/.cursor/skills/<name>/SKILL.md                              (user)
+ *     - ~/.cursor/plugins/cache/<dist>/<plugin>/<v>/skills/<name>/    (plugin)
+ *     - <workspaceCwd>/.cursor/skills/<name>/SKILL.md                 (workspace)
  *
  * Precedence on name collision: workspace > user > codex-prompt > system > plugin.
  * Skills are slash-invokable in different ways across CLIs (Codex prompts are
@@ -136,10 +140,26 @@ function resolveSources(input: ListSkillsInput): SourceDescriptor[] {
       root: join(home, ".codex", "plugins", "cache"),
       source: "plugin"
     });
+  } else if (input.provider === "cursor") {
+    if (input.workspaceCwd) {
+      sources.push({
+        kind: "skill-dir",
+        root: join(input.workspaceCwd, ".cursor", "skills"),
+        source: "workspace"
+      });
+    }
+    sources.push({
+      kind: "skill-dir",
+      root: join(home, ".cursor", "skills"),
+      source: "user",
+      excludeDotDirs: true
+    });
+    sources.push({
+      kind: "plugin-cache",
+      root: join(home, ".cursor", "plugins", "cache"),
+      source: "plugin"
+    });
   }
-  // Cursor: no skill sources yet. cursor-agent reads rules from ~/.cursor/rules
-  // and the workspace's `.cursor/rules` directory, which are not Argmax skills
-  // and don't map onto the slash-autocomplete contract.
 
   return sources;
 }

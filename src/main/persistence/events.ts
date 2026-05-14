@@ -64,7 +64,7 @@ export interface SessionEventsSinceResult {
 }
 
 export function eventRowToTimelineEvent(row: EventRow): TimelineEvent {
-  return {
+  const event: TimelineEvent = {
     id: row.id,
     sessionId: row.session_id,
     type: row.type,
@@ -72,16 +72,24 @@ export function eventRowToTimelineEvent(row: EventRow): TimelineEvent {
     payload: safeJsonParseRecord(row.payload_json, "database.eventPayload"),
     createdAt: row.created_at
   };
+  if (typeof row.row_cursor === "number") {
+    event.rowCursor = row.row_cursor;
+  }
+  return event;
 }
 
 export function rawOutputRowToProviderOutput(row: RawOutputRow): RawProviderOutput {
-  return {
+  const output: RawProviderOutput = {
     id: row.id,
     sessionId: row.session_id,
     stream: row.stream,
     content: row.content,
     createdAt: row.created_at
   };
+  if (typeof row.row_cursor === "number") {
+    output.rowCursor = row.row_cursor;
+  }
+  return output;
 }
 
 function maxRowCursor(rows: Array<{ row_cursor?: number }>, fallback: number): number {
@@ -93,7 +101,7 @@ export function persistTimelineEvent(
   input: PersistTimelineEventInput
 ): TimelineEvent {
   const createdAt = input.createdAt ?? new Date().toISOString();
-  prepared(
+  const result = prepared(
     connection,
     `
       INSERT INTO events (id, session_id, type, message, payload_json, created_at)
@@ -107,6 +115,7 @@ export function persistTimelineEvent(
     payloadJson: JSON.stringify(input.payload),
     createdAt
   });
+  const rowCursor = Number(result.lastInsertRowid);
 
   return {
     id: input.id,
@@ -114,15 +123,17 @@ export function persistTimelineEvent(
     type: input.type,
     message: input.message,
     payload: input.payload,
-    createdAt
+    createdAt,
+    rowCursor
   };
 }
 
 export function persistRawOutput(
   connection: Database.Database,
   input: PersistRawOutputInput
-): void {
-  prepared(
+): RawProviderOutput {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const result = prepared(
     connection,
     `
       INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
@@ -133,8 +144,17 @@ export function persistRawOutput(
     sessionId: input.sessionId,
     stream: input.stream,
     content: input.content,
-    createdAt: input.createdAt ?? new Date().toISOString()
+    createdAt
   });
+  const output: RawProviderOutput = {
+    id: input.id,
+    sessionId: input.sessionId,
+    stream: input.stream,
+    content: input.content,
+    createdAt,
+    rowCursor: Number(result.lastInsertRowid)
+  };
+  return output;
 }
 
 export function listSessionEventsSince(

@@ -42,6 +42,7 @@ interface SessionMultiGridProps {
   defaultToolCallsExpanded?: boolean;
   thinkingStyle?: ThinkingStyle;
   rightPanelToggleSignal?: number;
+  renderLauncher: (project: ProjectSummary | null) => JSX.Element;
   /** Which workspace is currently being dragged from the sidebar. The drop
       handlers use this directly instead of round-tripping through
       dataTransfer — Electron's synthetic-event path occasionally returns
@@ -70,6 +71,7 @@ export function SessionMultiGrid({
   defaultToolCallsExpanded,
   thinkingStyle,
   rightPanelToggleSignal,
+  renderLauncher,
   dragSourceWorkspaceId,
   onFocusPane,
   onClosePane,
@@ -186,17 +188,22 @@ export function SessionMultiGrid({
             style={{ gridTemplateColumns: templateColumns }}
           >
             {row.map((cell, c) => {
-              const session = sessionsById.get(cell.sessionId) ?? null;
-              const workspace = workspacesById.get(cell.workspaceId) ?? null;
+              const isLauncher = cell.kind === "launcher";
+              const session = !isLauncher ? sessionsById.get(cell.sessionId) ?? null : null;
+              const workspace = !isLauncher ? workspacesById.get(cell.workspaceId) ?? null : null;
               const project = workspace ? projectsById.get(workspace.projectId) ?? null : null;
+              const launcherProject = isLauncher ? projectsById.get(cell.projectId) ?? null : null;
               const focused = grid.focused?.row === r && grid.focused.col === c;
-              const paneLabel = workspace?.taskLabel || workspace?.branch || "Session pane";
+              const paneLabel = isLauncher
+                ? `New session${launcherProject ? ` for ${launcherProject.name}` : ""}`
+                : workspace?.taskLabel || workspace?.branch || "Session pane";
               const allowedDropPositions: EdgeDropPosition[] = [
                 ...(canAddGridCell && grid.rows.length < MAX_ROWS ? (["above", "below"] as const) : []),
                 ...(canAddGridCell && row.length < MAX_COLS ? (["left", "right"] as const) : [])
               ];
+              const cellKey = isLauncher ? `launcher-${cell.projectId}-${r}-${c}` : `${cell.sessionId}-${r}-${c}`;
               return (
-                <Fragment key={`${cell.sessionId}-${r}-${c}`}>
+                <Fragment key={cellKey}>
                   <div
                     className="session-multigrid-cell"
                     data-focused={focused ? "true" : undefined}
@@ -205,26 +212,30 @@ export function SessionMultiGrid({
                     aria-current={focused ? "true" : undefined}
                     onPointerDownCapture={() => onFocusPane({ row: r, col: c })}
                   >
-                    <SessionPane
-                      approvals={approvals}
-                      checks={checks}
-                      defaultToolCallsExpanded={defaultToolCallsExpanded}
-                      events={events}
-                      isFocused={focused}
-                      onClose={() => onClosePane({ row: r, col: c })}
-                      onCreateCheckpoint={onCreateCheckpoint}
-                      onLoadSessionEvents={onLoadSessionEvents}
-                      onResolveApproval={onResolveApproval}
-                      onRunCheck={onRunCheck}
-                      onSendSessionInput={onSendSessionInput}
-                      onTerminateSession={onTerminateSession}
-                      project={project}
-                      rawOutputs={rawOutputs}
-                      rightPanelToggleSignal={rightPanelToggleSignal}
-                      session={session}
-                      thinkingStyle={thinkingStyle}
-                      workspace={workspace}
-                    />
+                    {isLauncher ? (
+                      renderLauncher(launcherProject)
+                    ) : (
+                      <SessionPane
+                        approvals={approvals}
+                        checks={checks}
+                        defaultToolCallsExpanded={defaultToolCallsExpanded}
+                        events={events}
+                        isFocused={focused}
+                        onClose={() => onClosePane({ row: r, col: c })}
+                        onCreateCheckpoint={onCreateCheckpoint}
+                        onLoadSessionEvents={onLoadSessionEvents}
+                        onResolveApproval={onResolveApproval}
+                        onRunCheck={onRunCheck}
+                        onSendSessionInput={onSendSessionInput}
+                        onTerminateSession={onTerminateSession}
+                        project={project}
+                        rawOutputs={rawOutputs}
+                        rightPanelToggleSignal={rightPanelToggleSignal}
+                        session={session}
+                        thinkingStyle={thinkingStyle}
+                        workspace={workspace}
+                      />
+                    )}
                     {dragActive && dragSourceWorkspaceId && allowedDropPositions.length > 0 ? (
                       <DropZones
                         allowedPositions={allowedDropPositions}

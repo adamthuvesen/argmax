@@ -93,14 +93,27 @@ export function summarizeToolGroup(tools: ToolCall[]): { headline: string; previ
   else if (every((n) => /write|edit|patch|create/.test(n))) headline = `Edited ${tools.length} files`;
 
   const previewParts: string[] = [];
+  let skipped = 0;
   for (const tool of tools) {
     const raw = tool.inputPreview;
-    if (!raw) continue;
-    const trimmed = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
+    if (!raw) {
+      skipped++;
+      continue;
+    }
+    // For path-like previews keep the basename; for other shapes leave
+    // intact. Trim and skip empties so a trailing slash (e.g. "foo/")
+    // doesn't produce a blank " / / …" gap in the eyebrow.
+    const candidate = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
+    const trimmed = candidate.trim();
+    if (!trimmed) {
+      skipped++;
+      continue;
+    }
     previewParts.push(trimmed.slice(0, 28));
     if (previewParts.length === 3) break;
   }
-  const preview = previewParts.join(" / ") + (tools.length > previewParts.length ? " / …" : "");
+  const shown = previewParts.length;
+  const preview = previewParts.join(" / ") + (tools.length - skipped > shown ? " / …" : "");
   const worstStatus: ToolCall["status"] = tools.some((t) => t.status === "error")
     ? "error"
     : tools.some((t) => t.status === "running")

@@ -2747,171 +2747,106 @@ button {
   }
 }
 
+/* Thinking transcript — a single line of mono on paper.
+   The sage dot pulses as the only loading state; the command text types
+   itself in via React; the caret blinks twice and settles. No pill, no
+   border, no scan effect — just typography. */
 .thinking-indicator {
-  width: min(360px, 100%);
-  min-height: 74px;
+  width: auto;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--muted-strong);
-  background: var(--panel-soft);
-  overflow: hidden;
+  border-radius: 0;
+  overflow: visible;
+  animation: thinking-fade-in 220ms var(--ease) both;
 }
 
 .command-stream {
-  position: relative;
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  display: inline-flex;
+  align-items: baseline;
   gap: 10px;
-  align-items: center;
-  min-height: 50px;
-  padding: 10px 0 14px;
+  min-height: 0;
+  padding: 4px 0 2px;
 }
 
-.command-stream-glyph {
-  width: 8px;
-  height: 8px;
+.thinking-pulse {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  align-self: center;
   border-radius: 999px;
   background: var(--sage);
-  box-shadow: 0 0 0 4px var(--sage-soft);
-  animation: command-tick 1.8s var(--ease) infinite;
+  box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.18);
+  animation: thinking-pulse 1.6s var(--ease) infinite;
 }
 
-.command-stream-line {
-  position: relative;
+.thinking-line {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
-  height: 28px;
-  overflow: hidden;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--panel-sunken);
-  color: var(--text-soft);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1;
+  font-size: 12.5px;
+  line-height: 1.2;
+  letter-spacing: 0.005em;
 }
 
-.command-stream-line::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 42%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
-  transform: translateX(-120%);
-  animation: command-scan 1.7s var(--ease) infinite;
-  pointer-events: none;
-}
-
-.command-stream-prompt {
-  margin-right: 7px;
+.thinking-prompt {
   color: var(--sage-deep);
-  font-weight: 700;
+  font-weight: 600;
 }
 
-.command-stream-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.thinking-text {
+  color: var(--text-soft);
+  white-space: pre;
 }
 
-.command-stream-caret {
-  flex: 0 0 auto;
+.thinking-caret {
+  display: inline-block;
   width: 6px;
-  height: 14px;
-  margin-left: 8px;
-  border-radius: 2px;
-  background: var(--muted);
-  animation: command-caret 1.1s steps(2, end) infinite;
+  height: 12px;
+  margin-left: 2px;
+  background: var(--sage-deep);
+  border-radius: 1px;
+  transform: translateY(2px);
+  animation: thinking-caret-blink 0.9s steps(2, end) infinite;
 }
 
-.command-stream-ticks {
-  display: inline-flex;
-  gap: 4px;
+.thinking-caret.settled {
+  animation: thinking-caret-settle 0.9s steps(2, end) 2 forwards;
 }
 
-.command-stream-ticks span {
-  width: 5px;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--line-strong);
-  animation: command-tick 1.1s var(--ease) infinite;
+@keyframes thinking-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.command-stream-ticks span:nth-child(2) {
-  animation-delay: 0.12s;
-}
-
-.command-stream-ticks span:nth-child(3) {
-  animation-delay: 0.24s;
-}
-
-.command-stream-ticks span:nth-child(4) {
-  animation-delay: 0.36s;
-}
-
-.command-stream-trace {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--line);
-}
-
-.command-stream-trace::after {
-  content: "";
-  display: block;
-  width: 34%;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, transparent, var(--sage), transparent);
-  transform: translateX(-110%);
-  animation: command-trace 1.5s var(--ease) infinite;
-}
-
-@keyframes command-scan {
-  0% {
-    transform: translateX(-120%);
-  }
-  58%,
-  100% {
-    transform: translateX(260%);
-  }
-}
-
-@keyframes command-caret {
-  0%,
-  45% {
-    opacity: 0.25;
-  }
-  46%,
-  100% {
-    opacity: 0.85;
-  }
-}
-
-@keyframes command-tick {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scaleY(0.55);
+@keyframes thinking-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+    box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.12);
   }
   50% {
-    opacity: 0.9;
-    transform: scaleY(1);
+    transform: scale(1.15);
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(90, 143, 114, 0.22);
   }
 }
 
-@keyframes command-trace {
-  0% {
-    transform: translateX(-110%);
-  }
-  100% {
-    transform: translateX(320%);
-  }
+@keyframes thinking-caret-blink {
+  0%, 49%   { opacity: 0.25; }
+  50%, 100% { opacity: 0.95; }
+}
+
+@keyframes thinking-caret-settle {
+  0%, 49%   { opacity: 0.25; }
+  50%, 100% { opacity: 0; }
 }
 
 .conversation-empty {
@@ -3192,90 +3127,155 @@ button {
   flex: 0 0 auto;
 }
 
+/* Tool-call group — editorial margin note.
+   A single sage-deep rail runs down the left side; the header reads as a
+   small-caps eyebrow + slash-separated preview; child rows fade in with a
+   short stagger. No panel chrome, no icon stack — just typography and one
+   accent thread. */
 .tool-call-group {
+  position: relative;
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  padding-left: 16px;
   background: transparent;
+  border-radius: 0;
   animation: msg-in 200ms var(--ease) both;
-  position: relative;
 }
 
-.tool-call-group[data-status="running"] {
-  background: var(--panel-soft);
+.tool-call-group::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--sage-deep);
+  opacity: 0.55;
+  transition: opacity var(--duration-base) var(--ease);
 }
 
-.tool-call-group[data-status="error"] {
-  background: var(--panel-soft);
+.tool-call-group[data-expanded="true"]::before {
+  opacity: 0.85;
+}
+
+.tool-call-group[data-status="running"]::before {
+  background: var(--amber);
+  opacity: 0.7;
+  animation: rail-pulse 1.8s var(--ease) infinite;
+}
+
+.tool-call-group[data-status="error"]::before {
+  background: var(--rose);
+  opacity: 0.7;
+}
+
+@keyframes rail-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 0.85; }
 }
 
 .tool-call-group-header {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 10px;
   width: 100%;
-  padding: 9px 10px;
+  padding: 6px 4px 6px 0;
   text-align: left;
   border: 0;
-  border-radius: 8px;
   background: transparent;
   cursor: pointer;
   color: var(--muted-strong);
   font-size: 12.5px;
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+  transition: color var(--duration-fast) var(--ease);
 }
 
 .tool-call-group-header:hover {
-  background: var(--panel-sunken);
   color: var(--text);
 }
 
-.tool-call-group-stack {
+.tool-call-group-header:hover .tool-call-group-toggle {
+  color: var(--sage-deep);
+}
+
+.tool-call-group-eyebrow {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   flex: 0 0 auto;
-  color: var(--muted);
 }
 
-.tool-call-group-stack-icon {
-  display: inline-flex;
-  align-items: center;
-  margin-left: -6px;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--panel);
-  border: 1px solid var(--line-soft);
-}
-
-.tool-call-group-stack-icon:first-child {
-  margin-left: 0;
-}
-
-
-.tool-call-group-headline {
-  font-weight: 600;
+.tool-call-group-eyebrow-label {
   font-family: var(--font-mono);
-  font-size: 11.5px;
-  flex: 0 0 auto;
-  color: var(--text);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sage-deep);
 }
 
 .tool-call-group-preview {
   min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
+}
+
+.tool-call-group-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--muted);
+  transition: color var(--duration-fast) var(--ease);
 }
 
 .tool-call-group-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 6px 8px;
+  gap: 0;
+  padding: 2px 0 8px;
+}
+
+.tool-call-group-row {
+  animation: tool-row-in 220ms var(--ease) both;
+}
+
+@keyframes tool-row-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Inside a group, the per-item status chip drops its colored pill —
+   the rail carries the group's state, and each row gets a tiny dot
+   + tabular-nums timing on the right margin. */
+.tool-call-group-body .tool-call-status-chip {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding: 0;
+  gap: 6px;
+  color: var(--muted-strong);
+  font-size: 11px;
+}
+
+.tool-call-group-body .tool-call-item[data-status="done"] .tool-call-status-glyph {
+  color: var(--sage);
+}
+
+.tool-call-group-body .tool-call-item[data-status="running"] .tool-call-status-glyph {
+  color: var(--amber);
+}
+
+.tool-call-group-body .tool-call-item[data-status="error"] .tool-call-status-glyph {
+  color: var(--rose);
 }
 
 .tool-call-item--nested {
@@ -5620,16 +5620,11 @@ button {
     transition-duration: 0.001ms !important;
   }
 
-  .command-stream-line::after {
-    display: none;
-  }
-
-  .command-stream-glyph,
-  .command-stream-caret,
-  .command-stream-ticks span,
-  .command-stream-trace::after {
-    opacity: 0.65;
+  .thinking-pulse,
+  .thinking-caret {
+    opacity: 0.7;
     transform: none;
+    box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.14);
   }
 }
 

@@ -52,6 +52,7 @@ import { matchFileChip } from "../lib/fileChipPath.js";
 import { FileChip } from "./FileChip.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
+import { ThinkingTranscript } from "./ThinkingTranscript.js";
 import { ToolCallBubble } from "./ToolCallBubble.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { TurnBlock, type TurnToolItem } from "./TurnBlock.js";
@@ -632,23 +633,7 @@ export function SessionConversation({
           </button>
         ) : null}
         {isThinking ? (
-          <article className="chat-bubble assistant thinking-indicator" aria-live="polite" aria-label="Thinking">
-            <div className="command-stream" data-testid="command-stream" aria-hidden="true">
-              <span className="command-stream-glyph" />
-              <span className="command-stream-line">
-                <span className="command-stream-prompt">$</span>
-                <span className="command-stream-text">argmax run --model {thinkingModelSlug(selectedModel)}</span>
-                <span className="command-stream-caret" />
-              </span>
-              <span className="command-stream-ticks">
-                <span />
-                <span />
-                <span />
-                <span />
-              </span>
-              <span className="command-stream-trace" />
-            </div>
-          </article>
+          <ThinkingTranscript command={`run --model ${thinkingModelSlug(selectedModel)}`} />
         ) : null}
       </div>
       <div className="session-meta-cards" ref={metaCardsRef}>

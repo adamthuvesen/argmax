@@ -56,7 +56,10 @@ function makeRow(over: Partial<GhPrRecord>): GhPrRecord {
     prNumber: 1,
     headSha: "sha-1",
     lastSeenCheckState: "failure",
-    updatedAt: "2026-05-13T08:00:00.000Z",
+    // Fresh timestamp — the poller's M6 staleness guard skips rows older than
+    // 2× the poll interval. Tests that want to exercise the staleness path
+    // should override `updatedAt` explicitly.
+    updatedAt: new Date().toISOString(),
     ...over
   };
 }
@@ -174,6 +177,33 @@ describe("GhPoller.tick", () => {
     expect(notifyCheckFailure).toHaveBeenCalledTimes(1);
     expect(notifyCheckFailure.mock.calls[0]?.[0]?.id).toBe(sessionId);
     expect(notifyCheckFailure.mock.calls[0]?.[1]?.prNumber).toBe(1);
+    database.connection.close();
+  });
+
+  it("does not act on stale cached failure rows (audit-2026-05-14 M6)", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const { sessionId } = seed(database);
+
+    // Row with an updatedAt that's well outside the freshness window. Pre-fix,
+    // an app restart that cleared the in-memory dedup set would re-trigger a
+    // follow-up for this stale cache row. Post-fix, the staleness guard
+    // skips it.
+    const staleUpdatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const refresh = vi
+      .fn<(sid: string) => Promise<GhPrRecord[]>>()
+      .mockResolvedValue([makeRow({ sessionId, updatedAt: staleUpdatedAt })]);
+    const launchFollowUp = vi.fn<(ctx: CheckFailureContext) => Promise<void>>().mockResolvedValue();
+
+    const poller = new GhPoller({
+      database,
+      ghService: { refresh },
+      launchFollowUp,
+      intervalMs: 60_000
+    });
+
+    await poller.tick();
+
+    expect(launchFollowUp).not.toHaveBeenCalled();
     database.connection.close();
   });
 });

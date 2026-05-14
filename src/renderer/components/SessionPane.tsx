@@ -13,8 +13,6 @@ import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   ApprovalRequest,
   CheckRun,
-  CommitPreparation,
-  PrepareCommitInput,
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
@@ -24,6 +22,7 @@ import type {
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
+import { CommitDialog } from "./CommitDialog.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
 import { FileSearchOverlay } from "./FileSearchOverlay.js";
 import { ReviewPanel } from "./ReviewPanel.js";
@@ -49,10 +48,10 @@ export function SessionPane({
   onSendSessionInput,
   onTerminateSession,
   onCreateCheckpoint,
-  onPrepareCommit,
   onRunCheck,
   project,
   rawOutputs,
+  rightPanelToggleSignal,
   session,
   thinkingStyle,
   workspace
@@ -65,10 +64,10 @@ export function SessionPane({
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
-  onPrepareCommit?: (input: PrepareCommitInput) => Promise<CommitPreparation>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
+  rightPanelToggleSignal?: number;
   session: SessionSummary | null;
   thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
@@ -81,6 +80,7 @@ export function SessionPane({
     [workspace]
   );
   const reviewState = useReviewState(reviewSource);
+  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
@@ -178,15 +178,18 @@ export function SessionPane({
   // useReviewState — not the parent object, which would expand the effect's
   // dep audit to the whole review state and trip exhaustive-deps.
   const reviewTogglePanel = reviewState.togglePanel;
+  const reviewClosePanel = reviewState.closePanel;
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
+  const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
+  const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
+  const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "b") return;
-      if (isTypingTarget(event.target)) return;
       event.preventDefault();
       reviewTogglePanel();
     };
@@ -194,24 +197,43 @@ export function SessionPane({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [reviewTogglePanel]);
 
-  // Cmd/Ctrl+P opens the file quick-open overlay — gated on the panel being open.
   useEffect(() => {
-    if (!reviewIsPanelOpen) return undefined;
+    if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
+    lastRightPanelToggleSignal.current = rightPanelToggleSignal;
+    if (!workspace) return;
+    reviewTogglePanel();
+  }, [reviewTogglePanel, rightPanelToggleSignal, workspace]);
+
+  // Cmd/Ctrl+P opens file quick-open for the current workspace. Picking a
+  // result opens the right panel in Files mode, matching the launcher flow.
+  useEffect(() => {
+    if (!workspace) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "p") return;
-      if (isTypingTarget(event.target)) return;
       event.preventDefault();
       setIsQuickOpenOpen(true);
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [reviewIsPanelOpen]);
+  }, [workspace]);
 
   useEffect(() => {
-    if (!reviewIsPanelOpen) setIsQuickOpenOpen(false);
-  }, [reviewIsPanelOpen]);
+    if (!workspace) setIsQuickOpenOpen(false);
+  }, [workspace]);
+
+  useEffect(() => {
+    if (!reviewIsPanelOpen || isQuickOpenOpen) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      reviewClosePanel();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [reviewClosePanel, reviewIsPanelOpen, isQuickOpenOpen]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -297,6 +319,7 @@ export function SessionPane({
           defaultToolCallsExpanded={defaultToolCallsExpanded}
           events={visibleEvents}
           isLogOpen={isLogOpen}
+          onOpenCommitDialog={handleOpenCommitDialog}
           onSendSessionInput={onSendSessionInput}
           onTerminateSession={onTerminateSession}
           onCreateCheckpoint={onCreateCheckpoint}
@@ -392,11 +415,18 @@ export function SessionPane({
         <ReviewPanel
           review={reviewState}
           onResizePanelMouseDown={onRightPanelResizeMouseDown}
-          workspace={workspace}
-          onPrepareCommit={onPrepareCommit}
         />
       ) : null}
-      {reviewState.isPanelOpen && workspace ? (
+      {workspace ? (
+        <CommitDialog
+          open={isCommitDialogOpen}
+          onClose={handleCloseCommitDialog}
+          workspaceId={workspace.id}
+          files={reviewState.files}
+          defaultMessage={workspace.taskLabel}
+        />
+      ) : null}
+      {workspace ? (
         <FileSearchOverlay
           open={isQuickOpenOpen}
           onClose={() => setIsQuickOpenOpen(false)}

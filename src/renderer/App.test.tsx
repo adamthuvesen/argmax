@@ -109,8 +109,12 @@ describe("App", () => {
   let pickProjectFolder: ReturnType<typeof vi.fn<ArgmaxApi["projects"]["pickFolder"]>>;
   let listChangedFiles: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFiles"]>>;
   let loadDiff: ReturnType<typeof vi.fn<ArgmaxApi["review"]["loadDiff"]>>;
+  let listChangedFilesForProject: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFilesForProject"]>>;
+  let loadDiffForProject: ReturnType<typeof vi.fn<ArgmaxApi["review"]["loadDiffForProject"]>>;
   let listWorkspaceFiles: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["listFiles"]>>;
   let readWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
+  let listProjectFiles: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["listFilesForProject"]>>;
+  let readProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFileForProject"]>>;
   let sessionEventsSince: ReturnType<typeof vi.fn<ArgmaxApi["session"]["eventsSince"]>>;
   let sessionCostSummary: ReturnType<typeof vi.fn<ArgmaxApi["session"]["costSummary"]>>;
   let sendProviderInput: ReturnType<typeof vi.fn<ArgmaxApi["providers"]["sendInput"]>>;
@@ -244,6 +248,12 @@ describe("App", () => {
       filePath: null,
       content: ""
     });
+    listChangedFilesForProject = vi.fn<ArgmaxApi["review"]["listChangedFilesForProject"]>().mockResolvedValue([]);
+    loadDiffForProject = vi.fn<ArgmaxApi["review"]["loadDiffForProject"]>().mockResolvedValue({
+      workspaceId: "",
+      filePath: null,
+      content: ""
+    });
     listWorkspaceFiles = vi.fn<ArgmaxApi["workspace"]["listFiles"]>().mockResolvedValue([]);
     readWorkspaceFile = vi.fn<ArgmaxApi["workspace"]["readFile"]>().mockResolvedValue({
       kind: "text",
@@ -251,6 +261,11 @@ describe("App", () => {
       size: 0,
       mtimeMs: 0
     });
+    listProjectFiles = vi.fn<ArgmaxApi["workspace"]["listFilesForProject"]>().mockResolvedValue([]);
+    readProjectFile = vi.fn<ArgmaxApi["workspace"]["readFileForProject"]>().mockResolvedValue({
+      kind: "skipped",
+      reason: "not-a-file"
+    } as const);
     skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
     openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
     listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
@@ -310,18 +325,16 @@ describe("App", () => {
       review: {
         listChangedFiles,
         loadDiff,
-        listChangedFilesForProject: () => Promise.resolve([]),
-        loadDiffForProject: () =>
-          Promise.resolve({ workspaceId: "", filePath: null, content: "" })
+        listChangedFilesForProject,
+        loadDiffForProject
       },
       workspace: {
         listFiles: listWorkspaceFiles,
         readFile: readWorkspaceFile,
         writeFile: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
         statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
-        listFilesForProject: () => Promise.resolve([]),
-        readFileForProject: () =>
-          Promise.resolve({ kind: "skipped", reason: "not-a-file" } as const)
+        listFilesForProject: listProjectFiles,
+        readFileForProject: readProjectFile
       },
       checks: {
         run: () => Promise.resolve(missingCheck())
@@ -331,16 +344,6 @@ describe("App", () => {
       },
       attempts: {
         selectPreferred: () => Promise.resolve(snapshot.sessions[0] ?? missingSession())
-      },
-      commits: {
-        prepare: () =>
-          Promise.resolve({
-            workspaceId: "workspace-1",
-            branch: "argmax/dashboard",
-            selectedFiles: ["src/renderer/App.tsx"],
-            message: "feat: test",
-            commands: ["git add -- 'src/renderer/App.tsx'", "git commit -m 'feat: test'"]
-          })
       },
       health: {
         ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" })
@@ -355,7 +358,15 @@ describe("App", () => {
         vacuumDatabase: vacuumDatabaseStub
       },
       mcp: {
-        list: () => Promise.resolve([])
+        list: () => Promise.resolve([]),
+        auth: {
+          start: () => Promise.resolve({ sessionId: "test-mcp-auth" }),
+          write: () => Promise.resolve({ ok: true }),
+          resize: () => Promise.resolve({ ok: true }),
+          terminate: () => Promise.resolve({ ok: true }),
+          onData: () => () => undefined,
+          onExit: () => () => undefined
+        }
       },
       menu: {
         onCommand: (listener) => {
@@ -1739,6 +1750,11 @@ describe("App", () => {
     expect(await screen.findByText("16 unmodified lines")).toBeInTheDocument();
     expect(screen.getByText("const oldValue = true;")).toBeInTheDocument();
     expect(screen.getByText("const newValue = true;")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
+    );
   });
 
   it("browses workspace files via the Files tab and previews a selection", async () => {
@@ -1780,6 +1796,35 @@ describe("App", () => {
     expect(preview).toHaveTextContent("export const hello = 'world';");
   });
 
+  it("opens workspace file search from a chat session with Cmd+P", async () => {
+    listChangedFiles.mockResolvedValue([]);
+    listWorkspaceFiles.mockResolvedValue([
+      { path: "src/main/index.ts" },
+      { path: "src/renderer/App.tsx" }
+    ]);
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "export const hello = 'world';\n",
+      size: 30,
+      mtimeMs: 0
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "p", metaKey: true });
+
+    const search = await screen.findByRole("dialog", { name: "Search files in workspace" });
+    expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
+    fireEvent.change(within(search).getByPlaceholderText("Search files…"), { target: { value: "index" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/index.ts"));
+  });
+
   it("shows a placeholder when a previewed file is binary or too large", async () => {
     listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([{ path: "assets/logo.png" }]);
@@ -1813,6 +1858,92 @@ describe("App", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("/plan ");
     expect(launchProvider).not.toHaveBeenCalled();
+  });
+
+  it("opens project file search from the launcher with Cmd+P", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src/renderer/App.tsx" },
+      { path: "README.md" }
+    ]);
+    readProjectFile.mockResolvedValue({
+      kind: "text",
+      content: "export function App() {}\n",
+      size: 25,
+      mtimeMs: 0
+    });
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "p", metaKey: true });
+
+    const search = await screen.findByRole("dialog", { name: "Search files in project" });
+    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+    fireEvent.change(within(search).getByPlaceholderText("Search files…"), { target: { value: "app" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith("project-1", "src/renderer/App.tsx"));
+  });
+
+  it("opens the launcher review panel in project files mode with Cmd+B", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src/main/main.ts" },
+      { path: "README.md" }
+    ]);
+
+    render(<App />);
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: "b", metaKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(screen.queryByText("2 files")).not.toBeInTheDocument();
+    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
+    );
+  });
+
+  it("opens the launcher review panel when Electron sends the Cmd+B menu command", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src/main/main.ts" },
+      { path: "README.md" }
+    ]);
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+    expect(menuCommandListener).not.toBeNull();
+    act(() => {
+      menuCommandListener?.("toggle-sidebar");
+    });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+  });
+
+  it("opens project file search from the launcher after Cmd+B opens review", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src/renderer/App.tsx" },
+      { path: "README.md" }
+    ]);
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "p", metaKey: true });
+
+    expect(await screen.findByRole("dialog", { name: "Search files in project" })).toBeInTheDocument();
+    expect(screen.getByText("App.tsx")).toBeInTheDocument();
   });
 
   it("opens a slash autocomplete with provider-filtered skills and inserts the selected name", async () => {
@@ -1966,7 +2097,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
-  it("renders a token cell on each session row summing input + output", async () => {
+  it("hides sidebar session tokens by default and shows them when enabled in Settings", async () => {
     sessionCostSummary.mockResolvedValue({
       sessionId: "session-1",
       modelId: "gpt-5.3-codex",
@@ -1990,6 +2121,15 @@ describe("App", () => {
       });
     });
 
+    expect(screen.queryByLabelText(/Tokens: 16\.8k/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Appearance" });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show session tokens in sidebar" }));
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.sidebar.tokens.visible")).toBe("true")
+    );
     // 12.3k + 4.5k = 16.8k displayed; cache reads stay in the tooltip only.
     const cell = await screen.findByLabelText(/Tokens: 16\.8k/);
     expect(cell).toHaveTextContent("16.8k");
@@ -2264,10 +2404,6 @@ function missingWorkspace(): never {
 
 function missingSession(): never {
   throw new Error("Test snapshot must include a session");
-}
-
-function missingApproval(): never {
-  throw new Error("Test snapshot must include an approval");
 }
 
 function missingCheck(): never {

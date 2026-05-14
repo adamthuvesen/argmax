@@ -88,6 +88,13 @@ export const RENDERER_ONLY_KEYBINDINGS: ReadonlyArray<Omit<MenuKeybinding, "menu
   {
     command: "new-session",
     accelerator: "",
+    displayAccelerator: "⌘P",
+    label: "Open file search",
+    menuLocation: null
+  },
+  {
+    command: "new-session",
+    accelerator: "",
     displayAccelerator: "⌘F",
     label: "Global search",
     menuLocation: null

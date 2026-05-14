@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { ChangedFileSummary, CommitPreparation, PrepareCommitInput } from "../../shared/types.js";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import type { ChangedFileSummary, GitCommitResult } from "../../shared/types.js";
+
+interface Feedback {
+  kind: "success" | "error";
+  message: string;
+}
 
 export function CommitDialog({
   open,
@@ -7,20 +13,20 @@ export function CommitDialog({
   workspaceId,
   files,
   defaultMessage,
-  onPrepareCommit
+  onCommitted
 }: {
   open: boolean;
   onClose: () => void;
   workspaceId: string;
   files: ChangedFileSummary[];
   defaultMessage: string;
-  onPrepareCommit: (input: PrepareCommitInput) => Promise<CommitPreparation>;
+  onCommitted?: (result: GitCommitResult) => void;
 }): JSX.Element | null {
   const allPaths = useMemo(() => files.map((file) => file.path), [files]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(allPaths));
   const [message, setMessage] = useState<string>(defaultMessage);
-  const [prepared, setPrepared] = useState<CommitPreparation | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   // Reset state every time the dialog re-opens so the user always starts from
   // the freshest changed-file list and the default message.
@@ -28,14 +34,15 @@ export function CommitDialog({
     if (!open) return;
     setSelected(new Set(allPaths));
     setMessage(defaultMessage);
-    setPrepared(null);
     setSubmitting(false);
+    setFeedback(null);
   }, [open, allPaths, defaultMessage]);
 
   if (!open) return null;
 
   const allSelected = allPaths.length > 0 && selected.size === allPaths.length;
-  const submitDisabled = submitting || selected.size === 0 || message.trim().length === 0;
+  const submitDisabled =
+    submitting || selected.size === 0 || message.trim().length === 0 || allPaths.length === 0;
 
   const togglePath = (path: string): void => {
     setSelected((current) => {
@@ -54,18 +61,22 @@ export function CommitDialog({
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (submitDisabled) return;
+    if (submitDisabled || !window.argmax) return;
     setSubmitting(true);
+    setFeedback(null);
     try {
-      const result = await onPrepareCommit({
+      const result = await window.argmax.git.commit({
         workspaceId,
-        selectedFiles: Array.from(selected),
-        message: message.trim()
+        message: message.trim(),
+        selectedFiles: Array.from(selected)
       });
-      setPrepared(result);
-    } catch {
-      // The parent shows an error toast — keep the dialog open so the user can
-      // adjust the message or file selection without retyping everything.
+      onCommitted?.(result);
+      onClose();
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Commit failed."
+      });
     } finally {
       setSubmitting(false);
     }
@@ -109,25 +120,29 @@ export function CommitDialog({
           <span>Stage all ({allPaths.length})</span>
         </label>
 
-        <ul className="commit-dialog-files" role="list" aria-label="Changed files">
-          {files.map((file) => (
-            <li key={file.path}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={selected.has(file.path)}
-                  aria-label={`Stage ${file.path}`}
-                  onChange={() => togglePath(file.path)}
-                />
-                <span className="commit-dialog-file-path">{file.path}</span>
-                <span className="commit-dialog-file-counts">
-                  <span className="commit-dialog-additions">+{file.additions}</span>
-                  <span className="commit-dialog-deletions">−{file.deletions}</span>
-                </span>
-              </label>
-            </li>
-          ))}
-        </ul>
+        {allPaths.length === 0 ? (
+          <p className="commit-dialog-empty">No changes to commit.</p>
+        ) : (
+          <ul className="commit-dialog-files" role="list" aria-label="Changed files">
+            {files.map((file) => (
+              <li key={file.path}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(file.path)}
+                    aria-label={`Stage ${file.path}`}
+                    onChange={() => togglePath(file.path)}
+                  />
+                  <span className="commit-dialog-file-path">{file.path}</span>
+                  <span className="commit-dialog-file-counts">
+                    <span className="commit-dialog-additions">+{file.additions}</span>
+                    <span className="commit-dialog-deletions">−{file.deletions}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <label className="commit-dialog-message-label" htmlFor="commit-dialog-message">
           Commit message
@@ -141,25 +156,24 @@ export function CommitDialog({
           placeholder="type(scope): lowercase imperative"
         />
 
-        {prepared ? (
-          <section className="commit-dialog-prepared" aria-label="Prepared commit plan">
-            <p className="commit-dialog-prepared-title">Prepared plan</p>
-            <p className="commit-dialog-prepared-branch">
-              Branch <code>{prepared.branch}</code>
-            </p>
-            <ol className="commit-dialog-prepared-commands">
-              {prepared.commands.map((command) => (
-                <li key={command}>
-                  <code>{command}</code>
-                </li>
-              ))}
-            </ol>
-          </section>
+        {feedback ? (
+          <p
+            className={`commit-dialog-feedback commit-dialog-feedback--${feedback.kind}`}
+            role={feedback.kind === "error" ? "alert" : "status"}
+            aria-live={feedback.kind === "error" ? "assertive" : "polite"}
+          >
+            {feedback.kind === "success" ? (
+              <CheckCircle2 size={14} aria-hidden="true" />
+            ) : (
+              <AlertCircle size={14} aria-hidden="true" />
+            )}
+            <span>{feedback.message}</span>
+          </p>
         ) : null}
 
         <footer className="commit-dialog-actions">
           <button type="button" onClick={onClose}>
-            {prepared ? "Close" : "Cancel"}
+            Cancel
           </button>
           <button
             type="button"
@@ -169,7 +183,7 @@ export function CommitDialog({
               void handleSubmit();
             }}
           >
-            {submitting ? "Preparing…" : prepared ? "Re-prepare" : "Commit"}
+            {submitting ? "Committing…" : "Commit"}
           </button>
         </footer>
       </div>

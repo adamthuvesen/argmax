@@ -1,12 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
-  CommitPreparation,
   DashboardSnapshot,
   DetectedIde,
   IdeId,
-  MenuCommand,
-  PrepareCommitInput
+  MenuCommand
 } from "../shared/types.js";
 import type { MessageHit as PaletteMessageHit, PaletteCommand } from "./components/CommandPalette.js";
 // Heavy overlays are dynamic-imported on first open so the launcher's first
@@ -21,6 +19,7 @@ import { LaunchSurface } from "./components/LaunchSurface.js";
 const SearchOverlay = lazy(async () => ({
   default: (await import("./components/SearchOverlay.js")).SearchOverlay
 }));
+import { PerfOverlay } from "./components/PerfOverlay.js";
 import { SessionPane } from "./components/SessionPane.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
@@ -58,6 +57,12 @@ import { mergeDashboardDelta } from "./lib/snapshot.js";
 type ToastMessage = { kind: "error" | "info"; message: string };
 
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
+const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
+
+function readStoredSidebarTokensVisible(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(SIDEBAR_TOKENS_KEY) === "true";
+}
 
 export function App(): JSX.Element {
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
@@ -81,11 +86,13 @@ export function App(): JSX.Element {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY) : null;
     return raw === null ? true : raw === "true";
   });
+  const [sidebarTokensVisible, setSidebarTokensVisible] = useState<boolean>(() => readStoredSidebarTokensVisible());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>(() => readStoredThinkingStyle());
+  const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
 
   const showErrorToast = useCallback((message: string): void => {
     setToast({ kind: "error", message });
@@ -140,8 +147,10 @@ export function App(): JSX.Element {
         case "open-cheat-sheet":
           setIsCheatSheetOpen(true);
           return;
-        case "toggle-debug-log":
         case "toggle-sidebar":
+          setRightPanelToggleSignal((signal) => signal + 1);
+          return;
+        case "toggle-debug-log":
         case "check-for-updates":
           // Wired in later phase tasks (P2.06 cheat sheet, P4 review
           // surface for debug-log lift, P7 updater). Menu accelerator
@@ -175,6 +184,10 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
   }, [toolCallsExpanded]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_TOKENS_KEY, String(sidebarTokensVisible));
+  }, [sidebarTokensVisible]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -311,26 +324,6 @@ export function App(): JSX.Element {
       await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
     [refreshDashboardStatus, loadSessionEvents]
-  );
-
-  const prepareCommit = useCallback(
-    async (input: PrepareCommitInput): Promise<CommitPreparation> => {
-      if (!window.argmax) {
-        const message = "Open the Electron app window to prepare a commit.";
-        setToast({ kind: "error", message });
-        throw new Error(message);
-      }
-      try {
-        return await window.argmax.commits.prepare(input);
-      } catch (error) {
-        setToast({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not prepare commit."
-        });
-        throw error;
-      }
-    },
-    []
   );
 
   const toggleWorkspacePinned = useCallback(
@@ -638,6 +631,7 @@ export function App(): JSX.Element {
           </button>
         </div>
       ) : null}
+      <PerfOverlay />
       <Sidebar
         loadState={loadState}
         onToggleWorkspacePinned={(workspaceId, pinned) => void toggleWorkspacePinned(workspaceId, pinned)}
@@ -665,6 +659,7 @@ export function App(): JSX.Element {
         snapshot={snapshot}
         detectedIdes={detectedIdes}
         defaultIde={defaultIde}
+        showSessionTokens={sidebarTokensVisible}
       />
 
       <section className="workspace">
@@ -685,6 +680,8 @@ export function App(): JSX.Element {
               onDefaultModelChange={setLaunchModel}
               toolCallsExpanded={toolCallsExpanded}
               onToolCallsExpandedChange={setToolCallsExpanded}
+              sidebarTokensVisible={sidebarTokensVisible}
+              onSidebarTokensVisibleChange={setSidebarTokensVisible}
               fontFamily={fontFamily}
               onFontFamilyChange={setFontFamily}
               detectedIdes={detectedIdes}
@@ -706,11 +703,11 @@ export function App(): JSX.Element {
               onSendSessionInput={sendSessionInput}
               onTerminateSession={terminateSession}
               onCreateCheckpoint={createCheckpoint}
-              onPrepareCommit={prepareCommit}
               onRunCheck={runCheck}
               checks={snapshot.checks}
               project={selectedProject}
               rawOutputs={snapshot.rawOutputs}
+              rightPanelToggleSignal={rightPanelToggleSignal}
               session={selectedSession}
               thinkingStyle={thinkingStyle}
               workspace={selectedWorkspace}
@@ -725,6 +722,7 @@ export function App(): JSX.Element {
               onSelectProject={openProjectLauncher}
               project={selectedProject}
               projects={snapshot.projects}
+              rightPanelToggleSignal={rightPanelToggleSignal}
             />
           )}
         </div>

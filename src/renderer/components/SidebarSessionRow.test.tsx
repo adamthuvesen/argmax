@@ -40,6 +40,7 @@ describe("SidebarSessionRow", () => {
         onOpenInIde={vi.fn()}
         detectedIdes={detectedIdes}
         defaultIde="vscode"
+        showTokens={false}
       />
     );
 

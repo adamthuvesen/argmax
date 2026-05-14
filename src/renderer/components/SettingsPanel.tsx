@@ -1,10 +1,11 @@
-import { ChevronDown, ClipboardCopy, FolderOpen, RefreshCcw, X } from "lucide-react";
+import { ChevronDown, ClipboardCopy, FolderOpen, Key, RefreshCcw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type {
   DetectedIde,
   DiagnosticsReport,
   DiscoveredProvider,
   IdeId,
+  LogEntry,
   McpClientListing,
   ProjectSummary
 } from "../../shared/types.js";
@@ -15,6 +16,7 @@ import type { PermissionMode } from "../lib/permissionMode.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel.js";
+import { McpAuthDialog } from "./McpAuthDialog.js";
 
 const PROVIDER_INSTALL_HINTS: Record<string, { label: string; url: string }> = {
   claude: {
@@ -45,6 +47,8 @@ export function SettingsPanel({
   onDefaultModelChange,
   toolCallsExpanded,
   onToolCallsExpandedChange,
+  sidebarTokensVisible,
+  onSidebarTokensVisibleChange,
   fontFamily,
   onFontFamilyChange,
   detectedIdes,
@@ -61,6 +65,8 @@ export function SettingsPanel({
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   toolCallsExpanded: boolean;
   onToolCallsExpandedChange: (v: boolean) => void;
+  sidebarTokensVisible: boolean;
+  onSidebarTokensVisibleChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
   detectedIdes: DetectedIde[];
@@ -131,6 +137,8 @@ export function SettingsPanel({
       // Silently swallow — the UI shows the path inline so the user has a fallback.
     }
   }, []);
+
+  const [mcpAuthOpen, setMcpAuthOpen] = useState(false);
 
   const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
   const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
@@ -264,6 +272,14 @@ export function SettingsPanel({
               ? "Shows a rotating verb (“Gusting…”, “Pondering…”) while the model thinks."
               : "Types “argmax run --model …” as a terminal-style command while the model thinks."}
           </p>
+          <label className="settings-checkbox-row">
+            <input
+              type="checkbox"
+              checked={sidebarTokensVisible}
+              onChange={(event) => onSidebarTokensVisibleChange(event.target.checked)}
+            />
+            <span>Show session tokens in sidebar</span>
+          </label>
           <dl className="settings-keyvals">
             <div>
               <dt>Theme</dt>
@@ -479,8 +495,10 @@ export function SettingsPanel({
           <div>
             <h2 id="settings-mcp">MCP servers</h2>
             <p>
-              MCP servers configured for each CLI. Argmax reads the user-scope config files —
-              auth lives inside each CLI, so use its own commands to log in or out.
+              MCP servers configured for each CLI. Argmax reads the user-scope config files.
+              For Claude Code, click <em>Authenticate</em> to run <code>/mcp</code> in-app;
+              Codex and Cursor don’t expose a CLI auth flow, so edit their config files
+              directly to manage credentials.
             </p>
           </div>
           <button
@@ -510,6 +528,18 @@ export function SettingsPanel({
                       ? `${listing.servers.length} ${listing.servers.length === 1 ? "server" : "servers"}`
                       : "No config file"}
                   </span>
+                  {listing.client === "claude" ? (
+                    <button
+                      type="button"
+                      className="settings-mcp-auth"
+                      onClick={() => setMcpAuthOpen(true)}
+                      aria-label="Authenticate Claude MCP servers"
+                      title="Run `claude` and open the /mcp auth picker"
+                    >
+                      <Key size={12} />
+                      <span>Authenticate via Claude (/mcp)</span>
+                    </button>
+                  ) : null}
                 </div>
                 {listing.error ? (
                   <p className="settings-hint" role="alert">
@@ -841,6 +871,14 @@ export function SettingsPanel({
           </dl>
         </div>
       </section>
+
+      <McpAuthDialog
+        open={mcpAuthOpen}
+        onClose={() => setMcpAuthOpen(false)}
+        onCompleted={() => {
+          void refreshMcp();
+        }}
+      />
     </div>
   );
 }
@@ -851,10 +889,7 @@ export function SettingsPanel({
  * can't reach `shell.openPath` without a new main-process IPC; the download
  * dialog is the contained renderer-only path.
  */
-function saveLogsFile(
-  entries: ReadonlyArray<import("../../shared/types.js").LogEntry>,
-  setStatus: (status: string | null) => void
-): void {
+function saveLogsFile(entries: ReadonlyArray<LogEntry>, setStatus: (status: string | null) => void): void {
   if (entries.length === 0) {
     setStatus("No log entries to save.");
     return;

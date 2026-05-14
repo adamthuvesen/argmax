@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ChangedFileSummary, CommitPreparation, PrepareCommitInput } from "../../shared/types.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ChangedFileSummary, GitCommitInput, GitCommitResult } from "../../shared/types.js";
 import { CommitDialog } from "./CommitDialog.js";
 
 const FILES: ChangedFileSummary[] = [
@@ -8,13 +8,35 @@ const FILES: ChangedFileSummary[] = [
   { path: "src/b.ts", status: "added", additions: 12, deletions: 0 }
 ];
 
+function installArgmax(commitMock: ReturnType<typeof vi.fn>): void {
+  Object.defineProperty(window, "argmax", {
+    configurable: true,
+    writable: true,
+    value: {
+      git: {
+        commit: commitMock,
+        push: vi.fn(),
+        createBranch: vi.fn(),
+        viewOrCreatePr: vi.fn()
+      }
+    }
+  });
+}
+
 describe("CommitDialog", () => {
+  let commitMock: ReturnType<typeof vi.fn<(input: GitCommitInput) => Promise<GitCommitResult>>>;
+
+  beforeEach(() => {
+    commitMock = vi.fn<(input: GitCommitInput) => Promise<GitCommitResult>>();
+    installArgmax(commitMock);
+  });
+
   afterEach(() => {
     cleanup();
+    delete (window as { argmax?: unknown }).argmax;
   });
 
   it("renders nothing when closed", () => {
-    const onPrepareCommit = vi.fn<(input: PrepareCommitInput) => Promise<CommitPreparation>>();
     render(
       <CommitDialog
         open={false}
@@ -22,14 +44,12 @@ describe("CommitDialog", () => {
         workspaceId="workspace-1"
         files={FILES}
         defaultMessage="feat: review wiring"
-        onPrepareCommit={onPrepareCommit}
       />
     );
     expect(screen.queryByRole("dialog", { name: "Commit selected changes" })).not.toBeInTheDocument();
   });
 
   it("pre-selects every changed file and pre-fills the message", () => {
-    const onPrepareCommit = vi.fn<(input: PrepareCommitInput) => Promise<CommitPreparation>>();
     render(
       <CommitDialog
         open
@@ -37,7 +57,6 @@ describe("CommitDialog", () => {
         workspaceId="workspace-1"
         files={FILES}
         defaultMessage="feat: review wiring"
-        onPrepareCommit={onPrepareCommit}
       />
     );
     expect(screen.getByRole("dialog", { name: "Commit selected changes" })).toBeInTheDocument();
@@ -48,25 +67,18 @@ describe("CommitDialog", () => {
     expect(screen.getByLabelText<HTMLInputElement>("Stage all files").checked).toBe(true);
   });
 
-  it("submits the selected files + message and renders the prepared plan", async () => {
-    const preparation: CommitPreparation = {
-      workspaceId: "workspace-1",
-      branch: "argmax/review",
-      selectedFiles: ["src/a.ts"],
-      message: "fix: tighten review",
-      commands: ["git add -- src/a.ts", "git commit -m 'fix: tighten review'"]
-    };
-    const onPrepareCommit = vi
-      .fn<(input: PrepareCommitInput) => Promise<CommitPreparation>>()
-      .mockResolvedValue(preparation);
+  it("calls git.commit with the selected files + message, then closes", async () => {
+    commitMock.mockResolvedValue({ commitSha: "abcdef1234567890", branch: "argmax/review" });
+    const onClose = vi.fn();
+    const onCommitted = vi.fn();
     render(
       <CommitDialog
         open
-        onClose={() => {}}
+        onClose={onClose}
         workspaceId="workspace-1"
         files={FILES}
         defaultMessage="feat: review wiring"
-        onPrepareCommit={onPrepareCommit}
+        onCommitted={onCommitted}
       />
     );
 
@@ -77,23 +89,18 @@ describe("CommitDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Commit" }));
 
-    await waitFor(() => expect(onPrepareCommit).toHaveBeenCalledTimes(1));
-    expect(onPrepareCommit).toHaveBeenCalledWith({
+    await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
+    expect(commitMock).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
-      selectedFiles: ["src/a.ts"],
-      message: "fix: tighten review"
+      message: "fix: tighten review",
+      selectedFiles: ["src/a.ts"]
     });
-
-    expect(await screen.findByLabelText("Prepared commit plan")).toBeInTheDocument();
-    expect(screen.getByText("git add -- src/a.ts")).toBeInTheDocument();
-    expect(screen.getByText("git commit -m 'fix: tighten review'")).toBeInTheDocument();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onCommitted).toHaveBeenCalledWith({ commitSha: "abcdef1234567890", branch: "argmax/review" });
   });
 
-  it("keeps the dialog open and bubbles the rejection to the caller on IPC error", async () => {
-    const failure = new Error("git refused");
-    const onPrepareCommit = vi
-      .fn<(input: PrepareCommitInput) => Promise<CommitPreparation>>()
-      .mockRejectedValue(failure);
+  it("keeps the dialog open and surfaces an inline error on IPC failure", async () => {
+    commitMock.mockRejectedValue(new Error("git refused"));
     const onClose = vi.fn();
     render(
       <CommitDialog
@@ -102,20 +109,18 @@ describe("CommitDialog", () => {
         workspaceId="workspace-1"
         files={FILES}
         defaultMessage="feat: review wiring"
-        onPrepareCommit={onPrepareCommit}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Commit" }));
 
-    await waitFor(() => expect(onPrepareCommit).toHaveBeenCalledTimes(1));
-    expect(screen.queryByLabelText("Prepared commit plan")).not.toBeInTheDocument();
+    await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("git refused");
     expect(screen.getByRole("dialog", { name: "Commit selected changes" })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it("disables the Commit button when no files are staged", () => {
-    const onPrepareCommit = vi.fn<(input: PrepareCommitInput) => Promise<CommitPreparation>>();
     render(
       <CommitDialog
         open
@@ -123,11 +128,24 @@ describe("CommitDialog", () => {
         workspaceId="workspace-1"
         files={FILES}
         defaultMessage="feat: review wiring"
-        onPrepareCommit={onPrepareCommit}
       />
     );
 
     fireEvent.click(screen.getByLabelText("Stage all files"));
+    expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
+  });
+
+  it("shows an empty state and keeps Commit disabled when there are no changed files", () => {
+    render(
+      <CommitDialog
+        open
+        onClose={() => {}}
+        workspaceId="workspace-1"
+        files={[]}
+        defaultMessage="feat: review wiring"
+      />
+    );
+    expect(screen.getByText("No changes to commit.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
   });
 });

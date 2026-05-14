@@ -116,6 +116,47 @@ describe("GitOpsService.commitAll", () => {
     ]);
     expect(calls[0].cwd).toBe("/tmp/repo-git-wt");
   });
+
+  it("stages only the selected files with a -- separator when selectedFiles is non-empty", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const { workspaceId } = seedProjectWorkspaceSession(database);
+    const { runner, calls } = makeGitRunner({
+      responses: {
+        "rev-parse HEAD": "deadbeefcafe\n",
+        "branch --show-current": "feature/x\n"
+      }
+    });
+    const service = new GitOpsService(database, new GhService(database), runner);
+
+    await service.commitAll({
+      workspaceId,
+      message: "fix: only a and b",
+      selectedFiles: ["src/a.ts", "src/b.ts"]
+    });
+
+    expect(calls.map((c) => c.args)).toEqual([
+      ["add", "--", "src/a.ts", "src/b.ts"],
+      ["commit", "-m", "fix: only a and b"],
+      ["rev-parse", "HEAD"],
+      ["branch", "--show-current"]
+    ]);
+  });
+
+  it("falls back to git add -A when selectedFiles is an empty array", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const { workspaceId } = seedProjectWorkspaceSession(database);
+    const { runner, calls } = makeGitRunner({
+      responses: {
+        "rev-parse HEAD": "deadbeefcafe\n",
+        "branch --show-current": "feature/x\n"
+      }
+    });
+    const service = new GitOpsService(database, new GhService(database), runner);
+
+    await service.commitAll({ workspaceId, message: "wip: stuff", selectedFiles: [] });
+
+    expect(calls[0].args).toEqual(["add", "-A"]);
+  });
 });
 
 describe("GitOpsService.push", () => {

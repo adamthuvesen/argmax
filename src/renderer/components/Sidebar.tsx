@@ -36,7 +36,8 @@ export function Sidebar({
   selectedWorkspaceId,
   snapshot,
   detectedIdes,
-  defaultIde
+  defaultIde,
+  showSessionTokens
 }: {
   loadState: "loading" | "ready" | "error";
   onAddProject: () => void;
@@ -54,6 +55,7 @@ export function Sidebar({
   snapshot: DashboardSnapshot;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
+  showSessionTokens: boolean;
 }): JSX.Element {
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
@@ -259,6 +261,10 @@ export function Sidebar({
                   }
                   type="button"
                   onClick={() => {
+                    if (selectedProjectId === project.id && !selectedWorkspaceId) {
+                      toggleProjectVisibility(project.id);
+                      return;
+                    }
                     expandProjectVisibility(project.id);
                     onOpenProject(project.id);
                     onOpenLauncher();
@@ -302,6 +308,7 @@ export function Sidebar({
                         onTogglePin={onToggleWorkspacePinned}
                         detectedIdes={detectedIdes}
                         defaultIde={defaultIde}
+                        showTokens={showSessionTokens}
                       />
                     </div>
                   ))}

@@ -10,7 +10,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import type { ProjectSummary } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -26,12 +25,6 @@ import { WelcomePane } from "./WelcomePane.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
-// Shared with SessionPane so the user gets one consistent panel width across both views.
-const RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
-const RIGHT_PANEL_MIN = 260;
-const RIGHT_PANEL_MAX = 1400;
-const RIGHT_PANEL_DEFAULT = 420;
-
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
 }
@@ -44,7 +37,8 @@ export function LaunchSurface({
   onModelChange,
   onSelectProject,
   project,
-  projects
+  projects,
+  rightPanelToggleSignal
 }: {
   model: ModelPickerSelection;
   onAddProject: () => void;
@@ -54,6 +48,7 @@ export function LaunchSurface({
   onSelectProject: (id: string) => void;
   project: ProjectSummary | null;
   projects: ProjectSummary[];
+  rightPanelToggleSignal?: number;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -74,97 +69,70 @@ export function LaunchSurface({
     [project]
   );
   const reviewState = useReviewState(reviewSource);
-  const reviewTogglePanel = reviewState.togglePanel;
+  const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewOpenInFilesView = reviewState.openInFilesView;
+  const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
+  const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
+  const toggleReviewPanel = useCallback((): void => {
+    if (reviewIsPanelOpen) {
+      reviewClosePanel();
+    } else {
+      reviewOpenPanelInFilesMode();
+    }
+  }, [reviewClosePanel, reviewIsPanelOpen, reviewOpenPanelInFilesMode]);
+
   useEffect(() => {
     if (!project) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "b") return;
-      if (isTypingTarget(event.target)) return;
       event.preventDefault();
-      reviewTogglePanel();
+      toggleReviewPanel();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [project, reviewTogglePanel]);
+  }, [project, toggleReviewPanel]);
 
-  // Cmd/Ctrl+P opens the file quick-open overlay, but only while the
-  // right-side ReviewPanel is mounted against this project.
   useEffect(() => {
-    if (!project || !reviewIsPanelOpen) return undefined;
+    if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
+    lastRightPanelToggleSignal.current = rightPanelToggleSignal;
+    if (!project) return;
+    toggleReviewPanel();
+  }, [project, rightPanelToggleSignal, toggleReviewPanel]);
+
+  // Cmd/Ctrl+P opens project file quick-open from the launcher. Picking a
+  // result opens the right-side ReviewPanel in Files mode.
+  useEffect(() => {
+    if (!project) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "p") return;
-      if (isTypingTarget(event.target)) return;
       event.preventDefault();
       setIsQuickOpenOpen(true);
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [project, reviewIsPanelOpen]);
+  }, [project]);
 
-  // Drop the overlay if the panel closes underneath us.
   useEffect(() => {
-    if (!reviewIsPanelOpen) setIsQuickOpenOpen(false);
-  }, [reviewIsPanelOpen]);
+    if (!project || !reviewIsPanelOpen || isQuickOpenOpen) return undefined;
+    const handler = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      reviewClosePanel();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [project, reviewClosePanel, reviewIsPanelOpen, isQuickOpenOpen]);
 
   useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
   useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
   const anyContextPickerOpen = projectPickerOpen || branchPickerOpen || modelPickerOpen;
-
-  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(RIGHT_PANEL_WIDTH_KEY) : null;
-    const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
-    return Number.isFinite(n) && n >= RIGHT_PANEL_MIN && n <= RIGHT_PANEL_MAX ? n : RIGHT_PANEL_DEFAULT;
-  });
-  const [isPanelResizing, setIsPanelResizing] = useState(false);
-  const panelDragCleanupRef = useRef<(() => void) | null>(null);
-  useEffect(
-    () => () => {
-      panelDragCleanupRef.current?.();
-      panelDragCleanupRef.current = null;
-    },
-    []
-  );
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(RIGHT_PANEL_WIDTH_KEY, String(rightPanelWidth));
-  }, [rightPanelWidth]);
-
-  const onResizePanelMouseDown = useCallback((event: ReactMouseEvent): void => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = rightPanelWidth;
-    setIsPanelResizing(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const onMouseMove = (e: MouseEvent): void => {
-      // Dragging left widens the panel (handle sits on its left edge); dragging right narrows it.
-      const next = Math.max(
-        RIGHT_PANEL_MIN,
-        Math.min(RIGHT_PANEL_MAX, startWidth - (e.clientX - startX))
-      );
-      setRightPanelWidth(next);
-    };
-    const cleanup = (): void => {
-      setIsPanelResizing(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      panelDragCleanupRef.current = null;
-    };
-    const onMouseUp = (): void => cleanup();
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    panelDragCleanupRef.current = cleanup;
-  }, [rightPanelWidth]);
 
   const closeContextPickers = useCallback((): void => {
     setProjectPickerOpen(false);
@@ -227,6 +195,14 @@ export function LaunchSurface({
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);
+
+  // Auto-focus the prompt when the launcher is the active surface — on first
+  // visit, on project switch, and again whenever the right-side review panel
+  // or quick-open overlay closes, so the user can keep typing without clicking.
+  useEffect(() => {
+    if (!project || reviewIsPanelOpen || isQuickOpenOpen || isSubmitting) return;
+    promptInputRef.current?.focus();
+  }, [project, reviewIsPanelOpen, isQuickOpenOpen, isSubmitting]);
   const slashAutocomplete = useSlashAutocomplete({
     input: prompt,
     setInput: setPrompt,
@@ -271,16 +247,11 @@ export function LaunchSurface({
   }
 
   const isReviewOpen = reviewState.isPanelOpen && project !== null;
-  const shellStyle = {
-    "--session-review-panel-width": `${rightPanelWidth}px`
-  } as CSSProperties;
 
   return (
     <div
       className="launcher-shell"
       data-review-open={isReviewOpen ? "true" : undefined}
-      data-panel-resizing={isPanelResizing ? "true" : undefined}
-      style={isReviewOpen ? shellStyle : undefined}
     >
       <div className="launcher-surface">
       {anyContextPickerOpen && createPortal(
@@ -423,8 +394,8 @@ export function LaunchSurface({
         ) : null}
       </form>
       </div>
-      {isReviewOpen ? <ReviewPanel review={reviewState} onResizePanelMouseDown={onResizePanelMouseDown} /> : null}
-      {isReviewOpen && project ? (
+      {isReviewOpen ? <ReviewPanel review={reviewState} /> : null}
+      {project ? (
         <FileSearchOverlay
           open={isQuickOpenOpen}
           onClose={() => setIsQuickOpenOpen(false)}

@@ -14,7 +14,7 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 
 const BRANCH_NAME_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
-type Mode = "menu" | "commit" | "create-branch";
+type Mode = "menu" | "create-branch";
 
 interface Feedback {
   kind: "success" | "error";
@@ -29,16 +29,17 @@ export function GitActionsDropdown({
   prs,
   session,
   workspace,
-  onPrsRefresh
+  onPrsRefresh,
+  onOpenCommitDialog
 }: {
   prs: GhPrRecord[];
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
   onPrsRefresh?: () => void;
+  onOpenCommitDialog?: () => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("menu");
-  const [commitMessage, setCommitMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -64,35 +65,6 @@ export function GitActionsDropdown({
       setOpen(true);
     }
   }, [open, close]);
-
-  const runCommit = useCallback(
-    (event: FormEvent<HTMLFormElement>): void => {
-      event.preventDefault();
-      if (!workspace || !window.argmax) return;
-      const message = commitMessage.trim();
-      if (!message) {
-        setFeedback({ kind: "error", message: "Enter a commit message." });
-        return;
-      }
-      setBusy(true);
-      setFeedback(null);
-      void window.argmax.git
-        .commit({ workspaceId: workspace.id, message })
-        .then((result) => {
-          setCommitMessage("");
-          setFeedback({
-            kind: "success",
-            message: `Committed ${result.commitSha.slice(0, 7)} on ${result.branch}.`
-          });
-          setMode("menu");
-        })
-        .catch((error: unknown) => {
-          setFeedback(errorFeedback(error, "Commit failed."));
-        })
-        .finally(() => setBusy(false));
-    },
-    [workspace, commitMessage]
-  );
 
   const runPush = useCallback(async (): Promise<void> => {
     if (!workspace || !window.argmax) return;
@@ -194,15 +166,16 @@ export function GitActionsDropdown({
                   type="button"
                   role="menuitem"
                   className="project-picker-item"
-                  disabled={busy || !workspace}
+                  disabled={busy || !workspace || !onOpenCommitDialog}
                   title={
                     workspace?.dirty
-                      ? "Stage and commit all changes"
-                      : "Stage and commit all changes (worktree is currently clean)"
+                      ? "Select files and commit"
+                      : "Select files and commit (worktree is currently clean)"
                   }
                   onClick={() => {
                     setFeedback(null);
-                    setMode("commit");
+                    close();
+                    onOpenCommitDialog?.();
                   }}
                 >
                   <GitCommitHorizontal size={14} aria-hidden="true" />
@@ -253,35 +226,6 @@ export function GitActionsDropdown({
                 </button>
               </li>
             </ul>
-          )}
-          {mode === "commit" && (
-            <form className="git-actions-composer" onSubmit={runCommit}>
-              <button
-                type="button"
-                className="git-actions-back"
-                aria-label="Back to git menu"
-                onClick={() => setMode("menu")}
-              >
-                <ChevronLeft size={12} aria-hidden="true" />
-                Back
-              </button>
-              <label className="git-actions-label" htmlFor="git-actions-commit-message">
-                Commit message
-              </label>
-              <textarea
-                id="git-actions-commit-message"
-                className="git-actions-textarea"
-                value={commitMessage}
-                onChange={(event) => setCommitMessage(event.target.value)}
-                rows={3}
-                placeholder="Describe the change"
-                disabled={busy}
-                autoFocus
-              />
-              <button type="submit" className="git-actions-submit" disabled={busy || !commitMessage.trim()}>
-                {busy ? "Committing…" : "Commit"}
-              </button>
-            </form>
           )}
           {mode === "create-branch" && (
             <form className="git-actions-composer" onSubmit={runCreateBranch}>

@@ -100,12 +100,13 @@ describe("GitActionsDropdown", () => {
     expect(screen.getByLabelText<HTMLButtonElement>("Git actions").disabled).toBe(true);
   });
 
-  it("keeps Commit enabled even when the worktree is clean (git itself surfaces the failure)", () => {
+  it("keeps Commit enabled even when the worktree is clean (the dialog itself shows the empty state)", () => {
     render(
       <GitActionsDropdown
         prs={[]}
         session={sessionStub}
         workspace={{ ...workspaceStub, dirty: false }}
+        onOpenCommitDialog={() => {}}
       />
     );
     fireEvent.click(screen.getByLabelText("Git actions"));
@@ -114,25 +115,29 @@ describe("GitActionsDropdown", () => {
     expect(commit.title).toMatch(/clean/i);
   });
 
-  it("commits the typed message via window.argmax.git.commit", async () => {
-    const commit = vi.fn().mockResolvedValue({ commitSha: "deadbeefcafe", branch: "feature/x" });
-    installArgmax({ commit });
-
-    render(<GitActionsDropdown prs={[]} session={sessionStub} workspace={workspaceStub} />);
+  it("invokes onOpenCommitDialog and closes the menu when Commit is clicked", () => {
+    const onOpenCommitDialog = vi.fn();
+    render(
+      <GitActionsDropdown
+        prs={[]}
+        session={sessionStub}
+        workspace={workspaceStub}
+        onOpenCommitDialog={onOpenCommitDialog}
+      />
+    );
     fireEvent.click(screen.getByLabelText("Git actions"));
     fireEvent.click(screen.getByRole("menuitem", { name: /Commit/i }));
 
-    const textarea = screen.getByLabelText<HTMLTextAreaElement>("Commit message");
-    fireEvent.change(textarea, { target: { value: "wip: dropdown" } });
-    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
+    expect(onOpenCommitDialog).toHaveBeenCalledTimes(1);
+    // The menu closes after firing — no inline composer is rendered any more.
+    expect(screen.queryByRole("menu", { name: "Git actions" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Commit message")).not.toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(commit).toHaveBeenCalledWith({ workspaceId: "ws-1", message: "wip: dropdown" });
-    });
-    const message = await screen.findByText(/deadbee/);
-    const feedback = message.closest(".git-actions-feedback");
-    expect(feedback?.className).toContain("git-actions-feedback--success");
-    expect(feedback?.getAttribute("role")).toBe("status");
+  it("disables the Commit menu item when no onOpenCommitDialog handler is wired up", () => {
+    render(<GitActionsDropdown prs={[]} session={sessionStub} workspace={workspaceStub} />);
+    fireEvent.click(screen.getByLabelText("Git actions"));
+    expect(screen.getByRole<HTMLButtonElement>("menuitem", { name: /Commit/i }).disabled).toBe(true);
   });
 
   it("rejects branch names with illegal characters before invoking IPC", async () => {

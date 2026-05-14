@@ -199,4 +199,18 @@ describe("SessionConversation — model selection persistence", () => {
     const pickerAfter = screen.getByRole("button", { name: "Session model" });
     expect(pickerAfter.textContent).toContain("Claude Haiku 4.5");
   });
+
+  it("keeps workspace context chips on the same toolbar row as the model picker", () => {
+    renderConversation(baseSession());
+
+    const modelPicker = screen.getByRole("button", { name: "Session model" });
+    const workspaceContext = screen.getByLabelText("Workspace context");
+    const toolbar = modelPicker.closest(".session-input-toolbar");
+
+    expect(toolbar).not.toBeNull();
+    expect(toolbar?.contains(workspaceContext)).toBe(true);
+    expect(
+      modelPicker.compareDocumentPosition(workspaceContext) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
 });

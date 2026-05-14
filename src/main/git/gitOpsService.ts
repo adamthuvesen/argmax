@@ -47,10 +47,17 @@ export class GitOpsService {
       throw new Error("Workspace has no path on disk yet.");
     }
     const message = input.message.trim();
-    // `git add -A` stages every change in the worktree (new, modified,
-    // deleted). The dropdown commits the entire workspace; per-file selection
-    // already exists via commitPreparationService for the diff-review flow.
-    await this.gitRunner(workspace.path, ["add", "-A"]);
+    // When the caller passes `selectedFiles`, stage only those paths with a
+    // `--` separator so a filename starting with `-` can't be misparsed as a
+    // flag. Empty/missing array falls back to `git add -A` (stage everything),
+    // which keeps the dropdown's old "commit all" behavior for any caller that
+    // doesn't care about per-file selection.
+    const selected = input.selectedFiles?.filter((path) => path.trim().length > 0) ?? [];
+    if (selected.length > 0) {
+      await this.gitRunner(workspace.path, ["add", "--", ...selected]);
+    } else {
+      await this.gitRunner(workspace.path, ["add", "-A"]);
+    }
     await this.gitRunner(workspace.path, ["commit", "-m", message]);
     const sha = (await this.gitRunner(workspace.path, ["rev-parse", "HEAD"])).trim();
     const branch = (await this.gitRunner(workspace.path, ["branch", "--show-current"])).trim();

@@ -1,11 +1,9 @@
-import { Columns2, FileText, Folder, GitBranch, GitCommitHorizontal, PanelRightClose, Rows3, X } from "lucide-react";
+import { Columns2, FileText, Folder, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
-import type { CommitPreparation, PrepareCommitInput, WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "./ChangeCount.js";
-import { CommitDialog } from "./CommitDialog.js";
 import { DiffBlocks, type DiffView } from "./DiffBlocks.js";
 import { FilePreview } from "./FilePreview.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
@@ -33,23 +31,17 @@ function readStoredLeftColumnWidth(): number {
 
 export function ReviewPanel({
   onResizePanelMouseDown,
-  review,
-  workspace,
-  onPrepareCommit
+  review
 }: {
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
-  workspace?: WorkspaceSummary | null;
-  onPrepareCommit?: (input: PrepareCommitInput) => Promise<CommitPreparation>;
 }): JSX.Element {
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
   const [leftColumnWidth, setLeftColumnWidth] = useState<number>(() => readStoredLeftColumnWidth());
-  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [diffView, setDiffView] = useState<DiffView>(() => readStoredDiffView());
   const panelRef = useRef<HTMLElement>(null);
-  const canCommit = Boolean(workspace?.id && onPrepareCommit && review.files.length > 0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -102,7 +94,7 @@ export function ReviewPanel({
   const isChanges = review.mode === "changes";
   const subtitle = isChanges
     ? `${review.files.length} files changed`
-    : `${review.workspaceFiles.entries.length} files`;
+    : "Files";
 
   return (
     <aside className="review-panel" aria-label="Review panel" ref={panelRef}>
@@ -152,16 +144,6 @@ export function ReviewPanel({
             onClick={() => setDiffView((current) => (current === "unified" ? "side-by-side" : "unified"))}
           >
             {diffView === "unified" ? <Columns2 size={18} /> : <Rows3 size={18} />}
-          </button>
-          <button
-            className="small-icon"
-            type="button"
-            title="Commit selected"
-            aria-label="Commit selected"
-            disabled={!canCommit}
-            onClick={() => setIsCommitDialogOpen(true)}
-          >
-            <GitCommitHorizontal size={18} />
           </button>
           <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
             <PanelRightClose size={18} />
@@ -224,16 +206,6 @@ export function ReviewPanel({
           )}
         </div>
       </div>
-      {workspace && onPrepareCommit ? (
-        <CommitDialog
-          open={isCommitDialogOpen}
-          onClose={() => setIsCommitDialogOpen(false)}
-          workspaceId={workspace.id}
-          files={review.files}
-          defaultMessage={workspace.taskLabel}
-          onPrepareCommit={onPrepareCommit}
-        />
-      ) : null}
     </aside>
   );
 }

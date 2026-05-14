@@ -13,7 +13,7 @@
  * In-memory ring buffer (`LOG_BUFFER_SIZE` lines) is per-process. Main
  * process callers can `readBuffer()` to surface entries through diagnostics
  * IPC. The renderer maintains its own buffer; the diagnostics panel reads
- * the main-side buffer via IPC (Phase 7 — pending).
+ * the main-side buffer through system:diagnostics.
  *
  * Console mirroring is gated on `process.env.DEBUG === "1"` so prod runs
  * stay quiet. `level === "error"` always mirrors regardless of DEBUG so

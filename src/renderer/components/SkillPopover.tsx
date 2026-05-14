@@ -1,4 +1,4 @@
-import type { JSX, RefObject } from "react";
+import { useEffect, useRef, type JSX, type RefObject } from "react";
 import type { SlashAutocompleteState } from "../hooks/useSlashAutocomplete.js";
 
 export function SkillPopover({
@@ -8,14 +8,30 @@ export function SkillPopover({
   state: SlashAutocompleteState;
   inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
 }): JSX.Element | null {
+  const selectedOptionRef = useRef<HTMLLIElement | null>(null);
+
+  useEffect(() => {
+    if (!state.popoverOpen) {
+      return;
+    }
+    selectedOptionRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [state.popoverOpen, state.selectionIndex]);
+
   if (!state.popoverOpen) {
     return null;
   }
   return (
-    <ul className="skill-popover" id="skill-popover" role="listbox" aria-label="Skill suggestions">
+    <ul
+      className="skill-popover"
+      id="skill-popover"
+      role="listbox"
+      aria-label="Skill suggestions"
+      onWheel={(event) => event.stopPropagation()}
+    >
       {state.filteredSkills.map((skill, index) => (
         <li
           key={skill.name}
+          ref={index === state.selectionIndex ? selectedOptionRef : undefined}
           role="option"
           aria-selected={index === state.selectionIndex}
           className={`skill-option${index === state.selectionIndex ? " is-selected" : ""}`}

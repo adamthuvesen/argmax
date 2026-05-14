@@ -14,8 +14,10 @@ import type {
   GitViewOrCreatePrInputParsed,
   IdeIdParsed,
   LaunchProviderSessionInputParsed,
+  McpAuthResizeInputParsed,
+  McpAuthStartInputParsed,
+  McpAuthWriteInputParsed,
   OpenInIdeInputParsed,
-  PrepareCommitInputParsed,
   ProviderSessionInputParsed,
   ProviderSessionResizeInputParsed,
   RegisterProjectInputParsed,
@@ -105,6 +107,9 @@ export type WorkspaceStatusInput = WorkspaceStatusInputParsed;
 export type TerminalSpawnInput = TerminalSpawnInputParsed;
 export type TerminalWriteInput = TerminalWriteInputParsed;
 export type TerminalResizeInput = TerminalResizeInputParsed;
+export type McpAuthStartInput = McpAuthStartInputParsed;
+export type McpAuthWriteInput = McpAuthWriteInputParsed;
+export type McpAuthResizeInput = McpAuthResizeInputParsed;
 
 export interface TerminalDataEvent {
   terminalId: string;
@@ -113,6 +118,17 @@ export interface TerminalDataEvent {
 
 export interface TerminalExitEvent {
   terminalId: string;
+  exitCode: number;
+  signal: number | null;
+}
+
+export interface McpAuthDataEvent {
+  sessionId: string;
+  data: string;
+}
+
+export interface McpAuthExitEvent {
+  sessionId: string;
   exitCode: number;
   signal: number | null;
 }
@@ -164,7 +180,6 @@ export type WorkspaceFileWriteResult =
 export type RunCheckInput = RunCheckInputParsed;
 export type CreateCheckpointInput = CreateCheckpointInputParsed;
 export type SelectPreferredAttemptInput = SelectPreferredAttemptInputParsed;
-export type PrepareCommitInput = PrepareCommitInputParsed;
 export type GitCommitInput = GitCommitInputParsed;
 export type GitPushInput = GitPushInputParsed;
 export type GitCreateBranchInput = GitCreateBranchInputParsed;
@@ -204,14 +219,6 @@ export interface SkillSummary {
   name: string;
   description: string;
   source: SkillSource;
-}
-
-export interface CommitPreparation {
-  workspaceId: string;
-  branch: string;
-  selectedFiles: string[];
-  message: string;
-  commands: string[];
 }
 
 export interface ProjectSummary {
@@ -429,9 +436,6 @@ export interface ArgmaxApi {
   attempts: {
     selectPreferred: (input: SelectPreferredAttemptInput) => Promise<SessionSummary>;
   };
-  commits: {
-    prepare: (input: PrepareCommitInput) => Promise<CommitPreparation>;
-  };
   health: {
     ping: () => Promise<{ ok: true; timestamp: string }>;
   };
@@ -446,6 +450,14 @@ export interface ArgmaxApi {
   };
   mcp: {
     list: () => Promise<McpClientListing[]>;
+    auth: {
+      start: (input: McpAuthStartInput) => Promise<{ sessionId: string }>;
+      write: (input: McpAuthWriteInput) => Promise<{ ok: true }>;
+      resize: (input: McpAuthResizeInput) => Promise<{ ok: true }>;
+      terminate: (sessionId: string) => Promise<{ ok: true }>;
+      onData: (listener: (event: McpAuthDataEvent) => void) => () => void;
+      onExit: (listener: (event: McpAuthExitEvent) => void) => () => void;
+    };
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;

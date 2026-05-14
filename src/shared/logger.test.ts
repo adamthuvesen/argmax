@@ -71,4 +71,21 @@ describe("logger", () => {
     logger.error("provider", "fail with detail", { sessionId: "s-1" });
     expect(err).toHaveBeenLastCalledWith("[provider] fail with detail", { sessionId: "s-1" });
   });
+
+  it("timing() rounds ms to 1 decimal, lands as info, and merges fields under { ms, ... }", () => {
+    logger.timing("db", "list-dashboard", 17.456, { sessionCount: 200 });
+    logger.timing("db", "list-dashboard", 0.42);
+    logger.timing("ipc", "open", Number.NaN);
+    const entries = readLogBuffer();
+    expect(entries).toHaveLength(3);
+    expect(entries[0]).toMatchObject({
+      level: "info",
+      scope: "db",
+      message: "list-dashboard",
+      fields: { ms: 17.5, sessionCount: 200 }
+    });
+    expect(entries[1]?.fields).toEqual({ ms: 0.4 });
+    // NaN collapses to 0 rather than poisoning the field.
+    expect(entries[2]?.fields).toEqual({ ms: 0 });
+  });
 });

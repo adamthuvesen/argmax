@@ -87,6 +87,17 @@ export const logger = {
   },
   error(scope: string, message: string, fields?: Record<string, unknown>): void {
     record("error", scope, message, fields);
+  },
+  /**
+   * Log a measured duration. `ms` is rounded to 1 decimal (sub-ms values
+   * collapse to 0). Lands as an info-level entry under the given scope with
+   * `{ ms, ...fields }` so the Diagnostics → Logs filter can pick them out
+   * by scope. Use anywhere a `performance.now()` diff would otherwise be
+   * console-logged ad-hoc.
+   */
+  timing(scope: string, label: string, ms: number, fields?: Record<string, unknown>): void {
+    const rounded = Number.isFinite(ms) ? Math.round(ms * 10) / 10 : 0;
+    record("info", scope, label, { ms: rounded, ...(fields ?? {}) });
   }
 };
 

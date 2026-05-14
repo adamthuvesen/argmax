@@ -34,16 +34,16 @@ The channel inventory is the keys of the `ipcSchemas` object in [src/shared/ipcS
 | `providers` | `discover`, `launch`, `sendInput`, `resize`, `terminate` | See [providers.md](providers.md) |
 | `approvals` | `pending`, `resolve` | |
 | `session` | `eventsSince`, `costSummary`, `search` | Cursor-based event tail |
-| `review` | `listChangedFiles`, `loadDiff` | |
-| `workspace` (singular) | `listFiles`, `readFile`, `writeFile`, `statFile`, project-scoped read variants | File-tree and file-editor affordances |
+| `review` | `listChangedFiles`, `loadDiff`, `listChangedFilesForProject`, `loadDiffForProject` | Workspace + project-scoped variants for the review surface |
+| `workspace` (singular) | `listFiles`, `readFile`, `writeFile`, `statFile` (+ `…ForProject` variants) | File-tree + inline file editor; writes are mtime-checked |
 | `checks` | `run` | |
 | `checkpoints` | `create` | Binary patches under `${dataDirectory}/checkpoints/` |
 | `attempts` | `selectPreferred` | Multi-attempt session preference |
 | `git` | `commit`, `push`, `createBranch`, `viewOrCreatePr` | Mutating branch/PR actions driven by the git dropdown |
 | `health` | `ping` | |
-| `skills` | `list` | User + workspace skill registry |
-| `system` | `openPath`, `listDetectedIdes`, `diagnostics`, `vacuumDatabase` | |
-| `mcp` | `list` | User-scope MCP server registry for Claude Code, Codex, and Cursor |
+| `skills` | `list` | User + workspace skill registry (Claude / Codex / Cursor + plugins) |
+| `system` | `openPath`, `listDetectedIdes`, `diagnostics`, `vacuumDatabase` | `diagnostics` powers the Settings → Diagnostics tab |
+| `mcp` | `list`, `auth.{start,write,resize,terminate,onData,onExit}` | User-scope MCP registry + interactive auth PTY for OAuth-style servers |
 | `learnings` | `list`, `update`, `delete` | See [memory.md](memory.md) |
 | `prs` | `listForSession`, `refresh` | See [gh.md](gh.md) |
 | `terminal` | `spawn`, `write`, `resize`, `terminate`, `onData`, `onExit` | See [terminal.md](terminal.md) |
@@ -55,9 +55,11 @@ Push events use `webContents.send` from main and `ipcRenderer.on` in preload. Th
 
 | Channel | Carrier type | Where it fires |
 |---|---|---|
-| `dashboard:delta` | `DashboardDelta` | `ProviderSessionService` after a SQLite commit |
+| `dashboard:delta` | `DashboardDelta` | `ProviderSessionService` after a SQLite commit. Main coalesces pushes through `DeltaCoalescer` at ~60 fps so streaming bursts don't pin the renderer (see [src/main/util/deltaCoalescer.ts](../../src/main/util/deltaCoalescer.ts)) |
 | `terminal:data` | `TerminalDataEvent` | `TerminalService` per PTY chunk |
 | `terminal:exit` | `TerminalExitEvent` | `TerminalService` on PTY exit |
+| `mcp:auth:data` | `McpAuthDataEvent` | `McpAuthService` per chunk of the MCP-auth PTY |
+| `mcp:auth:exit` | `McpAuthExitEvent` | `McpAuthService` when the auth PTY exits |
 | `menu:command` | `MenuCommand` union | App menu accelerators |
 
 ## Adding a request/response channel

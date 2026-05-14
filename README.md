@@ -81,6 +81,8 @@ npx vitest                                    # watch mode
 
 **Do not run multiple `npm test` commands in parallel.** Each starts with a native rebuild; concurrent rebuilds can corrupt `better-sqlite3` / `node-pty` build directories.
 
+CI runs `npm run lint`, `npm run typecheck`, and `npm test` on macOS for every push and PR — see [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
 ## Project layout
 
 ```

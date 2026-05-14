@@ -7,6 +7,9 @@ import type {
   McpTransport,
   ProviderId
 } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
+import { safeJsonParseObject } from "../../shared/safeJson.js";
+import { isPlainObject } from "../../shared/typeGuards.js";
 
 /**
  * MCP server registry — discovers user-scope MCP servers configured for each
@@ -48,21 +51,7 @@ export async function listMcpServers(home: string = homedir()): Promise<McpClien
 // ---------------------------------------------------------------------------
 
 async function listClaudeMcp(home: string): Promise<McpClientListing> {
-  const configPath = join(home, ".claude.json");
-  const raw = await safeReadFile(configPath);
-  if (raw === null) {
-    return baseListing("claude", configPath, false);
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    const servers = extractJsonMcpServers(parsed, "claude", configPath);
-    return { ...baseListing("claude", configPath, true), servers };
-  } catch (error) {
-    return {
-      ...baseListing("claude", configPath, true),
-      error: error instanceof Error ? error.message : "Could not parse ~/.claude.json"
-    };
-  }
+  return readJsonMcpServers(join(home, ".claude.json"), "claude");
 }
 
 // ---------------------------------------------------------------------------
@@ -70,19 +59,34 @@ async function listClaudeMcp(home: string): Promise<McpClientListing> {
 // ---------------------------------------------------------------------------
 
 async function listCursorMcp(home: string): Promise<McpClientListing> {
-  const configPath = join(home, ".cursor", "mcp.json");
+  return readJsonMcpServers(join(home, ".cursor", "mcp.json"), "cursor");
+}
+
+/**
+ * Shared read path for the two JSON-shaped MCP configs (Claude + Cursor):
+ * load the file, parse via `safeJsonParseObject`, extract the `mcpServers` map.
+ * A missing file is the normal initial state and surfaces as `configExists:
+ * false`; a parse failure surfaces as `configExists: true` + `error`.
+ */
+async function readJsonMcpServers(configPath: string, client: ProviderId): Promise<McpClientListing> {
   const raw = await safeReadFile(configPath);
   if (raw === null) {
-    return baseListing("cursor", configPath, false);
+    return baseListing(client, configPath, false);
+  }
+  const parsed = safeJsonParseObject(raw);
+  if (parsed === null) {
+    return {
+      ...baseListing(client, configPath, true),
+      error: `Could not parse ${configPath}`
+    };
   }
   try {
-    const parsed: unknown = JSON.parse(raw);
-    const servers = extractJsonMcpServers(parsed, "cursor", configPath);
-    return { ...baseListing("cursor", configPath, true), servers };
+    const servers = extractJsonMcpServers(parsed, client, configPath);
+    return { ...baseListing(client, configPath, true), servers };
   } catch (error) {
     return {
-      ...baseListing("cursor", configPath, true),
-      error: error instanceof Error ? error.message : "Could not parse ~/.cursor/mcp.json"
+      ...baseListing(client, configPath, true),
+      error: errorMessage(error)
     };
   }
 }
@@ -92,19 +96,18 @@ function extractJsonMcpServers(
   client: ProviderId,
   configPath: string
 ): McpServerEntry[] {
-  if (!parsed || typeof parsed !== "object") return [];
-  const mcpServers = (parsed as Record<string, unknown>).mcpServers;
-  if (!mcpServers || typeof mcpServers !== "object") return [];
+  if (!isPlainObject(parsed)) return [];
+  const mcpServers = parsed.mcpServers;
+  if (!isPlainObject(mcpServers)) return [];
 
   const entries: McpServerEntry[] = [];
-  for (const [name, raw] of Object.entries(mcpServers as Record<string, unknown>)) {
-    if (!raw || typeof raw !== "object") continue;
-    const spec = raw as Record<string, unknown>;
-    const url = typeof spec.url === "string" ? spec.url : null;
-    const command = typeof spec.command === "string" ? spec.command : null;
-    const explicitType = typeof spec.type === "string" ? spec.type.toLowerCase() : null;
+  for (const [name, raw] of Object.entries(mcpServers)) {
+    if (!isPlainObject(raw)) continue;
+    const url = typeof raw.url === "string" ? raw.url : null;
+    const command = typeof raw.command === "string" ? raw.command : null;
+    const explicitType = typeof raw.type === "string" ? raw.type.toLowerCase() : null;
     const transport = classifyTransport(explicitType, command, url);
-    const envKeys = spec.env && typeof spec.env === "object" ? Object.keys(spec.env) : [];
+    const envKeys = isPlainObject(raw.env) ? Object.keys(raw.env) : [];
     entries.push({
       client,
       name,
@@ -135,7 +138,7 @@ async function listCodexMcp(home: string): Promise<McpClientListing> {
   } catch (error) {
     return {
       ...baseListing("codex", configPath, true),
-      error: error instanceof Error ? error.message : "Could not parse ~/.codex/config.toml"
+      error: errorMessage(error)
     };
   }
 }

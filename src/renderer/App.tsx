@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
   DashboardSnapshot,
@@ -52,6 +52,7 @@ import {
   type ThinkingStyle
 } from "./lib/thinkingStyle.js";
 import { titleFromPrompt } from "./lib/projects.js";
+import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 
 type ToastMessage = { kind: "error" | "info"; message: string };
@@ -98,6 +99,13 @@ export function App(): JSX.Element {
     setToast({ kind: "error", message });
   }, []);
 
+  // Paint timing — first useLayoutEffect of <App /> marks "first-paint";
+  // the loadState effect below marks "first-content" once the launcher /
+  // session / settings surface is about to render for the first time.
+  useLayoutEffect(() => {
+    markFirstPaint();
+  }, []);
+
   const {
     snapshot,
     setSnapshot,
@@ -118,6 +126,13 @@ export function App(): JSX.Element {
     resolveApproval,
     pendingSelectionRef
   } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: showErrorToast });
+
+  useEffect(() => {
+    // First non-loading render is the renderer's "first content" mark.
+    // markFirstContent() is idempotent — flipping back to "loading" later
+    // (a refresh, an error) won't reset the measure.
+    if (loadState !== "loading") markFirstContent();
+  }, [loadState]);
 
   useEffect(() => {
     if (!toast) return;

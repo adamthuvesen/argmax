@@ -24,7 +24,15 @@ export async function withToast(
     await fn();
     return true;
   } catch (error) {
-    setToast({ kind: "error", message: errorMessage(error) || fallback });
+    // Use the fallback only when there's no usable Error.message. Distinguish
+    // the missing-error case from a legitimate empty message by checking the
+    // error itself, not the stringified result — `new Error("")` is still an
+    // Error and its emptiness is informational (zod sometimes emits one).
+    const fromError = error instanceof Error ? error.message : "";
+    setToast({
+      kind: "error",
+      message: fromError || (error == null ? fallback : errorMessage(error)) || fallback
+    });
     return false;
   }
 }

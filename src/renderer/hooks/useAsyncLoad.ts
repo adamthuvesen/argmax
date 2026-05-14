@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage } from "../../shared/error.js";
 
 interface AsyncLoadOptions {
@@ -27,9 +27,13 @@ export interface AsyncLoadState<T> {
 /**
  * Single-promise async loader with `{ data, error, isLoading }` state and a
  * stable `retry` callback. Fires once on mount and again whenever the caller
- * invokes `retry`. The fetcher reference must be stable (useCallback) — the
- * hook does not refetch on identity change because most call sites want the
- * fetcher to mount-once-retry-many semantic.
+ * invokes `retry`.
+ *
+ * Race safety: every fetch issues a monotonically increasing request id. Only
+ * the most recent in-flight request is allowed to commit to state — so a slow
+ * first call followed by a faster `retry()` cannot overwrite the newer result.
+ * The fetcher ref is updated each render so `retry` always invokes the
+ * caller's latest closure (deps don't churn `retry`'s identity).
  */
 export function useAsyncLoad<T>(
   fetcher: () => Promise<T>,
@@ -38,6 +42,24 @@ export function useAsyncLoad<T>(
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const fetcherRef = useRef(fetcher);
+  const requestId = useRef(0);
+  const mounted = useRef(true);
+
+  // Keep the ref pointed at the latest fetcher so `retry` (whose identity is
+  // intentionally stable) calls the current closure, not the one captured on
+  // first render. Callers don't need `useCallback` — the ref does the same
+  // job without forcing every parent to memoize.
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  });
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const retry = useCallback(async (): Promise<void> => {
     if (typeof window === "undefined" || !window.argmax) {
@@ -46,21 +68,21 @@ export function useAsyncLoad<T>(
       }
       return;
     }
+    const id = ++requestId.current;
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetcher();
+      const result = await fetcherRef.current();
+      if (!mounted.current || id !== requestId.current) return;
       setData(result);
     } catch (caught) {
+      if (!mounted.current || id !== requestId.current) return;
       setError(errorMessage(caught) || options?.fallbackMessage || "Request failed.");
     } finally {
-      setIsLoading(false);
+      if (mounted.current && id === requestId.current) {
+        setIsLoading(false);
+      }
     }
-    // Intentionally omitting `fetcher` from deps: callers pass an inline
-    // closure each render. Re-firing on identity change would defeat the
-    // mount-once contract; callers explicitly call `retry` when they want
-    // another pass.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options?.missingApiMessage, options?.fallbackMessage]);
 
   useEffect(() => {

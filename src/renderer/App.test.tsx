@@ -253,7 +253,9 @@ describe("App", () => {
       },
       workspace: {
         listFiles: listWorkspaceFiles,
-        readFile: readWorkspaceFile
+        readFile: readWorkspaceFile,
+        writeFile: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
+        statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 })
       },
       checks: {
         run: () => Promise.resolve(missingCheck())
@@ -698,6 +700,7 @@ describe("App", () => {
       prompt: "Implement PTY launch",
       modelLabel: "Claude Haiku 4.5",
       modelId: "claude-haiku-4-5",
+      permissionMode: "auto-approve",
       cols: 120,
       rows: 32
     });
@@ -791,6 +794,7 @@ describe("App", () => {
         prompt: "Review this change",
         modelLabel: "Claude Sonnet 4.6",
         modelId: "claude-sonnet-4-6",
+        permissionMode: "auto-approve",
         cols: 120,
         rows: 32
       })
@@ -1671,32 +1675,34 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
-  it("renders a cost cell on each session row with the workspace cost", async () => {
+  it("renders a token cell on each session row summing input + output", async () => {
     sessionCostSummary.mockResolvedValue({
       sessionId: "session-1",
       modelId: "gpt-5.3-codex",
-      tokens: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0 },
+      tokens: { input: 12_300, output: 4_500, cacheRead: 50_000, cacheWrite: 0 },
       costUsd: 0.012
     });
 
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    // Push a delta carrying costUsd so the workspace-cost map populates.
+    // Push a delta carrying token counts so the workspace-token map populates.
     act(() => {
       dashboardDeltaListener?.({
         sessions: [
           {
             ...((snapshot.sessions[0] ?? missingSession())),
             costUsd: 0.012,
-            tokens: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0 }
+            tokens: { input: 12_300, output: 4_500, cacheRead: 50_000, cacheWrite: 0 }
           }
         ]
       });
     });
 
-    const cell = await screen.findByLabelText(/Cost: \$0\.012/);
-    expect(cell).toHaveTextContent("$0.012");
+    // 12.3k + 4.5k = 16.8k displayed; cache reads stay in the tooltip only.
+    const cell = await screen.findByLabelText(/Tokens: 16\.8k/);
+    expect(cell).toHaveTextContent("16.8k");
+    expect(cell.getAttribute("title")).toContain("50k cached");
   });
 
   it("renders the CostPanel rows and totals on session detail", async () => {
@@ -1831,6 +1837,33 @@ describe("App", () => {
     fireEvent.change(select, { target: { value: "cursor" } });
 
     await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));
+  });
+
+  it("settings Permissions section persists the chosen mode and propagates it through the next launch", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Permissions" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Ask each time" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.permissionMode")).toBe("ask-each-time")
+    );
+
+    // Close Settings to get back to the launcher.
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Gate this run" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ permissionMode: "ask-each-time" })
+      )
+    );
   });
 
   it("settings Appearance section switches the font family and persists it", async () => {

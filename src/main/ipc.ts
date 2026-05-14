@@ -1,29 +1,21 @@
 import { dialog, ipcMain } from "electron";
-import { ZodError, z, type ZodIssue, type ZodType } from "zod";
+import { ZodError, type ZodIssue, type ZodType } from "zod";
 import {
-  createCheckpointInputSchema,
   dashboardListInputSchema,
   dashboardLoadInputSchema,
   healthPingInputSchema,
   IPC_CHANNELS,
   projectsListInputSchema,
   projectsPickFolderInputSchema,
-  registerProjectInputSchema,
-  listBranchesInputSchema,
-  switchBranchInputSchema,
-  runCheckInputSchema,
-  selectPreferredAttemptInputSchema,
-  sessionCostSummaryInputSchema,
-  sessionEventsSinceInputSchema,
-  skillsListInputSchema,
-  updateProjectSettingsInputSchema,
   type IpcChannel
 } from "../shared/ipcSchemas.js";
 import { registerApprovalsHandlers } from "./ipc/approvals.js";
 import { registerGitHandlers } from "./ipc/git.js";
 import { registerMcpHandlers } from "./ipc/mcp.js";
+import { registerProjectHandlers } from "./ipc/projects.js";
 import { registerProviderHandlers } from "./ipc/providers.js";
 import { registerReviewHandlers } from "./ipc/review.js";
+import { registerSessionHandlers } from "./ipc/sessions.js";
 import { registerSystemHandlers } from "./ipc/system.js";
 import { registerTerminalHandlers } from "./ipc/terminal.js";
 import { registerWorkspaceHandlers } from "./ipc/workspaces.js";
@@ -37,8 +29,6 @@ import { GitReviewService } from "./review/gitReviewService.js";
 import { WorkspaceFilesService } from "./files/workspaceFilesService.js";
 import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
-import { listSkills } from "./skills/skillRegistry.js";
-import { runGitText } from "./git/exec.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
 import { timed } from "./util/ipcLatency.js";
@@ -171,33 +161,9 @@ export function registerIpcHandlers(
   );
   register("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
   register("dashboard:load", withValidation(dashboardLoadInputSchema, () => database.loadDashboard()));
-  register(
-    "projects:register",
-    withValidation(registerProjectInputSchema, (input) => projects.registerProject(input))
-  );
-  register(
-    "projects:update-settings",
-    withValidation(updateProjectSettingsInputSchema, (input) => projects.updateSettings(input))
-  );
-  register(
-    "projects:list-branches",
-    withValidation(listBranchesInputSchema, async (input) => {
-      const project = database.getProject(input.projectId);
-      const raw = await runGitText(project.repoPath, ["branch"]);
-      return raw.split("\n").map((b) => b.replace(/^\*\s*/, "").trim()).filter(Boolean);
-    })
-  );
-  register(
-    "projects:switch-branch",
-    withValidation(switchBranchInputSchema, async (input) => {
-      const project = database.getProject(input.projectId);
-      // `--` separator after the user-controlled ref so git cannot mistake a
-      // future input value for a flag or a pathspec. zod also rejects leading
-      // dashes via gitRefSchema; the separator is defense-in-depth.
-      await runGitText(project.repoPath, ["checkout", input.branch, "--"]);
-      return database.updateProjectBranch(input.projectId, input.branch);
-    })
-  );
+  for (const channel of registerProjectHandlers(database, projects)) {
+    registeredChannels.push(channel);
+  }
   for (const channel of registerWorkspaceHandlers(database, workspaces, checks)) {
     registeredChannels.push(channel);
   }
@@ -207,37 +173,9 @@ export function registerIpcHandlers(
   for (const channel of registerMcpHandlers(mcpAuth)) {
     registeredChannels.push(channel);
   }
-  register(
-    "learnings:list",
-    withValidation(z.object({ projectId: z.string().min(1), limit: z.number().int().min(1).max(200).optional() }), (input) =>
-      database.listLearnings(input.projectId, input.limit)
-    )
-  );
-  register(
-    "learnings:update",
-    withValidation(
-      z.object({
-        id: z.string().min(1),
-        summary: z.string().min(1).optional(),
-        verified: z.boolean().optional()
-      }),
-      (input) => database.updateLearning(input)
-    )
-  );
-  register(
-    "learnings:delete",
-    withValidation(z.object({ id: z.string().min(1) }), (input) => {
-      database.deleteLearning(input.id);
-      return { ok: true } as const;
-    })
-  );
-  register(
-    "session:search",
-    withValidation(
-      z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(200).optional() }),
-      (input) => database.searchEvents(input)
-    )
-  );
+  for (const channel of registerSessionHandlers(database, checks, checkpoints)) {
+    registeredChannels.push(channel);
+  }
   for (const channel of registerGitHandlers(ghService, gitOps)) {
     registeredChannels.push(channel);
   }
@@ -250,47 +188,9 @@ export function registerIpcHandlers(
   for (const channel of registerApprovalsHandlers(database)) {
     registeredChannels.push(channel);
   }
-  register(
-    "session:eventsSince",
-    withValidation(sessionEventsSinceInputSchema, (input) => database.listSessionEventsSince(input))
-  );
-  // Cost & token transparency (additive — see SPEC_COST_TRANSPARENCY.md)
-  register(
-    "session:costSummary",
-    withValidation(sessionCostSummaryInputSchema, (input) => database.getSessionCostSummary(input.sessionId))
-  );
   for (const channel of registerReviewHandlers(review, workspaceFiles)) {
     registeredChannels.push(channel);
   }
-  register(
-    "checks:run",
-    withValidation(runCheckInputSchema, (input) => checks.runWorkspaceCheck(input))
-  );
-  register(
-    "checkpoints:create",
-    withValidation(createCheckpointInputSchema, (input) => checkpoints.createCheckpoint(input))
-  );
-  register(
-    "attempts:select-preferred",
-    withValidation(selectPreferredAttemptInputSchema, (input) => database.selectPreferredAttempt(input.sessionId))
-  );
-  register(
-    "skills:list",
-    withValidation(skillsListInputSchema, (input) => {
-      // Resolve workspace path so workspace-local .claude/.codex skill dirs
-      // are picked up. The launcher composer has no workspace yet — return
-      // user-level only in that case. Also tolerate just-archived workspaces.
-      let workspaceCwd: string | null = null;
-      if (input.workspaceId) {
-        try {
-          workspaceCwd = database.getWorkspace(input.workspaceId).path;
-        } catch {
-          workspaceCwd = null;
-        }
-      }
-      return listSkills({ provider: input.provider, workspaceCwd });
-    })
-  );
 
   return registeredChannels;
 }

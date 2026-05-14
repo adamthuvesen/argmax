@@ -713,6 +713,39 @@ export function SettingsPanel({
             </dl>
           </div>
         ) : null}
+        {diagnostics?.ipcStats?.length ? (
+          <div className="settings-card" aria-labelledby="settings-diagnostics-ipc">
+            <h3 id="settings-diagnostics-ipc" className="settings-card-title">
+              IPC latency
+            </h3>
+            <p className="settings-hint">
+              Per-channel p50 / p99 across the last 100 invocations. Refreshes when this panel
+              re-opens or you click <em>Copy diagnostics</em>.
+            </p>
+            <table className="settings-startup-table" aria-label="IPC channel latency">
+              <thead>
+                <tr>
+                  <th scope="col">Channel</th>
+                  <th scope="col">Count</th>
+                  <th scope="col">p50</th>
+                  <th scope="col">p99</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diagnostics.ipcStats.map((stat) => (
+                  <tr key={stat.channel}>
+                    <td>
+                      <code>{stat.channel}</code>
+                    </td>
+                    <td>{stat.count.toLocaleString()}</td>
+                    <td>{stat.p50.toFixed(2)} ms</td>
+                    <td>{stat.p99.toFixed(2)} ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
         {diagnostics?.startupPhases?.length ? (
           <div className="settings-card" aria-labelledby="settings-diagnostics-startup">
             <h3 id="settings-diagnostics-startup" className="settings-card-title">

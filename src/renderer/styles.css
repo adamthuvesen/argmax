@@ -726,6 +726,12 @@ button {
   background: rgba(255, 255, 255, 0.6);
 }
 
+.session-link[data-open="true"]:not(.active) {
+  color: var(--text);
+  background: rgba(107, 142, 113, 0.10);
+  box-shadow: inset 2px 0 0 rgba(107, 142, 113, 0.55);
+}
+
 .session-link.active {
   color: var(--text);
   background: var(--sage-soft);
@@ -1263,14 +1269,15 @@ button {
 }
 
 .launcher-surface {
+  position: relative;
   display: grid;
   width: 100%;
-  gap: 32px;
+  gap: 22px;
   transform: translateY(-3dvh);
   animation: surface-in 420ms var(--ease) both;
-  /* The surface-in animation leaves a transform on this element, creating a stacking context.
-     Without an explicit z-index that context sits at z-index:auto (below positive z-index elements),
-     so .picker-dismiss-layer (z-index:25) would paint on top — swallowing wheel events on pickers. */
+  /* position:relative + z-index:26 puts this stacking context above the
+     portaled .picker-dismiss-layer (z-index:25). Without position, z-index is
+     ignored and the layer paints on top — swallowing wheel events on pickers. */
   z-index: 26;
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -1319,16 +1326,15 @@ button {
 
 .launcher-hero {
   display: grid;
-  gap: 14px;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 0 2px;
+  gap: 10px;
+  padding: 0 10px;
 }
 
 .launcher-hero-meta {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  justify-self: start;
 }
 
 .launcher-hero-dot {
@@ -1352,10 +1358,11 @@ button {
 
 .launcher-hero-headline {
   margin: 0;
-  font-size: clamp(28px, 4.2vw, 44px);
+  max-width: 44ch;
+  font-size: clamp(22px, 2.4vw, 30px);
   font-weight: 500;
-  line-height: 1.06;
-  letter-spacing: -0.022em;
+  line-height: 1.18;
+  letter-spacing: -0.012em;
   color: var(--text);
   text-wrap: balance;
   font-feature-settings: "ss01", "calt";
@@ -1363,18 +1370,20 @@ button {
 }
 
 .launcher-hero-project {
-  position: relative;
   display: inline;
-  padding: 0 2px;
-  background-image: linear-gradient(transparent calc(100% - 2px), var(--ink) 0);
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
+  padding: 0;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--sage);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-skip-ink: none;
 }
 
 .launcher-hero-lede {
-  margin: 0;
-  max-width: 60ch;
-  font-size: 13.5px;
+  margin: 2px 0 0;
+  max-width: 72ch;
+  font-size: 13px;
   line-height: 1.55;
   color: var(--muted-strong);
 }
@@ -1550,7 +1559,7 @@ button {
 
 .settings-main {
   display: grid;
-  gap: 52px;
+  gap: 40px;
   min-width: 0;
 }
 
@@ -1682,6 +1691,11 @@ button {
   gap: 16px;
   scroll-margin-top: clamp(24px, 4dvh, 56px);
   animation: settings-section-in 360ms var(--ease) both;
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--line);
+  padding-top: 40px;
 }
 
 .settings-section:nth-of-type(2) { animation-delay: 40ms; }
@@ -1965,30 +1979,27 @@ button {
 /* ---- Segmented controls (replace .settings-radio-group) ---- */
 
 .settings-segmented {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  border: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
 }
 
 .settings-segmented-legend {
-  padding: 0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--muted-strong);
 }
 
 .settings-segmented-track {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 4px;
-  padding: 4px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--panel-sunken);
 }
 
@@ -1997,13 +2008,14 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border-radius: 7px;
-  font-size: 13px;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 12.5px;
   color: var(--muted-strong);
   cursor: pointer;
   text-align: center;
+  white-space: nowrap;
   transition: color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease),
     box-shadow var(--duration-fast) var(--ease);
@@ -2028,13 +2040,13 @@ button {
 }
 
 .settings-segmented-caption {
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
-  padding: 1px 5px;
+  padding: 0 4px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--panel);
 }
 
@@ -3616,32 +3628,26 @@ button {
 }
 
 .session-multigrid-row {
-  display: flex;
+  display: grid;
   flex: 1 1 0;
   min-height: 0;
-  gap: 1px;
+  gap: 0;
 }
 
 .session-multigrid-cell {
   position: relative;
-  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
+  transition: opacity var(--duration-fast) var(--ease),
+    filter var(--duration-fast) var(--ease);
 }
 
-.session-multigrid-cell[data-focused="true"]::after {
-  /* Inset by 1px so the 2px border sits entirely inside the cell (which
-     uses overflow: hidden). No border-radius — the cell itself has square
-     corners; rounding here would leave the underlying background visible
-     in 12px shoulders at each corner. */
-  content: "";
-  position: absolute;
-  inset: 1px;
-  pointer-events: none;
-  border: 2px solid var(--sage-deep);
-  z-index: 5;
+.session-multigrid:has(.session-multigrid-cell[data-focused="true"])
+  .session-multigrid-cell:not([data-focused="true"]) {
+  opacity: 0.88;
+  filter: saturate(0.94);
 }
 
 /* Nested SessionPane: override the single-pane assumption (height: 100dvh)
@@ -3650,76 +3656,85 @@ button {
   height: 100%;
 }
 
+.session-multigrid-resizer {
+  position: relative;
+  z-index: 20;
+  width: 11px;
+  min-width: 11px;
+  margin-inline: -5px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.session-multigrid-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 1px;
+  background: var(--line);
+  transition: background var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.session-multigrid-resizer:hover::after,
+.session-multigrid[data-resizing="true"] .session-multigrid-resizer::after {
+  background: var(--sage);
+  box-shadow: 0 0 0 1px var(--sage-soft);
+}
+
 /* Drop-zone overlay — appears inside each cell while a sidebar drag is in
-   flight. Five absolutely-positioned regions: top/right/bottom/left edge
-   bands plus a central replace zone. Hovered zones tint with the accent
-   color so the user can preview where the drop will land. */
+   flight. A single hit target computes the nearest edge so the user can only
+   split above/right/below/left. Hovered zones tint with the accent color so
+   the user can preview where the drop will land. */
 .multigrid-drop-overlay {
   position: absolute;
   inset: 0;
   z-index: 50;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .multigrid-drop-zone {
   position: absolute;
-  pointer-events: auto;
-  background: transparent;
+  pointer-events: none;
+  background: var(--sage-soft);
+  outline: 2px dashed var(--sage);
+  outline-offset: -4px;
   transition: background var(--duration-fast, 140ms) var(--ease, ease);
 }
 
-/* Five exclusive zones — no overlap, full coverage. Left and right take
-   the corners (full cell height, 25% wide); above/below get the inset
-   horizontal strips between them; replace fills the central 50% × 50%.
-   No zone is reachable through another's hit area, so drag-and-drop
-   resolves to one intent per drop. */
+/* Edge-only previews. Above/below span the full pane width so row splits read
+   as full-width insertions rather than a centered partial drop target. */
 .multigrid-drop-zone[data-position="left"] {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 25%;
+  width: 34%;
 }
 
 .multigrid-drop-zone[data-position="right"] {
   top: 0;
   bottom: 0;
   right: 0;
-  width: 25%;
+  width: 34%;
 }
 
 .multigrid-drop-zone[data-position="above"] {
   top: 0;
-  left: 25%;
-  right: 25%;
-  height: 25%;
+  left: 0;
+  right: 0;
+  height: 34%;
 }
 
 .multigrid-drop-zone[data-position="below"] {
   bottom: 0;
-  left: 25%;
-  right: 25%;
-  height: 25%;
-}
-
-.multigrid-drop-zone[data-position="replace"] {
-  top: 25%;
-  bottom: 25%;
-  left: 25%;
-  right: 25%;
-}
-
-.multigrid-drop-zone[data-hovered="true"] {
-  background: var(--sage-soft);
-  outline: 2px dashed var(--sage);
-  outline-offset: -4px;
-}
-
-/* Launcher accepts a workspace drop when the grid is empty — soft hint that
-   the launcher area is a valid drop target while a drag is active. */
-.launcher-shell[data-drop-target="true"] {
-  outline: 2px dashed var(--sage);
-  outline-offset: -10px;
-  border-radius: var(--radius-md, 12px);
+  left: 0;
+  right: 0;
+  height: 34%;
 }
 
 .session-grid {
@@ -5499,7 +5514,9 @@ button {
   padding-top: 12vh;
   background: rgba(20, 24, 32, 0.30);
   background-image: linear-gradient(180deg, rgba(20, 24, 32, 0.10), rgba(20, 24, 32, 0.34));
-  z-index: 80;
+  /* Sits above the launcher's review panel (z 120) so ⌘K stays the topmost
+     modal even when ⌘B has opened the project Files panel. */
+  z-index: 140;
   animation: inkwell-fade 140ms var(--ease) both;
 }
 
@@ -8206,7 +8223,7 @@ button {
   }
 
   .launcher-surface h1 {
-    font-size: 28px;
+    font-size: 22px;
   }
 
   .composer-context {

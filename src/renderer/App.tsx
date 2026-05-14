@@ -113,7 +113,6 @@ export function App(): JSX.Element {
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [grid, setGrid] = useState<GridState>(EMPTY_GRID);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
-  const dragActive = draggingWorkspaceId !== null;
 
   const showErrorToast = useCallback((message: string): void => {
     setToast({ kind: "error", message });
@@ -160,6 +159,11 @@ export function App(): JSX.Element {
     () => new Map(snapshot.projects.map((p) => [p.id, p])),
     [snapshot.projects]
   );
+  const openWorkspaceIds = useMemo(
+    () => new Set(grid.rows.flatMap((row) => row.map((cell) => cell.workspaceId))),
+    [grid.rows]
+  );
+  const canDragWorkspaceToGrid = grid.rows.length > 0;
 
   // Mirror the focused grid cell into the dashboard hook's single-selection
   // state so palette/search/IDE-open code paths (which still look at
@@ -257,13 +261,6 @@ export function App(): JSX.Element {
     [snapshot.sessions, workspacesById, setSelectedProjectId]
   );
 
-  const handleEmptyLauncherDrop = useCallback(
-    (workspaceId: string): void => {
-      openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
-    },
-    [openWorkspaceChat]
-  );
-
   const handleWorkspaceDragStart = useCallback((workspaceId: string): void => {
     setDraggingWorkspaceId(workspaceId);
   }, []);
@@ -276,15 +273,17 @@ export function App(): JSX.Element {
   // element when the user cancels with Esc at the OS level, leaving
   // draggingWorkspaceId stuck and every cell painting the drop overlay
   // forever. Subscribe to dragend at the document level (capture) while
-  // a drag is active so we always clear on whatever fires the end.
+  // a drag is active so we always clear on whatever fires the end. Drop cleanup
+  // runs in bubble phase so React's target onDrop can still read the drag
+  // identity from state before the watchdog clears it.
   useEffect(() => {
     if (!draggingWorkspaceId) return;
     const clear = (): void => setDraggingWorkspaceId(null);
     document.addEventListener("dragend", clear, true);
-    document.addEventListener("drop", clear, true);
+    document.addEventListener("drop", clear);
     return () => {
       document.removeEventListener("dragend", clear, true);
-      document.removeEventListener("drop", clear, true);
+      document.removeEventListener("drop", clear);
     };
   }, [draggingWorkspaceId]);
 
@@ -831,6 +830,8 @@ export function App(): JSX.Element {
         isSettingsActive={isSettingsOpen}
         selectedProjectId={selectedProject?.id ?? null}
         selectedWorkspaceId={selectedWorkspace?.id ?? null}
+        openWorkspaceIds={openWorkspaceIds}
+        canDragWorkspaceToGrid={canDragWorkspaceToGrid}
         snapshot={snapshot}
         detectedIdes={detectedIdes}
         defaultIde={defaultIde}
@@ -884,7 +885,7 @@ export function App(): JSX.Element {
               defaultToolCallsExpanded={toolCallsExpanded}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
-              dragActive={dragActive}
+              dragSourceWorkspaceId={draggingWorkspaceId}
               onFocusPane={focusPane}
               onClosePane={closePane}
               onDropWorkspace={handleDropWorkspace}
@@ -897,7 +898,6 @@ export function App(): JSX.Element {
             />
           ) : (
             <LaunchSurface
-              dragActive={dragActive}
               onAddProject={() => void addProject()}
               onBranchSwitch={(updated) =>
                 setSnapshot((s) => {
@@ -919,7 +919,6 @@ export function App(): JSX.Element {
               model={launchModel}
               onModelChange={setLaunchModel}
               onSelectProject={openProjectLauncher}
-              onWorkspaceDrop={handleEmptyLauncherDrop}
               project={selectedProject}
               projects={snapshot.projects}
               rightPanelToggleSignal={rightPanelToggleSignal}

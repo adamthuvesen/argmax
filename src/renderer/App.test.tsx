@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardDelta, DashboardSnapshot, ArgmaxApi } from "../shared/types.js";
+import { WORKSPACE_DRAG_MIME } from "./lib/gridState.js";
 
 const snapshot: DashboardSnapshot = {
   projects: [
@@ -2411,6 +2412,9 @@ describe("App", () => {
       expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
     });
 
+    expect(screen.getByTitle("Build dashboard — running — in view")).toBeInTheDocument();
+    expect(screen.getByTitle("Split target — complete — in view")).toBeInTheDocument();
+
     // Each pane has a close (×) button.
     expect(screen.getAllByRole("button", { name: "Close pane" })).toHaveLength(2);
 
@@ -2469,6 +2473,160 @@ describe("App", () => {
       // Two .session-multigrid-row elements (one per row).
       const rows = document.querySelectorAll(".session-multigrid-row");
       expect(rows).toHaveLength(2);
+    });
+  });
+
+  it("does not start a sidebar workspace drag while the launcher is showing", async () => {
+    render(<App />);
+
+    const row = await screen.findByRole("button", { name: "Build dashboard" });
+    expect(row).toHaveAttribute("draggable", "false");
+
+    const setData = vi.fn();
+    fireEvent.dragStart(row, {
+      dataTransfer: {
+        setData,
+        setDragImage: vi.fn(),
+        effectAllowed: "move"
+      }
+    });
+
+    expect(setData).not.toHaveBeenCalled();
+    expect(document.querySelector(".multigrid-drop-overlay")).toBeNull();
+  });
+
+  it("drops a sidebar session onto a grid zone even when dataTransfer getData is empty", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Drop target",
+      branch: "argmax/drop-target",
+      baseRef: "main",
+      path: "/tmp/worktrees/drop-target",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Drop target",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      preferred: false
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+
+    fireEvent.dragStart(screen.getByRole("button", { name: "Drop target" }), {
+      dataTransfer: {
+        setData: vi.fn(),
+        setDragImage: vi.fn(),
+        effectAllowed: "move"
+      }
+    });
+
+    const dropOverlay = await waitFor(() => {
+      const overlay = document.querySelector<HTMLElement>(".multigrid-drop-overlay");
+      if (!overlay) throw new Error("Expected drop overlay to render");
+      return overlay;
+    });
+    Object.defineProperty(dropOverlay, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+    });
+
+    const dataTransfer = {
+      types: [WORKSPACE_DRAG_MIME],
+      getData: vi.fn(() => ""),
+      dropEffect: "move"
+    };
+    expect(document.querySelector('.multigrid-drop-zone[data-position="replace"]')).toBeNull();
+    fireEvent.drop(dropOverlay, { clientX: 790, clientY: 300, dataTransfer });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+    });
+  });
+
+  it("lets the user drag the divider between side-by-side panes to resize them", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Resize target",
+      branch: "argmax/resize-target",
+      baseRef: "main",
+      path: "/tmp/worktrees/resize-target",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Claude Sonnet 4.6",
+      modelId: "claude-sonnet-4-6",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Resize target",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      preferred: false
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.click(screen.getByRole("button", { name: "Resize target" }), { metaKey: true });
+
+    const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
+    const grid = screen.getByRole("group", { name: "Session panes" });
+    const row = grid.firstElementChild;
+    if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
+    Object.defineProperty(row, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 900, height: 600, top: 0, right: 900, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+    });
+    const before = row.style.gridTemplateColumns;
+
+    fireEvent.mouseDown(handle, { clientX: 450 });
+    fireEvent.mouseMove(document, { clientX: 560 });
+    fireEvent.mouseUp(document);
+
+    await waitFor(() => {
+      expect(row.style.gridTemplateColumns).not.toBe(before);
     });
   });
 

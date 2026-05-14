@@ -35,6 +35,8 @@ describe("SidebarSessionRow", () => {
         workspace={workspaceBase}
         workspaceTokens={null}
         isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
         onOpenWorkspaceChat={vi.fn()}
         onArchiveWorkspace={vi.fn()}
         onOpenInIde={vi.fn()}
@@ -58,6 +60,8 @@ describe("SidebarSessionRow", () => {
       workspace: { ...workspaceBase },
       workspaceTokens: null,
       isSelected: false,
+      isOpenInGrid: false,
+      canDragToGrid: true,
       onOpenWorkspaceChat,
       onArchiveWorkspace,
       onOpenInIde,
@@ -91,6 +95,12 @@ describe("SidebarSessionRow", () => {
 
     // Selection toggle → re-render.
     expect(sidebarSessionRowEqual(prev, { ...prev, isSelected: true })).toBe(false);
+
+    // Grid membership toggle → re-render.
+    expect(sidebarSessionRowEqual(prev, { ...prev, isOpenInGrid: true })).toBe(false);
+
+    // Drag affordance toggle → re-render.
+    expect(sidebarSessionRowEqual(prev, { ...prev, canDragToGrid: false })).toBe(false);
   });
 
   it("ships sidebar action CSS that is visible at rest", () => {

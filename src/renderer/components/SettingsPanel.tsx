@@ -1103,8 +1103,8 @@ function Segmented({
   options: ReadonlyArray<SegmentedOption>;
 }): JSX.Element {
   return (
-    <fieldset className="settings-segmented" aria-label={legend}>
-      <legend className="settings-segmented-legend">{legend}</legend>
+    <div className="settings-segmented" role="radiogroup" aria-label={legend}>
+      <span className="settings-segmented-legend">{legend}</span>
       <div className="settings-segmented-track" data-count={options.length}>
         {options.map((option) => {
           const checked = option.value === value;
@@ -1129,7 +1129,7 @@ function Segmented({
           );
         })}
       </div>
-    </fieldset>
+    </div>
   );
 }
 

@@ -87,11 +87,15 @@ export function useDashboardSession(
     }
 
     const cursor = sessionCursorsRef.current.get(sessionId);
-    const data = await window.argmax.session.eventsSince({
-      sessionId,
-      ...(cursor?.eventCursor !== undefined ? { eventCursor: cursor.eventCursor } : {}),
-      ...(cursor?.rawOutputCursor !== undefined ? { rawOutputCursor: cursor.rawOutputCursor } : {})
-    });
+    // Build the args once instead of two conditional spreads — the spread
+    // form allocated a fresh empty object on every undefined branch
+    // (ralph E1). Equivalent payload, fewer allocations on the hot path.
+    const args: { sessionId: string; eventCursor?: number; rawOutputCursor?: number } = {
+      sessionId
+    };
+    if (cursor?.eventCursor !== undefined) args.eventCursor = cursor.eventCursor;
+    if (cursor?.rawOutputCursor !== undefined) args.rawOutputCursor = cursor.rawOutputCursor;
+    const data = await window.argmax.session.eventsSince(args);
     sessionCursorsRef.current.set(sessionId, {
       eventCursor: data.eventCursor,
       rawOutputCursor: data.rawOutputCursor

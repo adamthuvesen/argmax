@@ -24,6 +24,11 @@ import {
   updateLearning,
   type InsertLearningInput
 } from "./learnings.js";
+import {
+  getSessionCostSummary,
+  insertUsageEvent,
+  type InsertUsageEventInput
+} from "./usage.js";
 import { runMigrations } from "./migrations.js";
 import { seedDemoData } from "./seed.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
@@ -45,11 +50,12 @@ import type {
 } from "../../shared/types.js";
 import type { ReasoningEffort, UsageCounts } from "../../shared/providerModels.js";
 
-// Re-export from the dedicated errors module so existing consumers
-// (`import { RecordNotFoundError } from "./database.js"`) keep working
-// without churning every callsite.
+// Re-export from the dedicated submodules so existing consumers
+// (`import { RecordNotFoundError, InsertUsageEventInput } from "./database.js"`)
+// keep working without churning every callsite.
 export { RecordNotFoundError } from "./errors.js";
 export type { InsertLearningInput } from "./learnings.js";
+export type { InsertUsageEventInput } from "./usage.js";
 
 export interface PersistProjectInput {
   id: string;
@@ -166,15 +172,6 @@ export interface PersistCheckpointInput {
   gitRef: string | null;
   patchPath: string | null;
   createdAt?: string;
-}
-
-export interface InsertUsageEventInput {
-  sessionId: string;
-  eventId?: string;
-  modelId: string;
-  tokens: UsageCounts;
-  costUsd: number;
-  createdAt?: number;
 }
 
 interface ProjectAggregateRow {
@@ -1520,77 +1517,6 @@ function preferredAttemptKey(projectId: string, taskLabel: string): string {
   return `preferred-attempt:${projectId}:${taskLabel}`;
 }
 
-interface UsageEventRow {
-  model_id: string;
-}
-
-interface SessionCostRow {
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cache_write_tokens: number;
-  cost_usd: number;
-}
-
-function insertUsageEvent(connection: Database.Database, input: InsertUsageEventInput): void {
-  const insertStmt = connection.prepare(
-    `
-      INSERT INTO usage_events (
-        session_id, event_id, model_id, input_tokens, output_tokens,
-        cache_read_tokens, cache_write_tokens, cost_usd, created_at
-      ) VALUES (
-        @sessionId, @eventId, @modelId, @inputTokens, @outputTokens,
-        @cacheReadTokens, @cacheWriteTokens, @costUsd, @createdAt
-      )
-    `
-  );
-  const updateStmt = connection.prepare(
-    `
-      UPDATE sessions
-      SET
-        input_tokens = input_tokens + @inputTokens,
-        output_tokens = output_tokens + @outputTokens,
-        cache_read_tokens = cache_read_tokens + @cacheReadTokens,
-        cache_write_tokens = cache_write_tokens + @cacheWriteTokens,
-        cost_usd = cost_usd + @costUsd
-      WHERE id = @sessionId
-    `
-  );
-  // Atomic so the audit-log row and aggregate totals can't diverge on a
-  // session-deleted race. Nested-call safe: better-sqlite3 promotes this to
-  // a savepoint when run inside an outer transaction (see flushBatch).
-  const modelStmt = connection.prepare(
-    "UPDATE sessions SET last_model_id = @modelId WHERE id = @sessionId"
-  );
-  connection.transaction(() => {
-    insertStmt.run({
-      sessionId: input.sessionId,
-      eventId: input.eventId ?? null,
-      modelId: input.modelId,
-      inputTokens: input.tokens.input,
-      outputTokens: input.tokens.output,
-      cacheReadTokens: input.tokens.cacheRead,
-      cacheWriteTokens: input.tokens.cacheWrite,
-      costUsd: input.costUsd,
-      createdAt: input.createdAt ?? Date.now()
-    });
-    const result = updateStmt.run({
-      sessionId: input.sessionId,
-      inputTokens: input.tokens.input,
-      outputTokens: input.tokens.output,
-      cacheReadTokens: input.tokens.cacheRead,
-      cacheWriteTokens: input.tokens.cacheWrite,
-      costUsd: input.costUsd
-    });
-    if (result.changes === 0) {
-      throw new RecordNotFoundError("session", input.sessionId);
-    }
-    if (input.modelId) {
-      modelStmt.run({ sessionId: input.sessionId, modelId: input.modelId });
-    }
-  })();
-}
-
 function setWorkspacePinned(
   connection: Database.Database,
   workspaceId: string,
@@ -1610,32 +1536,6 @@ function updateSessionLastModelId(connection: Database.Database, sessionId: stri
   connection
     .prepare("UPDATE sessions SET last_model_id = ? WHERE id = ?")
     .run(modelId, sessionId);
-}
-
-function getSessionCostSummary(connection: Database.Database, sessionId: string): SessionCostSummary {
-  const sessionRow = connection
-    .prepare(
-      "SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id FROM sessions WHERE id = ?"
-    )
-    .get(sessionId) as (SessionCostRow & { last_model_id: string | null }) | undefined;
-  if (!sessionRow) {
-    throw new RecordNotFoundError("session", sessionId);
-  }
-  const latestUsage = connection
-    .prepare("SELECT model_id FROM usage_events WHERE session_id = ? ORDER BY id DESC LIMIT 1")
-    .get(sessionId) as UsageEventRow | undefined;
-
-  return {
-    sessionId,
-    modelId: latestUsage?.model_id ?? sessionRow.last_model_id ?? null,
-    tokens: {
-      input: sessionRow.input_tokens,
-      output: sessionRow.output_tokens,
-      cacheRead: sessionRow.cache_read_tokens,
-      cacheWrite: sessionRow.cache_write_tokens
-    },
-    costUsd: sessionRow.cost_usd
-  };
 }
 
 function updateProjectRemote(

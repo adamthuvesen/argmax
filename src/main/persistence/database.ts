@@ -144,6 +144,26 @@ const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** SQLite datetime modifier matching PRUNE_INTERVAL_MS retention. */
 const RAW_OUTPUT_RETENTION = "-7 days";
 
+/**
+ * Deletes `raw_outputs` rows older than the retention window. Exported so the
+ * D4 regression test can exercise the prune SQL against a seeded DB without
+ * having to drive the setInterval-based wiring inside `createDatabase`.
+ *
+ * Swallows + logs errors — the prune is best-effort: a transient lock should
+ * not crash the app. Callers in `createDatabase` re-invoke daily anyway.
+ */
+export function pruneOldRawOutputs(connection: Database.Database): void {
+  try {
+    connection
+      .prepare(`DELETE FROM raw_outputs WHERE created_at < datetime('now', '${RAW_OUTPUT_RETENTION}')`)
+      .run();
+  } catch (error) {
+    logger.warn("database.prune", "pruneRawOutputs failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 export interface ArgmaxDatabase {
   connection: Database.Database;
   listProjects: () => ProjectSummary[];
@@ -235,15 +255,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
   // weight and grow unboundedly without this.
   const pruneRawOutputs = (): void => {
     if (!connection.open) return;
-    try {
-      connection
-        .prepare(`DELETE FROM raw_outputs WHERE created_at < datetime('now', '${RAW_OUTPUT_RETENTION}')`)
-        .run();
-    } catch (error) {
-      logger.warn("database.prune", "pruneRawOutputs failed", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+    pruneOldRawOutputs(connection);
   };
   pruneRawOutputs();
   const pruneTimer: NodeJS.Timeout = setInterval(pruneRawOutputs, PRUNE_INTERVAL_MS);

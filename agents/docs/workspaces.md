@@ -58,11 +58,18 @@ The renderer's review panel renders these in `ReviewPanel.tsx` with `DiffBlocks.
 
 Checkpoints are deliberately one-way today — restoring a patch isn't surfaced in the UI yet. The pattern leaves room for a future "snap back" affordance.
 
-## Commit preparation
+## Git actions
 
-[src/main/review/commitPreparationService.ts](../../src/main/review/commitPreparationService.ts) — `commits.prepare(input)` returns the staged-file plan, suggested commit message, and the commands a user would run, but **does not actually commit**. The renderer's `CommitDialog.tsx` is what fires the commit.
+[src/main/git/gitOpsService.ts](../../src/main/git/gitOpsService.ts) — `GitOpsService` owns the mutating branch actions behind the renderer's git dropdown:
 
-This shape exists so a future "agent commits via approval" flow can route through the same plan without coupling commit logic to UI events.
+| Method | Behavior |
+|---|---|
+| `commitAll(input)` | Stages selected files with `git add -- <paths>` or everything with `git add -A`, commits with the supplied message, then returns the new commit SHA + branch. |
+| `push(input)` | Runs `git push`; on the first missing-upstream push, retries with `git push -u origin <branch>`. |
+| `createBranch(input)` | Creates and checks out a new branch in the workspace. |
+| `viewOrCreatePr(input)` | Opens the latest cached PR for the session when known, otherwise runs `gh pr create --fill` and refreshes the PR cache. |
+
+Branch-name validation lives in the IPC schema, and git calls still use argv arrays plus `--` separators where git supports them. Keep new branch/PR actions here unless they grow their own lifecycle or background poller.
 
 ## File preview
 
@@ -75,4 +82,10 @@ Path resolution is validated through `workspacePaths` ([src/main/util/workspaceP
 
 ## When to add a method here vs a new file
 
-If you're touching git directly, the answer is almost always **`gitReviewService`** or **`checkpointService`** rather than a new service. Both already own the `runGitText` rails and the workspace-id resolution. Carve out a new file only when the new feature owns its own lifecycle (a watcher, a queue, an external service) — `WorkspaceService` is already that for worktrees.
+Route git work by ownership:
+
+- Read-only diff/status surfaces belong in **`GitReviewService`**.
+- Save-point patch creation belongs in **`CheckpointService`**.
+- Mutating branch/commit/push/PR actions belong in **`GitOpsService`**.
+
+All three should keep using the shared `runGitText` / `runGitBuffer` rails. Carve out a new service only when the feature owns its own lifecycle (a watcher, queue, external poller, or long-running process) — `WorkspaceService` is already that for worktrees.

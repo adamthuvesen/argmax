@@ -15,7 +15,7 @@ Tight feedback on cold start, IPC latency, and renderer perf. Numbers measured o
 | `window.create` → `window.ready-to-show` | ≤ 1 100 ms | Renderer bundle fetch + first React render. |
 | **`boot` → `window.ready-to-show`** | **≤ 1 500 ms** | Cold-start budget, displayed in `Settings → Diagnostics → Startup`. |
 
-The phase records survive across the app lifetime and are surfaced through `system:perfStats` (Phase 7 — pending). A phase whose `deltaMs` exceeds its budget will be flagged red in the diagnostics panel.
+The phase records survive across the app lifetime and are surfaced through `system:diagnostics` as `startupPhases`. A phase whose `deltaMs` exceeds its budget is flagged red in Settings → Diagnostics → Startup.
 
 ## Bench harness
 
@@ -25,16 +25,14 @@ Run the perf suite from a clean checkout:
 npm test -- src/test/perf.test.ts
 ```
 
-(Suite TBD as part of P4.10 — placeholder section.)
-
 Documented budgets:
 
 - `mergeDashboardDelta` over a 200-session payload: p95 < 5 ms.
 - `buildFileTree` over 10 000 entries: < 50 ms.
 - `runMigrations` on an empty DB: < 200 ms.
 
-The first two ride on existing test files (`snapshot.test.ts`, `WorkspaceTree.test.tsx`). `runMigrations` runs implicitly inside every `createDatabase(":memory:")` call in `database.test.ts` — its wall-clock cost shows up in vitest's per-test duration.
+These are pinned in [src/test/perf.test.ts](../../src/test/perf.test.ts). The file-tree budget exercises `buildFileTree` directly; `WorkspaceTree.test.tsx` covers renderer virtualization behavior separately.
 
-## IPC latency (planned, P4.02)
+## IPC latency
 
-`withValidation` will wrap each handler with a rolling-window timer (last 100 invocations) and expose p50 / p99 / count via `system:perfStats`. The Diagnostics panel will render the histogram. Budget: any handler whose p99 exceeds 100 ms is investigated.
+Every registered request/response IPC handler is wrapped by `timed(channel, listener)` in [src/main/ipc.ts](../../src/main/ipc.ts). The histogram keeps the last 100 samples per channel plus a total-sample count, and `system:diagnostics` exposes it as `ipcStats`. Settings → Diagnostics → IPC renders p50 / p99 / count. Budget: any handler whose p99 exceeds 100 ms is investigated.

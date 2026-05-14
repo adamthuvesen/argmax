@@ -58,7 +58,7 @@ Hot paths are deliberately narrow:
 | `DASHBOARD_ROW_LIMIT` | 200 | Workspaces/sessions/approvals/checks/checkpoints per snapshot |
 | `DASHBOARD_EVENT_LIMIT` | 500 | Timeline tail for the full snapshot |
 | `DASHBOARD_RAW_OUTPUT_LIMIT` | 100 | Raw output tail for the full snapshot |
-| `SESSION_EVENT_PAGE_LIMIT` | 50 | Per-page tail for `session:eventsSince` |
+| `SESSION_EVENT_PAGE_LIMIT` | 500 | Per-page tail for `session:eventsSince` |
 | `SESSION_RAW_OUTPUT_PAGE_LIMIT` | 100 | Per-page raw tail for `session:eventsSince` |
 
 The renderer is responsible for capping its own live `events` / `rawOutputs` arrays to the same limits when applying deltas; see `pruneSupersededDeltas` / `mergeByCreatedAt` in `src/renderer/lib/snapshot.ts`.

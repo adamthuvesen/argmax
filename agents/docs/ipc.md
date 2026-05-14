@@ -35,14 +35,15 @@ The channel inventory is the keys of the `ipcSchemas` object in [src/shared/ipcS
 | `approvals` | `pending`, `resolve` | |
 | `session` | `eventsSince`, `costSummary`, `search` | Cursor-based event tail |
 | `review` | `listChangedFiles`, `loadDiff` | |
-| `workspace` (singular) | `listFiles`, `readFile` | File-tree affordances |
+| `workspace` (singular) | `listFiles`, `readFile`, `writeFile`, `statFile`, project-scoped read variants | File-tree and file-editor affordances |
 | `checks` | `run` | |
 | `checkpoints` | `create` | Binary patches under `${dataDirectory}/checkpoints/` |
 | `attempts` | `selectPreferred` | Multi-attempt session preference |
-| `commits` | `prepare` | Returns staged-file plan, no commit |
+| `git` | `commit`, `push`, `createBranch`, `viewOrCreatePr` | Mutating branch/PR actions driven by the git dropdown |
 | `health` | `ping` | |
 | `skills` | `list` | User + workspace skill registry |
 | `system` | `openPath`, `listDetectedIdes`, `diagnostics`, `vacuumDatabase` | |
+| `mcp` | `list` | User-scope MCP server registry for Claude Code, Codex, and Cursor |
 | `learnings` | `list`, `update`, `delete` | See [memory.md](memory.md) |
 | `prs` | `listForSession`, `refresh` | See [gh.md](gh.md) |
 | `terminal` | `spawn`, `write`, `resize`, `terminate`, `onData`, `onExit` | See [terminal.md](terminal.md) |

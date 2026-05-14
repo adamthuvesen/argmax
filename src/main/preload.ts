@@ -159,7 +159,21 @@ const api: ArgmaxApi = {
     listFilesForProject: (projectId: string) =>
       ipcRenderer.invoke("workspace:list-files-for-project", { projectId }) as Promise<WorkspaceFileEntry[]>,
     readFileForProject: (projectId: string, filePath: string) =>
-      ipcRenderer.invoke("workspace:read-file-for-project", { projectId, filePath }) as Promise<WorkspaceFilePreview>
+      ipcRenderer.invoke("workspace:read-file-for-project", { projectId, filePath }) as Promise<WorkspaceFilePreview>,
+    writeFileForProject: (
+      projectId: string,
+      filePath: string,
+      content: string,
+      expectedMtimeMs: number | null
+    ) =>
+      ipcRenderer.invoke("workspace:write-file-for-project", {
+        projectId,
+        filePath,
+        content,
+        expectedMtimeMs
+      }) as Promise<WorkspaceFileWriteResult>,
+    statFileForProject: (projectId: string, filePath: string) =>
+      ipcRenderer.invoke("workspace:stat-file-for-project", { projectId, filePath }) as Promise<WorkspaceFileStat>
   },
   checks: {
     run: (input: RunCheckInput) => ipcRenderer.invoke("checks:run", input) as Promise<DashboardSnapshot["checks"][number]>

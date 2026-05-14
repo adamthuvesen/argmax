@@ -52,6 +52,8 @@ import {
   reviewListChangedFilesForProjectInputSchema,
   workspaceStatFileInputSchema,
   workspaceWriteFileInputSchema,
+  workspaceStatFileForProjectInputSchema,
+  workspaceWriteFileForProjectInputSchema,
   workspaceStatusInputSchema,
   workspaceIdInputSchema,
   type IpcChannel
@@ -536,6 +538,18 @@ export function registerIpcHandlers(
     "workspace:stat-file",
     withValidation(workspaceStatFileInputSchema, (input) =>
       workspaceFiles.statFile(input.workspaceId, input.filePath)
+    )
+  );
+  register(
+    "workspace:write-file-for-project",
+    withValidation(workspaceWriteFileForProjectInputSchema, (input) =>
+      workspaceFiles.writeFileForProject(input.projectId, input.filePath, input.content, input.expectedMtimeMs)
+    )
+  );
+  register(
+    "workspace:stat-file-for-project",
+    withValidation(workspaceStatFileForProjectInputSchema, (input) =>
+      workspaceFiles.statFileForProject(input.projectId, input.filePath)
     )
   );
   register(

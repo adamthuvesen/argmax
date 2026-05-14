@@ -54,52 +54,60 @@ export function listWorkspaceStatus(
   connection: Database.Database,
   input?: WorkspaceStatusInputFilter
 ): WorkspaceStatusSnapshot {
-  const preferredSessionIds = loadPreferredSessionIds(connection);
-  const workspaceIds = input?.workspaceIds ? [...new Set(input.workspaceIds)].slice(0, DASHBOARD_ROW_LIMIT) : undefined;
-  const workspaceFilter = buildWorkspaceFilter(workspaceIds, "id");
-  const sessionFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
-  const checkFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
-  const checkpointFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
+  // Batch the five reads in one transaction (ralph D2). sqlite implicitly
+  // BEGIN/COMMITs per statement otherwise; a deferred transaction holds the
+  // read snapshot consistent and amortizes the journaling overhead across
+  // the slice queries.
+  return connection.transaction((): WorkspaceStatusSnapshot => {
+    const preferredSessionIds = loadPreferredSessionIds(connection);
+    const workspaceIds = input?.workspaceIds
+      ? [...new Set(input.workspaceIds)].slice(0, DASHBOARD_ROW_LIMIT)
+      : undefined;
+    const workspaceFilter = buildWorkspaceFilter(workspaceIds, "id");
+    const sessionFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
+    const checkFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
+    const checkpointFilter = buildWorkspaceFilter(workspaceIds, "workspace_id");
 
-  // Cap unfiltered dashboard reads at 200 rows each, sorted newest first. The
-  // renderer's sidebar truncates further (7 per project) so older rows are
-  // unreachable in the UI anyway; without this the read grows linearly with
-  // local history. Filtered reads (explicit workspaceIds) still respect the
-  // cap because passing > 200 IDs would not render either.
-  const workspaces = (
-    prepared(
-      connection,
-      `SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
-    ).all(...workspaceFilter.params) as WorkspaceRow[]
-  ).map((row) => workspaceRowToSummary(row));
+    // Cap unfiltered dashboard reads at 200 rows each, sorted newest first.
+    // Renderer's sidebar truncates further (7 per project) so older rows are
+    // unreachable in the UI anyway; without this the read grows linearly with
+    // local history. Filtered reads (explicit workspaceIds) still respect the
+    // cap because passing > 200 IDs would not render either.
+    const workspaces = (
+      prepared(
+        connection,
+        `SELECT * FROM workspaces${workspaceFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
+      ).all(...workspaceFilter.params) as WorkspaceRow[]
+    ).map((row) => workspaceRowToSummary(row));
 
-  const sessions = (
-    prepared(
-      connection,
-      `SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
-    ).all(...sessionFilter.params) as SessionRow[]
-  ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
+    const sessions = (
+      prepared(
+        connection,
+        `SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
+      ).all(...sessionFilter.params) as SessionRow[]
+    ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
 
-  const checks = (
-    prepared(
-      connection,
-      `SELECT * FROM checks${checkFilter.where} ORDER BY started_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
-    ).all(...checkFilter.params) as CheckRow[]
-  ).map(checkRowToRun);
+    const checks = (
+      prepared(
+        connection,
+        `SELECT * FROM checks${checkFilter.where} ORDER BY started_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
+      ).all(...checkFilter.params) as CheckRow[]
+    ).map(checkRowToRun);
 
-  const checkpoints = (
-    prepared(
-      connection,
-      `SELECT * FROM checkpoints${checkpointFilter.where} ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
-    ).all(...checkpointFilter.params) as CheckpointRow[]
-  ).map(checkpointRowToSummary);
+    const checkpoints = (
+      prepared(
+        connection,
+        `SELECT * FROM checkpoints${checkpointFilter.where} ORDER BY created_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
+      ).all(...checkpointFilter.params) as CheckpointRow[]
+    ).map(checkpointRowToSummary);
 
-  return {
-    workspaces,
-    sessions,
-    checks,
-    checkpoints
-  };
+    return {
+      workspaces,
+      sessions,
+      checks,
+      checkpoints
+    };
+  })();
 }
 
 export function loadDashboard(connection: Database.Database): DashboardSnapshot {

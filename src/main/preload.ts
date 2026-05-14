@@ -15,6 +15,7 @@ import type {
   GhPrRecord,
   LaunchProviderSessionInput,
   Learning,
+  McpClientListing,
   ArgmaxApi,
   MenuCommand,
   OpenInIdeInput,
@@ -151,6 +152,9 @@ const api: ArgmaxApi = {
     listDetectedIdes: () => ipcRenderer.invoke("system:listDetectedIdes") as Promise<DetectedIde[]>,
     diagnostics: () => ipcRenderer.invoke("system:diagnostics") as Promise<DiagnosticsReport>,
     vacuumDatabase: () => ipcRenderer.invoke("system:vacuumDatabase") as Promise<{ ok: true }>
+  },
+  mcp: {
+    list: () => ipcRenderer.invoke("mcp:list") as Promise<McpClientListing[]>
   },
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => {

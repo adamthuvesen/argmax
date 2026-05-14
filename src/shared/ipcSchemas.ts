@@ -328,6 +328,7 @@ export const ipcSchemas = {
   "system:listDetectedIdes": listDetectedIdesInputSchema,
   "system:diagnostics": z.void(),
   "system:vacuumDatabase": z.void(),
+  "mcp:list": z.void(),
   "session:costSummary": sessionCostSummaryInputSchema,
   "learnings:list": z.object({
     projectId: projectIdSchema,

@@ -67,11 +67,17 @@ export function Sidebar({
     [snapshot.projects, projectOrder]
   );
 
-  const workspaceCostMap = useMemo(() => {
-    const map = new Map<string, number>();
+  const workspaceTokenMap = useMemo(() => {
+    const map = new Map<string, { input: number; output: number; cached: number }>();
     for (const session of snapshot.sessions) {
-      const prev = map.get(session.workspaceId) ?? 0;
-      map.set(session.workspaceId, prev + (session.costUsd ?? 0));
+      const tokens = session.tokens;
+      if (!tokens) continue;
+      const prev = map.get(session.workspaceId) ?? { input: 0, output: 0, cached: 0 };
+      map.set(session.workspaceId, {
+        input: prev.input + tokens.input,
+        output: prev.output + tokens.output,
+        cached: prev.cached + tokens.cacheRead + tokens.cacheWrite
+      });
     }
     return map;
   }, [snapshot.sessions]);
@@ -260,9 +266,6 @@ export function Sidebar({
                 >
                   <span className="project-bullet" aria-hidden="true" />
                   <span className="project-name-text">{project.name}</span>
-                  {projectWorkspaces.length > 0 ? (
-                    <span className="project-count" aria-hidden="true">{projectWorkspaces.length}</span>
-                  ) : null}
                 </button>
                 <button
                   aria-expanded={!isCollapsed}
@@ -291,7 +294,7 @@ export function Sidebar({
                     >
                       <SidebarSessionRow
                         workspace={workspace}
-                        workspaceCost={workspaceCostMap.get(workspace.id) ?? 0}
+                        workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                         isSelected={selectedWorkspaceId === workspace.id}
                         onOpenWorkspaceChat={onOpenWorkspaceChat}
                         onArchiveWorkspace={onArchiveWorkspace}

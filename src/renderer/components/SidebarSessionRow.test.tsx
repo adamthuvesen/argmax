@@ -33,7 +33,7 @@ describe("SidebarSessionRow", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
-        workspaceCost={0}
+        workspaceTokens={null}
         isSelected={false}
         onOpenWorkspaceChat={vi.fn()}
         onArchiveWorkspace={vi.fn()}

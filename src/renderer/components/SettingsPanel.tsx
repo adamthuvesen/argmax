@@ -12,6 +12,7 @@ import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../lib/fonts.j
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
+import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel.js";
 
@@ -51,6 +52,8 @@ export function SettingsPanel({
   onDefaultIdeChange,
   permissionMode,
   onPermissionModeChange,
+  thinkingStyle,
+  onThinkingStyleChange,
   projects,
   onClose
 }: {
@@ -65,6 +68,8 @@ export function SettingsPanel({
   onDefaultIdeChange: (ide: IdeId | null) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
+  thinkingStyle: ThinkingStyle;
+  onThinkingStyleChange: (style: ThinkingStyle) => void;
   projects: ProjectSummary[];
   onClose: () => void;
 }): JSX.Element {
@@ -230,6 +235,34 @@ export function SettingsPanel({
             style={{ fontFamily: FONT_OPTIONS.find((o) => o.id === fontFamily)?.stack }}
           >
             {FONT_OPTIONS.find((o) => o.id === fontFamily)?.hint}
+          </p>
+          <fieldset className="settings-radio-group" aria-label="Thinking indicator">
+            <legend>Thinking indicator</legend>
+            <label>
+              <input
+                type="radio"
+                name="thinking-style"
+                value="terminal"
+                checked={thinkingStyle === "terminal"}
+                onChange={() => onThinkingStyleChange("terminal")}
+              />
+              <span>Terminal command (default)</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="thinking-style"
+                value="verbs"
+                checked={thinkingStyle === "verbs"}
+                onChange={() => onThinkingStyleChange("verbs")}
+              />
+              <span>Playful verbs</span>
+            </label>
+          </fieldset>
+          <p className="settings-hint">
+            {thinkingStyle === "verbs"
+              ? "Shows a rotating verb (“Gusting…”, “Pondering…”) while the model thinks."
+              : "Types “argmax run --model …” as a terminal-style command while the model thinks."}
           </p>
           <dl className="settings-keyvals">
             <div>

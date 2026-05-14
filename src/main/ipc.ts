@@ -39,6 +39,8 @@ import {
   updateProjectSettingsInputSchema,
   workspaceListFilesInputSchema,
   workspaceReadFileInputSchema,
+  workspaceStatFileInputSchema,
+  workspaceWriteFileInputSchema,
   workspaceStatusInputSchema,
   workspaceIdInputSchema,
   type IpcChannel
@@ -414,6 +416,18 @@ export function registerIpcHandlers(
   ipcMain.handle(
     "workspace:read-file",
     withValidation(workspaceReadFileInputSchema, (input) => workspaceFiles.readFile(input.workspaceId, input.filePath))
+  );
+  ipcMain.handle(
+    "workspace:write-file",
+    withValidation(workspaceWriteFileInputSchema, (input) =>
+      workspaceFiles.writeFile(input.workspaceId, input.filePath, input.content, input.expectedMtimeMs)
+    )
+  );
+  ipcMain.handle(
+    "workspace:stat-file",
+    withValidation(workspaceStatFileInputSchema, (input) =>
+      workspaceFiles.statFile(input.workspaceId, input.filePath)
+    )
   );
   ipcMain.handle(
     "checks:run",

@@ -138,8 +138,23 @@ export interface WorkspaceFileEntry {
 }
 
 export type WorkspaceFilePreview =
-  | { kind: "text"; content: string; size: number }
+  | { kind: "text"; content: string; size: number; mtimeMs: number }
   | { kind: "skipped"; reason: "binary" | "too-large" | "not-a-file"; size?: number };
+
+export interface WorkspaceFileStat {
+  mtimeMs: number;
+  size: number;
+}
+
+/**
+ * Result of `workspace:writeFile`. `ok: false, reason: "stale"` means the file
+ * on disk was mutated since the editor last observed it; the renderer should
+ * surface the "changed on disk, reload?" banner with `currentMtimeMs` as the
+ * new baseline if the user chooses to keep their edits.
+ */
+export type WorkspaceFileWriteResult =
+  | { ok: true; mtimeMs: number; size: number }
+  | { ok: false; reason: "stale"; currentMtimeMs: number; size: number };
 
 export type RunCheckInput = RunCheckInputParsed;
 export type CreateCheckpointInput = CreateCheckpointInputParsed;
@@ -365,6 +380,13 @@ export interface ArgmaxApi {
   workspace: {
     listFiles: (workspaceId: string) => Promise<WorkspaceFileEntry[]>;
     readFile: (workspaceId: string, filePath: string) => Promise<WorkspaceFilePreview>;
+    writeFile: (
+      workspaceId: string,
+      filePath: string,
+      content: string,
+      expectedMtimeMs: number | null
+    ) => Promise<WorkspaceFileWriteResult>;
+    statFile: (workspaceId: string, filePath: string) => Promise<WorkspaceFileStat>;
   };
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;

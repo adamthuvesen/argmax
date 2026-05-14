@@ -206,6 +206,32 @@ export const workspaceReadFileInputSchema = z.object({
   filePath: relativeFilePathSchema
 });
 
+/**
+ * `workspace:write-file` writes UTF-8 content to a worktree file. Caller passes
+ * the mtime they last observed (from read-file or stat-file); if the file moved
+ * since then, the handler refuses with `{ ok: false, reason: "stale", ... }`
+ * rather than clobbering an out-of-band edit (typically a provider session).
+ *
+ * `expectedMtimeMs: null` skips the guard for a brand-new file write — needed
+ * only if we later add a "save as" path; today the editor only opens files
+ * that already exist on disk, so a baseline mtime is always available.
+ *
+ * Cap at 4 MB so a runaway editor buffer can't ship megabytes through IPC.
+ * That's 4× the read cap, but reads are display-bound while writes can grow
+ * by an order of magnitude if the user pastes a large blob.
+ */
+export const workspaceWriteFileInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  filePath: relativeFilePathSchema,
+  content: z.string().max(4_194_304),
+  expectedMtimeMs: z.number().nonnegative().nullable()
+});
+
+export const workspaceStatFileInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  filePath: relativeFilePathSchema
+});
+
 export const runCheckInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   command: z.string().min(1)
@@ -318,6 +344,8 @@ export const ipcSchemas = {
   "review:load-diff": loadDiffInputSchema,
   "workspace:list-files": workspaceListFilesInputSchema,
   "workspace:read-file": workspaceReadFileInputSchema,
+  "workspace:write-file": workspaceWriteFileInputSchema,
+  "workspace:stat-file": workspaceStatFileInputSchema,
   "checks:run": runCheckInputSchema,
   "checkpoints:create": createCheckpointInputSchema,
   "attempts:select-preferred": selectPreferredAttemptInputSchema,
@@ -379,6 +407,8 @@ export type PrepareCommitInputParsed = z.infer<typeof prepareCommitInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type WorkspaceListFilesInputParsed = z.infer<typeof workspaceListFilesInputSchema>;
 export type WorkspaceReadFileInputParsed = z.infer<typeof workspaceReadFileInputSchema>;
+export type WorkspaceWriteFileInputParsed = z.infer<typeof workspaceWriteFileInputSchema>;
+export type WorkspaceStatFileInputParsed = z.infer<typeof workspaceStatFileInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
 export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;
 export type SessionCostSummaryInputParsed = z.infer<typeof sessionCostSummaryInputSchema>;

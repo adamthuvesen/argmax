@@ -272,6 +272,16 @@ export const workspaceListFilesForProjectInputSchema = z.object({
   projectId: projectIdSchema
 });
 
+// Workspace-wide content search (⌘⇧F). `kind` picks which path the backend
+// runs `git grep` in — worktree for active sessions, project main checkout
+// for the launcher. Query is capped at 256 chars so the IPC envelope stays
+// bounded; the backend treats the string as a fixed substring, not a regex.
+export const workspaceGrepContentInputSchema = z.object({
+  kind: z.enum(["workspace", "project"]),
+  id: z.string().min(1).max(128),
+  query: z.string().min(1).max(256)
+});
+
 export const workspaceReadFileForProjectInputSchema = z.object({
   projectId: projectIdSchema,
   filePath: relativeFilePathSchema
@@ -478,6 +488,7 @@ export const ipcSchemas = {
   "workspace:stat-file": workspaceStatFileInputSchema,
   "workspace:write-file-for-project": workspaceWriteFileForProjectInputSchema,
   "workspace:stat-file-for-project": workspaceStatFileForProjectInputSchema,
+  "workspace:grep-content": workspaceGrepContentInputSchema,
   "checks:run": runCheckInputSchema,
   "checkpoints:create": createCheckpointInputSchema,
   "attempts:select-preferred": selectPreferredAttemptInputSchema,
@@ -552,6 +563,7 @@ export type WorkspaceWriteFileInputParsed = z.infer<typeof workspaceWriteFileInp
 export type WorkspaceStatFileInputParsed = z.infer<typeof workspaceStatFileInputSchema>;
 export type WorkspaceWriteFileForProjectInputParsed = z.infer<typeof workspaceWriteFileForProjectInputSchema>;
 export type WorkspaceStatFileForProjectInputParsed = z.infer<typeof workspaceStatFileForProjectInputSchema>;
+export type WorkspaceGrepContentInputParsed = z.infer<typeof workspaceGrepContentInputSchema>;
 export type SkillsListInputParsed = z.infer<typeof skillsListInputSchema>;
 export type SystemOpenPathInputParsed = z.infer<typeof systemOpenPathInputSchema>;
 export type SessionCostSummaryInputParsed = z.infer<typeof sessionCostSummaryInputSchema>;

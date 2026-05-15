@@ -55,7 +55,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
           listFilesForProject: vi.fn().mockResolvedValue([]),
           readFileForProject: vi.fn(),
           writeFileForProject: vi.fn(),
-          statFileForProject: vi.fn()
+          statFileForProject: vi.fn(),
+          grepContent: vi.fn().mockResolvedValue({ files: [], truncated: false })
         }
       } satisfies Partial<ArgmaxApi>
     });

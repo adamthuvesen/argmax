@@ -1,6 +1,6 @@
 import uFuzzy from "@leeoniya/ufuzzy";
 
-export type PaletteGroup = "Actions" | "Sessions" | "Projects" | "Messages";
+export type PaletteGroup = "Actions" | "Sessions" | "Projects" | "Files" | "Messages";
 
 export interface PaletteItem {
   id: string;
@@ -30,7 +30,46 @@ const fuzzy = new uFuzzy({
   interRgt: 1
 });
 
+// File-path matcher: same left-boundary strictness so "src" matches
+// "src/main" but not the "src" inside "rsrc", *but* `interRgt: 0` so a
+// prefix like "AG" still matches "AGENTS.md" — the right edge of a typed
+// prefix is almost never at a non-alphanumeric character.
+const filePathFuzzy = new uFuzzy({
+  intraMode: 1,
+  intraIns: 1,
+  intraSub: 1,
+  intraTrn: 1,
+  intraDel: 1,
+  interLft: 2,
+  interRgt: 0
+});
+
 const EMPTY_RANGES: number[] = [];
+
+export function searchFilePaths(paths: string[], rawQuery: string, limit = 50): string[] {
+  if (paths.length === 0) return [];
+  const query = rawQuery.trim();
+  if (!query) {
+    return paths.slice(0, limit);
+  }
+  const [idxs, info, order] = filePathFuzzy.search(paths, query, 1, 1000);
+  if (!idxs) return [];
+  if (info && order && order.length > 0) {
+    const out: string[] = [];
+    for (let i = 0; i < order.length && out.length < limit; i++) {
+      out.push(paths[info.idx[order[i]]]);
+    }
+    return out;
+  }
+  // Fallback: info-pass produced no ranked order (uFuzzy can return this even
+  // when `idxs` has pre-filter hits — e.g. a prefix that doesn't satisfy the
+  // right-boundary rule). Use the pre-filter idxs in haystack order.
+  const out: string[] = [];
+  for (let i = 0; i < idxs.length && out.length < limit; i++) {
+    out.push(paths[idxs[i]]);
+  }
+  return out;
+}
 
 export function searchPaletteItems(items: PaletteItem[], rawQuery: string): PaletteHit[] {
   const query = rawQuery.trim();

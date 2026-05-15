@@ -337,7 +337,8 @@ describe("App", () => {
         listFilesForProject: listProjectFiles,
         readFileForProject: readProjectFile,
         writeFileForProject: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
-        statFileForProject: () => Promise.resolve({ mtimeMs: 0, size: 0 })
+        statFileForProject: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
+        grepContent: () => Promise.resolve({ files: [], truncated: false })
       },
       checks: {
         run: () => Promise.resolve(missingCheck())
@@ -891,6 +892,80 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "New chat" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("displays an @-mention-only launch prompt as the user message in the new session", async () => {
+    listProjectFiles.mockResolvedValue([{ path: "AGENTS.md" }]);
+    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-mention",
+      projectId: "project-1",
+      taskLabel: "@AGENTS.md",
+      branch: "main",
+      baseRef: "main",
+      path: "/tmp/argmax",
+      state: "running",
+      sharedWorkspace: true,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
+      pinned: false
+    };
+    const newSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-mention",
+      workspaceId: "workspace-mention",
+      provider: "codex",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.3-codex",
+      reasoningEffort: "medium",
+      permissionMode: "auto-approve",
+      providerConversationId: null,
+      prompt: "@AGENTS.md",
+      state: "running",
+      attention: "normal",
+      startedAt: "2026-05-08T16:10:00.000Z",
+      completedAt: null,
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
+      preferred: false
+    };
+    const userEvent: DashboardSnapshot["events"][number] = {
+      id: "event-user-mention",
+      sessionId: "session-mention",
+      type: "user.message",
+      message: "@AGENTS.md",
+      payload: { source: "composer", agentMode: "edit" },
+      createdAt: "2026-05-08T16:10:00.500Z"
+    };
+    mockDashboardSnapshot(snapshot);
+    sessionEventsSince.mockImplementation((input) => {
+      if (input.sessionId === "session-mention") {
+        return Promise.resolve({ events: [userEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0 });
+      }
+      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0 });
+    });
+    createCurrentWorkspace.mockResolvedValue(newWorkspace);
+    launchProvider.mockResolvedValue(newSession);
+
+    render(<App />);
+
+    const promptInput = await screen.findByLabelText("Task prompt");
+    fireEvent.change(promptInput, { target: { value: "@AGENTS.md" } });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "@AGENTS.md" })
+      )
+    );
+    act(() => {
+      dashboardDeltaListener?.({
+        workspaces: [newWorkspace],
+        sessions: [newSession],
+        events: [userEvent]
+      });
+    });
+
+    const bubble = await screen.findByText("@AGENTS.md", { selector: "p" });
+    expect(bubble.closest(".chat-bubble.user")).not.toBeNull();
+  });
+
   it("starts Claude when selected in the composer", async () => {
     render(<App />);
 
@@ -1236,34 +1311,6 @@ describe("App", () => {
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(launchProvider).not.toHaveBeenCalled();
     await waitFor(() => expect(input).toHaveFocus());
-  });
-
-  it("toggles active-session agent mode with Shift+Tab and sends plan mode", async () => {
-    const completeSnapshot = {
-      ...snapshot,
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
-    };
-    mockDashboardSnapshot(completeSnapshot);
-    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Session prompt");
-    fireEvent.change(input, { target: { value: "Plan the follow-up" } });
-    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
-
-    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
-    fireEvent.click(screen.getByTitle("Send follow-up"));
-
-    await waitFor(() =>
-      expect(sendProviderInput).toHaveBeenCalledWith(
-        expect.objectContaining({
-          input: "Plan the follow-up\r",
-          agentMode: "plan"
-        })
-      )
-    );
-    expect(window.localStorage.getItem("argmax.sessionAgentMode.session-1")).toBe("plan");
   });
 
   it("appends @path references when files are dropped onto the composer", async () => {
@@ -1883,7 +1930,7 @@ describe("App", () => {
     expect(preview).toHaveTextContent("export const hello = 'world';");
   });
 
-  it("opens workspace file search from a chat session with Cmd+P", async () => {
+  it("opens workspace files via the unified command palette on Cmd+P", async () => {
     listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([
       { path: "src/main/index.ts" },
@@ -1903,10 +1950,20 @@ describe("App", () => {
 
     fireEvent.keyDown(document, { key: "p", metaKey: true });
 
-    const search = await screen.findByRole("dialog", { name: "Search files in workspace" });
-    expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
-    fireEvent.change(within(search).getByPlaceholderText("Search files…"), { target: { value: "index" } });
-    fireEvent.keyDown(search, { key: "Enter" });
+    // The merged palette renders one dialog labeled "Command palette".
+    // Files load lazily on first non-empty keystroke (matches Messages).
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    const input = within(palette).getByLabelText("Command palette query");
+    fireEvent.change(input, { target: { value: "index" } });
+    await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1"));
+    // Wait for the Files group to populate and pick the matching row.
+    // uFuzzy wraps matched substrings in `<mark>`, so the basename's text
+    // is split across nodes — use a text-content matcher.
+    await within(palette).findByText((_content, node) =>
+      node?.classList.contains("command-palette-result-label") === true &&
+      node?.textContent === "index.ts"
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/index.ts"));
@@ -1947,7 +2004,35 @@ describe("App", () => {
     expect(launchProvider).not.toHaveBeenCalled();
   });
 
-  it("opens project file search from the launcher with Cmd+P", async () => {
+  it("toggles active-session agent mode with Shift+Tab and sends plan mode", async () => {
+    const completeSnapshot = {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
+    };
+    mockDashboardSnapshot(completeSnapshot);
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+    fireEvent.change(input, { target: { value: "Plan the follow-up" } });
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+
+    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
+    fireEvent.click(screen.getByTitle("Send follow-up"));
+
+    await waitFor(() =>
+      expect(sendProviderInput).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: "Plan the follow-up\r",
+          agentMode: "plan"
+        })
+      )
+    );
+    expect(window.localStorage.getItem("argmax.sessionAgentMode.session-1")).toBe("plan");
+  });
+
+  it("opens project files via the unified command palette on Cmd+P", async () => {
     listProjectFiles.mockResolvedValue([
       { path: "src/renderer/App.tsx" },
       { path: "README.md" }
@@ -1964,10 +2049,15 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "p", metaKey: true });
 
-    const search = await screen.findByRole("dialog", { name: "Search files in project" });
-    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
-    fireEvent.change(within(search).getByPlaceholderText("Search files…"), { target: { value: "app" } });
-    fireEvent.keyDown(search, { key: "Enter" });
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    const input = within(palette).getByLabelText("Command palette query");
+    fireEvent.change(input, { target: { value: "app" } });
+    await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith("project-1"));
+    await within(palette).findByText((_content, node) =>
+      node?.classList.contains("command-palette-result-label") === true &&
+      node?.textContent === "App.tsx"
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith("project-1", "src/renderer/App.tsx"));
@@ -2015,7 +2105,7 @@ describe("App", () => {
     expect(listProjectFiles).toHaveBeenCalledWith("project-1");
   });
 
-  it("opens project file search from the launcher after Cmd+B opens review", async () => {
+  it("surfaces project files in the command palette after Cmd+B opens review", async () => {
     listProjectFiles.mockResolvedValue([
       { path: "src/renderer/App.tsx" },
       { path: "README.md" }
@@ -2029,8 +2119,14 @@ describe("App", () => {
 
     fireEvent.keyDown(document, { key: "p", metaKey: true });
 
-    expect(await screen.findByRole("dialog", { name: "Search files in project" })).toBeInTheDocument();
-    expect(screen.getByText("App.tsx")).toBeInTheDocument();
+    // Unified palette — type into it and the Files group surfaces matching paths.
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    const input = within(palette).getByLabelText("Command palette query");
+    fireEvent.change(input, { target: { value: "app" } });
+    await within(palette).findByText((_content, node) =>
+      node?.classList.contains("command-palette-result-label") === true &&
+      node?.textContent === "App.tsx"
+    );
   });
 
   it("opens a slash autocomplete with provider-filtered skills and inserts the selected name", async () => {

@@ -58,6 +58,12 @@ interface SessionMultiGridProps {
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
+  /** App-level setter the focused SessionPane registers with so its file
+      source + pick handler are wired into the command palette's Files
+      group. */
+  registerPaletteFileContext?: (
+    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+  ) => void;
 }
 
 export function SessionMultiGrid({
@@ -82,7 +88,8 @@ export function SessionMultiGrid({
   onSendSessionInput,
   onTerminateSession,
   onCreateCheckpoint,
-  onRunCheck
+  onRunCheck,
+  registerPaletteFileContext
 }: SessionMultiGridProps): JSX.Element {
   const dragActive = dragSourceWorkspaceId !== null;
   const [rowWeights, setRowWeights] = useState<Record<number, number[]>>({});
@@ -235,6 +242,7 @@ export function SessionMultiGrid({
                         session={session}
                         thinkingStyle={thinkingStyle}
                         workspace={workspace}
+                        registerPaletteFileContext={registerPaletteFileContext}
                       />
                     )}
                     {dragActive && dragSourceWorkspaceId && allowedDropPositions.length > 0 ? (

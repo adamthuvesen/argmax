@@ -15,6 +15,7 @@ import { createPortal } from "react-dom";
 import type { AgentMode, ProjectSummary } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
@@ -26,7 +27,6 @@ import {
   toggleAgentMode,
   writeStoredAgentMode
 } from "../lib/agentMode.js";
-import { FileSearchOverlay } from "./FileSearchOverlay.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
@@ -34,6 +34,7 @@ import { LaunchModelSelector } from "./ModelSelector.js";
 const ReviewPanel = lazy(async () => ({
   default: (await import("./ReviewPanel.js")).ReviewPanel
 }));
+import { FilePopover } from "./FilePopover.js";
 import { SkeletonPane } from "./SkeletonPane.js";
 import { SkillPopover } from "./SkillPopover.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
@@ -64,7 +65,8 @@ export function LaunchSurface({
   onSelectProject,
   project,
   projects,
-  rightPanelToggleSignal
+  rightPanelToggleSignal,
+  registerPaletteFileContext
 }: {
   model: ModelPickerSelection;
   onAddProject: () => void;
@@ -75,6 +77,9 @@ export function LaunchSurface({
   project: ProjectSummary | null;
   projects: ProjectSummary[];
   rightPanelToggleSignal?: number;
+  registerPaletteFileContext?: (
+    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+  ) => void;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -100,8 +105,23 @@ export function LaunchSurface({
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
-  const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
+
+  // Register this surface's file source + pick handler with App so the
+  // command palette can surface project files in its Files group. Cleared
+  // on unmount or when no project is selected.
+  useEffect(() => {
+    if (!registerPaletteFileContext) return undefined;
+    if (!project) {
+      registerPaletteFileContext(null);
+      return () => registerPaletteFileContext(null);
+    }
+    registerPaletteFileContext({
+      source: { kind: "project", id: project.id },
+      onPick: reviewOpenInFilesView
+    });
+    return () => registerPaletteFileContext(null);
+  }, [project, registerPaletteFileContext, reviewOpenInFilesView]);
   const toggleReviewPanel = useCallback((): void => {
     if (reviewIsPanelOpen) {
       reviewClosePanel();
@@ -130,23 +150,8 @@ export function LaunchSurface({
     toggleReviewPanel();
   }, [project, rightPanelToggleSignal, toggleReviewPanel]);
 
-  // Cmd/Ctrl+P opens project file quick-open from the launcher. Picking a
-  // result opens the right-side ReviewPanel in Files mode.
   useEffect(() => {
-    if (!project) return undefined;
-    const handler = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "p") return;
-      event.preventDefault();
-      setIsQuickOpenOpen(true);
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [project]);
-
-  useEffect(() => {
-    if (!project || !reviewIsPanelOpen || isQuickOpenOpen) return undefined;
+    if (!project || !reviewIsPanelOpen) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       if (isTypingTarget(event.target)) return;
@@ -155,7 +160,7 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [project, reviewClosePanel, reviewIsPanelOpen, isQuickOpenOpen]);
+  }, [project, reviewClosePanel, reviewIsPanelOpen]);
 
   useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
   useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
@@ -231,13 +236,13 @@ export function LaunchSurface({
   const formRef = useRef<HTMLFormElement | null>(null);
   useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);
 
-  // Auto-focus the prompt when the launcher is the active surface — on first
-  // visit, on project switch, and again whenever the right-side review panel
-  // or quick-open overlay closes, so the user can keep typing without clicking.
+  // Auto-focus the prompt when the launcher is the active surface — on
+  // first visit, on project switch, and again whenever the right-side
+  // review panel closes, so the user can keep typing without clicking.
   useEffect(() => {
-    if (!project || reviewIsPanelOpen || isQuickOpenOpen || isSubmitting) return;
+    if (!project || reviewIsPanelOpen || isSubmitting) return;
     promptInputRef.current?.focus();
-  }, [project, reviewIsPanelOpen, isQuickOpenOpen, isSubmitting]);
+  }, [project, reviewIsPanelOpen, isSubmitting]);
   const slashAutocomplete = useSlashAutocomplete({
     input: prompt,
     setInput: setPrompt,
@@ -245,8 +250,17 @@ export function LaunchSurface({
     workspaceId: null
   });
 
+  const fileAutocomplete = useFileAutocomplete({
+    input: prompt,
+    setInput: setPrompt,
+    inputRef: promptInputRef,
+    source: project ? { kind: "project", id: project.id } : null
+  });
+
   const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
+    if (event.defaultPrevented) return;
+    fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
     if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -352,17 +366,29 @@ export function LaunchSurface({
           <textarea
             aria-label="Task prompt"
             aria-autocomplete="list"
-            aria-expanded={slashAutocomplete.popoverOpen}
-            aria-controls={slashAutocomplete.popoverOpen ? "skill-popover" : undefined}
+            aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+            aria-controls={
+              slashAutocomplete.popoverOpen
+                ? "skill-popover"
+                : fileAutocomplete.popoverOpen
+                  ? "file-popover"
+                  : undefined
+            }
             disabled={isSubmitting}
-            onChange={(event) => setPrompt(event.target.value)}
+            onChange={(event) => {
+              setPrompt(event.target.value);
+              fileAutocomplete.onSelectionChange(event);
+            }}
             onKeyDown={onPromptKeyDown}
+            onSelect={fileAutocomplete.onSelectionChange}
+            onClick={fileAutocomplete.onSelectionChange}
             placeholder={placeholderText}
             ref={promptInputRef}
             value={prompt}
             rows={1}
           />
           <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
+          <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
           <button className="composer-tool" type="button" title="Add context" aria-label="Add context">
             <Plus size={18} />
           </button>
@@ -517,15 +543,6 @@ export function LaunchSurface({
         <Suspense fallback={null}>
           <ReviewPanel review={reviewState} />
         </Suspense>
-      ) : null}
-      {project ? (
-        <FileSearchOverlay
-          open={isQuickOpenOpen}
-          onClose={() => setIsQuickOpenOpen(false)}
-          sourceKind="project"
-          sourceId={project.id}
-          onPick={reviewOpenInFilesView}
-        />
       ) : null}
     </div>
   );

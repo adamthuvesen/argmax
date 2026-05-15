@@ -67,6 +67,16 @@ describe("searchPaletteItems", () => {
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0].item.id).toBe("a");
   });
+
+  it("ranks Files-group items by basename when the query matches the filename", () => {
+    const files: PaletteItem[] = [
+      { id: "file:src/main/index.ts", label: "index.ts", subtitle: "src/main", group: "Files", run: noop },
+      { id: "file:src/renderer/App.tsx", label: "App.tsx", subtitle: "src/renderer", group: "Files", run: noop }
+    ];
+    const hits = searchPaletteItems(files, "App");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0].item.id).toBe("file:src/renderer/App.tsx");
+  });
 });
 
 describe("highlightSegments", () => {

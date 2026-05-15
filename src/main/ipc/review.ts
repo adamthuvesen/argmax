@@ -3,6 +3,7 @@ import {
   loadDiffInputSchema,
   loadDiffForProjectInputSchema,
   reviewListChangedFilesForProjectInputSchema,
+  workspaceGrepContentInputSchema,
   workspaceIdInputSchema,
   workspaceListFilesInputSchema,
   workspaceListFilesForProjectInputSchema,
@@ -92,6 +93,14 @@ export function registerReviewHandlers(
     "workspace:stat-file-for-project",
     withValidation(workspaceStatFileForProjectInputSchema, (input) =>
       workspaceFiles.statFileForProject(input.projectId, input.filePath)
+    )
+  );
+  register(
+    "workspace:grep-content",
+    withValidation(workspaceGrepContentInputSchema, (input) =>
+      input.kind === "workspace"
+        ? workspaceFiles.grepContentForWorkspace(input.id, input.query)
+        : workspaceFiles.grepContentForProject(input.id, input.query)
     )
   );
 

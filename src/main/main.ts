@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -42,9 +42,17 @@ const iconPath = join(currentDirectory, "..", "..", "assets", "icon.png");
 
 async function createWindow(): Promise<void> {
   const rendererIndexPath = join(currentDirectory, "../renderer/index.html");
+  // Open the window covering the primary display's work area (between the
+  // menu bar and dock). We pass the work area's x/y origin so the window
+  // doesn't slide behind the menu bar when centered, then call maximize()
+  // after creation so the green traffic light still toggles back to a
+  // smaller size.
+  const workArea = screen.getPrimaryDisplay().workArea;
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 960,
+    x: workArea.x,
+    y: workArea.y,
+    width: workArea.width,
+    height: workArea.height,
     minWidth: 900,
     minHeight: 620,
     resizable: true,
@@ -75,6 +83,12 @@ async function createWindow(): Promise<void> {
   });
 
   mainWindow.once("ready-to-show", () => {
+    // maximize() before show() so the window appears already covering the
+    // work area with no flash. Belt-and-braces alongside the explicit
+    // workArea bounds above — handles edge cases like dock auto-hide
+    // changing the available height between BrowserWindow construction and
+    // first paint.
+    mainWindow?.maximize();
     mainWindow?.show();
     markStartupPhase("window.ready-to-show");
   });

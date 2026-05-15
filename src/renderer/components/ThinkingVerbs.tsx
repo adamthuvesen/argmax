@@ -1,7 +1,7 @@
 import { useEffect, useState, type JSX } from "react";
 import { pickNextVerb } from "../lib/thinkingVerbs.js";
 
-const ROTATION_INTERVAL_MS = 2500;
+const ROTATION_INTERVAL_MS = 1400;
 
 export function ThinkingVerbs(): JSX.Element {
   const [verb, setVerb] = useState<string>(() => pickNextVerb(null));

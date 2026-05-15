@@ -14,15 +14,32 @@ export type PaletteCommand = PaletteItem;
 const MAX_PER_GROUP = 8;
 const MESSAGE_DEBOUNCE_MS = 150;
 const MIN_MESSAGE_QUERY_LENGTH = 3;
+const MAX_FILE_RESULTS = 200;
 
-const GROUP_ORDER: PaletteGroup[] = ["Actions", "Sessions", "Projects", "Messages"];
+const GROUP_ORDER: PaletteGroup[] = ["Actions", "Sessions", "Projects", "Files", "Messages"];
 
 const GROUP_SIGIL: Record<PaletteGroup, string> = {
   Actions: "A",
   Sessions: "S",
   Projects: "P",
+  Files: "F",
   Messages: "M"
 };
+
+export interface PaletteFileSource {
+  kind: "workspace" | "project";
+  id: string;
+}
+
+function basename(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? path : path.slice(slash + 1);
+}
+
+function dirname(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? "" : path.slice(0, slash);
+}
 
 export interface MessageHit {
   /** Stable key — `${sessionId}:${eventId}`. */
@@ -44,20 +61,39 @@ export interface CommandPaletteProps {
    * query (length >= 3) after a debounce; returns up to `limit` hits.
    */
   searchMessages?: (query: string, limit: number) => Promise<MessageHit[]>;
+  /**
+   * Optional context for the "Files" scope. When set, file paths from the
+   * given workspace or project flow through the palette as `PaletteItem`s
+   * grouped under "Files". Files are loaded lazily on first non-empty query
+   * and cached for the palette session. Picking a file calls `onFilePick`.
+   */
+  fileSource?: PaletteFileSource | null;
+  loadFiles?: (source: PaletteFileSource) => Promise<string[]>;
+  onFilePick?: (path: string) => void;
 }
 
 export function CommandPalette({
   open,
   commands,
   onClose,
-  searchMessages
+  searchMessages,
+  fileSource = null,
+  loadFiles,
+  onFilePick
 }: CommandPaletteProps): JSX.Element | null {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [messageHits, setMessageHits] = useState<MessageHit[]>([]);
   const [messagesRunning, setMessagesRunning] = useState(false);
+  const [filePaths, setFilePaths] = useState<string[]>([]);
+  const [filesRunning, setFilesRunning] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const messageTokenRef = useRef(0);
+  const filesTokenRef = useRef(0);
+  // Cache the loaded path list across keystrokes within a single palette
+  // session. Keyed by `${kind}:${id}` so switching workspace/project between
+  // opens invalidates correctly.
+  const filesCacheKeyRef = useRef<string | null>(null);
   // Capture the element that had focus before the palette opened so we can
   // restore it on close — otherwise focus drops to <body> and the keyboard
   // user loses their place.
@@ -69,6 +105,9 @@ export function CommandPalette({
       setSelectedIndex(0);
       setMessageHits([]);
       setMessagesRunning(false);
+      setFilePaths([]);
+      setFilesRunning(false);
+      filesCacheKeyRef.current = null;
       const previous = previousActiveElementRef.current;
       previousActiveElementRef.current = null;
       if (previous && document.contains(previous)) {
@@ -80,12 +119,6 @@ export function CommandPalette({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     inputRef.current?.focus();
   }, [open]);
-
-  // Run uFuzzy synchronously on each keystroke. Cheap for the local catalog.
-  const localHits = useMemo<PaletteHit[]>(() => {
-    if (!open) return [];
-    return searchPaletteItems(commands, query);
-  }, [commands, query, open]);
 
   // Debounced message backend — only when query is long enough to be useful.
   useEffect(() => {
@@ -119,6 +152,59 @@ export function CommandPalette({
     }, MESSAGE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
   }, [open, query, searchMessages]);
+
+  // Lazy file-list load — fires on first non-empty keystroke when a file
+  // source is available. Cached for the palette session keyed by source.
+  useEffect(() => {
+    if (!open || !fileSource || !loadFiles) {
+      setFilePaths([]);
+      setFilesRunning(false);
+      return;
+    }
+    const cacheKey = `${fileSource.kind}:${fileSource.id}`;
+    if (filesCacheKeyRef.current === cacheKey) return;
+    if (query.trim().length === 0) return;
+    const token = ++filesTokenRef.current;
+    filesCacheKeyRef.current = cacheKey;
+    setFilesRunning(true);
+    void loadFiles(fileSource)
+      .then((paths) => {
+        if (token !== filesTokenRef.current) return;
+        setFilePaths(paths);
+      })
+      .catch(() => {
+        if (token !== filesTokenRef.current) return;
+        setFilePaths([]);
+      })
+      .finally(() => {
+        if (token === filesTokenRef.current) setFilesRunning(false);
+      });
+  }, [open, fileSource, loadFiles, query]);
+
+  // Materialize Files PaletteItems from the cached path list. Cheap memo —
+  // only rebuilds when the path list changes (once per palette session).
+  const fileItems = useMemo<PaletteItem[]>(() => {
+    if (!onFilePick || filePaths.length === 0) return [];
+    return filePaths.slice(0, MAX_FILE_RESULTS).map((path) => ({
+      id: `file:${path}`,
+      label: basename(path),
+      subtitle: dirname(path) || undefined,
+      group: "Files" as const,
+      run: () => onFilePick(path)
+    }));
+  }, [filePaths, onFilePick]);
+
+  const combinedCommands = useMemo<PaletteItem[]>(
+    () => (fileItems.length > 0 ? [...commands, ...fileItems] : commands),
+    [commands, fileItems]
+  );
+
+  // Run uFuzzy synchronously on each keystroke against the merged catalog
+  // (commands + lazy-loaded files). Cheap for the local catalog.
+  const localHits = useMemo<PaletteHit[]>(() => {
+    if (!open) return [];
+    return searchPaletteItems(combinedCommands, query);
+  }, [combinedCommands, query, open]);
 
   // Flatten hits in display order so keyboard nav has a single linear index.
   // Each row carries its group so we can insert headers without breaking the
@@ -200,9 +286,10 @@ export function CommandPalette({
   };
 
   const trimmedQuery = query.trim();
+  const anyBackgroundLoading = messagesRunning || filesRunning;
   const showingEmptyState =
     flatRows.length === 0 &&
-    !messagesRunning &&
+    !anyBackgroundLoading &&
     (trimmedQuery.length === 0 || trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH);
 
   const totalCount = flatRows.length;
@@ -224,7 +311,7 @@ export function CommandPalette({
             <kbd className="command-palette-scope-kbd">⌘K</kbd>
           </span>
           <span className="command-palette-count">
-            {messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH
+            {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) || filesRunning
               ? "searching…"
               : totalCount > 0
                 ? `${totalCount} found`
@@ -239,7 +326,7 @@ export function CommandPalette({
             ref={inputRef}
             className="command-palette-input"
             type="search"
-            placeholder="command, session, project, or message"
+            placeholder={fileSource ? "command, session, project, file, or message" : "command, session, project, or message"}
             aria-label="Command palette query"
             value={query}
             onChange={(event) => {
@@ -255,7 +342,9 @@ export function CommandPalette({
               <span className="command-palette-empty-mark" aria-hidden="true">∅</span>
               <span className="command-palette-empty-text">
                 {trimmedQuery.length === 0
-                  ? "Start typing to filter actions, sessions, projects, or messages."
+                  ? fileSource
+                    ? "Start typing to filter actions, sessions, projects, files, or messages."
+                    : "Start typing to filter actions, sessions, projects, or messages."
                   : "No matches — try shorter terms or a different scope."}
               </span>
             </li>
@@ -311,6 +400,12 @@ export function CommandPalette({
             <li className="command-palette-loading" role="status">
               <span className="command-palette-loading-dot" aria-hidden="true" />
               Searching messages…
+            </li>
+          ) : null}
+          {filesRunning ? (
+            <li className="command-palette-loading" role="status">
+              <span className="command-palette-loading-dot" aria-hidden="true" />
+              Loading files…
             </li>
           ) : null}
         </ul>

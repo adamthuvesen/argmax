@@ -50,6 +50,7 @@ import type {
   TerminalResizeInput,
   TerminalSpawnInput,
   TerminalWriteInput,
+  WorkspaceContentSearchResult,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
@@ -173,7 +174,9 @@ const api: ArgmaxApi = {
         expectedMtimeMs
       }) as Promise<WorkspaceFileWriteResult>,
     statFileForProject: (projectId: string, filePath: string) =>
-      ipcRenderer.invoke("workspace:stat-file-for-project", { projectId, filePath }) as Promise<WorkspaceFileStat>
+      ipcRenderer.invoke("workspace:stat-file-for-project", { projectId, filePath }) as Promise<WorkspaceFileStat>,
+    grepContent: (input: { kind: "workspace" | "project"; id: string; query: string }) =>
+      ipcRenderer.invoke("workspace:grep-content", input) as Promise<WorkspaceContentSearchResult>
   },
   checks: {
     run: (input: RunCheckInput) => ipcRenderer.invoke("checks:run", input) as Promise<DashboardSnapshot["checks"][number]>

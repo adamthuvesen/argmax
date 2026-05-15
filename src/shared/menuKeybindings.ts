@@ -87,8 +87,12 @@ export interface RendererOnlyKeybinding {
 
 export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘1 – ⌘9", label: "Jump to session 1–9" },
-  { displayAccelerator: "⌘P", label: "Open file search" },
+  // ⌘P is a renderer-only alias of ⌘K. Both open the unified command
+  // palette; ⌘P signals to users they can jump to files (the palette's
+  // Files group appears when a workspace or project is the active surface).
+  { displayAccelerator: "⌘P", label: "Open command palette (with files)" },
   { displayAccelerator: "⌘F", label: "Global search" },
+  { displayAccelerator: "⌘⇧F", label: "Search workspace file contents" },
   { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },
   { displayAccelerator: "⌘W", label: "Close focused session pane" },
   { displayAccelerator: "Esc", label: "Close the topmost overlay" }

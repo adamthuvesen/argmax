@@ -14,6 +14,9 @@ export interface OverlayState {
   /** Global search (Cmd+F). */
   isSearchOpen: boolean;
   setIsSearchOpen: (open: boolean) => void;
+  /** Workspace content search (Cmd+Shift+F). */
+  isContentSearchOpen: boolean;
+  setIsContentSearchOpen: (open: boolean) => void;
 }
 
 /**
@@ -31,6 +34,7 @@ export function useOverlays(): OverlayState {
   const [isPaletteOpen, setIsPaletteOpenRaw] = useState<boolean>(false);
   const [isCheatSheetOpen, setIsCheatSheetOpenRaw] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpenRaw] = useState<boolean>(false);
+  const [isContentSearchOpen, setIsContentSearchOpenRaw] = useState<boolean>(false);
 
   // `useState` setters already have stable identity, but the hook wraps them
   // in `useCallback` indirection so consumers can list them in dep arrays
@@ -40,14 +44,19 @@ export function useOverlays(): OverlayState {
   const setIsPaletteOpen = useCallback((open: boolean) => setIsPaletteOpenRaw(open), []);
   const setIsCheatSheetOpen = useCallback((open: boolean) => setIsCheatSheetOpenRaw(open), []);
   const setIsSearchOpen = useCallback((open: boolean) => setIsSearchOpenRaw(open), []);
+  const setIsContentSearchOpen = useCallback((open: boolean) => setIsContentSearchOpenRaw(open), []);
 
   // Esc precedence — closes one overlay per press, from topmost to deepest:
-  // palette → search → cheat sheet → settings. Typing-target guard means
-  // Esc inside contenteditable / textarea / role=textbox stays in the
-  // input (e.g. cancels an inline edit) instead of dismissing chrome.
+  // palette → content search → search → cheat sheet → settings. Typing-target
+  // guard means Esc inside contenteditable / textarea / role=textbox stays
+  // in the input (e.g. cancels an inline edit) instead of dismissing chrome.
   const handleEscape = useCallback((): boolean => {
     if (isPaletteOpen) {
       setIsPaletteOpenRaw(false);
+      return true;
+    }
+    if (isContentSearchOpen) {
+      setIsContentSearchOpenRaw(false);
       return true;
     }
     if (isSearchOpen) {
@@ -63,7 +72,7 @@ export function useOverlays(): OverlayState {
       return true;
     }
     return false;
-  }, [isPaletteOpen, isSearchOpen, isCheatSheetOpen, isSettingsOpen]);
+  }, [isPaletteOpen, isContentSearchOpen, isSearchOpen, isCheatSheetOpen, isSettingsOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -85,6 +94,8 @@ export function useOverlays(): OverlayState {
     isCheatSheetOpen,
     setIsCheatSheetOpen,
     isSearchOpen,
-    setIsSearchOpen
+    setIsSearchOpen,
+    isContentSearchOpen,
+    setIsContentSearchOpen
   };
 }

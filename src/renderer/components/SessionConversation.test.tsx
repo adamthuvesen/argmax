@@ -254,6 +254,33 @@ describe("SessionConversation — model selection persistence", () => {
     expect(screen.getAllByText(text)).toHaveLength(1);
   });
 
+  it("renders a user.message bubble for an @-mention-only prompt while the session is still running", () => {
+    renderConversation(
+      baseSession({ state: "running" }),
+      [event("u1", "user.message", "@AGENTS.md", "2026-05-12T15:00:00.000Z")]
+    );
+
+    const bubbleText = screen.getByText("@AGENTS.md", { selector: "p" });
+    expect(bubbleText.closest(".chat-bubble.user")).not.toBeNull();
+  });
+
+  it("synthesizes a user bubble from session.prompt before the user.message event arrives", () => {
+    renderConversation(baseSession({ state: "running", prompt: "@AGENTS.md" }), []);
+
+    const bubbleText = screen.getByText("@AGENTS.md", { selector: "p" });
+    expect(bubbleText.closest(".chat-bubble.user")).not.toBeNull();
+  });
+
+  it("does not duplicate the user bubble once the real user.message event arrives", () => {
+    renderConversation(
+      baseSession({ state: "running", prompt: "@AGENTS.md" }),
+      [event("u1", "user.message", "@AGENTS.md", "2026-05-12T15:00:00.000Z")]
+    );
+
+    // Only the real event's bubble — the synth must drop out of renderItems.
+    expect(screen.getAllByText("@AGENTS.md", { selector: "p" })).toHaveLength(1);
+  });
+
   it("hides oversized-payload truncation markers from chat", () => {
     renderConversation(
       baseSession({ state: "complete" }),

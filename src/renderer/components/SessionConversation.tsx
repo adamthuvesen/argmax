@@ -26,6 +26,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
+import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useFreshSet } from "../hooks/useFreshSet.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
@@ -61,6 +62,7 @@ import { CodeBlock } from "./CodeBlock.js";
 import { CostPanel } from "./CostPanel.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
 import { FileChip } from "./FileChip.js";
+import { FilePopover } from "./FilePopover.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { NowProvider } from "./NowProvider.js";
 import { SkillPopover } from "./SkillPopover.js";
@@ -158,6 +160,7 @@ export function SessionConversation({
   const inputFormRef = useRef<HTMLFormElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldRefocusInput = useRef(false);
+  const sessionId = session?.id ?? null;
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
   const conversationEvents = useMemo(
@@ -327,8 +330,27 @@ export function SessionConversation({
       }
     }
     flush();
+    // Bridge the brief window between launch and the first user.message event
+    // arriving over dashboard:delta. `session.prompt` is set synchronously on
+    // launch, so we can show it as a placeholder bubble until the real event
+    // lands and naturally takes its place.
+    const hasUserMessage = out.some((item) => item.kind === "user-message");
+    const prompt = session?.prompt?.trim();
+    if (!hasUserMessage && session && prompt) {
+      out.unshift({
+        kind: "user-message",
+        event: {
+          id: `synth-user-${session.id}`,
+          sessionId: session.id,
+          type: "user.message",
+          message: session.prompt,
+          payload: { source: "composer" },
+          createdAt: session.startedAt
+        }
+      });
+    }
     return out;
-  }, [conversationItems]);
+  }, [conversationItems, session]);
 
   const canSend = Boolean(
     session &&
@@ -417,12 +439,8 @@ export function SessionConversation({
     setSelectedModel(modelSelectionFromSession(session));
     setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "edit") : "edit");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
-  }, [session?.id]);
+  }, [sessionId]);
 
-  // Cached PR rows for the git-actions dropdown. Cheap (DB-backed), so we just
-  // reload on session change. The dropdown's "view PR" action calls back via
-  // refreshPrs after creating a PR so the next click opens the existing one.
-  const sessionId = session?.id ?? null;
   useEffect(() => {
     if (!sessionId) return;
     writeStoredAgentMode(sessionAgentModeKey(sessionId), agentMode);
@@ -432,6 +450,9 @@ export function SessionConversation({
     setAgentMode((mode) => toggleAgentMode(mode));
   }, []);
 
+  // Cached PR rows for the git-actions dropdown. Cheap (DB-backed), so we just
+  // reload on session change. The dropdown's "view PR" action calls back via
+  // refreshPrs after creating a PR so the next click opens the existing one.
   useEffect(() => {
     if (!sessionId || !window.argmax) {
       setPrs([]);
@@ -488,10 +509,19 @@ export function SessionConversation({
     workspaceId: workspace?.id ?? null
   });
 
+  const fileAutocomplete = useFileAutocomplete({
+    input,
+    setInput,
+    inputRef,
+    source: workspace ? { kind: "workspace", id: workspace.id } : null
+  });
+
   useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
 
   const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
+    if (event.defaultPrevented) return;
+    fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
     if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -829,17 +859,29 @@ export function SessionConversation({
           <textarea
             aria-label="Session prompt"
             aria-autocomplete="list"
-            aria-expanded={slashAutocomplete.popoverOpen}
-            aria-controls={slashAutocomplete.popoverOpen ? "skill-popover" : undefined}
+            aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+            aria-controls={
+              slashAutocomplete.popoverOpen
+                ? "skill-popover"
+                : fileAutocomplete.popoverOpen
+                  ? "file-popover"
+                  : undefined
+            }
             disabled={!canSend || isSending}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              fileAutocomplete.onSelectionChange(event);
+            }}
             onKeyDown={onSessionInputKeyDown}
+            onSelect={fileAutocomplete.onSelectionChange}
+            onClick={fileAutocomplete.onSelectionChange}
             placeholder={canSend ? "Reply to your agent, or @-mention files" : ""}
             ref={inputRef}
             value={input}
             rows={1}
           />
           <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
+          <FilePopover state={fileAutocomplete} inputRef={inputRef} />
         </div>
         <div className="session-input-toolbar">
           <button

@@ -11,21 +11,38 @@ import type {
 import type { MessageHit as PaletteMessageHit, PaletteCommand } from "./components/CommandPalette.js";
 // Heavy overlays are dynamic-imported on first open so the launcher's first
 // paint doesn't construct the palette / search code paths (audit P4.03).
+// The import functions are extracted so we can also warm them on idle after
+// first paint — that way the cold ⌘K / ⌘F / Settings open hits a cached
+// module instead of paying for transform+fetch+parse on the keypress.
+const importCommandPalette = () => import("./components/CommandPalette.js");
+const importSearchOverlay = () => import("./components/SearchOverlay.js");
+const importSettingsPanel = () => import("./components/SettingsPanel.js");
+// ReviewPanel pulls in CodeMirror + every @codemirror/lang-* package — ~680KB.
+// LaunchSurface and SessionPane each lazy-import it locally; warming it from
+// here means the first ⌘P Enter (which opens ReviewPanel in Files mode) hits a
+// cached module rather than paying for the chunk fetch on the keypress. Vite
+// dedupes by resolved URL so the lazy `import("./ReviewPanel.js")` sites and
+// this prefetch share the same module instance.
+const importReviewPanel = () => import("./components/ReviewPanel.js");
+const importWorkspaceContentSearch = () => import("./components/WorkspaceContentSearchOverlay.js");
 const CommandPalette = lazy(async () => ({
-  default: (await import("./components/CommandPalette.js")).CommandPalette
+  default: (await importCommandPalette()).CommandPalette
+}));
+const WorkspaceContentSearchOverlay = lazy(async () => ({
+  default: (await importWorkspaceContentSearch()).WorkspaceContentSearchOverlay
 }));
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
 const SearchOverlay = lazy(async () => ({
-  default: (await import("./components/SearchOverlay.js")).SearchOverlay
+  default: (await importSearchOverlay()).SearchOverlay
 }));
 import { PerfOverlay } from "./components/PerfOverlay.js";
 // SettingsPanel is lazy-mounted (ralph B1) — heavy diagnostics tiles, MCP
 // dialog, and provider discovery shouldn't ship in the launcher's first paint.
 const SettingsPanel = lazy(async () => ({
-  default: (await import("./components/SettingsPanel.js")).SettingsPanel
+  default: (await importSettingsPanel()).SettingsPanel
 }));
 import { SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
@@ -62,6 +79,7 @@ import {
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "./lib/ide.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
 import { buildSafeFtsPrefixQuery } from "./lib/ftsQuery.js";
+import { listFilesFor } from "./lib/listFiles.js";
 import {
   PERMISSION_MODE_KEY,
   readStoredPermissionMode,
@@ -103,7 +121,9 @@ export function App(): JSX.Element {
     isCheatSheetOpen,
     setIsCheatSheetOpen,
     isSearchOpen,
-    setIsSearchOpen
+    setIsSearchOpen,
+    isContentSearchOpen,
+    setIsContentSearchOpen
   } = useOverlays();
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
@@ -127,6 +147,19 @@ export function App(): JSX.Element {
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [grid, setGrid] = useState<GridState>(EMPTY_GRID);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
+  // The active surface (focused SessionPane, or the LaunchSurface when no
+  // session is open) registers its file source + pick handler here so the
+  // command palette can surface Files for that surface's scope.
+  const [paletteFileContext, setPaletteFileContext] = useState<{
+    source: { kind: "workspace" | "project"; id: string };
+    onPick: (path: string) => void;
+  } | null>(null);
+  const registerPaletteFileContext = useCallback(
+    (context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null) => {
+      setPaletteFileContext(context);
+    },
+    []
+  );
 
   const showErrorToast = useCallback((message: string): void => {
     setToast({ kind: "error", message });
@@ -137,6 +170,33 @@ export function App(): JSX.Element {
   // session / settings surface is about to render for the first time.
   useLayoutEffect(() => {
     markFirstPaint();
+  }, []);
+
+  // Warm lazy overlay chunks after first paint so the first ⌘K / ⌘F /
+  // Settings open isn't paying for transform+fetch+parse on the keypress.
+  // Module cache dedupes with the Suspense-triggered import.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const prefetch = (): void => {
+      void importCommandPalette();
+      void importSearchOverlay();
+      void importSettingsPanel();
+      void importReviewPanel();
+      void importWorkspaceContentSearch();
+    };
+    const ric = (window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    }).requestIdleCallback;
+    if (typeof ric === "function") {
+      const id = ric(prefetch, { timeout: 2000 });
+      return () => {
+        const cic = (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+        if (typeof cic === "function") cic(id);
+      };
+    }
+    const id = window.setTimeout(prefetch, 800);
+    return () => window.clearTimeout(id);
   }, []);
 
   const {
@@ -391,6 +451,10 @@ export function App(): JSX.Element {
   );
 
   const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
+  const openContentSearchOverlay = useCallback(
+    (): void => setIsContentSearchOpen(true),
+    [setIsContentSearchOpen]
+  );
   const selectSessionFromKeybinding = useCallback(
     (session: { id: string; workspaceId: string }): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
@@ -408,6 +472,7 @@ export function App(): JSX.Element {
     onMenuCommand: handleMenuCommand,
     onCloseFocusedPane: closeFocusedPane,
     onOpenSearch: openSearchOverlay,
+    onOpenContentSearch: openContentSearchOverlay,
     onSelectSession: selectSessionFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
   });
@@ -805,6 +870,14 @@ export function App(): JSX.Element {
     return map;
   }, [snapshot.sessions, snapshot.workspaces, snapshot.projects]);
 
+  const loadPaletteFiles = useCallback(
+    async (source: { kind: "workspace" | "project"; id: string }): Promise<string[]> => {
+      const entries = await listFilesFor(source.kind, source.id);
+      return entries.map((entry) => entry.path);
+    },
+    []
+  );
+
   const searchMessages = useCallback(
     async (rawQuery: string, limit: number): Promise<PaletteMessageHit[]> => {
       if (!window.argmax) return [];
@@ -849,6 +922,8 @@ export function App(): JSX.Element {
   );
 
   const renderLaunchSurface = useCallback(
+    // `project` is allowed to differ from `selectedProject` because the
+    // grid renders launcher cells with explicit project arguments.
     (project: ProjectSummary | null): JSX.Element => (
       <LaunchSurface
         onAddProject={() => void addProject()}
@@ -860,6 +935,7 @@ export function App(): JSX.Element {
         project={project ?? selectedProject}
         projects={snapshot.projects}
         rightPanelToggleSignal={rightPanelToggleSignal}
+        registerPaletteFileContext={registerPaletteFileContext}
       />
     ),
     [
@@ -868,6 +944,7 @@ export function App(): JSX.Element {
       launchModel,
       launchTask,
       openProjectLauncher,
+      registerPaletteFileContext,
       rightPanelToggleSignal,
       selectedProject,
       snapshot.projects
@@ -900,6 +977,9 @@ export function App(): JSX.Element {
             commands={paletteCommands}
             onClose={() => setIsPaletteOpen(false)}
             searchMessages={searchMessages}
+            fileSource={paletteFileContext?.source ?? null}
+            loadFiles={loadPaletteFiles}
+            onFilePick={paletteFileContext?.onPick}
           />
         </Suspense>
       ) : null}
@@ -915,6 +995,16 @@ export function App(): JSX.Element {
               setIsSettingsOpen(false);
               if (target) openWorkspaceChat(target.workspaceId);
             }}
+          />
+        </Suspense>
+      ) : null}
+      {isContentSearchOpen ? (
+        <Suspense fallback={null}>
+          <WorkspaceContentSearchOverlay
+            open={isContentSearchOpen}
+            onClose={() => setIsContentSearchOpen(false)}
+            source={paletteFileContext?.source ?? null}
+            onPick={paletteFileContext?.onPick ?? null}
           />
         </Suspense>
       ) : null}
@@ -1028,6 +1118,7 @@ export function App(): JSX.Element {
               onTerminateSession={terminateSession}
               onCreateCheckpoint={createCheckpoint}
               onRunCheck={runCheck}
+              registerPaletteFileContext={registerPaletteFileContext}
             />
           ) : (
             renderLaunchSurface(selectedProject)

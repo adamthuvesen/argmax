@@ -27,7 +27,6 @@ import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
-import { FileSearchOverlay } from "./FileSearchOverlay.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
 // chunk shared with the LaunchSurface call site.
 const ReviewPanel = lazy(async () => ({
@@ -50,7 +49,6 @@ const TERMINAL_HEIGHT_KEY = "argmax.terminal.height";
 const TERMINAL_MIN_HEIGHT = 120;
 const TERMINAL_MAX_HEIGHT = 600;
 const TERMINAL_DEFAULT_HEIGHT = 280;
-
 export function SessionPane({
   approvals,
   checks,
@@ -66,6 +64,7 @@ export function SessionPane({
   onTerminateSession,
   project,
   rawOutputs,
+  registerPaletteFileContext,
   rightPanelToggleSignal,
   session,
   thinkingStyle,
@@ -92,6 +91,12 @@ export function SessionPane({
   session: SessionSummary | null;
   thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
+  /** When this pane is focused, it registers its workspace file source +
+      review-pane file-pick handler with the command palette so its Files
+      group routes to this pane's review panel. */
+  registerPaletteFileContext?: (
+    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+  ) => void;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
   // Wrap in useMemo so the hook's source identity is stable between renders —
@@ -205,8 +210,22 @@ export function SessionPane({
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
-  const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
+
+  // Register this pane's file source + pick handler with the command
+  // palette when focused. Only the focused pane registers so multiple
+  // panes can coexist without fighting over the palette's Files group.
+  useEffect(() => {
+    if (!registerPaletteFileContext) return undefined;
+    if (!isFocused || !workspace) {
+      return () => registerPaletteFileContext(null);
+    }
+    registerPaletteFileContext({
+      source: { kind: "workspace", id: workspace.id },
+      onPick: reviewOpenInFilesView
+    });
+    return () => registerPaletteFileContext(null);
+  }, [isFocused, workspace, registerPaletteFileContext, reviewOpenInFilesView]);
   useEffect(() => {
     if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -228,27 +247,8 @@ export function SessionPane({
     reviewTogglePanel();
   }, [isFocused, reviewTogglePanel, rightPanelToggleSignal, workspace]);
 
-  // Cmd/Ctrl+P opens file quick-open for the current workspace. Picking a
-  // result opens the right panel in Files mode, matching the launcher flow.
   useEffect(() => {
-    if (!isFocused || !workspace) return undefined;
-    const handler = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "p") return;
-      event.preventDefault();
-      setIsQuickOpenOpen(true);
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [isFocused, workspace]);
-
-  useEffect(() => {
-    if (!workspace) setIsQuickOpenOpen(false);
-  }, [workspace]);
-
-  useEffect(() => {
-    if (!isFocused || !reviewIsPanelOpen || isQuickOpenOpen) return undefined;
+    if (!isFocused || !reviewIsPanelOpen) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       if (isTypingTarget(event.target)) return;
@@ -257,7 +257,7 @@ export function SessionPane({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFocused, reviewClosePanel, reviewIsPanelOpen, isQuickOpenOpen]);
+  }, [isFocused, reviewClosePanel, reviewIsPanelOpen]);
 
   // Backfill timeline events for this pane on mount and whenever the session
   // changes. Each pane backfills independently of the focused-pane selection,
@@ -462,15 +462,6 @@ export function SessionPane({
           workspaceId={workspace.id}
           files={reviewState.files}
           defaultMessage={workspace.taskLabel}
-        />
-      ) : null}
-      {workspace ? (
-        <FileSearchOverlay
-          open={isQuickOpenOpen}
-          onClose={() => setIsQuickOpenOpen(false)}
-          sourceKind="workspace"
-          sourceId={workspace.id}
-          onPick={reviewOpenInFilesView}
         />
       ) : null}
       {isLogOpen ? (

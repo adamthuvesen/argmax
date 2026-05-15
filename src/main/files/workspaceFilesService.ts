@@ -2,12 +2,14 @@ import { lstat, open, readFile, realpath, stat, writeFile } from "node:fs/promis
 import { dirname, resolve } from "node:path";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type {
+  WorkspaceContentSearchResult,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
   WorkspaceFileStat,
   WorkspaceFileWriteResult
 } from "../../shared/types.js";
-import { runGitText } from "../git/exec.js";
+import { runGitMaybe, runGitText } from "../git/exec.js";
+import { parseGitGrepOutput } from "./gitGrepParser.js";
 import { MAX_FILE_CONTENT_BYTES } from "../../shared/ipcSchemas.js";
 import { assertContainedPath, assertSafeRelativePath } from "../util/workspacePaths.js";
 
@@ -37,6 +39,45 @@ export class WorkspaceFilesService {
   async listFiles(workspaceId: string): Promise<WorkspaceFileEntry[]> {
     const workspace = this.database.getWorkspace(workspaceId);
     return this.listFilesAtPath(workspace.path);
+  }
+
+  async grepContentForWorkspace(workspaceId: string, query: string): Promise<WorkspaceContentSearchResult> {
+    const workspace = this.database.getWorkspace(workspaceId);
+    return this.grepContentAtPath(workspace.path, query);
+  }
+
+  async grepContentForProject(projectId: string, query: string): Promise<WorkspaceContentSearchResult> {
+    const project = this.database.getProject(projectId);
+    return this.grepContentAtPath(project.repoPath, query);
+  }
+
+  private async grepContentAtPath(repoPath: string, query: string): Promise<WorkspaceContentSearchResult> {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) return { files: [], truncated: false };
+    // `git grep` flags:
+    //   -n              line numbers
+    //   --null          NUL-separate fields (path / line / content)
+    //   --no-color      strip ANSI; we render highlight separately
+    //   -I              skip binaries
+    //   -F              fixed string (treat query literally — no regex)
+    //   --untracked     also include untracked-but-not-ignored files
+    //   -e <pattern>    pattern separator so a query starting with '-' is
+    //                   not parsed as a flag
+    // git grep exits 1 when there are no matches — `runGitMaybe` swallows
+    // that so an empty result isn't surfaced as an error.
+    const output = await runGitMaybe(repoPath, [
+      "grep",
+      "-n",
+      "--null",
+      "--no-color",
+      "-I",
+      "-F",
+      "--untracked",
+      "-e",
+      trimmed
+    ]);
+    if (output === null) return { files: [], truncated: false };
+    return parseGitGrepOutput(output, { maxFiles: 50, maxMatchesPerFile: 10 });
   }
 
   async readFile(workspaceId: string, filePath: string): Promise<WorkspaceFilePreview> {

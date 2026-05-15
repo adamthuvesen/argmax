@@ -9,6 +9,8 @@ interface GlobalKeybindingArgs {
   onMenuCommand: (command: MenuCommand) => void;
   /** Cmd+F opens the global search overlay. */
   onOpenSearch: () => void;
+  /** Cmd+Shift+F opens the workspace content search overlay (git grep). */
+  onOpenContentSearch: () => void;
   /** Cmd+1..9 selects the nth session and closes the settings panel. */
   onSelectSession: (session: SessionSummary) => void;
   /** Cmd+1..9 also closes the settings panel. */
@@ -29,8 +31,12 @@ interface GlobalKeybindingArgs {
  *   Cmd/Ctrl+,    → open-settings (menu command)
  *   Cmd/Ctrl+N    → new-session (menu command)
  *   Cmd/Ctrl+K    → open-command-palette (menu command)
+ *   Cmd/Ctrl+P    → open-command-palette (alias of ⌘K — context-aware
+ *                   Files group surfaces in the palette when a workspace
+ *                   or project is the active surface)
  *   Cmd/Ctrl+/    → open-cheat-sheet (menu command)
- *   Cmd/Ctrl+F    → open global search
+ *   Cmd/Ctrl+F    → open global search (session messages)
+ *   Cmd/Ctrl+Shift+F → open workspace content search (git grep)
  *
  * Typing-target guard: any keypress while focus is in
  * contenteditable / textarea / role=textbox is left alone. The Esc
@@ -40,6 +46,7 @@ export function useGlobalKeybindings({
   sessions,
   onMenuCommand,
   onOpenSearch,
+  onOpenContentSearch,
   onSelectSession,
   onCloseSettings,
   onCloseFocusedPane
@@ -84,6 +91,11 @@ export function useGlobalKeybindings({
         onMenuCommand("open-command-palette");
         return;
       }
+      if (event.key.toLowerCase() === "p" && !event.shiftKey) {
+        event.preventDefault();
+        onMenuCommand("open-command-palette");
+        return;
+      }
       if (event.key === "/") {
         event.preventDefault();
         onMenuCommand("open-cheat-sheet");
@@ -91,13 +103,25 @@ export function useGlobalKeybindings({
       }
       if (event.key.toLowerCase() === "f") {
         event.preventDefault();
-        onOpenSearch();
+        if (event.shiftKey) {
+          onOpenContentSearch();
+        } else {
+          onOpenSearch();
+        }
         return;
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [sessions, onMenuCommand, onOpenSearch, onSelectSession, onCloseSettings, onCloseFocusedPane]);
+  }, [
+    sessions,
+    onMenuCommand,
+    onOpenSearch,
+    onOpenContentSearch,
+    onSelectSession,
+    onCloseSettings,
+    onCloseFocusedPane
+  ]);
 
   // Bind to the main-process menu-command channel separately so the same
   // shortcut works whether the renderer or the native menu has focus.

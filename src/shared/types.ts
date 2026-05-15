@@ -169,6 +169,26 @@ export interface WorkspaceFileStat {
 }
 
 /**
+ * Result of `workspace:grep-content`. `truncated` is true when the backend
+ * stopped enumerating matches because the result cap was reached — informs
+ * the renderer to surface "showing first N of many" copy.
+ */
+export interface WorkspaceContentSearchMatch {
+  line: number;
+  preview: string;
+}
+
+export interface WorkspaceContentSearchFile {
+  path: string;
+  matches: WorkspaceContentSearchMatch[];
+}
+
+export interface WorkspaceContentSearchResult {
+  files: WorkspaceContentSearchFile[];
+  truncated: boolean;
+}
+
+/**
  * Result of `workspace:writeFile`. `ok: false, reason: "stale"` means the file
  * on disk was mutated since the editor last observed it; the renderer should
  * surface the "changed on disk, reload?" banner with `currentMtimeMs` as the
@@ -437,6 +457,11 @@ export interface ArgmaxApi {
       expectedMtimeMs: number | null
     ) => Promise<WorkspaceFileWriteResult>;
     statFileForProject: (projectId: string, filePath: string) => Promise<WorkspaceFileStat>;
+    grepContent: (input: {
+      kind: "workspace" | "project";
+      id: string;
+      query: string;
+    }) => Promise<WorkspaceContentSearchResult>;
   };
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;

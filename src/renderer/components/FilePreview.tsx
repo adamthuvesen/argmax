@@ -1,9 +1,16 @@
 import { css } from "@codemirror/lang-css";
+import { go } from "@codemirror/lang-go";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
+import { sql } from "@codemirror/lang-sql";
+import { yaml } from "@codemirror/lang-yaml";
+import { StreamLanguage } from "@codemirror/language";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { EditorView, keymap } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
@@ -53,6 +60,21 @@ function editorLanguageFor(path: string | null): Extension[] {
       return [markdown()];
     case "py":
       return [python()];
+    case "go":
+      return [go()];
+    case "rs":
+      return [rust()];
+    case "sh":
+    case "bash":
+    case "zsh":
+      return [StreamLanguage.define(shell)];
+    case "toml":
+      return [StreamLanguage.define(toml)];
+    case "sql":
+      return [sql()];
+    case "yaml":
+    case "yml":
+      return [yaml()];
     default:
       return [];
   }

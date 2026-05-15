@@ -1732,9 +1732,15 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
       await screen.findByText(/Added /);
 
+      // Flush React's post-commit effect that schedules the dismiss setTimeout
+      // before advancing fake timers; otherwise the timer is scheduled from a
+      // later fake-clock instant and never fires within the waitFor window.
       await act(async () => {
-        vi.advanceTimersByTime(5000);
         await Promise.resolve();
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(5000);
       });
 
       await waitFor(() => expect(screen.queryByText(/Added /)).toBeNull());

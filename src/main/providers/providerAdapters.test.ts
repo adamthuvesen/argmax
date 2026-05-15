@@ -275,6 +275,19 @@ describe("provider PTY adapters", () => {
     expect(args).not.toContain("--append-system-prompt");
   });
 
+  it("launches Claude structured plan turns with Claude plan permissions", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+    await adapters
+      .get("claude")
+      ?.launch({ ...launchInput("claude"), mode: "structured-json", agentMode: "plan" }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    const args = processSpawnCalls[0]?.args ?? [];
+    expect(args).toContain("--permission-mode");
+    expect(args).toContain("plan");
+    expect(args).not.toContain("bypassPermissions");
+  });
+
   it("launches Claude structured probes with stream-json verbose output", async () => {
     const { adapters, processes, processSpawnCalls } = createTestAdapters();
     const events: ProviderEvent[] = [];
@@ -339,6 +352,19 @@ describe("provider PTY adapters", () => {
     expect(events[1]).toMatchObject({ type: "error", exitCode: 1 });
   });
 
+  it("sends Codex structured plan turns with a plan-only prompt prefix", async () => {
+    const { adapters, processes } = createTestAdapters();
+
+    await adapters
+      .get("codex")
+      ?.launch({ ...launchInput("codex"), mode: "structured-json", agentMode: "plan" }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    const stdin = String(processes[0].stdin.read());
+    expect(stdin).toContain("Plan mode:");
+    expect(stdin).toContain("Implement the task");
+  });
+
   it("resumes Claude structured sessions with the provider conversation id", async () => {
     const { adapters, processSpawnCalls } = createTestAdapters();
 
@@ -390,6 +416,15 @@ describe("provider PTY adapters", () => {
     });
     // Prompt is passed as positional arg, not via stdin.
     expect(processes[0].stdin.writableEnded).toBe(true);
+  });
+
+  it("launches Cursor structured plan turns with --plan", async () => {
+    const { adapters, processes, processSpawnCalls } = createTestAdapters();
+
+    await adapters.get("cursor")?.launch({ ...launchInput("cursor"), agentMode: "plan" }, () => undefined);
+    processes[0].emit("exit", 0, null);
+
+    expect(processSpawnCalls[0]?.args).toContain("--plan");
   });
 
   it("drops the Cursor bypass flags when permissionMode is ask-each-time", async () => {
@@ -523,6 +558,7 @@ function launchInput(provider: "claude" | "codex" | "cursor"): ProviderLaunchInp
     reasoningEffort: provider === "codex" ? "low" : undefined,
     mode: provider === "cursor" ? "structured-json" : "interactive-pty",
     permissionMode: "auto-approve",
+    agentMode: "edit",
     cols: 100,
     rows: 30
   };

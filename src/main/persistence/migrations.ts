@@ -477,6 +477,15 @@ export const migrations: Migration[] = [
       ALTER TABLE sessions ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'auto-approve'
         CHECK (permission_mode IN ('auto-approve', 'ask-each-time'));
     `
+  },
+  {
+    version: 15,
+    name: "sessions_agent_mode",
+    affectedTables: ["sessions"],
+    up: `
+      ALTER TABLE sessions ADD COLUMN agent_mode TEXT NOT NULL DEFAULT 'edit'
+        CHECK (agent_mode IN ('edit', 'plan'));
+    `
   }
 ];
 
@@ -538,6 +547,7 @@ const expectedColumns: Record<string, string[]> = {
     "verified"
   ],
   sessions: [
+    "agent_mode",
     "attention",
     "cache_read_tokens",
     "cache_write_tokens",
@@ -707,6 +717,15 @@ export function runMigrations(database: Database.Database): void {
   // a gap or a duplicate; assert here so the runner refuses to start instead
   // of producing an inconsistent schema state.
   assertMigrationsContiguous(migrations);
+  const latestAffectedVersion = new Map<string, number>();
+  for (const migration of migrations) {
+    for (const table of migration.affectedTables ?? []) {
+      const previous = latestAffectedVersion.get(table) ?? 0;
+      if (migration.version > previous) {
+        latestAffectedVersion.set(table, migration.version);
+      }
+    }
+  }
 
   database.pragma("foreign_keys = ON");
   ensureSchemaMigrationsShape(database);
@@ -762,6 +781,7 @@ export function runMigrations(database: Database.Database): void {
     // touched. Drift fails the migration before the surrounding transaction
     // commits.
     for (const table of migration.affectedTables ?? []) {
+      if (latestAffectedVersion.get(table) !== migration.version) continue;
       verifyTableColumns(database, table);
     }
   });

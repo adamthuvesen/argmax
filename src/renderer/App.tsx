@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
+  AgentMode,
   DashboardSnapshot,
   DetectedIde,
   IdeId,
@@ -513,7 +514,7 @@ export function App(): JSX.Element {
   }, [setSelectedProjectId, setSnapshot]);
 
   const sendSessionInput = useCallback(
-    async (sessionId: string, input: string, model: ProviderModelSelection): Promise<void> => {
+    async (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Electron app window to send input to a live session.");
       }
@@ -523,7 +524,8 @@ export function App(): JSX.Element {
         input: `${input}\r`,
         modelLabel: model.label,
         modelId: model.modelId,
-        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        agentMode
       });
       await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
@@ -600,7 +602,7 @@ export function App(): JSX.Element {
   );
 
   const launchTask = useCallback(
-    async (prompt: string, model: ModelPickerSelection, projectIdOverride?: string): Promise<void> => {
+    async (prompt: string, model: ModelPickerSelection, agentMode: AgentMode, projectIdOverride?: string): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Electron app window to launch local agents.");
       }
@@ -622,6 +624,7 @@ export function App(): JSX.Element {
         modelLabel: model.label,
         modelId: model.modelId,
         ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        agentMode,
         permissionMode,
         cols: 120,
         rows: 32
@@ -795,7 +798,7 @@ export function App(): JSX.Element {
       <LaunchSurface
         onAddProject={() => void addProject()}
         onBranchSwitch={handleBranchSwitch}
-        onLaunchTask={(prompt, model) => launchTask(prompt, model, project?.id)}
+        onLaunchTask={(prompt, model, agentMode) => launchTask(prompt, model, agentMode, project?.id)}
         model={launchModel}
         onModelChange={setLaunchModel}
         onSelectProject={openProjectLauncher}

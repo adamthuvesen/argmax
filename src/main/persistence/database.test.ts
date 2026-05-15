@@ -78,6 +78,30 @@ describe("createDatabase", () => {
     database.connection.close();
   });
 
+  it("persists session agent mode and defaults older writes to edit", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    seedProject(database);
+    seedWorkspace(database, "workspace-1", "p-1", "running");
+
+    const session = database.persistSession({
+      id: "session-1",
+      workspaceId: "workspace-1",
+      provider: "codex",
+      modelLabel: "GPT-5.3 Codex",
+      modelId: "gpt-5.3-codex",
+      prompt: "plan this",
+      state: "running",
+      attention: "normal"
+    });
+    expect(session.agentMode).toBe("edit");
+
+    const updated = database.updateSessionAgentMode("session-1", { agentMode: "plan" });
+    expect(updated.agentMode).toBe("plan");
+    expect(database.getSession("session-1").agentMode).toBe("plan");
+
+    database.connection.close();
+  });
+
   it("resolves approval requests without deleting the audit record", () => {
     const database = createDatabase(":memory:", { seed: true });
     const approval = database.loadDashboard().approvals[0];

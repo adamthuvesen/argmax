@@ -38,6 +38,7 @@ import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
 export type ProviderId = "claude" | "codex" | "cursor";
 export type ProviderMode = "interactive-pty" | "structured-json";
 export type PermissionMode = "auto-approve" | "ask-each-time";
+export type AgentMode = "edit" | "plan";
 
 export interface DiscoveredProvider {
   provider: ProviderId;
@@ -269,6 +270,7 @@ export interface SessionSummary {
   modelId: string;
   reasoningEffort?: ReasoningEffort;
   permissionMode: PermissionMode;
+  agentMode?: AgentMode;
   providerConversationId: string | null;
   prompt: string;
   state: SessionState;

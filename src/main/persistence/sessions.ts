@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { RecordNotFoundError } from "./errors.js";
 import { findWorkspaceById } from "./workspaces.js";
 import { safeJsonParseRecord } from "../../shared/safeJson.js";
-import type { SessionSummary } from "../../shared/types.js";
+import type { AgentMode, SessionSummary } from "../../shared/types.js";
 import type { ReasoningEffort } from "../../shared/providerModels.js";
 
 export interface SessionRow {
@@ -13,6 +13,7 @@ export interface SessionRow {
   model_id: string | null;
   reasoning_effort: ReasoningEffort | null;
   permission_mode: SessionSummary["permissionMode"];
+  agent_mode: AgentMode;
   provider_conversation_id: string | null;
   prompt: string;
   state: SessionSummary["state"];
@@ -35,6 +36,7 @@ export interface PersistSessionInput {
   modelId: string;
   reasoningEffort?: ReasoningEffort;
   permissionMode?: SessionSummary["permissionMode"];
+  agentMode?: AgentMode;
   prompt: string;
   state: SessionSummary["state"];
   attention: SessionSummary["attention"];
@@ -44,6 +46,10 @@ export interface SessionModelInput {
   modelLabel: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+}
+
+export interface SessionAgentModeInput {
+  agentMode: AgentMode;
 }
 
 export interface SessionStateInput {
@@ -68,6 +74,7 @@ export function sessionRowToSummary(row: SessionRow, preferred: boolean): Sessio
     modelId: row.model_id,
     ...(row.reasoning_effort ? { reasoningEffort: row.reasoning_effort } : {}),
     permissionMode: row.permission_mode,
+    agentMode: row.agent_mode,
     providerConversationId: row.provider_conversation_id,
     prompt: row.prompt,
     state: row.state,
@@ -95,11 +102,11 @@ export function persistSession(
     .prepare(
       `
         INSERT INTO sessions (
-          id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode,
+          id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode,
           provider_conversation_id, prompt, state, attention,
           started_at, completed_at, last_activity_at
         ) VALUES (
-          @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, @permissionMode,
+          @id, @workspaceId, @provider, @modelLabel, @modelId, @reasoningEffort, @permissionMode, @agentMode,
           NULL, @prompt, @state, @attention,
           @startedAt, NULL, @lastActivityAt
         )
@@ -113,6 +120,7 @@ export function persistSession(
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort ?? null,
       permissionMode: input.permissionMode ?? "auto-approve",
+      agentMode: input.agentMode ?? "edit",
       prompt: input.prompt,
       state: input.state,
       attention: input.attention,
@@ -125,6 +133,25 @@ export function persistSession(
   // (selectPreferredAttempt is the only writer to ui_state and it has
   // its own re-read path.)
   return findSessionByIdNoPreferred(connection, input.id);
+}
+
+export function updateSessionAgentMode(
+  connection: Database.Database,
+  sessionId: string,
+  input: SessionAgentModeInput
+): SessionSummary {
+  const timestamp = new Date().toISOString();
+  connection
+    .prepare(
+      `
+        UPDATE sessions
+        SET agent_mode = ?, last_activity_at = ?
+        WHERE id = ?
+      `
+    )
+    .run(input.agentMode, timestamp, sessionId);
+
+  return findSessionByIdNoPreferred(connection, sessionId);
 }
 
 export function updateSessionModel(

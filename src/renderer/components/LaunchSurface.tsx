@@ -12,13 +12,20 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import type { ProjectSummary } from "../../shared/types.js";
+import type { AgentMode, ProjectSummary } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { type ModelPickerSelection } from "../lib/models.js";
+import {
+  AGENT_MODE_LABELS,
+  LAUNCH_AGENT_MODE_KEY,
+  readStoredAgentMode,
+  toggleAgentMode,
+  writeStoredAgentMode
+} from "../lib/agentMode.js";
 import { FileSearchOverlay } from "./FileSearchOverlay.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
@@ -62,7 +69,7 @@ export function LaunchSurface({
   model: ModelPickerSelection;
   onAddProject: () => void;
   onBranchSwitch: (updated: ProjectSummary) => void;
-  onLaunchTask: (prompt: string, model: ModelPickerSelection) => Promise<void>;
+  onLaunchTask: (prompt: string, model: ModelPickerSelection, agentMode: AgentMode) => Promise<void>;
   onModelChange: (model: ModelPickerSelection) => void;
   onSelectProject: (id: string) => void;
   project: ProjectSummary | null;
@@ -72,6 +79,7 @@ export function LaunchSurface({
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [agentMode, setAgentMode] = useState<AgentMode>(() => readStoredAgentMode(LAUNCH_AGENT_MODE_KEY));
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const projectPickerRef = useRef<HTMLDivElement | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
@@ -159,6 +167,14 @@ export function LaunchSurface({
     setModelPickerOpen(false);
   }, []);
 
+  useEffect(() => {
+    writeStoredAgentMode(LAUNCH_AGENT_MODE_KEY, agentMode);
+  }, [agentMode]);
+
+  const toggleMode = useCallback((): void => {
+    setAgentMode((mode) => toggleAgentMode(mode));
+  }, []);
+
   const openBranchPicker = useCallback(async (): Promise<void> => {
     if (!window.argmax || !project) return;
     try {
@@ -232,6 +248,11 @@ export function LaunchSurface({
   const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
+    if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      toggleMode();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       formRef.current?.requestSubmit();
@@ -248,7 +269,7 @@ export function LaunchSurface({
     setIsSubmitting(true);
     setStatus(null);
     try {
-      await onLaunchTask(trimmedPrompt, model);
+      await onLaunchTask(trimmedPrompt, model, agentMode);
       setPrompt("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not start agent.");
@@ -456,6 +477,16 @@ export function LaunchSurface({
             value={model}
             onChange={onModelChange}
           />
+          <button
+            type="button"
+            className="composer-context-chip agent-mode-toggle"
+            aria-label="Agent mode"
+            aria-pressed={agentMode === "plan"}
+            title="Toggle agent mode (Shift+Tab)"
+            onClick={toggleMode}
+          >
+            {AGENT_MODE_LABELS[agentMode]}
+          </button>
         </div>
         {status ? (
           <p className="composer-status" role="status">

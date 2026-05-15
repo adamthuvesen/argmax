@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
+  AgentMode,
   ApprovalRequest,
   CheckRun,
   ProjectSummary,
@@ -53,7 +54,7 @@ interface SessionMultiGridProps {
   onDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
-  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
+  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;

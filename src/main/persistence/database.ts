@@ -67,11 +67,13 @@ import {
   findSessionById,
   persistSession,
   selectPreferredAttempt,
+  updateSessionAgentMode,
   updateSessionLastModelId,
   updateSessionModel,
   updateSessionProviderConversationId,
   updateSessionState,
   type PersistSessionInput,
+  type SessionAgentModeInput,
   type SessionModelInput,
   type SessionStateInput
 } from "./sessions.js";
@@ -131,7 +133,7 @@ export type {
   SessionEventsSinceResult
 } from "./events.js";
 export type { PersistWorkspaceInput, WorkspaceStatusInput } from "./workspaces.js";
-export type { PersistSessionInput, SessionModelInput, SessionStateInput } from "./sessions.js";
+export type { PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionStateInput } from "./sessions.js";
 export type { PersistProjectInput } from "./projects.js";
 export type {
   DashboardListSnapshot,
@@ -196,6 +198,7 @@ export interface ArgmaxDatabase {
   selectPreferredAttempt: (sessionId: string) => SessionSummary;
   persistSession: (input: PersistSessionInput) => SessionSummary;
   updateSessionModel: (sessionId: string, input: SessionModelInput) => SessionSummary;
+  updateSessionAgentMode: (sessionId: string, input: SessionAgentModeInput) => SessionSummary;
   updateSessionProviderConversationId: (sessionId: string, providerConversationId: string) => SessionSummary;
   updateSessionState: (sessionId: string, input: SessionStateInput) => SessionSummary;
   persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
@@ -296,6 +299,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     selectPreferredAttempt: (sessionId) => selectPreferredAttempt(connection, sessionId),
     persistSession: (input) => persistSession(connection, input),
     updateSessionModel: (sessionId, input) => updateSessionModel(connection, sessionId, input),
+    updateSessionAgentMode: (sessionId, input) => updateSessionAgentMode(connection, sessionId, input),
     updateSessionProviderConversationId: (sessionId, providerConversationId) =>
       updateSessionProviderConversationId(connection, sessionId, providerConversationId),
     updateSessionState: (sessionId, input) => updateSessionState(connection, sessionId, input),

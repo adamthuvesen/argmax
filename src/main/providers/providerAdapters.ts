@@ -8,6 +8,7 @@ import { PROVIDER_MODELS } from "../../shared/providerModels.js";
 import { defaultDiscoveryRunner, discoverProviderById, type ProviderDiscoveryRunner } from "./providerDiscovery.js";
 import { buildProviderEnvironment, providerShell, shellQuote } from "./providerEnvironment.js";
 import { scheduleSigkillEscalation } from "../processControl.js";
+import { promptForAgentMode } from "./agentModePrompt.js";
 import type {
   ProviderAdapter,
   ProviderCapabilityReport,
@@ -43,6 +44,7 @@ const CODEX_BYPASS_PERMISSION_ARGS = ["--dangerously-bypass-approvals-and-sandbo
 const CURSOR_BYPASS_PERMISSION_ARGS = ["--force", "--trust"];
 
 function claudePermissionArgs(input: ProviderLaunchInput): string[] {
+  if (input.agentMode === "plan") return ["--permission-mode", "plan"];
   return input.permissionMode === "auto-approve" ? CLAUDE_BYPASS_PERMISSION_ARGS : [];
 }
 
@@ -52,6 +54,10 @@ function codexPermissionArgs(input: ProviderLaunchInput): string[] {
 
 function cursorPermissionArgs(input: ProviderLaunchInput): string[] {
   return input.permissionMode === "auto-approve" ? CURSOR_BYPASS_PERMISSION_ARGS : [];
+}
+
+function cursorAgentModeArgs(input: ProviderLaunchInput): string[] {
+  return input.agentMode === "plan" ? ["--plan"] : [];
 }
 
 /**
@@ -141,7 +147,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       "-"
     ],
     interactiveArgs: (input) => ["--model", input.modelId, ...codexReasoningArgs(input), ...codexPermissionArgs(input)],
-    structuredStdin: (input) => input.prompt
+    structuredStdin: (input) => promptForAgentMode(input.prompt, input.agentMode)
   },
   {
     id: "cursor",
@@ -158,6 +164,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       // `message.completed`. Without this flag Cursor emits one chunky row
       // at end of turn and the chat feels frozen during generation.
       "--stream-partial-output",
+      ...cursorAgentModeArgs(input),
       ...cursorPermissionArgs(input),
       "--model",
       input.modelId,
@@ -176,6 +183,7 @@ const providerDefinitions: ProviderLaunchDefinition[] = [
       // `message.completed`. Without this flag Cursor emits one chunky row
       // at end of turn and the chat feels frozen during generation.
       "--stream-partial-output",
+      ...cursorAgentModeArgs(input),
       ...cursorPermissionArgs(input),
       "--model",
       input.modelId,

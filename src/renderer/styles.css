@@ -3266,6 +3266,25 @@ button {
   color: var(--muted-strong);
 }
 
+.agent-mode-toggle {
+  min-width: 48px;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-weight: 700;
+}
+
+.agent-mode-toggle[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--sage);
+  background: rgba(90, 143, 114, 0.12);
+}
+
+.agent-mode-toggle:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .composer-context svg {
   color: var(--muted);
 }

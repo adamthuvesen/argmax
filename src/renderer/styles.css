@@ -160,6 +160,26 @@
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
+:root[data-font="inter"] {
+  --font-ui: "Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-font="geist-sans"] {
+  --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-font="ibm-plex-sans"] {
+  --font-ui: "IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-font="manrope"] {
+  --font-ui: "Manrope Variable", Manrope, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1357,10 +1377,6 @@ button {
   inset: 0;
   z-index: 120;
   border-left: 0;
-}
-
-.launcher-shell[data-review-open="true"] .search-overlay {
-  z-index: 140;
 }
 
 /* ============================================================
@@ -4674,7 +4690,7 @@ button {
   border-radius: 999px;
   background: var(--sage);
   box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.18);
-  animation: thinking-pulse 1.6s var(--ease) infinite;
+  animation: thinking-pulse 0.9s var(--ease) infinite;
 }
 
 .thinking-line {
@@ -4749,7 +4765,7 @@ button {
   letter-spacing: 0.005em;
   color: var(--sage-deep);
   font-weight: 600;
-  animation: thinking-verb-swap 220ms var(--ease) both;
+  animation: thinking-verb-swap 160ms var(--ease) both;
 }
 
 @keyframes thinking-verb-swap {
@@ -5367,7 +5383,7 @@ button {
   cursor: pointer;
   font: inherit;
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text);
 }
 
@@ -5564,6 +5580,62 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.file-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  z-index: 30;
+}
+
+.file-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-popover-item.is-selected,
+.file-popover-item[aria-selected="true"] {
+  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+}
+
+.file-popover-icon {
+  flex: 0 0 auto;
+  color: var(--text-soft, #6a6a6a);
+}
+
+.file-popover-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-popover-empty {
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-soft, #6a6a6a);
+  font-style: italic;
 }
 
 .session-input input::placeholder,
@@ -6156,19 +6228,19 @@ button {
 .review-file-tabs button {
   position: relative;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
-  min-height: 42px;
-  padding: 7px 14px 7px 12px;
-  margin: 1px 8px;
+  min-height: 32px;
+  padding: 4px 12px 4px 10px;
+  margin: 0 6px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-soft);
   cursor: pointer;
   text-align: left;
-  font-size: 13px;
+  font-size: 12px;
   transition: background var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease),
     box-shadow var(--duration-fast) var(--ease);
@@ -6188,51 +6260,39 @@ button {
 .review-file-row-status {
   display: inline-grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 500;
   letter-spacing: 0;
   color: var(--muted-strong);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  transition: color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition: color var(--duration-fast) var(--ease);
 }
 
 .review-file-tabs button[data-status="a"] .review-file-row-status {
   color: var(--sage-deep);
-  background: var(--sage-soft);
-  border-color: rgba(90, 143, 114, 0.4);
 }
 
 .review-file-tabs button[data-status="m"] .review-file-row-status {
   color: var(--amber);
-  background: var(--amber-soft);
-  border-color: rgba(176, 128, 57, 0.4);
 }
 
 .review-file-tabs button[data-status="d"] .review-file-row-status {
   color: var(--rose);
-  background: var(--rose-soft);
-  border-color: rgba(184, 87, 99, 0.4);
 }
 
 .review-file-tabs button[data-status="r"] .review-file-row-status,
 .review-file-tabs button[data-status="c"] .review-file-row-status {
   color: var(--text);
-  background: var(--panel-sunken);
-  border-color: var(--line-strong);
 }
 
 .review-file-tabs button[aria-pressed="true"] .review-file-row-status {
-  color: #fff;
-  background: var(--ink);
-  border-color: var(--ink);
+  color: var(--text);
 }
 
 .review-file-row-meta {
@@ -6242,7 +6302,7 @@ button {
 }
 
 .review-file-row-name {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
   letter-spacing: -0.003em;
   overflow: hidden;
@@ -6252,7 +6312,7 @@ button {
 
 .review-file-row-dir {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7164,7 +7224,12 @@ button {
   padding-top: 12vh;
   background: rgba(20, 24, 32, 0.30);
   background-image: linear-gradient(180deg, rgba(20, 24, 32, 0.10), rgba(20, 24, 32, 0.34));
-  z-index: 95;
+  /* Match the command-palette overlay (z 140) so search stays the topmost
+     modal even when ⌘B has opened the launcher's project Files panel
+     (`.launcher-shell[data-review-open] .review-panel` sits at z 120). The
+     overlay mounts at App's top level — not inside `.launcher-shell` — so a
+     descendant-scoped z-index lift wouldn't apply. */
+  z-index: 140;
   animation: inkwell-fade 140ms var(--ease) both;
 }
 
@@ -7379,103 +7444,77 @@ button {
   background: rgba(90, 143, 114, 0.3);
 }
 
-/* ---- File-search variant ---- */
+/* ---- Workspace content search (⌘⇧F) ---- */
 
-.search-result.file-search {
-  grid-template-columns: 26px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-}
-
-.file-search-glyph {
-  display: inline-grid;
-  place-items: center;
-  width: 26px;
-  height: 22px;
+.search-summary {
   flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--muted-strong);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0;
-  transition: color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease);
-}
-
-.search-result.file-search.selected .file-search-glyph {
-  color: #fff;
-  background: var(--ink);
-  border-color: var(--ink);
-}
-
-.file-search-meta {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.file-search-result-name {
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.003em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-search-result-path {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 4px;
+  padding-left: 12px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   letter-spacing: 0;
 }
 
-.file-search-result-crumb {
-  display: inline-flex;
+.search-result.content-search-file {
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
-  min-width: 0;
+  gap: 8px;
+  padding-top: 10px;
+  padding-bottom: 6px;
+  color: var(--text);
 }
 
-.file-search-result-sep {
-  color: var(--line-strong);
+.search-result.content-search-file > svg {
+  color: var(--muted-strong);
 }
 
-.file-search-hint {
-  display: inline-flex;
-  align-items: center;
+.content-search-file-path {
   font-family: var(--font-mono);
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.file-search-hint kbd {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 5px;
+.content-search-file-count {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 10.5px;
+  color: var(--muted);
+  padding: 0 6px;
   border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel-sunken);
-  color: var(--text-soft);
+  border-radius: 999px;
+  background: var(--panel);
 }
 
-.search-result.file-search.selected .file-search-hint,
-.search-result.file-search:hover .file-search-hint {
-  opacity: 1;
+.search-result.content-search-match {
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  padding: 4px 12px 4px 22px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
 }
+
+.content-search-match-line {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.content-search-match-preview {
+  min-width: 0;
+  color: var(--text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result.content-search-match.selected .content-search-match-preview {
+  color: var(--text);
+}
+
+/* ---- File-search variant ---- */
 
 .search-footer {
   display: flex;

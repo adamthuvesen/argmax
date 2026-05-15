@@ -32,7 +32,7 @@ describe("fonts", () => {
   it("exposes a curated set of options with stacks ending in a system fallback", () => {
     expect(FONT_OPTIONS.length).toBeGreaterThanOrEqual(4);
     for (const option of FONT_OPTIONS) {
-      expect(option.stack).toMatch(/monospace$/);
+      expect(option.stack).toMatch(/(monospace|sans-serif)$/);
       expect(option.label).toBeTruthy();
     }
   });

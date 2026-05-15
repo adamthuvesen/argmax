@@ -6,7 +6,11 @@ export type FontFamilyId =
   | "jetbrains-mono"
   | "fira-code"
   | "geist-mono"
-  | "ibm-plex-mono";
+  | "ibm-plex-mono"
+  | "inter"
+  | "geist-sans"
+  | "ibm-plex-sans"
+  | "manrope";
 
 export type FontOption = {
   id: FontFamilyId;
@@ -65,6 +69,30 @@ export const FONT_OPTIONS: readonly FontOption[] = [
     label: "IBM Plex Mono",
     hint: "Slightly bookish, pairs well with the paper-grain background.",
     stack: `"IBM Plex Mono", ${SYSTEM_MONO_FALLBACK}`
+  },
+  {
+    id: "inter",
+    label: "Inter",
+    hint: "Proportional humanist sans — book-like, less editor-y. Code blocks stay mono.",
+    stack: `"Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+  },
+  {
+    id: "geist-sans",
+    label: "Geist Sans",
+    hint: "Vercel's modern UI sans — clean, slightly geometric, neutral. Code blocks stay mono.",
+    stack: `"Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+  },
+  {
+    id: "ibm-plex-sans",
+    label: "IBM Plex Sans",
+    hint: "Warm humanist sans — slightly bookish, pairs well with the paper-grain background.",
+    stack: `"IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+  },
+  {
+    id: "manrope",
+    label: "Manrope",
+    hint: "Friendly humanist sans — slightly rounded, softer than Inter.",
+    stack: `"Manrope Variable", Manrope, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   }
 ] as const;
 
@@ -91,6 +119,21 @@ export function applyFontToDocument(id: FontFamilyId): void {
   document.documentElement.setAttribute("data-font", id);
 }
 
+/**
+ * xterm renders to canvas/WebGL outside the CSS context, so it can't consume
+ * `var(--font-mono)` directly. Resolve the active mono stack to a literal
+ * string so the terminal tracks the font picker like everything else.
+ */
+export function resolveMonoFontStack(): string {
+  if (typeof document === "undefined") {
+    return '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace';
+  }
+  const computed = getComputedStyle(document.documentElement)
+    .getPropertyValue("--font-mono")
+    .trim();
+  return computed || '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace';
+}
+
 // Per-font CSS loaders. Default Lilex + system fonts (system-mono, menlo,
 // monaco) need no JS-loaded assets; the rest pull in @fontsource bundles
 // only when the user actually picks them (ralph B6 — defers ~80 kB of
@@ -104,7 +147,21 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
       import("@fontsource/ibm-plex-mono/latin-400.css"),
       import("@fontsource/ibm-plex-mono/latin-500.css"),
       import("@fontsource/ibm-plex-mono/latin-700.css")
-    ])
+    ]),
+  inter: () => import("@fontsource-variable/inter/wght.css"),
+  "geist-sans": () =>
+    Promise.all([
+      import("@fontsource/geist-sans/latin-400.css"),
+      import("@fontsource/geist-sans/latin-500.css"),
+      import("@fontsource/geist-sans/latin-700.css")
+    ]),
+  "ibm-plex-sans": () =>
+    Promise.all([
+      import("@fontsource/ibm-plex-sans/latin-400.css"),
+      import("@fontsource/ibm-plex-sans/latin-500.css"),
+      import("@fontsource/ibm-plex-sans/latin-700.css")
+    ]),
+  manrope: () => import("@fontsource-variable/manrope/wght.css")
 };
 
 const loadedFonts = new Set<FontFamilyId>();

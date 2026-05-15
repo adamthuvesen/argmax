@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { AlertCircle } from "lucide-react";
 import { tryFit } from "../lib/xtermFit.js";
+import { resolveMonoFontStack } from "../lib/fonts.js";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
 import "@xterm/xterm/css/xterm.css";
 
@@ -76,7 +77,7 @@ export function McpAuthDialog({
     completedFiredRef.current = false;
 
     const term = new Terminal({
-      fontFamily: '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace',
+      fontFamily: resolveMonoFontStack(),
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,

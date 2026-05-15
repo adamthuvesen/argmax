@@ -2,6 +2,7 @@ import { useEffect, useRef, type JSX } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { tryFit } from "../lib/xtermFit.js";
+import { resolveMonoFontStack } from "../lib/fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import "@xterm/xterm/css/xterm.css";
 
@@ -51,7 +52,7 @@ export function TerminalPanel({
     if (!container || !window.argmax) return;
 
     const term = new Terminal({
-      fontFamily: '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace',
+      fontFamily: resolveMonoFontStack(),
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,

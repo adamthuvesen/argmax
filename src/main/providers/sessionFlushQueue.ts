@@ -1,5 +1,10 @@
-import { RecordNotFoundError, type ArgmaxDatabase, type PersistTimelineEventInput } from "../persistence/database.js";
-import type { DashboardDelta, RawProviderOutput, SessionSummary, TimelineEvent } from "../../shared/types.js";
+import {
+  RecordNotFoundError,
+  type ArgmaxDatabase,
+  type PersistApprovalInput,
+  type PersistTimelineEventInput
+} from "../persistence/database.js";
+import type { ApprovalRequest, DashboardDelta, RawProviderOutput, SessionSummary, TimelineEvent } from "../../shared/types.js";
 import type { NormalizedUsage } from "./providerEventNormalizer.js";
 import type { ProviderEvent } from "./providerTypes.js";
 
@@ -27,6 +32,7 @@ export interface FlushQueueState {
     createdAt: string;
   }>;
   pendingUsages: NormalizedUsage[];
+  pendingApprovals: PersistApprovalInput[];
   pendingSessionUpdate: SessionSummary | null;
 }
 
@@ -81,6 +87,7 @@ export function flushSessionBuffer(
     state.pendingRawOutputs.length === 0 &&
     state.pendingEvents.length === 0 &&
     state.pendingUsages.length === 0 &&
+    state.pendingApprovals.length === 0 &&
     !state.pendingSessionUpdate
   ) {
     return;
@@ -89,9 +96,11 @@ export function flushSessionBuffer(
   const rawOutputs = state.pendingRawOutputs.slice();
   const events = state.pendingEvents.slice();
   const usages = state.pendingUsages.slice();
+  const approvals = state.pendingApprovals.slice();
   let sessionUpdate = state.pendingSessionUpdate;
   const persistedEvents: TimelineEvent[] = [];
   const persistedRawOutputs: RawProviderOutput[] = [];
+  const persistedApprovals: ApprovalRequest[] = [];
 
   const persist = database.connection.transaction(() => {
     for (const raw of rawOutputs) {
@@ -109,6 +118,21 @@ export function flushSessionBuffer(
         costUsd: usage.costUsd
       });
     }
+    for (const approval of approvals) {
+      const existing = database.findPendingApproval({
+        sessionId: approval.sessionId,
+        command: approval.command,
+        cwd: approval.cwd,
+        provider: approval.provider
+      });
+      persistedApprovals.push(existing ?? database.persistApproval(approval));
+    }
+    if (approvals.length > 0) {
+      sessionUpdate = database.updateSessionState(sessionId, {
+        state: "waiting",
+        attention: "approval-needed"
+      });
+    }
   });
   try {
     persist();
@@ -117,6 +141,7 @@ export function flushSessionBuffer(
       state.pendingRawOutputs.length = 0;
       state.pendingEvents.length = 0;
       state.pendingUsages.length = 0;
+      state.pendingApprovals.length = 0;
       state.pendingSessionUpdate = null;
       return;
     }
@@ -126,6 +151,7 @@ export function flushSessionBuffer(
   state.pendingRawOutputs.splice(0, rawOutputs.length);
   state.pendingEvents.splice(0, events.length);
   state.pendingUsages.splice(0, usages.length);
+  state.pendingApprovals.splice(0, approvals.length);
   state.pendingSessionUpdate = null;
 
   if (usages.length > 0) {
@@ -141,7 +167,8 @@ export function flushSessionBuffer(
   publishDelta({
     ...(sessionUpdate ? { sessions: [sessionUpdate] } : {}),
     ...(persistedEvents.length > 0 ? { events: persistedEvents } : {}),
-    ...(persistedRawOutputs.length > 0 ? { rawOutputs: persistedRawOutputs } : {})
+    ...(persistedRawOutputs.length > 0 ? { rawOutputs: persistedRawOutputs } : {}),
+    ...(persistedApprovals.length > 0 ? { approvals: persistedApprovals } : {})
   });
 }
 

@@ -253,6 +253,7 @@ function normalizeJsonPayload(
         command: gate.command,
         reason: gate.reason,
         riskLevel: gate.riskLevel,
+        ...(gate.cwd ? { cwd: gate.cwd } : {}),
         ...(gate.toolUseId ? { toolUseId: gate.toolUseId } : {}),
         ...(providerType ? { providerEventType: providerType } : {})
       },
@@ -609,6 +610,7 @@ interface PermissionGateInfo {
   command: string;
   reason: string;
   riskLevel: "low" | "medium" | "high";
+  cwd?: string;
   toolUseId?: string;
 }
 
@@ -663,7 +665,8 @@ export function detectPermissionGate(
       return {
         command: command || (isFileChange ? "Apply file changes" : "Execute command"),
         reason,
-        riskLevel: isFileChange ? "high" : classifyCommandRisk(command)
+        riskLevel: isFileChange ? "high" : classifyCommandRisk(command),
+        ...(stringValue(params.cwd) ? { cwd: stringValue(params.cwd) as string } : {})
       };
     }
   }

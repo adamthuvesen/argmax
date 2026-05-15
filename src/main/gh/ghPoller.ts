@@ -70,13 +70,24 @@ export class GhPoller {
     if (this.inFlight) return;
     this.inFlight = true;
     try {
-      const sessionIds = this.deps.database.listRunningSessionIds();
+      const sessionIds = this.listPollableSessionIds();
       for (const sessionId of sessionIds) {
         await this.tickSession(sessionId);
       }
     } finally {
       this.inFlight = false;
     }
+  }
+
+  private listPollableSessionIds(): string[] {
+    const ids = new Set(this.deps.database.listRunningSessionIds());
+    const rows = this.deps.database.connection
+      .prepare("SELECT DISTINCT session_id AS id FROM gh_pr")
+      .all() as Array<{ id: string }>;
+    for (const row of rows) {
+      ids.add(row.id);
+    }
+    return [...ids];
   }
 
   private async tickSession(sessionId: string): Promise<void> {

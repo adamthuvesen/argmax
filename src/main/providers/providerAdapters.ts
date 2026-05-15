@@ -392,8 +392,10 @@ async function launchInteractivePty(
       // Strip ASCII control bytes (except whitespace) so a pasted prompt
       // can't deliver Ctrl-C / Ctrl-D / ESC sequences as keystrokes to the
       // running CLI.
-      // eslint-disable-next-line no-control-regex
-      const sanitizedPrompt = input.prompt.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+      const sanitizedPrompt = input.prompt
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+        .replace(/\r?\n/g, " ");
       ptyProcess.write(`${sanitizedPrompt}\r`);
     }
   } catch (error) {

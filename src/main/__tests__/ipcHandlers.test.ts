@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ZodError } from "zod";
 import {
   ipcSchemas,
   type IpcChannel
@@ -128,19 +127,17 @@ describe("withValidation", () => {
  * channel-by-channel cases verify the rejection rules from 1.7 are wired in.
  */
 describe("IPC channel rejection rules", () => {
-  it("rejects providers:launch prompts containing newlines", () => {
+  it("accepts providers:launch prompts containing newlines", () => {
     const result = ipcSchemas["providers:launch"].safeParse({
-      sessionId: "session-1",
+      workspaceId: "workspace-1",
       provider: "claude",
       prompt: "first line\nsecond line",
-      workspacePath: "/tmp/work",
+      modelLabel: "Claude Haiku",
+      modelId: "claude-haiku-4-5",
       cols: 80,
       rows: 24
     });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error).toBeInstanceOf(ZodError);
-    }
+    expect(result.success).toBe(true);
   });
 
   it("rejects review:load-diff filePath that escapes the workspace", () => {

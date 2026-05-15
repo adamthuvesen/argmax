@@ -187,8 +187,8 @@ describe("ipcSchemas", () => {
     expect(() => registerProjectInputSchema.parse({ repoPath: "" })).toThrow();
   });
 
-  it("rejects launchProviderSession with a prompt containing newlines", () => {
-    expect(() =>
+  it("accepts launchProviderSession with a prompt containing newlines", () => {
+    expect(
       launchProviderSessionInputSchema.parse({
         workspaceId: "ws-1",
         provider: "claude",
@@ -198,7 +198,7 @@ describe("ipcSchemas", () => {
         cols: 120,
         rows: 30
       })
-    ).toThrow();
+    ).toMatchObject({ prompt: "line1\nline2" });
   });
 
   it("rejects launchProviderSession with a prompt starting with '-'", () => {

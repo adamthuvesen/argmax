@@ -203,25 +203,24 @@ export class WorkspaceService {
       .filter(Boolean).length;
 
     if (branch !== workspace.branch) {
-      // Persist a timeline event when the workspace's HEAD branch moves out
-      // from under us (e.g. the user manually checked out a different branch
-      // inside the worktree). The session id is the workspace id as a stable
-      // session-less anchor; consumers filter by payload.kind. Re-using the
-      // `file.changed` EventType keeps this addition non-breaking until a
-      // dedicated `branch-changed` type lands in shared/types.
+      // Persist a timeline event against the latest session when the workspace's
+      // HEAD branch moves out from under us (e.g. manual checkout in worktree).
       try {
-        this.database.persistTimelineEvent({
-          id: randomUUID(),
-          sessionId: workspaceId,
-          type: "file.changed",
-          message: `Branch changed from ${workspace.branch} to ${branch}`,
-          payload: {
-            kind: "branch-changed",
-            workspaceId,
-            previousBranch: workspace.branch,
-            currentBranch: branch
-          }
-        });
+        const sessionId = this.latestSessionIdForWorkspace(workspaceId);
+        if (sessionId) {
+          this.database.persistTimelineEvent({
+            id: randomUUID(),
+            sessionId,
+            type: "file.changed",
+            message: `Branch changed from ${workspace.branch} to ${branch}`,
+            payload: {
+              kind: "branch-changed",
+              workspaceId,
+              previousBranch: workspace.branch,
+              currentBranch: branch
+            }
+          });
+        }
       } catch {
         // Timeline event persistence is best-effort. A failure should not
         // block the status refresh itself.
@@ -233,6 +232,13 @@ export class WorkspaceService {
       dirty: changedFiles > 0,
       changedFiles
     });
+  }
+
+  private latestSessionIdForWorkspace(workspaceId: string): string | null {
+    const row = this.database.connection
+      .prepare("SELECT id FROM sessions WHERE workspace_id = ? ORDER BY last_activity_at DESC LIMIT 1")
+      .get(workspaceId) as { id: string } | undefined;
+    return row?.id ?? null;
   }
 
   watchWorkspace(workspaceId: string): () => void {

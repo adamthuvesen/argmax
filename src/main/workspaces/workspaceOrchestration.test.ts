@@ -64,6 +64,46 @@ describe("WorkspaceService", () => {
     database.connection.close();
   });
 
+  it("records branch-change timeline events against the latest session", async () => {
+    const repoPath = createCommittedGitRepo();
+    const database = createDatabase(":memory:", { seed: false });
+    const project = await new ProjectService(database).registerProject({ repoPath });
+    const service = new WorkspaceService(database);
+    const workspace = await service.createIsolatedWorkspace({
+      projectId: project.id,
+      taskLabel: "Branch drift"
+    });
+    database.persistSession({
+      id: "session-branch-drift",
+      workspaceId: workspace.id,
+      provider: "codex",
+      modelLabel: "Codex Spark",
+      modelId: "gpt-5.3-codex-spark",
+      prompt: "watch branch",
+      state: "running",
+      attention: "normal"
+    });
+
+    gitSync(workspace.path, ["checkout", "-b", "manual-change"]);
+
+    await service.refreshGitStatus(workspace.id);
+
+    const events = database.listSessionEventsSince({ sessionId: "session-branch-drift" }).events;
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        sessionId: "session-branch-drift",
+        type: "file.changed",
+        payload: expect.objectContaining({
+          kind: "branch-changed",
+          previousBranch: workspace.branch,
+          currentBranch: "manual-change"
+        }) as unknown
+      })
+    );
+
+    database.connection.close();
+  });
+
   it("keeps dirty workspaces instead of removing them during archive", async () => {
     const repoPath = createCommittedGitRepo();
     const database = createDatabase(":memory:", { seed: false });

@@ -12,7 +12,10 @@ const settings: ProjectSettings = {
   checkCommands: []
 };
 
-function seed(database: ArgmaxDatabase): { sessionId: string; workspaceId: string } {
+function seed(
+  database: ArgmaxDatabase,
+  options: { sessionState?: SessionSummary["state"] } = {}
+): { sessionId: string; workspaceId: string } {
   const projectId = "p-poll";
   const workspaceId = "ws-poll";
   const sessionId = "session-poll";
@@ -44,7 +47,7 @@ function seed(database: ArgmaxDatabase): { sessionId: string; workspaceId: strin
     modelId: "gpt-5.3-codex-spark",
     reasoningEffort: "medium",
     prompt: "p",
-    state: "running",
+    state: options.sessionState ?? "running",
     attention: "normal"
   });
   return { sessionId, workspaceId };
@@ -109,6 +112,32 @@ describe("GhPoller.tick", () => {
     await poller.tick();
 
     expect(launchFollowUp).toHaveBeenCalledTimes(1);
+    database.connection.close();
+  });
+
+  it("polls completed sessions that have tracked PRs", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const { sessionId, workspaceId } = seed(database, { sessionState: "complete" });
+    database.upsertGhPr(makeRow({ sessionId, lastSeenCheckState: "pending" }));
+
+    const refresh = vi.fn<(sid: string) => Promise<GhPrRecord[]>>().mockResolvedValue([makeRow({ sessionId })]);
+    const launchFollowUp = vi.fn<(ctx: CheckFailureContext) => Promise<void>>().mockResolvedValue();
+
+    const poller = new GhPoller({
+      database,
+      ghService: { refresh },
+      launchFollowUp
+    });
+
+    await poller.tick();
+
+    expect(refresh).toHaveBeenCalledWith(sessionId);
+    expect(launchFollowUp).toHaveBeenCalledWith({
+      sessionId,
+      workspaceId,
+      prNumber: 1,
+      headSha: "sha-1"
+    });
     database.connection.close();
   });
 

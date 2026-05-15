@@ -83,13 +83,13 @@ function gitRefSchema(fieldName: string) {
 const baseRefSchema = gitRefSchema("baseRef");
 
 /**
- * Prompt rules: no embedded \r or \n (PTYs interpret newlines as submission)
- * and cannot start with `-` (would be parsed as a CLI flag by some providers).
+ * Prompt rule: cannot start with `-` (would be parsed as a CLI flag by some
+ * providers). PTY launches collapse embedded newlines at the adapter boundary
+ * so textarea prompts can still be multiline in the renderer.
  */
 const promptSchema = z
   .string()
   .min(1)
-  .refine((value) => !/[\r\n]/.test(value), { message: "prompt cannot contain newlines" })
   .refine((value) => !value.startsWith("-"), { message: "prompt cannot start with '-'" });
 
 const workspaceIdSchema = z.string().min(1);

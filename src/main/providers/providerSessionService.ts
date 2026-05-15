@@ -21,7 +21,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { RecordNotFoundError, type ArgmaxDatabase, type PersistTimelineEventInput } from "../persistence/database.js";
+import {
+  RecordNotFoundError,
+  type ArgmaxDatabase,
+  type PersistApprovalInput,
+  type PersistTimelineEventInput
+} from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import { PROVIDER_MODEL_DEFAULTS, type ReasoningEffort } from "../../shared/providerModels.js";
 import { logger } from "../../shared/logger.js";
@@ -97,10 +102,12 @@ interface SessionBuffer {
   }>;
   /** Coalesced usage events accumulated during the current micro-batch window. */
   pendingUsages: NormalizedUsage[];
+  pendingApprovals: PersistApprovalInput[];
   pendingSessionUpdate: SessionSummary | null;
   /** Latest output createdAt seen, used for throttled lastActivityAt updates. */
   lastActivityWriteAt: number;
   workspaceId: string;
+  workspacePath: string;
   provider: ProviderId;
   /** Session-scoped normalizer context, e.g. most-recent Codex turn_context model. */
   normalizerContext: NormalizerSessionContext;
@@ -231,7 +238,7 @@ export class ProviderSessionService {
       events: [userMessage, sessionStarted]
     });
 
-    this.initializeBuffer(sessionId, workspace.id, input.provider, input.modelId);
+    this.initializeBuffer(sessionId, workspace.id, workspace.path, input.provider, input.modelId);
     // Register a pending placeholder synchronously so any racing operations are
     // queued into arrival order against the real handle once launch resolves.
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
@@ -360,7 +367,7 @@ export class ProviderSessionService {
       events: [userMessage]
     });
 
-    this.initializeBuffer(sessionId, workspace.id, session.provider, session.modelId);
+    this.initializeBuffer(sessionId, workspace.id, workspace.path, session.provider, session.modelId);
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
     this.handles.set(sessionId, pending);
     const modelDefault = PROVIDER_MODEL_DEFAULTS[session.provider];
@@ -694,7 +701,13 @@ export class ProviderSessionService {
     }
   }
 
-  private initializeBuffer(sessionId: string, workspaceId: string, provider: ProviderId, modelId: string): void {
+  private initializeBuffer(
+    sessionId: string,
+    workspaceId: string,
+    workspacePath: string,
+    provider: ProviderId,
+    modelId: string
+  ): void {
     this.buffers.set(sessionId, {
       streamBuffers: new Map(),
       sequence: 0,
@@ -703,9 +716,11 @@ export class ProviderSessionService {
       pendingEvents: [],
       pendingRawOutputs: [],
       pendingUsages: [],
+      pendingApprovals: [],
       pendingSessionUpdate: null,
       lastActivityWriteAt: 0,
       workspaceId,
+      workspacePath,
       provider,
       normalizerContext: createNormalizerSessionContext(
         provider === "cursor" ? { cursorCurrentModel: modelId } : {}
@@ -907,6 +922,10 @@ export class ProviderSessionService {
       sessionState.sequence += 1;
       (stamped as PersistTimelineEventInput & { sequence: number }).sequence = sessionState.sequence;
       sessionState.pendingEvents.push(stamped);
+      const approval = this.approvalFromEvent(sessionId, sessionState, stamped);
+      if (approval) {
+        sessionState.pendingApprovals.push(approval);
+      }
       if (sibling) {
         sessionState.sequence += 1;
         const stampedSibling: PersistTimelineEventInput & { sequence: number } = {
@@ -924,6 +943,34 @@ export class ProviderSessionService {
       }
       this.publishDashboardDelta({ events });
     }
+  }
+
+  private approvalFromEvent(
+    sessionId: string,
+    sessionState: SessionBuffer,
+    event: PersistTimelineEventInput
+  ): PersistApprovalInput | null {
+    if (event.type !== "approval.requested") {
+      return null;
+    }
+    const command = typeof event.payload.command === "string" ? event.payload.command : event.message;
+    if (!command.trim()) {
+      return null;
+    }
+    const riskLevel =
+      event.payload.riskLevel === "low" || event.payload.riskLevel === "medium" || event.payload.riskLevel === "high"
+        ? event.payload.riskLevel
+        : "medium";
+    return {
+      id: randomUUID(),
+      sessionId,
+      command,
+      cwd: typeof event.payload.cwd === "string" && event.payload.cwd.trim() ? event.payload.cwd : sessionState.workspacePath,
+      provider: sessionState.provider,
+      riskLevel,
+      status: "pending",
+      ...(event.createdAt ? { createdAt: event.createdAt } : {})
+    };
   }
 
   private maybeUpdateLastActivity(event: ProviderEvent): void {

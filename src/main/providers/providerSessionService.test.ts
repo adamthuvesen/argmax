@@ -72,6 +72,67 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
+  it("persists actionable approval rows from provider permission gates", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Start",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message:
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "item/commandExecution/requestApproval",
+          id: 50,
+          params: {
+            itemId: "cmd_1",
+            threadId: "thr_123",
+            turnId: "turn_456",
+            command: ["rm", "-rf", "/tmp/build"],
+            cwd: workspace.path,
+            reason: "Clean build artifacts"
+          }
+        }) + "\n",
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const approval = database.listPendingApprovals()[0];
+    expect(approval).toMatchObject({
+      sessionId: session.id,
+      command: "rm -rf /tmp/build",
+      cwd: workspace.path,
+      provider: "codex",
+      riskLevel: "high",
+      status: "pending"
+    });
+    expect(database.getSession(session.id)).toMatchObject({
+      state: "waiting",
+      attention: "approval-needed"
+    });
+    expect(
+      database.listSessionEventsSince({ sessionId: session.id }).events.some((event) => event.type === "approval.requested")
+    ).toBe(true);
+    expect(deltas.some((delta) => delta.approvals?.some((row) => row.id === approval?.id))).toBe(true);
+
+    database.connection.close();
+  });
+
   it("persists agent mode and passes it to follow-up launches", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);

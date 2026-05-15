@@ -84,11 +84,26 @@ describe("TurnBlock", () => {
         defaultExpanded
       />
     );
-    // Starts expanded because defaultExpanded=true.
     expect(screen.getByTestId("tools")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
     // User collapse must stick — earlier bug reset the toggle on the next render.
     expect(screen.queryByTestId("tools")).not.toBeInTheDocument();
+  });
+
+  it("respects defaultExpanded while the turn is still running", () => {
+    // Running turns: live progress matters more than collapse, so the
+    // preference still applies (auto-expanded by the running guard anyway).
+    const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[]}
+        toolsNode={<div data-testid="tools">tools</div>}
+        assistantNode={<p data-testid="assistant">streaming...</p>}
+        defaultExpanded
+      />
+    );
+    expect(screen.getByTestId("tools")).toBeInTheDocument();
   });
 
   it("omits the chip when there are no tool items", () => {

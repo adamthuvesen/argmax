@@ -68,6 +68,11 @@ import {
   type PermissionMode
 } from "./lib/permissionMode.js";
 import {
+  NEW_SESSION_MODE_KEY,
+  readStoredNewSessionMode,
+  type NewSessionMode
+} from "./lib/newSessionMode.js";
+import {
   THINKING_STYLE_KEY,
   readStoredThinkingStyle,
   type ThinkingStyle
@@ -114,6 +119,11 @@ export function App(): JSX.Element {
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>(() => readStoredThinkingStyle());
+  const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
+  // `full` new-session mode hides the grid and renders LaunchSurface in its
+  // place when ⌘N fires from inside an active grid. The flag is purely local
+  // — it never persists; only the user's choice in Settings persists.
+  const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [grid, setGrid] = useState<GridState>(EMPTY_GRID);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
@@ -319,6 +329,13 @@ export function App(): JSX.Element {
   }, [toast]);
 
   const openNewSessionPane = useCallback((): void => {
+    // `full` mode: when the grid already has panes, swap to the standalone
+    // LaunchSurface instead of injecting a launcher cell. Grid is preserved;
+    // the user returns to it after launching or pressing Esc.
+    if (newSessionMode === "full" && grid.rows.length > 0) {
+      setIsFullLauncherOpen(true);
+      return;
+    }
     setGrid((current) => {
       if (current.rows.length === 0) return EMPTY_GRID;
       const focused = focusedCell(current);
@@ -331,13 +348,21 @@ export function App(): JSX.Element {
       if (!projectId) return current;
       return openLauncherInGrid(current, { kind: "launcher", projectId });
     });
-  }, [selectedProject?.id, selectedWorkspace?.projectId, snapshot.projects, workspacesById]);
+  }, [
+    grid.rows.length,
+    newSessionMode,
+    selectedProject?.id,
+    selectedWorkspace?.projectId,
+    snapshot.projects,
+    workspacesById
+  ]);
 
   const handleMenuCommand = useCallback(
     (command: MenuCommand): void => {
       switch (command) {
         case "open-settings":
           setIsPaletteOpen(false);
+          setIsFullLauncherOpen(false);
           setIsSettingsOpen(true);
           return;
         case "new-session":
@@ -369,6 +394,7 @@ export function App(): JSX.Element {
   const selectSessionFromKeybinding = useCallback(
     (session: { id: string; workspaceId: string }): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
+      setIsFullLauncherOpen(false);
       openWorkspaceChat(session.workspaceId, { ctrlOrMeta: false, alt: false });
     },
     [openWorkspaceChat]
@@ -433,6 +459,32 @@ export function App(): JSX.Element {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(THINKING_STYLE_KEY, thinkingStyle);
   }, [thinkingStyle]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(NEW_SESSION_MODE_KEY, newSessionMode);
+  }, [newSessionMode]);
+
+  // Esc closes the standalone full launcher (only meaningful when the grid
+  // has active panes — when the grid is empty, the LaunchSurface is the only
+  // surface and dismissing it would strand the user). Mirrors the typing-
+  // target guard from useOverlays so Esc inside the prompt textarea doesn't
+  // dismiss the surface itself.
+  useEffect(() => {
+    if (!isFullLauncherOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "TEXTAREA" || tag === "INPUT" || target.isContentEditable) return;
+      }
+      setIsFullLauncherOpen(false);
+      event.preventDefault();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isFullLauncherOpen]);
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
     if (!window.argmax) {
@@ -634,6 +686,9 @@ export function App(): JSX.Element {
         sessionId: launchedSession.id,
         workspaceId: workspace.id
       };
+      // If the user launched from the standalone full launcher, return them
+      // to the grid view now that the new pane will be present and focused.
+      setIsFullLauncherOpen(false);
       setGrid((current) =>
         openWorkspaceInGrid(
           current,
@@ -884,12 +939,17 @@ export function App(): JSX.Element {
         onOpenInIde={(workspaceId, ide, options) => void handleOpenInIde(workspaceId, ide, options)}
         onOpenProject={(projectId) => {
           setIsSettingsOpen(false);
+          setIsFullLauncherOpen(false);
           setGrid(EMPTY_GRID);
           openProjectLauncher(projectId);
         }}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => {
+          setIsFullLauncherOpen(false);
+          setIsSettingsOpen(true);
+        }}
         onOpenWorkspaceChat={(workspaceId, modifiers) => {
           setIsSettingsOpen(false);
+          setIsFullLauncherOpen(false);
           openWorkspaceChat(workspaceId, modifiers);
         }}
         onWorkspaceDragStart={handleWorkspaceDragStart}
@@ -910,9 +970,9 @@ export function App(): JSX.Element {
         <div className={
           isSettingsOpen
             ? "work-scroll settings-scroll"
-            : grid.rows.length > 0
-              ? "work-scroll session-scroll"
-              : "work-scroll launcher-scroll"
+            : isFullLauncherOpen || grid.rows.length === 0
+              ? "work-scroll launcher-scroll"
+              : "work-scroll session-scroll"
         }>
           {loadState === "error" ? (
             <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
@@ -936,10 +996,14 @@ export function App(): JSX.Element {
                 onPermissionModeChange={setPermissionMode}
                 thinkingStyle={thinkingStyle}
                 onThinkingStyleChange={setThinkingStyle}
+                newSessionMode={newSessionMode}
+                onNewSessionModeChange={setNewSessionMode}
                 projects={snapshot.projects}
                 onClose={() => setIsSettingsOpen(false)}
               />
             </Suspense>
+          ) : isFullLauncherOpen ? (
+            renderLaunchSurface(selectedProject)
           ) : grid.rows.length > 0 ? (
             <SessionMultiGrid
               grid={grid}

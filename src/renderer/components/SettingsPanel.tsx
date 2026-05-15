@@ -23,6 +23,7 @@ import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import { readFirstContentMeasure } from "../lib/paintTimings.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { CombinedModelSelector } from "./ModelSelector.js";
@@ -93,6 +94,8 @@ export function SettingsPanel({
   onPermissionModeChange,
   thinkingStyle,
   onThinkingStyleChange,
+  newSessionMode,
+  onNewSessionModeChange,
   projects,
   onClose
 }: {
@@ -111,6 +114,8 @@ export function SettingsPanel({
   onPermissionModeChange: (mode: PermissionMode) => void;
   thinkingStyle: ThinkingStyle;
   onThinkingStyleChange: (style: ThinkingStyle) => void;
+  newSessionMode: NewSessionMode;
+  onNewSessionModeChange: (mode: NewSessionMode) => void;
   projects: ProjectSummary[];
   onClose: () => void;
 }): JSX.Element {
@@ -366,7 +371,7 @@ export function SettingsPanel({
             id="settings-defaults-h"
             eyebrow="Launch"
             title="Defaults"
-            description="Pick the model that pre-fills the launcher when you start a new session."
+            description="Pick the model that pre-fills the launcher when you start a new session, and choose whether ⌘N opens a launcher inside the active grid or replaces it with a full new-session view."
           />
           <div className="settings-card">
             <div className="settings-row">
@@ -386,6 +391,16 @@ export function SettingsPanel({
               options={[
                 { value: "show", label: "Show expanded" },
                 { value: "hide", label: "Show collapsed" }
+              ]}
+            />
+            <Segmented
+              legend="New session"
+              name="new-session-mode"
+              value={newSessionMode}
+              onChange={(v) => onNewSessionModeChange(v as NewSessionMode)}
+              options={[
+                { value: "embedded", label: "Open in grid" },
+                { value: "full", label: "Open full view" }
               ]}
             />
             <KeyValueList

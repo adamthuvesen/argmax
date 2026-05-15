@@ -2571,6 +2571,45 @@ describe("App", () => {
     expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
   });
 
+  it("hides the grid and shows the full launcher on Cmd+N when newSessionMode is 'full'", async () => {
+    render(<App />);
+
+    // Promote one workspace into the grid so the new-session toggle can do work.
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    expect(screen.getByRole("group", { name: "Session panes" })).toBeInTheDocument();
+
+    // Flip the Defaults → New session toggle to "Open full view".
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Settings" });
+    fireEvent.click(await screen.findByRole("radio", { name: "Open full view" }));
+    expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    await screen.findByRole("group", { name: "Session panes" });
+
+    fireEvent.keyDown(document, { key: "n", metaKey: true });
+
+    // Full launcher replaces the grid; no in-grid launcher cell is added.
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Session panes" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "New session for Argmax" })).toBeNull();
+
+    // Esc dismisses the full launcher and restores the grid view.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
+  });
+
+  it("defaults the new-session toggle to 'Open in grid' on first launch", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Settings" });
+
+    expect(await screen.findByRole("radio", { name: "Open in grid" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Open full view" })).not.toBeChecked();
+    expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("embedded");
+  });
+
   it("opens the Cmd+N launcher below when the focused row already has 3 panes", async () => {
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",

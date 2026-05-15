@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 import { appendReferencesToPrompt, buildAttachmentReferences } from "../lib/composerAttachments.js";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
+  AgentMode,
   CheckRun,
   GhPrRecord,
   ProjectSummary,
@@ -33,6 +34,13 @@ import { providerLabel, repoNameFromPath } from "../lib/projects.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
+import {
+  AGENT_MODE_LABELS,
+  readStoredAgentMode,
+  sessionAgentModeKey,
+  toggleAgentMode,
+  writeStoredAgentMode
+} from "../lib/agentMode.js";
 import {
   buildToolCallGroup,
   detectToolError,
@@ -125,7 +133,7 @@ export function SessionConversation({
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   onOpenCommitDialog?: () => void;
-  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection) => Promise<void>;
+  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
@@ -143,6 +151,9 @@ export function SessionConversation({
   const [isSending, setIsSending] = useState(false);
   const [prs, setPrs] = useState<GhPrRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
+  const [agentMode, setAgentMode] = useState<AgentMode>(() =>
+    session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "edit") : "edit"
+  );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -404,6 +415,7 @@ export function SessionConversation({
   // overwrite the user's per-session model pick on every streaming event.
   useEffect(() => {
     setSelectedModel(modelSelectionFromSession(session));
+    setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "edit") : "edit");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [session?.id]);
 
@@ -411,6 +423,15 @@ export function SessionConversation({
   // reload on session change. The dropdown's "view PR" action calls back via
   // refreshPrs after creating a PR so the next click opens the existing one.
   const sessionId = session?.id ?? null;
+  useEffect(() => {
+    if (!sessionId) return;
+    writeStoredAgentMode(sessionAgentModeKey(sessionId), agentMode);
+  }, [agentMode, sessionId]);
+
+  const toggleMode = useCallback((): void => {
+    setAgentMode((mode) => toggleAgentMode(mode));
+  }, []);
+
   useEffect(() => {
     if (!sessionId || !window.argmax) {
       setPrs([]);
@@ -472,6 +493,11 @@ export function SessionConversation({
   const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     slashAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
+    if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      toggleMode();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       inputFormRef.current?.requestSubmit();
@@ -521,7 +547,7 @@ export function SessionConversation({
     setStatus(null);
     shouldRefocusInput.current = true;
     try {
-      await onSendSessionInput(session.id, trimmedInput, selectedModel);
+      await onSendSessionInput(session.id, trimmedInput, selectedModel, agentMode);
       setInput("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not send input.");
@@ -833,6 +859,19 @@ export function SessionConversation({
               onChange={setSelectedModel}
               ariaLabel="Session model"
             />
+          ) : null}
+          {session ? (
+            <button
+              type="button"
+              className="composer-context-chip agent-mode-toggle"
+              aria-label="Agent mode"
+              aria-pressed={agentMode === "plan"}
+              title="Toggle agent mode (Shift+Tab)"
+              disabled={!canSend || isSending}
+              onClick={toggleMode}
+            >
+              {AGENT_MODE_LABELS[agentMode]}
+            </button>
           ) : null}
           {workspace ? (
             <div className="composer-footer" aria-label="Workspace context">

@@ -37,6 +37,7 @@ export const MAX_FILE_CONTENT_BYTES = 4 * 1024 * 1024;
 
 export const providerIdSchema = z.enum(["claude", "codex", "cursor"]);
 export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
+export const agentModeSchema = z.enum(["edit", "plan"]);
 
 // Terminal/PTY size bounds. xterm sizes both grids and the underlying PTY
 // from the same numbers; the renderer measures its viewport in cells and
@@ -161,6 +162,7 @@ export const launchProviderSessionInputSchema = z.object({
   modelLabel: z.string().min(1),
   modelId: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.optional(),
+  agentMode: agentModeSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
   cols: terminalCols,
   rows: terminalRows
@@ -171,7 +173,8 @@ export const providerSessionInputSchema = z.object({
   input: z.string(),
   modelLabel: z.string().min(1).optional(),
   modelId: z.string().min(1).optional(),
-  reasoningEffort: reasoningEffortSchema.optional()
+  reasoningEffort: reasoningEffortSchema.optional(),
+  agentMode: agentModeSchema.optional()
 });
 
 export const providerSessionResizeInputSchema = z.object({

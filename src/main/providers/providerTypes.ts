@@ -1,4 +1,4 @@
-import type { ProviderId } from "../../shared/types.js";
+import type { AgentMode, ProviderId } from "../../shared/types.js";
 import type { ReasoningEffort } from "../../shared/providerModels.js";
 
 export type ProviderMode = "interactive-pty" | "structured-json";
@@ -26,6 +26,7 @@ export interface ProviderLaunchInput {
   resumeConversationId?: string;
   mode: ProviderMode;
   permissionMode: PermissionMode;
+  agentMode: AgentMode;
   cols: number;
   rows: number;
 }

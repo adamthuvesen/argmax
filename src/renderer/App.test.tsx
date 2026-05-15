@@ -791,11 +791,33 @@ describe("App", () => {
       prompt: "Implement PTY launch",
       modelLabel: "Claude Haiku 4.5",
       modelId: "claude-haiku-4-5",
+      agentMode: "edit",
       permissionMode: "auto-approve",
       cols: 120,
       rows: 32
     });
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+  });
+
+  it("toggles launcher agent mode with Shift+Tab and sends plan mode", async () => {
+    render(<App />);
+
+    const input = await screen.findByLabelText("Task prompt");
+    fireEvent.change(input, { target: { value: "Plan the migration" } });
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+
+    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Plan the migration",
+          agentMode: "plan"
+        })
+      )
+    );
+    expect(window.localStorage.getItem("argmax.launch.agentMode")).toBe("plan");
   });
 
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {
@@ -886,6 +908,7 @@ describe("App", () => {
         prompt: "Review this change",
         modelLabel: "Claude Sonnet 4.6",
         modelId: "claude-sonnet-4-6",
+        agentMode: "edit",
         permissionMode: "auto-approve",
         cols: 120,
         rows: 32
@@ -1206,12 +1229,41 @@ describe("App", () => {
         input: "continue with tests\r",
         modelLabel: "GPT-5.3 Codex",
         modelId: "gpt-5.3-codex",
-        reasoningEffort: "medium"
+        reasoningEffort: "medium",
+        agentMode: "edit"
       })
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(launchProvider).not.toHaveBeenCalled();
     await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("toggles active-session agent mode with Shift+Tab and sends plan mode", async () => {
+    const completeSnapshot = {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
+    };
+    mockDashboardSnapshot(completeSnapshot);
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+    fireEvent.change(input, { target: { value: "Plan the follow-up" } });
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+
+    expect(screen.getByRole("button", { name: "Agent mode" })).toHaveTextContent("Plan");
+    fireEvent.click(screen.getByTitle("Send follow-up"));
+
+    await waitFor(() =>
+      expect(sendProviderInput).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: "Plan the follow-up\r",
+          agentMode: "plan"
+        })
+      )
+    );
+    expect(window.localStorage.getItem("argmax.sessionAgentMode.session-1")).toBe("plan");
   });
 
   it("appends @path references when files are dropped onto the composer", async () => {
@@ -1730,7 +1782,8 @@ describe("App", () => {
         input: "use the stronger model\r",
         modelLabel: "GPT-5.5",
         modelId: "gpt-5.5",
-        reasoningEffort: "medium"
+        reasoningEffort: "medium",
+        agentMode: "edit"
       })
     );
   });

@@ -29,6 +29,7 @@ import { errorMessage } from "../../shared/error.js";
 import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type {
   DashboardDelta,
+  AgentMode,
   LaunchProviderSessionInput,
   ProviderId,
   SessionSummary,
@@ -56,11 +57,17 @@ import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./pr
 import type { NotificationService } from "../notifications/notificationService.js";
 import { extractLearningCandidates } from "../memory/learningExtractor.js";
 import { composeLearningPreamble } from "../memory/learningInjector.js";
+import { promptForAgentMode } from "./agentModePrompt.js";
 
 interface FollowUpModelSelection {
   modelLabel: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort;
+}
+
+interface FollowUpOptions {
+  modelSelection?: FollowUpModelSelection;
+  agentMode?: AgentMode;
 }
 
 interface PendingOp {
@@ -161,6 +168,7 @@ export class ProviderSessionService {
   async launch(input: LaunchProviderSessionInput): Promise<SessionSummary> {
     const workspace = this.database.getWorkspace(input.workspaceId);
     const sessionId = randomUUID();
+    const agentMode = input.agentMode ?? "edit";
 
     // Inject project-scoped learnings into the prompt the provider sees, but
     // keep the user-visible `input.prompt` on the session row and timeline.
@@ -179,6 +187,7 @@ export class ProviderSessionService {
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort,
       permissionMode: input.permissionMode ?? "auto-approve",
+      agentMode,
       prompt: input.prompt,
       state: "running",
       attention: computeSessionAttention({ state: "running" })
@@ -194,7 +203,8 @@ export class ProviderSessionService {
       type: "user.message",
       message: input.prompt,
       payload: {
-        source: "composer"
+        source: "composer",
+        agentMode
       }
     });
     const sessionStarted = this.database.persistTimelineEvent({
@@ -206,6 +216,7 @@ export class ProviderSessionService {
         provider: input.provider,
         workspacePath: workspace.path,
         modelLabel: input.modelLabel,
+        agentMode,
         ...(session.providerConversationId
           ? {
               providerConversationId: session.providerConversationId
@@ -239,6 +250,7 @@ export class ProviderSessionService {
           resumeConversationId: undefined,
           mode: PROVIDER_MODEL_DEFAULTS[input.provider].launchMode,
           permissionMode: input.permissionMode ?? "auto-approve",
+          agentMode,
           cols: input.cols,
           rows: input.rows
         },
@@ -285,7 +297,7 @@ export class ProviderSessionService {
     }
   }
 
-  async sendInput(sessionId: string, input: string, modelSelection?: FollowUpModelSelection): Promise<void> {
+  async sendInput(sessionId: string, input: string, options: FollowUpOptions = {}): Promise<void> {
     const message = input.replace(/\r?\n$/, "").trim();
     if (!message) {
       return;
@@ -293,6 +305,7 @@ export class ProviderSessionService {
 
     let session = this.database.getSession(sessionId);
     const workspace = this.database.getWorkspace(session.workspaceId);
+    const agentMode = options.agentMode ?? session.agentMode ?? "edit";
     const existingEntry = this.handles.get(sessionId);
     if (existingEntry?.kind === "pending") {
       throw new Error("Wait for the current response before sending another prompt.");
@@ -302,10 +315,13 @@ export class ProviderSessionService {
       if (!liveHandle.acceptsInput) {
         throw new Error("Wait for the current response before sending another prompt.");
       }
+      if (session.agentMode !== agentMode) {
+        session = this.database.updateSessionAgentMode(sessionId, { agentMode });
+      }
       // Collapse embedded newlines so the PTY-side CLI doesn't treat each line
       // as a separate prompt submission. The persisted user.message keeps the
       // original text — only what travels to the live PTY is sanitized.
-      const ptyPayload = message.replace(/\r?\n/g, " ");
+      const ptyPayload = promptForAgentMode(message, agentMode).replace(/\r?\n/g, " ");
       liveHandle.sendInput(`${ptyPayload}\r`);
     }
 
@@ -315,7 +331,8 @@ export class ProviderSessionService {
       type: "user.message",
       message,
       payload: {
-        source: "composer"
+        source: "composer",
+        agentMode
       }
     });
     if (liveHandle) {
@@ -323,8 +340,11 @@ export class ProviderSessionService {
       return;
     }
 
-    if (modelSelection) {
-      session = this.database.updateSessionModel(sessionId, modelSelection);
+    if (options.modelSelection) {
+      session = this.database.updateSessionModel(sessionId, options.modelSelection);
+    }
+    if (session.agentMode !== agentMode) {
+      session = this.database.updateSessionAgentMode(sessionId, { agentMode });
     }
 
     const runningSession = this.database.updateSessionState(sessionId, {
@@ -357,6 +377,7 @@ export class ProviderSessionService {
           ...(session.providerConversationId ? { resumeConversationId: session.providerConversationId } : {}),
           mode: modelDefault.launchMode,
           permissionMode: session.permissionMode,
+          agentMode,
           cols: 120,
           rows: 32
         },

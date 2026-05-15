@@ -72,6 +72,41 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
+  it("persists agent mode and passes it to follow-up launches", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Start",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      agentMode: "plan",
+      cols: 80,
+      rows: 24
+    });
+    expect(fakeProvider.launchInput?.agentMode).toBe("plan");
+    expect(database.getSession(session.id).agentMode).toBe("plan");
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    await service.sendInput(session.id, "Continue", { agentMode: "edit" });
+
+    expect(fakeProvider.launchInput?.agentMode).toBe("edit");
+    expect(database.getSession(session.id).agentMode).toBe("edit");
+
+    database.connection.close();
+  });
+
   it("rejects follow-up input while the provider launch handle is still pending (audit-2026-05-14 H3)", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
@@ -573,9 +608,11 @@ describe("ProviderSessionService", () => {
     });
 
     await service.sendInput(session.id, "try harder\r", {
-      modelLabel: "GPT-5.5",
-      modelId: "gpt-5.5",
-      reasoningEffort: "high"
+      modelSelection: {
+        modelLabel: "GPT-5.5",
+        modelId: "gpt-5.5",
+        reasoningEffort: "high"
+      }
     });
 
     expect(fakeProvider.launchInput).toMatchObject({

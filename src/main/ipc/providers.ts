@@ -33,13 +33,18 @@ export function registerProviderHandlers(
       await providerSessions.sendInput(
         input.sessionId,
         input.input,
-        input.modelLabel && input.modelId
-          ? {
-              modelLabel: input.modelLabel,
-              modelId: input.modelId,
-              ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {})
-            }
-          : undefined
+        {
+          ...(input.modelLabel && input.modelId
+            ? {
+                modelSelection: {
+                  modelLabel: input.modelLabel,
+                  modelId: input.modelId,
+                  ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {})
+                }
+              }
+            : {}),
+          ...(input.agentMode ? { agentMode: input.agentMode } : {})
+        }
       );
       return { ok: true } as const;
     })

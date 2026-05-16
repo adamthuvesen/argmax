@@ -4149,7 +4149,8 @@ button {
 }
 
 .markdown li {
-  margin: 2px 0;
+  margin: 7px 0;
+  line-height: 1.86;
 }
 
 .markdown ul > li::marker {

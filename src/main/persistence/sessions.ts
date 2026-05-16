@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { RecordNotFoundError } from "./errors.js";
 import { findWorkspaceById } from "./workspaces.js";
+import { prepared } from "./preparedStatements.js";
 import { safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { AgentMode, SessionSummary } from "../../shared/types.js";
 import type { ReasoningEffort } from "../../shared/providerModels.js";
@@ -209,7 +210,11 @@ export function updateSessionProviderConversationId(
 }
 
 export function findSessionById(connection: Database.Database, sessionId: string): SessionSummary {
-  const row = connection.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as SessionRow | undefined;
+  // prepared() cached per-connection — this is hit at least once per coalesced
+  // flush batch on the provider streaming path (S-063).
+  const row = prepared(connection, "SELECT * FROM sessions WHERE id = ?").get(sessionId) as
+    | SessionRow
+    | undefined;
   if (!row) {
     throw new RecordNotFoundError("session", sessionId);
   }
@@ -227,7 +232,9 @@ function findSessionByIdNoPreferred(
   connection: Database.Database,
   sessionId: string
 ): SessionSummary {
-  const row = connection.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as SessionRow | undefined;
+  const row = prepared(connection, "SELECT * FROM sessions WHERE id = ?").get(sessionId) as
+    | SessionRow
+    | undefined;
   if (!row) {
     throw new RecordNotFoundError("session", sessionId);
   }

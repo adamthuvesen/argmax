@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import type { IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { ProviderId } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
 import { PROVIDER_MODELS } from "../../shared/providerModels.js";
 import { defaultDiscoveryRunner, discoverProviderById, type ProviderDiscoveryRunner } from "./providerDiscovery.js";
 import { buildProviderEnvironment, providerShell, shellQuote } from "./providerEnvironment.js";
@@ -292,7 +293,7 @@ async function launchInteractivePty(
       })
     });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown PTY error";
+    const detail = errorMessage(error) || "Unknown PTY error";
     throw new ProviderLaunchError(
       `Could not launch ${definition.displayName} from ${capability.binaryPath}: ${detail}`,
       definition.id
@@ -401,7 +402,7 @@ async function launchInteractivePty(
   } catch (error) {
     // Post-spawn wiring failed: kill the child before re-throwing.
     void handle.terminate();
-    const detail = error instanceof Error ? error.message : "Unknown PTY wiring error";
+    const detail = errorMessage(error) || "Unknown PTY wiring error";
     throw new ProviderLaunchError(
       `Could not wire ${definition.displayName} PTY: ${detail}`,
       definition.id
@@ -461,7 +462,7 @@ async function launchStructuredProcess(
       })
     });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown process error";
+    const detail = errorMessage(error) || "Unknown process error";
     throw new ProviderLaunchError(`Could not launch ${definition.displayName} structured probe: ${detail}`, definition.id);
   }
 
@@ -555,7 +556,7 @@ async function launchStructuredProcess(
     childProcess.stdin.end(definition.structuredStdin?.(input) ?? undefined);
   } catch (error) {
     void handle.terminate();
-    const detail = error instanceof Error ? error.message : "Unknown wiring error";
+    const detail = errorMessage(error) || "Unknown wiring error";
     throw new ProviderLaunchError(
       `Could not wire ${definition.displayName} structured probe: ${detail}`,
       definition.id

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
+import { errorMessage } from "../../shared/error.js";
 
 export const ATTACHMENT_MIME_TYPES = [
   "image/png",
@@ -92,7 +93,7 @@ export class AttachmentStore {
       await writeFile(filePath, buffer);
     } catch (error) {
       throw new AttachmentStoreError(
-        `Could not write attachment: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not write attachment: ${errorMessage(error)}`,
         "WRITE_FAILED"
       );
     }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import type { IPty, IPtyForkOptions } from "node-pty";
+import type { IDisposable, IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
@@ -19,6 +19,7 @@ export interface TerminalBroadcaster {
 interface TerminalEntry {
   pty: IPty;
   workspaceId: string;
+  disposables: IDisposable[];
 }
 
 function pickShell(): string {
@@ -62,20 +63,29 @@ export class TerminalService {
     });
 
     const terminalId = randomUUID();
-    this.terminals.set(terminalId, { pty, workspaceId: input.workspaceId });
+    const disposables: IDisposable[] = [];
+    this.terminals.set(terminalId, { pty, workspaceId: input.workspaceId, disposables });
 
-    pty.onData((data) => {
-      this.broadcaster.emitData({ terminalId, data });
-    });
+    disposables.push(
+      pty.onData((data) => {
+        this.broadcaster.emitData({ terminalId, data });
+      })
+    );
 
-    pty.onExit(({ exitCode, signal }) => {
-      this.terminals.delete(terminalId);
-      this.broadcaster.emitExit({
-        terminalId,
-        exitCode,
-        signal: typeof signal === "number" ? signal : null
-      });
-    });
+    disposables.push(
+      pty.onExit(({ exitCode, signal }) => {
+        const entry = this.terminals.get(terminalId);
+        if (entry) {
+          for (const d of entry.disposables) d.dispose();
+          this.terminals.delete(terminalId);
+        }
+        this.broadcaster.emitExit({
+          terminalId,
+          exitCode,
+          signal: typeof signal === "number" ? signal : null
+        });
+      })
+    );
 
     return { terminalId };
   }
@@ -95,11 +105,15 @@ export class TerminalService {
   terminate(terminalId: string): void {
     const entry = this.terminals.get(terminalId);
     if (!entry) return;
+    // Don't dispose listeners here — the pty's own exit will fire onExit and
+    // clean up via that path. Disposing pre-emptively would cancel the
+    // listener before exitCode/signal could be broadcast to the renderer.
     safeKill(entry.pty);
   }
 
   disposeAll(): void {
     for (const [, entry] of this.terminals) {
+      for (const d of entry.disposables) d.dispose();
       safeKill(entry.pty);
     }
     this.terminals.clear();

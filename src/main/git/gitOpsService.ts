@@ -147,10 +147,11 @@ function urlMatchesPr(url: string, prNumber: number): boolean {
 
 /**
  * gh prints the new PR URL on its own line as the last meaningful line of
- * stdout. Match the first https URL containing `/pull/` so a stray banner or
- * warning above the URL doesn't trip the parser.
+ * stdout. Match a github.com pull URL — anchoring to `https://github.com/`
+ * keeps a hijacked or compromised gh binary from printing a malicious URL
+ * that would then be passed to `shell.openExternal`.
  */
 function extractPrUrl(stdout: string): string | null {
-  const match = stdout.match(/https?:\/\/\S*\/pull\/\d+\S*/);
+  const match = stdout.match(/https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+\S*/);
   return match ? match[0].trim() : null;
 }

@@ -128,6 +128,16 @@ export function registerIpcHandlers(
   const ghService = new GhService(database);
   const gitOps = new GitOpsService(database, ghService);
   const tournaments = new TournamentService(database, providerSessions, workspaces, checks);
+  // Same idea as providerSessions.recoverOrphanedSessions(): tournaments that
+  // entered 'judging' before a crash have partial scores and no verdict.
+  // Reset them to 'running' so the next refreshAndJudgeIfReady drives the
+  // judge pipeline idempotently. Best-effort so a partial database in tests
+  // (which pass stub objects) doesn't block IPC registration.
+  try {
+    tournaments.recoverStuckJudgingTournaments();
+  } catch {
+    /* boot-time reconciler is non-critical; first IPC call retries on demand. */
+  }
   const attachments = new AttachmentStore();
   const registeredChannels: IpcChannel[] = [];
   const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {

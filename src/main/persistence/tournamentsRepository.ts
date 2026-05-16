@@ -199,18 +199,31 @@ export function findTournamentById(
 
 export function listTournaments(
   connection: Database.Database,
-  options?: { projectId?: string; limit?: number }
+  options?: { projectId?: string; state?: TournamentState; limit?: number }
 ): Tournament[] {
   const limit = options?.limit ?? 200;
-  const rows = options?.projectId
-    ? (connection
-        .prepare(
-          `SELECT * FROM tournaments WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`
-        )
-        .all(options.projectId, limit) as TournamentRow[])
-    : (connection
-        .prepare(`SELECT * FROM tournaments ORDER BY created_at DESC LIMIT ?`)
-        .all(limit) as TournamentRow[]);
+  let rows: TournamentRow[];
+  if (options?.projectId && options.state) {
+    rows = connection
+      .prepare(
+        `SELECT * FROM tournaments WHERE project_id = ? AND state = ? ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(options.projectId, options.state, limit) as TournamentRow[];
+  } else if (options?.projectId) {
+    rows = connection
+      .prepare(
+        `SELECT * FROM tournaments WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(options.projectId, limit) as TournamentRow[];
+  } else if (options?.state) {
+    rows = connection
+      .prepare(`SELECT * FROM tournaments WHERE state = ? ORDER BY created_at DESC LIMIT ?`)
+      .all(options.state, limit) as TournamentRow[];
+  } else {
+    rows = connection
+      .prepare(`SELECT * FROM tournaments ORDER BY created_at DESC LIMIT ?`)
+      .all(limit) as TournamentRow[];
+  }
   return rows.map(rowToTournament);
 }
 

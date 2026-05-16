@@ -1329,8 +1329,7 @@ export function SessionConversation({
             >
               <Square size={16} />
             </button>
-          ) : null}
-          {(() => {
+          ) : (() => {
             const sendDisabled = !canSend || isSending || !input.trim();
             const sendTitle = isQueueing
               ? "Queue follow-up — sent when the current turn finishes"

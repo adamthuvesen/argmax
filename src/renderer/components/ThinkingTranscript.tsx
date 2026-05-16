@@ -12,18 +12,22 @@ export function ThinkingTranscript({ command }: { command: string }): JSX.Elemen
     const perChar = Math.max(MIN_PER_CHAR_MS, Math.floor(TOTAL_BUDGET_MS / command.length));
     let cancelled = false;
     let index = 0;
+    // Track the latest timer handle so cleanup actually cancels it. The
+    // previous shape only cleared the initial timer; each chained tick scheduled
+    // a fresh handle the cleanup never saw (R-037).
+    let handle: number | null = null;
     const tick = (): void => {
       if (cancelled) return;
       index += 1;
       setRevealed(index);
       if (index < command.length) {
-        window.setTimeout(tick, perChar);
+        handle = window.setTimeout(tick, perChar);
       }
     };
-    const timer = window.setTimeout(tick, perChar);
+    handle = window.setTimeout(tick, perChar);
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      if (handle !== null) window.clearTimeout(handle);
     };
   }, [command]);
 

@@ -5,7 +5,7 @@
 // already emits an ESM preload.js — we run esbuild in addition to tsc so the
 // CJS artifact lives next to the rest of the compiled main bundle without
 // fighting the ESM toolchain.
-import { build } from "esbuild";
+import { build, context } from "esbuild";
 
 const watch = process.argv.includes("--watch");
 const isProduction = process.env.NODE_ENV === "production";
@@ -25,9 +25,21 @@ const config = {
 };
 
 if (watch) {
-  const ctx = await (await import("esbuild")).context(config);
+  const ctx = await context(config);
   await ctx.watch();
-  // Park the process so concurrently keeps the watcher alive.
+  // Park the process explicitly so the watcher keeps running regardless of
+  // whether esbuild's internal handles continue to hold the event loop open
+  // (R-053, R-054). SIGTERM/SIGINT cleanly disposes the watcher.
+  const shutdown = async (signal) => {
+    try {
+      await ctx.dispose();
+    } finally {
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    }
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  await new Promise(() => {});
 } else {
   await build(config);
 }

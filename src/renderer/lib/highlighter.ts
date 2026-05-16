@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { createHighlighterCore, type HighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
+import { errorMessage } from "../../shared/error.js";
+import { logger } from "../../shared/logger.js";
 
 // Eager-loaded curated grammars per Ralph SPEC P4.04. Importing each language
 // module explicitly lets Vite tree-shake every grammar shiki bundles by default
@@ -69,7 +71,11 @@ function ensureHighlighter(): HighlighterCore | null {
       // If shiki itself fails to initialize, we prefer plain-text output to
       // crashing the whole review pane. Clear the promise so a future call
       // can retry; in practice this only fires in degraded environments
-      // (e.g. tests that haven't mocked the module).
+      // (e.g. tests that haven't mocked the module). Log a breadcrumb so a
+      // degraded environment isn't a silent fallback (R-042).
+      logger.warn("renderer.highlighter", "shiki init failed; falling back to plain text", {
+        error: errorMessage(error)
+      });
       highlighterPromise = null;
       throw error;
     });

@@ -2,6 +2,13 @@ import { tryParseJsonObject } from "../../shared/safeJson.js";
 import { stripTerminalControls } from "../../shared/terminalControls.js";
 import type { RawProviderOutput } from "../../shared/types.js";
 
+/**
+ * Renderer-side cap on the terminal transcript view. Independent of the
+ * main-side raw_outputs retention (which still persists the full stream);
+ * this is just how much of the tail we feed into the DOM at once.
+ */
+export const RAW_TRANSCRIPT_CHAR_CAP = 8_000;
+
 export function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: string | null): string {
   if (!sessionId) {
     return "";
@@ -17,7 +24,9 @@ export function buildTerminalTranscript(rawOutputs: RawProviderOutput[], session
 
   const transcript = visibleRawProviderLines(combined).join("").trim();
 
-  return transcript.length > 8_000 ? transcript.slice(-8_000) : transcript;
+  return transcript.length > RAW_TRANSCRIPT_CHAR_CAP
+    ? transcript.slice(-RAW_TRANSCRIPT_CHAR_CAP)
+    : transcript;
 }
 
 export function visibleRawProviderLines(content: string): string[] {

@@ -104,6 +104,7 @@ import { withToast, type ToastMessage } from "./lib/withToast.js";
 
 const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
 const CHAT_COST_KEY = "argmax.chat.cost.visible";
+const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 
 function readStoredSidebarTokensVisible(): boolean {
   if (typeof window === "undefined") return false;
@@ -113,6 +114,12 @@ function readStoredSidebarTokensVisible(): boolean {
 function readStoredChatCostVisible(): boolean {
   if (typeof window === "undefined") return true;
   const raw = window.localStorage.getItem(CHAT_COST_KEY);
+  return raw === null ? true : raw === "true";
+}
+
+function readStoredToolCallsExpanded(): boolean {
+  if (typeof window === "undefined") return true;
+  const raw = window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY);
   return raw === null ? true : raw === "true";
 }
 
@@ -136,11 +143,9 @@ export function App(): JSX.Element {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize();
-  // Tool-call expansion defaults to ON for every new session: a collapsed
-  // preference is treated as an in-session override (the Settings toggle still
-  // flips it for the current session) but doesn't carry across launches, so
-  // each app start shows tool calls expanded.
-  const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(true);
+  const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(() =>
+    readStoredToolCallsExpanded()
+  );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useState<boolean>(() => readStoredSidebarTokensVisible());
   const [chatCostVisible, setChatCostVisible] = useState<boolean>(() => readStoredChatCostVisible());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
@@ -494,6 +499,10 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_TOKENS_KEY, String(sidebarTokensVisible));
   }, [sidebarTokensVisible]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
+  }, [toolCallsExpanded]);
 
   useEffect(() => {
     window.localStorage.setItem(CHAT_COST_KEY, String(chatCostVisible));

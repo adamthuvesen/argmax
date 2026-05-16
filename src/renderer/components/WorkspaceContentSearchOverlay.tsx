@@ -230,6 +230,7 @@ export function WorkspaceContentSearchOverlay({
               );
             }
             const match = row.file.matches[row.matchIndex];
+            if (!match) return null;
             return (
               <li
                 key={`match:${row.file.path}:${match.line}`}

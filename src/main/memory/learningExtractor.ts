@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { TimelineEvent } from "../../shared/types.js";
 
 export interface LearningCandidate {
@@ -10,6 +11,7 @@ export interface LearningCandidate {
 const MAX_CANDIDATES_PER_SESSION = 3;
 const MIN_REPETITIONS = 2;
 const MAX_SUMMARY_LENGTH = 240;
+const COMMAND_KEY_PREFIX_CHARS = 120;
 
 function detectError(payload: Record<string, unknown>): boolean {
   if (payload.is_error === true) return true;
@@ -21,12 +23,21 @@ function detectError(payload: Record<string, unknown>): boolean {
 function extractCommandKey(event: TimelineEvent): string | null {
   if (event.type !== "command.completed") return null;
   if (!detectError(event.payload)) return null;
-  // Prefer an explicit tool name; fall back to the raw message text (capped).
+  // Prefer an explicit tool name; fall back to the raw message text. Hash the
+  // tail past COMMAND_KEY_PREFIX_CHARS so two failures sharing the first ~120
+  // chars but differing afterwards don't collapse into one (R-044). The hash
+  // suffix keeps the dedup bucket distinct without ballooning the persisted
+  // summary length.
   const toolName = typeof event.payload.tool_name === "string" ? event.payload.tool_name : null;
   const message = (event.message ?? "").trim();
-  const key = toolName ?? message;
-  if (!key) return null;
-  return key.slice(0, MAX_SUMMARY_LENGTH);
+  const source = toolName ?? message;
+  if (!source) return null;
+  if (source.length <= COMMAND_KEY_PREFIX_CHARS) {
+    return source.slice(0, MAX_SUMMARY_LENGTH);
+  }
+  const prefix = source.slice(0, COMMAND_KEY_PREFIX_CHARS);
+  const tailHash = createHash("sha1").update(source.slice(COMMAND_KEY_PREFIX_CHARS)).digest("hex").slice(0, 8);
+  return `${prefix}#${tailHash}`.slice(0, MAX_SUMMARY_LENGTH);
 }
 
 /**

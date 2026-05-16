@@ -255,10 +255,16 @@ export function SessionConversation({
     },
     [events]
   );
-  const hasAssistantEvents = conversationEvents.some((event) => event.type !== "user.message");
+  // Hide the raw-stdout fallback as soon as ANY renderable content exists —
+  // a streamed message OR a tool call. Otherwise the agent's first beat (often
+  // a tool_use before any text) flashes the raw provider JSONL through the
+  // gray .chat-bubble.terminal-transcript pre while normalized events catch up.
+  const hasRenderableContent =
+    conversationEvents.some((event) => event.type !== "user.message") ||
+    events.some((event) => event.type === "command.started");
   const terminalTranscript = useMemo(
-    () => (hasAssistantEvents ? "" : buildTerminalTranscript(rawOutputs, session?.id ?? null)),
-    [rawOutputs, session?.id, hasAssistantEvents]
+    () => (hasRenderableContent ? "" : buildTerminalTranscript(rawOutputs, session?.id ?? null)),
+    [rawOutputs, session?.id, hasRenderableContent]
   );
 
   const toolCalls = useMemo((): ToolCall[] => {
@@ -419,10 +425,11 @@ export function SessionConversation({
 
   // Composer is enabled whenever the session is alive — `running` no longer
   // blocks: typed messages get queued in main and drain when the current turn
-  // finishes. Terminal states (failed / cancelled / blocked / created) still
-  // disable the textarea since there's no agent to receive the follow-up.
+  // finishes. `complete` and `cancelled` are also enabled because main's
+  // sendInput re-launches the agent when no live handle exists, so the user
+  // can keep chatting after a turn ends or they hit Stop.
   const canSend = Boolean(
-    session && ["complete", "waiting", "running"].includes(session.state)
+    session && ["complete", "waiting", "running", "cancelled"].includes(session.state)
   );
   // Currently running → the next submit goes onto the queue rather than
   // straight to the agent. Used to tweak placeholder and Send tooltip copy.
@@ -1105,7 +1112,7 @@ export function SessionConversation({
         ) : isThinking ? null : (
           <p className="conversation-empty">Agent replies will appear here.</p>
         )}
-        {terminalTranscript && !hasAssistantEvents && conversationItems.length > 0 ? (
+        {terminalTranscript && !hasRenderableContent && conversationItems.length > 0 ? (
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>
           </article>

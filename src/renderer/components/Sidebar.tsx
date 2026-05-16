@@ -1,4 +1,4 @@
-import { ChevronRight, Folder, Plus, Settings } from "lucide-react";
+import { ChevronRight, Plus, Settings } from "lucide-react";
 import {
   useCallback,
   useMemo,
@@ -303,9 +303,6 @@ export function Sidebar({
                     onOpenProject(project.id);
                   }}
                 >
-                  <span className="project-icon" aria-hidden="true">
-                    <Folder size={14} />
-                  </span>
                   <span className="project-name-text">{project.name}</span>
                 </button>
                 <button
@@ -327,6 +324,7 @@ export function Sidebar({
                       <div
                         key={workspace.id}
                         className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                        data-last={isLast ? "true" : "false"}
                         draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
                         onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
                         onDragOver={handleWorkspaceDragOver}
@@ -335,13 +333,6 @@ export function Sidebar({
                         }
                         onDragEnd={handleWorkspaceDragEnd}
                       >
-                        <span
-                          className="session-connector"
-                          aria-hidden="true"
-                          data-last={isLast ? "true" : "false"}
-                        >
-                          {isLast ? "└─" : "├─"}
-                        </span>
                         <SidebarSessionRow
                           workspace={workspace}
                           workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}

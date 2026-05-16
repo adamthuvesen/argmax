@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
+import { BoundedMap } from "../../shared/boundedSet.js";
 import { logger } from "../../shared/logger.js";
 import type { ProviderId, SkillSource, SkillSummary } from "../../shared/types.js";
 import { tryFileSize, tryIsDirectory, tryReaddir, tryReadFile } from "../util/safeFs.js";
@@ -35,7 +36,9 @@ interface ListSkillsInput {
   workspaceCwd: string | null;
 }
 
-const cache = new Map<string, SkillSummary[]>();
+// Bounded — users cycling through many workspaces (long-running app, frequent
+// archive/create churn) shouldn't accumulate per-workspace entries forever.
+const cache = new BoundedMap<string, SkillSummary[]>(64);
 
 const SKILL_FILE_SIZE_CAP_BYTES = 262_144;
 

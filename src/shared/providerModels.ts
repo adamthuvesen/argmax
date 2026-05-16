@@ -1,3 +1,4 @@
+import { BoundedSet } from "./boundedSet.js";
 import { logger } from "./logger.js";
 import type { ProviderId } from "./types.js";
 
@@ -138,7 +139,8 @@ export function normalizeModelId(modelId: string): string {
   return modelId.replace(/-\d{8}$/, "");
 }
 
-const loggedUnknownModels = new Set<string>();
+// Bounded so a runaway caller passing dynamic ids can't leak this dedup set.
+const loggedUnknownModels = new BoundedSet<string>(100);
 
 /**
  * Returns USD cost for the given usage. Unknown model ids resolve to 0 and
@@ -148,8 +150,7 @@ export function costOf(usage: UsageCounts, modelId: string): number {
   const key = normalizeModelId(modelId);
   const price = MODEL_PRICING[key];
   if (!price) {
-    if (!loggedUnknownModels.has(key)) {
-      loggedUnknownModels.add(key);
+    if (loggedUnknownModels.add(key)) {
       logger.warn("pricing", "unknown model id", { modelId, normalized: key });
     }
     return 0;

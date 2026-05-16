@@ -142,6 +142,13 @@ const DISPOSE_GRACE_MS = 2_500;
  */
 const STREAM_BUFFER_CAP = 1_048_576;
 
+/**
+ * Per-session cap on queued follow-up messages. A renderer can't legitimately
+ * need more than a few queued items while the agent is mid-turn; the cap is
+ * the line against a runaway script-on-paste growing the queue indefinitely.
+ */
+const MAX_PENDING_QUEUE = 64;
+
 const DEBUG = process.env.DEBUG_ARGMAX === "1";
 
 export class ProviderSessionService {
@@ -481,6 +488,11 @@ export class ProviderSessionService {
       return;
     }
     if (entry.kind === "pending") {
+      // Latest-wins for resize: only the most recent dimensions matter once
+      // the handle resolves. Without this, a renderer storming resize() during
+      // launch could grow ops without bound. Drop any earlier resize so we
+      // replay exactly one.
+      entry.ops = entry.ops.filter((op) => op.kind !== "resize");
       entry.ops.push({ kind: "resize", payload: { cols, rows } });
       return;
     }
@@ -545,6 +557,14 @@ export class ProviderSessionService {
       ...(options.attachments?.length ? { attachments: options.attachments } : {})
     };
     const queue = this.queues.get(sessionId) ?? [];
+    // Per-session FIFO cap. A renderer can't legitimately need more than a
+    // few queued follow-ups; without a cap, a runaway script-on-paste could
+    // grow the queue indefinitely while the agent is busy.
+    if (queue.length >= MAX_PENDING_QUEUE) {
+      throw new Error(
+        `Pending follow-up queue is full (${MAX_PENDING_QUEUE}). Wait for the current turn to finish before queuing more.`
+      );
+    }
     queue.push(entry);
     this.queues.set(sessionId, queue);
     this.publishPendingMessages(sessionId);

@@ -1,4 +1,5 @@
 import { Notification } from "electron";
+import { BoundedSet } from "../../shared/boundedSet.js";
 import type { GhPrRecord, SessionState, SessionSummary } from "../../shared/types.js";
 
 const NOTIFY_STATES: ReadonlySet<SessionState> = new Set(["complete", "failed"]);
@@ -17,7 +18,9 @@ export interface NotificationServiceDeps {
 export class NotificationService {
   private enabled = true;
   private readonly lastNotifiedState = new Map<string, SessionState>();
-  private readonly notifiedCheckKeys = new Set<string>();
+  // Bounded to mirror ghPoller.queued — same dedup tuple shape, same growth
+  // pressure on long-running sessions.
+  private readonly notifiedCheckKeys = new BoundedSet<string>(500);
 
   constructor(private readonly deps: NotificationServiceDeps) {}
 

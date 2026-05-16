@@ -38,7 +38,17 @@ Both are push-only — they don't go through Zod and don't belong in `IPC_CHANNE
 
 ## Renderer integration
 
-xterm.js + the fit addon live in the renderer. The component owns the xterm instance and the resize observer; the main process is only the data pump. Two gotchas worth knowing:
+xterm.js + the fit addon live in the renderer. Each tab owns one xterm instance and resize observer; the main process is only the data pump. Two gotchas worth knowing:
 
 - `@xterm/xterm` ships its own CSS — it's already imported in the renderer entry. Don't add it again per-component or you'll double-paint.
 - Keep the listener cleanup intact (`onData(...)` and `onExit(...)` both return unsubscribe functions). Leaked listeners surface as duplicated keystrokes after a hot reload.
+
+## Tabs
+
+The panel is multi-tab: `TerminalTabsPanel` ([src/renderer/components/TerminalTabsPanel.tsx](../../src/renderer/components/TerminalTabsPanel.tsx)) owns the tab list and renders one `TerminalInstance` per tab. Each instance spawns its own PTY, so `terminal:spawn` is called once per `+`-click. The main-process surface is unchanged — every PTY is still keyed by its UUID `terminalId`, and `terminal:data` / `terminal:exit` push events are id-filtered in the leaf.
+
+Tabs are per-workspace: the parent passes `key={workspace.id}` so changing workspaces remounts the container, unmounting every leaf and terminating its PTY. Within a workspace, inactive tabs stay mounted (`display: none`) so long-running processes (`npm run dev`, `tail -f`) survive both tab switches and ⌘J collapse. The outer panel collapses via `data-collapsed="true"` rather than unmounting, preserving the same survival guarantee.
+
+Two close paths:
+- `onCollapse` — the header `×` (and `⌘J`). Hides the panel via CSS; PTYs stay alive.
+- `onRequestClose` — fired when the user closes the last tab. The parent fully unmounts the container, which tears every PTY down.

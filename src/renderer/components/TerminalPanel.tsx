@@ -31,10 +31,18 @@ const LIGHT_THEME = {
   brightWhite: "#8a857b"
 };
 
-export function TerminalPanel({
+/**
+ * One xterm instance bound to one PTY. Keyed by `instanceKey` (not workspaceId)
+ * so a tabbed container can mount many of these per workspace and reorder/
+ * remove individual tabs without churning the others. The container is
+ * responsible for choosing keys (typically a stable tab id).
+ */
+export function TerminalInstance({
+  instanceKey,
   workspaceId,
   visible
 }: {
+  instanceKey: string;
   workspaceId: string;
   visible: boolean;
 }): JSX.Element {
@@ -43,10 +51,11 @@ export function TerminalPanel({
   const xtermRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
-  // Spawn + xterm wiring lives on a single effect keyed by workspaceId so
-  // switching sessions tears down the old PTY and starts a fresh one in the
-  // new worktree. The `visible` prop only toggles CSS so reopening the panel
-  // doesn't churn the PTY.
+  // Spawn + xterm wiring lives on a single effect keyed by instanceKey so
+  // each tab owns one PTY for its lifetime. The `visible` prop only toggles
+  // CSS so switching between tabs or collapsing the panel doesn't churn the
+  // PTY. `workspaceId` is read at spawn time but not in the dep list —
+  // changing workspace must remount the container (key on workspaceId there).
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !window.argmax) return;
@@ -137,10 +146,11 @@ export function TerminalPanel({
       fitRef.current = null;
       terminalIdRef.current = null;
     };
-  }, [workspaceId]);
+  }, [instanceKey, workspaceId]);
 
-  // When the panel becomes visible after being hidden, xterm's renderer can
-  // be out of sync with the container size. Re-fit on visibility flips.
+  // When the panel becomes visible after being hidden (collapsed via ⌘J or
+  // because another tab was active), xterm's renderer can be out of sync
+  // with the container size. Re-fit + focus on visibility flips.
   useEffect(() => {
     if (!visible) return;
     const fit = fitRef.current;

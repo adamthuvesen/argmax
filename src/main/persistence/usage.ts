@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { RecordNotFoundError } from "./errors.js";
+import { prepared } from "./preparedStatements.js";
 import type { SessionCostSummary } from "../../shared/types.js";
 import type { UsageCounts } from "../../shared/providerModels.js";
 
@@ -37,7 +38,11 @@ interface SessionCostRow {
  * exactly how the provider session service's flushBatch invokes it).
  */
 export function insertUsageEvent(connection: Database.Database, input: InsertUsageEventInput): void {
-  const insertStmt = connection.prepare(
+  // Route through prepared() so the three statements are cached per-connection
+  // instead of being rebuilt on every assistant turn (S-062). Hot path: this
+  // runs once per model usage event during streaming.
+  const insertStmt = prepared(
+    connection,
     `
       INSERT INTO usage_events (
         session_id, event_id, model_id, input_tokens, output_tokens,
@@ -48,7 +53,8 @@ export function insertUsageEvent(connection: Database.Database, input: InsertUsa
       )
     `
   );
-  const updateStmt = connection.prepare(
+  const updateStmt = prepared(
+    connection,
     `
       UPDATE sessions
       SET
@@ -60,7 +66,8 @@ export function insertUsageEvent(connection: Database.Database, input: InsertUsa
       WHERE id = @sessionId
     `
   );
-  const modelStmt = connection.prepare(
+  const modelStmt = prepared(
+    connection,
     "UPDATE sessions SET last_model_id = @modelId WHERE id = @sessionId"
   );
   const createdAtIso =

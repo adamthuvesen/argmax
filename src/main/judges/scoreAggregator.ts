@@ -137,13 +137,20 @@ export function aggregate(input: AggregatorInput): TournamentVerdict {
     };
   }
 
+  // Index scores and normalized rows by (contestantIndex, criterionId) so the
+  // disqualification + total loops are O(N) instead of O(N·M) via nested
+  // Array.find. Same final result; just no quadratic walk over the score list.
+  const scoreKey = (idx: number, criterionId: string): string => `${idx}:${criterionId}`;
+  const scoresByKey = new Map<string, CriterionScore>();
+  for (const s of input.scores) scoresByKey.set(scoreKey(s.contestantIndex, s.criterionId), s);
+  const normalizedByKey = new Map<string, (typeof normalized)[number]>();
+  for (const n of normalized) normalizedByKey.set(scoreKey(n.contestantIndex, n.criterionId), n);
+
   const disqualified = new Set<number>();
   for (const criterion of input.policy.criteria) {
     if (!criterion.threshold) continue;
     for (const idx of input.contestantIndices) {
-      const score = input.scores.find(
-        (s) => s.contestantIndex === idx && s.criterionId === criterion.id
-      );
+      const score = scoresByKey.get(scoreKey(idx, criterion.id));
       if (!score) continue;
       if (!passesHardGate(criterion, score.rawValue, score.status)) {
         disqualified.add(idx);
@@ -158,9 +165,7 @@ export function aggregate(input: AggregatorInput): TournamentVerdict {
     let weighted = 0;
     let activeWeight = 0;
     for (const criterion of input.policy.criteria) {
-      const norm = normalized.find(
-        (n) => n.contestantIndex === idx && n.criterionId === criterion.id
-      );
+      const norm = normalizedByKey.get(scoreKey(idx, criterion.id));
       if (!norm || norm.status !== "ok") continue;
       weighted += norm.normalized * criterion.weight;
       activeWeight += criterion.weight;

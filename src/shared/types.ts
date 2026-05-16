@@ -37,14 +37,21 @@ import type {
   TerminalSpawnInputParsed,
   TerminalWriteInputParsed,
   UpdateProjectSettingsInputParsed,
-  WorkspaceStatusInputParsed
+  WorkspaceStatusInputParsed,
+  agentModeSchema,
+  permissionModeSchema,
+  providerIdSchema
 } from "./ipcSchemas.js";
+import type { z } from "zod";
 import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
 
-export type ProviderId = "claude" | "codex" | "cursor";
+// Derived from the Zod source-of-truth in ipcSchemas so the literal union
+// and the runtime validator stay in lockstep. `import type { z }` keeps zod
+// out of the renderer runtime bundle (S-001..S-003).
+export type ProviderId = z.infer<typeof providerIdSchema>;
 export type ProviderMode = "interactive-pty" | "structured-json";
-export type PermissionMode = "auto-approve" | "ask-each-time";
-export type AgentMode = "edit" | "plan";
+export type PermissionMode = z.infer<typeof permissionModeSchema>;
+export type AgentMode = z.infer<typeof agentModeSchema>;
 
 export interface DiscoveredProvider {
   provider: ProviderId;

@@ -1,8 +1,11 @@
 import { BoundedSet } from "./boundedSet.js";
+import type { reasoningEffortSchema } from "./ipcSchemas.js";
 import { logger } from "./logger.js";
 import type { ProviderId } from "./types.js";
+import type { z } from "zod";
 
-export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
+// Derived from the Zod source so the union and validator can't drift (S-004).
+export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 export type ProviderLaunchMode = "interactive-pty" | "structured-json";
 
 export interface ProviderModelOption {

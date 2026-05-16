@@ -160,12 +160,12 @@ void app.whenReady().then(async () => {
   // sees an honest view instead of a phantom live session.
   providerSessions.recoverOrphanedSessions();
   terminals = new TerminalService(database, {
-    emitData: publishTerminalData,
-    emitExit: publishTerminalExit
+    emitData: (event: TerminalDataEvent) => broadcast("terminal:data", event),
+    emitExit: (event: TerminalExitEvent) => broadcast("terminal:exit", event)
   });
   mcpAuth = new McpAuthService({
-    emitData: publishMcpAuthData,
-    emitExit: publishMcpAuthExit
+    emitData: (event: McpAuthDataEvent) => broadcast("mcp:auth:data", event),
+    emitExit: (event: McpAuthExitEvent) => broadcast("mcp:auth:exit", event)
   });
   dockBadge.update();
   markStartupPhase("services.construct");
@@ -273,34 +273,10 @@ function publishDashboardDelta(delta: DashboardDelta): void {
   dashboardDeltaCoalescer.publish(delta);
 }
 
-function publishTerminalData(event: TerminalDataEvent): void {
+function broadcast(channel: string, payload: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
-      window.webContents.send("terminal:data", event);
-    }
-  }
-}
-
-function publishTerminalExit(event: TerminalExitEvent): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
-      window.webContents.send("terminal:exit", event);
-    }
-  }
-}
-
-function publishMcpAuthData(event: McpAuthDataEvent): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
-      window.webContents.send("mcp:auth:data", event);
-    }
-  }
-}
-
-function publishMcpAuthExit(event: McpAuthExitEvent): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
-      window.webContents.send("mcp:auth:exit", event);
+      window.webContents.send(channel, payload);
     }
   }
 }

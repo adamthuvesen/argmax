@@ -59,9 +59,7 @@ function record(level: LogLevel, scope: string, message: string, fields?: Record
   };
   buffer.push(entry);
   if (buffer.length > LOG_BUFFER_SIZE) {
-    // Constant-cost overflow: drop the oldest entries in one splice so the
-    // hot path is O(1) amortized even under burst-y log traffic.
-    buffer.splice(0, buffer.length - LOG_BUFFER_SIZE);
+    buffer.shift();
   }
   // Error always mirrors so it's noticeable without DEBUG=1. Other levels
   // need the explicit opt-in.

@@ -188,19 +188,18 @@ export function summarizeToolGroup(tools: ToolCall[]): {
     previewParts.push(trimmed.slice(0, 28));
     if (previewParts.length === 3) break;
   }
-  const shown = previewParts.length;
-  const preview = previewParts.join(" / ") + (tools.length - skipped > shown ? " / …" : "");
+  const preview = previewParts.join(" / ") + (tools.length - skipped > previewParts.length ? " / …" : "");
 
-  const worstStatus: ToolCall["status"] = tools.some((t) => t.status === "error")
-    ? "error"
-    : tools.some((t) => t.status === "running")
-      ? "running"
-      : "done";
+  let hasError = false;
+  let latestRunning: ToolCall | null = null;
+  for (const tool of tools) {
+    if (tool.status === "error") hasError = true;
+    else if (tool.status === "running") latestRunning = tool;
+  }
+  const worstStatus: ToolCall["status"] = hasError ? "error" : latestRunning ? "running" : "done";
 
   // While the group is still running, surface the most recent live tool's
   // action so the collapsed header shows what the agent is doing right now.
-  const running = tools.filter((t) => t.status === "running");
-  const latestRunning = running.length > 0 ? running[running.length - 1] : null;
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
   return { headline, preview, currentAction, worstStatus };

@@ -68,15 +68,18 @@ import type {
   ScoringPolicy
 } from "../shared/types.js";
 
+function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
+  const handler = (_event: IpcRendererEvent, payload: T): void => listener(payload);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
+
 const api: ArgmaxApi = {
   dashboard: {
     load: () => ipcRenderer.invoke("dashboard:load") as Promise<DashboardSnapshot>,
     list: () => ipcRenderer.invoke("dashboard:list") as Promise<DashboardListSnapshot>,
-    onDelta: (listener: (delta: DashboardDelta) => void) => {
-      const handler = (_event: IpcRendererEvent, delta: DashboardDelta): void => listener(delta);
-      ipcRenderer.on("dashboard:delta", handler);
-      return () => ipcRenderer.removeListener("dashboard:delta", handler);
-    }
+    onDelta: (listener: (delta: DashboardDelta) => void) =>
+      subscribe<DashboardDelta>("dashboard:delta", listener)
   },
   projects: {
     list: () => ipcRenderer.invoke("projects:list") as Promise<ProjectSummary[]>,
@@ -226,24 +229,15 @@ const api: ArgmaxApi = {
         ipcRenderer.invoke("mcp:auth:resize", input) as Promise<{ ok: true }>,
       terminate: (sessionId: string) =>
         ipcRenderer.invoke("mcp:auth:terminate", sessionId) as Promise<{ ok: true }>,
-      onData: (listener: (event: McpAuthDataEvent) => void) => {
-        const handler = (_event: IpcRendererEvent, payload: McpAuthDataEvent): void => listener(payload);
-        ipcRenderer.on("mcp:auth:data", handler);
-        return () => ipcRenderer.removeListener("mcp:auth:data", handler);
-      },
-      onExit: (listener: (event: McpAuthExitEvent) => void) => {
-        const handler = (_event: IpcRendererEvent, payload: McpAuthExitEvent): void => listener(payload);
-        ipcRenderer.on("mcp:auth:exit", handler);
-        return () => ipcRenderer.removeListener("mcp:auth:exit", handler);
-      }
+      onData: (listener: (event: McpAuthDataEvent) => void) =>
+        subscribe<McpAuthDataEvent>("mcp:auth:data", listener),
+      onExit: (listener: (event: McpAuthExitEvent) => void) =>
+        subscribe<McpAuthExitEvent>("mcp:auth:exit", listener)
     }
   },
   menu: {
-    onCommand: (listener: (command: MenuCommand) => void) => {
-      const handler = (_event: IpcRendererEvent, command: MenuCommand): void => listener(command);
-      ipcRenderer.on("menu:command", handler);
-      return () => ipcRenderer.removeListener("menu:command", handler);
-    }
+    onCommand: (listener: (command: MenuCommand) => void) =>
+      subscribe<MenuCommand>("menu:command", listener)
   },
   learnings: {
     list: (input: { projectId: string; limit?: number }) =>
@@ -274,16 +268,10 @@ const api: ArgmaxApi = {
       ipcRenderer.invoke("terminal:resize", input) as Promise<{ ok: true }>,
     terminate: (terminalId: string) =>
       ipcRenderer.invoke("terminal:terminate", terminalId) as Promise<{ ok: true }>,
-    onData: (listener: (event: TerminalDataEvent) => void) => {
-      const handler = (_event: IpcRendererEvent, payload: TerminalDataEvent): void => listener(payload);
-      ipcRenderer.on("terminal:data", handler);
-      return () => ipcRenderer.removeListener("terminal:data", handler);
-    },
-    onExit: (listener: (event: TerminalExitEvent) => void) => {
-      const handler = (_event: IpcRendererEvent, payload: TerminalExitEvent): void => listener(payload);
-      ipcRenderer.on("terminal:exit", handler);
-      return () => ipcRenderer.removeListener("terminal:exit", handler);
-    }
+    onData: (listener: (event: TerminalDataEvent) => void) =>
+      subscribe<TerminalDataEvent>("terminal:data", listener),
+    onExit: (listener: (event: TerminalExitEvent) => void) =>
+      subscribe<TerminalExitEvent>("terminal:exit", listener)
   },
   tournaments: {
     launch: (input: TournamentLaunchInput) =>

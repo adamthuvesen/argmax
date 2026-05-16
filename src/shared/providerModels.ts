@@ -69,18 +69,6 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
   }
 };
 
-export function modelSelectionForProvider(provider: ProviderId, modelId: string): ProviderModelSelection | null {
-  const option = PROVIDER_MODELS[provider].find((model) => model.modelId === modelId);
-  if (!option) {
-    return null;
-  }
-  return {
-    label: option.label,
-    modelId: option.modelId,
-    ...(option.reasoningEffort ? { reasoningEffort: option.reasoningEffort } : {})
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Pricing — USD per 1M tokens.
 // Ported verbatim from ~/dev/menti/tokctl/src/pricing.rs (last verified 2026-04).
@@ -138,14 +126,7 @@ export interface UsageCounts {
 
 /** Strips a trailing `-YYYYMMDD` date suffix from a model id. */
 export function normalizeModelId(modelId: string): string {
-  if (modelId.length < 9) return modelId;
-  const tail = modelId.slice(-9);
-  if (tail[0] !== "-") return modelId;
-  for (let i = 1; i < tail.length; i++) {
-    const code = tail.charCodeAt(i);
-    if (code < 48 || code > 57) return modelId;
-  }
-  return modelId.slice(0, -9);
+  return modelId.replace(/-\d{8}$/, "");
 }
 
 const loggedUnknownModels = new Set<string>();

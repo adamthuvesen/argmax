@@ -63,9 +63,10 @@ export const THINKING_VERBS: readonly string[] = [
 export function pickNextVerb(prev: string | null): string {
   if (THINKING_VERBS.length === 0) return "Thinking";
   if (THINKING_VERBS.length === 1) return THINKING_VERBS[0];
-  let next = THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)];
-  while (next === prev) {
-    next = THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)];
+  const prevIdx = prev ? THINKING_VERBS.indexOf(prev) : -1;
+  if (prevIdx < 0) {
+    return THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)];
   }
-  return next;
+  const offset = 1 + Math.floor(Math.random() * (THINKING_VERBS.length - 1));
+  return THINKING_VERBS[(prevIdx + offset) % THINKING_VERBS.length];
 }

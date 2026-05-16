@@ -28,13 +28,3 @@ export function prepared(connection: Database.Database, sql: string): Database.S
   }
   return statement;
 }
-
-/** Test-only — clear the cache between in-memory-DB fixtures. */
-export function clearPreparedCacheForTesting(): void {
-  // WeakMap has no clear() — replace via reassigning the cache object.
-  // The exported `cache` is const; for tests, the simpler path is to let
-  // GC reclaim entries as their connections are garbage collected, which
-  // happens between vitest test cases when the test's local `database`
-  // goes out of scope. This helper exists so tests can be explicit if
-  // they need it; today it's a no-op because we rely on GC.
-}

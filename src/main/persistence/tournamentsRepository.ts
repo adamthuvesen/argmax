@@ -176,7 +176,7 @@ export function createTournament(
       taskLabel: input.taskLabel,
       prompt: input.prompt,
       quorum: input.quorum,
-      policyId: input.policySnapshot.isBuiltIn ? input.policySnapshot.id : input.policySnapshot.id,
+      policyId: input.policySnapshot.id,
       snapshotJson: JSON.stringify(input.policySnapshot),
       now
     });

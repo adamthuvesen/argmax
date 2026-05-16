@@ -1,4 +1,4 @@
-import { ChevronDown, CornerDownLeft, Folder, GitBranch, Mic, Plus } from "lucide-react";
+import { ChevronDown, Folder, GitBranch, Mic, Plus, X } from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -7,12 +7,22 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
+  type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import type { AgentMode, ProjectSummary } from "../../shared/types.js";
+import type { AgentMode, AttachmentMimeType, ComposerAttachment, ProjectSummary } from "../../shared/types.js";
+import {
+  appendReferencesToPrompt,
+  buildAttachmentReferences,
+  imageAttachmentReference,
+  isSupportedImageMime,
+  readBlobAsBase64
+} from "../lib/composerAttachments.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
@@ -27,6 +37,7 @@ import {
   toggleAgentMode,
   writeStoredAgentMode
 } from "../lib/agentMode.js";
+import { Mascot } from "./Mascot.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
@@ -71,7 +82,12 @@ export function LaunchSurface({
   model: ModelPickerSelection;
   onAddProject: () => void;
   onBranchSwitch: (updated: ProjectSummary) => void;
-  onLaunchTask: (prompt: string, model: ModelPickerSelection, agentMode: AgentMode) => Promise<void>;
+  onLaunchTask: (
+    prompt: string,
+    model: ModelPickerSelection,
+    agentMode: AgentMode,
+    attachments?: ComposerAttachment[]
+  ) => Promise<void>;
   onModelChange: (model: ModelPickerSelection) => void;
   onSelectProject: (id: string) => void;
   project: ProjectSummary | null;
@@ -84,6 +100,13 @@ export function LaunchSurface({
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    Array<ComposerAttachment & { id: string; thumbnailDataUrl: string }>
+  >([]);
+  // Stable per-mount namespace for pre-launch attachments — sessionId doesn't
+  // exist yet, and the AttachmentStore only uses this string as a folder name.
+  const launchAttachmentNamespaceRef = useRef<string>(`launch-${crypto.randomUUID()}`);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [agentMode, setAgentMode] = useState<AgentMode>(() => readStoredAgentMode(LAUNCH_AGENT_MODE_KEY));
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const projectPickerRef = useRef<HTMLDivElement | null>(null);
@@ -273,6 +296,111 @@ export function LaunchSurface({
     }
   };
 
+  const attachFiles = useCallback(
+    (files: Iterable<File> | Iterable<{ path?: string }>): void => {
+      const refs = buildAttachmentReferences(files, project?.repoPath ?? null);
+      if (refs.length === 0) return;
+      setPrompt((prev) => appendReferencesToPrompt(prev, refs));
+    },
+    [project?.repoPath]
+  );
+
+  const attachImageBlobs = useCallback(async (blobs: Blob[]): Promise<void> => {
+    if (blobs.length === 0) return;
+    const api = window.argmax;
+    if (!api) {
+      setStatus("Open the Electron app window to attach images.");
+      return;
+    }
+    try {
+      for (const blob of blobs) {
+        if (!isSupportedImageMime(blob.type)) continue;
+        const dataBase64 = await readBlobAsBase64(blob);
+        const saved = await api.attachments.saveImage({
+          sessionId: launchAttachmentNamespaceRef.current,
+          mimeType: blob.type,
+          dataBase64
+        });
+        const thumbnailDataUrl = `data:${blob.type};base64,${dataBase64}`;
+        setPendingAttachments((prev) => [
+          ...prev,
+          {
+            id: `${saved.filePath}-${prev.length}`,
+            filePath: saved.filePath,
+            mimeType: blob.type as AttachmentMimeType,
+            sizeBytes: saved.sizeBytes,
+            thumbnailDataUrl
+          }
+        ]);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not attach image.");
+    }
+  }, []);
+
+  const removePendingAttachment = useCallback((id: string): void => {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  const onComposerDragOver = (event: ReactDragEvent<HTMLFormElement>): void => {
+    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    event.preventDefault();
+  };
+
+  const onComposerDrop = (event: ReactDragEvent<HTMLFormElement>): void => {
+    if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
+    event.preventDefault();
+    const withPath: File[] = [];
+    const imageBlobs: Blob[] = [];
+    for (const file of Array.from(event.dataTransfer.files)) {
+      const path = (file as { path?: string }).path;
+      if (typeof path === "string" && path.length > 0) {
+        withPath.push(file);
+      } else if (isSupportedImageMime(file.type)) {
+        imageBlobs.push(file);
+      }
+    }
+    if (withPath.length > 0) attachFiles(withPath);
+    if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
+  };
+
+  const onComposerPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
+    const items = event.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    const images: Blob[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind !== "file") continue;
+      if (!isSupportedImageMime(item.type)) continue;
+      const file = item.getAsFile();
+      if (file) images.push(file);
+    }
+    if (images.length === 0) return;
+    event.preventDefault();
+    void attachImageBlobs(images);
+  };
+
+  const onAttachmentInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    if (event.target.files && event.target.files.length > 0) {
+      const withPath: File[] = [];
+      const imageBlobs: Blob[] = [];
+      for (const file of Array.from(event.target.files)) {
+        const path = (file as { path?: string }).path;
+        if (typeof path === "string" && path.length > 0) {
+          withPath.push(file);
+        } else if (isSupportedImageMime(file.type)) {
+          imageBlobs.push(file);
+        }
+      }
+      if (withPath.length > 0) attachFiles(withPath);
+      if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
+    }
+    event.target.value = "";
+  };
+
+  const openFilePicker = (): void => {
+    attachmentInputRef.current?.click();
+  };
+
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedPrompt = prompt.trim();
@@ -280,11 +408,25 @@ export function LaunchSurface({
       return;
     }
 
+    const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
+    const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(trimmedPrompt, refs) : trimmedPrompt;
+    const attachmentsForPersist: ComposerAttachment[] = pendingAttachments.map((a) => ({
+      filePath: a.filePath,
+      mimeType: a.mimeType,
+      sizeBytes: a.sizeBytes
+    }));
+
     setIsSubmitting(true);
     setStatus(null);
     try {
-      await onLaunchTask(trimmedPrompt, model, agentMode);
+      await onLaunchTask(
+        finalPrompt,
+        model,
+        agentMode,
+        attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
+      );
       setPrompt("");
+      setPendingAttachments([]);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not start agent.");
     } finally {
@@ -360,7 +502,40 @@ export function LaunchSurface({
           Type a task. Press <kbd className="launcher-hero-kbd">⏎</kbd> and I'll spin up a fresh worktree, branch it, and stream the agent back here.
         </p>
       </header>
-      <form className="composer" ref={formRef} onSubmit={(event) => void submitPrompt(event)}>
+      <form
+        className="composer"
+        ref={formRef}
+        onSubmit={(event) => void submitPrompt(event)}
+        onDragOver={onComposerDragOver}
+        onDrop={onComposerDrop}
+      >
+        <input
+          ref={attachmentInputRef}
+          type="file"
+          multiple
+          hidden
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={onAttachmentInputChange}
+        />
+        {pendingAttachments.length > 0 ? (
+          <div className="composer-attachments" aria-label="Attached images">
+            {pendingAttachments.map((attachment) => (
+              <div key={attachment.id} className="composer-attachment-chip">
+                <img src={attachment.thumbnailDataUrl} alt="" />
+                <button
+                  type="button"
+                  className="composer-attachment-remove"
+                  aria-label="Remove attachment"
+                  title="Remove attachment"
+                  onClick={() => removePendingAttachment(attachment.id)}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="composer-input">
           <span className="composer-marker" aria-hidden="true">▍</span>
           <textarea
@@ -380,6 +555,7 @@ export function LaunchSurface({
               fileAutocomplete.onSelectionChange(event);
             }}
             onKeyDown={onPromptKeyDown}
+            onPaste={onComposerPaste}
             onSelect={fileAutocomplete.onSelectionChange}
             onClick={fileAutocomplete.onSelectionChange}
             placeholder={placeholderText}
@@ -389,21 +565,27 @@ export function LaunchSurface({
           />
           <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
           <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
-          <button className="composer-tool" type="button" title="Add context" aria-label="Add context">
+          <button
+            className="composer-tool"
+            type="button"
+            title="Attach file"
+            aria-label="Attach file"
+            onClick={openFilePicker}
+          >
             <Plus size={18} />
           </button>
           <button className="composer-tool" type="button" title="Voice input" aria-label="Voice input">
             <Mic size={18} />
           </button>
-          <button
-            className="send-button"
-            disabled={isSubmitting || !prompt.trim()}
+          <Mascot
+            size={40}
+            mood={isSubmitting || !prompt.trim() ? "sad" : "idle"}
             type="submit"
+            disabled={isSubmitting || !prompt.trim()}
             title="Start agent"
-            aria-label="Start agent"
-          >
-            <CornerDownLeft size={18} aria-hidden="true" />
-          </button>
+            label="Start agent"
+            buttonClassName="launcher-send-mascot"
+          />
         </div>
         <div className="composer-context">
           <span className="composer-context-tree" aria-hidden="true">└─</span>

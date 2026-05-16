@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { appendReferencesToPrompt, buildAttachmentReferences } from "./composerAttachments.js";
+import {
+  appendReferencesToPrompt,
+  buildAttachmentReferences,
+  imageAttachmentReference,
+  isSupportedImageMime,
+  readBlobAsBase64
+} from "./composerAttachments.js";
 
 describe("buildAttachmentReferences", () => {
   it("emits workspace-relative @paths for files inside the workspace", () => {
@@ -45,5 +51,44 @@ describe("appendReferencesToPrompt", () => {
 
   it("appends references after an existing prompt with a single space separator", () => {
     expect(appendReferencesToPrompt("look at", ["@src/a.ts"])).toBe("look at @src/a.ts");
+  });
+});
+
+describe("isSupportedImageMime", () => {
+  it("accepts the four supported types", () => {
+    expect(isSupportedImageMime("image/png")).toBe(true);
+    expect(isSupportedImageMime("image/jpeg")).toBe(true);
+    expect(isSupportedImageMime("image/gif")).toBe(true);
+    expect(isSupportedImageMime("image/webp")).toBe(true);
+  });
+
+  it("rejects other types", () => {
+    expect(isSupportedImageMime("image/bmp")).toBe(false);
+    expect(isSupportedImageMime("text/plain")).toBe(false);
+    expect(isSupportedImageMime("")).toBe(false);
+  });
+});
+
+describe("imageAttachmentReference", () => {
+  it("prefixes an absolute path with @", () => {
+    expect(imageAttachmentReference("/Users/me/Library/Application Support/argmax/x.png")).toBe(
+      "@/Users/me/Library/Application Support/argmax/x.png"
+    );
+  });
+});
+
+describe("readBlobAsBase64", () => {
+  it("returns the base64 of the blob payload without the data: prefix", async () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const blob = new Blob([bytes], { type: "image/png" });
+    const encoded = await readBlobAsBase64(blob);
+    // 0x89 0x50 0x4e 0x47 → "iVBORw==" in base64 (no padding stripped)
+    expect(encoded).toBe("iVBORw==");
+  });
+
+  it("handles an empty blob without throwing", async () => {
+    const blob = new Blob([], { type: "image/png" });
+    const encoded = await readBlobAsBase64(blob);
+    expect(encoded).toBe("");
   });
 });

@@ -43,7 +43,8 @@ export function registerProviderHandlers(
                 }
               }
             : {}),
-          ...(input.agentMode ? { agentMode: input.agentMode } : {})
+          ...(input.agentMode ? { agentMode: input.agentMode } : {}),
+          ...(input.attachments?.length ? { attachments: input.attachments } : {})
         }
       );
       return { ok: true } as const;

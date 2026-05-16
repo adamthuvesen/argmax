@@ -29,6 +29,8 @@ import type {
   McpAuthWriteInput,
   McpClientListing,
   ArgmaxApi,
+  AttachmentSaveImageInput,
+  AttachmentSaveImageResult,
   MenuCommand,
   OpenInIdeInput,
   ProviderSessionInput,
@@ -58,7 +60,11 @@ import type {
   WorkspaceFileWriteResult,
   WorkspaceStatusInput,
   WorkspaceStatusSnapshot,
-  UpdateProjectSettingsInput
+  UpdateProjectSettingsInput,
+  Tournament,
+  TournamentLaunchInput,
+  TournamentLeaderboard,
+  ScoringPolicy
 } from "../shared/types.js";
 
 const api: ArgmaxApi = {
@@ -109,6 +115,10 @@ const api: ArgmaxApi = {
     resize: (input: ProviderSessionResizeInput) =>
       ipcRenderer.invoke("providers:resize", input) as Promise<{ ok: true }>,
     terminate: (sessionId: string) => ipcRenderer.invoke("providers:terminate", sessionId) as Promise<{ ok: true }>
+  },
+  attachments: {
+    saveImage: (input: AttachmentSaveImageInput) =>
+      ipcRenderer.invoke("attachments:save-image", input) as Promise<AttachmentSaveImageResult>
   },
   approvals: {
     pending: () => ipcRenderer.invoke("approvals:pending") as Promise<DashboardSnapshot["approvals"]>,
@@ -271,6 +281,19 @@ const api: ArgmaxApi = {
       ipcRenderer.on("terminal:exit", handler);
       return () => ipcRenderer.removeListener("terminal:exit", handler);
     }
+  },
+  tournaments: {
+    launch: (input: TournamentLaunchInput) =>
+      ipcRenderer.invoke("tournament:launch", input) as Promise<Tournament>,
+    list: (input: { projectId: string }) =>
+      ipcRenderer.invoke("tournament:list", input) as Promise<Tournament[]>,
+    get: (input: { tournamentId: string }) =>
+      ipcRenderer.invoke("tournament:get", input) as Promise<TournamentLeaderboard>,
+    keep: (input: { tournamentId: string; contestantIndex: number; reason?: string }) =>
+      ipcRenderer.invoke("tournament:keep", input) as Promise<TournamentLeaderboard>
+  },
+  scoring: {
+    listPolicies: () => ipcRenderer.invoke("scoring:listPolicies") as Promise<ScoringPolicy[]>
   }
 };
 

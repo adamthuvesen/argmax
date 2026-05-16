@@ -1,4 +1,4 @@
-import { Bug, ChevronDown, ChevronRight, Folder, GitBranch, GitCommit, Mic, Plus, Square, X } from "lucide-react";
+import { Bug, ChevronDown, Folder, GitBranch, GitCommit, Mic, Plus, Square, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
@@ -13,11 +14,19 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { appendReferencesToPrompt, buildAttachmentReferences } from "../lib/composerAttachments.js";
+import {
+  appendReferencesToPrompt,
+  buildAttachmentReferences,
+  imageAttachmentReference,
+  isSupportedImageMime,
+  readBlobAsBase64
+} from "../lib/composerAttachments.js";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   AgentMode,
+  AttachmentMimeType,
   CheckRun,
+  ComposerAttachment,
   GhPrRecord,
   ProjectSummary,
   RawProviderOutput,
@@ -63,6 +72,7 @@ import { CostPanel } from "./CostPanel.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
 import { FileChip } from "./FileChip.js";
 import { FilePopover } from "./FilePopover.js";
+import { Mascot } from "./Mascot.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { NowProvider } from "./NowProvider.js";
 import { SkillPopover } from "./SkillPopover.js";
@@ -135,7 +145,13 @@ export function SessionConversation({
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   onOpenCommitDialog?: () => void;
-  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode) => Promise<void>;
+  onSendSessionInput: (
+    sessionId: string,
+    input: string,
+    model: ProviderModelSelection,
+    agentMode: AgentMode,
+    attachments?: ComposerAttachment[]
+  ) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
@@ -151,6 +167,9 @@ export function SessionConversation({
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    Array<ComposerAttachment & { id: string; thumbnailDataUrl: string }>
+  >([]);
   const [prs, setPrs] = useState<GhPrRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
   const [agentMode, setAgentMode] = useState<AgentMode>(() =>
@@ -438,6 +457,7 @@ export function SessionConversation({
   useEffect(() => {
     setSelectedModel(modelSelectionFromSession(session));
     setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "edit") : "edit");
+    setPendingAttachments([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [sessionId]);
 
@@ -543,6 +563,46 @@ export function SessionConversation({
     [workspace?.path]
   );
 
+  const attachImageBlobs = useCallback(
+    async (blobs: Blob[]): Promise<void> => {
+      if (!session || blobs.length === 0) return;
+      const api = window.argmax;
+      if (!api) {
+        setStatus("Open the Electron app window to attach images.");
+        return;
+      }
+      try {
+        for (const blob of blobs) {
+          if (!isSupportedImageMime(blob.type)) continue;
+          const dataBase64 = await readBlobAsBase64(blob);
+          const saved = await api.attachments.saveImage({
+            sessionId: session.id,
+            mimeType: blob.type,
+            dataBase64
+          });
+          const thumbnailDataUrl = `data:${blob.type};base64,${dataBase64}`;
+          setPendingAttachments((prev) => [
+            ...prev,
+            {
+              id: `${saved.filePath}-${prev.length}`,
+              filePath: saved.filePath,
+              mimeType: blob.type as AttachmentMimeType,
+              sizeBytes: saved.sizeBytes,
+              thumbnailDataUrl
+            }
+          ]);
+        }
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Could not attach image.");
+      }
+    },
+    [session]
+  );
+
+  const removePendingAttachment = useCallback((id: string): void => {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   const onComposerDragOver = (event: ReactDragEvent<HTMLFormElement>): void => {
     if (!Array.from(event.dataTransfer.types).includes("Files")) return;
     event.preventDefault();
@@ -551,12 +611,56 @@ export function SessionConversation({
   const onComposerDrop = (event: ReactDragEvent<HTMLFormElement>): void => {
     if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
     event.preventDefault();
-    attachFiles(event.dataTransfer.files);
+    // Split: files with a disk path use the existing @-mention flow; files
+    // without a path (browser drags, Slack drags) but with an image MIME get
+    // persisted via the AttachmentStore so the agent can still read them.
+    const withPath: File[] = [];
+    const imageBlobs: Blob[] = [];
+    for (const file of Array.from(event.dataTransfer.files)) {
+      const path = (file as { path?: string }).path;
+      if (typeof path === "string" && path.length > 0) {
+        withPath.push(file);
+      } else if (isSupportedImageMime(file.type)) {
+        imageBlobs.push(file);
+      }
+    }
+    if (withPath.length > 0) attachFiles(withPath);
+    if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
+  };
+
+  const onComposerPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
+    const items = event.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    const images: Blob[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind !== "file") continue;
+      if (!isSupportedImageMime(item.type)) continue;
+      const file = item.getAsFile();
+      if (file) images.push(file);
+    }
+    if (images.length === 0) return;
+    event.preventDefault();
+    void attachImageBlobs(images);
   };
 
   const onAttachmentInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
     if (event.target.files && event.target.files.length > 0) {
-      attachFiles(event.target.files);
+      // Honor the same split rule as drop: path-based files use @-reference,
+      // path-less images get persisted. File-picker selections normally have
+      // a path, but a packaged distribution path may differ across Electron
+      // versions — keep the fallback so a missing path doesn't silently drop.
+      const withPath: File[] = [];
+      const imageBlobs: Blob[] = [];
+      for (const file of Array.from(event.target.files)) {
+        const path = (file as { path?: string }).path;
+        if (typeof path === "string" && path.length > 0) {
+          withPath.push(file);
+        } else if (isSupportedImageMime(file.type)) {
+          imageBlobs.push(file);
+        }
+      }
+      if (withPath.length > 0) attachFiles(withPath);
+      if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
     }
     // Clear the value so the same file can be selected again next time.
     event.target.value = "";
@@ -573,12 +677,27 @@ export function SessionConversation({
       return;
     }
 
+    const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
+    const prompt = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
+    const attachmentsForPersist: ComposerAttachment[] = pendingAttachments.map((a) => ({
+      filePath: a.filePath,
+      mimeType: a.mimeType,
+      sizeBytes: a.sizeBytes
+    }));
+
     setIsSending(true);
     setStatus(null);
     shouldRefocusInput.current = true;
     try {
-      await onSendSessionInput(session.id, trimmedInput, selectedModel, agentMode);
+      await onSendSessionInput(
+        session.id,
+        prompt,
+        selectedModel,
+        agentMode,
+        attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
+      );
       setInput("");
+      setPendingAttachments([]);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not send input.");
     } finally {
@@ -649,16 +768,50 @@ export function SessionConversation({
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         <NowProvider active={anyToolRunning}>
         {renderItems.length > 0 ? (
-          renderItems.map((item) => {
+          renderItems.map((item, index) => {
             if (item.kind === "user-message") {
+              const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
+              const attachments = rawAttachments
+                .map((entry) => {
+                  const obj = objectValue(entry);
+                  const filePath = stringValue(obj?.filePath);
+                  const mimeType = stringValue(obj?.mimeType);
+                  if (!filePath || !mimeType) return null;
+                  return { filePath, mimeType };
+                })
+                .filter((value): value is { filePath: string; mimeType: string } => Boolean(value));
+              // Strip the `@/abs/path` refs we appended in submitInput so the
+              // bubble shows the user's prose, not the synthetic filesystem
+              // pointer that's only there for the provider's file tool.
+              let displayMessage = item.event.message;
+              for (const a of attachments) {
+                displayMessage = displayMessage.split(`@${a.filePath}`).join("");
+              }
+              displayMessage = displayMessage.replace(/[ \t]+(?=\n|$)/g, "").trim();
               return (
                 <ChatBubble
                   key={item.event.id}
                   kind="user"
                   createdAt={item.event.createdAt}
-                  rawMarkdown={item.event.message}
+                  rawMarkdown={displayMessage}
                 >
-                  <p>{item.event.message}</p>
+                  {attachments.length > 0 ? (
+                    <div className="user-message-attachments" aria-label="Attached images">
+                      {attachments.map((a) => {
+                        const filename = a.filePath.split("/").pop() || a.filePath;
+                        return (
+                          <span
+                            key={a.filePath}
+                            className="user-message-attachment-chip"
+                            title={a.filePath}
+                          >
+                            {filename}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  {displayMessage ? <p>{displayMessage}</p> : null}
                 </ChatBubble>
               );
             }
@@ -744,13 +897,27 @@ export function SessionConversation({
                 </div>
               </ChatBubble>
             ));
+            // A turn's tool groups stay expanded only while that turn is
+            // "active": a tool is still running, or it's the last turn in the
+            // list and the session is still streaming. Past turns collapse
+            // regardless of the global "Show expanded" setting; the active
+            // turn falls back to the global setting.
+            const isLatestTurn = index === renderItems.length - 1;
+            const anyToolRunningInTurn = item.toolItems.some((tItem) =>
+              tItem.kind === "tool"
+                ? tItem.tool.status === "running"
+                : tItem.group.tools.some((tool) => tool.status === "running")
+            );
+            const sessionIsLive = session?.state === "running";
+            const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
+            const groupDefaultExpanded = turnIsActive ? defaultToolCallsExpanded : false;
             const toolsNode = item.toolItems.map((tItem) =>
               tItem.kind === "tool" ? (
                 <ToolCallBubble
                   key={tItem.tool.id}
                   tool={tItem.tool}
                   fresh={isFreshTool(tItem.tool)}
-                  defaultExpanded={defaultToolCallsExpanded}
+                  defaultExpanded={groupDefaultExpanded}
                   workspaceCwd={workspace?.path ?? null}
                 />
               ) : (
@@ -758,7 +925,7 @@ export function SessionConversation({
                   key={tItem.group.id}
                   group={tItem.group}
                   isFreshTool={isFreshTool}
-                  defaultExpanded={defaultToolCallsExpanded}
+                  defaultExpanded={groupDefaultExpanded}
                   workspaceCwd={workspace?.path ?? null}
                 />
               )
@@ -855,6 +1022,24 @@ export function SessionConversation({
           tabIndex={-1}
           onChange={onAttachmentInputChange}
         />
+        {pendingAttachments.length > 0 ? (
+          <div className="composer-attachments" aria-label="Attached images">
+            {pendingAttachments.map((attachment) => (
+              <div key={attachment.id} className="composer-attachment-chip">
+                <img src={attachment.thumbnailDataUrl} alt="" />
+                <button
+                  type="button"
+                  className="composer-attachment-remove"
+                  aria-label="Remove attachment"
+                  title="Remove attachment"
+                  onClick={() => removePendingAttachment(attachment.id)}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="session-input-field">
           <textarea
             aria-label="Session prompt"
@@ -873,6 +1058,7 @@ export function SessionConversation({
               fileAutocomplete.onSelectionChange(event);
             }}
             onKeyDown={onSessionInputKeyDown}
+            onPaste={onComposerPaste}
             onSelect={fileAutocomplete.onSelectionChange}
             onClick={fileAutocomplete.onSelectionChange}
             placeholder={canSend ? "Reply to your agent, or @-mention files" : ""}
@@ -956,15 +1142,20 @@ export function SessionConversation({
               <Square size={16} />
             </button>
           ) : (
-            <button
-              className="session-send-button"
-              disabled={!canSend || isSending || !input.trim()}
-              type="submit"
-              title="Send follow-up"
-              aria-label="Send follow-up"
-            >
-              <ChevronRight size={18} />
-            </button>
+            (() => {
+              const sendDisabled = !canSend || isSending || !input.trim();
+              return (
+                <Mascot
+                  size={36}
+                  mood={sendDisabled ? "sad" : "idle"}
+                  type="submit"
+                  disabled={sendDisabled}
+                  title="Send follow-up"
+                  label="Send follow-up"
+                  buttonClassName="session-send-mascot"
+                />
+              );
+            })()
           )}
         </div>
       </form>

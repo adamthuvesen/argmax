@@ -314,6 +314,9 @@ describe("App", () => {
         resize: () => Promise.resolve({ ok: true }),
         terminate: terminateProvider
       },
+      attachments: {
+        saveImage: () => Promise.resolve({ filePath: "/tmp/fake.png", sizeBytes: 0 })
+      },
       approvals: {
         pending: approvalsPending,
         resolve: approvalsResolve
@@ -414,6 +417,15 @@ describe("App", () => {
         terminate: () => Promise.resolve({ ok: true }),
         onData: () => () => undefined,
         onExit: () => () => undefined
+      },
+      tournaments: {
+        launch: () => Promise.reject(new Error("not mocked")),
+        list: () => Promise.resolve([]),
+        get: () => Promise.reject(new Error("not mocked")),
+        keep: () => Promise.reject(new Error("not mocked"))
+      },
+      scoring: {
+        listPolicies: () => Promise.resolve([])
       }
     };
   });
@@ -425,16 +437,25 @@ describe("App", () => {
     workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(data));
   }
 
+  async function openSettings(group: "General" | "Agents" | "Integrations" | "System" = "General"): Promise<void> {
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "Settings" });
+    if (group === "General") return;
+
+    const settingsGroups = screen.getByRole("complementary", { name: "Settings groups" });
+    fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`\\b${group}\\b`) }));
+  }
+
   it("opens the settings page from the sidebar and lets the user close it", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings();
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Account" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Local profile" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Defaults" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Launch defaults" })).toBeInTheDocument();
     // The launcher prompt is hidden while the settings panel is showing.
     expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
 
@@ -445,8 +466,8 @@ describe("App", () => {
   it("settings Default model label is wired to the select via htmlFor/id", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await screen.findByRole("heading", { name: "Settings" });
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Model defaults" });
 
     // getByLabelText only resolves the SELECT element when label.htmlFor
     // matches the select's id — i.e. the wiring is correct end-to-end.
@@ -1401,7 +1422,7 @@ describe("App", () => {
       render(<App />);
       await screen.findByRole("button", { name: "Build dashboard" });
 
-      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      await openSettings("System");
       expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
       const copyButton = await screen.findByRole("button", { name: "Copy diagnostics" });
@@ -1475,7 +1496,7 @@ describe("App", () => {
     try {
       render(<App />);
       await screen.findByRole("button", { name: "Build dashboard" });
-      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      await openSettings("System");
 
       const saveButton = await screen.findByRole("button", { name: "Save log file" });
       await waitFor(() => expect(saveButton).toBeEnabled());
@@ -1499,7 +1520,7 @@ describe("App", () => {
   it("renders Settings → Diagnostics → Recent logs (P7.01)", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings("System");
     expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
     const list = await screen.findByRole("list", { name: "Recent log entries" });
@@ -1512,7 +1533,7 @@ describe("App", () => {
   it("renders Settings → Diagnostics → IPC latency stats (P7.02)", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings("System");
     expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
     const table = await screen.findByRole("table", { name: "IPC channel latency" });
@@ -1527,7 +1548,7 @@ describe("App", () => {
   it("renders Settings → Diagnostics → Database row counts (P7.03)", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings("System");
     expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
     const databaseHeading = await screen.findByRole("heading", { name: "Database" });
@@ -1580,7 +1601,7 @@ describe("App", () => {
 
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings("System");
     expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
     const table = await screen.findByRole("table", { name: "Startup phase timings" });
@@ -1605,7 +1626,7 @@ describe("App", () => {
   it("renders the cold-start summary tile under budget for a fast boot (ralph A3)", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings("System");
     expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
     // The default diagnostics fixture has window.ready-to-show at 1100 ms,
@@ -1644,7 +1665,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings("Agents");
     expect(await screen.findByRole("heading", { name: "Providers" })).toBeInTheDocument();
 
     expect(await screen.findByText(/Installed · v1\.2\.3/)).toBeInTheDocument();
@@ -2306,7 +2327,7 @@ describe("App", () => {
 
     expect(screen.queryByLabelText(/Tokens: 16\.8k/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings();
     await screen.findByRole("heading", { name: "Appearance" });
     fireEvent.click(screen.getByRole("checkbox", { name: "Show session tokens in sidebar" }));
 
@@ -2444,8 +2465,8 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await screen.findByRole("heading", { name: "Tools" });
+    await openSettings("Integrations");
+    await screen.findByRole("heading", { name: "Default IDE" });
 
     const select = screen.getByRole("combobox", { name: "Default IDE" });
     fireEvent.change(select, { target: { value: "cursor" } });
@@ -2457,7 +2478,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings("Agents");
     await screen.findByRole("heading", { name: "Permissions" });
 
     fireEvent.click(screen.getByRole("radio", { name: "Ask each time" }));
@@ -2484,7 +2505,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings();
     await screen.findByRole("heading", { name: "Appearance" });
 
     fireEvent.click(screen.getByRole("button", { name: "Font family" }));
@@ -2500,7 +2521,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await openSettings();
     await screen.findByRole("heading", { name: "Appearance" });
 
     for (const [label, id] of [
@@ -2676,8 +2697,7 @@ describe("App", () => {
     expect(screen.getByRole("group", { name: "Session panes" })).toBeInTheDocument();
 
     // Flip the Defaults → New session toggle to "Open full view".
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await screen.findByRole("heading", { name: "Settings" });
+    await openSettings();
     fireEvent.click(await screen.findByRole("radio", { name: "Open full view" }));
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
@@ -2698,8 +2718,7 @@ describe("App", () => {
   it("defaults the new-session toggle to 'Open in grid' on first launch", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await screen.findByRole("heading", { name: "Settings" });
+    await openSettings();
 
     expect(await screen.findByRole("radio", { name: "Open in grid" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Open full view" })).not.toBeChecked();

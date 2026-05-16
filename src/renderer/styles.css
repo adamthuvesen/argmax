@@ -35,10 +35,10 @@
   --font-ui: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --font-mono: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
-  --bg: #fbfbfa;
-  --sidebar: #f6f7f7;
+  --bg: #fdfdfd;
+  --sidebar: #fafbfb;
   --panel: #ffffff;
-  --panel-soft: #f7f8f8;
+  --panel-soft: #fafafa;
   --panel-sunken: #eef0f1;
 
   --line: #e3e6e8;
@@ -270,6 +270,8 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 12px 14px 12px;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
@@ -308,8 +310,8 @@ button {
 .sidebar-nameplate-mark {
   font-family: var(--font-mono);
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--text);
 }
 
@@ -413,8 +415,8 @@ button {
   -webkit-app-region: no-drag;
   app-region: no-drag;
   font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.003em;
+  font-weight: 400;
+  letter-spacing: 0;
   box-shadow: var(--shadow-1);
   transition: border-color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease),
@@ -534,6 +536,7 @@ button {
 }
 
 .project-list {
+  flex: 1 1 auto;
   min-height: 0;
   overflow: hidden auto;
   padding-right: 2px;
@@ -557,31 +560,13 @@ button {
   flex: 1 1 auto;
   color: var(--muted);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .rail-label-text {
   flex: 0 0 auto;
-}
-
-.rail-label-rule {
-  flex: 1 1 auto;
-  height: 1px;
-  background: var(--line);
-  align-self: center;
-  transform: translateY(1px);
-}
-
-.rail-label-count {
-  flex: 0 0 auto;
-  font-family: var(--font-mono);
-  font-feature-settings: "tnum", "zero";
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  padding-right: 2px;
 }
 
 .rail-heading .small-icon {
@@ -664,62 +649,20 @@ button {
   box-shadow: inset 2px 0 0 var(--ink);
 }
 
-/* Hand-set 18px monogram tile (first letter), with a single fallback bullet so
-   the older `.project-bullet` selector still has a visual anchor when
-   referenced from tests or screenshots. */
-.project-monogram {
-  position: relative;
+.project-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
   color: var(--muted-strong);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-  transition: color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease),
-    transform var(--duration-fast) var(--ease);
+  transition: color var(--duration-fast) var(--ease);
 }
 
-.project-monogram-glyph {
-  position: relative;
-  z-index: 1;
-  line-height: 1;
-}
-
-.project-bullet {
-  position: absolute;
-  inset: auto auto -3px -3px;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: transparent;
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.project-name:hover .project-monogram {
+.project-name:hover .project-icon,
+.project-name.active .project-icon {
   color: var(--text);
-  border-color: var(--line-strong);
-  background: var(--panel);
-}
-
-.project-name.active .project-monogram {
-  color: #fff;
-  background: var(--ink);
-  border-color: var(--ink);
-}
-
-.project-name.active .project-bullet {
-  background: var(--sage);
-  box-shadow: 0 0 0 2px var(--sidebar);
 }
 
 .project-name-text {
@@ -730,8 +673,8 @@ button {
   white-space: nowrap;
   text-transform: lowercase;
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .project-visibility {
@@ -1080,7 +1023,7 @@ button {
 }
 
 .cost-panel-title {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 
@@ -1091,7 +1034,7 @@ button {
 
 .cost-panel-total {
   margin-left: auto;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
@@ -1206,7 +1149,7 @@ button {
   background: var(--ink);
   font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0;
   box-shadow: var(--shadow-1);
   overflow: hidden;
@@ -1237,7 +1180,7 @@ button {
   font-family: var(--font-mono);
   color: var(--text);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: -0.003em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1302,6 +1245,7 @@ button {
   display: grid;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: var(--panel);
   background-image: radial-gradient(
       120% 60% at 50% 0%,
@@ -1312,6 +1256,7 @@ button {
 }
 
 .work-scroll {
+  height: 100%;
   min-height: 0;
   overflow: auto;
 }
@@ -1485,15 +1430,15 @@ button {
 
 .settings-scroll {
   overflow: auto;
-  padding: clamp(96px, 12dvh, 140px) clamp(28px, 5vw, 64px) 0;
+  padding: clamp(56px, 8dvh, 92px) clamp(28px, 5vw, 64px) 0;
   scrollbar-gutter: stable;
 }
 
 .settings-surface {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 720px);
-  gap: clamp(36px, 6vw, 88px);
-  width: min(100%, 1080px);
+  grid-template-columns: minmax(220px, 260px) minmax(0, 760px);
+  gap: clamp(32px, 5vw, 72px);
+  width: min(100%, 1160px);
   margin: 0 auto;
   padding: 0 0 96px;
   animation: surface-in 320ms var(--ease) both;
@@ -1508,14 +1453,14 @@ button {
   }
 }
 
-/* ---- Left rail: numbered index ---- */
+/* ---- Left rail: grouped settings index ---- */
 
 .settings-nav {
   position: sticky;
   top: 8px;
   align-self: start;
   display: grid;
-  gap: 14px;
+  gap: 16px;
   padding-right: 8px;
   min-width: 0;
 }
@@ -1523,8 +1468,9 @@ button {
 @media (max-width: 900px) {
   .settings-nav {
     position: static;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--line-soft);
+    padding-right: 0;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
   }
 }
 
@@ -1542,7 +1488,25 @@ button {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 1px;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .settings-nav-list {
+    grid-template-columns: repeat(4, minmax(136px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .settings-nav-link {
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding: 8px;
+  }
+
+  .settings-nav-rule {
+    display: none;
+  }
 }
 
 .settings-nav-item {
@@ -1550,20 +1514,31 @@ button {
 }
 
 .settings-nav-link {
+  width: 100%;
   display: grid;
-  grid-template-columns: 22px 1fr auto;
-  align-items: baseline;
-  gap: 10px;
-  padding: 6px 0;
+  grid-template-columns: 24px 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 56px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
-  text-decoration: none;
+  cursor: pointer;
+  font: inherit;
   font-size: 13px;
   line-height: 1.2;
-  transition: color var(--duration-fast) var(--ease);
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
 }
 
 .settings-nav-link:hover {
   color: var(--text);
+  background: rgba(255, 255, 255, 0.68);
+  border-color: var(--line-soft);
 }
 
 .settings-nav-num {
@@ -1571,24 +1546,45 @@ button {
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--muted);
+  text-align: right;
   transition: color var(--duration-fast) var(--ease);
 }
 
 .settings-nav-rule {
   display: block;
+  width: 24px;
   height: 1px;
   background: var(--line-soft);
-  transform: translateY(-3px);
-  transition: background var(--duration-fast) var(--ease),
-    transform var(--duration-base) var(--ease);
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.settings-nav-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .settings-nav-label {
-  letter-spacing: -0.002em;
+  color: inherit;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.settings-nav-note {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .settings-nav-item[data-active="true"] .settings-nav-link {
   color: var(--text);
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: 0 1px 0 var(--line);
 }
 
 .settings-nav-item[data-active="true"] .settings-nav-num {
@@ -1599,12 +1595,13 @@ button {
   background: var(--ink);
 }
 
-.settings-nav-link:focus-visible {
-  outline: none;
+.settings-nav-item[data-active="true"] .settings-nav-note {
+  color: var(--muted-strong);
 }
 
-.settings-nav-link:focus-visible .settings-nav-label {
-  box-shadow: 0 1px 0 var(--ink);
+.settings-nav-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 .settings-nav-foot {
@@ -1621,7 +1618,7 @@ button {
 
 .settings-main {
   display: grid;
-  gap: 40px;
+  gap: 28px;
   min-width: 0;
 }
 
@@ -1631,7 +1628,7 @@ button {
   position: relative;
   display: grid;
   gap: 14px;
-  padding-bottom: 32px;
+  padding-bottom: 24px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1736,6 +1733,85 @@ button {
   color: var(--ink);
   animation: inkwell-caret 1.4s steps(2) infinite;
   animation-delay: 600ms;
+}
+
+/* ---- Group landing strip ---- */
+
+.settings-group-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, max-content);
+  gap: 24px;
+  align-items: end;
+  padding: 2px 0 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-group-intro h2 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.018em;
+  line-height: 1.05;
+}
+
+.settings-group-intro p {
+  margin: 8px 0 0;
+  max-width: 62ch;
+  color: var(--muted-strong);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.settings-group-map {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-group-map li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 9px;
+  align-items: center;
+  min-width: 180px;
+  padding: 6px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.settings-group-map li span:first-child {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-feature-settings: "tnum", "zero";
+  letter-spacing: 0.04em;
+}
+
+.settings-group-panel {
+  display: grid;
+  gap: 32px;
+  min-width: 0;
+  animation: settings-section-in 280ms var(--ease) both;
+}
+
+@media (max-width: 900px) {
+  .settings-group-intro {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .settings-group-map {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .settings-group-map li {
+    min-width: 0;
+  }
 }
 
 /* Shared caret blink for every prompt/marker across the app (Settings hero
@@ -3693,6 +3769,9 @@ button {
 }
 
 .session-scroll {
+  display: grid;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -3733,8 +3812,8 @@ button {
   filter: saturate(0.94);
 }
 
-/* Nested SessionPane: override the single-pane assumption (height: 100dvh)
-   so the inner grid fills the multigrid cell instead of the whole viewport. */
+/* Nested SessionPane: the inner grid fills the multigrid cell rather than
+   measuring itself against the viewport. */
 .session-multigrid-cell .session-grid {
   height: 100%;
 }
@@ -3862,7 +3941,7 @@ button {
   --session-review-panel-width: clamp(320px, 34vw, 520px);
   --session-log-panel-width: clamp(300px, 32vw, 480px);
   display: grid;
-  height: 100dvh;
+  height: 100%;
   min-height: 0;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
@@ -3905,7 +3984,7 @@ button {
   display: grid;
   height: 100%;
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, max-content) auto;
   padding: 44px 0 24px;
   background: transparent;
   animation: fade-in 280ms var(--ease) both;
@@ -5250,8 +5329,10 @@ button {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-height: 0;
   margin-top: 16px;
   margin-inline: var(--session-inline-padding);
+  overflow: hidden;
 }
 
 .changed-files-card {
@@ -5499,6 +5580,78 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px 0;
+}
+
+.composer-attachment-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface, var(--panel));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.composer-attachment-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.composer-attachment-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(31, 28, 24, 0.75);
+  color: #fff;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.composer-attachment-remove:hover {
+  background: rgba(31, 28, 24, 0.92);
+}
+
+.user-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.user-message-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-family: var(--mono, ui-monospace, "SF Mono", monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-toolbar-spacer {
@@ -6177,8 +6330,8 @@ button {
   margin: 0 0 6px;
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -6189,9 +6342,9 @@ button {
   gap: 8px;
   align-items: baseline;
   margin: 0;
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 0;
   color: var(--text);
 }
 
@@ -6265,7 +6418,7 @@ button {
   flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0;
   color: var(--muted-strong);
   background: transparent;
@@ -6302,9 +6455,9 @@ button {
 }
 
 .review-file-row-name {
-  font-weight: 500;
+  font-weight: 400;
   color: var(--text);
-  letter-spacing: -0.003em;
+  letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6377,8 +6530,8 @@ button {
 .review-diff-heading .changed-file-status {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   padding: 2px 7px;
   border: 1px solid var(--line);
@@ -6408,8 +6561,8 @@ button {
 .review-diff-heading strong {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--text);
 }
 
@@ -6761,7 +6914,7 @@ button {
 .workspace-tree-file[aria-pressed="true"] {
   color: var(--text);
   background: var(--panel-soft);
-  font-weight: 560;
+  font-weight: 500;
 }
 
 .workspace-tree-chevron {
@@ -6800,7 +6953,7 @@ button {
 }
 
 .file-preview-heading strong {
-  font-weight: 560;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
@@ -7775,11 +7928,9 @@ button {
 }
 
 .mascot {
-  --mascot-body: #e7a978;
-  --mascot-body-shade: #d99464;
-  --mascot-leg: #b87a4d;
+  --mascot-body: #9b6dd4;
   --mascot-eye: #1c1b18;
-  --mascot-rain: #7a9fc4;
+  --mascot-rain: #c4b3e0;
 
   display: inline-block;
   overflow: visible;
@@ -7794,17 +7945,6 @@ button {
 
 .mascot .mascot-eyes rect {
   fill: var(--mascot-eye);
-}
-
-.mascot .mascot-legs rect {
-  fill: var(--mascot-leg);
-  transform-box: fill-box;
-}
-
-.mascot .mascot-legs {
-  transform-origin: 8px 11px;
-  transform-box: view-box;
-  animation: mascot-leg-dangle 2.4s var(--ease) infinite;
 }
 
 .mascot .mascot-eyes {
@@ -7825,13 +7965,81 @@ button {
 .mascot[data-mood="sad"] {
   animation: mascot-droop 2.6s var(--ease) infinite;
   --mascot-body: #c8c7c2;
-  --mascot-body-shade: #aeada8;
-  --mascot-leg: #8c8b86;
   --mascot-rain: #8c8b86;
 }
 
 .mascot[data-mood="working"] {
   animation: mascot-squish 1.4s var(--ease) infinite;
+}
+
+.mascot[data-pet="true"] {
+  animation: mascot-hop 0.7s var(--ease) 1;
+}
+
+.mascot-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  /* The mascot SVG reserves its bottom rows for thinking-mood rain dots, so
+     its visible body sits in the upper portion of the viewBox. A small
+     asymmetric top padding nudges the body down to share an optical center
+     with adjacent 16px lucide icons. */
+  padding: 3px 0 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  line-height: 0;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.mascot-button:hover:not(:disabled) {
+  background: var(--panel-sunken);
+}
+
+.mascot-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.mascot-button:disabled {
+  cursor: not-allowed;
+}
+
+.mascot-button .mascot {
+  width: 24px;
+  height: 24px;
+}
+
+.mascot-button.launcher-send-mascot {
+  width: 40px;
+  height: 40px;
+  padding: 4px 0 0;
+  border-radius: 10px;
+}
+
+.mascot-button.launcher-send-mascot .mascot {
+  width: 34px;
+  height: 34px;
+}
+
+/* Composer send-button variant — replaces the old dark-circle .session-send-button.
+   Sized to match the previous 36px footprint so the composer layout stays put. */
+.mascot-button.session-send-mascot {
+  width: 36px;
+  height: 36px;
+  /* Proportional top padding: 3/30 ≈ 4/36 to keep the body optically centered. */
+  padding: 4px 0 0;
+  border-radius: 999px;
+}
+
+.mascot-button.session-send-mascot .mascot {
+  width: 30px;
+  height: 30px;
 }
 
 .mascot[data-mood="thinking"] .mascot-rain-dot-1 {
@@ -7848,25 +8056,11 @@ button {
 
 @keyframes mascot-bob {
   0%, 100% {
-    transform: translateY(0);
+    transform: translateY(2%);
   }
 
   50% {
-    transform: translateY(-4%);
-  }
-}
-
-@keyframes mascot-leg-dangle {
-  0%, 100% {
-    transform: rotate(0deg);
-  }
-
-  25% {
-    transform: rotate(4deg);
-  }
-
-  75% {
-    transform: rotate(-4deg);
+    transform: translateY(-2%);
   }
 }
 
@@ -8090,8 +8284,8 @@ button {
 
 .log-toolbar h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 560;
+  font-size: 17px;
+  font-weight: 400;
 }
 
 .log-tab-bar {
@@ -8107,7 +8301,7 @@ button {
   gap: 6px;
   padding: 9px 12px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--muted-strong);
   background: transparent;
   border: 0;
@@ -8129,7 +8323,7 @@ button {
   height: 18px;
   padding: 0 4px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
   background: var(--panel-sunken);
   border-radius: 9px;
@@ -8169,7 +8363,7 @@ button {
   display: inline-block;
   padding: 1px 6px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.02em;
   border-radius: 4px;
   font-family: var(--font-mono);
@@ -8260,7 +8454,7 @@ button {
   display: inline-block;
   padding: 1px 5px;
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   border-radius: 3px;
@@ -8408,6 +8602,43 @@ button {
     --session-inline-padding: 16px;
   }
 
+}
+
+@media (max-height: 560px) {
+  .conversation-surface {
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, 68px) auto;
+    padding-top: 12px;
+    padding-bottom: 8px;
+  }
+
+  .section-heading {
+    margin-bottom: 6px;
+  }
+
+  .conversation-list {
+    gap: 16px;
+    padding-top: 0;
+    padding-bottom: 8px;
+  }
+
+  .session-meta-cards {
+    margin-top: 6px;
+  }
+
+  .session-input {
+    margin-top: 8px;
+    padding: 8px 12px 7px;
+    border-radius: 18px;
+  }
+
+  .session-input textarea {
+    min-height: 34px;
+    padding-block: 6px;
+  }
+
+  .session-input-toolbar {
+    min-height: 36px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

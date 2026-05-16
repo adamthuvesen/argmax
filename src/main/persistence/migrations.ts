@@ -481,10 +481,160 @@ export const migrations: Migration[] = [
   {
     version: 15,
     name: "sessions_agent_mode",
-    affectedTables: ["sessions"],
+    // sessions is re-verified by v16's affectedTables (post-v16 manifest).
+    affectedTables: [],
     up: `
       ALTER TABLE sessions ADD COLUMN agent_mode TEXT NOT NULL DEFAULT 'edit'
         CHECK (agent_mode IN ('edit', 'plan'));
+    `
+  },
+  {
+    version: 16,
+    name: "tournaments",
+    affectedTables: [
+      "sessions",
+      "tournaments",
+      "tournament_contestants",
+      "tournament_scores",
+      "scoring_policies"
+    ],
+    up: `
+      -- Sessions gain optional links to a parent tournament. Both columns are
+      -- NULL for normal single-session launches; non-null for tournament
+      -- contestants. contestant_index is stable per tournament so the UI can
+      -- order contestants deterministically.
+      ALTER TABLE sessions ADD COLUMN tournament_id TEXT REFERENCES tournaments(id) ON DELETE SET NULL;
+      ALTER TABLE sessions ADD COLUMN contestant_index INTEGER;
+
+      -- Scoring policy snapshots. The policy bound to a tournament is copied
+      -- onto the tournament row at launch (see tournaments.policy_snapshot_json)
+      -- so editing the source policy never retroactively changes a verdict.
+      CREATE TABLE scoring_policies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        scope TEXT NOT NULL CHECK (scope IN ('user', 'project')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        is_built_in INTEGER NOT NULL DEFAULT 0 CHECK (is_built_in IN (0, 1)),
+        criteria_json TEXT NOT NULL,
+        auto_keep_rule_json TEXT NOT NULL DEFAULT '{}',
+        ties_threshold REAL NOT NULL DEFAULT 0.05,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_scoring_policies_scope ON scoring_policies(scope, project_id);
+
+      -- Parent tournament. policy_snapshot_json freezes the policy at launch.
+      -- workspace_id is the project-level workspace context the user launched
+      -- from (sessions still own their own per-contestant worktree workspace).
+      CREATE TABLE tournaments (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        task_label TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN (
+          'pending', 'running', 'judging', 'awaiting-decision', 'decided', 'cancelled'
+        )),
+        quorum INTEGER NOT NULL,
+        policy_id TEXT,
+        policy_snapshot_json TEXT NOT NULL,
+        verdict_json TEXT,
+        decision_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        decided_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tournaments_project ON tournaments(project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_tournaments_state ON tournaments(state);
+
+      -- One row per contestant. (tournament_id, contestant_index) is the
+      -- stable key; session_id is the live session the contestant is bound to
+      -- and is unique per row.
+      CREATE TABLE tournament_contestants (
+        tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        contestant_index INTEGER NOT NULL,
+        session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        model_label TEXT NOT NULL,
+        reasoning_effort TEXT,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        outcome TEXT NOT NULL DEFAULT 'pending' CHECK (outcome IN (
+          'pending', 'in-quorum', 'outside-quorum', 'cancelled'
+        )),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (tournament_id, contestant_index)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tournament_contestants_session ON tournament_contestants(session_id);
+
+      -- One row per (contestant, criterion) pair. evidence_json holds runner-
+      -- specific detail (failing test names, diff line counts, pricing snapshot
+      -- id, etc.) so the leaderboard can render hover-evidence without joining.
+      CREATE TABLE tournament_scores (
+        tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+        contestant_index INTEGER NOT NULL,
+        criterion_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('ok', 'inconclusive', 'disqualified')),
+        raw_value REAL,
+        normalized_value REAL,
+        evidence_json TEXT NOT NULL DEFAULT '{}',
+        scored_at TEXT NOT NULL,
+        PRIMARY KEY (tournament_id, contestant_index, criterion_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tournament_scores_tournament ON tournament_scores(tournament_id);
+    `
+  },
+  {
+    version: 17,
+    name: "scoring_policies_seed",
+    // No table reshape — pure data seed. INSERT OR IGNORE so re-runs against an
+    // already-seeded database (or one a user pre-populated) stay no-op.
+    affectedTables: [],
+    up: `
+      INSERT OR IGNORE INTO scoring_policies (
+        id, name, scope, project_id, is_built_in,
+        criteria_json, auto_keep_rule_json, ties_threshold,
+        created_at, updated_at
+      ) VALUES
+        (
+          'builtin:correctness-first',
+          'Correctness first',
+          'user',
+          NULL,
+          1,
+          '[{"id":"tests-pass","weight":3,"threshold":{"op":"==","value":1}},{"id":"lint-clean","weight":1,"threshold":{"op":"==","value":1}},{"id":"typecheck-clean","weight":1,"threshold":{"op":"==","value":1}},{"id":"diff-size-lines","weight":1},{"id":"wall-clock-seconds","weight":0.5}]',
+          '{"min_total":0.85,"min_margin":0.10}',
+          0.05,
+          strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+          strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        ),
+        (
+          'builtin:smallest-diff',
+          'Smallest diff (correctness gated)',
+          'user',
+          NULL,
+          1,
+          '[{"id":"tests-pass","weight":1,"threshold":{"op":"==","value":1}},{"id":"lint-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"typecheck-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"diff-size-lines","weight":3},{"id":"files-touched","weight":1}]',
+          '{"min_total":0.80,"min_margin":0.10}',
+          0.05,
+          strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+          strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        ),
+        (
+          'builtin:cheapest-green',
+          'Cheapest green (correctness gated)',
+          'user',
+          NULL,
+          1,
+          '[{"id":"tests-pass","weight":1,"threshold":{"op":"==","value":1}},{"id":"lint-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"typecheck-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"cost-usd","weight":3},{"id":"diff-size-lines","weight":1}]',
+          '{"min_total":0.80,"min_margin":0.10}',
+          0.05,
+          strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+          strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        );
     `
   }
 ];
@@ -552,6 +702,7 @@ const expectedColumns: Record<string, string[]> = {
     "cache_read_tokens",
     "cache_write_tokens",
     "completed_at",
+    "contestant_index",
     "cost_usd",
     "id",
     "input_tokens",
@@ -567,7 +718,57 @@ const expectedColumns: Record<string, string[]> = {
     "reasoning_effort",
     "started_at",
     "state",
+    "tournament_id",
     "workspace_id"
+  ],
+  tournaments: [
+    "created_at",
+    "decided_at",
+    "decision_json",
+    "id",
+    "policy_id",
+    "policy_snapshot_json",
+    "project_id",
+    "prompt",
+    "quorum",
+    "state",
+    "task_label",
+    "updated_at",
+    "verdict_json"
+  ],
+  tournament_contestants: [
+    "config_json",
+    "contestant_index",
+    "created_at",
+    "model_id",
+    "model_label",
+    "outcome",
+    "provider",
+    "reasoning_effort",
+    "session_id",
+    "tournament_id"
+  ],
+  tournament_scores: [
+    "contestant_index",
+    "criterion_id",
+    "evidence_json",
+    "normalized_value",
+    "raw_value",
+    "scored_at",
+    "status",
+    "tournament_id"
+  ],
+  scoring_policies: [
+    "auto_keep_rule_json",
+    "created_at",
+    "criteria_json",
+    "id",
+    "is_built_in",
+    "name",
+    "project_id",
+    "scope",
+    "ties_threshold",
+    "updated_at"
   ],
   usage_events: [
     "cache_read_tokens",

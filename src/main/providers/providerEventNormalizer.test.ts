@@ -617,6 +617,32 @@ describe("normalizeProviderEventWithUsage — Codex usage extraction", () => {
     });
   });
 
+  it("extracts current Codex turn.completed usage", () => {
+    const context = createNormalizerSessionContext({ codexCurrentModel: "gpt-5.5" });
+    const result = normalizeProviderEventWithUsage(
+      outputEvent(
+        JSON.stringify({
+          type: "turn.completed",
+          usage: {
+            input_tokens: 10_000,
+            cached_input_tokens: 7_000,
+            output_tokens: 500,
+            reasoning_output_tokens: 100
+          }
+        }) + "\n"
+      ),
+      { provider: "codex", context }
+    );
+
+    expect(result.events).toEqual([]);
+    expect(result.usages).toHaveLength(1);
+    expect(result.usages[0]).toMatchObject({
+      modelId: "gpt-5.5",
+      tokens: { input: 3_000, output: 500, cacheRead: 7_000, cacheWrite: 0 }
+    });
+    expect(result.usages[0]?.costUsd).toBeCloseTo(0.0335, 9);
+  });
+
   it("uses 'unknown' when no prior turn_context has been seen", () => {
     const context = createNormalizerSessionContext();
     const result = normalizeProviderEventWithUsage(outputEvent(tokenCountLine), {

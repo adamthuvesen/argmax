@@ -103,12 +103,5 @@ export function resolveDefaultIde(detected: readonly DetectedIde[]): IdeId {
       return id;
     }
   }
-  // Detected has at least one entry whose id is one of the schema-allowed
-  // values, so this is unreachable in practice. We narrow to a concrete
-  // IdeId anyway to keep the return type honest.
-  const first = detected[0];
-  if (!first) {
-    throw new Error("No IDEs detected on this machine.");
-  }
-  return first.id;
+  return detected[0].id;
 }

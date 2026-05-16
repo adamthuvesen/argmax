@@ -3,9 +3,9 @@ import type { ProviderId, SessionCostSummary, SessionSummary } from "../../share
 
 export type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId };
 
-export const allModelOptions: ModelPickerSelection[] = (Object.entries(PROVIDER_MODELS) as Array<[ProviderId, typeof PROVIDER_MODELS[ProviderId]]>)
-  .flatMap(([provider, models]) =>
-    models.map((model) => ({
+export const allModelOptions: ModelPickerSelection[] = (Object.keys(PROVIDER_MODELS) as ProviderId[])
+  .flatMap((provider) =>
+    PROVIDER_MODELS[provider].map((model) => ({
       provider,
       label: model.label,
       modelId: model.modelId,

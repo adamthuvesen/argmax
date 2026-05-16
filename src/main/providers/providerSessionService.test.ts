@@ -168,7 +168,7 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
-  it("rejects follow-up input while the provider launch handle is still pending (audit-2026-05-14 H3)", async () => {
+  it("queues follow-up input while the provider launch handle is still pending (audit-2026-05-14 H3)", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
     const pendingProvider = createPendingProvider("codex");
@@ -186,9 +186,11 @@ describe("ProviderSessionService", () => {
     const sessionId = pendingProvider.launchInput?.sessionId;
     expect(sessionId).toBeDefined();
 
-    await expect(service.sendInput(sessionId!, "Too soon")).rejects.toThrow(
-      "Wait for the current response before sending another prompt."
-    );
+    // Used to throw "Wait for the current response..."; now parks the message
+    // in the per-session queue and lets the drain pick it up after complete.
+    const result = await service.sendInput(sessionId!, "Too soon");
+    expect(result).toEqual({ queued: true });
+    expect(service.getAllPendingMessages()[sessionId!]?.[0]?.content).toBe("Too soon");
     expect(pendingProvider.launchCalls).toBe(1);
 
     pendingProvider.resolve();
@@ -596,7 +598,17 @@ describe("ProviderSessionService", () => {
       rows: 24
     });
 
-    await expect(service.sendInput(session.id, "too soon\r")).rejects.toThrow("Wait for the current response");
+    // Used to throw "Wait for the current response..."; now queues silently
+    // so the user can stack follow-ups while the agent is still working.
+    const tooSoonResult = await service.sendInput(session.id, "too soon\r");
+    expect(tooSoonResult).toEqual({ queued: true });
+    expect(service.getAllPendingMessages()[session.id]?.[0]?.content).toBe("too soon");
+    // Drop the queued message so it doesn't auto-flush after the simulated
+    // exit below and interfere with the structured-resume assertions.
+    service.cancelQueuedMessage(
+      session.id,
+      service.getAllPendingMessages()[session.id][0].id
+    );
     fakeProvider.emit({
       sessionId: session.id,
       type: "output",

@@ -4,6 +4,7 @@ import {
   providerSessionInputSchema,
   providerSessionResizeInputSchema,
   providerSessionTerminateInputSchema,
+  providersCancelQueuedMessageInputSchema,
   providersDiscoverInputSchema,
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
@@ -30,7 +31,7 @@ export function registerProviderHandlers(
   register(
     "providers:send-input",
     withValidation(providerSessionInputSchema, async (input) => {
-      await providerSessions.sendInput(
+      const result = await providerSessions.sendInput(
         input.sessionId,
         input.input,
         {
@@ -47,7 +48,7 @@ export function registerProviderHandlers(
           ...(input.attachments?.length ? { attachments: input.attachments } : {})
         }
       );
-      return { ok: true } as const;
+      return { ok: true as const, queued: result.queued };
     })
   );
   register(
@@ -61,6 +62,13 @@ export function registerProviderHandlers(
     "providers:terminate",
     withValidation(providerSessionTerminateInputSchema, async (sessionId) => {
       await providerSessions.terminate(sessionId);
+      return { ok: true } as const;
+    })
+  );
+  register(
+    "providers:cancel-queued-message",
+    withValidation(providersCancelQueuedMessageInputSchema, (input) => {
+      providerSessions.cancelQueuedMessage(input.sessionId, input.messageId);
       return { ok: true } as const;
     })
   );

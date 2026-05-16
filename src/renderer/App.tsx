@@ -103,10 +103,17 @@ import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { withToast, type ToastMessage } from "./lib/withToast.js";
 
 const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
+const CHAT_COST_KEY = "argmax.chat.cost.visible";
 
 function readStoredSidebarTokensVisible(): boolean {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem(SIDEBAR_TOKENS_KEY) === "true";
+}
+
+function readStoredChatCostVisible(): boolean {
+  if (typeof window === "undefined") return true;
+  const raw = window.localStorage.getItem(CHAT_COST_KEY);
+  return raw === null ? true : raw === "true";
 }
 
 export function App(): JSX.Element {
@@ -135,6 +142,7 @@ export function App(): JSX.Element {
   // each app start shows tool calls expanded.
   const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(true);
   const [sidebarTokensVisible, setSidebarTokensVisible] = useState<boolean>(() => readStoredSidebarTokensVisible());
+  const [chatCostVisible, setChatCostVisible] = useState<boolean>(() => readStoredChatCostVisible());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
@@ -483,6 +491,10 @@ export function App(): JSX.Element {
   }, [sidebarTokensVisible]);
 
   useEffect(() => {
+    window.localStorage.setItem(CHAT_COST_KEY, String(chatCostVisible));
+  }, [chatCostVisible]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(FONT_STORAGE_KEY, fontFamily);
     applyFontToDocument(fontFamily);
@@ -643,7 +655,7 @@ export function App(): JSX.Element {
         throw new Error("Open the Electron app window to send input to a live session.");
       }
 
-      await window.argmax.providers.sendInput({
+      const result = await window.argmax.providers.sendInput({
         sessionId,
         input: `${input}\r`,
         modelLabel: model.label,
@@ -652,9 +664,25 @@ export function App(): JSX.Element {
         agentMode,
         ...(attachments?.length ? { attachments } : {})
       });
+      // Queued messages don't write a user.message event yet — the chip in the
+      // pending lane is the only renderer-visible artifact, and that arrives
+      // via dashboard:delta. Skip the targeted event refresh to avoid a stale
+      // empty page racing the delta.
+      if (result.queued) {
+        await refreshDashboardStatus();
+        return;
+      }
       await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
     [refreshDashboardStatus, loadSessionEvents]
+  );
+
+  const cancelQueuedMessage = useCallback(
+    async (sessionId: string, messageId: string): Promise<void> => {
+      if (!window.argmax) return;
+      await window.argmax.providers.cancelQueuedMessage({ sessionId, messageId });
+    },
+    []
   );
 
   const toggleWorkspacePinned = useCallback(
@@ -1092,6 +1120,8 @@ export function App(): JSX.Element {
                 onToolCallsExpandedChange={setToolCallsExpanded}
                 sidebarTokensVisible={sidebarTokensVisible}
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
+                chatCostVisible={chatCostVisible}
+                onChatCostVisibleChange={setChatCostVisible}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
                 detectedIdes={detectedIdes}
@@ -1120,6 +1150,7 @@ export function App(): JSX.Element {
               workspacesById={workspacesById}
               sessionsById={sessionsById}
               defaultToolCallsExpanded={toolCallsExpanded}
+              showCostPanel={chatCostVisible}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
               renderLauncher={renderLaunchSurface}
@@ -1130,6 +1161,8 @@ export function App(): JSX.Element {
               onLoadSessionEvents={loadSessionEvents}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
+              onCancelQueuedMessage={cancelQueuedMessage}
+              pendingMessages={snapshot.pendingMessages}
               onTerminateSession={terminateSession}
               onCreateCheckpoint={createCheckpoint}
               onRunCheck={runCheck}

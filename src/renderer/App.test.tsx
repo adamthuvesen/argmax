@@ -174,7 +174,7 @@ describe("App", () => {
       tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 },
       costUsd: 0.012
     });
-    sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true });
+    sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true, queued: false });
     terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
     providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
     diagnosticsStub = vi.fn<ArgmaxApi["system"]["diagnostics"]>().mockResolvedValue({
@@ -312,7 +312,8 @@ describe("App", () => {
         launch: launchProvider,
         sendInput: sendProviderInput,
         resize: () => Promise.resolve({ ok: true }),
-        terminate: terminateProvider
+        terminate: terminateProvider,
+        cancelQueuedMessage: () => Promise.resolve({ ok: true })
       },
       attachments: {
         saveImage: () => Promise.resolve({ filePath: "/tmp/fake.png", sizeBytes: 0 })
@@ -613,7 +614,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("button", { name: "web_search: pizza recipe" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Searched for pizza recipe" })).toBeInTheDocument();
     expect(screen.getByText("Dashboard ready.")).toBeInTheDocument();
   });
 
@@ -666,7 +667,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("button", { name: "Read: README.md" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Read README.md" })).toBeInTheDocument();
     expect(screen.getByText("All set.")).toBeInTheDocument();
   });
 
@@ -733,7 +734,7 @@ describe("App", () => {
     const conversation = await screen.findByRole("region", { name: "Session conversation" });
     await waitFor(() => expect(conversation).toHaveTextContent("I'll explore the codebase."));
     expect(conversation).toHaveTextContent("I've explored.");
-    expect(screen.getByRole("button", { name: /3 tool calls/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Explored 1 file, 2 searches/ })).toBeInTheDocument();
   });
 
   it("hides provider protocol JSON from the first-turn raw transcript fallback", async () => {
@@ -1368,19 +1369,16 @@ describe("App", () => {
     });
   });
 
-  it("disables follow-up prompts while a structured Codex session is running", async () => {
+  it("keeps the composer enabled while running so follow-ups can be queued", async () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const input = await screen.findByLabelText("Session prompt");
-    expect(input).toBeDisabled();
-
-    fireEvent.change(input, {
-      target: { value: "too soon" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
-
-    expect(sendProviderInput).not.toHaveBeenCalled();
+    // Composer is enabled while running; the actual send is routed to the
+    // queue in main (see providerSessionService.queue.test.ts).
+    expect(input).toBeEnabled();
+    // Stop is still available alongside Send while a turn is in flight.
+    expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
   });
 
   it("saves a checkpoint via the session header button on a dirty worktree", async () => {
@@ -1403,7 +1401,11 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const stopButton = await screen.findByRole("button", { name: "Stop session" });
-    expect(screen.queryByRole("button", { name: "Send follow-up" })).toBeNull();
+    // Send and Stop coexist while running so the user can queue follow-ups
+    // and still kill the current turn.
+    expect(
+      screen.getByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
+    ).toBeInTheDocument();
 
     fireEvent.click(stopButton);
 
@@ -2379,6 +2381,38 @@ describe("App", () => {
     // Cost is projected from session.costUsd on the dashboard delta. The
     // panel must not fire a separate session:costSummary IPC.
     expect(sessionCostSummary).not.toHaveBeenCalled();
+  });
+
+  it("hides the chat cost card when disabled in Settings", async () => {
+    const costed: DashboardSnapshot = {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.id === "session-1"
+          ? {
+              ...session,
+              costUsd: 4.32,
+              tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 }
+            }
+          : session
+      )
+    };
+    mockDashboardSnapshot(costed);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(await screen.findByRole("region", { name: "Session cost summary" })).toBeInTheDocument();
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show cost in agent chat" }));
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.chat.cost.visible")).toBe("false")
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+
+    await screen.findByRole("button", { name: "Build dashboard" });
+    expect(screen.queryByRole("region", { name: "Session cost summary" })).not.toBeInTheDocument();
   });
 
   it("disables the Open in IDE button when the workspace has no path yet", async () => {

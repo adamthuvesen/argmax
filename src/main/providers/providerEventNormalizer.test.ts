@@ -110,6 +110,35 @@ describe("normalizeProviderEvent", () => {
     });
   });
 
+  it("keeps Codex file_change paths as visible tool input", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            id: "fc_1",
+            type: "file_change",
+            changes: [{ path: "/repo/src/app.ts", kind: "update" }],
+            status: "completed"
+          }
+        }) + "\n"
+      ),
+      { provider: "codex" }
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "command.completed",
+      message: "file_change",
+      payload: {
+        id: "fc_1",
+        input: {
+          changes: [{ path: "/repo/src/app.ts", kind: "update" }]
+        }
+      }
+    });
+  });
+
   it("ignores structured lifecycle events that are not user-visible messages", () => {
     const events = normalizeProviderEvent(
       outputEvent('{"type":"thread.started","thread_id":"thread-1"}\n{"type":"turn.started"}\n{"type":"turn.completed"}\n')

@@ -166,7 +166,20 @@ export function registerIpcHandlers(
     })
   );
   register("dashboard:list", withValidation(dashboardListInputSchema, () => database.listDashboard()));
-  register("dashboard:load", withValidation(dashboardLoadInputSchema, () => database.loadDashboard()));
+  register(
+    "dashboard:load",
+    withValidation(dashboardLoadInputSchema, () => {
+      const snapshot = database.loadDashboard();
+      // The queued-follow-up map lives in main memory (not SQLite), so the
+      // dashboard snapshot has to merge it in at the IPC boundary rather than
+      // at the database layer. Empty object stays empty — no allocation noise.
+      const pendingMessages = providerSessions.getAllPendingMessages();
+      return {
+        ...snapshot,
+        ...(Object.keys(pendingMessages).length > 0 ? { pendingMessages } : {})
+      };
+    })
+  );
   for (const channel of registerProjectHandlers(database, projects)) {
     registeredChannels.push(channel);
   }

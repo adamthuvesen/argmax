@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan — Excellent HardBench Docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,380..600,30;1,9..144,380..520,30&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #F4F0E8;
+    --card: #FBF8F1;
+    --ink: #1B1815;
+    --ink-mute: #5E574E;
+    --ink-faint: #8B8273;
+    --rust: #B5462A;
+    --rust-soft: rgba(181, 70, 42, 0.08);
+    --sage: #E8E9DD;
+    --sage-soft: rgba(232, 233, 221, 0.55);
+    --hairline: #D9D2C2;
+    --hairline-strong: #C7BFAB;
+    --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+    --font-body: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--ink);
+    background: var(--page);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Paper grain — full viewport, very subtle */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.34;
+    mix-blend-mode: multiply;
+    z-index: 1;
+  }
+
+  /* Far-corner editorial mark, faint */
+  body::after {
+    content: 'HARDBENCH · PLAN ARTIFACT';
+    position: fixed;
+    top: 28px;
+    right: 36px;
+    z-index: 3;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    color: var(--ink-faint);
+    pointer-events: none;
+  }
+
+  main {
+    position: relative;
+    z-index: 2;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 88px 32px 96px;
+  }
+
+  /* ---------- Card ---------- */
+  .plan-card {
+    width: 100%;
+    max-width: 940px;
+    background: var(--card);
+    border: 1px solid var(--hairline);
+    border-radius: 2px;
+    display: grid;
+    grid-template-columns: 172px 1fr;
+    position: relative;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: rise 0.8s 0.05s var(--ease-out) forwards;
+  }
+
+  /* Rust corner accent — single decorative element */
+  .plan-card::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: -1px;
+    width: 14px; height: 14px;
+    border-top: 2px solid var(--rust);
+    border-left: 2px solid var(--rust);
+    pointer-events: none;
+  }
+
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---------- Meta rail ---------- */
+  .meta-rail {
+    padding: 44px 28px 40px 36px;
+    border-right: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .eyebrow-block {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--rust);
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .eyebrow::before {
+    content: '';
+    width: 5px; height: 5px;
+    background: var(--rust);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(181, 70, 42, 0.12);
+    flex-shrink: 0;
+  }
+
+  .eyebrow-rule {
+    width: 24px;
+    height: 1px;
+    background: var(--rust);
+    opacity: 0.55;
+  }
+
+  .meta-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .meta-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .meta-value {
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+
+  .meta-value.mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+
+  .meta-foot {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .meta-foot .folio {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .meta-foot .folio strong {
+    color: var(--ink-mute);
+    font-weight: 500;
+  }
+
+  /* ---------- Content column ---------- */
+  .content-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px 0 44px;
+    gap: 16px;
+  }
+
+  .header-spine {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header-spine .dot {
+    width: 3px; height: 3px;
+    background: var(--ink-faint);
+    border-radius: 50%;
+    opacity: 0.7;
+  }
+
+  .actions {
+    display: flex;
+    gap: 1px;
+  }
+
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--ink-mute);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  }
+
+  .icon-btn:hover {
+    background: var(--sage);
+    color: var(--ink);
+  }
+
+  .icon-btn:active { transform: scale(0.94); }
+
+  .icon-btn svg { width: 14px; height: 14px; }
+
+  /* ---------- Title block ---------- */
+  .title-block {
+    padding: 28px 44px 0;
+    opacity: 0;
+    animation: rise 0.8s 0.18s var(--ease-out) forwards;
+  }
+
+  .title {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 144, 'SOFT' 30;
+    font-weight: 440;
+    font-size: 46px;
+    line-height: 1.04;
+    letter-spacing: -0.022em;
+    color: var(--ink);
+  }
+
+  .title em {
+    font-style: italic;
+    font-variation-settings: 'opsz' 144, 'SOFT' 30;
+    font-weight: 420;
+    color: var(--rust);
+    padding: 0 0.04em 0 0.02em;
+  }
+
+  .title-rule {
+    margin-top: 22px;
+    width: 56px;
+    height: 1px;
+    background: var(--hairline-strong);
+  }
+
+  /* ---------- Sections ---------- */
+  .section {
+    padding: 36px 44px 0;
+    opacity: 0;
+    animation: rise 0.8s var(--ease-out) forwards;
+  }
+  .section:nth-of-type(1) { animation-delay: 0.28s; }
+  .section:nth-of-type(2) { animation-delay: 0.36s; }
+
+  .section-label {
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+
+  .section-label .num { color: var(--rust); }
+  .section-label .sep { color: var(--ink-faint); opacity: 0.45; }
+  .section-label .name { color: var(--ink-mute); }
+
+  .summary-text {
+    font-size: 17px;
+    line-height: 1.62;
+    color: var(--ink);
+    max-width: 64ch;
+    letter-spacing: -0.006em;
+  }
+
+  .summary-text + .summary-text {
+    margin-top: 14px;
+    color: var(--ink-mute);
+    font-size: 16px;
+  }
+
+  /* ---------- Key changes ---------- */
+  .change-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .change-item .change-head {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 14px;
+    align-items: baseline;
+  }
+
+  .change-marker {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--rust);
+    letter-spacing: 0;
+    padding-top: 3px;
+  }
+
+  .change-title {
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+    font-weight: 500;
+  }
+
+  .change-title .light {
+    font-weight: 400;
+    color: var(--ink-mute);
+  }
+
+  .sub-list {
+    list-style: none;
+    margin: 12px 0 0 38px;
+    padding-left: 18px;
+    border-left: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .sub-item {
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--ink-mute);
+    position: relative;
+    padding-left: 14px;
+  }
+
+  .sub-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0.7em;
+    width: 6px; height: 1px;
+    background: var(--ink-faint);
+    opacity: 0.7;
+  }
+
+  /* ---------- Code chip ---------- */
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    background: var(--sage);
+    color: var(--rust);
+    padding: 1.5px 6px;
+    border-radius: 3px;
+    letter-spacing: 0;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+
+  /* ---------- Action prompt ---------- */
+  .action-block {
+    margin-top: 44px;
+    padding: 28px 44px 32px;
+    border-top: 1px solid var(--rust);
+    background: linear-gradient(to bottom, var(--rust-soft) 0%, transparent 60%);
+    opacity: 0;
+    animation: rise 0.8s 0.5s var(--ease-out) forwards;
+  }
+
+  .action-q {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 36, 'SOFT' 30;
+    font-weight: 460;
+    font-size: 20px;
+    line-height: 1.3;
+    color: var(--ink);
+    letter-spacing: -0.012em;
+    margin-bottom: 18px;
+  }
+
+  .options {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-bottom: 20px;
+  }
+
+  .option {
+    display: grid;
+    grid-template-columns: 28px 1fr 16px;
+    align-items: center;
+    gap: 4px;
+    padding: 11px 14px 11px 10px;
+    margin-left: -10px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 0.16s ease;
+    position: relative;
+    border-left: 2px solid transparent;
+    outline: none;
+  }
+
+  .option:hover { background: var(--sage-soft); }
+  .option:focus-visible {
+    background: var(--sage-soft);
+    box-shadow: inset 0 0 0 1px var(--rust);
+  }
+
+  .option.active {
+    background: var(--sage-soft);
+    border-left-color: var(--rust);
+  }
+
+  .option-num {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    font-weight: 500;
+    transition: color 0.16s ease;
+  }
+
+  .option:hover .option-num,
+  .option.active .option-num,
+  .option:focus-visible .option-num { color: var(--rust); }
+
+  .option-label {
+    font-size: 15px;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+
+  .option-arrow {
+    color: var(--rust);
+    opacity: 0;
+    transition: opacity 0.16s ease, transform 0.2s var(--ease-out);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    transform: translateX(-6px);
+    line-height: 1;
+  }
+
+  .option:hover .option-arrow,
+  .option.active .option-arrow,
+  .option:focus-visible .option-arrow {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .action-foot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .key-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-mute);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .key-cap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border: 1px solid var(--hairline-strong);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: var(--card);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1;
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 760px) {
+    body::after { display: none; }
+    main { padding: 32px 16px 64px; }
+    .plan-card { grid-template-columns: 1fr; }
+    .meta-rail {
+      border-right: none;
+      border-bottom: 1px solid var(--hairline);
+      padding: 24px 24px 22px;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 22px 28px;
+      align-items: flex-start;
+    }
+    .meta-foot {
+      margin-top: 0;
+      margin-left: auto;
+      padding-top: 0;
+      border-top: none;
+    }
+    .card-header { padding: 18px 22px 0; }
+    .title-block { padding: 18px 24px 0; }
+    .title { font-size: 32px; letter-spacing: -0.02em; }
+    .section { padding: 28px 24px 0; }
+    .change-item .change-head { grid-template-columns: 20px 1fr; gap: 10px; }
+    .sub-list { margin-left: 30px; }
+    .action-block { padding: 24px 24px 26px; }
+    .action-q { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<main>
+  <article class="plan-card">
+    <aside class="meta-rail">
+      <div class="eyebrow-block">
+        <span class="eyebrow">Plan</span>
+        <span class="eyebrow-rule"></span>
+      </div>
+
+      <div class="meta-group">
+        <span class="meta-label">Model</span>
+        <span class="meta-value mono">Opus 4.7</span>
+      </div>
+
+      <div class="meta-group">
+        <span class="meta-label">Context</span>
+        <span class="meta-value">1M tokens</span>
+      </div>
+
+      <div class="meta-group">
+        <span class="meta-label">Asked</span>
+        <span class="meta-value">1 question</span>
+      </div>
+
+      <div class="meta-foot">
+        <span class="folio"><strong>16</strong>·05·26</span>
+        <span class="folio">02 : 34 PM</span>
+      </div>
+    </aside>
+
+    <div class="content-col">
+      <header class="card-header">
+        <span class="header-spine">
+          Folio
+          <span class="dot"></span>
+          §01 of §01
+        </span>
+        <div class="actions">
+          <button class="icon-btn" aria-label="Download plan">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8"/><path d="m5 7.5 3 3 3-3"/><path d="M3 13.5h10"/></svg>
+          </button>
+          <button class="icon-btn" aria-label="Copy plan">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M10.5 5.5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/></svg>
+          </button>
+          <button class="icon-btn" aria-label="Mark helpful">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 14V7.2l2.4-4.7.9.4v3.6h4.5a1.2 1.2 0 0 1 1.18 1.42l-.95 4.8A1.5 1.5 0 0 1 12.07 14H5.5Z"/><path d="M5.5 14h-3V7.2h3"/></svg>
+          </button>
+          <button class="icon-btn" aria-label="Mark unhelpful">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2v6.8L8.1 13.5l-.9-.4V9.5H2.7a1.2 1.2 0 0 1-1.18-1.42l.95-4.8A1.5 1.5 0 0 1 3.93 2H10.5Z"/><path d="M10.5 2h3v6.8h-3"/></svg>
+          </button>
+          <button class="icon-btn" aria-label="Collapse">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6.5 4 4 4-4"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="title-block">
+        <h1 class="title">Plan: <em>Excellent</em> HardBench Docs</h1>
+        <div class="title-rule"></div>
+      </div>
+
+      <section class="section">
+        <div class="section-label">
+          <span class="num">01</span>
+          <span class="sep">—</span>
+          <span class="name">Summary</span>
+        </div>
+        <p class="summary-text">Build docs for two audiences: benchmark users who want to run and audit HardBench, and contributors who want to author or maintain tasks. Keep <span class="chip">README.md</span> as the fast path, then move deeper material into focused <span class="chip">docs/</span> pages.</p>
+        <p class="summary-text">Success means a new reader can install HardBench, run smoke and frontier benchmarks, understand artifacts and scores, add a custom agent, and author a valid benchmark task — without reading the source first.</p>
+      </section>
+
+      <section class="section">
+        <div class="section-label">
+          <span class="num">02</span>
+          <span class="sep">—</span>
+          <span class="name">Key Changes</span>
+        </div>
+
+        <ul class="change-list">
+          <li class="change-item">
+            <div class="change-head">
+              <span class="change-marker">A.</span>
+              <span class="change-title">Restructure <span class="chip">README.md</span> <span class="light">into a crisp overview</span></span>
+            </div>
+            <ul class="sub-list">
+              <li class="sub-item">what HardBench is, in three sentences</li>
+              <li class="sub-item">quick start: install, run smoke, read result</li>
+              <li class="sub-item">common run commands and flags</li>
+              <li class="sub-item">result and artifact interpretation</li>
+              <li class="sub-item">links into the deeper docs</li>
+            </ul>
+          </li>
+
+          <li class="change-item">
+            <div class="change-head">
+              <span class="change-marker">B.</span>
+              <span class="change-title">Add <span class="chip">docs/running-benchmarks.md</span> <span class="light">for operator workflows</span></span>
+            </div>
+            <ul class="sub-list">
+              <li class="sub-item">CLI reference for <span class="chip">list</span>, <span class="chip">run</span>, <span class="chip">grade</span>, <span class="chip">report</span>, and <span class="chip">export eval-audit</span></li>
+              <li class="sub-item">concurrency, timeouts, run IDs, output directories, and cost caveats</li>
+              <li class="sub-item">how to inspect <span class="chip">runs/&lt;run-id&gt;/</span>, <span class="chip">summary.md</span>, <span class="chip">results.jsonl</span>, diffs, transcripts, and grader output</li>
+            </ul>
+          </li>
+
+          <li class="change-item">
+            <div class="change-head">
+              <span class="change-marker">C.</span>
+              <span class="change-title">Add <span class="chip">docs/agents.md</span> <span class="light">for custom agent configuration</span></span>
+            </div>
+            <ul class="sub-list">
+              <li class="sub-item">built-in agent expectations and defaults</li>
+              <li class="sub-item">full YAML schema for agent files</li>
+              <li class="sub-item">stdin vs <span class="chip">{prompt}</span> command passing</li>
+              <li class="sub-item">required env vars and local authentication assumptions</li>
+            </ul>
+          </li>
+
+          <li class="change-item">
+            <div class="change-head">
+              <span class="change-marker">D.</span>
+              <span class="change-title">Add <span class="chip">docs/task-authoring.md</span> <span class="light">for benchmark contributors</span></span>
+            </div>
+            <ul class="sub-list">
+              <li class="sub-item">required task layout: <span class="chip">task.yaml</span>, <span class="chip">workspace/</span>, <span class="chip">hidden/</span>, <span class="chip">reference/</span></li>
+              <li class="sub-item"><span class="chip">task.yaml</span> fields and defaults inherited from <span class="chip">TaskSpec</span></li>
+              <li class="sub-item">preserved public return shapes, visible tests, hidden grader rubric</li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+
+      <div class="action-block">
+        <p class="action-q">Implement this plan?</p>
+        <ul class="options" role="listbox" aria-label="Plan response">
+          <li class="option active" tabindex="0" role="option" aria-selected="true">
+            <span class="option-num">1</span>
+            <span class="option-label">Yes, implement this plan</span>
+            <span class="option-arrow">→</span>
+          </li>
+          <li class="option" tabindex="0" role="option" aria-selected="false">
+            <span class="option-num">2</span>
+            <span class="option-label">No, and tell Claude what to do differently</span>
+            <span class="option-arrow">→</span>
+          </li>
+        </ul>
+        <div class="action-foot">
+          <span class="key-hint">Dismiss <span class="key-cap">ESC</span></span>
+          <span class="key-hint">Submit <span class="key-cap">↵</span></span>
+        </div>
+      </div>
+    </div>
+  </article>
+</main>
+
+<script>
+  // Minimal keyboard nav between options + click-to-activate
+  const options = document.querySelectorAll('.option');
+  options.forEach((opt, idx) => {
+    opt.addEventListener('click', () => {
+      options.forEach(o => { o.classList.remove('active'); o.setAttribute('aria-selected', 'false'); });
+      opt.classList.add('active');
+      opt.setAttribute('aria-selected', 'true');
+    });
+    opt.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const next = options[(idx + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length];
+        next.focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        opt.click();
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

@@ -16,6 +16,7 @@ import type {
   AgentMode,
   ApprovalRequest,
   CheckRun,
+  PendingMessage,
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
@@ -23,6 +24,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import { resolveOpenablePath } from "../lib/openableFile.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { CommitDialog } from "./CommitDialog.js";
@@ -61,12 +63,15 @@ export function SessionPane({
   onResolveApproval,
   onRunCheck,
   onSendSessionInput,
+  onCancelQueuedMessage,
+  pendingMessages,
   onTerminateSession,
   project,
   rawOutputs,
   registerPaletteFileContext,
   rightPanelToggleSignal,
   session,
+  showCostPanel = true,
   thinkingStyle,
   workspace
 }: {
@@ -84,11 +89,14 @@ export function SessionPane({
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode) => Promise<void>;
+  onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
+  pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   rightPanelToggleSignal?: number;
   session: SessionSummary | null;
+  showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
   /** When this pane is focused, it registers its workspace file source +
@@ -226,6 +234,26 @@ export function SessionPane({
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
+  const workspaceId = workspace?.id ?? null;
+  const handleOpenFile = useCallback(
+    (path: string, opts?: { line?: number | null; preferIde?: boolean }): void => {
+      if (opts?.preferIde && workspaceId && window.argmax) {
+        void window.argmax.workspaces
+          .openInIde({ workspaceId, ide: "default" })
+          .catch(() => undefined);
+        return;
+      }
+      if (!workspaceId || !window.argmax) return;
+      // Agents reference files in chat by bare basename surprisingly often
+      // (e.g. `research_journal.md`); resolving against the workspace tree
+      // before opening avoids surfacing an ENOENT panel-error when the file
+      // lives in a subdirectory — or doesn't exist at all.
+      void resolveOpenablePath(window.argmax, workspaceId, path).then((resolved) => {
+        if (resolved) reviewOpenInFilesView(resolved);
+      });
+    },
+    [reviewOpenInFilesView, workspaceId]
+  );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
   // Register this pane's file source + pick handler with the command
@@ -371,15 +399,19 @@ export function SessionPane({
           onClose={onClose}
           onOpenCommitDialog={handleOpenCommitDialog}
           onSendSessionInput={onSendSessionInput}
+          onCancelQueuedMessage={onCancelQueuedMessage}
+          pendingMessages={sessionId ? (pendingMessages?.[sessionId] ?? []) : []}
           onTerminateSession={onTerminateSession}
           onCreateCheckpoint={onCreateCheckpoint}
           onRunCheck={onRunCheck}
+          onOpenFile={handleOpenFile}
           onToggleLog={toggleLog}
           pendingApprovalCount={visibleApprovals.filter((a) => a.status === "pending").length}
           project={project}
           rawOutputs={rawOutputs}
           review={reviewState}
           session={session}
+          showCostPanel={showCostPanel}
           {...(thinkingStyle ? { thinkingStyle } : {})}
           workspace={workspace}
         />

@@ -37,6 +37,7 @@ import type {
   AgentMode,
   ComposerAttachment,
   LaunchProviderSessionInput,
+  PendingMessage,
   ProviderId,
   SessionSummary,
   TimelineEvent
@@ -146,6 +147,13 @@ const DEBUG = process.env.DEBUG_ARGMAX === "1";
 export class ProviderSessionService {
   private readonly handles = new Map<string, HandleEntry>();
   private readonly buffers = new Map<string, SessionBuffer>();
+  /**
+   * In-memory queue of follow-up messages composed while the agent was working.
+   * Per-session FIFO. Drained one-at-a-time when the session reaches `complete`
+   * (each queued item becomes a fresh follow-up turn). Cleared on terminate /
+   * failure / cancel. Not persisted — a renderer reload or app restart drops it.
+   */
+  private readonly queues = new Map<string, PendingMessage[]>();
 
   constructor(
     private readonly database: ArgmaxDatabase,
@@ -307,24 +315,29 @@ export class ProviderSessionService {
     }
   }
 
-  async sendInput(sessionId: string, input: string, options: FollowUpOptions = {}): Promise<void> {
+  async sendInput(
+    sessionId: string,
+    input: string,
+    options: FollowUpOptions = {}
+  ): Promise<{ queued: boolean }> {
     const message = input.replace(/\r?\n$/, "").trim();
     if (!message) {
-      return;
+      return { queued: false };
     }
 
     let session = this.database.getSession(sessionId);
     const workspace = this.database.getWorkspace(session.workspaceId);
     const agentMode = options.agentMode ?? session.agentMode ?? "edit";
     const existingEntry = this.handles.get(sessionId);
-    if (existingEntry?.kind === "pending") {
-      throw new Error("Wait for the current response before sending another prompt.");
-    }
     const liveHandle = this.getLiveHandle(sessionId);
+    // Busy paths: launch still resolving, or a live PTY that isn't accepting
+    // input right now. Park the message in the per-session queue and let the
+    // exit-branch drain pick it up when the current turn finishes.
+    if (existingEntry?.kind === "pending" || (liveHandle && !liveHandle.acceptsInput)) {
+      this.enqueuePendingMessage(sessionId, message, agentMode, options);
+      return { queued: true };
+    }
     if (liveHandle) {
-      if (!liveHandle.acceptsInput) {
-        throw new Error("Wait for the current response before sending another prompt.");
-      }
       if (session.agentMode !== agentMode) {
         session = this.database.updateSessionAgentMode(sessionId, { agentMode });
       }
@@ -348,7 +361,7 @@ export class ProviderSessionService {
     });
     if (liveHandle) {
       this.publishDashboardDelta({ events: [userMessage] });
-      return;
+      return { queued: false };
     }
 
     if (options.modelSelection) {
@@ -407,6 +420,7 @@ export class ProviderSessionService {
         this.applyOpToHandle(handle, op);
       }
       pending.ops.length = 0;
+      return { queued: false };
     } catch (error) {
       this.handles.delete(sessionId);
       pending.rejected = true;
@@ -456,6 +470,9 @@ export class ProviderSessionService {
       sessions: [failedSession],
       events: [errorEvent]
     });
+    // A launch / re-launch that failed cannot drain queued follow-ups — drop
+    // them rather than auto-firing into a session the renderer just saw fail.
+    this.clearQueue(args.sessionId);
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
@@ -476,6 +493,10 @@ export class ProviderSessionService {
   async terminate(sessionId: string): Promise<void> {
     const entry = this.handles.get(sessionId);
     if (!entry) {
+      // Terminate is also a "give up on whatever was queued" signal — even if
+      // there's no live handle (already complete), drop any pending follow-ups
+      // the user lined up so the next launch doesn't auto-flush them.
+      this.clearQueue(sessionId);
       return;
     }
     if (entry.kind === "pending") {
@@ -483,18 +504,131 @@ export class ProviderSessionService {
       entry.rejected = true;
       entry.ops.length = 0;
       this.handles.delete(sessionId);
+      this.clearQueue(sessionId);
       this.cancelSession(sessionId);
       return;
     }
     if (entry.handle.disposed) {
+      this.clearQueue(sessionId);
       return;
     }
     // Flush any buffered partial line so the trailing fragment surfaces before
     // termination tears down the per-session state.
     this.flushTrailingFragment(sessionId);
     this.flushBatch(sessionId);
+    this.clearQueue(sessionId);
     await entry.handle.terminate();
     this.cancelSession(sessionId);
+  }
+
+  /**
+   * Enqueue a follow-up composed while the agent was running. Publishes a
+   * `pendingMessages` delta so the renderer can render the queued chip.
+   */
+  private enqueuePendingMessage(
+    sessionId: string,
+    content: string,
+    agentMode: AgentMode,
+    options: FollowUpOptions
+  ): PendingMessage {
+    const entry: PendingMessage = {
+      id: randomUUID(),
+      sessionId,
+      content,
+      agentMode,
+      queuedAt: new Date().toISOString(),
+      ...(options.modelSelection?.modelLabel ? { modelLabel: options.modelSelection.modelLabel } : {}),
+      ...(options.modelSelection?.modelId ? { modelId: options.modelSelection.modelId } : {}),
+      ...(options.modelSelection?.reasoningEffort
+        ? { reasoningEffort: options.modelSelection.reasoningEffort }
+        : {}),
+      ...(options.attachments?.length ? { attachments: options.attachments } : {})
+    };
+    const queue = this.queues.get(sessionId) ?? [];
+    queue.push(entry);
+    this.queues.set(sessionId, queue);
+    this.publishPendingMessages(sessionId);
+    return entry;
+  }
+
+  /**
+   * Drop a single queued follow-up by id. No-op if the message has already been
+   * popped by the drain loop or the session has been cancelled.
+   */
+  cancelQueuedMessage(sessionId: string, messageId: string): void {
+    const queue = this.queues.get(sessionId);
+    if (!queue) return;
+    const index = queue.findIndex((entry) => entry.id === messageId);
+    if (index === -1) return;
+    queue.splice(index, 1);
+    if (queue.length === 0) {
+      this.queues.delete(sessionId);
+    }
+    this.publishPendingMessages(sessionId);
+  }
+
+  /** Drop the entire queue for a session and notify the renderer. */
+  private clearQueue(sessionId: string): void {
+    if (!this.queues.has(sessionId)) return;
+    this.queues.delete(sessionId);
+    this.publishPendingMessages(sessionId);
+  }
+
+  /** Snapshot of every session's queue. Used by the dashboard:load handler. */
+  getAllPendingMessages(): Record<string, PendingMessage[]> {
+    const out: Record<string, PendingMessage[]> = {};
+    for (const [sessionId, queue] of this.queues) {
+      if (queue.length > 0) {
+        out[sessionId] = queue.map((entry) => ({ ...entry }));
+      }
+    }
+    return out;
+  }
+
+  private publishPendingMessages(sessionId: string): void {
+    const queue = this.queues.get(sessionId) ?? [];
+    this.publishDashboardDelta({
+      pendingMessages: { [sessionId]: queue.map((entry) => ({ ...entry })) }
+    });
+  }
+
+  /**
+   * Drain the head of the queue as a fresh follow-up turn after the previous
+   * turn reached `complete`. Fire-and-forget: failure is logged but does not
+   * propagate, so a single bad message can't poison subsequent turns. Each
+   * drained message ships the model + agentMode it was queued with.
+   */
+  private drainQueueAfterComplete(sessionId: string): void {
+    const queue = this.queues.get(sessionId);
+    if (!queue || queue.length === 0) return;
+    const next = queue.shift();
+    if (!next) return;
+    if (queue.length === 0) {
+      this.queues.delete(sessionId);
+    } else {
+      this.queues.set(sessionId, queue);
+    }
+    this.publishPendingMessages(sessionId);
+    const options: FollowUpOptions = {
+      agentMode: next.agentMode,
+      ...(next.modelLabel && next.modelId
+        ? {
+            modelSelection: {
+              modelLabel: next.modelLabel,
+              modelId: next.modelId,
+              ...(next.reasoningEffort ? { reasoningEffort: next.reasoningEffort } : {})
+            }
+          }
+        : {}),
+      ...(next.attachments?.length ? { attachments: next.attachments } : {})
+    };
+    this.sendInput(sessionId, next.content, options).catch((error) => {
+      logger.warn("providers.session", "drainQueueAfterComplete failed", {
+        sessionId,
+        messageId: next.id,
+        error: errorMessage(error)
+      });
+    });
   }
 
   /**
@@ -636,6 +770,7 @@ export class ProviderSessionService {
     this.handles.delete(sessionId);
     this.logHandleCount("cancelled", sessionId);
     this.deleteBuffer(sessionId);
+    this.clearQueue(sessionId);
     this.publishDashboardDelta({
       projects: this.database.listProjects(),
       workspaces: [workspace],
@@ -851,6 +986,11 @@ export class ProviderSessionService {
       });
       if (succeeded) {
         this.synthesizeLearnings(event.sessionId, workspaceId);
+      } else {
+        // Failure path — the session is dead from the user's perspective, so
+        // drop any follow-ups they'd lined up rather than auto-firing them
+        // against a session that just errored.
+        this.clearQueue(event.sessionId);
       }
     } catch (error) {
       // Race: session or workspace was deleted between buffer flush and
@@ -866,6 +1006,12 @@ export class ProviderSessionService {
     this.handles.delete(event.sessionId);
     this.logHandleCount("closed", event.sessionId);
     this.deleteBuffer(event.sessionId);
+    // Drain runs AFTER the handle is gone so the re-launch path in sendInput
+    // doesn't try to write into the dead PTY. No-op when the queue is empty
+    // or the session didn't succeed (failure cleared it above).
+    if (succeeded) {
+      this.drainQueueAfterComplete(event.sessionId);
+    }
   }
 
   private queueRawOutput(event: ProviderEvent): void {

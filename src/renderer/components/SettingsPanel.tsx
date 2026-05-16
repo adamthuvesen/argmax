@@ -142,6 +142,8 @@ export function SettingsPanel({
   onToolCallsExpandedChange,
   sidebarTokensVisible,
   onSidebarTokensVisibleChange,
+  chatCostVisible,
+  onChatCostVisibleChange,
   fontFamily,
   onFontFamilyChange,
   detectedIdes,
@@ -162,6 +164,8 @@ export function SettingsPanel({
   onToolCallsExpandedChange: (v: boolean) => void;
   sidebarTokensVisible: boolean;
   onSidebarTokensVisibleChange: (v: boolean) => void;
+  chatCostVisible: boolean;
+  onChatCostVisibleChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
   detectedIdes: DetectedIde[];
@@ -408,6 +412,13 @@ export function SettingsPanel({
               description="Display per-session token usage under each sidebar entry."
               checked={sidebarTokensVisible}
               onChange={onSidebarTokensVisibleChange}
+            />
+
+            <ToggleRow
+              label="Show cost in agent chat"
+              description="Display the session cost card beside the active conversation."
+              checked={chatCostVisible}
+              onChange={onChatCostVisibleChange}
             />
 
             <KeyValueList

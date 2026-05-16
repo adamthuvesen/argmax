@@ -1,6 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ProjectSummary, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  PendingMessage,
+  ProjectSummary,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary
+} from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { SessionConversation } from "./SessionConversation.js";
 
@@ -126,7 +132,15 @@ function cursorAssistantPayload(text: string): Record<string, unknown> {
   };
 }
 
-function renderConversation(session: SessionSummary, events: TimelineEvent[] = []) {
+function renderConversation(
+  session: SessionSummary,
+  events: TimelineEvent[] = [],
+  options: {
+    pendingMessages?: PendingMessage[];
+    onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
+    onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
+  } = {}
+) {
   return render(
     <SessionConversation
       events={events}
@@ -134,7 +148,10 @@ function renderConversation(session: SessionSummary, events: TimelineEvent[] = [
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}
       onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
+      onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn().mockResolvedValue(undefined)}
+      pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
+      {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       project={project}
       rawOutputs={[]}
       review={reviewStub()}
@@ -338,5 +355,187 @@ describe("SessionConversation — model selection persistence", () => {
 
     expect(screen.queryByText("event payload truncated")).not.toBeInTheDocument();
     expect(screen.getByText("Done")).toBeInTheDocument();
+  });
+
+  it("keeps the composer enabled while the session is running so messages can be queued", () => {
+    renderConversation(baseSession({ state: "running" }));
+
+    const textarea = screen.getByLabelText("Session prompt");
+    expect(textarea).toBeEnabled();
+    // Stop button stays visible alongside Send so the user can still kill the
+    // current turn even with queued follow-ups.
+    expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
+    ).toBeInTheDocument();
+  });
+
+  it("renders a chip per queued follow-up and cancels through the IPC callback", () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    const queuedAt = "2026-05-12T15:30:30.000Z";
+    const pending: PendingMessage[] = [
+      {
+        id: "queued-1",
+        sessionId: "session-a",
+        content: "add tests for the queue",
+        agentMode: "edit",
+        queuedAt
+      },
+      {
+        id: "queued-2",
+        sessionId: "session-a",
+        content: "then run lint",
+        agentMode: "edit",
+        queuedAt
+      }
+    ];
+
+    renderConversation(
+      baseSession({ state: "running" }),
+      [],
+      { pendingMessages: pending, onCancelQueuedMessage: onCancel }
+    );
+
+    expect(screen.getByText("add tests for the queue")).toBeInTheDocument();
+    expect(screen.getByText("then run lint")).toBeInTheDocument();
+
+    const removeButtons = screen.getAllByRole("button", { name: "Cancel queued follow-up" });
+    expect(removeButtons).toHaveLength(2);
+
+    fireEvent.click(removeButtons[0]);
+    expect(onCancel).toHaveBeenCalledWith("session-a", "queued-1");
+  });
+
+  it("routes a backticked file chip click to onOpenFile (right panel)", () => {
+    const onOpenFile = vi.fn();
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event(
+          "m1",
+          "message.completed",
+          "See `src/foo.ts:42` for details.",
+          "2026-05-12T15:00:00.000Z"
+        )
+      ],
+      { onOpenFile }
+    );
+
+    fireEvent.click(screen.getByLabelText("Open src/foo.ts at line 42"));
+    expect(onOpenFile).toHaveBeenCalledTimes(1);
+    expect(onOpenFile).toHaveBeenCalledWith("src/foo.ts", { line: 42, preferIde: false });
+  });
+
+  it("routes a markdown link to a local path through onOpenFile", () => {
+    const onOpenFile = vi.fn();
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event(
+          "m1",
+          "message.completed",
+          "Open [foo](src/bar.ts) please.",
+          "2026-05-12T15:00:00.000Z"
+        )
+      ],
+      { onOpenFile }
+    );
+
+    fireEvent.click(screen.getByLabelText("Open src/bar.ts"));
+    expect(onOpenFile).toHaveBeenCalledWith("src/bar.ts", { line: null, preferIde: false });
+  });
+
+  it("flags ⌘-click on a file chip with preferIde so the parent routes to the external IDE", () => {
+    const onOpenFile = vi.fn();
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event(
+          "m1",
+          "message.completed",
+          "See `src/foo.ts` for details.",
+          "2026-05-12T15:00:00.000Z"
+        )
+      ],
+      { onOpenFile }
+    );
+
+    fireEvent.click(screen.getByLabelText("Open src/foo.ts"), { metaKey: true });
+    expect(onOpenFile).toHaveBeenCalledWith("src/foo.ts", { line: null, preferIde: true });
+  });
+
+  it("leaves external markdown links as anchors (does not call onOpenFile)", () => {
+    const onOpenFile = vi.fn();
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event(
+          "m1",
+          "message.completed",
+          "Docs at [example](https://example.com).",
+          "2026-05-12T15:00:00.000Z"
+        )
+      ],
+      { onOpenFile }
+    );
+
+    const link = screen.getByRole("link", { name: "example" });
+    expect(link).toHaveAttribute("href", "https://example.com");
+    fireEvent.click(link);
+    expect(onOpenFile).not.toHaveBeenCalled();
+  });
+
+  it("renders an assistant message produced in plan mode as a PlanCard", () => {
+    const plan = [
+      "# Plan: Tidy chat header",
+      "",
+      "Make the header lighter and clearer.",
+      "",
+      "## Key Changes",
+      "",
+      "- Update the badge color",
+      "- Shrink the avatar"
+    ].join("\n");
+
+    renderConversation(baseSession({ state: "complete" }), [
+      event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "plan" }),
+      event("m1", "message.completed", plan, "2026-05-12T15:00:01.000Z")
+    ]);
+
+    expect(screen.getByRole("article", { name: /Plan: Tidy chat header/ })).toBeInTheDocument();
+    expect(screen.getByRole("listbox", { name: "Plan response" })).toBeInTheDocument();
+    expect(screen.getByText("Key Changes")).toBeInTheDocument();
+  });
+
+  it("renders the same content as a ChatBubble when the turn was sent in edit mode", () => {
+    const plan = [
+      "# Plan: Tidy chat header",
+      "",
+      "Make the header lighter and clearer.",
+      "",
+      "## Key Changes",
+      "",
+      "- Update the badge color"
+    ].join("\n");
+
+    renderConversation(baseSession({ state: "complete" }), [
+      event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "edit" }),
+      event("m1", "message.completed", plan, "2026-05-12T15:00:01.000Z")
+    ]);
+
+    expect(screen.queryByRole("listbox", { name: "Plan response" })).toBeNull();
+    expect(screen.queryByRole("article", { name: /Plan: Tidy chat header/ })).toBeNull();
+    // Title still shows, but as plain markdown inside a ChatBubble
+    expect(screen.getByRole("heading", { name: "Plan: Tidy chat header" })).toBeInTheDocument();
+  });
+
+  it("falls back to a ChatBubble when a plan-mode reply has no parseable plan structure", () => {
+    renderConversation(baseSession({ state: "complete" }), [
+      event("u1", "user.message", "what time is it?", "2026-05-12T15:00:00.000Z", { agentMode: "plan" }),
+      event("m1", "message.completed", "It's about 3:30 PM here.", "2026-05-12T15:00:01.000Z")
+    ]);
+
+    expect(screen.queryByRole("listbox", { name: "Plan response" })).toBeNull();
+    expect(screen.getByText("It's about 3:30 PM here.")).toBeInTheDocument();
   });
 });

@@ -33,11 +33,11 @@ const ReviewPanel = lazy(async () => ({
   default: (await import("./ReviewPanel.js")).ReviewPanel
 }));
 import { SessionConversation } from "./SessionConversation.js";
-// TerminalPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and only
-// loaded when the user opens the integrated terminal. Lazy-mounted (ralph
-// B5) so xterm leaves the main chunk.
-const TerminalPanel = lazy(async () => ({
-  default: (await import("./TerminalPanel.js")).TerminalPanel
+// TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and
+// only loaded when the user opens the integrated terminal. Lazy-mounted
+// (ralph B5) so xterm leaves the main chunk.
+const TerminalTabsPanel = lazy(async () => ({
+  default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel
 }));
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
@@ -118,17 +118,33 @@ export function SessionPane({
   });
   const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  // True once the user has opened the terminal in the current workspace.
+  // Lets the panel stay mounted (PTYs alive) across ⌘J collapses while
+  // still keeping the heavy xterm bundle off the initial render. Resets on
+  // workspace change so old PTYs are torn down with the leaf components.
+  const [terminalOnceOpened, setTerminalOnceOpened] = useState(false);
   const [isTerminalResizing, setIsTerminalResizing] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState<number>(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(TERMINAL_HEIGHT_KEY) : null;
     const n = raw ? parseInt(raw, 10) : NaN;
     return Number.isFinite(n) && n >= TERMINAL_MIN_HEIGHT && n <= TERMINAL_MAX_HEIGHT ? n : TERMINAL_DEFAULT_HEIGHT;
   });
-  // Close the terminal when the session/workspace context goes away so a
-  // stale PTY isn't kept alive against an archived worktree.
   useEffect(() => {
-    if (!workspace) setIsTerminalOpen(false);
-  }, [workspace]);
+    if (isTerminalOpen) setTerminalOnceOpened(true);
+  }, [isTerminalOpen]);
+  // Reset the terminal panel whenever the session/workspace context changes
+  // or clears — the leaf components unmount and their PTYs are terminated.
+  useEffect(() => {
+    setIsTerminalOpen(false);
+    setTerminalOnceOpened(false);
+  }, [workspace?.id]);
+  const handleTerminalCollapse = useCallback(() => {
+    setIsTerminalOpen(false);
+  }, []);
+  const handleTerminalRequestClose = useCallback(() => {
+    setIsTerminalOpen(false);
+    setTerminalOnceOpened(false);
+  }, []);
   const visibleApprovals = useMemo(
     () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
     [approvals, sessionId]
@@ -413,11 +429,13 @@ export function SessionPane({
             ))}
           </section>
         ) : null}
-        {terminalOpen && workspace ? (
+        {terminalOnceOpened && workspace ? (
           <div
             className="terminal-panel"
             data-argmax-terminal="true"
-            style={{ height: `${terminalHeight}px` }}
+            data-collapsed={terminalOpen ? "false" : "true"}
+            aria-hidden={!terminalOpen}
+            style={{ height: terminalOpen ? `${terminalHeight}px` : "0px" }}
           >
             <div
               className="terminal-panel-resize"
@@ -426,23 +444,14 @@ export function SessionPane({
               aria-label="Resize terminal"
               onMouseDown={onTerminalResizeMouseDown}
             />
-            <div className="terminal-panel-header">
-              <span className="terminal-panel-title">Terminal</span>
-              <span className="terminal-panel-cwd" title={workspace.path}>
-                {workspace.path}
-              </span>
-              <button
-                type="button"
-                className="terminal-panel-close"
-                aria-label="Hide terminal"
-                title="Hide terminal (⌘J)"
-                onClick={() => setIsTerminalOpen(false)}
-              >
-                ×
-              </button>
-            </div>
             <Suspense fallback={null}>
-              <TerminalPanel workspaceId={workspace.id} visible={terminalOpen} />
+              <TerminalTabsPanel
+                key={workspace.id}
+                workspaceId={workspace.id}
+                visible={terminalOpen}
+                onCollapse={handleTerminalCollapse}
+                onRequestClose={handleTerminalRequestClose}
+              />
             </Suspense>
           </div>
         ) : null}

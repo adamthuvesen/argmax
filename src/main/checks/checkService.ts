@@ -174,17 +174,22 @@ export class CheckService {
    * Cancel every running check for a workspace. Used during workspace
    * archive so an in-flight `npm test` doesn't keep writing into a worktree
    * directory that's about to be removed.
+   *
+   * Uses the same SIGTERM → SIGKILL escalation as runWorkspaceCheck so a
+   * non-responsive child (one ignoring SIGTERM) is force-killed within the
+   * default grace window. Without the escalation, an `npm test` that traps
+   * SIGTERM kept writing into the worktree after archive started.
    */
   cancelWorkspaceChecks(workspaceId: string): void {
     const children = this.running.get(workspaceId);
     if (!children || children.size === 0) return;
     for (const child of children) {
       if (typeof child.pid !== "number") continue;
-      try {
-        process.kill(-child.pid, "SIGTERM");
-      } catch {
-        /* already gone */
-      }
+      const pid = child.pid;
+      scheduleSigkillEscalation(
+        () => process.kill(-pid, "SIGTERM"),
+        () => process.kill(-pid, "SIGKILL")
+      );
     }
   }
 

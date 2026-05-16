@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import type { IPty, IPtyForkOptions } from "node-pty";
+import type { IDisposable, IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
 import { safeKill } from "../processControl.js";
@@ -23,6 +23,7 @@ export interface McpAuthBroadcaster {
 interface AuthSessionEntry {
   pty: IPty;
   primed: boolean;
+  disposables: IDisposable[];
 }
 
 /**
@@ -77,33 +78,41 @@ export class McpAuthService {
     });
 
     const sessionId = randomUUID();
-    const entry: AuthSessionEntry = { pty, primed: false };
+    const entry: AuthSessionEntry = { pty, primed: false, disposables: [] };
     this.sessions.set(sessionId, entry);
 
-    pty.onData((data) => {
-      // First chunk from Claude means the prompt is on screen — auto-type
-      // `/mcp` so the user lands directly on the MCP picker. Only fire once
-      // per session; subsequent output is the user's interactive flow.
-      if (!entry.primed) {
-        entry.primed = true;
-        try {
-          pty.write("/mcp\r");
-        } catch {
-          // PTY may have died between spawn and first data; the exit handler
-          // will surface the failure to the renderer.
+    entry.disposables.push(
+      pty.onData((data) => {
+        // First chunk from Claude means the prompt is on screen — auto-type
+        // `/mcp` so the user lands directly on the MCP picker. Only fire once
+        // per session; subsequent output is the user's interactive flow.
+        if (!entry.primed) {
+          entry.primed = true;
+          try {
+            pty.write("/mcp\r");
+          } catch {
+            // PTY may have died between spawn and first data; the exit handler
+            // will surface the failure to the renderer.
+          }
         }
-      }
-      this.broadcaster.emitData({ sessionId, data });
-    });
+        this.broadcaster.emitData({ sessionId, data });
+      })
+    );
 
-    pty.onExit(({ exitCode, signal }) => {
-      this.sessions.delete(sessionId);
-      this.broadcaster.emitExit({
-        sessionId,
-        exitCode,
-        signal: typeof signal === "number" ? signal : null
-      });
-    });
+    entry.disposables.push(
+      pty.onExit(({ exitCode, signal }) => {
+        const live = this.sessions.get(sessionId);
+        if (live) {
+          for (const d of live.disposables) d.dispose();
+          this.sessions.delete(sessionId);
+        }
+        this.broadcaster.emitExit({
+          sessionId,
+          exitCode,
+          signal: typeof signal === "number" ? signal : null
+        });
+      })
+    );
 
     return { sessionId };
   }
@@ -123,11 +132,15 @@ export class McpAuthService {
   terminate(sessionId: string): void {
     const entry = this.sessions.get(sessionId);
     if (!entry) return;
+    // Don't dispose listeners here — the pty's own exit will fire onExit and
+    // clean up via that path. Disposing pre-emptively would cancel the
+    // listener before exitCode/signal could be broadcast to the renderer.
     safeKill(entry.pty);
   }
 
   disposeAll(): void {
     for (const [, entry] of this.sessions) {
+      for (const d of entry.disposables) d.dispose();
       safeKill(entry.pty);
     }
     this.sessions.clear();

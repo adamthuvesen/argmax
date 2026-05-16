@@ -38,6 +38,6 @@ export async function resolveOpenablePath(
     const slash = entry.path.lastIndexOf("/");
     return slash >= 0 && entry.path.slice(slash + 1) === path;
   });
-  if (matches.length === 1) return matches[0]!.path;
-  return null;
+  const only = matches.length === 1 ? matches[0] : undefined;
+  return only ? only.path : null;
 }

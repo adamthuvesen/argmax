@@ -89,32 +89,84 @@ export class TournamentService {
     // Launch contestants serially so a worktree-creation failure halts the
     // tournament before we burn N model launches. (Parallel launch would
     // race for the project's git index.)
-    for (let index = 0; index < input.contestants.length; index++) {
-      const config = input.contestants[index];
-      if (!config) continue;
-      const workspace = await this.workspaces.createIsolatedWorkspace({
-        projectId: input.projectId,
-        taskLabel: `${input.taskLabel} · #${index + 1}`
-      });
-      const session = await this.providerSessions.launch({
-        workspaceId: workspace.id,
-        provider: config.provider,
-        prompt: input.prompt,
-        modelLabel: config.modelLabel,
-        modelId: config.modelId,
-        ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
-        cols: input.cols,
-        rows: input.rows
-      });
-      createContestant(this.database.connection, {
-        tournamentId,
-        contestantIndex: index,
-        sessionId: session.id,
-        config
-      });
+    //
+    // Track launched contestants so a mid-loop failure can roll back the
+    // already-spawned worktrees and sessions instead of leaving orphans behind
+    // with the tournament stuck in 'pending'.
+    const launched: Array<{ workspaceId: string; sessionId: string }> = [];
+    try {
+      for (let index = 0; index < input.contestants.length; index++) {
+        const config = input.contestants[index];
+        if (!config) continue;
+        const workspace = await this.workspaces.createIsolatedWorkspace({
+          projectId: input.projectId,
+          taskLabel: `${input.taskLabel} · #${index + 1}`
+        });
+        const session = await this.providerSessions.launch({
+          workspaceId: workspace.id,
+          provider: config.provider,
+          prompt: input.prompt,
+          modelLabel: config.modelLabel,
+          modelId: config.modelId,
+          ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
+          cols: input.cols,
+          rows: input.rows
+        });
+        launched.push({ workspaceId: workspace.id, sessionId: session.id });
+        createContestant(this.database.connection, {
+          tournamentId,
+          contestantIndex: index,
+          sessionId: session.id,
+          config
+        });
+      }
+    } catch (error) {
+      // Roll back any already-launched contestants so we don't leave orphaned
+      // worktrees and provider sessions tied to a tournament that never
+      // entered 'running'. Each cleanup is best-effort: log and continue so
+      // one stuck workspace doesn't block the rest.
+      for (const entry of launched) {
+        try {
+          await this.providerSessions.terminate(entry.sessionId);
+        } catch (cleanupError) {
+          logger.warn("tournaments.launchTournament", "cleanup terminate failed", {
+            tournamentId,
+            sessionId: entry.sessionId,
+            error: errorMessage(cleanupError)
+          });
+        }
+        try {
+          await this.workspaces.archiveWorkspace(entry.workspaceId);
+        } catch (cleanupError) {
+          logger.warn("tournaments.launchTournament", "cleanup archive failed", {
+            tournamentId,
+            workspaceId: entry.workspaceId,
+            error: errorMessage(cleanupError)
+          });
+        }
+      }
+      updateTournamentState(this.database.connection, tournamentId, "cancelled");
+      throw error;
     }
 
     return updateTournamentState(this.database.connection, tournamentId, "running");
+  }
+
+  /**
+   * Boot-time reconciler — any tournament left in 'judging' after the previous
+   * process exited has partial scores at best and no verdict. Reset to
+   * 'running' so refreshAndJudgeIfReady can re-drive the judge pipeline
+   * idempotently. Without this, a crash mid-judge wedged tournaments forever.
+   */
+  recoverStuckJudgingTournaments(): number {
+    const stuck = listTournaments(this.database.connection, { state: "judging" });
+    for (const t of stuck) {
+      updateTournamentState(this.database.connection, t.id, "running");
+    }
+    if (stuck.length > 0) {
+      logger.info("tournaments.recover", "reset stuck judging tournaments", { count: stuck.length });
+    }
+    return stuck.length;
   }
 
   listTournamentsForProject(projectId: string): Tournament[] {

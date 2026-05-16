@@ -107,10 +107,12 @@ export function updateWorkspaceState(
   state: WorkspaceSummary["state"]
 ): WorkspaceSummary {
   const timestamp = new Date().toISOString();
-  connection
+  const result = connection
     .prepare("UPDATE workspaces SET state = ?, last_activity_at = ?, updated_at = ? WHERE id = ?")
     .run(state, timestamp, timestamp, workspaceId);
-
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("workspace", workspaceId);
+  }
   return findWorkspaceById(connection, workspaceId);
 }
 
@@ -120,7 +122,7 @@ export function updateWorkspaceStatus(
   status: WorkspaceStatusInput
 ): WorkspaceSummary {
   const timestamp = status.lastActivityAt ?? new Date().toISOString();
-  connection
+  const result = connection
     .prepare(
       `
         UPDATE workspaces
@@ -129,7 +131,9 @@ export function updateWorkspaceStatus(
       `
     )
     .run(status.branch, status.dirty ? 1 : 0, status.changedFiles, timestamp, timestamp, workspaceId);
-
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("workspace", workspaceId);
+  }
   return findWorkspaceById(connection, workspaceId);
 }
 

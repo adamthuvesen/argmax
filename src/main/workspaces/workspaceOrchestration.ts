@@ -7,7 +7,12 @@ import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
+import { logger } from "../../shared/logger.js";
 import { runGitText } from "../git/exec.js";
+
+// One-time guard so the "recursive watch unavailable" log fires once per
+// process even if many workspaces are opened on Linux.
+let warnedRecursiveUnavailable = false;
 
 const execFileAsync = promisify(execFile);
 
@@ -251,14 +256,33 @@ export class WorkspaceService {
     const state: WatchState = { debounceTimer: null, inFlight: false, pending: false };
     this.watchState.set(workspaceId, state);
 
-    // recursive: true is the macOS/Windows hot path. On Linux this is a no-op
-    // (Node falls back to the directory-only watch); if a Linux user reports
-    // missed updates the documented fallback is chokidar (see design.md
+    // recursive: true is reliable on macOS/Windows. On Linux Node 20+ throws
+    // ERR_FEATURE_UNAVAILABLE_ON_PLATFORM rather than silently degrading, so
+    // retry with recursive:false and log once per workspace — the watcher
+    // still fires on root-directory changes but misses nested edits. A Linux
+    // user reporting missed updates should swap in chokidar (see design.md
     // "Open Questions"). persistent: false keeps Node from holding the event
     // loop open just because of the watcher.
-    const watcher = watch(workspace.path, { persistent: false, recursive: true }, () => {
-      this.scheduleStatusRefresh(workspaceId);
-    });
+    const handler = () => this.scheduleStatusRefresh(workspaceId);
+    let watcher: ReturnType<typeof watch>;
+    try {
+      watcher = watch(workspace.path, { persistent: false, recursive: true }, handler);
+    } catch (error) {
+      const code = (error as { code?: string } | undefined)?.code;
+      if (code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM") {
+        if (!warnedRecursiveUnavailable) {
+          warnedRecursiveUnavailable = true;
+          logger.warn(
+            "workspaces.watch",
+            "recursive fs.watch unavailable; falling back to root-only watch",
+            { platform: process.platform }
+          );
+        }
+        watcher = watch(workspace.path, { persistent: false, recursive: false }, handler);
+      } else {
+        throw error;
+      }
+    }
     watcher.on("error", () => {
       // fs.watch surfaces errors via the EventEmitter; if we don't listen,
       // an unhandled "error" event crashes the process.

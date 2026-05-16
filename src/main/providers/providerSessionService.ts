@@ -705,9 +705,15 @@ export class ProviderSessionService {
   }
 
   private listAllSessionEvents(sessionId: string): TimelineEvent[] {
+    // Cap the synthesis input. The learning extractor is bucket-based and
+    // doesn't need every event ever — a session with tens of thousands of
+    // events used to load the entire timeline into main memory on every
+    // session-complete. 5,000 events is enough to cover any plausible recent
+    // history while keeping peak memory bounded.
+    const SYNTHESIS_EVENT_CAP = 5_000;
     const events: TimelineEvent[] = [];
     let eventCursor = 0;
-    while (true) {
+    while (events.length < SYNTHESIS_EVENT_CAP) {
       const page = this.database.listSessionEventsSince({
         sessionId,
         eventCursor,
@@ -719,6 +725,7 @@ export class ProviderSessionService {
       }
       eventCursor = page.eventCursor;
     }
+    return events.slice(0, SYNTHESIS_EVENT_CAP);
   }
 
   recoverOrphanedSessions(): { recoveredCount: number } {

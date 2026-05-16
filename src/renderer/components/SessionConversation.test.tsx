@@ -362,12 +362,11 @@ describe("SessionConversation — model selection persistence", () => {
 
     const textarea = screen.getByLabelText("Session prompt");
     expect(textarea).toBeEnabled();
-    // Stop button stays visible alongside Send so the user can still kill the
-    // current turn even with queued follow-ups.
+    // Stop button takes the mascot's slot while running; follow-ups queue via Enter.
     expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
+    ).not.toBeInTheDocument();
   });
 
   it("renders a chip per queued follow-up and cancels through the IPC callback", () => {

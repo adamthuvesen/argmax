@@ -1005,7 +1005,11 @@ export function SessionConversation({
         ) : null}
         </NowProvider>
       </div>
-      <div className="session-meta-cards" ref={metaCardsRef}>
+      <div
+        className="session-meta-cards"
+        data-cost-visible={session && showCostPanel ? "true" : "false"}
+        ref={metaCardsRef}
+      >
         <ChangedFilesCard
           review={review}
           workspaceId={workspace?.id}

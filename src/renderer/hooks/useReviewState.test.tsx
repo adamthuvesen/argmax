@@ -70,8 +70,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
   it("does not refetch listChangedFiles when only `lastActivityAt` ticks (50 chat tokens)", async () => {
     // audit-2026-05-11 / SPEC P1.05 — the changed-files effect depended on
     // `workspace.lastActivityAt`, which bumps once per streamed token; that
-    // caused ~1 IPC roundtrip per token. Fix: depend on a stable signal
-    // (workspace.id + changedFiles count).
+    // caused ~1 IPC roundtrip per token. Fix: depend on stable signals
+    // (workspace.id + changedFiles count + lifecycle state).
     const initial = makeWorkspace({ lastActivityAt: "2026-05-12T15:54:00.000Z" });
     const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)), {
       initialProps: { ws: initial }
@@ -100,6 +100,19 @@ describe("useReviewState — IPC fan-out resistance", () => {
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
 
     rerender({ ws: makeWorkspace({ changedFiles: 4 }) });
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
+  });
+
+  it("does refetch listChangedFiles when the workspace completes with a stale changedFiles count", async () => {
+    const initial = makeWorkspace({ changedFiles: 0, state: "running" });
+    const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)), {
+      initialProps: { ws: initial }
+    });
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+
+    rerender({ ws: makeWorkspace({ changedFiles: 0, state: "complete" }) });
 
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
   });

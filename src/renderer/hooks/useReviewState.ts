@@ -83,11 +83,12 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       ? source.workspace.id
       : source.project.id
     : null;
-  // Project sources have no live activity counter — workspace mode reuses the
-  // workspace.changedFiles dep to refetch when an agent edits files; project
-  // mode refetches only on source id change (manual reload otherwise).
-  const changedFilesKey: number | null =
-    source?.kind === "workspace" ? source.workspace.changedFiles : null;
+  // Project sources have no live activity counter. Workspace mode refetches on
+  // the changed-file count and lifecycle state: provider completion can publish
+  // `running -> complete` before the cached count has caught up, so the state
+  // edge is the signal to ask git for the authoritative file list.
+  const changedFilesKey: string | null =
+    source?.kind === "workspace" ? `${source.workspace.changedFiles}:${source.workspace.state}` : null;
   const canEdit = sourceKind === "workspace" || sourceKind === "project";
 
   // Single dispatch object bound to the active source. Cached per (kind, id)

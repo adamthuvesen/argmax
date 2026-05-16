@@ -61,6 +61,7 @@ import {
   extractToolName,
   extractToolOutput,
   extractToolUseId,
+  isBashLikeTool,
   type ConversationItem,
   type ToolCall
 } from "../lib/toolCalls.js";
@@ -112,6 +113,35 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
     return "";
   }
   return event.message;
+}
+
+function foldTurnToolItems(toolItems: TurnToolItem[]): TurnToolItem[] {
+  const folded: TurnToolItem[] = [];
+  let commandRun: ToolCall[] = [];
+
+  const flushCommandRun = (): void => {
+    if (commandRun.length === 0) return;
+    if (commandRun.length === 1) {
+      const [tool] = commandRun;
+      if (tool) folded.push({ kind: "tool", tool });
+    } else {
+      folded.push({ kind: "tool-group", group: buildToolCallGroup(commandRun) });
+    }
+    commandRun = [];
+  };
+
+  for (const item of toolItems) {
+    const tools = item.kind === "tool" ? [item.tool] : item.group.tools;
+    if (tools.every((tool) => isBashLikeTool(tool.name))) {
+      commandRun.push(...tools);
+      continue;
+    }
+    flushCommandRun();
+    folded.push(item);
+  }
+
+  flushCommandRun();
+  return folded;
 }
 
 function isPayloadTruncationMarker(event: TimelineEvent): boolean {
@@ -325,7 +355,7 @@ export function SessionConversation({
         kind: "turn",
         id: pending.firstId ?? `turn-${out.length}`,
         assistantEvents: pending.assistantEvents,
-        toolItems: pending.toolItems,
+        toolItems: foldTurnToolItems(pending.toolItems),
         assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt))
       });
       pending = null;

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectSummary, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
@@ -252,6 +252,48 @@ describe("SessionConversation — model selection persistence", () => {
     );
 
     expect(screen.getAllByText(text)).toHaveLength(1);
+  });
+
+  it("folds Codex command_execution singletons into the turn command group", () => {
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "fix it", "2026-05-12T15:00:00.000Z"),
+        event("cmd1-start", "command.started", "command_execution", "2026-05-12T15:00:01.000Z", {
+          id: "cmd1",
+          name: "command_execution",
+          input: { command: "/bin/zsh -lc \"sed -n '1,120p' src/a.ts\"" }
+        }),
+        event("cmd1-end", "command.completed", "command_execution", "2026-05-12T15:00:02.000Z", {
+          id: "cmd1",
+          content: ""
+        }),
+        event("m1", "message.completed", "Checking the surrounding code.", "2026-05-12T15:00:03.000Z"),
+        event("cmd2-start", "command.started", "command_execution", "2026-05-12T15:00:04.000Z", {
+          id: "cmd2",
+          name: "command_execution",
+          input: { command: "/bin/zsh -lc \"rg -n useReviewState src\"" }
+        }),
+        event("cmd2-end", "command.completed", "command_execution", "2026-05-12T15:00:05.000Z", {
+          id: "cmd2",
+          content: ""
+        }),
+        event("cmd3-start", "command.started", "command_execution", "2026-05-12T15:00:06.000Z", {
+          id: "cmd3",
+          name: "command_execution",
+          input: { command: "/bin/zsh -lc \"npm run lint\"" }
+        }),
+        event("cmd3-end", "command.completed", "command_execution", "2026-05-12T15:00:07.000Z", {
+          id: "cmd3",
+          content: ""
+        })
+      ]
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
+    expect(screen.getByRole("button", { name: /Ran 3 commands/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();
   });
 
   it("renders a user.message bubble for an @-mention-only prompt while the session is still running", () => {

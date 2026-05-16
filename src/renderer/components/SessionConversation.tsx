@@ -1103,19 +1103,21 @@ export function SessionConversation({
           ) : null}
           {workspace ? (
             <div className="composer-footer" aria-label="Workspace context">
-              <button
-                type="button"
-                className="composer-footer-chip"
-                title={`Open worktree: ${workspace.path}`}
-                aria-label={`Open worktree at ${workspace.path}`}
-                onClick={() => {
-                  if (!window.argmax) return;
-                  void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
-                }}
-              >
-                <Folder size={11} aria-hidden="true" />
-                <span>{workspace.sharedWorkspace ? "Work locally" : "Worktree"}</span>
-              </button>
+              {workspace.sharedWorkspace ? null : (
+                <button
+                  type="button"
+                  className="composer-footer-chip"
+                  title={`Open worktree: ${workspace.path}`}
+                  aria-label={`Open worktree at ${workspace.path}`}
+                  onClick={() => {
+                    if (!window.argmax) return;
+                    void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
+                  }}
+                >
+                  <Folder size={11} aria-hidden="true" />
+                  <span>Worktree</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="composer-footer-chip"

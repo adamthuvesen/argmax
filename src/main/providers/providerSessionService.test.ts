@@ -1190,6 +1190,56 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
+  it("persists current Codex turn.completed usage with the launched model", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.5",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message:
+        JSON.stringify({
+          type: "turn.completed",
+          usage: {
+            input_tokens: 10_000,
+            cached_input_tokens: 7_000,
+            output_tokens: 500,
+            reasoning_output_tokens: 100
+          }
+        }) + "\n",
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:02.000Z"
+    });
+
+    const summary = database.getSessionCostSummary(session.id);
+    expect(summary.modelId).toBe("gpt-5.5");
+    expect(summary.tokens).toEqual({ input: 3_000, output: 500, cacheRead: 7_000, cacheWrite: 0 });
+    expect(summary.costUsd).toBeCloseTo(0.0335, 9);
+
+    database.connection.close();
+  });
+
   it("treats unknown model ids as cost=0 without throwing", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);

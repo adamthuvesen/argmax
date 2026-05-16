@@ -727,7 +727,11 @@ export class ProviderSessionService {
       workspacePath,
       provider,
       normalizerContext: createNormalizerSessionContext(
-        provider === "cursor" ? { cursorCurrentModel: modelId } : {}
+        provider === "codex"
+          ? { codexCurrentModel: modelId }
+          : provider === "cursor"
+            ? { cursorCurrentModel: modelId }
+            : {}
       )
     });
   }

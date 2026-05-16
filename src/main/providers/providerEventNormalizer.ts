@@ -48,9 +48,11 @@ export interface NormalizerSessionContext {
   cursorAssistantText: string | null;
 }
 
-export function createNormalizerSessionContext(initial: { cursorCurrentModel?: string } = {}): NormalizerSessionContext {
+export function createNormalizerSessionContext(
+  initial: { codexCurrentModel?: string; cursorCurrentModel?: string } = {}
+): NormalizerSessionContext {
   return {
-    codexCurrentModel: null,
+    codexCurrentModel: initial.codexCurrentModel ?? null,
     cursorCurrentModel: initial.cursorCurrentModel ?? null,
     cursorAssistantText: null
   };
@@ -790,27 +792,28 @@ function extractCodexUsage(
   providerType: string | null,
   context: NormalizerSessionContext | undefined
 ): NormalizedUsage | null {
-  // Codex emits token usage two ways:
+  // Codex emits token usage a few ways:
   //   1. Outer `{type:"event_msg", payload:{type:"token_count", info:{last_token_usage:{...}}}}`
   //   2. Outer `{type:"token_count", info:{last_token_usage:{...}}}` (flattened)
-  let info: Record<string, unknown> | null = null;
+  //   3. Current JSONL `{type:"turn.completed", usage:{...}}`
+  let rawUsage: Record<string, unknown> | null = null;
 
   if (providerType === "event_msg") {
     const inner = objectValue(payload.payload);
     if (inner && stringValue(inner.type) === "token_count") {
-      info = objectValue(inner.info);
+      rawUsage = objectValue(objectValue(inner.info)?.last_token_usage);
     }
   } else if (providerType === "token_count") {
-    info = objectValue(payload.info);
+    rawUsage = objectValue(objectValue(payload.info)?.last_token_usage);
+  } else if (providerType === "turn.completed") {
+    rawUsage = objectValue(payload.usage);
   }
 
-  if (!info) return null;
-  const last = objectValue(info.last_token_usage);
-  if (!last) return null;
+  if (!rawUsage) return null;
 
-  const inputTokens = numberValue(last.input_tokens);
-  const cachedInput = numberValue(last.cached_input_tokens);
-  const outputTokens = numberValue(last.output_tokens);
+  const inputTokens = numberValue(rawUsage.input_tokens);
+  const cachedInput = numberValue(rawUsage.cached_input_tokens);
+  const outputTokens = numberValue(rawUsage.output_tokens);
   if (inputTokens + outputTokens + cachedInput === 0) return null;
 
   // OpenAI reports `input_tokens` as the full context size INCLUDING cached

@@ -30,7 +30,7 @@ export interface SaveImageResult {
 export class AttachmentStoreError extends Error {
   constructor(
     message: string,
-    public readonly code: "INVALID_MIME" | "TOO_LARGE" | "WRITE_FAILED"
+    public readonly code: "INVALID_MIME" | "TOO_LARGE" | "WRITE_FAILED" | "INVALID_SESSION_ID"
   ) {
     super(message);
     this.name = "AttachmentStoreError";
@@ -76,7 +76,15 @@ export class AttachmentStore {
       );
     }
 
-    const sessionDir = path.join(this.baseDir, input.sessionId);
+    const sessionDir = path.resolve(this.baseDir, input.sessionId);
+    const baseResolved = path.resolve(this.baseDir);
+    const baseWithSep = baseResolved.endsWith(path.sep) ? baseResolved : baseResolved + path.sep;
+    if (sessionDir !== baseResolved && !sessionDir.startsWith(baseWithSep)) {
+      throw new AttachmentStoreError(
+        `sessionId resolves outside the attachments root: ${input.sessionId}`,
+        "INVALID_SESSION_ID"
+      );
+    }
     await mkdir(sessionDir, { recursive: true });
     const filePath = path.join(sessionDir, `${randomUUID()}.${extensionForMime(input.mimeType)}`);
 

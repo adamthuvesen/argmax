@@ -55,7 +55,9 @@ const projectSettingsSchema = z.object({
 
 /**
  * filePath rules: must be relative (no leading "/"), no parent traversal,
- * cannot start with `-` (would be parsed as a flag by git argv).
+ * cannot start with `-` (would be parsed as a flag by git argv), and cannot
+ * contain null bytes (which truncate inside libc fs calls and can produce
+ * out-of-tree reads/writes).
  */
 const relativeFilePathSchema = z
   .string()
@@ -65,7 +67,16 @@ const relativeFilePathSchema = z
   .refine(
     (value) => !value.split(/[\\/]/).some((segment) => segment === ".."),
     { message: "filePath cannot contain '..' segments" }
-  );
+  )
+  .refine((value) => !value.includes("\u0000"), { message: "filePath cannot contain null bytes" });
+
+/**
+ * Allowed characters for git refs forwarded as positional arguments — same
+ * alphabet as gitCreateBranch (alphanumerics, dot, underscore, slash, dash).
+ * The leading-'-' check is kept for clarity even though the regex already
+ * forbids it. Defense in depth is still `--` separator at the call site.
+ */
+const STRICT_GIT_REF_RE = /^[A-Za-z0-9._/-]+$/;
 
 /**
  * git refs (branches / base refs) cannot start with `-` so they do not collide
@@ -77,7 +88,11 @@ function gitRefSchema(fieldName: string) {
   return z
     .string()
     .min(1)
-    .refine((value) => !value.startsWith("-"), { message: `${fieldName} cannot start with '-'` });
+    .max(255)
+    .refine((value) => !value.startsWith("-"), { message: `${fieldName} cannot start with '-'` })
+    .refine((value) => STRICT_GIT_REF_RE.test(value), {
+      message: `${fieldName} must match ${STRICT_GIT_REF_RE.source}`
+    });
 }
 
 const baseRefSchema = gitRefSchema("baseRef");
@@ -92,10 +107,13 @@ const promptSchema = z
   .min(1)
   .refine((value) => !value.startsWith("-"), { message: "prompt cannot start with '-'" });
 
-const workspaceIdSchema = z.string().min(1);
-const sessionIdSchema = z.string().min(1);
-const projectIdSchema = z.string().min(1);
-const approvalIdSchema = z.string().min(1);
+// Soft DoS guardrails — these ids flow into SQLite WHERE clauses, filesystem
+// paths, and IPC payload metadata. Parameterized queries already prevent SQL
+// injection, but an unbounded id is a memory/log-amplification footgun.
+const workspaceIdSchema = z.string().min(1).max(256);
+const sessionIdSchema = z.string().min(1).max(256);
+const projectIdSchema = z.string().min(1).max(256);
+const approvalIdSchema = z.string().min(1).max(256);
 
 // ---------------------------------------------------------------------------
 // Per-channel input schemas
@@ -163,11 +181,26 @@ export const attachmentMimeTypeSchema = z.enum([
 ]);
 
 /** Composer attachment metadata persisted alongside the user.message event so
- *  the timeline can render thumbnails without a separate IPC round-trip. */
+ *  the timeline can render thumbnails without a separate IPC round-trip.
+ *
+ *  filePath must be absolute (the store returns app.getPath('userData')/...).
+ *  Reject relative paths and null bytes here so a buggy renderer can't echo
+ *  back arbitrary on-disk paths and have them persisted in the timeline.
+ *
+ *  sizeBytes is capped to the same 10 MB post-decode budget the attachment
+ *  store enforces, so a renderer can't claim a huge size without uploading
+ *  the bytes.
+ */
+const ATTACHMENT_BYTE_CAP = 10 * 1024 * 1024;
 export const composerAttachmentSchema = z.object({
-  filePath: z.string().min(1),
+  filePath: z
+    .string()
+    .min(1)
+    .max(2048)
+    .refine((v) => isAbsolute(v), { message: "filePath must be absolute" })
+    .refine((v) => !v.includes(" "), { message: "filePath cannot contain null bytes" }),
   mimeType: attachmentMimeTypeSchema,
-  sizeBytes: z.number().int().positive()
+  sizeBytes: z.number().int().positive().max(ATTACHMENT_BYTE_CAP)
 });
 
 export const launchProviderSessionInputSchema = z.object({
@@ -203,7 +236,13 @@ export const attachmentSaveImageInputSchema = z.object({
   // Base64 of the raw image bytes (no `data:` prefix). 14 MB cap leaves
   // headroom over the 10 MB byte limit enforced by the store (~33% base64
   // overhead) so a valid 10 MB image is never rejected at the IPC boundary.
-  dataBase64: z.string().min(1).max(14 * 1024 * 1024)
+  // Alphabet check fails fast at the IPC boundary rather than deeper in the
+  // store with an opaque error.
+  dataBase64: z
+    .string()
+    .min(1)
+    .max(14 * 1024 * 1024)
+    .regex(/^[A-Za-z0-9+/=\s]*$/, { message: "dataBase64 must be base64-encoded" })
 });
 
 export const attachmentSaveImageResultSchema = z.object({
@@ -391,12 +430,28 @@ export const selectPreferredAttemptInputSchema = z.object({
 // openspec/changes/add-tournament-mode/.
 // ---------------------------------------------------------------------------
 
+// Cap the per-contestant free-form `config` blob. Without this a buggy or
+// runaway caller can ship megabytes of nested JSON that will be persisted in
+// tournament storage and ferried through the dashboard delta channel.
+const CONTESTANT_CONFIG_BYTE_CAP = 16 * 1024;
 const contestantConfigSchema = z.object({
   provider: providerIdSchema,
-  modelId: z.string().min(1),
-  modelLabel: z.string().min(1),
+  modelId: z.string().min(1).max(256),
+  modelLabel: z.string().min(1).max(256),
   reasoningEffort: reasoningEffortSchema.optional(),
-  config: z.record(z.unknown()).optional()
+  config: z
+    .record(z.unknown())
+    .optional()
+    .superRefine((value, ctx) => {
+      if (!value) return;
+      const encoded = JSON.stringify(value);
+      if (encoded.length > CONTESTANT_CONFIG_BYTE_CAP) {
+        ctx.addIssue({
+          code: "custom",
+          message: `config exceeds ${CONTESTANT_CONFIG_BYTE_CAP} bytes when serialized`
+        });
+      }
+    })
 });
 
 export const tournamentLaunchInputSchema = z.object({

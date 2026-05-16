@@ -14,6 +14,10 @@ import { buildAppMenuTemplate, type MenuCommand } from "./menu.js";
 import { UpdateService } from "./updater/updateService.js";
 import { GhService } from "./gh/ghService.js";
 import { GhPoller } from "./gh/ghPoller.js";
+import {
+  registerAttachmentProtocolHandler,
+  registerAttachmentSchemeAsPrivileged
+} from "./attachments/attachmentProtocol.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 import type {
   DashboardDelta,
@@ -29,6 +33,10 @@ import { mark as markStartupPhase } from "./util/startupTimer.js";
 import { isAllowedAppNavigation, rendererFileNavigationPrefix } from "./util/appNavigation.js";
 
 app.setName("Argmax");
+
+// Must register the custom scheme as privileged BEFORE app.whenReady so the
+// renderer treats argmax-attachment:// as a trusted origin and <img src> works.
+registerAttachmentSchemeAsPrivileged();
 
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
@@ -132,6 +140,7 @@ void app.whenReady().then(async () => {
   if (process.platform === "darwin" && app.dock) {
     app.dock.setIcon(iconPath);
   }
+  registerAttachmentProtocolHandler();
   database = createDatabase();
   markStartupPhase("db.open");
   const notifications = new NotificationService({

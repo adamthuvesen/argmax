@@ -155,6 +155,21 @@ export const workspaceIdInputSchema = workspaceIdSchema;
 
 export const permissionModeSchema = z.enum(["auto-approve", "ask-each-time"]);
 
+export const attachmentMimeTypeSchema = z.enum([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp"
+]);
+
+/** Composer attachment metadata persisted alongside the user.message event so
+ *  the timeline can render thumbnails without a separate IPC round-trip. */
+export const composerAttachmentSchema = z.object({
+  filePath: z.string().min(1),
+  mimeType: attachmentMimeTypeSchema,
+  sizeBytes: z.number().int().positive()
+});
+
 export const launchProviderSessionInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   provider: providerIdSchema,
@@ -165,7 +180,8 @@ export const launchProviderSessionInputSchema = z.object({
   agentMode: agentModeSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
   cols: terminalCols,
-  rows: terminalRows
+  rows: terminalRows,
+  attachments: z.array(composerAttachmentSchema).max(20).optional()
 });
 
 export const providerSessionInputSchema = z.object({
@@ -174,7 +190,25 @@ export const providerSessionInputSchema = z.object({
   modelLabel: z.string().min(1).optional(),
   modelId: z.string().min(1).optional(),
   reasoningEffort: reasoningEffortSchema.optional(),
-  agentMode: agentModeSchema.optional()
+  agentMode: agentModeSchema.optional(),
+  attachments: z.array(composerAttachmentSchema).max(20).optional()
+});
+
+/** Renderer pipes pasted/dropped image bytes through here; the main-process
+ *  AttachmentStore writes them under userData and returns an absolute path
+ *  the agent can read via its file tool. */
+export const attachmentSaveImageInputSchema = z.object({
+  sessionId: sessionIdSchema,
+  mimeType: attachmentMimeTypeSchema,
+  // Base64 of the raw image bytes (no `data:` prefix). 14 MB cap leaves
+  // headroom over the 10 MB byte limit enforced by the store (~33% base64
+  // overhead) so a valid 10 MB image is never rejected at the IPC boundary.
+  dataBase64: z.string().min(1).max(14 * 1024 * 1024)
+});
+
+export const attachmentSaveImageResultSchema = z.object({
+  filePath: z.string(),
+  sizeBytes: z.number().int().positive()
 });
 
 export const providerSessionResizeInputSchema = z.object({
@@ -347,6 +381,43 @@ export const selectPreferredAttemptInputSchema = z.object({
  * Commit message rules: non-empty after trim, capped to 64 KB so a runaway
  * paste cannot blow past argv length limits.
  */
+// ---------------------------------------------------------------------------
+// Tournament mode (idea #1: parallel agents + auto-judge). See
+// openspec/changes/add-tournament-mode/.
+// ---------------------------------------------------------------------------
+
+const contestantConfigSchema = z.object({
+  provider: providerIdSchema,
+  modelId: z.string().min(1),
+  modelLabel: z.string().min(1),
+  reasoningEffort: reasoningEffortSchema.optional(),
+  config: z.record(z.unknown()).optional()
+});
+
+export const tournamentLaunchInputSchema = z.object({
+  projectId: projectIdSchema,
+  taskLabel: z.string().min(1).max(200),
+  prompt: promptSchema,
+  policyId: z.string().min(1),
+  contestants: z.array(contestantConfigSchema).min(2).max(8),
+  cols: terminalCols,
+  rows: terminalRows
+});
+
+export const tournamentListInputSchema = z.object({
+  projectId: projectIdSchema
+});
+
+export const tournamentGetInputSchema = z.object({
+  tournamentId: z.string().min(1)
+});
+
+export const tournamentKeepInputSchema = z.object({
+  tournamentId: z.string().min(1),
+  contestantIndex: z.number().int().nonnegative(),
+  reason: z.string().max(500).optional()
+});
+
 export const gitCommitInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   message: z
@@ -469,6 +540,7 @@ export const ipcSchemas = {
   "providers:send-input": providerSessionInputSchema,
   "providers:resize": providerSessionResizeInputSchema,
   "providers:terminate": providerSessionTerminateInputSchema,
+  "attachments:save-image": attachmentSaveImageInputSchema,
   "terminal:spawn": terminalSpawnInputSchema,
   "terminal:write": terminalWriteInputSchema,
   "terminal:resize": terminalResizeInputSchema,
@@ -529,7 +601,12 @@ export const ipcSchemas = {
   "git:commit": gitCommitInputSchema,
   "git:push": gitPushInputSchema,
   "git:createBranch": gitCreateBranchInputSchema,
-  "git:viewOrCreatePr": gitViewOrCreatePrInputSchema
+  "git:viewOrCreatePr": gitViewOrCreatePrInputSchema,
+  "tournament:launch": tournamentLaunchInputSchema,
+  "tournament:list": tournamentListInputSchema,
+  "tournament:get": tournamentGetInputSchema,
+  "tournament:keep": tournamentKeepInputSchema,
+  "scoring:listPolicies": z.void()
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -546,6 +623,10 @@ export type CreateWorkspaceInputParsed = z.infer<typeof createWorkspaceInputSche
 export type CreateCurrentWorkspaceInputParsed = z.infer<typeof createCurrentWorkspaceInputSchema>;
 export type LaunchProviderSessionInputParsed = z.infer<typeof launchProviderSessionInputSchema>;
 export type ProviderSessionInputParsed = z.infer<typeof providerSessionInputSchema>;
+export type ComposerAttachmentParsed = z.infer<typeof composerAttachmentSchema>;
+export type AttachmentSaveImageInputParsed = z.infer<typeof attachmentSaveImageInputSchema>;
+export type AttachmentSaveImageResultParsed = z.infer<typeof attachmentSaveImageResultSchema>;
+export type AttachmentMimeTypeParsed = z.infer<typeof attachmentMimeTypeSchema>;
 export type ProviderSessionResizeInputParsed = z.infer<typeof providerSessionResizeInputSchema>;
 export type ResolveApprovalInputParsed = z.infer<typeof resolveApprovalInputSchema>;
 export type SessionEventsSinceInputParsed = z.infer<typeof sessionEventsSinceInputSchema>;
@@ -580,3 +661,7 @@ export type GitCommitInputParsed = z.infer<typeof gitCommitInputSchema>;
 export type GitPushInputParsed = z.infer<typeof gitPushInputSchema>;
 export type GitCreateBranchInputParsed = z.infer<typeof gitCreateBranchInputSchema>;
 export type GitViewOrCreatePrInputParsed = z.infer<typeof gitViewOrCreatePrInputSchema>;
+export type TournamentLaunchInputParsed = z.infer<typeof tournamentLaunchInputSchema>;
+export type TournamentListInputParsed = z.infer<typeof tournamentListInputSchema>;
+export type TournamentGetInputParsed = z.infer<typeof tournamentGetInputSchema>;
+export type TournamentKeepInputParsed = z.infer<typeof tournamentKeepInputSchema>;

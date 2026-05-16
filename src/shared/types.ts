@@ -8,6 +8,7 @@ import type {
   CreateCheckpointInputParsed,
   CreateCurrentWorkspaceInputParsed,
   CreateWorkspaceInputParsed,
+  TournamentLaunchInputParsed,
   GitCommitInputParsed,
   GitCreateBranchInputParsed,
   GitPushInputParsed,
@@ -20,6 +21,10 @@ import type {
   OpenInIdeInputParsed,
   ProviderSessionInputParsed,
   ProviderSessionResizeInputParsed,
+  ComposerAttachmentParsed,
+  AttachmentSaveImageInputParsed,
+  AttachmentSaveImageResultParsed,
+  AttachmentMimeTypeParsed,
   RegisterProjectInputParsed,
   ResolveApprovalInputParsed,
   RunCheckInputParsed,
@@ -101,6 +106,10 @@ export type CreateCurrentWorkspaceInput = CreateCurrentWorkspaceInputParsed;
 export type LaunchProviderSessionInput = LaunchProviderSessionInputParsed;
 export type ProviderSessionInput = ProviderSessionInputParsed;
 export type ProviderSessionResizeInput = ProviderSessionResizeInputParsed;
+export type ComposerAttachment = ComposerAttachmentParsed;
+export type AttachmentSaveImageInput = AttachmentSaveImageInputParsed;
+export type AttachmentSaveImageResult = AttachmentSaveImageResultParsed;
+export type AttachmentMimeType = AttachmentMimeTypeParsed;
 export type ResolveApprovalInput = ResolveApprovalInputParsed;
 export type SessionEventsSinceInput = SessionEventsSinceInputParsed;
 export type SessionCostSummaryInput = SessionCostSummaryInputParsed;
@@ -232,6 +241,155 @@ export interface DetectedIde {
   label: string;
   appPath: string | null;
   hasCli: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Tournament mode (idea #1: parallel agents + auto-judge).
+// See openspec/changes/add-tournament-mode/.
+// ---------------------------------------------------------------------------
+
+export type TournamentState =
+  | "pending"
+  | "running"
+  | "judging"
+  | "awaiting-decision"
+  | "decided"
+  | "cancelled";
+
+export type ContestantOutcome = "pending" | "in-quorum" | "outside-quorum" | "cancelled";
+
+export type CriterionId =
+  | "tests-pass"
+  | "lint-clean"
+  | "typecheck-clean"
+  | "diff-size-lines"
+  | "files-touched"
+  | "wall-clock-seconds"
+  | "cost-usd";
+
+export type CriterionStatus = "ok" | "inconclusive" | "disqualified";
+
+/**
+ * Threshold operator for hard gates. `==` requires equality (used for boolean
+ * criteria like tests-pass where 1.0 = green, 0.0 = red). `<=` and `>=` are
+ * reserved for future numeric gates (e.g. "cost <= $5").
+ */
+export interface CriterionThreshold {
+  op: "==" | "<=" | ">=";
+  value: number;
+}
+
+export interface PolicyCriterion {
+  id: CriterionId;
+  weight: number;
+  threshold?: CriterionThreshold;
+}
+
+/**
+ * Auto-keep rule: when verdict.totalForWinner >= min_total AND verdict.margin
+ * >= min_margin AND no hard gate failed, the UI surfaces a "Keep this winner?"
+ * prompt. The rule never archives without explicit user confirmation unless
+ * the project is in fully-autonomous mode (separate per-project setting).
+ */
+export interface AutoKeepRule {
+  min_total?: number;
+  min_margin?: number;
+}
+
+export interface ScoringPolicy {
+  id: string;
+  name: string;
+  scope: "user" | "project";
+  projectId: string | null;
+  isBuiltIn: boolean;
+  criteria: PolicyCriterion[];
+  autoKeepRule: AutoKeepRule;
+  tiesThreshold: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContestantConfig {
+  provider: ProviderId;
+  modelId: string;
+  modelLabel: string;
+  reasoningEffort?: ReasoningEffort;
+  /** Free-form per-provider options (mirrors provider adapter launch options). */
+  config?: Record<string, unknown>;
+}
+
+export interface TournamentContestant {
+  tournamentId: string;
+  contestantIndex: number;
+  sessionId: string;
+  provider: ProviderId;
+  modelId: string;
+  modelLabel: string;
+  reasoningEffort: ReasoningEffort | null;
+  config: Record<string, unknown>;
+  outcome: ContestantOutcome;
+  createdAt: string;
+}
+
+export interface CriterionScore {
+  tournamentId: string;
+  contestantIndex: number;
+  criterionId: CriterionId;
+  status: CriterionStatus;
+  rawValue: number | null;
+  normalizedValue: number | null;
+  evidence: Record<string, unknown>;
+  scoredAt: string;
+}
+
+export interface TournamentVerdict {
+  winner: number | null;
+  runnerUp: number | null;
+  margin: number;
+  ties: number[];
+  disqualified: number[];
+  totals: Array<{ contestantIndex: number; total: number }>;
+  computedAt: string;
+}
+
+export interface TournamentDecision {
+  /** Contestant index the user kept; null if cancelled before any decision. */
+  keptContestantIndex: number | null;
+  /** "auto" if fully-autonomous mode chose; "manual" if a human picked. */
+  source: "auto" | "manual";
+  /** Set when the user picked someone other than the verdict's winner. */
+  overrodeWinner: boolean;
+  reason?: string;
+  decidedAt: string;
+}
+
+export interface Tournament {
+  id: string;
+  projectId: string;
+  taskLabel: string;
+  prompt: string;
+  state: TournamentState;
+  quorum: number;
+  policyId: string | null;
+  policySnapshot: ScoringPolicy;
+  verdict: TournamentVerdict | null;
+  decision: TournamentDecision | null;
+  createdAt: string;
+  updatedAt: string;
+  decidedAt: string | null;
+}
+
+export interface TournamentLeaderboardRow {
+  contestant: TournamentContestant;
+  scores: CriterionScore[];
+  total: number | null;
+  rank: number | null;
+}
+
+export interface TournamentLeaderboard {
+  tournament: Tournament;
+  rows: TournamentLeaderboardRow[];
+  verdict: TournamentVerdict | null;
 }
 
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system";
@@ -418,6 +576,9 @@ export interface ArgmaxApi {
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
     terminate: (sessionId: string) => Promise<{ ok: true }>;
   };
+  attachments: {
+    saveImage: (input: AttachmentSaveImageInput) => Promise<AttachmentSaveImageResult>;
+  };
   approvals: {
     pending: () => Promise<ApprovalRequest[]>;
     resolve: (input: ResolveApprovalInput) => Promise<ApprovalRequest>;
@@ -521,7 +682,18 @@ export interface ArgmaxApi {
     onData: (listener: (event: TerminalDataEvent) => void) => () => void;
     onExit: (listener: (event: TerminalExitEvent) => void) => () => void;
   };
+  tournaments: {
+    launch: (input: TournamentLaunchInput) => Promise<Tournament>;
+    list: (input: { projectId: string }) => Promise<Tournament[]>;
+    get: (input: { tournamentId: string }) => Promise<TournamentLeaderboard>;
+    keep: (input: { tournamentId: string; contestantIndex: number; reason?: string }) => Promise<TournamentLeaderboard>;
+  };
+  scoring: {
+    listPolicies: () => Promise<ScoringPolicy[]>;
+  };
 }
+
+export type TournamentLaunchInput = TournamentLaunchInputParsed;
 
 export interface GhPrRecord {
   sessionId: string;

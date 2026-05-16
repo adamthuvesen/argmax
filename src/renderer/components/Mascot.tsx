@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useEffect, useRef, useState, type JSX, type MouseEvent } from "react";
 
 export type MascotMood = "idle" | "thinking" | "happy" | "sad" | "working";
 
@@ -7,43 +7,54 @@ interface MascotProps {
   size?: number;
   label?: string;
   className?: string;
+  buttonClassName?: string;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+  type?: "button" | "submit";
+  disabled?: boolean;
+  title?: string;
 }
 
 const MOOD_LABEL: Record<MascotMood, string> = {
-  idle: "Cloud mascot",
-  thinking: "Cloud mascot, thinking",
-  happy: "Cloud mascot, cheering",
-  sad: "Cloud mascot, looking concerned",
-  working: "Cloud mascot, working"
+  idle: "Invader mascot",
+  thinking: "Invader mascot, thinking",
+  happy: "Invader mascot, cheering",
+  sad: "Invader mascot, looking concerned",
+  working: "Invader mascot, working"
 };
 
-// 16 cols × 11 rows. X = cloud body, E = eye, . = transparent.
-// Bumpy top edge + flat-ish belly reads as a "puff" silhouette at any size.
+// 16 cols × 12 rows. X = body, E = eye, . = transparent.
+// Rectangular head, straight antennae, arms protruding 1px gap from body,
+// four splayed legs with pointy feet — silhouette inspired by 👾.
 const BODY: ReadonlyArray<string> = [
-  "....XXX..XXXX...",
+  "....X......X....",
+  "....X......X....",
   "..XXXXXXXXXXXX..",
-  ".XXXXXXXXXXXXXX.",
-  "XXXXXXXXXXXXXXXX",
-  "XXXXXXXXXXXXXXXX",
-  "XXXEEXXXXXXEEXXX",
-  "XXXEEXXXXXXEEXXX",
-  "XXXXXXXXXXXXXXXX",
-  "XXXXXXXXXXXXXXXX",
-  ".XXXXXXXXXXXXXX.",
-  "..XXXXXXXXXXXX.."
-];
-
-// Three dangly legs hang from the cloud belly (rows 11-12).
-const LEGS: ReadonlyArray<{ x: number; y: number; h: number }> = [
-  { x: 3, y: 11, h: 2 },
-  { x: 7, y: 11, h: 2 },
-  { x: 12, y: 11, h: 2 }
+  "..XXXXXXXXXXXX..",
+  "..XEE.XXXX.EEX..",
+  "..XEE.XXXX.EEX..",
+  "..XXXXXXXXXXXX..",
+  "XX.XXXXXXXXXX.XX",
+  "XX.XXXXXXXXXX.XX",
+  "..XXXXXXXXXXXX..",
+  ".XX..XX..XX..XX.",
+  ".X....X..X....X."
 ];
 
 const GRID_W = 16;
-const GRID_H = 16; // 11 body + 2 legs + 3 rows of room for rain dots
+const GRID_H = 16;
+const PET_DURATION_MS = 700;
 
-export function Mascot({ mood = "idle", size = 64, label, className }: MascotProps): JSX.Element {
+export function Mascot({
+  mood = "idle",
+  size = 64,
+  label,
+  className,
+  buttonClassName,
+  onClick,
+  type = "button",
+  disabled,
+  title
+}: MascotProps): JSX.Element {
   const bodyRects: JSX.Element[] = [];
   const eyeRects: JSX.Element[] = [];
 
@@ -61,10 +72,23 @@ export function Mascot({ mood = "idle", size = 64, label, className }: MascotPro
   const ariaLabel = label ?? MOOD_LABEL[mood];
   const classes = ["mascot", className].filter(Boolean).join(" ");
 
-  return (
+  const [isPet, setIsPet] = useState(false);
+  const petTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (petTimerRef.current !== null) {
+        clearTimeout(petTimerRef.current);
+        petTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const svg = (
     <svg
       className={classes}
       data-mood={mood}
+      data-pet={isPet ? "true" : undefined}
       role="img"
       aria-label={ariaLabel}
       width={size}
@@ -73,11 +97,6 @@ export function Mascot({ mood = "idle", size = 64, label, className }: MascotPro
       shapeRendering="crispEdges"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <g className="mascot-legs">
-        {LEGS.map(({ x, y, h }, i) => (
-          <rect key={`l-${i}`} x={x} y={y} width={1} height={h} />
-        ))}
-      </g>
       <g className="mascot-fill">{bodyRects}</g>
       <g className="mascot-eyes">{eyeRects}</g>
       <g className="mascot-rain" aria-hidden="true">
@@ -87,4 +106,37 @@ export function Mascot({ mood = "idle", size = 64, label, className }: MascotPro
       </g>
     </svg>
   );
+
+  const renderAsButton = Boolean(onClick) || type === "submit";
+
+  if (renderAsButton) {
+    const handleClick = (event: MouseEvent<HTMLButtonElement>): void => {
+      if (petTimerRef.current !== null) {
+        clearTimeout(petTimerRef.current);
+      }
+      setIsPet(true);
+      petTimerRef.current = setTimeout(() => {
+        setIsPet(false);
+        petTimerRef.current = null;
+      }, PET_DURATION_MS);
+      onClick?.(event);
+    };
+
+    const buttonClasses = ["mascot-button", buttonClassName].filter(Boolean).join(" ");
+
+    return (
+      <button
+        type={type}
+        className={buttonClasses}
+        aria-label={ariaLabel}
+        title={title}
+        disabled={disabled}
+        onClick={handleClick}
+      >
+        {svg}
+      </button>
+    );
+  }
+
+  return svg;
 }

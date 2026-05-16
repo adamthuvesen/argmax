@@ -35,6 +35,7 @@ import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type {
   DashboardDelta,
   AgentMode,
+  ComposerAttachment,
   LaunchProviderSessionInput,
   ProviderId,
   SessionSummary,
@@ -73,6 +74,7 @@ interface FollowUpModelSelection {
 interface FollowUpOptions {
   modelSelection?: FollowUpModelSelection;
   agentMode?: AgentMode;
+  attachments?: ComposerAttachment[];
 }
 
 interface PendingOp {
@@ -211,7 +213,8 @@ export class ProviderSessionService {
       message: input.prompt,
       payload: {
         source: "composer",
-        agentMode
+        agentMode,
+        ...(input.attachments?.length ? { attachments: input.attachments } : {})
       }
     });
     const sessionStarted = this.database.persistTimelineEvent({
@@ -339,7 +342,8 @@ export class ProviderSessionService {
       message,
       payload: {
         source: "composer",
-        agentMode
+        agentMode,
+        ...(options.attachments?.length ? { attachments: options.attachments } : {})
       }
     });
     if (liveHandle) {

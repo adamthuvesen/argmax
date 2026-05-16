@@ -10,6 +10,7 @@ import {
   type IpcChannel
 } from "../shared/ipcSchemas.js";
 import { registerApprovalsHandlers } from "./ipc/approvals.js";
+import { registerAttachmentHandlers } from "./ipc/attachments.js";
 import { registerGitHandlers } from "./ipc/git.js";
 import { registerMcpHandlers } from "./ipc/mcp.js";
 import { registerProjectHandlers } from "./ipc/projects.js";
@@ -18,6 +19,7 @@ import { registerReviewHandlers } from "./ipc/review.js";
 import { registerSessionHandlers } from "./ipc/sessions.js";
 import { registerSystemHandlers } from "./ipc/system.js";
 import { registerTerminalHandlers } from "./ipc/terminal.js";
+import { registerTournamentHandlers } from "./ipc/tournaments.js";
 import { registerWorkspaceHandlers } from "./ipc/workspaces.js";
 import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
@@ -31,6 +33,8 @@ import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
+import { TournamentService } from "./tournaments/tournamentService.js";
+import { AttachmentStore } from "./attachments/attachmentStore.js";
 import { timed } from "./util/ipcLatency.js";
 
 /**
@@ -123,6 +127,8 @@ export function registerIpcHandlers(
   const checkpoints = new CheckpointService(database);
   const ghService = new GhService(database);
   const gitOps = new GitOpsService(database, ghService);
+  const tournaments = new TournamentService(database, providerSessions, workspaces, checks);
+  const attachments = new AttachmentStore();
   const registeredChannels: IpcChannel[] = [];
   const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
     // SPEC P4.02 / P7.02 — every channel funnels through `timed()` so the
@@ -189,6 +195,12 @@ export function registerIpcHandlers(
     registeredChannels.push(channel);
   }
   for (const channel of registerReviewHandlers(review, workspaceFiles)) {
+    registeredChannels.push(channel);
+  }
+  for (const channel of registerTournamentHandlers(tournaments)) {
+    registeredChannels.push(channel);
+  }
+  for (const channel of registerAttachmentHandlers(attachments)) {
     registeredChannels.push(channel);
   }
 

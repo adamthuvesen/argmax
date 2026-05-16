@@ -59,20 +59,77 @@ const MCP_CLIENT_HINTS: Record<string, string> = {
   cursor: "Configured via Cursor's MCP settings or by editing `~/.cursor/mcp.json`."
 };
 
-type SectionMeta = { id: string; label: string };
+type SettingsGroupId = "general" | "agents" | "integrations" | "system";
+type SettingsSectionMeta = { id: string; label: string };
+type SettingsGroupMeta = {
+  id: SettingsGroupId;
+  label: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  railNote: string;
+  sections: ReadonlyArray<SettingsSectionMeta>;
+};
 
-const SECTION_INDEX: ReadonlyArray<SectionMeta> = [
-  { id: "settings-account", label: "Account" },
-  { id: "settings-appearance", label: "Appearance" },
-  { id: "settings-defaults", label: "Defaults" },
-  { id: "settings-tools", label: "Tools" },
-  { id: "settings-permissions", label: "Permissions" },
-  { id: "settings-providers", label: "Providers" },
-  { id: "settings-mcp", label: "MCP" },
-  { id: "settings-knowledge", label: "Knowledge" },
-  { id: "settings-diagnostics", label: "Diagnostics" },
-  { id: "settings-about", label: "About" }
+const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
+  {
+    id: "general",
+    label: "General",
+    title: "Shape the workspace",
+    eyebrow: "Local console",
+    description: "The everyday feel of Argmax: identity, typography, launch behavior, and visible session detail.",
+    railNote: "Look · launch · local",
+    sections: [
+      { id: "settings-local", label: "Local profile" },
+      { id: "settings-appearance", label: "Appearance" },
+      { id: "settings-defaults", label: "Launch defaults" }
+    ]
+  },
+  {
+    id: "agents",
+    label: "Agents",
+    title: "Tune agent behavior",
+    eyebrow: "Model sessions",
+    description: "Provider defaults, tool-call visibility, and the permission stance every new session starts with.",
+    railNote: "Models · tools · risk",
+    sections: [
+      { id: "settings-agent-defaults", label: "Model defaults" },
+      { id: "settings-permissions", label: "Permissions" },
+      { id: "settings-providers", label: "Providers" }
+    ]
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    title: "Connect local tools",
+    eyebrow: "Handoffs",
+    description: "Editors and MCP servers Argmax can discover, reveal, or authenticate from this machine.",
+    railNote: "IDE · MCP",
+    sections: [
+      { id: "settings-tools", label: "Default IDE" },
+      { id: "settings-mcp", label: "MCP servers" }
+    ]
+  },
+  {
+    id: "system",
+    label: "System",
+    title: "Inspect the engine room",
+    eyebrow: "On-device state",
+    description: "Project knowledge, runtime diagnostics, local database health, logs, and app details.",
+    railNote: "Memory · diagnostics",
+    sections: [
+      { id: "settings-knowledge", label: "Project knowledge" },
+      { id: "settings-diagnostics", label: "Diagnostics" },
+      { id: "settings-about", label: "About" }
+    ]
+  }
 ];
+
+const DEFAULT_SETTINGS_GROUP = SETTINGS_GROUPS[0];
+
+function settingsGroupById(id: SettingsGroupId): SettingsGroupMeta {
+  return SETTINGS_GROUPS.find((group) => group.id === id) ?? DEFAULT_SETTINGS_GROUP;
+}
 
 function sectionNumber(index: number): string {
   return String(index + 1).padStart(2, "0");
@@ -201,28 +258,20 @@ export function SettingsPanel({
   }, []);
 
   const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const [activeSection, setActiveSection] = useState<string>(SECTION_INDEX[0].id);
-
-  useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
-    const root = surfaceRef.current;
-    if (!root) return;
-    const targets = SECTION_INDEX
-      .map((entry) => root.querySelector<HTMLElement>(`#${entry.id}`))
-      .filter((node): node is HTMLElement => node !== null);
-    if (targets.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Track the topmost visible heading; falls back to the last one above the viewport.
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (visible) setActiveSection(visible.target.id);
-      },
-      { rootMargin: "-30% 0px -55% 0px", threshold: [0, 0.1, 0.5, 1] }
-    );
-    targets.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
+  const [activeGroup, setActiveGroup] = useState<SettingsGroupId>(DEFAULT_SETTINGS_GROUP.id);
+  const activeGroupMeta = settingsGroupById(activeGroup);
+  const handleGroupChange = useCallback((next: SettingsGroupId): void => {
+    setActiveGroup(next);
+    window.requestAnimationFrame(() => {
+      const scroller = surfaceRef.current?.closest(".settings-scroll");
+      if (scroller instanceof HTMLElement) {
+        if (typeof scroller.scrollTo === "function") {
+          scroller.scrollTo({ top: 0 });
+        } else {
+          scroller.scrollTop = 0;
+        }
+      }
+    });
   }, []);
 
   const heroMetaParts = useMemo(() => {
@@ -236,7 +285,7 @@ export function SettingsPanel({
 
   return (
     <div className="settings-surface" ref={surfaceRef}>
-      <SettingsNav active={activeSection} />
+      <SettingsNav active={activeGroup} onChange={handleGroupChange} />
 
       <div className="settings-main">
         <header className="settings-hero">
@@ -269,12 +318,17 @@ export function SettingsPanel({
           </div>
         </header>
 
-        <section className="settings-section" id="settings-account" aria-labelledby="settings-account-h">
+        <SettingsGroupIntro group={activeGroupMeta} />
+
+        <div className="settings-group-panel" role="region" aria-labelledby="settings-group-heading">
+          {activeGroup === "general" ? (
+            <>
+        <section className="settings-section" id="settings-local" aria-labelledby="settings-local-h">
           <SectionHeader
             index={0}
-            id="settings-account-h"
+            id="settings-local-h"
             eyebrow="Identity"
-            title="Account"
+            title="Local profile"
             description="Argmax runs locally on this machine — there is no cloud account."
           />
           <div className="settings-card">
@@ -370,29 +424,10 @@ export function SettingsPanel({
             index={2}
             id="settings-defaults-h"
             eyebrow="Launch"
-            title="Defaults"
-            description="Pick the model that pre-fills the launcher when you start a new session, and choose whether ⌘N opens a launcher inside the active grid or replaces it with a full new-session view."
+            title="Launch defaults"
+            description="Choose whether ⌘N opens a launcher inside the active grid or replaces it with a full new-session view."
           />
           <div className="settings-card">
-            <div className="settings-row">
-              <label htmlFor="settings-default-model">Default model</label>
-              <CombinedModelSelector
-                ariaLabel="Default model"
-                inputId="settings-default-model"
-                value={defaultModel}
-                onChange={onDefaultModelChange}
-              />
-            </div>
-            <Segmented
-              legend="Tool calls"
-              name="tool-calls-expand"
-              value={toolCallsExpanded ? "show" : "hide"}
-              onChange={(v) => onToolCallsExpandedChange(v === "show")}
-              options={[
-                { value: "show", label: "Show expanded" },
-                { value: "hide", label: "Show collapsed" }
-              ]}
-            />
             <Segmented
               legend="New session"
               name="new-session-mode"
@@ -412,12 +447,17 @@ export function SettingsPanel({
           </div>
         </section>
 
+            </>
+          ) : null}
+
+          {activeGroup === "integrations" ? (
+            <>
         <section className="settings-section" id="settings-tools" aria-labelledby="settings-tools-h">
           <SectionHeader
-            index={3}
+            index={0}
             id="settings-tools-h"
             eyebrow="Editor handoff"
-            title="Tools"
+            title="Default IDE"
             description='Pick the editor that opens when you click the "Open in IDE" button on a session.'
           />
           <div className="settings-card">
@@ -448,9 +488,45 @@ export function SettingsPanel({
           </div>
         </section>
 
+            </>
+          ) : null}
+
+          {activeGroup === "agents" ? (
+            <>
+        <section className="settings-section" id="settings-agent-defaults" aria-labelledby="settings-agent-defaults-h">
+          <SectionHeader
+            index={0}
+            id="settings-agent-defaults-h"
+            eyebrow="Session defaults"
+            title="Model defaults"
+            description="Pick the model that pre-fills the launcher when you start a new session, and choose how much tool-call detail is visible by default."
+          />
+          <div className="settings-card">
+            <div className="settings-row">
+              <label htmlFor="settings-default-model">Default model</label>
+              <CombinedModelSelector
+                ariaLabel="Default model"
+                inputId="settings-default-model"
+                value={defaultModel}
+                onChange={onDefaultModelChange}
+              />
+            </div>
+            <Segmented
+              legend="Tool calls"
+              name="tool-calls-expand"
+              value={toolCallsExpanded ? "show" : "hide"}
+              onChange={(v) => onToolCallsExpandedChange(v === "show")}
+              options={[
+                { value: "show", label: "Show expanded" },
+                { value: "hide", label: "Show collapsed" }
+              ]}
+            />
+          </div>
+        </section>
+
         <section className="settings-section" id="settings-permissions" aria-labelledby="settings-permissions-h">
           <SectionHeader
-            index={4}
+            index={1}
             id="settings-permissions-h"
             eyebrow="Risk gate"
             title="Permissions"
@@ -485,7 +561,7 @@ export function SettingsPanel({
 
         <section className="settings-section" id="settings-providers" aria-labelledby="settings-providers-h">
           <SectionHeader
-            index={5}
+            index={2}
             id="settings-providers-h"
             eyebrow="Discovery"
             title="Providers"
@@ -553,9 +629,14 @@ export function SettingsPanel({
           </div>
         </section>
 
+            </>
+          ) : null}
+
+          {activeGroup === "integrations" ? (
+            <>
         <section className="settings-section" id="settings-mcp" aria-labelledby="settings-mcp-h">
           <SectionHeader
-            index={6}
+            index={1}
             id="settings-mcp-h"
             eyebrow="Model Context Protocol"
             title="MCP servers"
@@ -678,9 +759,14 @@ export function SettingsPanel({
           </div>
         </section>
 
+            </>
+          ) : null}
+
+          {activeGroup === "system" ? (
+            <>
         <section className="settings-section" id="settings-knowledge" aria-labelledby="settings-knowledge-h">
           <SectionHeader
-            index={7}
+            index={0}
             id="settings-knowledge-h"
             eyebrow="Memory"
             title="Project knowledge"
@@ -691,7 +777,7 @@ export function SettingsPanel({
 
         <section className="settings-section" id="settings-diagnostics" aria-labelledby="settings-diagnostics-h">
           <SectionHeader
-            index={8}
+            index={1}
             id="settings-diagnostics-h"
             eyebrow="Telemetry"
             title="Diagnostics"
@@ -921,7 +1007,7 @@ export function SettingsPanel({
 
         <section className="settings-section" id="settings-about" aria-labelledby="settings-about-h">
           <SectionHeader
-            index={9}
+            index={2}
             id="settings-about-h"
             eyebrow="Colophon"
             title="About"
@@ -937,6 +1023,10 @@ export function SettingsPanel({
             />
           </div>
         </section>
+
+            </>
+          ) : null}
+        </div>
 
         <footer className="settings-footer" aria-hidden="true">
           <span className="settings-footer-prompt">argmax@local</span>
@@ -1011,26 +1101,60 @@ function RendererPaintRow(): JSX.Element | null {
   );
 }
 
-function SettingsNav({ active }: { active: string }): JSX.Element {
+function SettingsGroupIntro({ group }: { group: SettingsGroupMeta }): JSX.Element {
   return (
-    <aside className="settings-nav" aria-label="Settings sections">
-      <p className="settings-nav-eyebrow">Index</p>
+    <section className="settings-group-intro" aria-labelledby="settings-group-heading">
+      <div>
+        <p className="settings-section-eyebrow">{group.eyebrow}</p>
+        <h2 id="settings-group-heading">{group.title}</h2>
+        <p>{group.description}</p>
+      </div>
+      <ol className="settings-group-map" aria-label={`${group.label} settings in this group`}>
+        {group.sections.map((section, index) => (
+          <li key={section.id}>
+            <span>{sectionNumber(index)}</span>
+            <span>{section.label}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function SettingsNav({
+  active,
+  onChange
+}: {
+  active: SettingsGroupId;
+  onChange: (group: SettingsGroupId) => void;
+}): JSX.Element {
+  return (
+    <aside className="settings-nav" aria-label="Settings groups">
+      <p className="settings-nav-eyebrow">Settings</p>
       <ol className="settings-nav-list">
-        {SECTION_INDEX.map((section, index) => {
-          const isActive = section.id === active;
+        {SETTINGS_GROUPS.map((group, index) => {
+          const isActive = group.id === active;
           return (
-            <li key={section.id} className="settings-nav-item" data-active={isActive ? "true" : "false"}>
-              <a href={`#${section.id}`} className="settings-nav-link">
+            <li key={group.id} className="settings-nav-item" data-active={isActive ? "true" : "false"}>
+              <button
+                type="button"
+                className="settings-nav-link"
+                aria-pressed={isActive}
+                onClick={() => onChange(group.id)}
+              >
                 <span className="settings-nav-num">{sectionNumber(index)}</span>
                 <span className="settings-nav-rule" aria-hidden="true" />
-                <span className="settings-nav-label">{section.label}</span>
-              </a>
+                <span className="settings-nav-copy">
+                  <span className="settings-nav-label">{group.label}</span>
+                  <span className="settings-nav-note">{group.railNote}</span>
+                </span>
+              </button>
             </li>
           );
         })}
       </ol>
       <p className="settings-nav-foot">
-        <span>v · local · paper</span>
+        <span>{settingsGroupById(active).sections.length} sections · instant save</span>
       </p>
     </aside>
   );

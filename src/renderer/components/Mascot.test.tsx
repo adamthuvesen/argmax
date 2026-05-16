@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Mascot } from "./Mascot.js";
 
 describe("Mascot", () => {
@@ -11,7 +11,7 @@ describe("Mascot", () => {
     render(<Mascot />);
     const svg = screen.getByRole("img");
     expect(svg.getAttribute("data-mood")).toBe("idle");
-    expect(svg.getAttribute("aria-label")).toBe("Cloud mascot");
+    expect(svg.getAttribute("aria-label")).toBe("Invader mascot");
   });
 
   it.each(["idle", "thinking", "happy", "sad", "working"] as const)(
@@ -20,7 +20,7 @@ describe("Mascot", () => {
       render(<Mascot mood={mood} />);
       const svg = screen.getByRole("img");
       expect(svg.getAttribute("data-mood")).toBe(mood);
-      expect(svg.getAttribute("aria-label")).toMatch(/^Cloud mascot/);
+      expect(svg.getAttribute("aria-label")).toMatch(/^Invader mascot/);
     }
   );
 
@@ -37,4 +37,33 @@ describe("Mascot", () => {
     expect(svg.getAttribute("data-mood")).toBe("happy");
   });
 
+  it("renders a clickable button when onClick is provided and fires the handler", () => {
+    const onClick = vi.fn();
+    render(<Mascot onClick={onClick} />);
+    const button = screen.getByRole("button", { name: "Invader mascot" });
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies data-pet during the hop window and clears it after the timeout", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Mascot onClick={() => undefined} />);
+      const button = screen.getByRole("button");
+      const svg = button.querySelector("svg");
+      expect(svg?.getAttribute("data-pet")).toBeNull();
+
+      act(() => {
+        fireEvent.click(button);
+      });
+      expect(svg?.getAttribute("data-pet")).toBe("true");
+
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
+      expect(svg?.getAttribute("data-pet")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

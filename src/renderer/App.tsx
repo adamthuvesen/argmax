@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
   AgentMode,
+  ComposerAttachment,
   DashboardSnapshot,
   DetectedIde,
   IdeId,
@@ -631,7 +632,13 @@ export function App(): JSX.Element {
   }, [setSelectedProjectId, setSnapshot]);
 
   const sendSessionInput = useCallback(
-    async (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode): Promise<void> => {
+    async (
+      sessionId: string,
+      input: string,
+      model: ProviderModelSelection,
+      agentMode: AgentMode,
+      attachments?: ComposerAttachment[]
+    ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Electron app window to send input to a live session.");
       }
@@ -642,7 +649,8 @@ export function App(): JSX.Element {
         modelLabel: model.label,
         modelId: model.modelId,
         ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
-        agentMode
+        agentMode,
+        ...(attachments?.length ? { attachments } : {})
       });
       await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
@@ -719,7 +727,13 @@ export function App(): JSX.Element {
   );
 
   const launchTask = useCallback(
-    async (prompt: string, model: ModelPickerSelection, agentMode: AgentMode, projectIdOverride?: string): Promise<void> => {
+    async (
+      prompt: string,
+      model: ModelPickerSelection,
+      agentMode: AgentMode,
+      projectIdOverride?: string,
+      attachments?: ComposerAttachment[]
+    ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open the Electron app window to launch local agents.");
       }
@@ -744,7 +758,8 @@ export function App(): JSX.Element {
         agentMode,
         permissionMode,
         cols: 120,
-        rows: 32
+        rows: 32,
+        ...(attachments?.length ? { attachments } : {})
       });
 
       pendingSelectionRef.current = {
@@ -928,7 +943,7 @@ export function App(): JSX.Element {
       <LaunchSurface
         onAddProject={() => void addProject()}
         onBranchSwitch={handleBranchSwitch}
-        onLaunchTask={(prompt, model, agentMode) => launchTask(prompt, model, agentMode, project?.id)}
+        onLaunchTask={(prompt, model, agentMode, attachments) => launchTask(prompt, model, agentMode, project?.id, attachments)}
         model={launchModel}
         onModelChange={setLaunchModel}
         onSelectProject={openProjectLauncher}

@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, Settings } from "lucide-react";
+import { ChevronRight, Folder, Plus, Settings } from "lucide-react";
 import {
   useCallback,
   useMemo,
@@ -19,11 +19,6 @@ import {
   sortWorkspaceGroup
 } from "../lib/projects.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
-
-function projectMonogram(name: string): string {
-  const letter = name.replace(/[^a-z0-9]/gi, "").slice(0, 1);
-  return (letter || "·").toUpperCase();
-}
 
 function formatNameplateDate(): string {
   const d = new Date();
@@ -228,7 +223,6 @@ export function Sidebar({
     setDraggingWorkspaceId(null);
   }, []);
 
-  const visibleProjectCount = orderedProjects.length;
   const nameplateDate = useMemo(() => formatNameplateDate(), []);
   const footerState =
     loadState === "ready" ? "ready" : loadState === "loading" ? "loading" : "issue";
@@ -264,14 +258,6 @@ export function Sidebar({
         <div className="rail-heading">
           <p className="rail-label">
             <span className="rail-label-text">Projects</span>
-            {visibleProjectCount > 0 ? (
-              <>
-                <span className="rail-label-rule" aria-hidden="true" />
-                <span className="rail-label-count" aria-hidden="true">
-                  {visibleProjectCount.toString().padStart(2, "0")}
-                </span>
-              </>
-            ) : null}
           </p>
           <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
             <Plus size={16} />
@@ -317,9 +303,8 @@ export function Sidebar({
                     onOpenProject(project.id);
                   }}
                 >
-                  <span className="project-monogram" aria-hidden="true">
-                    <span className="project-bullet" />
-                    <span className="project-monogram-glyph">{projectMonogram(project.name)}</span>
+                  <span className="project-icon" aria-hidden="true">
+                    <Folder size={14} />
                   </span>
                   <span className="project-name-text">{project.name}</span>
                 </button>

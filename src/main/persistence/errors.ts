@@ -6,7 +6,17 @@
  */
 export class RecordNotFoundError extends Error {
   constructor(
-    readonly kind: "session" | "workspace" | "project" | "checkpoint" | "check" | "approval" | "learning",
+    readonly kind:
+      | "session"
+      | "workspace"
+      | "project"
+      | "checkpoint"
+      | "check"
+      | "approval"
+      | "learning"
+      | "tournament"
+      | "tournament_contestant"
+      | "scoring_policy",
     readonly id: string
   ) {
     super(`${kind} not found: ${id}`);

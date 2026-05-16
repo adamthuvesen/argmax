@@ -21,7 +21,9 @@ export const emptySnapshot: DashboardSnapshot = {
  * streaming continues to render.
  *
  * Events may arrive in any order; this works on either ascending or descending
- * arrays.
+ * arrays. The supersede / user.message break-out only fires when the later
+ * event belongs to the same session — otherwise concurrent sessions would
+ * prune each other's deltas as soon as either completed a turn.
  */
 export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] {
   if (events.length < 2) return events;
@@ -42,6 +44,7 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
     for (let j = i + 1; j < ascending.length; j++) {
       const next = ascending[j];
       if (!next) break;
+      if (next.sessionId !== event.sessionId) continue;
       if (next.type === "user.message") break;
       if (next.type === "message.completed") {
         superseded = true;

@@ -7,6 +7,7 @@ import {
   MODEL_PRICING,
   normalizeModelId,
   PROVIDER_MODEL_DEFAULTS,
+  PROVIDER_MODELS,
   type UsageCounts
 } from "./providerModels.js";
 
@@ -112,6 +113,22 @@ describe("MODEL_PRICING coverage", () => {
     expect(MODEL_PRICING["claude-opus-4-7"]).toBeDefined();
     expect(MODEL_PRICING["gpt-5.5"]).toBeDefined();
     expect(MODEL_PRICING["gpt-5.4-codex"]).toBeDefined();
+  });
+
+  it("covers every modelId in PROVIDER_MODELS", () => {
+    for (const [provider, options] of Object.entries(PROVIDER_MODELS)) {
+      for (const option of options) {
+        const key = normalizeModelId(option.modelId);
+        expect(MODEL_PRICING[key], `${provider}.${option.modelId}`).toBeDefined();
+      }
+    }
+  });
+
+  it("covers every modelId in PROVIDER_MODEL_DEFAULTS", () => {
+    for (const [provider, fallback] of Object.entries(PROVIDER_MODEL_DEFAULTS)) {
+      const key = normalizeModelId(fallback.modelId);
+      expect(MODEL_PRICING[key], `${provider}.default.${fallback.modelId}`).toBeDefined();
+    }
   });
 
   it("never has negative rates", () => {

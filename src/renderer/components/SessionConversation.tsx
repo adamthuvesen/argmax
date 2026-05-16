@@ -28,6 +28,7 @@ import type {
   CheckRun,
   ComposerAttachment,
   GhPrRecord,
+  PendingMessage,
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
@@ -40,6 +41,7 @@ import { useFreshSet } from "../hooks/useFreshSet.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
+import { parsePlan } from "../lib/parsePlan.js";
 import { providerLabel, repoNameFromPath } from "../lib/projects.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
@@ -71,17 +73,18 @@ import { ChatBubble } from "./ChatBubble.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { CostPanel } from "./CostPanel.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
-import { FileChip } from "./FileChip.js";
+import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { FilePopover } from "./FilePopover.js";
 import { Mascot } from "./Mascot.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { NowProvider } from "./NowProvider.js";
+import { PlanCard } from "./PlanCard.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { ThinkingTranscript } from "./ThinkingTranscript.js";
 import { ThinkingVerbs } from "./ThinkingVerbs.js";
-import { ToolCallBubble } from "./ToolCallBubble.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
-import { TurnBlock, type TurnToolItem } from "./TurnBlock.js";
+import { ToolCallRow } from "./ToolCallRow.js";
+import { TurnBlock, type TurnBodyChild, type TurnToolItem } from "./TurnBlock.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
@@ -156,15 +159,19 @@ export function SessionConversation({
   onClose,
   onOpenCommitDialog,
   onSendSessionInput,
+  onCancelQueuedMessage,
+  pendingMessages = [],
   onTerminateSession,
   onCreateCheckpoint,
   onRunCheck,
   onToggleLog,
+  onOpenFile,
   pendingApprovalCount = 0,
   project,
   rawOutputs,
   review,
   session,
+  showCostPanel = true,
   thinkingStyle = DEFAULT_THINKING_STYLE,
   workspace
 }: {
@@ -182,15 +189,24 @@ export function SessionConversation({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
+  /** Follow-ups composed while the agent was running. Render as cancellable
+      chips above the composer; cleared from the parent as the queue drains. */
+  pendingMessages?: PendingMessage[];
+  onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
+  /** Called when the user clicks a file reference inside agent text. When
+      provided, the chip routes to the in-app right panel by default, with
+      ⌘/Ctrl-click flagged via `preferIde` for the external IDE shortcut. */
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   pendingApprovalCount?: number;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   review: ReviewState;
   session: SessionSummary | null;
+  showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
@@ -401,10 +417,16 @@ export function SessionConversation({
     return out;
   }, [conversationItems, session]);
 
+  // Composer is enabled whenever the session is alive — `running` no longer
+  // blocks: typed messages get queued in main and drain when the current turn
+  // finishes. Terminal states (failed / cancelled / blocked / created) still
+  // disable the textarea since there's no agent to receive the follow-up.
   const canSend = Boolean(
-    session &&
-      ["complete", "waiting"].includes(session.state)
+    session && ["complete", "waiting", "running"].includes(session.state)
   );
+  // Currently running → the next submit goes onto the queue rather than
+  // straight to the agent. Used to tweak placeholder and Send tooltip copy.
+  const isQueueing = session?.state === "running";
   const lastSignificantEvent = events.find(
     (event) =>
       event.payload.raw !== true &&
@@ -881,52 +903,139 @@ export function SessionConversation({
                 streaming: true
               });
             }
-            const assistantNode = assistantGroups.map((group) => (
-              <ChatBubble
-                key={group.id}
-                kind="assistant"
-                createdAt={group.createdAt}
-                rawMarkdown={group.text}
-              >
-                <div className={`markdown${group.streaming ? " markdown-streaming" : ""}`}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      code: ({ className, children, ...rest }) => {
-                        const isFenced = typeof className === "string" && className.includes("language-");
-                        if (isFenced) {
-                          return <CodeBlock className={className}>{children}</CodeBlock>;
-                        }
-                        const text = Array.isArray(children)
-                          ? children.map((c) => (typeof c === "string" ? c : "")).join("")
-                          : typeof children === "string"
-                            ? children
-                            : "";
-                        const match = matchFileChip(text);
-                        if (match) {
+            // Plan-mode replies render as a structured PlanCard. The
+            // agentMode for *this* turn is the one captured on the preceding
+            // user.message at send time — not the live picker, which may have
+            // since toggled. Streaming groups fall through to ChatBubble until
+            // completion so the card never appears half-rendered.
+            const priorItem = index > 0 ? renderItems[index - 1] : null;
+            const turnAgentMode: string | null =
+              priorItem && priorItem.kind === "user-message"
+                ? stringValue(priorItem.event.payload.agentMode)
+                : null;
+            const tryRenderPlan = (
+              group: { id: string; createdAt: string; text: string; streaming: boolean }
+            ): JSX.Element | null => {
+              if (turnAgentMode !== "plan" || group.streaming) return null;
+              const plan = parsePlan(group.text);
+              if (!plan) return null;
+              const handleAccept = (): void => {
+                if (!session) return;
+                setAgentMode("edit");
+                writeStoredAgentMode(sessionAgentModeKey(session.id), "edit");
+                shouldRefocusInput.current = true;
+                void onSendSessionInput(
+                  session.id,
+                  "Proceed with the plan above.",
+                  selectedModel,
+                  "edit"
+                );
+              };
+              const handleReject = (): void => {
+                inputRef.current?.focus();
+              };
+              return (
+                <PlanCard
+                  key={group.id}
+                  plan={plan}
+                  createdAt={group.createdAt}
+                  rawMarkdown={group.text}
+                  modelLabel={selectedModel.label}
+                  onAccept={handleAccept}
+                  onReject={handleReject}
+                />
+              );
+            };
+            type AnnotatedChild = TurnBodyChild & { createdAt: string };
+            const assistantChildren: AnnotatedChild[] = assistantGroups.map((group) => {
+              const planNode = tryRenderPlan(group);
+              if (planNode) {
+                return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt };
+              }
+              const node = (
+                <ChatBubble
+                  key={group.id}
+                  kind="assistant"
+                  createdAt={group.createdAt}
+                  rawMarkdown={group.text}
+                >
+                  <div className={`markdown${group.streaming ? " markdown-streaming" : ""}`}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        code: ({ className, children, ...rest }) => {
+                          const isFenced = typeof className === "string" && className.includes("language-");
+                          if (isFenced) {
+                            return <CodeBlock className={className}>{children}</CodeBlock>;
+                          }
+                          const text = Array.isArray(children)
+                            ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+                            : typeof children === "string"
+                              ? children
+                              : "";
+                          const match = matchFileChip(text);
+                          if (match) {
+                            return (
+                              <FileChip
+                                path={match.path}
+                                line={match.line}
+                                workspaceId={workspace?.id ?? null}
+                                workspaceCwd={workspace?.path ?? null}
+                                onOpen={onOpenFile}
+                              />
+                            );
+                          }
                           return (
-                            <FileChip
-                              path={match.path}
-                              line={match.line}
-                              workspaceId={workspace?.id ?? null}
-                              workspaceCwd={workspace?.path ?? null}
-                            />
+                            <code className={className} {...rest}>
+                              {children}
+                            </code>
+                          );
+                        },
+                        a: ({ href, children, ...rest }) => {
+                        if (!href || href.startsWith("#")) {
+                          return (
+                            <a href={href} {...rest}>
+                              {children}
+                            </a>
+                          );
+                        }
+                        // External links open in the user's default browser via
+                        // main.ts setWindowOpenHandler -> shell.openExternal.
+                        if (/^(?:https?:|mailto:)/.test(href)) {
+                          return (
+                            <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+                              {children}
+                            </a>
+                          );
+                        }
+                        const match = matchFileChip(href);
+                        if (!match) {
+                          return (
+                            <a href={href} {...rest}>
+                              {children}
+                            </a>
                           );
                         }
                         return (
-                          <code className={className} {...rest}>
-                            {children}
-                          </code>
+                          <FileChip
+                            path={match.path}
+                            line={match.line}
+                            workspaceId={workspace?.id ?? null}
+                            workspaceCwd={workspace?.path ?? null}
+                            onOpen={onOpenFile}
+                          />
                         );
                       },
-                      pre: ({ children }) => <>{children}</>
-                    }}
-                  >
-                    {group.text}
-                  </ReactMarkdown>
-                </div>
-              </ChatBubble>
-            ));
+                        pre: ({ children }) => <>{children}</>
+                      }}
+                    >
+                      {group.text}
+                    </ReactMarkdown>
+                  </div>
+                </ChatBubble>
+              );
+              return { kind: "assistant", id: group.id, node, createdAt: group.createdAt };
+            });
             // A turn's tool groups stay expanded only while that turn is
             // "active": a tool is still running, or it's the last turn in the
             // list and the session is still streaming. Past turns collapse
@@ -941,25 +1050,42 @@ export function SessionConversation({
             const sessionIsLive = session?.state === "running";
             const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
             const groupDefaultExpanded = turnIsActive ? defaultToolCallsExpanded : false;
-            const toolsNode = item.toolItems.map((tItem) =>
-              tItem.kind === "tool" ? (
-                <ToolCallBubble
-                  key={tItem.tool.id}
-                  tool={tItem.tool}
-                  fresh={isFreshTool(tItem.tool)}
-                  defaultExpanded={groupDefaultExpanded}
-                  workspaceCwd={workspace?.path ?? null}
-                />
-              ) : (
-                <ToolCallGroupBubble
-                  key={tItem.group.id}
-                  group={tItem.group}
-                  isFreshTool={isFreshTool}
-                  defaultExpanded={groupDefaultExpanded}
-                  workspaceCwd={workspace?.path ?? null}
-                />
-              )
-            );
+            const toolChildren: AnnotatedChild[] = item.toolItems.map((tItem) => {
+              if (tItem.kind === "tool") {
+                return {
+                  kind: "tool",
+                  id: tItem.tool.id,
+                  createdAt: tItem.tool.createdAt,
+                  node: (
+                    <ToolCallRow
+                      tool={tItem.tool}
+                      defaultExpanded={groupDefaultExpanded}
+                      workspaceCwd={workspace?.path ?? null}
+                    />
+                  )
+                };
+              }
+              const firstCreatedAt = tItem.group.tools[0]?.createdAt ?? "";
+              return {
+                kind: "tool",
+                id: tItem.group.id,
+                createdAt: firstCreatedAt,
+                node: (
+                  <ToolCallGroupBubble
+                    group={tItem.group}
+                    isFreshTool={isFreshTool}
+                    defaultExpanded={groupDefaultExpanded}
+                    workspaceCwd={workspace?.path ?? null}
+                  />
+                )
+              };
+            });
+            // Interleave assistant text and tool runs by createdAt so the chat
+            // reads chronologically — without this, every tool call drifts to
+            // the bottom of the turn once the assistant text lands above it.
+            const bodyChildren: TurnBodyChild[] = [...assistantChildren, ...toolChildren]
+              .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+              .map(({ kind, id, node }) => ({ kind, id, node }));
             return (
               <TurnBlock
                 key={item.id}
@@ -968,8 +1094,7 @@ export function SessionConversation({
                 {...(session ? { providerLabel: providerLabel(session.provider) } : {})}
                 modelLabel={selectedModel.label}
                 {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
-                assistantNode={assistantNode}
-                toolsNode={toolsNode}
+                body={bodyChildren}
               />
             );
           })
@@ -1017,7 +1142,7 @@ export function SessionConversation({
           checks={checks ?? []}
           onRunCheck={onRunCheck}
         />
-        {session ? <CostPanel session={session} /> : null}
+        {session && showCostPanel ? <CostPanel session={session} /> : null}
       </div>
       {pendingApprovalCount > 0 ? (
         <div className="composer-approvals-banner" role="status" aria-live="polite">
@@ -1074,6 +1199,27 @@ export function SessionConversation({
             ))}
           </div>
         ) : null}
+        {pendingMessages.length > 0 ? (
+          <div className="composer-queued-lane" aria-label="Queued follow-ups">
+            {pendingMessages.map((entry) => (
+              <div key={entry.id} className="composer-queued-chip" title={entry.content}>
+                <span className="composer-queued-chip-label">{entry.content}</span>
+                <button
+                  type="button"
+                  className="composer-queued-chip-remove"
+                  aria-label="Cancel queued follow-up"
+                  title="Cancel queued follow-up"
+                  onClick={() => {
+                    if (!session || !onCancelQueuedMessage) return;
+                    void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+                  }}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="session-input-field">
           <textarea
             aria-label="Session prompt"
@@ -1095,7 +1241,13 @@ export function SessionConversation({
             onPaste={onComposerPaste}
             onSelect={fileAutocomplete.onSelectionChange}
             onClick={fileAutocomplete.onSelectionChange}
-            placeholder={canSend ? "Reply to your agent, or @-mention files" : ""}
+            placeholder={
+              canSend
+                ? isQueueing
+                  ? "Queue a follow-up — sent when the current turn finishes"
+                  : "Reply to your agent, or @-mention files"
+                : ""
+            }
             ref={inputRef}
             value={input}
             rows={1}
@@ -1177,22 +1329,24 @@ export function SessionConversation({
             >
               <Square size={16} />
             </button>
-          ) : (
-            (() => {
-              const sendDisabled = !canSend || isSending || !input.trim();
-              return (
-                <Mascot
-                  size={36}
-                  mood={sendDisabled ? "sad" : "idle"}
-                  type="submit"
-                  disabled={sendDisabled}
-                  title="Send follow-up"
-                  label="Send follow-up"
-                  buttonClassName="session-send-mascot"
-                />
-              );
-            })()
-          )}
+          ) : null}
+          {(() => {
+            const sendDisabled = !canSend || isSending || !input.trim();
+            const sendTitle = isQueueing
+              ? "Queue follow-up — sent when the current turn finishes"
+              : "Send follow-up";
+            return (
+              <Mascot
+                size={36}
+                mood={sendDisabled ? "sad" : "idle"}
+                type="submit"
+                disabled={sendDisabled}
+                title={sendTitle}
+                label={sendTitle}
+                buttonClassName="session-send-mascot"
+              />
+            );
+          })()}
         </div>
       </form>
       {status ? (

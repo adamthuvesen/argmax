@@ -429,6 +429,10 @@ function extractCodexToolInput(
       input[key] = value;
     }
   }
+  const changes = arrayValue(item.changes) ?? arrayValue(action?.changes);
+  if (changes) {
+    input.changes = changes;
+  }
   if (Object.keys(input).length > 0) {
     return input;
   }

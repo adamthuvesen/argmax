@@ -4,7 +4,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", ".claude/**", "eslint.config.js", "scripts/*.cjs", "scripts/*.mjs"] },
+  { ignores: ["dist", "node_modules", ".claude/**", "design/**", "eslint.config.js", "scripts/*.cjs", "scripts/*.mjs"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

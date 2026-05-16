@@ -82,15 +82,94 @@ export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
   };
 }
 
-export function summarizeToolGroup(tools: ToolCall[]): { headline: string; preview: string; worstStatus: ToolCall["status"] } {
-  const names = tools.map((t) => t.name.toLowerCase());
-  const every = (pred: (n: string) => boolean): boolean => names.every(pred);
-  let headline = `${tools.length} tool calls`;
-  if (every((n) => /read|view|cat|^ls$|list_dir/.test(n))) headline = `Explored ${tools.length} files`;
-  else if (every((n) => /bash|shell|exec|terminal/.test(n))) headline = `Ran ${tools.length} commands`;
-  else if (every((n) => /grep|search|find|glob/.test(n))) headline = `Searched ${tools.length} times`;
-  else if (every((n) => /web|fetch|http|url|browser/.test(n))) headline = `Fetched ${tools.length} URLs`;
-  else if (every((n) => /write|edit|patch|create/.test(n))) headline = `Edited ${tools.length} files`;
+type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bash" | "other";
+
+function getFineBucket(name: string): FineBucket {
+  const lower = name.toLowerCase();
+  if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
+  if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
+  if (/search|grep|find|glob/.test(lower)) return "search";
+  if (/web|browser|navigate|fetch|url|http/.test(lower)) return "web";
+  // Distinguish directory listings ("list", "list_dir", "ls") from file reads
+  // ("read", "view", "open", "cat") so the rolled-up headline can read
+  // "Explored 1 file, 2 lists" like Codex.
+  if (/^ls$|list[_-]?dir|^list$|list_files|list_directory/.test(lower)) return "read-lists";
+  if (/read|view|open|cat/.test(lower)) return "read-files";
+  if (/list/.test(lower)) return "read-lists";
+  return "other";
+}
+
+const FINE_BUCKET_ORDER: FineBucket[] = ["read-files", "read-lists", "search", "web", "edit", "bash", "other"];
+
+// (verbForm, compactForm) per bucket. verbForm is used when the bucket is
+// the sole bucket OR the first clause of a multi-bucket headline. compactForm
+// is used for subsequent clauses — Codex-style "Explored 1 file, 2 lists,
+// ran 1 command" emerges by mixing the two.
+function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string {
+  const plural = (singular: string, pluralWord: string): string => (n === 1 ? singular : pluralWord);
+  switch (bucket) {
+    case "read-files":
+      return first ? `Explored ${n} ${plural("file", "files")}` : `${n} ${plural("file", "files")}`;
+    case "read-lists":
+      return first ? `Listed ${n} ${plural("directory", "directories")}` : `${n} ${plural("list", "lists")}`;
+    case "search":
+      return first ? `Searched ${n} ${plural("time", "times")}` : `${n} ${plural("search", "searches")}`;
+    case "web":
+      return first ? `Fetched ${n} ${plural("URL", "URLs")}` : `${n} ${plural("URL", "URLs")}`;
+    case "edit":
+      return first ? `Edited ${n} ${plural("file", "files")}` : `${n} ${plural("edit", "edits")}`;
+    case "bash":
+      return first ? `Ran ${n} ${plural("command", "commands")}` : `ran ${n} ${plural("command", "commands")}`;
+    case "other":
+      return first ? `Used ${n} ${plural("tool", "tools")}` : `${n} ${plural("tool", "tools")}`;
+  }
+}
+
+export function describeToolAction(tool: ToolCall): string {
+  const bucket = getFineBucket(tool.name);
+  const preview = tool.inputPreview;
+  const basename = (path: string): string => {
+    const trimmed = path.replace(/\/$/, "");
+    return trimmed.includes("/") ? trimmed.split("/").pop() ?? trimmed : trimmed;
+  };
+  switch (bucket) {
+    case "bash":
+      return preview ? `Ran ${preview}` : "Ran command";
+    case "edit":
+      return preview ? `Edited ${basename(preview)}` : "Edited file";
+    case "read-files":
+      return preview ? `Read ${basename(preview)}` : "Read file";
+    case "read-lists":
+      return preview ? `Listed files in ${basename(preview)}` : "Listed files";
+    case "search":
+      return preview ? `Searched for ${preview}` : "Searched";
+    case "web":
+      return preview ? `Fetched ${preview}` : "Fetched URL";
+    case "other":
+      return preview ? `${tool.name} ${preview}` : tool.name;
+  }
+}
+
+export function summarizeToolGroup(tools: ToolCall[]): {
+  headline: string;
+  preview: string;
+  currentAction: string | null;
+  worstStatus: ToolCall["status"];
+} {
+  const counts = new Map<FineBucket, number>();
+  for (const tool of tools) {
+    const b = getFineBucket(tool.name);
+    counts.set(b, (counts.get(b) ?? 0) + 1);
+  }
+  const clauses: string[] = [];
+  let first = true;
+  for (const bucket of FINE_BUCKET_ORDER) {
+    const n = counts.get(bucket);
+    if (!n) continue;
+    clauses.push(clauseForBucket(bucket, n, first));
+    first = false;
+  }
+  const headline = clauses.length > 0 ? clauses.join(", ") : `${tools.length} tool calls`;
 
   const previewParts: string[] = [];
   let skipped = 0;
@@ -100,9 +179,6 @@ export function summarizeToolGroup(tools: ToolCall[]): { headline: string; previ
       skipped++;
       continue;
     }
-    // For path-like previews keep the basename; for other shapes leave
-    // intact. Trim and skip empties so a trailing slash (e.g. "foo/")
-    // doesn't produce a blank " / / …" gap in the eyebrow.
     const candidate = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
     const trimmed = candidate.trim();
     if (!trimmed) {
@@ -114,12 +190,20 @@ export function summarizeToolGroup(tools: ToolCall[]): { headline: string; previ
   }
   const shown = previewParts.length;
   const preview = previewParts.join(" / ") + (tools.length - skipped > shown ? " / …" : "");
+
   const worstStatus: ToolCall["status"] = tools.some((t) => t.status === "error")
     ? "error"
     : tools.some((t) => t.status === "running")
       ? "running"
       : "done";
-  return { headline, preview, worstStatus };
+
+  // While the group is still running, surface the most recent live tool's
+  // action so the collapsed header shows what the agent is doing right now.
+  const running = tools.filter((t) => t.status === "running");
+  const latestRunning = running.length > 0 ? running[running.length - 1] : null;
+  const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
+
+  return { headline, preview, currentAction, worstStatus };
 }
 
 export function extractToolUseId(payload: Record<string, unknown>): string | null {
@@ -166,6 +250,10 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
     const cmd = input.command ?? input.cmd;
     if (typeof cmd === "string") return cmd.split("\n")[0]?.slice(0, 72) ?? "";
   }
+  if (/file[_-]?change/.test(lower)) {
+    const preview = summarizeFileChanges(input.changes);
+    if (preview) return preview;
+  }
   const path = input.file_path ?? input.path ?? input.relative_path;
   if (typeof path === "string") return path;
   const query = input.query ?? input.pattern ?? input.search_term;
@@ -177,6 +265,21 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
   // integer-like keys, so the preview would vary unpredictably with the
   // input shape. Return empty rather than guess.
   return "";
+}
+
+function summarizeFileChanges(changes: unknown): string {
+  if (!Array.isArray(changes)) return "";
+  const paths = changes
+    .map((change) => {
+      if (!change || typeof change !== "object") return null;
+      const value = (change as Record<string, unknown>).path;
+      return typeof value === "string" && value.length > 0 ? value : null;
+    })
+    .filter((value): value is string => value !== null);
+  if (paths.length === 0) return "";
+  const [first] = paths;
+  if (!first) return "";
+  return paths.length === 1 ? first : `${first} +${paths.length - 1}`;
 }
 
 export function extractToolOutput(payload: Record<string, unknown>): string | null {
@@ -235,7 +338,7 @@ export function getToolIcon(name: string): JSX.Element {
   if (lower.includes("bash") || lower.includes("shell") || lower.includes("terminal") || lower.includes("exec")) {
     return <Terminal size={13} />;
   }
-  if (lower.includes("write") || lower.includes("edit") || lower.includes("create") || lower.includes("patch")) {
+  if (lower.includes("write") || lower.includes("edit") || lower.includes("create") || lower.includes("patch") || /file[_-]?change/.test(lower)) {
     return <Pencil size={13} />;
   }
   if (lower.includes("read") || lower.includes("view") || lower.includes("open") || lower.includes("cat") || lower.includes("list")) {
@@ -255,7 +358,7 @@ export type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "othe
 export function getToolTypeBucket(name: string): ToolTypeBucket {
   const lower = name.toLowerCase();
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
-  if (/write|edit|create|patch/.test(lower)) return "edit";
+  if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
   if (/read|view|open|cat|list/.test(lower)) return "read";
   if (/search|grep|find|glob/.test(lower)) return "search";
   if (/web|browser|navigate|fetch|url|http/.test(lower)) return "web";

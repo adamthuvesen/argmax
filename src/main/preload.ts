@@ -34,6 +34,7 @@ import type {
   MenuCommand,
   OpenInIdeInput,
   ProviderSessionInput,
+  ProvidersCancelQueuedMessageInput,
   ProviderSessionResizeInput,
   ProjectFolderPickResult,
   ProjectSummary,
@@ -111,10 +112,12 @@ const api: ArgmaxApi = {
     launch: (input: LaunchProviderSessionInput) =>
       ipcRenderer.invoke("providers:launch", input) as Promise<DashboardSnapshot["sessions"][number]>,
     sendInput: (input: ProviderSessionInput) =>
-      ipcRenderer.invoke("providers:send-input", input) as Promise<{ ok: true }>,
+      ipcRenderer.invoke("providers:send-input", input) as Promise<{ ok: true; queued: boolean }>,
     resize: (input: ProviderSessionResizeInput) =>
       ipcRenderer.invoke("providers:resize", input) as Promise<{ ok: true }>,
-    terminate: (sessionId: string) => ipcRenderer.invoke("providers:terminate", sessionId) as Promise<{ ok: true }>
+    terminate: (sessionId: string) => ipcRenderer.invoke("providers:terminate", sessionId) as Promise<{ ok: true }>,
+    cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) =>
+      ipcRenderer.invoke("providers:cancel-queued-message", input) as Promise<{ ok: true }>
   },
   attachments: {
     saveImage: (input: AttachmentSaveImageInput) =>

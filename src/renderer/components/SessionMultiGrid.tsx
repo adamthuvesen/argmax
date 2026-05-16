@@ -13,6 +13,7 @@ import type {
   AgentMode,
   ApprovalRequest,
   CheckRun,
+  PendingMessage,
   ProjectSummary,
   RawProviderOutput,
   SessionSummary,
@@ -41,6 +42,7 @@ interface SessionMultiGridProps {
   workspacesById: Map<string, WorkspaceSummary>;
   sessionsById: Map<string, SessionSummary>;
   defaultToolCallsExpanded?: boolean;
+  showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
   rightPanelToggleSignal?: number;
   renderLauncher: (project: ProjectSummary | null) => JSX.Element;
@@ -55,6 +57,8 @@ interface SessionMultiGridProps {
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode) => Promise<void>;
+  onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
+  pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
@@ -76,6 +80,7 @@ export function SessionMultiGrid({
   workspacesById,
   sessionsById,
   defaultToolCallsExpanded,
+  showCostPanel = true,
   thinkingStyle,
   rightPanelToggleSignal,
   renderLauncher,
@@ -86,6 +91,8 @@ export function SessionMultiGrid({
   onLoadSessionEvents,
   onResolveApproval,
   onSendSessionInput,
+  onCancelQueuedMessage,
+  pendingMessages,
   onTerminateSession,
   onCreateCheckpoint,
   onRunCheck,
@@ -228,6 +235,7 @@ export function SessionMultiGrid({
                         checks={checks}
                         defaultToolCallsExpanded={defaultToolCallsExpanded}
                         events={events}
+                        showCostPanel={showCostPanel}
                         isFocused={focused}
                         onClose={() => onClosePane({ row: r, col: c })}
                         onCreateCheckpoint={onCreateCheckpoint}
@@ -235,6 +243,8 @@ export function SessionMultiGrid({
                         onResolveApproval={onResolveApproval}
                         onRunCheck={onRunCheck}
                         onSendSessionInput={onSendSessionInput}
+                        onCancelQueuedMessage={onCancelQueuedMessage}
+                        pendingMessages={pendingMessages}
                         onTerminateSession={onTerminateSession}
                         project={project}
                         rawOutputs={rawOutputs}

@@ -1,11 +1,17 @@
 import { ChevronRight, Loader2 } from "lucide-react";
-import { useMemo, useState, type JSX, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type JSX, type ReactNode } from "react";
 import { formatElapsed } from "../formatElapsed.js";
 import type { ToolCall, ToolCallGroup } from "../lib/toolCalls.js";
 
 export type TurnToolItem =
   | { kind: "tool"; tool: ToolCall }
   | { kind: "tool-group"; group: ToolCallGroup };
+
+export type TurnBodyChild = {
+  kind: "assistant" | "tool";
+  id: string;
+  node: ReactNode;
+};
 
 interface Bounds {
   startedAt: number;
@@ -61,27 +67,59 @@ function isToolRunning(item: TurnToolItem): boolean {
   return item.group.tools.some((t) => t.status === "running");
 }
 
+// Group consecutive tool children into a single .turn-block-tools wrapper so
+// adjacent tools share the tight 8px gap, while assistant text and tool runs
+// keep the looser 18px body gap. When collapsed, tool children are dropped
+// entirely and only assistant children render.
+function renderBody(children: TurnBodyChild[], expanded: boolean): ReactNode {
+  const visible = expanded ? children : children.filter((c) => c.kind === "assistant");
+  const fragments: ReactNode[] = [];
+  let toolRun: TurnBodyChild[] = [];
+  const flushTools = (): void => {
+    if (toolRun.length === 0) return;
+    const first = toolRun[0];
+    if (!first) {
+      toolRun = [];
+      return;
+    }
+    fragments.push(
+      <div key={`tools-${first.id}`} className="turn-block-tools">
+        {toolRun.map((t) => (
+          <Fragment key={t.id}>{t.node}</Fragment>
+        ))}
+      </div>
+    );
+    toolRun = [];
+  };
+  for (const child of visible) {
+    if (child.kind === "tool") {
+      toolRun.push(child);
+    } else {
+      flushTools();
+      fragments.push(<Fragment key={child.id}>{child.node}</Fragment>);
+    }
+  }
+  flushTools();
+  return fragments;
+}
+
 export function TurnBlock({
   toolItems,
   assistantTimestamps,
-  toolsNode,
-  assistantNode,
+  body,
   providerLabel: providerLabelText,
   modelLabel,
   defaultExpanded
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
-  toolsNode: ReactNode;
-  assistantNode: ReactNode;
+  body: TurnBodyChild[];
   providerLabel?: string;
   modelLabel?: string;
   defaultExpanded?: boolean;
 }): JSX.Element {
   const running = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
   const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
-  // When running, the chip shows "Working…" and elapsedMs is unused; when
-  // not running, bounds.endedAt is guaranteed non-null.
   const elapsedMs = bounds.endedAt !== null ? Math.max(0, bounds.endedAt - bounds.startedAt) : 0;
 
   // Expanded while running so users see live progress; when done, falls back
@@ -126,10 +164,7 @@ export function TurnBlock({
           </button>
         ) : null}
       </div>
-      <div className="turn-block-body">
-        {assistantNode}
-        {hasTools && expanded ? <div className="turn-block-tools">{toolsNode}</div> : null}
-      </div>
+      <div className="turn-block-body">{renderBody(body, expanded)}</div>
     </div>
   );
 }

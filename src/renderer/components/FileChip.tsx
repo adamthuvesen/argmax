@@ -1,20 +1,35 @@
 import { Code2 } from "lucide-react";
-import type { JSX } from "react";
+import type { JSX, MouseEvent as ReactMouseEvent } from "react";
+
+export type FileChipOpenOptions = {
+  line?: number | null;
+  preferIde?: boolean;
+};
 
 export function FileChip({
   path,
   line,
   workspaceId,
-  workspaceCwd
+  workspaceCwd,
+  onOpen
 }: {
   path: string;
   line: number | null;
   workspaceId?: string | null;
   workspaceCwd?: string | null;
+  onOpen?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
   const label = line ? `${path}:${line}` : path;
   const ariaLabel = line ? `Open ${path} at line ${line}` : `Open ${path}`;
-  const handleOpen = (): void => {
+  const title = onOpen
+    ? `${ariaLabel} (⌘-click to open in IDE)`
+    : ariaLabel;
+  const handleOpen = (event: ReactMouseEvent<HTMLButtonElement>): void => {
+    const preferIde = event.metaKey || event.ctrlKey;
+    if (onOpen) {
+      onOpen(path, { line, preferIde });
+      return;
+    }
     if (!window.argmax) return;
     if (workspaceId) {
       // Use the workspace IDE shortcut so the file lands in the user's editor
@@ -33,7 +48,7 @@ export function FileChip({
     <button
       type="button"
       className="file-chip"
-      title={ariaLabel}
+      title={title}
       aria-label={ariaLabel}
       onClick={handleOpen}
     >

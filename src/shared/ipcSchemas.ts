@@ -219,6 +219,11 @@ export const providerSessionResizeInputSchema = z.object({
 
 export const providerSessionTerminateInputSchema = sessionIdSchema;
 
+export const providersCancelQueuedMessageInputSchema = z.object({
+  sessionId: sessionIdSchema,
+  messageId: z.string().min(1)
+});
+
 const terminalIdSchema = z.string().min(1);
 
 export const terminalSpawnInputSchema = z.object({
@@ -540,6 +545,7 @@ export const ipcSchemas = {
   "providers:send-input": providerSessionInputSchema,
   "providers:resize": providerSessionResizeInputSchema,
   "providers:terminate": providerSessionTerminateInputSchema,
+  "providers:cancel-queued-message": providersCancelQueuedMessageInputSchema,
   "attachments:save-image": attachmentSaveImageInputSchema,
   "terminal:spawn": terminalSpawnInputSchema,
   "terminal:write": terminalWriteInputSchema,
@@ -623,6 +629,7 @@ export type CreateWorkspaceInputParsed = z.infer<typeof createWorkspaceInputSche
 export type CreateCurrentWorkspaceInputParsed = z.infer<typeof createCurrentWorkspaceInputSchema>;
 export type LaunchProviderSessionInputParsed = z.infer<typeof launchProviderSessionInputSchema>;
 export type ProviderSessionInputParsed = z.infer<typeof providerSessionInputSchema>;
+export type ProvidersCancelQueuedMessageInputParsed = z.infer<typeof providersCancelQueuedMessageInputSchema>;
 export type ComposerAttachmentParsed = z.infer<typeof composerAttachmentSchema>;
 export type AttachmentSaveImageInputParsed = z.infer<typeof attachmentSaveImageInputSchema>;
 export type AttachmentSaveImageResultParsed = z.infer<typeof attachmentSaveImageResultSchema>;

@@ -20,6 +20,7 @@ import type {
   McpAuthWriteInputParsed,
   OpenInIdeInputParsed,
   ProviderSessionInputParsed,
+  ProvidersCancelQueuedMessageInputParsed,
   ProviderSessionResizeInputParsed,
   ComposerAttachmentParsed,
   AttachmentSaveImageInputParsed,
@@ -105,6 +106,7 @@ export type CreateWorkspaceInput = CreateWorkspaceInputParsed;
 export type CreateCurrentWorkspaceInput = CreateCurrentWorkspaceInputParsed;
 export type LaunchProviderSessionInput = LaunchProviderSessionInputParsed;
 export type ProviderSessionInput = ProviderSessionInputParsed;
+export type ProvidersCancelQueuedMessageInput = ProvidersCancelQueuedMessageInputParsed;
 export type ProviderSessionResizeInput = ProviderSessionResizeInputParsed;
 export type ComposerAttachment = ComposerAttachmentParsed;
 export type AttachmentSaveImageInput = AttachmentSaveImageInputParsed;
@@ -461,6 +463,23 @@ export interface SessionSummary {
   tokens?: UsageCounts;
 }
 
+/**
+ * A user-composed follow-up that arrived while the agent was mid-turn. Held in
+ * the main-process queue (in-memory only) until the session reaches `complete`,
+ * at which point items drain one-at-a-time as fresh follow-up turns.
+ */
+export interface PendingMessage {
+  id: string;
+  sessionId: string;
+  content: string;
+  agentMode: AgentMode;
+  modelLabel?: string;
+  modelId?: string;
+  reasoningEffort?: ReasoningEffort;
+  attachments?: ComposerAttachment[];
+  queuedAt: string;
+}
+
 export interface TimelineEvent {
   id: string;
   sessionId: string;
@@ -522,6 +541,12 @@ export interface DashboardSnapshot {
   approvals: ApprovalRequest[];
   checks: CheckRun[];
   checkpoints: Checkpoint[];
+  /**
+   * Per-session queue of follow-ups composed while the agent was running.
+   * Full replacement per session id (an empty array clears that session's queue).
+   * Omitted on snapshots that pre-date the feature; absent keys mean "no change."
+   */
+  pendingMessages?: Record<string, PendingMessage[]>;
 }
 
 export type DashboardListSnapshot = Pick<
@@ -572,9 +597,10 @@ export interface ArgmaxApi {
   providers: {
     discover: () => Promise<DiscoveredProvider[]>;
     launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
-    sendInput: (input: ProviderSessionInput) => Promise<{ ok: true }>;
+    sendInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
     terminate: (sessionId: string) => Promise<{ ok: true }>;
+    cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<{ ok: true }>;
   };
   attachments: {
     saveImage: (input: AttachmentSaveImageInput) => Promise<AttachmentSaveImageResult>;

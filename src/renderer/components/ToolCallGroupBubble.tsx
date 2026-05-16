@@ -1,11 +1,7 @@
 import { memo, useMemo, useState, type JSX } from "react";
-import {
-  summarizeToolGroup,
-  type ToolCall,
-  type ToolCallGroup
-} from "../lib/toolCalls.js";
+import { summarizeToolGroup, type ToolCall, type ToolCallGroup } from "../lib/toolCalls.js";
 import { LiveElapsedChip } from "./LiveElapsedChip.js";
-import { ToolCallBubble } from "./ToolCallBubble.js";
+import { ToolCallRow } from "./ToolCallRow.js";
 
 type ToolCallGroupBubbleProps = {
   group: ToolCallGroup;
@@ -16,15 +12,14 @@ type ToolCallGroupBubbleProps = {
 
 function ToolCallGroupBubbleInner({
   group,
-  isFreshTool,
   defaultExpanded,
   workspaceCwd
 }: ToolCallGroupBubbleProps): JSX.Element {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
-  // Default to expanded so users can see what the agent did, even after the
-  // turn completes. The user can manually collapse to free up vertical space.
-  const expanded = userToggle ?? (defaultExpanded ?? true);
+  // Collapsed by default to match Codex — the user clicks the chevron to
+  // reveal per-tool rows. defaultExpanded (from Settings) still wins when set.
+  const expanded = userToggle ?? (defaultExpanded ?? false);
   const { startedAtMs, completedAtMs } = useMemo(() => {
     const start = Math.min(...group.tools.map((t) => Date.parse(t.createdAt)));
     const anyRunning = group.tools.some((t) => !t.completedAt);
@@ -35,20 +30,27 @@ function ToolCallGroupBubbleInner({
     return { startedAtMs: start, completedAtMs: end };
   }, [group.tools]);
 
+  // While collapsed and still running, show the current action ("Read foo.ts")
+  // in place of the slash-joined input preview so the user has a live signal.
+  const previewText =
+    !expanded && summary.worstStatus === "running" && summary.currentAction
+      ? summary.currentAction
+      : summary.preview;
+
   return (
     <div className="tool-call-group" data-status={summary.worstStatus} data-expanded={expanded}>
       <button
         className="tool-call-group-header"
         type="button"
         aria-expanded={expanded}
-        aria-label={`${summary.headline}${summary.preview ? ": " + summary.preview : ""}`}
+        aria-label={`${summary.headline}${previewText ? ": " + previewText : ""}`}
         onClick={() => setUserToggle(!expanded)}
       >
         <span className="tool-call-group-eyebrow" aria-hidden="true">
           <span className="tool-call-group-eyebrow-label">{summary.headline}</span>
         </span>
-        {summary.preview ? (
-          <span className="tool-call-group-preview" aria-hidden="true">{summary.preview}</span>
+        {previewText ? (
+          <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
         ) : null}
         <LiveElapsedChip
           status={summary.worstStatus}
@@ -67,18 +69,7 @@ function ToolCallGroupBubbleInner({
               key={tool.id}
               style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
             >
-              <ToolCallBubble
-                tool={tool}
-                fresh={isFreshTool(tool)}
-                nested
-                workspaceCwd={workspaceCwd ?? null}
-                {...(group.parallelPositions.get(tool.id)
-                  ? { parallelPosition: group.parallelPositions.get(tool.id)! }
-                  : {})}
-                {...(group.parallelGroupId.get(tool.id)
-                  ? { parallelGroupId: group.parallelGroupId.get(tool.id)! }
-                  : {})}
-              />
+              <ToolCallRow tool={tool} workspaceCwd={workspaceCwd ?? null} />
             </div>
           ))}
         </div>
@@ -87,9 +78,6 @@ function ToolCallGroupBubbleInner({
   );
 }
 
-// Memoize on group identity + per-tool status (ralph C2). Group object is
-// rebuilt by SessionConversation each render, so compare its id + the
-// tools array's status/id list.
 export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) => {
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.workspaceCwd !== next.workspaceCwd) return false;

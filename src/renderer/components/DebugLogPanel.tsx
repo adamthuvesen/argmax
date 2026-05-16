@@ -120,7 +120,9 @@ function DebugOutputList({ outputs }: { outputs: RawProviderOutput[] }): JSX.Ele
     return <p className="log-empty">No raw output yet.</p>;
   }
   const copyBlock = (content: string): void => {
-    void navigator.clipboard?.writeText(content);
+    // Swallow rejection: this is a power-user diagnostics panel; a clipboard
+    // permission denial doesn't need to surface a toast.
+    navigator.clipboard?.writeText(content).catch(() => undefined);
   };
   return (
     <div className="log-output-list">

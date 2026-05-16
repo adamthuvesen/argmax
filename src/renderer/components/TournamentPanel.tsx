@@ -27,23 +27,38 @@ interface TournamentPanelProps {
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 30;
 const POLL_INTERVAL_MS = 2000;
+const MAX_CONTESTANTS = 8;
 
-function defaultContestants(): ContestantConfig[] {
-  // Two-row default: one Claude, one Codex. The user can add up to 8 contestants.
+/** Render-only id attached to each contestant row so React keys stay stable
+ *  across add/remove (R-027). Strips before sending to IPC. */
+type ContestantRow = ContestantConfig & { _clientId: string };
+
+function withClientId(config: ContestantConfig): ContestantRow {
+  return { ...config, _clientId: crypto.randomUUID() };
+}
+
+function stripClientId(row: ContestantRow): ContestantConfig {
+  const { _clientId, ...config } = row;
+  void _clientId;
+  return config;
+}
+
+function defaultContestants(): ContestantRow[] {
+  // Two-row default: one Claude, one Codex. The user can add up to MAX_CONTESTANTS.
   const claudeDefault = PROVIDER_MODEL_DEFAULTS.claude;
   const codexDefault = PROVIDER_MODEL_DEFAULTS.codex;
   return [
-    {
+    withClientId({
       provider: "claude",
       modelId: claudeDefault.modelId,
       modelLabel: claudeDefault.label
-    },
-    {
+    }),
+    withClientId({
       provider: "codex",
       modelId: codexDefault.modelId,
       modelLabel: codexDefault.label,
       ...(codexDefault.reasoningEffort ? { reasoningEffort: codexDefault.reasoningEffort } : {})
-    }
+    })
   ];
 }
 
@@ -91,7 +106,7 @@ export function TournamentPanel({
   const [taskLabel, setTaskLabel] = useState("");
   const [prompt, setPrompt] = useState("");
   const [policyId, setPolicyId] = useState<string>("builtin:correctness-first");
-  const [contestants, setContestants] = useState<ContestantConfig[]>(defaultContestants());
+  const [contestants, setContestants] = useState<ContestantRow[]>(defaultContestants());
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [keeping, setKeeping] = useState(false);
@@ -102,8 +117,11 @@ export function TournamentPanel({
   }, [project.id]);
 
   useEffect(() => {
-    void window.argmax!.scoring.listPolicies().then(setPolicies);
-    void refreshList();
+    window.argmax!.scoring
+      .listPolicies()
+      .then(setPolicies)
+      .catch((error) => setLaunchError(`Could not load scoring policies: ${error}`));
+    refreshList().catch((error) => setLaunchError(`Could not load tournaments: ${error}`));
   }, [refreshList]);
 
   useEffect(() => {
@@ -130,10 +148,10 @@ export function TournamentPanel({
   }, [selectedTournamentId]);
 
   const onAddContestant = (): void => {
-    if (contestants.length >= 8) return;
-    const next = defaultContestants()[0];
-    if (!next) return;
-    setContestants((current) => [...current, next]);
+    if (contestants.length >= MAX_CONTESTANTS) return;
+    const seed = defaultContestants()[0];
+    if (!seed) return;
+    setContestants((current) => [...current, withClientId(stripClientId(seed))]);
   };
   const onRemoveContestant = (index: number): void => {
     setContestants((current) => current.filter((_, i) => i !== index));
@@ -154,7 +172,7 @@ export function TournamentPanel({
         taskLabel: taskLabel.trim() || "Untitled tournament",
         prompt: prompt.trim(),
         policyId,
-        contestants,
+        contestants: contestants.map(stripClientId),
         cols,
         rows
       };
@@ -255,7 +273,7 @@ export function TournamentPanel({
         <fieldset className="tournament-contestants">
           <legend>Contestants</legend>
           {contestants.map((contestant, index) => (
-            <div key={index} className="tournament-contestant-row">
+            <div key={contestant._clientId} className="tournament-contestant-row">
               <span>#{index + 1}</span>
               <select
                 value={contestant.provider}
@@ -266,6 +284,7 @@ export function TournamentPanel({
                       const provider = event.target.value as ContestantConfig["provider"];
                       const def = PROVIDER_MODEL_DEFAULTS[provider];
                       return {
+                        ...c,
                         provider,
                         modelId: def.modelId,
                         modelLabel: def.label,
@@ -294,7 +313,7 @@ export function TournamentPanel({
           <button
             type="button"
             onClick={onAddContestant}
-            disabled={contestants.length >= 8}
+            disabled={contestants.length >= MAX_CONTESTANTS}
             aria-label="Add contestant"
           >
             Add contestant

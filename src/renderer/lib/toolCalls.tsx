@@ -172,23 +172,24 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   const headline = clauses.length > 0 ? clauses.join(", ") : `${tools.length} tool calls`;
 
   const previewParts: string[] = [];
-  let skipped = 0;
-  for (const tool of tools) {
-    const raw = tool.inputPreview;
-    if (!raw) {
-      skipped++;
-      continue;
-    }
+  // Track explicit truncation so " / …" only renders when we genuinely broke
+  // early — the previous shape over-counted because un-iterated tools were
+  // conservatively treated as valid, which could append " / …" even when
+  // every remaining tool had an empty inputPreview (R-035).
+  let truncated = false;
+  for (let i = 0; i < tools.length; i++) {
+    const raw = tools[i]?.inputPreview;
+    if (!raw) continue;
     const candidate = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
     const trimmed = candidate.trim();
-    if (!trimmed) {
-      skipped++;
-      continue;
-    }
+    if (!trimmed) continue;
     previewParts.push(trimmed.slice(0, 28));
-    if (previewParts.length === 3) break;
+    if (previewParts.length === 3) {
+      truncated = i + 1 < tools.length;
+      break;
+    }
   }
-  const preview = previewParts.join(" / ") + (tools.length - skipped > previewParts.length ? " / …" : "");
+  const preview = previewParts.join(" / ") + (truncated ? " / …" : "");
 
   let hasError = false;
   let latestRunning: ToolCall | null = null;

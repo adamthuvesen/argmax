@@ -1,7 +1,6 @@
 import { Copy } from "lucide-react";
-import { memo, useMemo, useState, type JSX, type ReactNode } from "react";
-
-const COPY_FLASH_MS = 1500;
+import { memo, useMemo, type JSX, type ReactNode } from "react";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 
 function formatBubbleTimestamp(iso: string): string {
   const ms = Date.parse(iso);
@@ -31,15 +30,11 @@ function ChatBubbleInner({
   rawMarkdown,
   children
 }: ChatBubbleProps): JSX.Element {
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopyToClipboard();
   const label = useMemo(() => formatBubbleTimestamp(createdAt), [createdAt]);
 
   const handleCopy = (): void => {
-    if (!navigator.clipboard) return;
-    void navigator.clipboard.writeText(rawMarkdown).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), COPY_FLASH_MS);
-    });
+    void copy(rawMarkdown);
   };
 
   return (

@@ -209,9 +209,8 @@ export function ReviewPanel({
           {isChanges ? (
             <>
               {selectedFile ? (
-                <div className="review-diff-heading" data-status={statusGlyph(selectedFile.status).toLowerCase()}>
+                <div className="review-diff-heading">
                   <div>
-                    <span className="changed-file-status">{statusLabel(selectedFile.status)}</span>
                     <strong>{selectedFile.path}</strong>
                     <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
                   </div>

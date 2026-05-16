@@ -425,9 +425,8 @@ button {
 }
 
 .rail-nav-cta:hover {
-  border-color: var(--ink);
+  border-color: var(--muted);
   background: var(--panel);
-  box-shadow: var(--shadow-2);
 }
 
 .rail-nav-cta:active {
@@ -578,12 +577,9 @@ button {
   position: relative;
   display: grid;
   gap: 0;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   padding-left: 0;
 }
-
-/* The ASCII `├─` / `└─` glyphs in `.session-connector` already form a
-   continuous tree line on their own — no extra `::before` rule needed. */
 
 .project-group.dragging {
   opacity: 0.4;
@@ -624,7 +620,7 @@ button {
   min-width: 0;
   min-height: 30px;
   padding: 0 6px 0 8px;
-  color: var(--text);
+  color: var(--muted-strong);
   text-align: left;
   border: 0;
   border-radius: 8px;
@@ -646,23 +642,6 @@ button {
 .project-name.active {
   color: var(--text);
   background: transparent;
-  box-shadow: inset 2px 0 0 var(--ink);
-}
-
-.project-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  color: var(--muted-strong);
-  transition: color var(--duration-fast) var(--ease);
-}
-
-.project-name:hover .project-icon,
-.project-name.active .project-icon {
-  color: var(--text);
 }
 
 .project-name-text {
@@ -717,7 +696,7 @@ button {
   gap: 11px;
   align-items: center;
   width: 100%;
-  min-height: 24px;
+  min-height: 28px;
   padding: 0 10px 0 12px;
   color: var(--muted-strong);
   text-align: left;
@@ -738,13 +717,11 @@ button {
 .session-link[data-open="true"]:not(.active) {
   color: var(--text);
   background: rgba(107, 142, 113, 0.10);
-  box-shadow: inset 2px 0 0 rgba(107, 142, 113, 0.55);
 }
 
 .session-link.active {
   color: var(--text);
   background: var(--sage-soft);
-  box-shadow: inset 2px 0 0 var(--sage);
 }
 
 .session-link span {
@@ -1699,10 +1676,10 @@ button {
 
 .settings-hero-title {
   margin: 0;
-  font-size: clamp(40px, 6vw, 64px);
+  font-size: clamp(26px, 3.2vw, 34px);
   font-weight: 500;
-  line-height: 0.96;
-  letter-spacing: -0.03em;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   color: var(--text);
   font-feature-settings: "ss01", "calt";
 }
@@ -1749,10 +1726,10 @@ button {
 .settings-group-intro h2 {
   margin: 3px 0 0;
   color: var(--text);
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 500;
-  letter-spacing: -0.018em;
-  line-height: 1.05;
+  letter-spacing: -0.012em;
+  line-height: 1.15;
 }
 
 .settings-group-intro p {
@@ -1885,11 +1862,11 @@ button {
 
 .settings-section-titles h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 500;
-  letter-spacing: -0.018em;
+  letter-spacing: -0.01em;
   color: var(--text);
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .settings-section-desc {
@@ -6342,7 +6319,7 @@ button {
   gap: 8px;
   align-items: baseline;
   margin: 0;
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 400;
   letter-spacing: 0;
   color: var(--text);
@@ -6407,7 +6384,6 @@ button {
 .review-file-tabs button[aria-pressed="true"] {
   color: var(--text);
   background: var(--panel-soft);
-  box-shadow: inset 2px 0 0 var(--ink);
 }
 
 .review-file-row-status {
@@ -6525,37 +6501,6 @@ button {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
-}
-
-.review-diff-heading .changed-file-status {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--muted-strong);
-  background: var(--panel-sunken);
-}
-
-.review-diff-heading[data-status="a"] .changed-file-status {
-  color: var(--sage-deep);
-  background: var(--sage-soft);
-  border-color: rgba(90, 143, 114, 0.4);
-}
-
-.review-diff-heading[data-status="m"] .changed-file-status {
-  color: var(--amber);
-  background: var(--amber-soft);
-  border-color: rgba(176, 128, 57, 0.4);
-}
-
-.review-diff-heading[data-status="d"] .changed-file-status {
-  color: var(--rose);
-  background: var(--rose-soft);
-  border-color: rgba(184, 87, 99, 0.4);
 }
 
 .review-diff-heading strong {
@@ -6826,11 +6771,7 @@ button {
 .review-mode-tabs {
   display: inline-flex;
   align-self: flex-start;
-  padding: 3px;
-  background: var(--panel-sunken);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  gap: 2px;
+  gap: 6px;
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
@@ -6839,18 +6780,17 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  width: 24px;
   height: 24px;
+  padding: 0;
   border: 0;
   background: transparent;
-  border-radius: 5px;
+  border-radius: 4px;
   font: inherit;
   color: var(--muted);
   cursor: pointer;
   transition:
-    background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease),
-    box-shadow var(--duration-fast) var(--ease);
+    color var(--duration-fast) var(--ease);
 }
 
 .review-mode-tabs button:hover {
@@ -6858,10 +6798,7 @@ button {
 }
 
 .review-mode-tabs button[aria-selected="true"] {
-  background: var(--ink);
-  color: #fff;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset,
-    0 1px 2px rgba(31, 28, 24, 0.2);
+  color: var(--text);
 }
 
 .review-mode-tabs button:focus-visible {
@@ -7717,7 +7654,7 @@ button {
   position: relative;
   display: flex;
   align-items: stretch;
-  gap: 2px;
+  padding-left: 6px;
 }
 
 .session-row-wrap > .session-row {
@@ -7725,22 +7662,40 @@ button {
   min-width: 0;
 }
 
-.session-connector {
-  flex: 0 0 auto;
-  width: 16px;
-  padding-left: 11px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 24px;
-  color: var(--line-strong);
-  user-select: none;
-  letter-spacing: 0;
-  transition: color var(--duration-fast) var(--ease);
+.session-row-wrap::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+  transition: background var(--duration-fast) var(--ease);
+  pointer-events: none;
 }
 
-.session-row-wrap:hover .session-connector,
-.session-row-wrap:focus-within .session-connector {
-  color: var(--muted);
+.session-row-wrap::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 14px;
+  width: 4px;
+  height: 1px;
+  background: var(--line);
+  transition: background var(--duration-fast) var(--ease);
+  pointer-events: none;
+}
+
+.session-row-wrap[data-last="true"]::before {
+  bottom: auto;
+  height: 14px;
+}
+
+.session-row-wrap:hover::before,
+.session-row-wrap:hover::after,
+.session-row-wrap:focus-within::before,
+.session-row-wrap:focus-within::after {
+  background: var(--line-strong);
 }
 
 .session-row-wrap.dragging {

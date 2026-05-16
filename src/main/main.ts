@@ -28,6 +28,8 @@ import { DeltaCoalescer } from "./util/deltaCoalescer.js";
 import { mark as markStartupPhase } from "./util/startupTimer.js";
 import { isAllowedAppNavigation, rendererFileNavigationPrefix } from "./util/appNavigation.js";
 
+app.setName("Argmax");
+
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
 let providerSessions: ProviderSessionService | null = null;

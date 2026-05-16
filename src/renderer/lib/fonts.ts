@@ -168,10 +168,13 @@ const loadedFonts = new Set<FontFamilyId>();
 
 export async function loadFontAssets(id: FontFamilyId): Promise<void> {
   if (loadedFonts.has(id)) return;
-  loadedFonts.add(id);
   const loader = FONT_CSS_LOADERS[id];
   if (!loader) return;
   await loader();
+  // Cache only after a successful load. Adding id to the set before awaiting
+  // permanently poisoned the cache on a transient chunk-fetch failure — the
+  // font never recovered without a full page reload (R-033).
+  loadedFonts.add(id);
 }
 
 /** Test-only: clear the loaded-font cache between fixtures. */

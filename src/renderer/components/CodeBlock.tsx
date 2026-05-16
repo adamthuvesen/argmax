@@ -1,8 +1,8 @@
 import { Check, Copy } from "lucide-react";
-import { Children, useMemo, useState, type JSX, type ReactNode } from "react";
+import { Children, useMemo, type JSX, type ReactNode } from "react";
 import { highlightCode, resolveFenceLang, useHighlighterReady } from "../lib/highlighter.js";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 
-const COPY_FLASH_MS = 1500;
 const LANGUAGE_CLASS_PREFIX = "language-";
 
 function extractFenceTag(className: string | undefined): string | null {
@@ -48,17 +48,13 @@ export function CodeBlock({
 }): JSX.Element {
   const fenceTag = useMemo(() => extractFenceTag(className), [className]);
   const codeText = useMemo(() => collectText(children).replace(/\n$/, ""), [children]);
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopyToClipboard();
   const ready = useHighlighterReady();
   const lang = useMemo(() => (ready ? resolveFenceLang(fenceTag) : null), [ready, fenceTag]);
   const lines = useMemo(() => highlightCode(codeText, lang), [codeText, lang]);
 
   const handleCopy = (): void => {
-    if (!navigator.clipboard) return;
-    void navigator.clipboard.writeText(codeText).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), COPY_FLASH_MS);
-    });
+    void copy(codeText);
   };
 
   const labelTag = fenceTag ?? null;

@@ -187,11 +187,16 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const prefetch = (): void => {
-      void importCommandPalette();
-      void importSearchOverlay();
-      void importSettingsPanel();
-      void importReviewPanel();
-      void importWorkspaceContentSearch();
+      // Each .catch(() => {}) avoids an unhandled rejection on a transient
+      // chunk-fetch failure. The on-demand Suspense import retries
+      // independently so functionality isn't lost; this just keeps the
+      // unhandledrejection handler quiet (R-032).
+      const swallow = (): void => undefined;
+      importCommandPalette().catch(swallow);
+      importSearchOverlay().catch(swallow);
+      importSettingsPanel().catch(swallow);
+      importReviewPanel().catch(swallow);
+      importWorkspaceContentSearch().catch(swallow);
     };
     const ric = (window as Window & {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;

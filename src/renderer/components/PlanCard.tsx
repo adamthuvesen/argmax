@@ -3,8 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX, type
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Plan, PlanItem } from "../lib/parsePlan.js";
-
-const COPY_FLASH_MS = 1500;
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 
 const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
@@ -96,7 +95,7 @@ function PlanCardInner({
 }: PlanCardProps): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopyToClipboard();
   const [feedback, setFeedback] = useState<FeedbackState>("none");
   const optionsRef = useRef<HTMLUListElement | null>(null);
 
@@ -170,12 +169,8 @@ function PlanCardInner({
   }, [collapsed]);
 
   const handleCopy = useCallback((): void => {
-    if (!navigator.clipboard) return;
-    void navigator.clipboard.writeText(rawMarkdown).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), COPY_FLASH_MS);
-    });
-  }, [rawMarkdown]);
+    void copy(rawMarkdown);
+  }, [copy, rawMarkdown]);
 
   const handleDownload = useCallback((): void => {
     const blob = new Blob([rawMarkdown], { type: "text/markdown" });

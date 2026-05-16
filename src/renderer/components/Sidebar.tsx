@@ -20,6 +20,11 @@ import {
 } from "../lib/projects.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
+// Cap on workspaces shown per project group. When more exist, a "N more"
+// row replaces them as a hint so the user knows truncation is happening
+// (R-030).
+const SIDEBAR_WORKSPACE_CAP = 7;
+
 function formatNameplateDate(): string {
   const d = new Date();
   const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
@@ -265,12 +270,14 @@ export function Sidebar({
         </div>
         {orderedProjects.map((project) => {
           const manualOrder = workspaceOrders[project.id] ?? [];
-          const projectWorkspaces = sortWorkspaceGroup(
+          const liveWorkspaces = sortWorkspaceGroup(
             snapshot.workspaces.filter(
               (workspace) => workspace.projectId === project.id && workspace.state !== "archived"
             ),
             manualOrder
-          ).slice(0, 7);
+          );
+          const projectWorkspaces = liveWorkspaces.slice(0, SIDEBAR_WORKSPACE_CAP);
+          const hiddenCount = Math.max(0, liveWorkspaces.length - projectWorkspaces.length);
           const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
           const isCollapsed = collapsedProjectIds.has(project.id);
           const isDragging = draggingId === project.id;
@@ -352,6 +359,16 @@ export function Sidebar({
                       </div>
                     );
                   })}
+              {!isCollapsed && hiddenCount > 0 ? (
+                <div
+                  className="sidebar-workspace-more"
+                  role="note"
+                  aria-label={`${hiddenCount} more workspaces not shown`}
+                  title={`${hiddenCount} more workspace${hiddenCount === 1 ? "" : "s"} hidden — adjust pin or archive to surface them`}
+                >
+                  {hiddenCount} more workspace{hiddenCount === 1 ? "" : "s"}
+                </div>
+              ) : null}
             </div>
           );
         })}

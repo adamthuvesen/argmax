@@ -1,3 +1,4 @@
+import { BoundedSet } from "../../shared/boundedSet.js";
 import { logger } from "../../shared/logger.js";
 import { errorMessage } from "../../shared/error.js";
 import type { ArgmaxDatabase } from "../persistence/database.js";
@@ -44,7 +45,10 @@ const FRESHNESS_WINDOW_MULTIPLIER = 2;
  */
 export class GhPoller {
   private timer: NodeJS.Timeout | null = null;
-  private readonly queued = new Set<string>();
+  // Bounded so a long-running app with frequent CI rebase/force-push cycles
+  // doesn't grow the dedup ledger without limit. 500 keys covers thousands of
+  // PR/commit pairs before the oldest entry rotates out.
+  private readonly queued = new BoundedSet<string>(500);
   private inFlight = false;
 
   constructor(private readonly deps: GhPollerDeps) {}

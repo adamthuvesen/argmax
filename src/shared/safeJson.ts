@@ -13,12 +13,16 @@
  * flood logs during a single dashboard load.
  */
 
+import { BoundedMap } from "./boundedSet.js";
 import { logger } from "./logger.js";
 import { errorMessage } from "./error.js";
 import { isPlainObject } from "./typeGuards.js";
 
 const WARNING_INTERVAL_MS = 60_000;
-const lastWarnedAt = new Map<string, number>();
+// Bounded so long-running mains with many distinct contexts (dynamic ids in
+// log breadcrumbs) don't leak this dedup ledger. 200 distinct contexts is
+// generous for the static set we use today.
+const lastWarnedAt = new BoundedMap<string, number>(200);
 
 function warnRateLimited(context: string | undefined, error: unknown): void {
   if (!context) {

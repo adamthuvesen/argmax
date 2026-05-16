@@ -1,55 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <radialGradient id="bgR2" cx="50%" cy="55%" r="80%">
-      <stop offset="0%" stop-color="#1a1208"/>
-      <stop offset="100%" stop-color="#050302"/>
-    </radialGradient>
-    <pattern id="scanR2" width="8" height="8" patternUnits="userSpaceOnUse">
-      <rect width="8" height="4" fill="rgba(0,0,0,0)"/>
-      <rect y="4" width="8" height="4" fill="rgba(0,0,0,0.28)"/>
-    </pattern>
-    <filter id="glowR2" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="7" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
-
-  <!-- Scale to 80% centred — leaves ~102px transparent padding each side -->
-  <g transform="translate(512,512) scale(0.80) translate(-512,-512)">
-    <rect width="1024" height="1024" rx="232" fill="url(#bgR2)"/>
-
-    <!-- Pixel-stepped chevron in amber phosphor -->
-    <g fill="#ffb000" filter="url(#glowR2)">
-      <!-- Left side ascent -->
-      <rect x="192" y="616" width="64" height="64"/>
-      <rect x="256" y="552" width="64" height="64"/>
-      <rect x="320" y="488" width="64" height="64"/>
-      <rect x="384" y="424" width="64" height="64"/>
-      <rect x="448" y="360" width="64" height="64"/>
-      <!-- Apex -->
-      <rect x="480" y="296" width="64" height="64"/>
-      <!-- Right side descent -->
-      <rect x="512" y="360" width="64" height="64"/>
-      <rect x="576" y="424" width="64" height="64"/>
-      <rect x="640" y="488" width="64" height="64"/>
-      <rect x="704" y="552" width="64" height="64"/>
-      <rect x="768" y="616" width="64" height="64"/>
+  <!-- Inner SVG handles the 80% inset (102px padding each side) so the squircle rect stays at origin,
+       avoiding a qlmanage rendering quirk where rounded rects with non-zero x/y silently drop. -->
+  <svg x="102" y="102" width="820" height="820" viewBox="0 0 1024 1024">
+    <rect width="1024" height="1024" rx="232" fill="#fefefe"/>
+    <g transform="translate(104 206) scale(51)" fill="#9b6dd4" shape-rendering="crispEdges">
+      <!-- row 0: antennae -->
+      <rect x="4" y="0" width="1" height="1"/>
+      <rect x="11" y="0" width="1" height="1"/>
+      <!-- row 1: antennae -->
+      <rect x="4" y="1" width="1" height="1"/>
+      <rect x="11" y="1" width="1" height="1"/>
+      <!-- row 2: head top -->
+      <rect x="2" y="2" width="12" height="1"/>
+      <!-- row 3: head -->
+      <rect x="2" y="3" width="12" height="1"/>
+      <!-- row 4: eye band (X at 2, 6-9, 13; eyes at 3-4 and 11-12 left transparent) -->
+      <rect x="2" y="4" width="1" height="1"/>
+      <rect x="6" y="4" width="4" height="1"/>
+      <rect x="13" y="4" width="1" height="1"/>
+      <!-- row 5: eye band repeat -->
+      <rect x="2" y="5" width="1" height="1"/>
+      <rect x="6" y="5" width="4" height="1"/>
+      <rect x="13" y="5" width="1" height="1"/>
+      <!-- row 6: head bottom -->
+      <rect x="2" y="6" width="12" height="1"/>
+      <!-- row 7: arms out (cols 0-1, 3-12, 14-15) -->
+      <rect x="0" y="7" width="2" height="1"/>
+      <rect x="3" y="7" width="10" height="1"/>
+      <rect x="14" y="7" width="2" height="1"/>
+      <!-- row 8: arms repeat -->
+      <rect x="0" y="8" width="2" height="1"/>
+      <rect x="3" y="8" width="10" height="1"/>
+      <rect x="14" y="8" width="2" height="1"/>
+      <!-- row 9: body bottom -->
+      <rect x="2" y="9" width="12" height="1"/>
+      <!-- row 10: legs (cols 1-2, 5-6, 9-10, 13-14) -->
+      <rect x="1" y="10" width="2" height="1"/>
+      <rect x="5" y="10" width="2" height="1"/>
+      <rect x="9" y="10" width="2" height="1"/>
+      <rect x="13" y="10" width="2" height="1"/>
+      <!-- row 11: feet (cols 1, 6, 9, 14) -->
+      <rect x="1" y="11" width="1" height="1"/>
+      <rect x="6" y="11" width="1" height="1"/>
+      <rect x="9" y="11" width="1" height="1"/>
+      <rect x="14" y="11" width="1" height="1"/>
     </g>
-
-    <!-- Pixelated baseline dots -->
-    <g fill="#ffb000" opacity="0.45">
-      <rect x="288" y="728" width="32" height="32"/>
-      <rect x="496" y="728" width="32" height="32"/>
-      <rect x="704" y="728" width="32" height="32"/>
-    </g>
-
-    <!-- Scanlines -->
-    <rect width="1024" height="1024" rx="232" fill="url(#scanR2)"/>
-
-    <rect x="1.5" y="1.5" width="1021" height="1021" rx="230.5"
-          fill="none" stroke="rgba(255,176,0,0.18)" stroke-width="1.5"/>
-  </g>
+  </svg>
 </svg>

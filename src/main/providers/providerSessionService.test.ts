@@ -338,7 +338,7 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
-  it("does not publish a micro-batch delta when persistence fails", async () => {
+  it("drops the failed batch and clears the queue when persistence fails (audit-2026-05-17 H4)", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
     const fakeProvider = createFakeProvider("codex");
@@ -369,17 +369,16 @@ describe("ProviderSessionService", () => {
         createdAt: "2026-05-08T16:00:00.000Z"
       });
 
-      expect(() =>
-        (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id)
-      ).toThrow("write failed");
+      // The old behavior re-threw and left items in `pendingRawOutputs`,
+      // which poisoned the queue: every subsequent scheduleFlush retried the
+      // same broken batch forever. The new behavior drops the batch and logs
+      // a warn so the delta stream recovers.
+      (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id);
       expect(deltas).toEqual([]);
-      // Buffer must survive a transient persistence failure so the next flush
-      // can retry. This is the load-bearing reason we splice after the
-      // transaction commits, not before.
       const buffers = (service as unknown as {
         buffers: Map<string, { pendingRawOutputs: unknown[] }>;
       }).buffers;
-      expect(buffers.get(session.id)?.pendingRawOutputs.length).toBe(1);
+      expect(buffers.get(session.id)?.pendingRawOutputs.length).toBe(0);
     } finally {
       persistRawOutput.mockRestore();
       await service.terminate(session.id);

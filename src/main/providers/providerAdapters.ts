@@ -282,7 +282,13 @@ async function launchInteractivePty(
 
   let ptyProcess: IPty | null;
   try {
-    ptyProcess = spawnPty(providerShell(), ["-lc", buildProviderShellCommand(capability.binaryPath, definition.interactiveArgs(input))], {
+    // `-fc` (no startup files) instead of `-lc` (login shell) so a user
+    // alias or function named `claude`/`codex`/`cursor-agent` in `~/.zshrc`
+    // can't shadow the absolute `binaryPath` we just resolved. PATH is
+    // already augmented by providerEnvironment.providerPath, so dropping
+    // login-shell rcfile loading doesn't strand the binary lookup.
+    // (audit-2026-05-17 M5)
+    ptyProcess = spawnPty(providerShell(), ["-fc", buildProviderShellCommand(capability.binaryPath, definition.interactiveArgs(input))], {
       name: "xterm-256color",
       cols: input.cols,
       rows: input.rows,

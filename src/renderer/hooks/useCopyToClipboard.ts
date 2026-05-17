@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_FLASH_MS = 1500;
 
@@ -14,6 +14,18 @@ const DEFAULT_FLASH_MS = 1500;
 export function useCopyToClipboard(flashMs: number = DEFAULT_FLASH_MS): [boolean, (text: string) => Promise<boolean>] {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear the pending flash on unmount so React doesn't warn about a state
+  // update after unmount and the timeout callback doesn't fire against a
+  // gone component. (audit-2026-05-17 M18)
+  useEffect(() => {
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+    };
+  }, []);
 
   const copy = useCallback(
     async (text: string): Promise<boolean> => {

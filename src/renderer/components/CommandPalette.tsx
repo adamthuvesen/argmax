@@ -16,7 +16,7 @@ const MESSAGE_DEBOUNCE_MS = 150;
 const MIN_MESSAGE_QUERY_LENGTH = 3;
 const MAX_FILE_RESULTS = 200;
 
-const GROUP_ORDER: PaletteGroup[] = ["Actions", "Sessions", "Projects", "Files", "Messages"];
+const GROUP_ORDER: PaletteGroup[] = ["Actions", "Files", "Projects", "Messages", "Sessions"];
 
 const GROUP_SIGIL: Record<PaletteGroup, string> = {
   Actions: "A",
@@ -379,7 +379,6 @@ export function CommandPalette({
                       row.hit.run();
                     }
                   }}
-                  onMouseEnter={() => setSelectedIndex(index)}
                 >
                   <span className="command-palette-sigil" aria-hidden="true">{GROUP_SIGIL[row.group]}</span>
                   <span className="command-palette-result-body">

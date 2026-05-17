@@ -385,14 +385,14 @@ describe("SessionConversation — model selection persistence", () => {
         id: "queued-1",
         sessionId: "session-a",
         content: "add tests for the queue",
-        agentMode: "edit",
+        agentMode: "auto",
         queuedAt
       },
       {
         id: "queued-2",
         sessionId: "session-a",
         content: "then run lint",
-        agentMode: "edit",
+        agentMode: "auto",
         queuedAt
       }
     ];
@@ -526,7 +526,7 @@ describe("SessionConversation — model selection persistence", () => {
     ].join("\n");
 
     renderConversation(baseSession({ state: "complete" }), [
-      event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "edit" }),
+      event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "auto" }),
       event("m1", "message.completed", plan, "2026-05-12T15:00:01.000Z")
     ]);
 

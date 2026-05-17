@@ -160,10 +160,10 @@ describe("ProviderSessionService", () => {
       createdAt: "2026-05-08T16:00:00.000Z"
     });
 
-    await service.sendInput(session.id, "Continue", { agentMode: "edit" });
+    await service.sendInput(session.id, "Continue", { agentMode: "auto" });
 
-    expect(fakeProvider.launchInput?.agentMode).toBe("edit");
-    expect(database.getSession(session.id).agentMode).toBe("edit");
+    expect(fakeProvider.launchInput?.agentMode).toBe("auto");
+    expect(database.getSession(session.id).agentMode).toBe("auto");
 
     database.connection.close();
   });

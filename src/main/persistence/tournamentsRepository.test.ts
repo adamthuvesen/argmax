@@ -71,7 +71,7 @@ function seedSession(sessionId: string, workspaceId: string): void {
          reasoning_effort, permission_mode, agent_mode, prompt,
          state, attention, started_at, last_activity_at,
          input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd
-       ) VALUES (?, ?, 'claude', 'Claude', 'sonnet', NULL, 'auto-approve', 'edit', 'p',
+       ) VALUES (?, ?, 'claude', 'Claude', 'sonnet', NULL, 'auto-approve', 'auto', 'p',
          'running', 'normal', ?, ?, 0, 0, 0, 0, 0)`
     )
     .run(sessionId, workspaceId, new Date().toISOString(), new Date().toISOString());

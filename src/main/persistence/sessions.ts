@@ -121,7 +121,7 @@ export function persistSession(
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort ?? null,
       permissionMode: input.permissionMode ?? "auto-approve",
-      agentMode: input.agentMode ?? "edit",
+      agentMode: input.agentMode ?? "auto",
       prompt: input.prompt,
       state: input.state,
       attention: input.attention,

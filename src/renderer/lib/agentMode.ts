@@ -1,7 +1,7 @@
 import type { AgentMode } from "../../shared/types.js";
 
 export const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  edit: "Edit",
+  auto: "Auto",
   plan: "Plan"
 };
 
@@ -11,10 +11,10 @@ export function sessionAgentModeKey(sessionId: string): string {
   return `argmax.sessionAgentMode.${sessionId}`;
 }
 
-export function readStoredAgentMode(key: string, fallback: AgentMode = "edit"): AgentMode {
+export function readStoredAgentMode(key: string, fallback: AgentMode = "auto"): AgentMode {
   if (typeof window === "undefined") return fallback;
   const stored = window.localStorage.getItem(key);
-  return stored === "plan" || stored === "edit" ? stored : fallback;
+  return stored === "plan" || stored === "auto" ? stored : fallback;
 }
 
 export function writeStoredAgentMode(key: string, mode: AgentMode): void {
@@ -23,5 +23,5 @@ export function writeStoredAgentMode(key: string, mode: AgentMode): void {
 }
 
 export function toggleAgentMode(mode: AgentMode): AgentMode {
-  return mode === "plan" ? "edit" : "plan";
+  return mode === "plan" ? "auto" : "plan";
 }

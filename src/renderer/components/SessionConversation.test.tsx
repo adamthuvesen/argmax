@@ -537,4 +537,44 @@ describe("SessionConversation — model selection persistence", () => {
     expect(screen.queryByRole("listbox", { name: "Plan response" })).toBeNull();
     expect(screen.getByText("It's about 3:30 PM here.")).toBeInTheDocument();
   });
+
+  it("hides the per-session toolbar actions behind a Session actions picker", () => {
+    renderConversation(baseSession({ state: "complete" }));
+
+    // None of the consolidated actions are visible until the picker is opened.
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Save checkpoint" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Git actions" })).toBeNull();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+    // The default workspace stub is clean, so the checkpoint row is disabled.
+    expect(screen.getByRole("menuitem", { name: "Save checkpoint" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Git actions" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" })).toHaveAttribute(
+      "aria-checked",
+      "false"
+    );
+  });
+
+  it("swaps the picker contents in place when Git actions is selected", () => {
+    renderConversation(baseSession({ state: "complete" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
+
+    // Main menu items are no longer in the DOM; git actions take their place.
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Create pull request|View pull request/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Create branch" })).toBeInTheDocument();
+
+    // Back returns to the main menu.
+    fireEvent.click(screen.getByRole("button", { name: "Back to session actions" }));
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Push" })).toBeNull();
+  });
 });

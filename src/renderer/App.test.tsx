@@ -1385,7 +1385,8 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    const checkpointButton = await screen.findByRole("button", { name: "Save checkpoint" });
+    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+    const checkpointButton = await screen.findByRole("menuitem", { name: "Save checkpoint" });
     expect(checkpointButton).toBeEnabled();
     fireEvent.click(checkpointButton);
 
@@ -1932,8 +1933,9 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    // "No changes yet" → Browse files entry is available
-    fireEvent.click(await screen.findByRole("button", { name: "Browse workspace files" }));
+    // "No changes yet" → Browse files entry is available behind the picker
+    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
 
     // The panel opens directly in Files mode
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
@@ -2000,7 +2002,8 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Browse workspace files" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^logo\.png$/ }));
 

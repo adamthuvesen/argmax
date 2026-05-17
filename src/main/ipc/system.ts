@@ -1,7 +1,8 @@
 import { ipcMain, shell } from "electron";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { isAbsolute, relative as relativePath, resolve as resolvePath } from "node:path";
 import { statSync } from "node:fs";
 import { createRequire } from "node:module";
+import { realpath } from "node:fs/promises";
 import { z } from "zod";
 import {
   listDetectedIdesInputSchema,
@@ -88,6 +89,28 @@ export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcCh
         : input.cwd
           ? resolvePath(input.cwd, input.path)
           : input.path;
+      // Defense in depth — when the caller scoped the open to a `cwd` (the
+      // common "open this file inside the workspace" pattern), require the
+      // resolved target to actually be contained inside it. Without this, a
+      // compromised renderer (combined with the markdown XSS surface) could
+      // ask the OS handler to open `/etc/passwd` while passing the workspace
+      // root as cwd. Callers that genuinely need to open paths outside any
+      // workspace (settings panel, database file) just omit `cwd`.
+      // (audit-2026-05-17 H14)
+      if (input.cwd) {
+        try {
+          const cwdReal = await realpath(input.cwd);
+          const targetReal = await realpath(target);
+          const rel = relativePath(cwdReal, targetReal);
+          if (rel.startsWith("..") || isAbsolute(rel)) {
+            throw new Error("path escapes cwd");
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message === "path escapes cwd") throw error;
+          // realpath failed (ENOENT etc.) — fall through to shell.openPath so
+          // it can return its own user-readable error message.
+        }
+      }
       const error = await shell.openPath(target);
       if (error) throw new Error(error);
       return { ok: true } as const;

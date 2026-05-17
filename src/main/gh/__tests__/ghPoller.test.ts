@@ -59,10 +59,9 @@ function makeRow(over: Partial<GhPrRecord>): GhPrRecord {
     prNumber: 1,
     headSha: "sha-1",
     lastSeenCheckState: "failure",
-    // Fresh timestamp — the poller's M6 staleness guard skips rows older than
-    // 2× the poll interval. Tests that want to exercise the staleness path
-    // should override `updatedAt` explicitly.
     updatedAt: new Date().toISOString(),
+    prState: "OPEN",
+    notifiedAt: null,
     ...over
   };
 }
@@ -209,18 +208,17 @@ describe("GhPoller.tick", () => {
     database.connection.close();
   });
 
-  it("does not act on stale cached failure rows (audit-2026-05-14 M6)", async () => {
+  it("does not act on a failure row that already has a persisted notified_at (audit-2026-05-17 L9)", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const { sessionId } = seed(database);
 
-    // Row with an updatedAt that's well outside the freshness window. Pre-fix,
-    // an app restart that cleared the in-memory dedup set would re-trigger a
-    // follow-up for this stale cache row. Post-fix, the staleness guard
-    // skips it.
-    const staleUpdatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // Persisted notified_at means a prior process already fired the
+    // follow-up for this exact head_sha. A restart that clears the in-memory
+    // dedup set should not re-fire — the SQL dedup wins.
+    const notifiedAt = new Date(Date.now() - 60_000).toISOString();
     const refresh = vi
       .fn<(sid: string) => Promise<GhPrRecord[]>>()
-      .mockResolvedValue([makeRow({ sessionId, updatedAt: staleUpdatedAt })]);
+      .mockResolvedValue([makeRow({ sessionId, notifiedAt })]);
     const launchFollowUp = vi.fn<(ctx: CheckFailureContext) => Promise<void>>().mockResolvedValue();
 
     const poller = new GhPoller({

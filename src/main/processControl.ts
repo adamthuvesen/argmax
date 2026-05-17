@@ -5,6 +5,14 @@ export const DEFAULT_KILL_GRACE_MS = 2_000;
 
 interface SigkillEscalationOptions {
   graceMs?: number;
+  /**
+   * Liveness check called inside the SIGKILL timer right before `killKill`
+   * fires. When provided, `killKill` is skipped if this returns false —
+   * defends against PID-reuse races where the child exited between SIGTERM
+   * and the deadline, the kernel recycled the PGID, and the SIGKILL would
+   * otherwise land on an unrelated process group. (audit-2026-05-17 H9)
+   */
+  isStillAlive?: () => boolean;
 }
 
 /** `process.kill(pid, sig)` throws this code when the target is already dead. */
@@ -48,6 +56,11 @@ export function scheduleSigkillEscalation(
     if (!isAlreadyExitedError(error)) throw error;
   }
   const timer = setTimeout(() => {
+    if (options.isStillAlive && !options.isStillAlive()) {
+      // Child exited during the grace window AND the cancel signal hadn't
+      // reached us yet. Skip SIGKILL — the PGID may already be recycled.
+      return;
+    }
     try {
       killKill();
     } catch (error) {

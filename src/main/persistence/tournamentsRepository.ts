@@ -242,6 +242,28 @@ export function updateTournamentState(
   return findTournamentById(connection, tournamentId);
 }
 
+/**
+ * Conditional state transition. Returns the updated row only when the
+ * tournament was in `expectedFrom` at update time; returns null otherwise
+ * (state already advanced or the row vanished). Used to gate `runJudge` so
+ * two concurrent `refreshAndJudgeIfReady` calls can't both pass the
+ * `state === 'running'` check and double-fire the judge pipeline.
+ * (audit-2026-05-17 M8)
+ */
+export function transitionTournamentState(
+  connection: Database.Database,
+  tournamentId: string,
+  expectedFrom: TournamentState,
+  to: TournamentState
+): Tournament | null {
+  const now = new Date().toISOString();
+  const result = connection
+    .prepare("UPDATE tournaments SET state = ?, updated_at = ? WHERE id = ? AND state = ?")
+    .run(to, now, tournamentId, expectedFrom);
+  if (result.changes === 0) return null;
+  return findTournamentById(connection, tournamentId);
+}
+
 export function setTournamentVerdict(
   connection: Database.Database,
   tournamentId: string,

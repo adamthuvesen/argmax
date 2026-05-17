@@ -23,6 +23,12 @@ export interface CriterionRunnerContext {
   sessionId: string;
   worktreePath: string;
   baseRef: string;
+  /**
+   * Threaded through to runWorkspaceCheck so a tournament cancel / app quit
+   * can stop in-flight checks instead of letting them run to natural
+   * completion. (audit-2026-05-17 M9)
+   */
+  signal?: AbortSignal;
 }
 
 export interface CriterionResult {
@@ -39,7 +45,7 @@ export type CriterionRunner = (context: CriterionRunnerContext) => Promise<Crite
  *
  * If the project has no check commands configured, returns inconclusive.
  */
-const testsPassRunner: CriterionRunner = async ({ database, checks, workspaceId }) => {
+const testsPassRunner: CriterionRunner = async ({ database, checks, workspaceId, signal }) => {
   const workspace = database.getWorkspace(workspaceId);
   const project = database.getProject(workspace.projectId);
   const commands = project.settings.checkCommands;
@@ -52,8 +58,19 @@ const testsPassRunner: CriterionRunner = async ({ database, checks, workspaceId 
   }
   const failures: Array<{ command: string; exitCode: number | null; summary: string | null }> = [];
   for (const command of commands) {
+    if (signal?.aborted) {
+      return {
+        status: "inconclusive",
+        rawValue: null,
+        evidence: { reason: "cancelled", completed: failures.length }
+      };
+    }
     try {
-      const run = await checks.runWorkspaceCheck({ workspaceId, command });
+      const run = await checks.runWorkspaceCheck({
+        workspaceId,
+        command,
+        ...(signal ? { signal } : {})
+      });
       if (run.status !== "passed") {
         failures.push({ command, exitCode: run.exitCode, summary: run.summary });
       }

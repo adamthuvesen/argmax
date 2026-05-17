@@ -95,7 +95,7 @@ describe("provider PTY adapters", () => {
     expect(handle?.provider).toBe("claude");
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
-      args: ["-lc", "exec '/usr/local/bin/claude' '--model' 'haiku' '--permission-mode' 'bypassPermissions'"],
+      args: ["-fc", "exec '/usr/local/bin/claude' '--model' 'haiku' '--permission-mode' 'bypassPermissions'"],
       cwd: "/repo/worktree",
       cols: 100,
       rows: 30
@@ -183,7 +183,7 @@ describe("provider PTY adapters", () => {
     expect(spawnCalls[0]).toMatchObject({
       file: providerShell(),
       args: [
-        "-lc",
+        "-fc",
         "exec '/usr/local/bin/codex' '--model' 'gpt-5.3-codex-spark' '-c' 'model_reasoning_effort=\"low\"' '--dangerously-bypass-approvals-and-sandbox'"
       ],
       cwd: "/repo/worktree"

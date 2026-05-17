@@ -5,6 +5,8 @@ import {
   type PersistTimelineEventInput
 } from "../persistence/database.js";
 import type { ApprovalRequest, DashboardDelta, RawProviderOutput, SessionSummary, TimelineEvent } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
+import { logger } from "../../shared/logger.js";
 import type { NormalizedUsage } from "./providerEventNormalizer.js";
 import type { ProviderEvent } from "./providerTypes.js";
 
@@ -137,15 +139,28 @@ export function flushSessionBuffer(
   try {
     persist();
   } catch (error) {
-    if (isSessionGoneError(error, sessionId)) {
-      state.pendingRawOutputs.length = 0;
-      state.pendingEvents.length = 0;
-      state.pendingUsages.length = 0;
-      state.pendingApprovals.length = 0;
-      state.pendingSessionUpdate = null;
-      return;
+    // Drop the batch unconditionally. Originally only `session-gone` cleared
+    // the queue and any other failure rethrew — which left the same items in
+    // `pendingEvents` for the next scheduleFlush(), so a single bad batch
+    // would poison the delta stream for that session forever. Drop with a
+    // warn so the failure is observable. (audit-2026-05-17 H4)
+    const gone = isSessionGoneError(error, sessionId);
+    state.pendingRawOutputs.length = 0;
+    state.pendingEvents.length = 0;
+    state.pendingUsages.length = 0;
+    state.pendingApprovals.length = 0;
+    state.pendingSessionUpdate = null;
+    if (!gone) {
+      logger.warn("providers.flush", "dropped batch after transaction failure", {
+        sessionId,
+        rawOutputs: rawOutputs.length,
+        events: events.length,
+        usages: usages.length,
+        approvals: approvals.length,
+        error: errorMessage(error)
+      });
     }
-    throw error;
+    return;
   }
 
   state.pendingRawOutputs.splice(0, rawOutputs.length);

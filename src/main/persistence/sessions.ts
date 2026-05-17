@@ -165,11 +165,16 @@ export function updateSessionModel(
     .prepare(
       `
         UPDATE sessions
-        SET model_label = ?, model_id = ?, reasoning_effort = ?, last_activity_at = ?
+        SET model_label = ?, model_id = ?, reasoning_effort = ?,
+            last_model_id = ?, last_activity_at = ?
         WHERE id = ?
       `
     )
-    .run(input.modelLabel, input.modelId, input.reasoningEffort ?? null, timestamp, sessionId);
+    .run(input.modelLabel, input.modelId, input.reasoningEffort ?? null, input.modelId, timestamp, sessionId);
+  // last_model_id MUST be kept in sync here — otherwise the cost-lookup
+  // fallback (used when a usage event hasn't landed yet for the new model)
+  // attributes spend to the prior model after a mid-session model switch.
+  // (audit-2026-05-17 M11)
 
   return findSessionByIdNoPreferred(connection, sessionId);
 }

@@ -778,7 +778,25 @@ export class ProviderSessionService {
     this.flushBatch(sessionId);
     const completedAt = new Date().toISOString();
     const sessionState = this.buffers.get(sessionId);
-    const workspaceId = sessionState?.workspaceId ?? this.database.getSession(sessionId).workspaceId;
+    // If the in-memory buffer is gone AND the session row was also deleted
+    // (workspace archived mid-terminate, CASCADE), there's nothing to cancel.
+    // Surfacing a RecordNotFoundError to IPC for a benign race is noise.
+    // (audit-2026-05-17 H6)
+    let workspaceId: string;
+    if (sessionState) {
+      workspaceId = sessionState.workspaceId;
+    } else {
+      try {
+        workspaceId = this.database.getSession(sessionId).workspaceId;
+      } catch (error) {
+        if (error instanceof RecordNotFoundError && error.kind === "session") {
+          this.handles.delete(sessionId);
+          this.clearQueue(sessionId);
+          return;
+        }
+        throw error;
+      }
+    }
     const session = this.database.updateSessionState(sessionId, {
       state: "cancelled",
       attention: computeSessionAttention({ state: "cancelled" }),

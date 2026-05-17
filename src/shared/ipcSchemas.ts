@@ -37,7 +37,7 @@ export const MAX_FILE_CONTENT_BYTES = 4 * 1024 * 1024;
 
 export const providerIdSchema = z.enum(["claude", "codex", "cursor"]);
 export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
-export const agentModeSchema = z.enum(["edit", "plan"]);
+export const agentModeSchema = z.enum(["auto", "plan"]);
 
 // Terminal/PTY size bounds. xterm sizes both grids and the underlying PTY
 // from the same numbers; the renderer measures its viewport in cells and

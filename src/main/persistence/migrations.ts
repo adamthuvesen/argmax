@@ -636,6 +636,75 @@ export const migrations: Migration[] = [
           strftime('%Y-%m-%dT%H:%M:%fZ','now')
         );
     `
+  },
+  {
+    version: 18,
+    name: "sessions_agent_mode_rename_edit_to_auto",
+    // The internal AgentMode value "edit" is renamed to "auto" across the
+    // codebase. The sessions table carries a CHECK (agent_mode IN ('edit',
+    // 'plan')) and DEFAULT 'edit' baked into v15. SQLite cannot ALTER a
+    // CHECK constraint or a column DEFAULT in place, and PRAGMA
+    // writable_schema is rejected inside a transaction (which the runner
+    // unconditionally opens), so we follow the canonical destructive
+    // recipe established in v3: rebuild the table with the new
+    // constraint, copy rows (mapping 'edit' → 'auto' on the way), drop
+    // the old, rename. Column ordering and types match the live DDL after
+    // v17 (dumped via PRAGMA table_info).
+    affectedTables: ["sessions"],
+    up: `
+      CREATE TABLE sessions_new (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        model_label TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        state TEXT NOT NULL,
+        attention TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        last_activity_at TEXT NOT NULL,
+        provider_conversation_id TEXT,
+        model_id TEXT,
+        reasoning_effort TEXT,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        last_model_id TEXT,
+        permission_mode TEXT NOT NULL DEFAULT 'auto-approve'
+          CHECK (permission_mode IN ('auto-approve', 'ask-each-time')),
+        agent_mode TEXT NOT NULL DEFAULT 'auto'
+          CHECK (agent_mode IN ('auto', 'plan')),
+        tournament_id TEXT REFERENCES tournaments(id) ON DELETE SET NULL,
+        contestant_index INTEGER
+      );
+
+      INSERT INTO sessions_new (
+        id, workspace_id, provider, model_label, prompt, state, attention,
+        started_at, completed_at, last_activity_at, provider_conversation_id,
+        model_id, reasoning_effort, input_tokens, output_tokens,
+        cache_read_tokens, cache_write_tokens, cost_usd, last_model_id,
+        permission_mode, agent_mode, tournament_id, contestant_index
+      )
+      SELECT
+        id, workspace_id, provider, model_label, prompt, state, attention,
+        started_at, completed_at, last_activity_at, provider_conversation_id,
+        model_id, reasoning_effort, input_tokens, output_tokens,
+        cache_read_tokens, cache_write_tokens, cost_usd, last_model_id,
+        permission_mode,
+        CASE WHEN agent_mode = 'edit' THEN 'auto' ELSE agent_mode END,
+        tournament_id, contestant_index
+      FROM sessions;
+
+      DROP TABLE sessions;
+      ALTER TABLE sessions_new RENAME TO sessions;
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_workspace_id ON sessions(workspace_id);
+
+      PRAGMA foreign_key_check;
+    `,
+    requiresForeignKeysOff: true
   }
 ];
 

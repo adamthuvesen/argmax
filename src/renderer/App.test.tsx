@@ -288,6 +288,7 @@ describe("App", () => {
         list: () => Promise.resolve(snapshot.projects),
         pickFolder: pickProjectFolder,
         register: () => Promise.resolve(primaryProject()),
+        remove: ({ projectId }) => Promise.resolve({ projectId }),
         updateSettings: () => Promise.resolve(primaryProject()),
         listBranches: () => Promise.resolve(["main"]),
         switchBranch: () => Promise.resolve(primaryProject())
@@ -814,7 +815,7 @@ describe("App", () => {
       prompt: "Implement PTY launch",
       modelLabel: "Claude Haiku 4.5",
       modelId: "claude-haiku-4-5",
-      agentMode: "edit",
+      agentMode: "auto",
       permissionMode: "auto-approve",
       cols: 120,
       rows: 32
@@ -952,7 +953,7 @@ describe("App", () => {
       sessionId: "session-mention",
       type: "user.message",
       message: "@AGENTS.md",
-      payload: { source: "composer", agentMode: "edit" },
+      payload: { source: "composer", agentMode: "auto" },
       createdAt: "2026-05-08T16:10:00.500Z"
     };
     mockDashboardSnapshot(snapshot);
@@ -1005,7 +1006,7 @@ describe("App", () => {
         prompt: "Review this change",
         modelLabel: "Claude Sonnet 4.6",
         modelId: "claude-sonnet-4-6",
-        agentMode: "edit",
+        agentMode: "auto",
         permissionMode: "auto-approve",
         cols: 120,
         rows: 32
@@ -1327,7 +1328,7 @@ describe("App", () => {
         modelLabel: "GPT-5.3 Codex",
         modelId: "gpt-5.3-codex",
         reasoningEffort: "medium",
-        agentMode: "edit"
+        agentMode: "auto"
       })
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
@@ -1860,7 +1861,7 @@ describe("App", () => {
         modelLabel: "GPT-5.5",
         modelId: "gpt-5.5",
         reasoningEffort: "medium",
-        agentMode: "edit"
+        agentMode: "auto"
       })
     );
   });
@@ -1936,7 +1937,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    // "No changes yet" → Browse files entry is available behind the picker
+    // Empty changed-files state → Browse files entry is available behind the picker
     fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
 

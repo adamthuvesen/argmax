@@ -558,7 +558,7 @@ function launchInput(provider: "claude" | "codex" | "cursor"): ProviderLaunchInp
     reasoningEffort: provider === "codex" ? "low" : undefined,
     mode: provider === "cursor" ? "structured-json" : "interactive-pty",
     permissionMode: "auto-approve",
-    agentMode: "edit",
+    agentMode: "auto",
     cols: 100,
     rows: 30
   };

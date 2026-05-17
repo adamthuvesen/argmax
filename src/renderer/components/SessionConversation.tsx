@@ -235,7 +235,7 @@ export function SessionConversation({
   const [prs, setPrs] = useState<GhPrRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
   const [agentMode, setAgentMode] = useState<AgentMode>(() =>
-    session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "edit") : "edit"
+    session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto"
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
@@ -554,7 +554,7 @@ export function SessionConversation({
   // overwrite the user's per-session model pick on every streaming event.
   useEffect(() => {
     setSelectedModel(modelSelectionFromSession(session));
-    setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "edit") : "edit");
+    setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto");
     setPendingAttachments([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [sessionId]);
@@ -1045,14 +1045,14 @@ export function SessionConversation({
               if (!plan) return null;
               const handleAccept = (): void => {
                 if (!session) return;
-                setAgentMode("edit");
-                writeStoredAgentMode(sessionAgentModeKey(session.id), "edit");
+                setAgentMode("auto");
+                writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
                 shouldRefocusInput.current = true;
                 void onSendSessionInput(
                   session.id,
                   "Proceed with the plan above.",
                   selectedModel,
-                  "edit"
+                  "auto"
                 );
               };
               const handleReject = (): void => {

@@ -192,7 +192,7 @@ export class ProviderSessionService {
   async launch(input: LaunchProviderSessionInput): Promise<SessionSummary> {
     const workspace = this.database.getWorkspace(input.workspaceId);
     const sessionId = randomUUID();
-    const agentMode = input.agentMode ?? "edit";
+    const agentMode = input.agentMode ?? "auto";
 
     // Inject project-scoped learnings into the prompt the provider sees, but
     // keep the user-visible `input.prompt` on the session row and timeline.
@@ -334,7 +334,7 @@ export class ProviderSessionService {
 
     let session = this.database.getSession(sessionId);
     const workspace = this.database.getWorkspace(session.workspaceId);
-    const agentMode = options.agentMode ?? session.agentMode ?? "edit";
+    const agentMode = options.agentMode ?? session.agentMode ?? "auto";
     const existingEntry = this.handles.get(sessionId);
     const liveHandle = this.getLiveHandle(sessionId);
     // Busy paths: launch still resolving, or a live PTY that isn't accepting

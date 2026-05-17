@@ -93,7 +93,7 @@ describe("createDatabase", () => {
       state: "running",
       attention: "normal"
     });
-    expect(session.agentMode).toBe("edit");
+    expect(session.agentMode).toBe("auto");
 
     const updated = database.updateSessionAgentMode("session-1", { agentMode: "plan" });
     expect(updated.agentMode).toBe("plan");

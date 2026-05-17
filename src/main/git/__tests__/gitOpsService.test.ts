@@ -273,9 +273,10 @@ describe("GitOpsService.viewOrCreatePr", () => {
       "pr create --fill":
         "Creating pull request for feature/x into main in acme/widgets\n" +
         "https://github.com/acme/widgets/pull/77\n",
-      "pr view --json number,headRefOid,statusCheckRollup": JSON.stringify({
+      "pr view --json number,headRefOid,state,statusCheckRollup": JSON.stringify({
         number: 77,
         headRefOid: "newsha",
+        state: "OPEN",
         statusCheckRollup: []
       })
     });

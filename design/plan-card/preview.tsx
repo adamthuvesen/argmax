@@ -7,7 +7,7 @@ import "../../src/renderer/styles.css";
 const realClaudeOutput = [
   "## Plan Complete",
   "",
-  "I've written your plan to `/Users/adamthuvesen/.claude/plans/project-knowledge-facts-crispy-hamster.md`. Here's the summary:",
+  "I've written your plan to `/Users/me/.claude/plans/project-knowledge-facts-crispy-hamster.md`. Here's the summary:",
   "",
   "**What you're updating:**",
   "",

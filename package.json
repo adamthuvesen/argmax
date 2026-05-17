@@ -85,7 +85,7 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.menti.argmax",
+    "appId": "com.argmax.app",
     "productName": "Argmax",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "directories": {

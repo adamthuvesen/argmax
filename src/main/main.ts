@@ -34,6 +34,21 @@ import { isAllowedAppNavigation, rendererFileNavigationPrefix } from "./util/app
 
 app.setName("Argmax");
 
+// Single-instance lock — a second launch of Argmax (double-click,
+// Spotlight while already open, etc.) opens the same SQLite WAL and races
+// the migration runner / orphan reconciler against the running instance.
+// Reject the second launch and refocus the existing window instead.
+// (audit-2026-05-17 H11)
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+app.on("second-instance", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 // Must register the custom scheme as privileged BEFORE app.whenReady so the
 // renderer treats argmax-attachment:// as a trusted origin and <img src> works.
 registerAttachmentSchemeAsPrivileged();
@@ -198,10 +213,10 @@ void app.whenReady().then(async () => {
       });
     }
   });
-  ghPoller.start();
-
-  // electron-updater only works in a packaged build — running it in dev or
-  // unsigned would no-op at best and surface confusing errors at worst.
+  // Construct updateService here but start the poll/update checks AFTER
+  // createWindow() so the first `update-downloaded` callback (which opens a
+  // restart dialog) can always attach to an existing parent window.
+  // (audit-2026-05-17 H12)
   if (app.isPackaged) {
     const { autoUpdater } = await import("electron-updater");
     updateService = new UpdateService({
@@ -211,7 +226,6 @@ void app.whenReady().then(async () => {
         console[level === "error" ? "error" : "log"](`[argmax:updater] ${message}`, meta ?? "");
       }
     });
-    void updateService.runStartupCheck();
   }
 
   const menuTemplate = buildAppMenuTemplate({
@@ -240,6 +254,14 @@ void app.whenReady().then(async () => {
 
   await createWindow();
   markStartupPhase("window.create");
+
+  // Start the gh poller and the auto-update check AFTER the window exists
+  // so the first delta publish / first update-downloaded dialog has a
+  // window to attach to. (audit-2026-05-17 H12)
+  ghPoller.start();
+  if (updateService) {
+    void updateService.runStartupCheck();
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -310,6 +332,10 @@ async function safeDispose(label: string, fn: () => void | Promise<void>): Promi
 }
 
 async function shutdown(exitCode = 0): Promise<void> {
+  // Flush any pending dashboard deltas BEFORE tearing down services; the
+  // coalescer's batch is otherwise lost when the timer fires post-shutdown
+  // against destroyed windows. (audit-2026-05-17 H13)
+  await safeDispose("dashboardDelta.flush", () => dashboardDeltaCoalescer.flushNow());
   if (ghPoller) {
     await safeDispose("ghPoller.stop", () => ghPoller?.stop());
     ghPoller = null;

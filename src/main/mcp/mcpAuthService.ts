@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import type { IDisposable, IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
-import { safeKill } from "../processControl.js";
+import { safeKill, scheduleSigkillEscalation } from "../processControl.js";
 import { discoverProviderById } from "../providers/providerDiscovery.js";
 import { buildProviderEnvironment } from "../providers/providerEnvironment.js";
 
@@ -83,17 +83,20 @@ export class McpAuthService {
 
     entry.disposables.push(
       pty.onData((data) => {
-        // First chunk from Claude means the prompt is on screen — auto-type
-        // `/mcp` so the user lands directly on the MCP picker. Only fire once
-        // per session; subsequent output is the user's interactive flow.
+        // First chunk from Claude may be a banner / color setup written BEFORE
+        // the prompt is ready for input. Wait ~200 ms after the first data
+        // event so the prompt has time to settle, then auto-type `/mcp`.
+        // Fires once per session. (audit-2026-05-17 M17)
         if (!entry.primed) {
           entry.primed = true;
-          try {
-            pty.write("/mcp\r");
-          } catch {
-            // PTY may have died between spawn and first data; the exit handler
-            // will surface the failure to the renderer.
-          }
+          const primeTimer = setTimeout(() => {
+            try {
+              pty.write("/mcp\r");
+            } catch {
+              // PTY died between spawn and prime; exit handler surfaces it.
+            }
+          }, 200);
+          if (typeof primeTimer.unref === "function") primeTimer.unref();
         }
         this.broadcaster.emitData({ sessionId, data });
       })
@@ -139,9 +142,21 @@ export class McpAuthService {
   }
 
   disposeAll(): void {
+    // SIGTERM-then-SIGKILL escalation — a Claude CLI hung at an OAuth
+    // browser-callback prompt would otherwise survive app quit because it
+    // traps SIGHUP. (audit-2026-05-17 M16)
     for (const [, entry] of this.sessions) {
       for (const d of entry.disposables) d.dispose();
-      safeKill(entry.pty);
+      scheduleSigkillEscalation(
+        () => safeKill(entry.pty),
+        () => {
+          try {
+            entry.pty.kill("SIGKILL");
+          } catch {
+            /* already exited */
+          }
+        }
+      );
     }
     this.sessions.clear();
   }

@@ -108,18 +108,23 @@ describe("McpAuthService", () => {
     expect(service.liveCount()).toBe(0);
   });
 
-  it("auto-types `/mcp\\r` exactly once after the first onData chunk", async () => {
+  it("auto-types `/mcp\\r` exactly once after a short settle window past the first onData chunk (audit M17)", async () => {
     const { service, ptys } = setup();
     await service.start({ cols: 80, rows: 24 });
     const pty = ptys[0];
 
     expect(pty.writes).toEqual([]);
     pty.emitData("Welcome to Claude.\n");
+    // The auto-type is deferred ~200ms so a banner-as-first-chunk doesn't
+    // race the prompt-ready state. Wait past the settle window before
+    // asserting.
+    await new Promise((resolve) => setTimeout(resolve, 260));
     expect(pty.writes).toEqual(["/mcp\r"]);
 
     // Subsequent data chunks must not re-prime.
     pty.emitData("more output\n");
     pty.emitData("even more\n");
+    await new Promise((resolve) => setTimeout(resolve, 260));
     expect(pty.writes).toEqual(["/mcp\r"]);
   });
 

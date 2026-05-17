@@ -4,7 +4,7 @@ import type { IDisposable, IPty, IPtyForkOptions } from "node-pty";
 import type * as NodePty from "node-pty";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
-import { safeKill } from "../processControl.js";
+import { safeKill, scheduleSigkillEscalation } from "../processControl.js";
 
 const require = createRequire(import.meta.url);
 const nodePty = require("node-pty") as typeof NodePty;
@@ -112,9 +112,22 @@ export class TerminalService {
   }
 
   disposeAll(): void {
+    // SIGTERM-then-SIGKILL escalation so a trap'd shell (vim, a script
+    // ignoring SIGHUP) is forcibly killed within the grace window instead
+    // of surviving app quit. Same pattern providerSessions/checkService
+    // already use. (audit-2026-05-17 M16)
     for (const [, entry] of this.terminals) {
       for (const d of entry.disposables) d.dispose();
-      safeKill(entry.pty);
+      scheduleSigkillEscalation(
+        () => safeKill(entry.pty),
+        () => {
+          try {
+            entry.pty.kill("SIGKILL");
+          } catch {
+            /* already exited */
+          }
+        }
+      );
     }
     this.terminals.clear();
   }

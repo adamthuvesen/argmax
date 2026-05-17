@@ -22,7 +22,13 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
-      "@typescript-eslint/no-floating-promises": "error"
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      // Pinned explicitly so it's not silently dropped if the recommended
+      // ruleset spread (line 22) changes upstream. Kept at "warn" because a
+      // few intentional split-deps patterns in the renderer hooks would
+      // otherwise fail CI.
+      "react-hooks/exhaustive-deps": "warn"
     }
   }
 );

@@ -1,4 +1,5 @@
-import { lstat, open, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, open, readFile, realpath, stat } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type {
@@ -249,9 +250,24 @@ export class WorkspaceFilesService {
       };
     }
 
-    await writeFile(fileRealPath, content, "utf8");
-    const after = await stat(fileRealPath);
-    return { ok: true, mtimeMs: after.mtimeMs, size: after.size };
+    // Open with O_NOFOLLOW so the path is rejected if it was symlink-swapped
+    // between realpath() and now, and verify the inode hasn't changed —
+    // together these close the TOCTOU window where an attacker could
+    // redirect the write to an arbitrary file. (audit-2026-05-17 M3)
+    const handle = await open(fileRealPath, fsConstants.O_RDWR | fsConstants.O_NOFOLLOW);
+    try {
+      const fdStat = await handle.stat();
+      if (fdStat.ino !== stats.ino) {
+        throw new Error("File changed while opening for write");
+      }
+      await handle.truncate(0);
+      const buf = Buffer.from(content, "utf8");
+      await handle.write(buf, 0, buf.length, 0);
+      const after = await handle.stat();
+      return { ok: true, mtimeMs: after.mtimeMs, size: after.size };
+    } finally {
+      await handle.close();
+    }
   }
 }
 

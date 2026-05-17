@@ -27,6 +27,7 @@ import {
   readTournamentLeaderboard,
   setTournamentDecision,
   setTournamentVerdict,
+  transitionTournamentState,
   updateContestantOutcome,
   updateTournamentState
 } from "../persistence/tournamentsRepository.js";
@@ -158,6 +159,21 @@ export class TournamentService {
    * 'running' so refreshAndJudgeIfReady can re-drive the judge pipeline
    * idempotently. Without this, a crash mid-judge wedged tournaments forever.
    */
+  /**
+   * Per-tournament AbortControllers active inside runJudge. `dispose()` (called
+   * from main.ts shutdown) aborts all of them so in-flight check commands stop
+   * instead of running to completion against a torn-down app.
+   * (audit-2026-05-17 M9)
+   */
+  private readonly judgeAborts = new Map<string, AbortController>();
+
+  dispose(): void {
+    for (const controller of this.judgeAborts.values()) {
+      controller.abort();
+    }
+    this.judgeAborts.clear();
+  }
+
   recoverStuckJudgingTournaments(): number {
     const stuck = listTournaments(this.database.connection, { state: "judging" });
     for (const t of stuck) {
@@ -199,12 +215,25 @@ export class TournamentService {
   }
 
   private async runJudge(tournamentId: string): Promise<void> {
-    updateTournamentState(this.database.connection, tournamentId, "judging");
+    // Conditional transition — if two refreshAndJudgeIfReady calls both pass
+    // the `state === 'running'` check, only the first one transitions and
+    // proceeds. The second observes null and bails. (audit-2026-05-17 M8)
+    const transitioned = transitionTournamentState(
+      this.database.connection,
+      tournamentId,
+      "running",
+      "judging"
+    );
+    if (!transitioned) return;
+    const abort = new AbortController();
+    this.judgeAborts.set(tournamentId, abort);
+    try {
     const tournament = findTournamentById(this.database.connection, tournamentId);
     const contestants = listContestantsByTournament(this.database.connection, tournamentId);
     const criterionIds: CriterionId[] = tournament.policySnapshot.criteria.map((c) => c.id);
 
     for (const contestant of contestants) {
+      if (abort.signal.aborted) break;
       const session = this.database.getSession(contestant.sessionId);
       const workspace = this.database.getWorkspace(session.workspaceId);
       const ctx: CriterionRunnerContext = {
@@ -213,7 +242,8 @@ export class TournamentService {
         workspaceId: workspace.id,
         sessionId: session.id,
         worktreePath: workspace.path,
-        baseRef: workspace.baseRef
+        baseRef: workspace.baseRef,
+        signal: abort.signal
       };
       try {
         const results = await runCriteriaForContestant(ctx, criterionIds);
@@ -251,6 +281,9 @@ export class TournamentService {
     });
     setTournamentVerdict(this.database.connection, tournamentId, verdict);
     updateTournamentState(this.database.connection, tournamentId, "awaiting-decision");
+    } finally {
+      this.judgeAborts.delete(tournamentId);
+    }
   }
 
   /**

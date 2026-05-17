@@ -13,6 +13,22 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BUFFER = 64 * 1024 * 1024;
 
 /**
+ * Force the C locale on every git invocation so stderr message text is
+ * stable across user-locale settings. Callers that parse error strings
+ * (e.g. `isMissingUpstreamError`) would otherwise miss matches for users
+ * with non-English locales. (audit-2026-05-17 M14)
+ */
+const C_LOCALE_ENV: NodeJS.ProcessEnv = {
+  LC_ALL: "C",
+  LANG: "C",
+  LANGUAGE: ""
+};
+
+function gitEnv(override?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...process.env, ...C_LOCALE_ENV, ...(override ?? {}) };
+}
+
+/**
  * Run a git invocation rooted at `cwd` and return stdout as a UTF-8 string.
  * Bounded so a runaway invocation cannot stall the IPC handler indefinitely.
  * On failure, throws `Error` with the captured stderr (truncated).
@@ -23,7 +39,7 @@ export async function runGitText(cwd: string, args: string[], options: GitExecOp
       timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxBuffer: options.maxBufferBytes ?? DEFAULT_MAX_BUFFER,
       encoding: "utf8",
-      ...(options.env ? { env: { ...process.env, ...options.env } } : {})
+      env: gitEnv(options.env)
     });
     return stdout;
   } catch (error) {
@@ -42,7 +58,7 @@ export async function runGitBuffer(cwd: string, args: string[], options: GitExec
     timeout: options.timeoutMs ?? 60_000,
     maxBuffer: options.maxBufferBytes ?? 256 * 1024 * 1024,
     encoding: "buffer",
-    ...(options.env ? { env: { ...process.env, ...options.env } } : {})
+    env: gitEnv(options.env)
   });
   return stdout;
 }

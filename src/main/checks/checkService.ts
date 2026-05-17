@@ -152,9 +152,22 @@ export class CheckService {
         // SIGTERM first; SIGKILL after a 2s grace period to defeat children that ignore TERM.
         // Capture the cancel handle so finish() can stop the SIGKILL from firing
         // against a (possibly recycled) pid after the child has already exited.
+        // Pass an isStillAlive probe to also guard the SIGKILL against the
+        // inverse race: exit fires, timer is already queued, cancel hasn't
+        // run yet, kernel recycled the PGID.
         escalation = scheduleSigkillEscalation(
           () => process.kill(-pid, "SIGTERM"),
-          () => process.kill(-pid, "SIGKILL")
+          () => process.kill(-pid, "SIGKILL"),
+          {
+            isStillAlive: () => {
+              try {
+                process.kill(pid, 0);
+                return true;
+              } catch {
+                return false;
+              }
+            }
+          }
         );
       };
 
@@ -236,7 +249,17 @@ export class CheckService {
       // run promise — both listeners fire independently.
       const { cancel } = scheduleSigkillEscalation(
         () => process.kill(-pid, "SIGTERM"),
-        () => process.kill(-pid, "SIGKILL")
+        () => process.kill(-pid, "SIGKILL"),
+        {
+          isStillAlive: () => {
+            try {
+              process.kill(pid, 0);
+              return true;
+            } catch {
+              return false;
+            }
+          }
+        }
       );
       child.once("exit", cancel);
     }

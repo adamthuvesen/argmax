@@ -59,6 +59,13 @@ export class GitOpsService {
     } else {
       await this.gitRunner(workspace.path, ["add", "-A"]);
     }
+    // Refuse messages whose trimmed form begins with '-' — `git commit -m`
+    // with `-m -- msg` is not valid syntax and a message that looks like a
+    // flag (`--gpg-sign=evil`) would be parsed as a flag, not body.
+    // (audit-2026-05-17 M13)
+    if (message.startsWith("-")) {
+      throw new Error("Commit message cannot start with '-'");
+    }
     await this.gitRunner(workspace.path, ["commit", "-m", message]);
     const sha = (await this.gitRunner(workspace.path, ["rev-parse", "HEAD"])).trim();
     const branch = (await this.gitRunner(workspace.path, ["branch", "--show-current"])).trim();

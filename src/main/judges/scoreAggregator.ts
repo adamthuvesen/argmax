@@ -176,7 +176,13 @@ export function aggregate(input: AggregatorInput): TournamentVerdict {
   // Rank only the non-disqualified contestants. Disqualified contestants
   // keep their total visible on the leaderboard but cannot win.
   const eligible = totals.filter((t) => !disqualified.has(t.contestantIndex));
-  const ordered = [...eligible].sort((a, b) => b.total - a.total);
+  // Stable tiebreak by contestantIndex (ascending) so replayed tournaments
+  // with identical totals produce identical orderings regardless of how the
+  // input array was assembled by listContestantsByTournament.
+  // (audit-2026-05-17 M10)
+  const ordered = [...eligible].sort((a, b) =>
+    b.total !== a.total ? b.total - a.total : a.contestantIndex - b.contestantIndex
+  );
   const winner = ordered[0]?.contestantIndex ?? null;
   const runnerUp = ordered[1]?.contestantIndex ?? null;
   const margin = ordered.length >= 2 ? (ordered[0]?.total ?? 0) - (ordered[1]?.total ?? 0) : ordered[0]?.total ?? 0;

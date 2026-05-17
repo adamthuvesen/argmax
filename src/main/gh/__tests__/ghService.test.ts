@@ -103,7 +103,7 @@ describe("GhService.refresh", () => {
     const { sessionId } = seedProjectWorkspaceSession(database);
 
     const runner = makeRunner({
-      "pr view --json number,headRefOid,statusCheckRollup": JSON.stringify({
+      "pr view --json number,headRefOid,state,statusCheckRollup": JSON.stringify({
         number: 42,
         headRefOid: "deadbeef".repeat(5),
         statusCheckRollup: [
@@ -131,7 +131,7 @@ describe("GhService.refresh", () => {
     const { sessionId } = seedProjectWorkspaceSession(database);
 
     const runner = makeRunner({
-      "pr view --json number,headRefOid,statusCheckRollup": JSON.stringify({
+      "pr view --json number,headRefOid,state,statusCheckRollup": JSON.stringify({
         number: 7,
         headRefOid: "abc",
         statusCheckRollup: [{ status: "IN_PROGRESS" }, { conclusion: "SUCCESS" }]
@@ -149,7 +149,7 @@ describe("GhService.refresh", () => {
     const { sessionId } = seedProjectWorkspaceSession(database);
 
     const runner = makeRunner({
-      "pr view --json number,headRefOid,statusCheckRollup": new Error("no pull requests found")
+      "pr view --json number,headRefOid,state,statusCheckRollup": new Error("no pull requests found")
     });
     const service = new GhService(database, runner);
 
@@ -163,7 +163,7 @@ describe("GhService.refresh", () => {
     const { sessionId } = seedProjectWorkspaceSession(database);
 
     const firstRunner = makeRunner({
-      "pr view --json number,headRefOid,statusCheckRollup": JSON.stringify({
+      "pr view --json number,headRefOid,state,statusCheckRollup": JSON.stringify({
         number: 12,
         headRefOid: "sha-1",
         statusCheckRollup: [{ conclusion: "SUCCESS" }]
@@ -172,7 +172,7 @@ describe("GhService.refresh", () => {
     await new GhService(database, firstRunner).refresh(sessionId);
 
     const secondRunner = makeRunner({
-      "pr view --json number,headRefOid,statusCheckRollup": JSON.stringify({
+      "pr view --json number,headRefOid,state,statusCheckRollup": JSON.stringify({
         number: 12,
         headRefOid: "sha-2",
         statusCheckRollup: [{ conclusion: "FAILURE" }]

@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
-import type { GhCheckState, GhPrRecord } from "../../shared/types.js";
+import type { GhCheckState, GhPrRecord, GhPrState } from "../../shared/types.js";
 import { safeJsonParseObject } from "../../shared/safeJson.js";
+import { logger } from "../../shared/logger.js";
+import { errorMessage } from "../../shared/error.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -33,9 +35,33 @@ interface RepoViewResponse {
 interface PrViewResponse {
   number?: number;
   headRefOid?: string;
+  state?: string | null;
   // gh CLI exposes statusCheckRollup as an array of per-check rows. We collapse
   // it to a single state by precedence: failure > pending > success.
   statusCheckRollup?: Array<{ state?: string | null; status?: string | null; conclusion?: string | null }>;
+}
+
+/**
+ * Distinguishes "no PR for this branch yet" / "no gh remote" (silent) from
+ * "auth/rate-limit/transport broke" (worth logging). Heuristic on stderr;
+ * gh's exit codes are stable but the stderr text is the canonical signal.
+ * (audit-2026-05-17 M12)
+ */
+function ghErrorCategory(error: unknown): "transient" | "auth" | "rate-limit" | "no-pr" | "unknown" {
+  const text = errorMessage(error).toLowerCase();
+  if (text.includes("no pull requests") || text.includes("not a git repository") || text.includes("no commits between")) {
+    return "no-pr";
+  }
+  if (text.includes("authentication") || text.includes("unauthorized") || text.includes("not authenticated") || text.includes("token")) {
+    return "auth";
+  }
+  if (text.includes("rate limit") || text.includes("api rate")) {
+    return "rate-limit";
+  }
+  if (text.includes("timeout") || text.includes("etimedout") || text.includes("network")) {
+    return "transient";
+  }
+  return "unknown";
 }
 
 /**
@@ -63,7 +89,17 @@ export class GhService {
     let stdout: string;
     try {
       stdout = await this.runner(project.repoPath, ["repo", "view", "--json", "owner,name"]);
-    } catch {
+    } catch (error) {
+      // Distinguish "no remote" (silent) from "gh is broken" (warn-level)
+      // so a transient/auth failure doesn't masquerade as "no PR for this
+      // branch" indefinitely. (audit-2026-05-17 M12)
+      const category = ghErrorCategory(error);
+      if (category !== "no-pr" && category !== "unknown") {
+        logger.warn("gh.detectAndStoreRemote", `gh failed (${category})`, {
+          projectId,
+          error: errorMessage(error)
+        });
+      }
       return null;
     }
     const parsed = safeJsonParseObject<RepoViewResponse>(stdout);
@@ -103,11 +139,16 @@ export class GhService {
         "pr",
         "view",
         "--json",
-        "number,headRefOid,statusCheckRollup"
+        "number,headRefOid,state,statusCheckRollup"
       ]);
-    } catch {
-      // No PR for this branch yet, or gh is unavailable. Don't bubble — the
-      // caller treats absence as "still no PR" and the timeline stays empty.
+    } catch (error) {
+      const category = ghErrorCategory(error);
+      if (category !== "no-pr" && category !== "unknown") {
+        logger.warn("gh.refresh", `gh failed (${category})`, {
+          sessionId,
+          error: errorMessage(error)
+        });
+      }
       return this.database.listGhPrForSession(sessionId);
     }
     const parsed = safeJsonParseObject<PrViewResponse>(stdout);
@@ -119,7 +160,8 @@ export class GhService {
       prNumber: parsed.number,
       headSha: parsed.headRefOid,
       lastSeenCheckState: collapseRollup(parsed.statusCheckRollup),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      prState: normalizePrState(parsed.state)
     };
     this.database.upsertGhPr(record);
     return this.database.listGhPrForSession(sessionId);
@@ -131,6 +173,13 @@ export class GhService {
  * about is the worst non-skipped state across them:
  *   failure / cancelled > pending / in_progress / queued > success / neutral / skipped
  */
+function normalizePrState(raw: string | null | undefined): GhPrState | null {
+  if (!raw) return null;
+  const upper = raw.toUpperCase();
+  if (upper === "OPEN" || upper === "CLOSED" || upper === "MERGED") return upper;
+  return null;
+}
+
 function collapseRollup(rollup: PrViewResponse["statusCheckRollup"]): GhCheckState {
   if (!rollup || rollup.length === 0) return "unknown";
   let hasPending = false;

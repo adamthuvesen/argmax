@@ -5,6 +5,7 @@ import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { GhService } from "./ghService.js";
 import type { NotificationService } from "../notifications/notificationService.js";
 import type { GhPrRecord } from "../../shared/types.js";
+import { listOpenGhPrSessionIds, markGhPrNotified } from "../persistence/gh.js";
 
 export interface CheckFailureContext {
   sessionId: string;
@@ -25,13 +26,13 @@ export interface GhPollerDeps {
 
 const DEFAULT_INTERVAL_MS = 60_000;
 /**
- * Audit-2026-05-14 M6 — `ghService.refresh()` returns existing cached rows
- * when `gh` fails or no PR is found. Without a freshness guard, an app restart
- * (which clears the in-memory `queued` dedup set) would re-trigger follow-ups
- * for old cached failure rows. A row is "fresh" if its `updatedAt` is within
- * 2× the poll interval — anything older is a cache hit, not a real refresh.
+ * Bound on concurrent `gh pr view` calls per tick. Without it, the loop runs
+ * sequentially so a single slow `gh` (15s default timeout) holds the re-
+ * entrancy guard for 15s × N sessions — far past the 60s tick, effectively
+ * stopping polling. With concurrency, slow calls don't head-of-line block
+ * faster ones. (audit-2026-05-17 H10)
  */
-const FRESHNESS_WINDOW_MULTIPLIER = 2;
+const TICK_CONCURRENCY = 4;
 
 /**
  * Stage 2 of the CI feedback loop (P8.02). Runs `ghService.refresh` against
@@ -75,8 +76,11 @@ export class GhPoller {
     this.inFlight = true;
     try {
       const sessionIds = this.listPollableSessionIds();
-      for (const sessionId of sessionIds) {
-        await this.tickSession(sessionId);
+      // Bounded-concurrency fanout — one stuck `gh` no longer holds the
+      // remaining sessions hostage. (audit-2026-05-17 H10)
+      for (let i = 0; i < sessionIds.length; i += TICK_CONCURRENCY) {
+        const chunk = sessionIds.slice(i, i + TICK_CONCURRENCY);
+        await Promise.all(chunk.map((id) => this.tickSession(id)));
       }
     } finally {
       this.inFlight = false;
@@ -85,11 +89,11 @@ export class GhPoller {
 
   private listPollableSessionIds(): string[] {
     const ids = new Set(this.deps.database.listRunningSessionIds());
-    const rows = this.deps.database.connection
-      .prepare("SELECT DISTINCT session_id AS id FROM gh_pr")
-      .all() as Array<{ id: string }>;
-    for (const row of rows) {
-      ids.add(row.id);
+    // Exclude sessions whose recorded gh_pr is closed/merged — they don't
+    // need re-polling. Legacy rows where pr_state is NULL keep getting
+    // polled (the next refresh fills the column). (audit-2026-05-17 H5)
+    for (const id of listOpenGhPrSessionIds(this.deps.database.connection)) {
+      ids.add(id);
     }
     return [...ids];
   }
@@ -105,16 +109,18 @@ export class GhPoller {
     // Sorted ASC by pr_number — most recent PR is the tail.
     const latest = rows[rows.length - 1];
     if (!latest || latest.lastSeenCheckState !== "failure") return;
-    // Audit-2026-05-14 M6 — refresh() returns cached rows on gh failure or
-    // when no PR is found. Require the row to be "fresh" (updated within the
-    // last 2× poll-interval) before acting on it. Otherwise an app restart
-    // would re-fire old failure follow-ups because the in-memory dedup set
-    // resets but the persisted rows survive.
-    const intervalMs = this.deps.intervalMs ?? DEFAULT_INTERVAL_MS;
-    const ageMs = Date.now() - Date.parse(latest.updatedAt);
-    if (Number.isNaN(ageMs) || ageMs > intervalMs * FRESHNESS_WINDOW_MULTIPLIER) return;
+    // Persisted dedup via notified_at survives app restart and is invariant
+    // to poll-interval changes (unlike the prior heuristic freshness
+    // window). The in-memory `queued` set still short-circuits the common
+    // case without a DB write per tick. (audit-2026-05-17 L9)
     const dedupKey = `${sessionId}:${latest.prNumber}:${latest.headSha}`;
     if (this.queued.has(dedupKey)) return;
+    if (latest.notifiedAt) {
+      // Persisted notification recorded for this exact head_sha — already
+      // fired in a prior process; keep the in-memory set primed too.
+      this.queued.add(dedupKey);
+      return;
+    }
     this.queued.add(dedupKey);
     let session;
     try {
@@ -130,6 +136,13 @@ export class GhPoller {
         prNumber: latest.prNumber,
         headSha: latest.headSha
       });
+      markGhPrNotified(
+        this.deps.database.connection,
+        sessionId,
+        latest.prNumber,
+        latest.headSha,
+        new Date().toISOString()
+      );
     } catch (error) {
       logger.warn("gh.poller", "launchFollowUp failed", {
         sessionId,

@@ -705,6 +705,20 @@ export const migrations: Migration[] = [
       PRAGMA foreign_key_check;
     `,
     requiresForeignKeysOff: true
+  },
+  {
+    version: 19,
+    name: "gh_pr_state_and_notified_at",
+    // Adds pr_state (so the poller can stop polling closed/merged PRs —
+    // audit H5) and notified_at (so the failure-follow-up dedup survives an
+    // interval change instead of relying on a heuristic freshness window —
+    // audit L9). Both are nullable so legacy rows that pre-date this
+    // migration sort cleanly to "unknown state / not yet notified".
+    affectedTables: ["gh_pr"],
+    up: `
+      ALTER TABLE gh_pr ADD COLUMN pr_state TEXT;
+      ALTER TABLE gh_pr ADD COLUMN notified_at TEXT;
+    `
   }
 ];
 
@@ -736,7 +750,7 @@ const expectedColumns: Record<string, string[]> = {
     "updated_at",
     "worktree_location"
   ],
-  gh_pr: ["head_sha", "last_seen_check_state", "pr_number", "session_id", "updated_at"],
+  gh_pr: ["head_sha", "last_seen_check_state", "notified_at", "pr_number", "pr_state", "session_id", "updated_at"],
   workspaces: [
     "base_ref",
     "branch",

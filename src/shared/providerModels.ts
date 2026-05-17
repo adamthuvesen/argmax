@@ -118,16 +118,17 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.4-nano":        { input: 0.2,  output: 1.25, cacheRead: 0.02, cacheWrite: 0 },
   "gpt-5.4-pro":         { input: 30,   output: 180, cacheRead: 0,     cacheWrite: 0 },
   "gpt-5.5":             { input: 5,    output: 30,  cacheRead: 0.5,   cacheWrite: 0 },
-  "gpt-5.5-medium":      { input: 5,    output: 30,  cacheRead: 0.5,   cacheWrite: 0 },
   "gpt-5.5-pro":         { input: 30,   output: 180, cacheRead: 0,     cacheWrite: 0 },
   "o4-mini":             { input: 1.1,  output: 4.4, cacheRead: 0.275, cacheWrite: 0 },
 
-  // Cursor's bundled models are subscription-billed via Cursor's plan, not per-token
-  // through the underlying API. Pricing is recorded as zero so cost telemetry doesn't
-  // claim charges that aren't being incurred at the API layer. Aliased medium-tier ids
-  // mirror their base model's pricing for parity with non-Cursor sessions.
+  // Cursor's bundled models are subscription-billed via Cursor's plan, not
+  // per-token through the underlying API. All Cursor-routed ids report $0 so
+  // cost telemetry doesn't claim charges that aren't incurred at the API
+  // layer. (audit-2026-05-17 H2 — the `-medium` aliased ids previously
+  // mirrored base pricing, contradicting this rule.)
   "composer-2":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "claude-opus-4-7-medium":  { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 }
+  "claude-opus-4-7-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.5-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 
 export interface UsageCounts {

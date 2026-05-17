@@ -25,16 +25,19 @@ const WARNING_INTERVAL_MS = 60_000;
 const lastWarnedAt = new BoundedMap<string, number>(200);
 
 function warnRateLimited(context: string | undefined, error: unknown): void {
-  if (!context) {
-    return;
-  }
+  // Context-less callers used to be silently dropped, which meant a corrupt
+  // row hit via `safeJsonParse(value)` (no context arg) gave zero
+  // observability. Treat undefined as a single shared "unknown" bucket so
+  // the warning still fires (rate-limited like any other context).
+  // (audit-2026-05-17 L3)
+  const key = context ?? "<unknown>";
   const now = Date.now();
-  const last = lastWarnedAt.get(context) ?? 0;
+  const last = lastWarnedAt.get(key) ?? 0;
   if (now - last < WARNING_INTERVAL_MS) {
     return;
   }
-  lastWarnedAt.set(context, now);
-  logger.warn("safeJson", "parse error", { context, error: errorMessage(error) });
+  lastWarnedAt.set(key, now);
+  logger.warn("safeJson", "parse error", { context: key, error: errorMessage(error) });
 }
 
 /**

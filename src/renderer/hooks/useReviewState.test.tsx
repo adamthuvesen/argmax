@@ -28,6 +28,9 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
 describe("useReviewState — IPC fan-out resistance", () => {
   let listChangedFiles: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFiles"]>>;
   let listWorkspaceFiles: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["listFiles"]>>;
+  let readWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
+  let writeWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFile"]>>;
+  let statWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["statFile"]>>;
 
   beforeEach(() => {
     listChangedFiles = vi
@@ -36,6 +39,15 @@ describe("useReviewState — IPC fan-out resistance", () => {
     listWorkspaceFiles = vi
       .fn<ArgmaxApi["workspace"]["listFiles"]>()
       .mockResolvedValue([]);
+    readWorkspaceFile = vi
+      .fn<ArgmaxApi["workspace"]["readFile"]>()
+      .mockResolvedValue({ kind: "text", content: "", size: 0, mtimeMs: 0 });
+    writeWorkspaceFile = vi
+      .fn<ArgmaxApi["workspace"]["writeFile"]>()
+      .mockResolvedValue({ ok: true, mtimeMs: 2, size: 0 });
+    statWorkspaceFile = vi
+      .fn<ArgmaxApi["workspace"]["statFile"]>()
+      .mockResolvedValue({ mtimeMs: 1, size: 0 });
 
     Object.defineProperty(window, "argmax", {
       configurable: true,
@@ -49,9 +61,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
         },
         workspace: {
           listFiles: listWorkspaceFiles,
-          readFile: vi.fn(),
-          writeFile: vi.fn(),
-          statFile: vi.fn(),
+          readFile: readWorkspaceFile,
+          writeFile: writeWorkspaceFile,
+          statFile: statWorkspaceFile,
           listFilesForProject: vi.fn().mockResolvedValue([]),
           readFileForProject: vi.fn(),
           writeFileForProject: vi.fn(),
@@ -152,5 +164,188 @@ describe("useReviewState — IPC fan-out resistance", () => {
     }
 
     expect(listWorkspaceFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps separate open tabs and preserves buffers while switching", async () => {
+    readWorkspaceFile
+      .mockResolvedValueOnce({ kind: "text", content: "one\n", size: 4, mtimeMs: 10 })
+      .mockResolvedValueOnce({ kind: "text", content: "two\n", size: 4, mtimeMs: 20 });
+    const { result } = renderHook(
+      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
+      { initialProps: { ws: makeWorkspace() } }
+    );
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.openInFilesView("src/one.ts");
+    });
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/one.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.buffer).toBe("one\n"));
+
+    act(() => {
+      result.current.workspaceFiles.editFile("one edited\n");
+      result.current.openInFilesView("src/two.ts");
+    });
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/two.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.buffer).toBe("two\n"));
+
+    act(() => {
+      result.current.workspaceFiles.selectTab("src/one.ts");
+    });
+
+    expect(result.current.workspaceFiles.activeTabPath).toBe("src/one.ts");
+    expect(result.current.workspaceFiles.buffer).toBe("one edited\n");
+    expect(result.current.workspaceFiles.isDirty).toBe(true);
+    expect(readWorkspaceFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("focuses existing tabs without refetching the file", async () => {
+    readWorkspaceFile.mockResolvedValueOnce({
+      kind: "text",
+      content: "export const value = 1;\n",
+      size: 24,
+      mtimeMs: 10
+    });
+    const { result } = renderHook(
+      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
+      { initialProps: { ws: makeWorkspace() } }
+    );
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.openInFilesView("src/value.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+
+    act(() => {
+      result.current.openInFilesView("src/value.ts");
+    });
+
+    expect(result.current.workspaceFiles.tabs).toHaveLength(1);
+    expect(readWorkspaceFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("prompts before closing dirty tabs and supports cancel, discard, and save", async () => {
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "draft\n",
+      size: 6,
+      mtimeMs: 10
+    });
+    const { result } = renderHook(
+      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
+      { initialProps: { ws: makeWorkspace() } }
+    );
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.openInFilesView("src/draft.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+
+    act(() => {
+      result.current.workspaceFiles.editFile("draft changed\n");
+    });
+    act(() => {
+      result.current.workspaceFiles.closeTab("src/draft.ts");
+    });
+    expect(result.current.workspaceFiles.dirtyClosePrompt?.path).toBe("src/draft.ts");
+
+    act(() => {
+      result.current.workspaceFiles.cancelDirtyTabClose();
+    });
+    expect(result.current.workspaceFiles.dirtyClosePrompt).toBeNull();
+    expect(result.current.workspaceFiles.tabs).toHaveLength(1);
+
+    act(() => {
+      result.current.workspaceFiles.closeTab("src/draft.ts");
+    });
+    act(() => {
+      result.current.workspaceFiles.discardDirtyTabAndClose();
+    });
+    expect(result.current.workspaceFiles.tabs).toHaveLength(0);
+
+    act(() => {
+      result.current.openInFilesView("src/draft.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    act(() => {
+      result.current.workspaceFiles.editFile("saved draft\n");
+    });
+    act(() => {
+      result.current.workspaceFiles.closeTab("src/draft.ts");
+    });
+    await act(async () => {
+      await result.current.workspaceFiles.saveDirtyTabAndClose();
+    });
+
+    expect(writeWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/draft.ts", "saved draft\n", 10);
+    expect(result.current.workspaceFiles.tabs).toHaveLength(0);
+  });
+
+  it("keeps a dirty tab open and marks it stale when save-on-close hits the mtime guard", async () => {
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "draft\n",
+      size: 6,
+      mtimeMs: 10
+    });
+    writeWorkspaceFile.mockResolvedValueOnce({
+      ok: false,
+      reason: "stale",
+      currentMtimeMs: 15,
+      size: 8
+    });
+    const { result } = renderHook(
+      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
+      { initialProps: { ws: makeWorkspace() } }
+    );
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.openInFilesView("src/draft.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    act(() => {
+      result.current.workspaceFiles.editFile("draft changed\n");
+    });
+    act(() => {
+      result.current.workspaceFiles.closeTab("src/draft.ts");
+    });
+
+    await act(async () => {
+      await result.current.workspaceFiles.saveDirtyTabAndClose();
+    });
+
+    expect(result.current.workspaceFiles.tabs).toHaveLength(1);
+    expect(result.current.workspaceFiles.activeTabPath).toBe("src/draft.ts");
+    expect(result.current.workspaceFiles.externalChange).toBe(true);
+    expect(result.current.workspaceFiles.dirtyClosePrompt).toBeNull();
+  });
+
+  it("resets open file tabs when the workspace id changes", async () => {
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "one\n",
+      size: 4,
+      mtimeMs: 10
+    });
+    const { result, rerender } = renderHook(
+      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
+      { initialProps: { ws: makeWorkspace({ id: "workspace-1" }) } }
+    );
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    act(() => {
+      result.current.openInFilesView("src/one.ts");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.tabs).toHaveLength(1));
+
+    rerender({ ws: makeWorkspace({ id: "workspace-2" }) });
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
+    expect(result.current.workspaceFiles.tabs).toHaveLength(0);
+    expect(result.current.workspaceFiles.activeTabPath).toBeNull();
   });
 });

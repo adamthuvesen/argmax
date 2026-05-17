@@ -1,6 +1,6 @@
 import { Columns2, Folder, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
-import type { ReviewState } from "../hooks/useReviewState.js";
+import type { ReviewState, WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -20,6 +20,73 @@ function fileDirname(path: string): string {
 
 function statusGlyph(status: string): string {
   return statusLabel(status).slice(0, 1).toUpperCase();
+}
+
+function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | null {
+  if (state.tabs.length === 0) return null;
+  const promptPath = state.dirtyClosePrompt?.path ?? null;
+  const promptName = promptPath ? fileBasename(promptPath) : null;
+  return (
+    <div className="file-tabs-shell">
+      <div className="file-tabs" role="tablist" aria-label="Open files">
+        {state.tabs.map((tab) => {
+          const isActive = tab.path === state.activeTabPath;
+          return (
+            <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.path}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                title={tab.path}
+                onClick={() => state.selectTab(tab.path)}
+              >
+                <span className="file-tab-name">{fileBasename(tab.path)}</span>
+                {tab.isDirty ? (
+                  <span className="file-tab-dirty" aria-label="Unsaved changes" title="Unsaved changes">
+                    •
+                  </span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                className="file-tab-close"
+                aria-label={`Close ${tab.path}`}
+                title={`Close ${tab.path}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  state.closeTab(tab.path);
+                }}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {promptPath ? (
+        <div className="file-tab-close-prompt" role="alert" aria-label={`Unsaved changes in ${promptPath}`}>
+          <span>
+            Save changes to <strong>{promptName}</strong>?
+          </span>
+          <div className="file-tab-close-prompt-actions">
+            <button
+              type="button"
+              onClick={() => void state.saveDirtyTabAndClose()}
+              disabled={state.saveState === "saving"}
+            >
+              {state.saveState === "saving" ? "Saving..." : "Save"}
+            </button>
+            <button type="button" onClick={state.discardDirtyTabAndClose}>
+              Discard
+            </button>
+            <button type="button" onClick={state.cancelDirtyTabClose}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 const DIFF_VIEW_KEY = "argmax.diffView";
@@ -66,6 +133,23 @@ export function ReviewPanel({
     if (typeof window === "undefined") return;
     window.localStorage.setItem(LEFT_COL_WIDTH_KEY, String(leftColumnWidth));
   }, [leftColumnWidth]);
+
+  useEffect(() => {
+    if (review.mode !== "files") return undefined;
+    const activePath = review.workspaceFiles.activeTabPath;
+    if (!activePath) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "w") return;
+      if (event.isComposing || event.repeat) return;
+      event.preventDefault();
+      event.stopPropagation();
+      review.workspaceFiles.closeTab(activePath);
+    };
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [review.mode, review.workspaceFiles]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -205,7 +289,7 @@ export function ReviewPanel({
           aria-label="Resize file list width"
           onMouseDown={handleResizeMouseDown}
         />
-        <div className="review-diff">
+        <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
               {selectedFile ? (
@@ -242,7 +326,10 @@ export function ReviewPanel({
               ) : null}
             </>
           ) : (
-            <FilePreview state={review.workspaceFiles} />
+            <>
+              <FileTabStrip state={review.workspaceFiles} />
+              <FilePreview state={review.workspaceFiles} />
+            </>
           )}
         </div>
       </div>

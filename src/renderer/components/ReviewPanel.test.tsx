@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Stub the highlighter so this test never touches shiki.
@@ -32,11 +32,19 @@ function reviewStub(): ReviewState {
       entries: [],
       listState: "idle",
       listError: null,
+      tabs: [],
+      activeTabPath: null,
       selectedPath: null,
       preview: null,
       previewState: "idle",
       previewError: null,
       openFile: vi.fn(),
+      selectTab: vi.fn(),
+      closeTab: vi.fn(),
+      dirtyClosePrompt: null,
+      saveDirtyTabAndClose: vi.fn().mockResolvedValue(undefined),
+      discardDirtyTabAndClose: vi.fn(),
+      cancelDirtyTabClose: vi.fn(),
       buffer: null,
       isDirty: false,
       diskMtimeMs: null,
@@ -122,6 +130,110 @@ describe("ReviewPanel side-by-side layout", () => {
     const stored = window.localStorage.getItem("argmax.reviewPanel.leftColumnWidth");
     expect(stored).not.toBeNull();
     expect(Number.parseInt(stored ?? "0", 10)).toBeGreaterThanOrEqual(200);
+  });
+});
+
+describe("ReviewPanel file tabs", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders open files as an accessible tab strip and routes tab actions", () => {
+    const review = reviewStub();
+    const selectTab = vi.fn();
+    const closeTab = vi.fn();
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      tabs: [
+        { path: "src/index.ts", isDirty: true, saveState: "idle", externalChange: false },
+        { path: "src/utils.ts", isDirty: false, saveState: "idle", externalChange: false }
+      ],
+      activeTabPath: "src/index.ts",
+      selectedPath: "src/index.ts",
+      selectTab,
+      closeTab
+    };
+
+    render(<ReviewPanel review={review} />);
+
+    const tablist = screen.getByRole("tablist", { name: "Open files" });
+    expect(within(tablist).getByRole("tab", { name: /index\.ts/ })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    fireEvent.click(within(tablist).getByRole("tab", { name: "utils.ts" }));
+    expect(selectTab).toHaveBeenCalledWith("src/utils.ts");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close src/index.ts" }));
+    expect(closeTab).toHaveBeenCalledWith("src/index.ts");
+  });
+
+  it("shows the dirty-close prompt with save, discard, and cancel actions", () => {
+    const review = reviewStub();
+    const saveDirtyTabAndClose = vi.fn().mockResolvedValue(undefined);
+    const discardDirtyTabAndClose = vi.fn();
+    const cancelDirtyTabClose = vi.fn();
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      tabs: [{ path: "src/index.ts", isDirty: true, saveState: "idle", externalChange: false }],
+      activeTabPath: "src/index.ts",
+      selectedPath: "src/index.ts",
+      dirtyClosePrompt: { path: "src/index.ts" },
+      saveDirtyTabAndClose,
+      discardDirtyTabAndClose,
+      cancelDirtyTabClose
+    };
+
+    render(<ReviewPanel review={review} />);
+
+    expect(screen.getByRole("alert", { name: "Unsaved changes in src/index.ts" })).toHaveTextContent(
+      "Save changes to index.ts?"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(saveDirtyTabAndClose).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(discardDirtyTabAndClose).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(cancelDirtyTabClose).toHaveBeenCalled();
+  });
+
+  it("routes Cmd+W to the active file tab while Files mode has a tab open", () => {
+    const review = reviewStub();
+    const closeTab = vi.fn();
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
+      activeTabPath: "src/index.ts",
+      selectedPath: "src/index.ts",
+      closeTab
+    };
+
+    render(<ReviewPanel review={review} />);
+
+    const wasNotCanceled = fireEvent.keyDown(document, { key: "w", metaKey: true });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(closeTab).toHaveBeenCalledWith("src/index.ts");
+  });
+
+  it("leaves Cmd+W alone in Files mode when no file tab is open", () => {
+    const review = reviewStub();
+    const closeTab = vi.fn();
+    review.mode = "files";
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      closeTab
+    };
+
+    render(<ReviewPanel review={review} />);
+
+    const wasNotCanceled = fireEvent.keyDown(document, { key: "w", metaKey: true });
+
+    expect(wasNotCanceled).toBe(true);
+    expect(closeTab).not.toHaveBeenCalled();
   });
 });
 

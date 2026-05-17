@@ -1923,12 +1923,15 @@ describe("App", () => {
       { path: "src/renderer/App.tsx" },
       { path: "README.md" }
     ]);
-    readWorkspaceFile.mockResolvedValue({
+    readWorkspaceFile.mockImplementation(async (_workspaceId, filePath) => ({
       kind: "text",
-      content: "export const hello = 'world';\n",
+      content:
+        filePath === "src/main/preload.ts"
+          ? "export const preload = true;\n"
+          : "export const hello = 'world';\n",
       size: 30,
       mtimeMs: 0
-    });
+    }));
 
     render(<App />);
 
@@ -1953,6 +1956,27 @@ describe("App", () => {
     // production rendering regardless of how the line is carved into tokens.
     const preview = await screen.findByLabelText("Preview of src/main/index.ts");
     expect(preview).toHaveTextContent("export const hello = 'world';");
+
+    fireEvent.click(screen.getByRole("treeitem", { name: /^preload\.ts$/ }));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/preload.ts"));
+    expect(await screen.findByLabelText("Preview of src/main/preload.ts")).toHaveTextContent(
+      "export const preload = true;"
+    );
+
+    const tablist = screen.getByRole("tablist", { name: "Open files" });
+    expect(within(tablist).getByRole("tab", { name: "index.ts" })).toHaveAttribute(
+      "aria-selected",
+      "false"
+    );
+    expect(within(tablist).getByRole("tab", { name: "preload.ts" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+
+    fireEvent.click(within(tablist).getByRole("tab", { name: "index.ts" }));
+    expect(await screen.findByLabelText("Preview of src/main/index.ts")).toHaveTextContent(
+      "export const hello = 'world';"
+    );
   });
 
   it("opens workspace files via the unified command palette on Cmd+P", async () => {

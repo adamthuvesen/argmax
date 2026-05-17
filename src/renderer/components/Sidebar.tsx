@@ -18,6 +18,7 @@ import {
   saveWorkspaceOrders,
   sortWorkspaceGroup
 } from "../lib/projects.js";
+import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
 // Cap on workspaces shown per project group. When more exist, a "N more"
@@ -377,7 +378,7 @@ export function Sidebar({
       <div className="sidebar-footer">
         <div className="identity-chip" data-state={loadState}>
           <span className="identity-avatar" aria-hidden="true">
-            <span className="identity-avatar-glyph">▲</span>
+            <Mascot size={26} className="identity-avatar-mascot" />
           </span>
           <span className="identity-meta">
             <span className="identity-name">argmax@local</span>

@@ -1,6 +1,8 @@
 import { ExternalLink } from "lucide-react";
-import type { JSX } from "react";
+import { useMemo, type JSX } from "react";
+import { interpretFileChange } from "../lib/fileChange.js";
 import { extractOpenablePath, isBashLikeTool, type ToolCall } from "../lib/toolCalls.js";
+import { FileChangeCard } from "./FileChangeCard.js";
 
 export function ToolCallDetail({
   tool,
@@ -9,6 +11,31 @@ export function ToolCallDetail({
   tool: ToolCall;
   workspaceCwd?: string | null;
 }): JSX.Element {
+  const changes = useMemo(
+    () => interpretFileChange(tool.name, tool.inputFull),
+    [tool.name, tool.inputFull]
+  );
+
+  if (changes && changes.length > 0) {
+    return (
+      <div className="tool-call-detail">
+        {tool.error ? (
+          <div className="tool-call-section">
+            <p className="tool-call-section-label">Error</p>
+            <pre className="tool-call-code tool-call-code--error">{tool.error}</pre>
+          </div>
+        ) : null}
+        {changes.map((change, index) => (
+          <FileChangeCard
+            change={change}
+            key={`${change.path}-${index}`}
+            workspaceCwd={workspaceCwd ?? null}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="tool-call-detail">
       {tool.error ? (

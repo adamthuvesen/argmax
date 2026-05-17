@@ -1,7 +1,21 @@
-import { Bug, ChevronDown, Folder, GitBranch, GitCommit, Mic, Plus, Square, X } from "lucide-react";
+import {
+  Bug,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Folder,
+  GitBranch,
+  GitCommit,
+  Mic,
+  MoreHorizontal,
+  Plus,
+  Square,
+  X
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +26,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -36,6 +51,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useFreshSet } from "../hooks/useFreshSet.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
@@ -68,7 +84,7 @@ import {
   type ToolCall
 } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
-import { GitActionsDropdown } from "./GitActionsDropdown.js";
+import { GitActionsMenu } from "./GitActionsMenu.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { CostPanel } from "./CostPanel.js";
@@ -225,6 +241,29 @@ export function SessionConversation({
   const inputFormRef = useRef<HTMLFormElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldRefocusInput = useRef(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionsMode, setActionsMode] = useState<"main" | "git">("main");
+  const [actionsPos, setActionsPos] = useState<{ top: number; right: number } | null>(null);
+  const actionsAnchorRef = useRef<HTMLDivElement | null>(null);
+  const actionsPopoverRef = useRef<HTMLDivElement | null>(null);
+  const closeActions = useCallback(() => {
+    setActionsOpen(false);
+    setActionsMode("main");
+  }, []);
+  useDismissOnOutsideOrEscape(actionsAnchorRef, actionsOpen, closeActions, actionsPopoverRef);
+  useLayoutEffect(() => {
+    if (!actionsOpen) {
+      setActionsPos(null);
+      return;
+    }
+    const anchor = actionsAnchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    setActionsPos({
+      top: rect.bottom + 6,
+      right: Math.max(8, window.innerWidth - rect.right)
+    });
+  }, [actionsOpen]);
   const sessionId = session?.id ?? null;
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
@@ -772,45 +811,123 @@ export function SessionConversation({
           <h2>{repositoryName}</h2>
         </div>
         <div className="conversation-header-actions">
-          <button
-            className="small-icon"
-            type="button"
-            title="Browse workspace files"
-            aria-label="Browse workspace files"
-            disabled={!workspace}
-            onClick={review.openPanelInFilesMode}
-          >
-            <Folder size={16} />
-          </button>
-          <button
-            className="small-icon"
-            type="button"
-            title={workspace?.dirty ? "Save checkpoint of the current worktree" : "Worktree is clean — no checkpoint needed"}
-            aria-label="Save checkpoint"
-            disabled={!workspace?.dirty}
-            onClick={() => {
-              if (workspace) void onCreateCheckpoint(workspace.id);
-            }}
-          >
-            <GitCommit size={16} />
-          </button>
-          <GitActionsDropdown
-            prs={prs}
-            session={session}
-            workspace={workspace}
-            onPrsRefresh={refreshPrs}
-            onOpenCommitDialog={onOpenCommitDialog}
-          />
-          <button
-            className="small-icon"
-            type="button"
-            title="Toggle debug log"
-            aria-label="Toggle debug log"
-            aria-pressed={isLogOpen}
-            onClick={onToggleLog}
-          >
-            <Bug size={16} />
-          </button>
+          <div className="session-actions-anchor" ref={actionsAnchorRef}>
+            <button
+              className="small-icon"
+              type="button"
+              title="Session actions"
+              aria-label="Session actions"
+              aria-haspopup="menu"
+              aria-expanded={actionsOpen}
+              onClick={() => setActionsOpen((open) => !open)}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {actionsOpen && actionsPos && createPortal(
+              <div
+                ref={actionsPopoverRef}
+                className="project-picker-popover session-actions-popover"
+                role="menu"
+                aria-label="Session actions"
+                style={{
+                  position: "fixed",
+                  top: actionsPos.top,
+                  right: actionsPos.right,
+                  left: "auto",
+                  bottom: "auto"
+                }}
+              >
+                {actionsMode === "main" && (
+                  <ul className="session-actions-list">
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item"
+                        disabled={!workspace}
+                        onClick={() => {
+                          closeActions();
+                          review.openPanelInFilesMode();
+                        }}
+                      >
+                        <Folder size={14} aria-hidden="true" />
+                        Browse files
+                      </button>
+                    </li>
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item"
+                        title={
+                          workspace?.dirty
+                            ? "Save checkpoint of the current worktree"
+                            : "Worktree is clean — no checkpoint needed"
+                        }
+                        disabled={!workspace?.dirty}
+                        onClick={() => {
+                          if (!workspace) return;
+                          closeActions();
+                          void onCreateCheckpoint(workspace.id);
+                        }}
+                      >
+                        <GitCommit size={14} aria-hidden="true" />
+                        Save checkpoint
+                      </button>
+                    </li>
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item session-actions-submenu-trigger"
+                        aria-haspopup="menu"
+                        disabled={!workspace}
+                        onClick={() => setActionsMode("git")}
+                      >
+                        <GitBranch size={14} aria-hidden="true" />
+                        <span className="session-actions-submenu-label">Git actions</span>
+                        <ChevronRight size={14} aria-hidden="true" className="session-actions-submenu-chevron" />
+                      </button>
+                    </li>
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitemcheckbox"
+                        className="project-picker-item"
+                        aria-checked={isLogOpen}
+                        onClick={onToggleLog}
+                      >
+                        <Bug size={14} aria-hidden="true" />
+                        Toggle debug log
+                      </button>
+                    </li>
+                  </ul>
+                )}
+                {actionsMode === "git" && (
+                  <div className="session-actions-submenu">
+                    <button
+                      type="button"
+                      className="session-actions-back"
+                      aria-label="Back to session actions"
+                      onClick={() => setActionsMode("main")}
+                    >
+                      <ChevronLeft size={12} aria-hidden="true" />
+                      Back
+                    </button>
+                    <GitActionsMenu
+                      prs={prs}
+                      session={session}
+                      workspace={workspace}
+                      onPrsRefresh={refreshPrs}
+                      onOpenCommitDialog={onOpenCommitDialog}
+                      onClose={closeActions}
+                    />
+                  </div>
+                )}
+              </div>,
+              document.body
+            )}
+          </div>
           {onClose ? (
             <button
               className="small-icon session-pane-close"

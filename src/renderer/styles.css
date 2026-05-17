@@ -3525,6 +3525,71 @@ button {
   margin: 4px 6px;
 }
 
+/* Session actions menu — replaces the row of header icons. Sized to fit short
+   text labels; opens downward and anchors to the trigger's right edge.
+   The "Git actions" item swaps the menu's contents in place instead of
+   cascading a second popover, so we widen min-width for the longer git
+   labels (e.g. "Create pull request"). */
+.session-actions-popover {
+  top: auto;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  min-width: 240px;
+  padding: 6px;
+}
+
+.session-actions-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* "Git actions ▸" trigger — labels and chevron align to opposite edges. */
+.session-actions-submenu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-actions-submenu-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.session-actions-submenu-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+/* "Back" + GitActionsMenu container — same column layout as the main list. */
+.session-actions-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-actions-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px 4px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.session-actions-back:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
 /* Git actions dropdown — opens DOWNWARD from the conversation header. */
 .git-actions-popover {
   top: calc(100% + 8px);
@@ -5290,6 +5355,216 @@ button {
   border-radius: 50%;
   background: var(--muted);
   transform: translateY(-1px);
+}
+
+.tool-call-row-counts {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.tool-call-row-counts .adds {
+  color: #009f45;
+}
+
+.tool-call-row-counts .dels {
+  color: #e2222a;
+}
+
+.tool-call-row-counts .files {
+  color: var(--muted);
+}
+
+/* ---- File change card (in-chat Write/Edit/Delete affordance) ---- */
+
+.file-change-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--panel);
+  margin-top: var(--space-2);
+  animation: surface-in var(--motion-base) var(--ease-out);
+}
+
+.file-change-card[data-kind="create"] {
+  border-left: 3px solid var(--sage-deep);
+}
+
+.file-change-card[data-kind="edit"] {
+  border-left: 3px solid var(--amber);
+}
+
+.file-change-card[data-kind="delete"] {
+  border-left: 3px solid var(--rose);
+}
+
+.file-change-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.file-change-card[data-kind="create"] .file-change-card-header {
+  background: var(--sage-soft);
+}
+
+.file-change-card[data-kind="edit"] .file-change-card-header {
+  background: var(--panel-soft);
+}
+
+.file-change-card[data-kind="delete"] .file-change-card-header {
+  background: var(--rose-soft);
+}
+
+.file-change-card-header svg {
+  flex: 0 0 auto;
+  color: var(--muted-strong);
+}
+
+.file-change-card[data-kind="create"] .file-change-card-header svg {
+  color: var(--sage-deep);
+}
+
+.file-change-card[data-kind="edit"] .file-change-card-header svg {
+  color: var(--amber);
+}
+
+.file-change-card[data-kind="delete"] .file-change-card-header svg {
+  color: var(--rose);
+}
+
+.file-change-card-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: transparent;
+  padding: 0;
+}
+
+.file-change-card-open {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-strong);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+
+.file-change-card-open:hover {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.file-change-card-open:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.file-change-card-body {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-change-card-body[data-collapsed="true"] {
+  max-height: calc(16 * 1.5em);
+  overflow: hidden;
+}
+
+.file-change-card-body .diff-blocks {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+.file-change-card-body .diff-hunk {
+  border: 0;
+}
+
+/* Hunk header ("@@ -0,0 +1,29 @@") is patch jargon — useless to a chat
+   reader. Hide inside cards. */
+.file-change-card .diff-hunk-header {
+  display: none;
+}
+
+/* Pure-create cards are 100% additions; the darker line-number gutter then
+   adds noise instead of contrast. Flatten to the body tint. */
+.file-change-card[data-kind="create"] .diff-line.addition .diff-line-number {
+  background: transparent;
+  color: var(--sage-deep);
+  opacity: 0.55;
+}
+
+.file-change-card[data-no-line-numbers] .diff-line .diff-line-number {
+  display: none;
+}
+
+.file-change-card[data-no-line-numbers] .diff-line {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.file-change-card-empty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.file-change-card-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-soft);
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+}
+
+.file-change-card-toggle {
+  width: 100%;
+  padding: 6px var(--space-3);
+  background: var(--panel-soft);
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+
+.file-change-card-toggle:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+.file-change-card-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 .tool-call-row-dot[data-status="running"] {

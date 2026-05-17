@@ -21,6 +21,18 @@ jobs:
           node-version: "22"
           cache: npm
 
+      # Cache the electron headers + electron-rebuild prebuilds so `rebuild:node`
+      # (invoked by `npm test`) doesn't recompile better-sqlite3 / node-pty
+      # from source on every run. Key on the native-module versions so a bump
+      # of either package invalidates the cache automatically.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.electron
+            ~/.electron-gyp
+            ~/.npm/_prebuilds
+          key: ${{ runner.os }}-native-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
 
       - run: npm run lint

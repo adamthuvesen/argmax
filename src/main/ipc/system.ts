@@ -1,4 +1,4 @@
-import { app, ipcMain, shell } from "electron";
+import { ipcMain, shell } from "electron";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 import { statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -15,6 +15,7 @@ import { readPhases as readStartupPhases } from "../util/startupTimer.js";
 import { readHistogram as readIpcHistogram, timed } from "../util/ipcLatency.js";
 import { readLogBuffer } from "../../shared/logger.js";
 import { withValidation } from "../ipc.js";
+import { getDatabasePath } from "../paths.js";
 
 /**
  * System-level handlers split out from `src/main/ipc.ts` (Ralph SPEC D3 —
@@ -51,7 +52,7 @@ export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcCh
       } catch {
         sqliteVersion = "unknown";
       }
-      const databasePath = app.getPath("userData") + "/local-state/argmax.sqlite";
+      const databasePath = getDatabasePath();
       return {
         appVersion: pkg.version ?? "0.0.0",
         electronVersion: process.versions.electron ?? "",

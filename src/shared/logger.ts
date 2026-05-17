@@ -24,7 +24,15 @@ import type { LogEntry, LogLevel } from "./types.js";
 export type { LogEntry, LogLevel };
 
 const LOG_BUFFER_SIZE = 1000;
-const buffer: LogEntry[] = [];
+/**
+ * Ring buffer backing `record()` and `readLogBuffer()`. Stored as a fixed-
+ * size circular buffer (write index wraps) so eviction is O(1) instead of
+ * the O(n) shift the original implementation paid on every log call once
+ * full. (audit-2026-05-17 L2)
+ */
+const buffer: (LogEntry | undefined)[] = new Array(LOG_BUFFER_SIZE);
+let writeIndex = 0;
+let entriesWritten = 0;
 
 function isDebugEnabled(): boolean {
   // Read each call so tests that toggle `process.env.DEBUG` between calls
@@ -57,10 +65,9 @@ function record(level: LogLevel, scope: string, message: string, fields?: Record
     message,
     fields: fields ?? {}
   };
-  buffer.push(entry);
-  if (buffer.length > LOG_BUFFER_SIZE) {
-    buffer.shift();
-  }
+  buffer[writeIndex] = entry;
+  writeIndex = (writeIndex + 1) % LOG_BUFFER_SIZE;
+  entriesWritten++;
   // Error always mirrors so it's noticeable without DEBUG=1. Other levels
   // need the explicit opt-in.
   if (level === "error" || isDebugEnabled()) {
@@ -101,10 +108,19 @@ export const logger = {
 
 /** Returns the current ring-buffer contents oldest-first. */
 export function readLogBuffer(): LogEntry[] {
-  return buffer.slice();
+  // Before the buffer fills, `writeIndex` IS the count of valid entries and
+  // they're contiguous from index 0. After it fills, `writeIndex` is the
+  // oldest slot — reconstruct oldest-first by slicing [writeIndex..end] then
+  // [0..writeIndex].
+  if (entriesWritten <= LOG_BUFFER_SIZE) {
+    return buffer.slice(0, entriesWritten) as LogEntry[];
+  }
+  return [...buffer.slice(writeIndex), ...buffer.slice(0, writeIndex)] as LogEntry[];
 }
 
 /** Test-only: clear the buffer between fixtures. */
 export function resetLogBufferForTesting(): void {
-  buffer.length = 0;
+  for (let i = 0; i < LOG_BUFFER_SIZE; i++) buffer[i] = undefined;
+  writeIndex = 0;
+  entriesWritten = 0;
 }

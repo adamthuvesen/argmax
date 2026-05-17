@@ -1,4 +1,5 @@
-import { memo, useEffect, useRef, useState, type JSX } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
 import { describeToolAction, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 
@@ -6,6 +7,32 @@ function splitVerbTarget(action: string): { verb: string; target: string } {
   const space = action.indexOf(" ");
   if (space === -1) return { verb: action, target: "" };
   return { verb: action.slice(0, space), target: action.slice(space + 1) };
+}
+
+function summarizeChanges(changes: FileChange[]): { adds: number; dels: number; files: number } {
+  let adds = 0;
+  let dels = 0;
+  for (const c of changes) {
+    if (c.kind === "delete") continue;
+    adds += c.addCount;
+    if (c.kind === "edit") dels += c.delCount;
+  }
+  return { adds, dels, files: changes.length };
+}
+
+function verbForChanges(changes: FileChange[]): string | null {
+  let creates = 0;
+  let edits = 0;
+  let deletes = 0;
+  for (const c of changes) {
+    if (c.kind === "create") creates += 1;
+    else if (c.kind === "edit") edits += 1;
+    else deletes += 1;
+  }
+  if (creates > 0 && edits === 0 && deletes === 0) return "Created";
+  if (deletes > 0 && creates === 0 && edits === 0) return "Deleted";
+  if (edits > 0 && creates === 0 && deletes === 0) return "Edited";
+  return "Changed";
 }
 
 function ToolCallRowInner({
@@ -32,7 +59,16 @@ function ToolCallRowInner({
   }, [tool.status]);
 
   const action = describeToolAction(tool);
-  const { verb, target } = splitVerbTarget(action);
+  const baseSplit = splitVerbTarget(action);
+
+  const changes = useMemo(
+    () => interpretFileChange(tool.name, tool.inputFull),
+    [tool.name, tool.inputFull]
+  );
+  const counts = changes && changes.length > 0 ? summarizeChanges(changes) : null;
+  const overrideVerb = changes && changes.length > 0 ? verbForChanges(changes) : null;
+  const verb = overrideVerb ?? baseSplit.verb;
+  const target = baseSplit.target;
 
   return (
     <div className="tool-call-row" data-status={tool.status} data-tool-type={getToolTypeBucket(tool.name)}>
@@ -52,6 +88,13 @@ function ToolCallRowInner({
         ) : null}
         <span className="tool-call-row-verb">{verb}</span>
         {target ? <span className="tool-call-row-target">{target}</span> : null}
+        {counts && (counts.adds > 0 || counts.dels > 0) ? (
+          <span className="tool-call-row-counts" aria-hidden="true">
+            {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}
+            {counts.dels > 0 ? <span className="dels">−{counts.dels}</span> : null}
+            {counts.files > 1 ? <span className="files">· {counts.files} files</span> : null}
+          </span>
+        ) : null}
       </button>
       {expanded ? <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} /> : null}
     </div>

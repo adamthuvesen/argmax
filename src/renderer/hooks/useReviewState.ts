@@ -27,15 +27,67 @@ export type ReviewSource =
 
 type SourceKind = ReviewSource["kind"];
 
+export interface WorkspaceFileTab {
+  path: string;
+  isDirty: boolean;
+  saveState: WorkspaceFileSaveState;
+  externalChange: boolean;
+}
+
+export interface WorkspaceFileDirtyClosePrompt {
+  path: string;
+}
+
+interface WorkspaceFileTabState {
+  path: string;
+  preview: WorkspaceFilePreview | null;
+  previewState: AsyncState;
+  previewError: string | null;
+  buffer: string | null;
+  original: string | null;
+  diskMtimeMs: number | null;
+  externalChange: boolean;
+  saveState: WorkspaceFileSaveState;
+  saveError: string | null;
+}
+
+function createWorkspaceFileTab(path: string): WorkspaceFileTabState {
+  return {
+    path,
+    preview: null,
+    previewState: "idle",
+    previewError: null,
+    buffer: null,
+    original: null,
+    diskMtimeMs: null,
+    externalChange: false,
+    saveState: "idle",
+    saveError: null
+  };
+}
+
+function isWorkspaceFileTabDirty(tab: WorkspaceFileTabState | null, canEdit: boolean): boolean {
+  if (!canEdit || !tab || tab.buffer === null) return false;
+  return tab.buffer !== tab.original;
+}
+
 export interface WorkspaceFilesState {
   entries: WorkspaceFileEntry[];
   listState: AsyncState;
   listError: string | null;
+  tabs: WorkspaceFileTab[];
+  activeTabPath: string | null;
   selectedPath: string | null;
   preview: WorkspaceFilePreview | null;
   previewState: AsyncState;
   previewError: string | null;
   openFile: (filePath: string) => void;
+  selectTab: (filePath: string) => void;
+  closeTab: (filePath: string) => void;
+  dirtyClosePrompt: WorkspaceFileDirtyClosePrompt | null;
+  saveDirtyTabAndClose: () => Promise<void>;
+  discardDirtyTabAndClose: () => void;
+  cancelDirtyTabClose: () => void;
   /** Current editor buffer for the selected file (null if not text/editable). */
   buffer: string | null;
   /** Buffer differs from the last-loaded original. */
@@ -121,21 +173,16 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const [workspaceFileEntries, setWorkspaceFileEntries] = useState<WorkspaceFileEntry[]>([]);
   const [workspaceFilesListState, setWorkspaceFilesListState] = useState<AsyncState>("idle");
   const [workspaceFilesListError, setWorkspaceFilesListError] = useState<string | null>(null);
-  const [workspaceFileSelected, setWorkspaceFileSelected] = useState<string | null>(null);
-  const [workspaceFilePreview, setWorkspaceFilePreview] = useState<WorkspaceFilePreview | null>(null);
-  const [workspaceFilePreviewState, setWorkspaceFilePreviewState] = useState<AsyncState>("idle");
-  const [workspaceFilePreviewError, setWorkspaceFilePreviewError] = useState<string | null>(null);
-  const [workspaceFileBuffer, setWorkspaceFileBuffer] = useState<string | null>(null);
-  const [workspaceFileOriginal, setWorkspaceFileOriginal] = useState<string | null>(null);
-  const [workspaceFileDiskMtimeMs, setWorkspaceFileDiskMtimeMs] = useState<number | null>(null);
-  const [workspaceFileExternalChange, setWorkspaceFileExternalChange] = useState(false);
-  const [workspaceFileSaveState, setWorkspaceFileSaveState] = useState<WorkspaceFileSaveState>("idle");
-  const [workspaceFileSaveError, setWorkspaceFileSaveError] = useState<string | null>(null);
+  const [workspaceFileTabs, setWorkspaceFileTabs] = useState<WorkspaceFileTabState[]>([]);
+  const [workspaceActiveFilePath, setWorkspaceActiveFilePath] = useState<string | null>(null);
+  const [workspaceDirtyClosePath, setWorkspaceDirtyClosePath] = useState<string | null>(null);
   const fileLoadToken = useRef(0);
   const diffLoadToken = useRef(0);
   const workspaceListToken = useRef(0);
-  const workspaceReadToken = useRef(0);
-  const workspaceSaveToken = useRef(0);
+  const workspaceReadSeq = useRef(0);
+  const workspaceReadTokens = useRef(new Map<string, number>());
+  const workspaceSaveSeq = useRef(0);
+  const workspaceSaveTokens = useRef(new Map<string, number>());
   const previousSourceId = useRef<string | null>(null);
   const isPanelOpenRef = useRef(false);
   const filesCountRef = useRef(0);
@@ -144,20 +191,21 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const sourceIdRef = useRef<string | null>(null);
   const sourceKindRef = useRef<SourceKind | null>(null);
   const canEditRef = useRef(false);
-  const workspaceFileSelectedRef = useRef<string | null>(null);
-  const workspaceFileDiskMtimeMsRef = useRef<number | null>(null);
+  const workspaceFileTabsRef = useRef<WorkspaceFileTabState[]>([]);
+  const workspaceActiveFilePathRef = useRef<string | null>(null);
+  const workspaceActiveDiskMtimeMsRef = useRef<number | null>(null);
+
+  const activeWorkspaceFileTab =
+    workspaceFileTabs.find((tab) => tab.path === workspaceActiveFilePath) ?? null;
+  workspaceFileTabsRef.current = workspaceFileTabs;
+  workspaceActiveFilePathRef.current = workspaceActiveFilePath;
+  workspaceActiveDiskMtimeMsRef.current = activeWorkspaceFileTab?.diskMtimeMs ?? null;
 
   useEffect(() => {
     sourceIdRef.current = sourceId;
     sourceKindRef.current = sourceKind;
     canEditRef.current = canEdit;
   }, [sourceId, sourceKind, canEdit]);
-  useEffect(() => {
-    workspaceFileSelectedRef.current = workspaceFileSelected;
-  }, [workspaceFileSelected]);
-  useEffect(() => {
-    workspaceFileDiskMtimeMsRef.current = workspaceFileDiskMtimeMs;
-  }, [workspaceFileDiskMtimeMs]);
 
   useEffect(() => {
     isPanelOpenRef.current = isPanelOpen;
@@ -166,6 +214,62 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   useEffect(() => {
     filesCountRef.current = files.length;
   }, [files]);
+
+  const updateWorkspaceFileTab = useCallback(
+    (filePath: string, update: (tab: WorkspaceFileTabState) => WorkspaceFileTabState): void => {
+      setWorkspaceFileTabs((current) =>
+        current.map((tab) => (tab.path === filePath ? update(tab) : tab))
+      );
+    },
+    []
+  );
+
+  const loadWorkspaceFile = useCallback(
+    (filePath: string): void => {
+      const id = sourceIdRef.current;
+      const kind = sourceKindRef.current;
+      if (!id || !kind || !window.argmax) return;
+      const ipc = dispatchRef.current;
+      if (!ipc) return;
+      const token = ++workspaceReadSeq.current;
+      workspaceReadTokens.current.set(filePath, token);
+      updateWorkspaceFileTab(filePath, (tab) => ({
+        ...tab,
+        previewState: "loading",
+        previewError: null,
+        externalChange: false
+      }));
+      void ipc.readFile(filePath)
+        .then((preview) => {
+          if (workspaceReadTokens.current.get(filePath) !== token) return;
+          updateWorkspaceFileTab(filePath, (tab) => ({
+            ...tab,
+            preview,
+            previewState: "ready",
+            previewError: null,
+            buffer: preview.kind === "text" ? preview.content : null,
+            original: preview.kind === "text" ? preview.content : null,
+            diskMtimeMs: preview.kind === "text" ? preview.mtimeMs : null,
+            externalChange: false,
+            saveState: "idle",
+            saveError: null
+          }));
+        })
+        .catch((error) => {
+          if (workspaceReadTokens.current.get(filePath) !== token) return;
+          updateWorkspaceFileTab(filePath, (tab) => ({
+            ...tab,
+            preview: null,
+            previewState: "error",
+            previewError: errorMessage(error) || "Could not read file.",
+            buffer: null,
+            original: null,
+            diskMtimeMs: null
+          }));
+        });
+    },
+    [updateWorkspaceFileTab]
+  );
 
   useEffect(() => {
     const token = ++fileLoadToken.current;
@@ -181,16 +285,11 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       setWorkspaceFileEntries([]);
       setWorkspaceFilesListState("idle");
       setWorkspaceFilesListError(null);
-      setWorkspaceFileSelected(null);
-      setWorkspaceFilePreview(null);
-      setWorkspaceFilePreviewState("idle");
-      setWorkspaceFilePreviewError(null);
-      setWorkspaceFileBuffer(null);
-      setWorkspaceFileOriginal(null);
-      setWorkspaceFileDiskMtimeMs(null);
-      setWorkspaceFileExternalChange(false);
-      setWorkspaceFileSaveState("idle");
-      setWorkspaceFileSaveError(null);
+      setWorkspaceFileTabs([]);
+      setWorkspaceActiveFilePath(null);
+      setWorkspaceDirtyClosePath(null);
+      workspaceReadTokens.current.clear();
+      workspaceSaveTokens.current.clear();
     }
 
     if (!sourceId || !sourceKind || !window.argmax) {
@@ -292,45 +391,19 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey, dispatch]);
 
   useEffect(() => {
-    const token = ++workspaceReadToken.current;
-    if (!sourceId || !sourceKind || !workspaceFileSelected || !window.argmax || mode !== "files") {
-      setWorkspaceFilePreview(null);
-      setWorkspaceFilePreviewState("idle");
-      setWorkspaceFilePreviewError(null);
-      setWorkspaceFileBuffer(null);
-      setWorkspaceFileOriginal(null);
-      setWorkspaceFileDiskMtimeMs(null);
-      setWorkspaceFileExternalChange(false);
-      return;
-    }
-    setWorkspaceFilePreviewState("loading");
-    setWorkspaceFilePreviewError(null);
-    setWorkspaceFileExternalChange(false);
-    void dispatch!.readFile(workspaceFileSelected)
-      .then((preview) => {
-        if (token !== workspaceReadToken.current) return;
-        setWorkspaceFilePreview(preview);
-        setWorkspaceFilePreviewState("ready");
-        if (preview.kind === "text") {
-          setWorkspaceFileBuffer(preview.content);
-          setWorkspaceFileOriginal(preview.content);
-          setWorkspaceFileDiskMtimeMs(preview.mtimeMs);
-        } else {
-          setWorkspaceFileBuffer(null);
-          setWorkspaceFileOriginal(null);
-          setWorkspaceFileDiskMtimeMs(null);
-        }
-      })
-      .catch((error) => {
-        if (token !== workspaceReadToken.current) return;
-        setWorkspaceFilePreview(null);
-        setWorkspaceFilePreviewState("error");
-        setWorkspaceFilePreviewError(errorMessage(error) || "Could not read file.");
-        setWorkspaceFileBuffer(null);
-        setWorkspaceFileOriginal(null);
-        setWorkspaceFileDiskMtimeMs(null);
-      });
-  }, [sourceId, sourceKind, workspaceFileSelected, mode, dispatch]);
+    if (mode !== "files" || !isPanelOpen) return;
+    if (!sourceId || !sourceKind || !window.argmax) return;
+    if (!activeWorkspaceFileTab || activeWorkspaceFileTab.previewState !== "idle") return;
+    loadWorkspaceFile(activeWorkspaceFileTab.path);
+  }, [
+    mode,
+    isPanelOpen,
+    sourceId,
+    sourceKind,
+    activeWorkspaceFileTab?.path,
+    activeWorkspaceFileTab?.previewState,
+    loadWorkspaceFile
+  ]);
 
   const openFile = useCallback((filePath: string): void => {
     setSelectedFilePath(filePath);
@@ -339,170 +412,220 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, []);
 
   const openWorkspaceFile = useCallback((filePath: string): void => {
-    setWorkspaceFileSelected(filePath);
+    setWorkspaceFileTabs((current) =>
+      current.some((tab) => tab.path === filePath) ? current : [...current, createWorkspaceFileTab(filePath)]
+    );
+    setWorkspaceActiveFilePath(filePath);
+    setWorkspaceDirtyClosePath(null);
   }, []);
+
+  const selectWorkspaceFileTab = useCallback((filePath: string): void => {
+    if (!workspaceFileTabsRef.current.some((tab) => tab.path === filePath)) return;
+    setWorkspaceActiveFilePath(filePath);
+    setWorkspaceDirtyClosePath(null);
+  }, []);
+
+  const forceCloseWorkspaceFile = useCallback((filePath: string): void => {
+    const current = workspaceFileTabsRef.current;
+    const index = current.findIndex((tab) => tab.path === filePath);
+    if (index < 0) return;
+    const remaining = current.filter((tab) => tab.path !== filePath);
+    const fallbackPath = remaining[index]?.path ?? remaining[index - 1]?.path ?? null;
+    setWorkspaceFileTabs(remaining);
+    setWorkspaceActiveFilePath((activePath) => {
+      if (activePath && activePath !== filePath && remaining.some((tab) => tab.path === activePath)) {
+        return activePath;
+      }
+      return fallbackPath;
+    });
+    setWorkspaceDirtyClosePath((promptPath) => (promptPath === filePath ? null : promptPath));
+    workspaceReadTokens.current.delete(filePath);
+    workspaceSaveTokens.current.delete(filePath);
+  }, []);
+
+  const closeWorkspaceFile = useCallback((filePath: string): void => {
+    const tab = workspaceFileTabsRef.current.find((candidate) => candidate.path === filePath) ?? null;
+    if (!tab) return;
+    if (isWorkspaceFileTabDirty(tab, canEditRef.current)) {
+      setWorkspaceActiveFilePath(filePath);
+      setWorkspaceDirtyClosePath(filePath);
+      return;
+    }
+    forceCloseWorkspaceFile(filePath);
+  }, [forceCloseWorkspaceFile]);
 
   const openInFilesView = useCallback((filePath: string): void => {
     setMode("files");
     setIsPanelOpen(true);
-    setWorkspaceFileSelected(filePath);
-  }, []);
+    openWorkspaceFile(filePath);
+  }, [openWorkspaceFile]);
 
   const editWorkspaceFile = useCallback((content: string): void => {
-    // Read-only sources (project main checkout) drop edits on the floor so
-    // CodeMirror's `onChange` from a stray keystroke can't dirty the buffer.
     if (!canEditRef.current) return;
-    setWorkspaceFileBuffer(content);
-    // Clear a stale save-error as soon as the user keeps typing — the next
-    // save attempt will produce a fresh error if it still applies.
-    setWorkspaceFileSaveError(null);
-    setWorkspaceFileSaveState("idle");
-  }, []);
+    const filePath = workspaceActiveFilePathRef.current;
+    if (!filePath) return;
+    updateWorkspaceFileTab(filePath, (tab) => ({
+      ...tab,
+      buffer: content,
+      saveError: null,
+      saveState: "idle"
+    }));
+  }, [updateWorkspaceFileTab]);
 
   const reloadWorkspaceFile = useCallback((): void => {
-    const id = sourceIdRef.current;
-    const kind = sourceKindRef.current;
-    const filePath = workspaceFileSelectedRef.current;
-    if (!id || !kind || !filePath || !window.argmax) return;
-    const ipc = dispatchRef.current;
-    if (!ipc) return;
-    const token = ++workspaceReadToken.current;
-    setWorkspaceFilePreviewState("loading");
-    setWorkspaceFileExternalChange(false);
-    void ipc.readFile(filePath)
-      .then((preview) => {
-        if (token !== workspaceReadToken.current) return;
-        setWorkspaceFilePreview(preview);
-        setWorkspaceFilePreviewState("ready");
-        if (preview.kind === "text") {
-          setWorkspaceFileBuffer(preview.content);
-          setWorkspaceFileOriginal(preview.content);
-          setWorkspaceFileDiskMtimeMs(preview.mtimeMs);
-        }
-      })
-      .catch((error) => {
-        if (token !== workspaceReadToken.current) return;
-        setWorkspaceFilePreviewState("error");
-        setWorkspaceFilePreviewError(errorMessage(error) || "Could not reload file.");
-      });
-  }, []);
+    const filePath = workspaceActiveFilePathRef.current;
+    if (!filePath) return;
+    loadWorkspaceFile(filePath);
+  }, [loadWorkspaceFile]);
 
   const dismissExternalChange = useCallback((): void => {
-    // "Keep my edits" — bump our notion of disk mtime to whatever stat last
-    // reported so the next save passes the guard and overwrites the file.
     const id = sourceIdRef.current;
     const kind = sourceKindRef.current;
-    const filePath = workspaceFileSelectedRef.current;
-    if (!id || !kind || !filePath) {
-      setWorkspaceFileExternalChange(false);
-      return;
-    }
+    const filePath = workspaceActiveFilePathRef.current;
+    if (!id || !kind || !filePath) return;
     const ipc = dispatchRef.current;
     const statPromise = ipc?.statFile(filePath);
     if (!statPromise) {
-      setWorkspaceFileExternalChange(false);
+      updateWorkspaceFileTab(filePath, (tab) => ({ ...tab, externalChange: false }));
       return;
     }
     void statPromise
       .then((latest) => {
-        setWorkspaceFileDiskMtimeMs(latest.mtimeMs);
-        setWorkspaceFileExternalChange(false);
+        updateWorkspaceFileTab(filePath, (tab) => ({
+          ...tab,
+          diskMtimeMs: latest.mtimeMs,
+          externalChange: false
+        }));
       })
       .catch(() => {
-        // Stat failed (file deleted, perms, etc.) — clear the banner anyway;
-        // the next save will surface a real error if one applies.
-        setWorkspaceFileExternalChange(false);
+        updateWorkspaceFileTab(filePath, (tab) => ({ ...tab, externalChange: false }));
       });
-  }, []);
+  }, [updateWorkspaceFileTab]);
 
-  const saveWorkspaceFile = useCallback(async (): Promise<void> => {
+  const saveWorkspaceFilePath = useCallback(async (filePath: string): Promise<boolean> => {
     const id = sourceIdRef.current;
     const kind = sourceKindRef.current;
-    const filePath = workspaceFileSelectedRef.current;
-    if (!id || !kind || !filePath || !canEditRef.current) return;
-    if (workspaceFileBuffer === null) return;
-    if (workspaceFileBuffer === workspaceFileOriginal) return;
-    const token = ++workspaceSaveToken.current;
-    setWorkspaceFileSaveState("saving");
-    setWorkspaceFileSaveError(null);
+    const tab = workspaceFileTabsRef.current.find((candidate) => candidate.path === filePath) ?? null;
+    if (!id || !kind || !tab || !canEditRef.current) return false;
+    if (tab.buffer === null || tab.buffer === tab.original) return true;
+    const contentToSave = tab.buffer;
+    const token = ++workspaceSaveSeq.current;
+    workspaceSaveTokens.current.set(filePath, token);
+    updateWorkspaceFileTab(filePath, (current) => ({
+      ...current,
+      saveState: "saving",
+      saveError: null
+    }));
     try {
       const ipc = dispatchRef.current;
-      const writePromise = ipc?.writeFile(
-        filePath,
-        workspaceFileBuffer,
-        workspaceFileDiskMtimeMsRef.current
-      );
+      const writePromise = ipc?.writeFile(filePath, contentToSave, tab.diskMtimeMs);
       if (!writePromise) {
-        // Read-only source — should never reach here given the canEdit guard
-        // above, but if a race lands us here, treat it as a no-op rather than
-        // throwing through the save UI.
-        setWorkspaceFileSaveState("idle");
-        return;
+        updateWorkspaceFileTab(filePath, (current) => ({ ...current, saveState: "idle" }));
+        return true;
       }
       const result = await writePromise;
-      if (token !== workspaceSaveToken.current) return;
+      if (workspaceSaveTokens.current.get(filePath) !== token) return false;
       if (!result.ok) {
-        setWorkspaceFileSaveState("idle");
-        setWorkspaceFileExternalChange(true);
-        // Don't bump diskMtimeMs yet — the user picks Reload (which fetches
-        // fresh content + mtime) or Keep mine (which calls statFile and
-        // bumps mtime so the next save succeeds).
-        return;
+        updateWorkspaceFileTab(filePath, (current) => ({
+          ...current,
+          saveState: "idle",
+          externalChange: true
+        }));
+        return false;
       }
-      setWorkspaceFileOriginal(workspaceFileBuffer);
-      setWorkspaceFileDiskMtimeMs(result.mtimeMs);
-      setWorkspaceFileSaveState("idle");
-      setWorkspaceFileExternalChange(false);
+      updateWorkspaceFileTab(filePath, (current) => ({
+        ...current,
+        original: contentToSave,
+        diskMtimeMs: result.mtimeMs,
+        saveState: "idle",
+        saveError: null,
+        externalChange: false
+      }));
+      return true;
     } catch (error) {
-      if (token !== workspaceSaveToken.current) return;
-      setWorkspaceFileSaveState("error");
-      setWorkspaceFileSaveError(errorMessage(error) || "Could not save file.");
+      if (workspaceSaveTokens.current.get(filePath) !== token) return false;
+      updateWorkspaceFileTab(filePath, (current) => ({
+        ...current,
+        saveState: "error",
+        saveError: errorMessage(error) || "Could not save file."
+      }));
+      return false;
     }
-  }, [workspaceFileBuffer, workspaceFileOriginal]);
+  }, [updateWorkspaceFileTab]);
+
+  const saveWorkspaceFile = useCallback(async (): Promise<void> => {
+    const filePath = workspaceActiveFilePathRef.current;
+    if (!filePath) return;
+    await saveWorkspaceFilePath(filePath);
+  }, [saveWorkspaceFilePath]);
+
+  const saveDirtyTabAndClose = useCallback(async (): Promise<void> => {
+    const filePath = workspaceDirtyClosePath;
+    if (!filePath) return;
+    setWorkspaceActiveFilePath(filePath);
+    const saved = await saveWorkspaceFilePath(filePath);
+    if (!saved) {
+      setWorkspaceDirtyClosePath(null);
+      return;
+    }
+    forceCloseWorkspaceFile(filePath);
+  }, [forceCloseWorkspaceFile, saveWorkspaceFilePath, workspaceDirtyClosePath]);
+
+  const discardDirtyTabAndClose = useCallback((): void => {
+    const filePath = workspaceDirtyClosePath;
+    if (!filePath) return;
+    forceCloseWorkspaceFile(filePath);
+  }, [forceCloseWorkspaceFile, workspaceDirtyClosePath]);
+
+  const cancelDirtyTabClose = useCallback((): void => {
+    setWorkspaceDirtyClosePath(null);
+  }, []);
+
+  const checkActiveWorkspaceFileExternalChange = useCallback((): void => {
+    const id = sourceIdRef.current;
+    const kind = sourceKindRef.current;
+    const filePath = workspaceActiveFilePathRef.current;
+    const baseline = workspaceActiveDiskMtimeMsRef.current;
+    if (!id || !kind || !filePath || baseline === null) return;
+    const ipc = dispatchRef.current;
+    const statPromise = ipc?.statFile(filePath);
+    if (!statPromise) return;
+    void statPromise
+      .then((latest) => {
+        if (latest.mtimeMs > baseline) {
+          updateWorkspaceFileTab(filePath, (tab) => ({ ...tab, externalChange: true }));
+        }
+      })
+      .catch(() => {
+        // Stat failures during polling are non-fatal — the next save will
+        // surface a real error if the file is genuinely gone.
+      });
+  }, [updateWorkspaceFileTab]);
 
   /**
-   * Stale-buffer detection. Polls `stat-file` for the currently-open file on
-   * window focus and after every `dashboard:delta` (which fires whenever a
-   * provider session does anything — the most likely source of out-of-band
-   * file edits). If disk mtime moved past our baseline, set the banner flag.
-   *
-   * Project-source mode also polls (so editing files in the main checkout
-   * still catches external edits from another editor); the delta listener is
-   * a no-op there since no provider session is mutating the project.
+   * Stale-buffer detection. Polls `stat-file` for the active tab on tab
+   * activation, window focus, and every `dashboard:delta` (the likely signal
+   * for out-of-band provider edits). Inactive tabs keep their last observed
+   * mtime and still hit the write guard when saved.
    */
   useEffect(() => {
     if (mode !== "files") return;
     if (!canEdit) return;
-    const checkExternalChange = (): void => {
-      const id = sourceIdRef.current;
-      const kind = sourceKindRef.current;
-      const filePath = workspaceFileSelectedRef.current;
-      const baseline = workspaceFileDiskMtimeMsRef.current;
-      if (!id || !kind || !filePath || baseline === null) return;
-      const ipc = dispatchRef.current;
-      const statPromise = ipc?.statFile(filePath);
-      if (!statPromise) return;
-      void statPromise
-        .then((latest) => {
-          if (latest.mtimeMs > baseline) {
-            setWorkspaceFileExternalChange(true);
-          }
-        })
-        .catch(() => {
-          // Stat failures during polling are non-fatal — the next save will
-          // surface a real error if the file is genuinely gone.
-        });
-    };
-    const handleFocus = (): void => checkExternalChange();
+    const handleFocus = (): void => checkActiveWorkspaceFileExternalChange();
     window.addEventListener("focus", handleFocus);
     // dashboard.onDelta is optional in test stubs that pass a Partial<ArgmaxApi>;
     // guard the lookup so unrelated tests don't trip when they don't supply it.
-    const offDelta = window.argmax?.dashboard?.onDelta?.(() => checkExternalChange());
+    const offDelta = window.argmax?.dashboard?.onDelta?.(() => checkActiveWorkspaceFileExternalChange());
     return () => {
       window.removeEventListener("focus", handleFocus);
       offDelta?.();
     };
-  }, [mode, canEdit]);
+  }, [mode, canEdit, checkActiveWorkspaceFileExternalChange]);
+
+  useEffect(() => {
+    if (mode !== "files" || !canEdit) return;
+    checkActiveWorkspaceFileExternalChange();
+  }, [mode, canEdit, workspaceActiveFilePath, checkActiveWorkspaceFileExternalChange]);
 
   const openPanelInFilesMode = useCallback((): void => {
     setMode("files");
@@ -526,21 +649,44 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     setIsSummaryCollapsed((current) => !current);
   }, []);
 
+  const workspaceFileTabSummaries: WorkspaceFileTab[] = workspaceFileTabs.map((tab) => ({
+    path: tab.path,
+    isDirty: isWorkspaceFileTabDirty(tab, canEdit),
+    saveState: tab.saveState,
+    externalChange: tab.externalChange
+  }));
+  const dirtyCloseTab =
+    workspaceDirtyClosePath !== null
+      ? workspaceFileTabs.find((tab) => tab.path === workspaceDirtyClosePath) ?? null
+      : null;
+  const dirtyClosePrompt =
+    dirtyCloseTab && isWorkspaceFileTabDirty(dirtyCloseTab, canEdit)
+      ? { path: dirtyCloseTab.path }
+      : null;
+
   const workspaceFiles: WorkspaceFilesState = {
     entries: workspaceFileEntries,
     listState: workspaceFilesListState,
     listError: workspaceFilesListError,
-    selectedPath: workspaceFileSelected,
-    preview: workspaceFilePreview,
-    previewState: workspaceFilePreviewState,
-    previewError: workspaceFilePreviewError,
+    tabs: workspaceFileTabSummaries,
+    activeTabPath: activeWorkspaceFileTab?.path ?? null,
+    selectedPath: activeWorkspaceFileTab?.path ?? null,
+    preview: activeWorkspaceFileTab?.preview ?? null,
+    previewState: activeWorkspaceFileTab?.previewState ?? "idle",
+    previewError: activeWorkspaceFileTab?.previewError ?? null,
     openFile: openWorkspaceFile,
-    buffer: workspaceFileBuffer,
-    isDirty: canEdit && workspaceFileBuffer !== null && workspaceFileBuffer !== workspaceFileOriginal,
-    diskMtimeMs: workspaceFileDiskMtimeMs,
-    externalChange: workspaceFileExternalChange,
-    saveState: workspaceFileSaveState,
-    saveError: workspaceFileSaveError,
+    selectTab: selectWorkspaceFileTab,
+    closeTab: closeWorkspaceFile,
+    dirtyClosePrompt,
+    saveDirtyTabAndClose,
+    discardDirtyTabAndClose,
+    cancelDirtyTabClose,
+    buffer: activeWorkspaceFileTab?.buffer ?? null,
+    isDirty: isWorkspaceFileTabDirty(activeWorkspaceFileTab, canEdit),
+    diskMtimeMs: activeWorkspaceFileTab?.diskMtimeMs ?? null,
+    externalChange: activeWorkspaceFileTab?.externalChange ?? false,
+    saveState: activeWorkspaceFileTab?.saveState ?? "idle",
+    saveError: activeWorkspaceFileTab?.saveError ?? null,
     canEdit,
     editFile: editWorkspaceFile,
     saveFile: saveWorkspaceFile,

@@ -36,9 +36,9 @@ The same plist is referenced as both `entitlements` and `entitlementsInherit` in
 ## Build & notarize
 
 ```bash
-export APPLE_ID="$(op read 'op://Private/Apple ID/username')"
-export APPLE_APP_SPECIFIC_PASSWORD="$(op read 'op://Private/Argmax notarization/password')"
-export APPLE_TEAM_ID="$(op read 'op://Private/Argmax notarization/team id')"
+export APPLE_ID="$(op read 'op://<vault>/Apple ID/username')"
+export APPLE_APP_SPECIFIC_PASSWORD="$(op read 'op://<vault>/Argmax notarization/password')"
+export APPLE_TEAM_ID="$(op read 'op://<vault>/Argmax notarization/team id')"
 
 npm run package
 ```

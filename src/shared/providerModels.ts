@@ -74,8 +74,8 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
 };
 
 // ---------------------------------------------------------------------------
-// Pricing — USD per 1M tokens.
-// Ported verbatim from ~/dev/tokctl/src/pricing.rs (last verified 2026-04).
+// Pricing — USD per 1M tokens. Sourced from each provider's public pricing
+// page; last verified 2026-04.
 // ---------------------------------------------------------------------------
 
 export interface ModelPricing {

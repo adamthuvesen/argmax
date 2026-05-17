@@ -79,7 +79,7 @@ npm run package   # npm run build && electron-builder --mac
 
 `electron-builder` is configured in `package.json` → `build`:
 
-- App ID `com.menti.argmax`, product name `Argmax`.
+- App ID `com.argmax.app`, product name `Argmax`.
 - Targets: `dmg` + `zip` for `arm64` and `x64`.
 - Icon: `assets/icon.icns`.
 - Hardened runtime + notarization (`notarize: true`). Entitlements at `build/entitlements.mac.plist`.

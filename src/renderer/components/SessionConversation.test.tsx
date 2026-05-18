@@ -1180,6 +1180,34 @@ describe("SessionConversation — model selection persistence", () => {
     expect(onCancel).toHaveBeenCalledWith("session-a", "queued-1");
   });
 
+  it("queued chips are keyboard-focusable and Backspace/Delete cancels them", () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    const queuedAt = "2026-05-12T15:30:30.000Z";
+    const pending: PendingMessage[] = [
+      { id: "queued-1", sessionId: "session-a", content: "first", agentMode: "auto", queuedAt },
+      { id: "queued-2", sessionId: "session-a", content: "second", agentMode: "auto", queuedAt }
+    ];
+
+    renderConversation(
+      baseSession({ state: "running" }),
+      [],
+      { pendingMessages: pending, onCancelQueuedMessage: onCancel }
+    );
+
+    const firstChip = screen.getByLabelText("Queued follow-up: first");
+    const secondChip = screen.getByLabelText("Queued follow-up: second");
+    expect(firstChip).toHaveAttribute("tabindex", "0");
+    expect(secondChip).toHaveAttribute("tabindex", "0");
+
+    firstChip.focus();
+    fireEvent.keyDown(firstChip, { key: "Backspace" });
+    expect(onCancel).toHaveBeenCalledWith("session-a", "queued-1");
+
+    secondChip.focus();
+    fireEvent.keyDown(secondChip, { key: "Delete" });
+    expect(onCancel).toHaveBeenCalledWith("session-a", "queued-2");
+  });
+
   it("routes a backticked file chip click to onOpenFile (right panel)", () => {
     const onOpenFile = vi.fn();
     renderConversation(

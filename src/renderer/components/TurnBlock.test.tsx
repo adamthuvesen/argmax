@@ -38,7 +38,7 @@ const toolChild = (id: string, label = "tools"): TurnBodyChild => ({
 describe("TurnBlock", () => {
   afterEach(() => cleanup());
 
-  it("shows 'Working…' while a tool is running and renders assistant + tool nodes", () => {
+  it("labels the chip 'Working' while a tool is running and renders assistant + tool nodes", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];
     render(
       <TurnBlock

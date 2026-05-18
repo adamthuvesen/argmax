@@ -15,10 +15,19 @@ describe("formatElapsed", () => {
     expect(formatElapsed(900)).toBe("0.9s");
   });
 
-  it("renders seconds with one decimal under a minute", () => {
+  it("renders seconds with one decimal under 10 seconds", () => {
     expect(formatElapsed(1_000)).toBe("1.0s");
     expect(formatElapsed(2_100)).toBe("2.1s");
-    expect(formatElapsed(59_400)).toBe("59.4s");
+    expect(formatElapsed(9_900)).toBe("9.9s");
+  });
+
+  it("rounds to whole seconds between 10 and 60 seconds", () => {
+    // Past 10s, sub-second precision is noise — a dropped frame reads as a
+    // visible jump. Whole seconds change once per real second, so the counter
+    // ticks at a regular cadence even under main-thread contention.
+    expect(formatElapsed(10_000)).toBe("10s");
+    expect(formatElapsed(16_500)).toBe("17s");
+    expect(formatElapsed(59_400)).toBe("59s");
   });
 
   it("switches to minutes and seconds past 60s", () => {

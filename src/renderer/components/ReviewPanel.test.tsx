@@ -25,7 +25,6 @@ function reviewStub(): ReviewState {
     diffState: "ready",
     diffError: null,
     isPanelOpen: true,
-    isSummaryCollapsed: true,
     mode: "changes",
     setMode: vi.fn(),
     workspaceFiles: {
@@ -62,7 +61,7 @@ function reviewStub(): ReviewState {
     openInFilesView: vi.fn(),
     closePanel: vi.fn(),
     togglePanel: vi.fn(),
-    toggleSummary: vi.fn()
+    toggleChangesPanel: vi.fn()
   };
 }
 

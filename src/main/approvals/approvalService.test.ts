@@ -172,6 +172,35 @@ describe("ApprovalService", () => {
 
     database.connection.close();
   });
+
+  it("does not resurrect a completed session when a stale approval is resolved", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const sessionId = persistSessionFixture(database);
+    const service = new ApprovalService(database);
+
+    const decision = service.requestCommandApproval({
+      sessionId,
+      command: "git reset --hard HEAD~1",
+      cwd: "/repo",
+      provider: "claude"
+    });
+    expect(decision.approval).not.toBeNull();
+    database.updateSessionState(sessionId, {
+      state: "complete",
+      attention: "review-ready",
+      completedAt: "2026-05-17T19:00:00.000Z"
+    });
+
+    const resolved = service.resolveApproval(decision.approval!.id, "approved");
+    expect(resolved.status).toBe("approved");
+
+    expect(database.getSession(sessionId)).toMatchObject({
+      state: "complete",
+      attention: "review-ready"
+    });
+
+    database.connection.close();
+  });
 });
 
 /**

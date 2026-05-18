@@ -1,7 +1,7 @@
 import { ChevronRight, Play } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import type { CheckRun } from "../../shared/types.js";
 import { ChangeCount } from "./ChangeCount.js";
 
@@ -38,41 +38,20 @@ export function ChangedFilesCard({
     filesSection = null;
   } else {
     const totals = summarizeChangedFiles(review.files);
+    const isChangesOpen = review.isPanelOpen && review.mode === "changes";
     filesSection = (
-      <>
-        <button
-          className="changed-files-header"
-          type="button"
-          aria-expanded={!review.isSummaryCollapsed}
-          aria-label="Toggle changed files"
-          onClick={review.toggleSummary}
-        >
-          <span className="changed-files-title">{review.files.length} {review.files.length === 1 ? "file" : "files"} changed</span>
-          <span className="changed-files-actions">
-            <ChangeCount additions={totals.additions} deletions={totals.deletions} />
-          </span>
-          <ChevronRight size={11} className={`changed-files-chevron${!review.isSummaryCollapsed ? " expanded" : ""}`} />
-        </button>
-        {!review.isSummaryCollapsed ? (
-          <div className="changed-files-list">
-            {review.files.map((file) => (
-              <button
-                aria-pressed={review.selectedFilePath === file.path && review.isPanelOpen}
-                className="changed-file-row"
-                key={file.path}
-                type="button"
-                title={file.path}
-                onClick={() => review.openFile(file.path)}
-              >
-                <span className="changed-file-status">{statusLabel(file.status)}</span>
-                <span className="changed-file-path">{file.path}</span>
-                <ChangeCount additions={file.additions} deletions={file.deletions} />
-                <ChevronRight size={16} />
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </>
+      <button
+        className="changed-files-header"
+        type="button"
+        aria-label="Open changed files in review panel"
+        aria-pressed={isChangesOpen}
+        onClick={review.toggleChangesPanel}
+      >
+        <span className="changed-files-title">{review.files.length} {review.files.length === 1 ? "file" : "files"} changed</span>
+        <span className="changed-files-actions">
+          <ChangeCount additions={totals.additions} deletions={totals.deletions} />
+        </span>
+      </button>
     );
   }
 

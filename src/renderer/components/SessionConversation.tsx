@@ -1602,7 +1602,11 @@ export function SessionConversation({
             className="composer-approvals-banner-cta"
             aria-label="Scroll to approvals"
             onClick={() => {
-              const el = document.querySelector(".approval-surface");
+              // Scope the query to *this* conversation's list — otherwise a
+              // multi-grid view with several panes scrolls to whichever
+              // approval-surface document.querySelector returns first.
+              const root = conversationListRef.current;
+              const el = root?.querySelector(".approval-surface");
               if (el instanceof HTMLElement) {
                 el.scrollIntoView({ behavior: "smooth", block: "start" });
               }

@@ -214,6 +214,15 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
         ))}
 
         <div className="plan-card-action-foot">
+          <span className="plan-card-key-hint" aria-hidden="true">
+            <span className="plan-card-key-cap">↑↓</span> move
+          </span>
+          <span className="plan-card-key-hint" aria-hidden="true">
+            <span className="plan-card-key-cap">1–9</span> pick
+          </span>
+          <span className="plan-card-key-hint" aria-hidden="true">
+            <span className="plan-card-key-cap">␣</span> toggle (multi)
+          </span>
           <button
             type="button"
             className="question-card-submit"

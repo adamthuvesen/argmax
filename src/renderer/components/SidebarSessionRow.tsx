@@ -194,6 +194,33 @@ function SidebarSessionRowInner({
     onWorkspaceDragEnd?.();
   };
 
+  const handleSessionLinkKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
+      return;
+    }
+    event.preventDefault();
+    // Walk the live DOM rather than threading focus state through the
+    // parent. ".session-link" is the per-row button across every project
+    // group; ordering follows visual order. Hidden (collapsed-project) rows
+    // are not in the DOM so they're naturally skipped.
+    const allLinks = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".session-link")
+    );
+    const currentIndex = allLinks.indexOf(event.currentTarget);
+    if (currentIndex === -1 || allLinks.length === 0) return;
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowDown") {
+      nextIndex = Math.min(currentIndex + 1, allLinks.length - 1);
+    } else if (event.key === "ArrowUp") {
+      nextIndex = Math.max(currentIndex - 1, 0);
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = allLinks.length - 1;
+    }
+    allLinks[nextIndex]?.focus();
+  };
+
   return (
     <div className="session-row">
       <button
@@ -204,6 +231,7 @@ function SidebarSessionRowInner({
         type="button"
         title={title}
         draggable={canDragToGrid}
+        onKeyDown={handleSessionLinkKeyDown}
         onClick={(event) =>
           onOpenWorkspaceChat(workspace.id, {
             ctrlOrMeta: event.metaKey || event.ctrlKey,

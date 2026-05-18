@@ -109,6 +109,9 @@ function PlanCardInner({
     (index: number): void => {
       const option = options[index];
       if (!option) return;
+      // Collapse on submit — Escape no longer collapses (cards are not
+      // dismissable), so the answer is what hides the card.
+      setCollapsed(true);
       // First option is conventionally "Yes / implement"; everything else is reject.
       if (index === 0) {
         onAccept();
@@ -143,12 +146,10 @@ function PlanCardInner({
       if (key === "Enter") {
         event.preventDefault();
         submit(selectedIndex);
-        return;
       }
-      if (key === "Escape") {
-        event.preventDefault();
-        setCollapsed(true);
-      }
+      // Cards are not dismissable — the answer is the dismiss. Escape stays
+      // a no-op so it doesn't accidentally collapse an in-progress decision,
+      // matching QuestionCard.
     },
     [optionCount, selectedIndex, submit]
   );
@@ -368,7 +369,6 @@ function PlanCardInner({
                     setSelectedIndex(idx);
                     submit(idx);
                   }}
-                  onMouseEnter={() => setSelectedIndex(idx)}
                 >
                   <span className="plan-card-option-num">{idx + 1}</span>
                   <span className="plan-card-option-label">{option.label}</span>
@@ -379,10 +379,10 @@ function PlanCardInner({
           </ul>
           <div className="plan-card-action-foot">
             <span className="plan-card-key-hint">
-              Dismiss <span className="plan-card-key-cap">ESC</span>
+              <span className="plan-card-key-cap">↑↓</span> move
             </span>
             <span className="plan-card-key-hint">
-              Submit <span className="plan-card-key-cap">↵</span>
+              <span className="plan-card-key-cap">↵</span> submit
             </span>
           </div>
         </div>

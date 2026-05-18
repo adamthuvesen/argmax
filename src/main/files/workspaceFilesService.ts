@@ -1,4 +1,4 @@
-import { lstat, open, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { ArgmaxDatabase } from "../persistence/database.js";

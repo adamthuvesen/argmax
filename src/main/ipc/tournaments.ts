@@ -44,7 +44,7 @@ export function registerTournamentHandlers(
     withValidation(tournamentKeepInputSchema, (input) => tournaments.keepWinner(input))
   );
   register(
-    "scoring:listPolicies",
+    "scoring:list-policies",
     withValidation(scoringListInputSchema, () => tournaments.listPolicies())
   );
 

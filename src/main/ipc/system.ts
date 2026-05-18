@@ -37,7 +37,7 @@ export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcCh
   };
 
   register(
-    "system:listDetectedIdes",
+    "system:list-detected-ides",
     withValidation(listDetectedIdesInputSchema, () => detectInstalledIdes())
   );
 
@@ -74,7 +74,7 @@ export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcCh
   );
 
   register(
-    "system:vacuumDatabase",
+    "system:vacuum-database",
     withValidation(z.void(), () => {
       database.connection.exec("VACUUM");
       return { ok: true } as const;

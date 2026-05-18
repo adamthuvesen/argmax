@@ -30,7 +30,7 @@ const LOG_BUFFER_SIZE = 1000;
  * the O(n) shift the original implementation paid on every log call once
  * full. (audit-2026-05-17 L2)
  */
-const buffer: (LogEntry | undefined)[] = new Array(LOG_BUFFER_SIZE);
+const buffer: (LogEntry | undefined)[] = new Array<LogEntry | undefined>(LOG_BUFFER_SIZE);
 let writeIndex = 0;
 let entriesWritten = 0;
 

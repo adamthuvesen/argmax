@@ -650,6 +650,91 @@ describe("findPendingApproval (Section 6)", () => {
     database.close();
   });
 
+  it("deleteProject cascades to workspaces, sessions, and dependent rows", () => {
+    const database = createDatabase(":memory:", { seed: false });
+
+    seedProject(database, "project-keep");
+    seedWorkspace(database, "ws-keep", "project-keep", "running");
+    seedSession(database, "session-keep", "ws-keep");
+
+    seedProject(database, "project-delete");
+    seedWorkspace(database, "ws-del-1", "project-delete", "running");
+    seedWorkspace(database, "ws-del-2", "project-delete", "complete");
+    seedSession(database, "session-del-1", "ws-del-1");
+    seedSession(database, "session-del-2", "ws-del-2");
+
+    database.deleteProject("project-delete");
+
+    const snapshot = database.listDashboard();
+
+    expect(snapshot.projects.map((p) => p.id)).toEqual(["project-keep"]);
+    expect(snapshot.workspaces.map((w) => w.id)).toEqual(["ws-keep"]);
+    expect(snapshot.sessions.map((s) => s.id)).toEqual(["session-keep"]);
+
+    // FK cascades are declared on workspaces/sessions/events/etc. — confirm
+    // the deletion didn't leave dangling rows in the workspaces or sessions
+    // tables either (the public lister filters, but raw counts must be zero).
+    const orphanWorkspaces = database.connection
+      .prepare("SELECT COUNT(*) AS n FROM workspaces WHERE project_id = ?")
+      .get("project-delete") as { n: number };
+    expect(orphanWorkspaces.n).toBe(0);
+    const orphanSessions = database.connection
+      .prepare("SELECT COUNT(*) AS n FROM sessions WHERE workspace_id IN ('ws-del-1','ws-del-2')")
+      .get() as { n: number };
+    expect(orphanSessions.n).toBe(0);
+
+    database.close();
+  });
+
+  it("guarantees a session for every shown workspace even when older sessions fall below the 200-row cap", () => {
+    // Repro for the "sidebar click does nothing" bug: the workspace list and
+    // session list are each capped at 200, independently. With many newer
+    // sessions in a few workspaces, the latest session of an older workspace
+    // can drop out of the session top-200 while the workspace itself stays
+    // in the workspace top-200. The renderer's .find(workspaceId) then
+    // returns undefined and the click silently dies.
+    const database = createDatabase(":memory:", { seed: false });
+    const projectId = seedProject(database, "session-coverage");
+
+    // One older workspace with one older session — both in the top-200 by
+    // workspace activity, but the session is the oldest.
+    seedWorkspace(database, "ws-old", projectId, "complete");
+    seedSession(database, "session-old", "ws-old");
+    database.connection
+      .prepare("UPDATE workspaces SET last_activity_at = ? WHERE id = ?")
+      .run(new Date(2026, 0, 1, 0, 0, 0).toISOString(), "ws-old");
+    database.connection
+      .prepare("UPDATE sessions SET last_activity_at = ? WHERE id = ?")
+      .run(new Date(2026, 0, 1, 0, 0, 0).toISOString(), "session-old");
+
+    // One very-recent workspace with 250 newer sessions — these will fill the
+    // session top-200, pushing session-old below the cap.
+    seedWorkspace(database, "ws-busy", projectId, "running");
+    database.connection
+      .prepare("UPDATE workspaces SET last_activity_at = ? WHERE id = ?")
+      .run(new Date(2026, 5, 1, 0, 0, 0).toISOString(), "ws-busy");
+    for (let i = 0; i < 250; i++) {
+      const id = `session-busy-${String(i).padStart(3, "0")}`;
+      seedSession(database, id, "ws-busy");
+      database.connection
+        .prepare("UPDATE sessions SET last_activity_at = ? WHERE id = ?")
+        .run(new Date(2026, 5, 1, 0, 0, i).toISOString(), id);
+    }
+
+    const snapshot = database.listWorkspaceStatus();
+
+    // Both workspaces are visible.
+    const workspaceIds = snapshot.workspaces.map((w) => w.id).sort();
+    expect(workspaceIds).toEqual(["ws-busy", "ws-old"]);
+
+    // Crucially: a session exists for ws-old even though session-old's
+    // last_activity_at is far older than the 200th newest session for ws-busy.
+    expect(snapshot.sessions.some((s) => s.workspaceId === "ws-old")).toBe(true);
+    expect(snapshot.sessions.some((s) => s.id === "session-old")).toBe(true);
+
+    database.close();
+  });
+
   it("loadPreferredSessionIds via range scan ignores neighboring ui_state keys", () => {
     // The range query is `key >= 'preferred-attempt:' AND key <
     // 'preferred-attempt;'`. Keys outside that range must not leak in even

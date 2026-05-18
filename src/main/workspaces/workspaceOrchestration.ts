@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { watch, type FSWatcher } from "node:fs";
-import { mkdir, realpath } from "node:fs/promises";
+import { mkdir, realpath, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
@@ -102,6 +102,13 @@ export class WorkspaceService {
       // refactor cannot accidentally let a `-`-prefixed argument become a flag.
       await runGitText(project.repoPath, ["worktree", "add", "-b", branch, worktreePath, baseRef]);
     } catch (error) {
+      // git can register a partial worktree entry before failing (disk full,
+      // ref races, lock contention). Without cleanup the dir + git metadata
+      // sit on disk forever — there's no persisted WorkspaceSummary row so
+      // archiveWorkspace can never reach it. Force-remove and rmdir before
+      // surfacing the original error. (audit-2026-05-17 H7)
+      await runGitText(project.repoPath, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
+      await rm(worktreePath, { recursive: true, force: true }).catch(() => undefined);
       const detail = errorMessage(error) || "Unknown git error";
       throw new WorkspaceError(`Could not create worktree for ${branch}. ${detail}`, "Choose another base ref or branch name and retry.");
     }
@@ -166,6 +173,15 @@ export class WorkspaceService {
 
     if (!workspace.sharedWorkspace) {
       const project = this.database.getProject(workspace.projectId);
+
+      // Cancel running checks FIRST and settle briefly so SIGTERM has time
+      // to land before we recheck porcelain. Without the early cancel, a
+      // SIGTERM-ignoring check could write between the recheck and the
+      // worktree remove during the 2 s SIGKILL grace window.
+      // (audit-2026-05-17 M7)
+      options.cancelChecks?.(workspaceId);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       // Re-check porcelain immediately before remove to close the TOCTOU
       // window between refreshGitStatus and worktree remove. A file added
       // between the two calls would otherwise be lost.
@@ -174,11 +190,6 @@ export class WorkspaceService {
         this.closeWatcher(workspaceId);
         return this.database.updateWorkspaceState(workspaceId, "kept");
       }
-
-      // Cancel checks BEFORE closing the watcher and removing the worktree.
-      // A SIGTERM'd check process is allowed to exit naturally; we just stop
-      // it from continuing to write into the disappearing directory.
-      options.cancelChecks?.(workspaceId);
 
       // Close the watcher before remove so file events from the disappearing
       // worktree don't fire ENOENT-spam refresh attempts during teardown.
@@ -352,6 +363,18 @@ export class WorkspaceService {
       // Already closed.
     }
     this.watchers.delete(workspaceId);
+  }
+
+  /**
+   * Close any open watchers for the given workspaces. Used when a parent
+   * project is being deleted — the workspace rows are about to be cascaded
+   * out of SQLite and the watchers would otherwise dangle until the next
+   * app restart.
+   */
+  closeWatchersForWorkspaces(workspaceIds: readonly string[]): void {
+    for (const workspaceId of workspaceIds) {
+      this.closeWatcher(workspaceId);
+    }
   }
 }
 

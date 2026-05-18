@@ -261,6 +261,19 @@ export function requireProject(connection: Database.Database, projectId: string)
   return project;
 }
 
+/**
+ * Delete a project row. Child rows in `workspaces`, `sessions`, `events`,
+ * `raw_outputs`, `approvals`, `checks`, `checkpoints`, `learnings`,
+ * `tournaments`, `gh_pr`, and `scoring_policies` cascade via the FK
+ * `ON DELETE CASCADE` clauses declared in the migrations.
+ *
+ * No-op (returns silently) if the project row doesn't exist — keeps the
+ * call idempotent for the IPC layer.
+ */
+export function deleteProject(connection: Database.Database, projectId: string): void {
+  connection.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
+}
+
 function requireProjectByRepoPath(connection: Database.Database, repoPath: string): ProjectSummary {
   const project = findProjectByRepoPath(connection, repoPath);
   if (!project) {

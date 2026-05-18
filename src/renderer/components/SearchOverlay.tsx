@@ -29,10 +29,21 @@ export function SearchOverlay({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const tokenRef = useRef(0);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
-  // Reset state every time the overlay re-opens.
+  // Reset state every time the overlay re-opens, and restore focus to the
+  // trigger when it closes so keyboard users land back where they invoked it.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      const previous = previousActiveElementRef.current;
+      previousActiveElementRef.current = null;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      }
+      return;
+    }
+    previousActiveElementRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setQuery("");
     setHits([]);
     setRunning(false);

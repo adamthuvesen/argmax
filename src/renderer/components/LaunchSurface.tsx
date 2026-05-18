@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, GitBranch, Mic, Plus, X } from "lucide-react";
+import { ChevronDown, Folder, GitBranch, Plus, X } from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -573,9 +573,6 @@ export function LaunchSurface({
             onClick={openFilePicker}
           >
             <Plus size={18} />
-          </button>
-          <button className="composer-tool" type="button" title="Voice input" aria-label="Voice input">
-            <Mic size={18} />
           </button>
           <Mascot
             size={40}

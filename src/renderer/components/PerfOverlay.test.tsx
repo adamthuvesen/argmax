@@ -64,7 +64,7 @@ describe("PerfOverlay", () => {
     const diagnostics = vi.fn().mockResolvedValue(
       withIpcStats([
         { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
-        { channel: "session:eventsSince", count: 30, totalRecorded: 30, p50: 0.8, p99: 3.4 },
+        { channel: "session:events-since", count: 30, totalRecorded: 30, p50: 0.8, p99: 3.4 },
         { channel: "providers:launch", count: 1, totalRecorded: 1, p50: 18.5, p99: 32.1 }
       ])
     );
@@ -84,7 +84,7 @@ describe("PerfOverlay", () => {
     expect(rows.map((row) => row.getAttribute("data-channel"))).toEqual([
       "dashboard:load",
       "dashboard:list",
-      "session:eventsSince",
+      "session:events-since",
       "workspace:status",
       "approvals:pending",
       "review:load-diff"

@@ -82,6 +82,7 @@ import {
   findProjectByRepoPath,
   getProjectRemote,
   listProjects,
+  deleteProject,
   persistProject,
   requireProject,
   updateProjectBranch,
@@ -179,6 +180,7 @@ export interface ArgmaxDatabase {
   listRunningSessionIds: () => string[];
   loadDashboard: () => DashboardSnapshot;
   persistProject: (input: PersistProjectInput) => ProjectSummary;
+  deleteProject: (projectId: string) => void;
   updateProjectSettings: (projectId: string, settings: ProjectSettings) => ProjectSummary;
   updateProjectBranch: (projectId: string, branch: string) => ProjectSummary;
   getProject: (projectId: string) => ProjectSummary;
@@ -280,6 +282,7 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     listRunningSessionIds: () => listRunningSessionIds(connection),
     loadDashboard: () => loadDashboard(connection),
     persistProject: (input) => persistProject(connection, input),
+    deleteProject: (projectId) => deleteProject(connection, projectId),
     updateProjectSettings: (projectId, settings) => updateProjectSettings(connection, projectId, settings),
     updateProjectBranch: (projectId, branch) => updateProjectBranch(connection, projectId, branch),
     getProject: (projectId) => requireProject(connection, projectId),

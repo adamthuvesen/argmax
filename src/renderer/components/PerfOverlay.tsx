@@ -12,7 +12,7 @@ const POLL_INTERVAL_MS = 1000;
 const TRACKED_CHANNELS = [
   "dashboard:load",
   "dashboard:list",
-  "session:eventsSince",
+  "session:events-since",
   "workspace:status",
   "approvals:pending",
   "review:load-diff"

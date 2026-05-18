@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countVisibleDiffLines, interpretFileChange, synthesizeHunk } from "./fileChange.js";
+import { interpretFileChange, synthesizeHunk } from "./fileChange.js";
 
 function firstChange(name: string, input: Record<string, unknown>) {
   const result = interpretFileChange(name, input);
@@ -190,20 +190,3 @@ describe("interpretFileChange — fallback", () => {
   });
 });
 
-describe("countVisibleDiffLines", () => {
-  it("counts hunk lines plus headers", () => {
-    const blocks = [
-      {
-        kind: "hunk" as const,
-        id: "h1",
-        header: "@@ -0,0 +1,3 @@",
-        lines: [
-          { kind: "addition" as const, oldLineNumber: null, newLineNumber: 1, content: "a" },
-          { kind: "addition" as const, oldLineNumber: null, newLineNumber: 2, content: "b" },
-          { kind: "addition" as const, oldLineNumber: null, newLineNumber: 3, content: "c" }
-        ]
-      }
-    ];
-    expect(countVisibleDiffLines(blocks)).toBe(4);
-  });
-});

@@ -58,7 +58,7 @@ export function registerWorkspaceHandlers(
     })
   );
   register(
-    "workspaces:openInIde",
+    "workspaces:open-in-ide",
     withValidation(openInIdeInputSchema, async (input) => {
       const workspace = database.getWorkspace(input.workspaceId);
       if (!workspace.path) {

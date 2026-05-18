@@ -21,8 +21,8 @@ describe("ipcSchemas", () => {
     expect(channels).toContain("review:load-diff");
     expect(channels).toContain("dashboard:load");
     expect(channels).toContain("dashboard:list");
-    expect(channels).toContain("session:eventsSince");
-    expect(channels).toContain("session:costSummary");
+    expect(channels).toContain("session:events-since");
+    expect(channels).toContain("session:cost-summary");
     expect(channels).toContain("workspace:status");
     expect(channels).toContain("approvals:pending");
     expect(channels).toContain("mcp:auth:start");
@@ -49,11 +49,11 @@ describe("ipcSchemas", () => {
     expect(() => ipcSchemas["mcp:auth:terminate"].parse("")).toThrow();
   });
 
-  it("rejects session:costSummary with an empty or non-string sessionId", () => {
-    expect(() => ipcSchemas["session:costSummary"].parse({ sessionId: "" })).toThrow();
-    expect(() => ipcSchemas["session:costSummary"].parse({ sessionId: 42 })).toThrow();
-    expect(() => ipcSchemas["session:costSummary"].parse({})).toThrow();
-    expect(ipcSchemas["session:costSummary"].parse({ sessionId: "session-1" })).toEqual({
+  it("rejects session:cost-summary with an empty or non-string sessionId", () => {
+    expect(() => ipcSchemas["session:cost-summary"].parse({ sessionId: "" })).toThrow();
+    expect(() => ipcSchemas["session:cost-summary"].parse({ sessionId: 42 })).toThrow();
+    expect(() => ipcSchemas["session:cost-summary"].parse({})).toThrow();
+    expect(ipcSchemas["session:cost-summary"].parse({ sessionId: "session-1" })).toEqual({
       sessionId: "session-1"
     });
   });
@@ -140,30 +140,30 @@ describe("ipcSchemas", () => {
     expect(() => ipcSchemas["system:open-path"].parse({ path: "" })).toThrow();
   });
 
-  it("accepts a valid workspaces:openInIde payload with a known ide", () => {
-    expect(ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "ws-1", ide: "vscode" })).toEqual({
+  it("accepts a valid workspaces:open-in-ide payload with a known ide", () => {
+    expect(ipcSchemas["workspaces:open-in-ide"].parse({ workspaceId: "ws-1", ide: "vscode" })).toEqual({
       workspaceId: "ws-1",
       ide: "vscode"
     });
-    expect(ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "ws-1", ide: "default" })).toEqual({
+    expect(ipcSchemas["workspaces:open-in-ide"].parse({ workspaceId: "ws-1", ide: "default" })).toEqual({
       workspaceId: "ws-1",
       ide: "default"
     });
   });
 
-  it("rejects workspaces:openInIde with an unknown ide value", () => {
+  it("rejects workspaces:open-in-ide with an unknown ide value", () => {
     expect(() =>
-      ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "ws-1", ide: "atom" })
+      ipcSchemas["workspaces:open-in-ide"].parse({ workspaceId: "ws-1", ide: "atom" })
     ).toThrow();
   });
 
-  it("rejects workspaces:openInIde with a missing workspaceId", () => {
-    expect(() => ipcSchemas["workspaces:openInIde"].parse({ ide: "vscode" })).toThrow();
-    expect(() => ipcSchemas["workspaces:openInIde"].parse({ workspaceId: "", ide: "vscode" })).toThrow();
+  it("rejects workspaces:open-in-ide with a missing workspaceId", () => {
+    expect(() => ipcSchemas["workspaces:open-in-ide"].parse({ ide: "vscode" })).toThrow();
+    expect(() => ipcSchemas["workspaces:open-in-ide"].parse({ workspaceId: "", ide: "vscode" })).toThrow();
   });
 
-  it("accepts system:listDetectedIdes with no payload", () => {
-    expect(ipcSchemas["system:listDetectedIdes"].parse(undefined)).toBeUndefined();
+  it("accepts system:list-detected-ides with no payload", () => {
+    expect(ipcSchemas["system:list-detected-ides"].parse(undefined)).toBeUndefined();
   });
 
   it("accepts focused dashboard read payloads", () => {
@@ -172,7 +172,7 @@ describe("ipcSchemas", () => {
     expect(ipcSchemas["workspace:status"].parse(undefined)).toBeUndefined();
     expect(ipcSchemas["workspace:status"].parse({ workspaceIds: ["ws-1"] })).toEqual({ workspaceIds: ["ws-1"] });
     expect(
-      ipcSchemas["session:eventsSince"].parse({
+      ipcSchemas["session:events-since"].parse({
         sessionId: "session-1",
         eventCursor: 1,
         rawOutputCursor: 2
@@ -337,7 +337,7 @@ describe("ipcSchemas", () => {
 
   it("rejects negative session event cursors", () => {
     expect(() =>
-      ipcSchemas["session:eventsSince"].parse({
+      ipcSchemas["session:events-since"].parse({
         sessionId: "session-1",
         eventCursor: -1
       })

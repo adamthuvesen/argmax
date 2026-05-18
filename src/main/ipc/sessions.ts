@@ -66,12 +66,12 @@ export function registerSessionHandlers(
     )
   );
   register(
-    "session:eventsSince",
+    "session:events-since",
     withValidation(sessionEventsSinceInputSchema, (input) => database.listSessionEventsSince(input))
   );
   // Cost & token transparency (additive — see SPEC_COST_TRANSPARENCY.md).
   register(
-    "session:costSummary",
+    "session:cost-summary",
     withValidation(sessionCostSummaryInputSchema, (input) => database.getSessionCostSummary(input.sessionId))
   );
   register(

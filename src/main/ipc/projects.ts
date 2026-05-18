@@ -2,6 +2,7 @@ import { ipcMain } from "electron";
 import {
   listBranchesInputSchema,
   registerProjectInputSchema,
+  removeProjectInputSchema,
   switchBranchInputSchema,
   updateProjectSettingsInputSchema,
   type IpcChannel
@@ -26,6 +27,10 @@ export function registerProjectHandlers(
   register(
     "projects:register",
     withValidation(registerProjectInputSchema, (input) => projects.registerProject(input))
+  );
+  register(
+    "projects:remove",
+    withValidation(removeProjectInputSchema, (input) => projects.removeProject(input))
   );
   register(
     "projects:update-settings",

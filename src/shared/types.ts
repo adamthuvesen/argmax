@@ -27,6 +27,7 @@ import type {
   AttachmentSaveImageResultParsed,
   AttachmentMimeTypeParsed,
   RegisterProjectInputParsed,
+  RemoveProjectInputParsed,
   ResolveApprovalInputParsed,
   RunCheckInputParsed,
   SessionCostSummaryInputParsed,
@@ -108,6 +109,7 @@ export interface ProjectSettings {
 }
 
 export type RegisterProjectInput = RegisterProjectInputParsed;
+export type RemoveProjectInput = RemoveProjectInputParsed;
 export type UpdateProjectSettingsInput = UpdateProjectSettingsInputParsed;
 export type CreateWorkspaceInput = CreateWorkspaceInputParsed;
 export type CreateCurrentWorkspaceInput = CreateCurrentWorkspaceInputParsed;
@@ -323,8 +325,8 @@ export interface ContestantConfig {
   modelId: string;
   modelLabel: string;
   reasoningEffort?: ReasoningEffort;
-  /** Free-form per-provider options (mirrors provider adapter launch options). */
-  config?: Record<string, unknown>;
+  /** Free-form per-provider options. JSON-flat scalars only — narrowed at the IPC boundary. */
+  config?: Record<string, string | number | boolean | null>;
 }
 
 export interface TournamentContestant {
@@ -587,6 +589,7 @@ export interface ArgmaxApi {
     list: () => Promise<ProjectSummary[]>;
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
+    remove: (input: RemoveProjectInput) => Promise<{ projectId: string }>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
     listBranches: (projectId: string) => Promise<string[]>;
     switchBranch: (projectId: string, branch: string) => Promise<ProjectSummary>;
@@ -734,7 +737,13 @@ export interface GhPrRecord {
   headSha: string;
   lastSeenCheckState: GhCheckState;
   updatedAt: string;
+  /** Upper-case state from `gh pr view --json state`. Null for legacy rows. */
+  prState?: GhPrState | null;
+  /** ISO timestamp the failure follow-up notification last fired for this head_sha. */
+  notifiedAt?: string | null;
 }
+
+export type GhPrState = "OPEN" | "CLOSED" | "MERGED";
 
 export type GhCheckState =
   | "unknown"

@@ -1,9 +1,7 @@
 import { ExternalLink, FilePlus, FileX2, Pencil } from "lucide-react";
-import { useMemo, useState, type JSX } from "react";
-import { countVisibleDiffLines, type FileChange } from "../lib/fileChange.js";
+import { useMemo, type JSX } from "react";
+import type { FileChange } from "../lib/fileChange.js";
 import { DiffBlocks } from "./DiffBlocks.js";
-
-const COLLAPSE_THRESHOLD = 16;
 
 function displayPath(path: string, cwd: string | null | undefined): string {
   if (!cwd) return path;
@@ -20,14 +18,6 @@ export function FileChangeCard({
   change: FileChange;
   workspaceCwd?: string | null;
 }): JSX.Element {
-  const visibleLines = useMemo(
-    () => (change.kind === "delete" ? 0 : countVisibleDiffLines(change.hunks)),
-    [change]
-  );
-  const exceedsThreshold = visibleLines > COLLAPSE_THRESHOLD;
-  const [expanded, setExpanded] = useState(false);
-  const collapsed = exceedsThreshold && !expanded;
-
   const verb = change.kind === "create" ? "Created" : change.kind === "delete" ? "Deleted" : "Edited";
   const Icon = change.kind === "create" ? FilePlus : change.kind === "delete" ? FileX2 : Pencil;
   const noLineNumbers = change.kind === "edit" && change.noLineNumbers === true;
@@ -64,7 +54,7 @@ export function FileChangeCard({
           <span>Open in editor</span>
         </button>
       </header>
-      <div className="file-change-card-body" data-collapsed={collapsed ? "true" : "false"}>
+      <div className="file-change-card-body">
         {change.kind === "delete" ? (
           <p className="file-change-card-empty">File removed.</p>
         ) : change.hunks.length === 0 ? (
@@ -76,16 +66,6 @@ export function FileChangeCard({
           </>
         )}
       </div>
-      {exceedsThreshold ? (
-        <button
-          className="file-change-card-toggle"
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((v) => !v)}
-        >
-          {expanded ? "Show less" : `Show all ${visibleLines} lines`}
-        </button>
-      ) : null}
     </section>
   );
 }

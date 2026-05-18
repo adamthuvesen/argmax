@@ -115,6 +115,9 @@ describe("MODEL_PRICING coverage", () => {
     expect(MODEL_PRICING["gpt-5.4-codex"]).toBeDefined();
   });
 
+  // audit-2026-05-17 L4 — drift tripwire: a new modelId added to
+  // PROVIDER_MODELS without a matching MODEL_PRICING entry would otherwise
+  // silently surface as $0 cost in the UI.
   it("covers every modelId in PROVIDER_MODELS", () => {
     for (const [provider, options] of Object.entries(PROVIDER_MODELS)) {
       for (const option of options) {

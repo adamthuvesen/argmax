@@ -1,30 +1,38 @@
-import { ChevronRight, Plus, Settings } from "lucide-react";
+import { Check, ChevronRight, MoreHorizontal, Plus, Settings, Trash2 } from "lucide-react";
 import {
   useCallback,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent as ReactDragEvent,
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
+import { createPortal } from "react-dom";
 import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../../shared/types.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import {
-  applyProjectOrder,
   loadCollapsedProjectIds,
   loadProjectOrder,
+  loadProjectSortMode,
   loadWorkspaceOrders,
   saveCollapsedProjectIds,
   saveProjectOrder,
+  saveProjectSortMode,
   saveWorkspaceOrders,
-  sortWorkspaceGroup
+  sortProjectsBy,
+  sortWorkspaceGroup,
+  type ProjectSortMode
 } from "../lib/projects.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
-// Cap on workspaces shown per project group. When more exist, a "N more"
-// row replaces them as a hint so the user knows truncation is happening
-// (R-030).
-const SIDEBAR_WORKSPACE_CAP = 7;
+const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
+  { value: "recent", label: "Recent activity", description: "Most recently active project first" },
+  { value: "alphabetical", label: "Alphabetical (A→Z)", description: "Sort by project name" },
+  { value: "manual", label: "Manual", description: "Drag to reorder" }
+];
 
 function formatNameplateDate(): string {
   const d = new Date();
@@ -42,6 +50,7 @@ export function Sidebar({
   onOpenProject,
   onOpenSettings,
   onOpenWorkspaceChat,
+  onRemoveProject,
   onResizeMouseDown,
   onToggleWorkspacePinned,
   onWorkspaceDragStart,
@@ -64,6 +73,7 @@ export function Sidebar({
   onOpenProject: (projectId: string) => void;
   onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
+  onRemoveProject?: (projectId: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
   /** Notifies the parent that a sidebar drag started carrying this workspace. */
@@ -83,14 +93,85 @@ export function Sidebar({
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
+  const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
+  // Per-project actions menu. `mode === "confirm"` swaps the menu in-place
+  // for a "Remove '{name}'?" prompt — no separate modal needed. The popover
+  // is portaled to <body> because both `.sidebar` and `.project-list` clip
+  // overflow; rendering inside the project row would hide the menu.
+  const [projectMenuState, setProjectMenuState] = useState<
+    { projectId: string; mode: "menu" | "confirm" } | null
+  >(null);
+  const [projectMenuPos, setProjectMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const projectMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const projectMenuPopoverRef = useRef<HTMLUListElement | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
 
-  const orderedProjects = useMemo(
-    () => applyProjectOrder(snapshot.projects, projectOrder),
-    [snapshot.projects, projectOrder]
+  const closeSortMenu = useCallback((): void => {
+    setSortMenuOpen(false);
+  }, []);
+  useDismissOnOutsideOrEscape(sortMenuAnchorRef, sortMenuOpen, closeSortMenu);
+
+  const closeProjectMenu = useCallback((): void => {
+    setProjectMenuState(null);
+    setProjectMenuPos(null);
+  }, []);
+  // Trigger lives in the row; popover is portaled. Both must count as "inside"
+  // for the dismiss hook so a click in the popover doesn't immediately close it.
+  useDismissOnOutsideOrEscape(
+    projectMenuTriggerRef,
+    projectMenuState !== null,
+    closeProjectMenu,
+    projectMenuPopoverRef
   );
+
+  useLayoutEffect(() => {
+    if (projectMenuState === null) {
+      setProjectMenuPos(null);
+      return;
+    }
+    const trigger = projectMenuTriggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    setProjectMenuPos({
+      top: rect.bottom + 6,
+      right: Math.max(8, window.innerWidth - rect.right)
+    });
+  }, [projectMenuState]);
+
+  const orderedProjects = useMemo(
+    () => sortProjectsBy(snapshot.projects, sortMode, projectOrder),
+    [snapshot.projects, sortMode, projectOrder]
+  );
+
+  const handleSelectSortMode = useCallback(
+    (mode: ProjectSortMode): void => {
+      if (mode !== sortMode) {
+        setSortMode(mode);
+        saveProjectSortMode(mode);
+      }
+      setSortMenuOpen(false);
+    },
+    [sortMode]
+  );
+
+  // Workspaces without any matching session in the snapshot can't be opened
+  // (a grid pane needs a sessionId). The dashboard query's gap-filler
+  // guarantees every workspace that has at least one session row in SQLite
+  // also has its latest session in `snapshot.sessions`; anything still
+  // missing is a truly orphaned workspace (session insert failed mid-launch,
+  // leftover tournament worktree, etc.). Hide those rows so the click is
+  // never dead.
+  const workspaceIdsWithSessions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const session of snapshot.sessions) {
+      ids.add(session.workspaceId);
+    }
+    return ids;
+  }, [snapshot.sessions]);
 
   const workspaceTokenMap = useMemo(() => {
     const map = new Map<string, { input: number; output: number; cached: number }>();
@@ -159,6 +240,10 @@ export function Sidebar({
           const next = [...ids];
           next.splice(from, 1);
           next.splice(to, 0, draggingId);
+          if (sortMode !== "manual") {
+            setSortMode("manual");
+            saveProjectSortMode("manual");
+          }
           setProjectOrder(next);
           saveProjectOrder(next);
         }
@@ -166,7 +251,7 @@ export function Sidebar({
       setDraggingId(null);
       setDragOverId(null);
     },
-    [draggingId]
+    [draggingId, sortMode]
   );
 
   const handleDragLeave = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
@@ -265,6 +350,47 @@ export function Sidebar({
           <p className="rail-label">
             <span className="rail-label-text">Projects</span>
           </p>
+          <div className="project-picker-anchor rail-sort-anchor" ref={sortMenuAnchorRef}>
+            <button
+              className="small-icon"
+              type="button"
+              title="Sort projects"
+              aria-label="Sort projects"
+              aria-haspopup="menu"
+              aria-expanded={sortMenuOpen}
+              onClick={() => setSortMenuOpen((open) => !open)}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {sortMenuOpen && (
+              <ul
+                className="project-picker-popover rail-sort-popover"
+                role="menu"
+                aria-label="Sort projects"
+              >
+                {SORT_MODE_OPTIONS.map((option) => {
+                  const isActive = option.value === sortMode;
+                  return (
+                    <li key={option.value} role="none">
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={isActive}
+                        className="project-picker-item"
+                        title={option.description}
+                        onClick={() => handleSelectSortMode(option.value)}
+                      >
+                        <span className="rail-sort-check" aria-hidden="true">
+                          {isActive ? <Check size={14} /> : null}
+                        </span>
+                        {option.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
           <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
             <Plus size={16} />
           </button>
@@ -273,12 +399,14 @@ export function Sidebar({
           const manualOrder = workspaceOrders[project.id] ?? [];
           const liveWorkspaces = sortWorkspaceGroup(
             snapshot.workspaces.filter(
-              (workspace) => workspace.projectId === project.id && workspace.state !== "archived"
+              (workspace) =>
+                workspace.projectId === project.id &&
+                workspace.state !== "archived" &&
+                workspaceIdsWithSessions.has(workspace.id)
             ),
             manualOrder
           );
-          const projectWorkspaces = liveWorkspaces.slice(0, SIDEBAR_WORKSPACE_CAP);
-          const hiddenCount = Math.max(0, liveWorkspaces.length - projectWorkspaces.length);
+          const projectWorkspaces = liveWorkspaces;
           const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
           const isCollapsed = collapsedProjectIds.has(project.id);
           const isDragging = draggingId === project.id;
@@ -313,6 +441,32 @@ export function Sidebar({
                 >
                   <span className="project-name-text">{project.name}</span>
                 </button>
+                {onRemoveProject ? (
+                  <div className="project-picker-anchor project-actions-anchor">
+                    <button
+                      ref={projectMenuState?.projectId === project.id ? projectMenuTriggerRef : null}
+                      className="small-icon project-actions-trigger"
+                      type="button"
+                      title={`Actions for ${project.name}`}
+                      aria-label={`Actions for ${project.name}`}
+                      aria-haspopup="menu"
+                      aria-expanded={projectMenuState?.projectId === project.id}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (projectMenuState?.projectId === project.id) {
+                          closeProjectMenu();
+                          return;
+                        }
+                        // Stash the trigger up front so the layout effect can
+                        // measure it on the same render pass.
+                        projectMenuTriggerRef.current = event.currentTarget;
+                        setProjectMenuState({ projectId: project.id, mode: "menu" });
+                      }}
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
+                  </div>
+                ) : null}
                 <button
                   aria-expanded={!isCollapsed}
                   aria-label={`${isCollapsed ? "Show" : "Hide"} ${project.name} sessions`}
@@ -360,20 +514,80 @@ export function Sidebar({
                       </div>
                     );
                   })}
-              {!isCollapsed && hiddenCount > 0 ? (
-                <div
-                  className="sidebar-workspace-more"
-                  role="note"
-                  aria-label={`${hiddenCount} more workspaces not shown`}
-                  title={`${hiddenCount} more workspace${hiddenCount === 1 ? "" : "s"} hidden — adjust pin or archive to surface them`}
-                >
-                  {hiddenCount} more workspace{hiddenCount === 1 ? "" : "s"}
-                </div>
-              ) : null}
             </div>
           );
         })}
       </div>
+
+      {projectMenuState && projectMenuPos
+        ? (() => {
+            const activeProject = snapshot.projects.find((p) => p.id === projectMenuState.projectId);
+            if (!activeProject || !onRemoveProject) return null;
+            return createPortal(
+              <ul
+                ref={projectMenuPopoverRef}
+                className="project-picker-popover project-actions-popover"
+                role="menu"
+                aria-label={`${activeProject.name} actions`}
+                style={{
+                  position: "fixed",
+                  top: projectMenuPos.top,
+                  right: projectMenuPos.right,
+                  left: "auto",
+                  bottom: "auto"
+                }}
+              >
+                {projectMenuState.mode === "menu" ? (
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="project-picker-item project-actions-destructive"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setProjectMenuState({ projectId: activeProject.id, mode: "confirm" });
+                      }}
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
+                      Remove project
+                    </button>
+                  </li>
+                ) : (
+                  <li role="none">
+                    <p className="project-actions-confirm-text">
+                      Forget <strong>{activeProject.name}</strong> and all its sessions? Files on disk are untouched.
+                    </p>
+                    <div className="project-actions-confirm-buttons">
+                      <button
+                        type="button"
+                        className="project-picker-item project-actions-confirm-cancel"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          closeProjectMenu();
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="project-picker-item project-actions-destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          closeProjectMenu();
+                          onRemoveProject(activeProject.id);
+                        }}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                )}
+              </ul>,
+              document.body
+            );
+          })()
+        : null}
 
       <div className="sidebar-footer">
         <div className="identity-chip" data-state={loadState}>

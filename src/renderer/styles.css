@@ -1442,17 +1442,6 @@ button {
   animation: launcher-hero-in 520ms var(--ease) both;
 }
 
-.launcher-hero-project {
-  display: inline;
-  padding: 0;
-  color: var(--ink);
-  text-decoration: underline;
-  text-decoration-color: var(--sage);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 4px;
-  text-decoration-skip-ink: none;
-}
-
 .launcher-hero-lede {
   margin: 2px 0 0;
   max-width: 72ch;

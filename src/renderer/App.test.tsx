@@ -846,7 +846,28 @@ describe("App", () => {
         })
       )
     );
-    expect(window.localStorage.getItem("argmax.launch.agentMode")).toBe("plan");
+    expect(window.localStorage.getItem("argmax.launch.agentMode")).toBeNull();
+  });
+
+  it("starts new sessions in auto mode even when the old launcher preference was plan", async () => {
+    window.localStorage.setItem("argmax.launch.agentMode", "plan");
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Agent mode" })).toHaveTextContent("Auto");
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Implement the thing" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Implement the thing",
+          agentMode: "auto"
+        })
+      )
+    );
   });
 
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {

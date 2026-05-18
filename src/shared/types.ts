@@ -600,7 +600,7 @@ export interface ArgmaxApi {
     refreshStatus: (workspaceId: string) => Promise<WorkspaceSummary>;
     status: (input?: WorkspaceStatusInput) => Promise<WorkspaceStatusSnapshot>;
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;
-    archive: (workspaceId: string) => Promise<WorkspaceSummary>;
+    archive: (input: { workspaceId: string; force?: boolean }) => Promise<WorkspaceSummary>;
     openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
   };

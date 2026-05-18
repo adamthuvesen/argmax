@@ -124,6 +124,26 @@ describe("WorkspaceService", () => {
     database.connection.close();
   });
 
+  it("force-archives dirty worktrees when the caller opts in", async () => {
+    const { existsSync } = await import("node:fs");
+    const repoPath = createCommittedGitRepo();
+    const database = createDatabase(":memory:", { seed: false });
+    const project = await new ProjectService(database).registerProject({ repoPath });
+    const service = new WorkspaceService(database);
+    const workspace = await service.createIsolatedWorkspace({
+      projectId: project.id,
+      taskLabel: "Force archive"
+    });
+    writeFileSync(join(workspace.path, "changed.txt"), "changed");
+
+    const archived = await service.archiveWorkspace(workspace.id, { force: true });
+
+    expect(archived.state).toBe("archived");
+    expect(existsSync(workspace.path)).toBe(false);
+
+    database.connection.close();
+  });
+
   it("archives clean worktrees and tracks lifecycle state changes", async () => {
     const repoPath = createCommittedGitRepo();
     const database = createDatabase(":memory:", { seed: false });

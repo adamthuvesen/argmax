@@ -190,6 +190,11 @@ export const createCurrentWorkspaceInputSchema = z.object({
 
 export const workspaceIdInputSchema = workspaceIdSchema;
 
+export const archiveWorkspaceInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  force: z.boolean().optional()
+});
+
 export const permissionModeSchema = z.enum(["auto-approve", "ask-each-time"]);
 
 export const attachmentMimeTypeSchema = z.enum([
@@ -616,7 +621,7 @@ export const ipcSchemas = {
   "workspaces:create-current": createCurrentWorkspaceInputSchema,
   "workspaces:refresh-status": workspaceIdInputSchema,
   "workspaces:keep": workspaceIdInputSchema,
-  "workspaces:archive": workspaceIdInputSchema,
+  "workspaces:archive": archiveWorkspaceInputSchema,
   "workspaces:open-in-ide": openInIdeInputSchema,
   "workspace:status": workspaceStatusInputSchema,
   "providers:discover": providersDiscoverInputSchema,

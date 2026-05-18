@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import { z } from "zod";
 import {
+  archiveWorkspaceInputSchema,
   createCurrentWorkspaceInputSchema,
   createWorkspaceInputSchema,
   openInIdeInputSchema,
@@ -52,9 +53,9 @@ export function registerWorkspaceHandlers(
   );
   register(
     "workspaces:archive",
-    withValidation(workspaceIdInputSchema, (workspaceId) => {
-      checks.cancelWorkspaceChecks(workspaceId);
-      return workspaces.archiveWorkspace(workspaceId);
+    withValidation(archiveWorkspaceInputSchema, (input) => {
+      checks.cancelWorkspaceChecks(input.workspaceId);
+      return workspaces.archiveWorkspace(input.workspaceId, { force: input.force });
     })
   );
   register(

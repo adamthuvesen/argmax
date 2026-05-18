@@ -303,7 +303,8 @@ describe("App", () => {
         refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
         status: workspaceStatus,
         keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
-        archive: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
+        archive: ({ workspaceId }) =>
+          Promise.resolve(snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()),
         openInIde: openInIde,
         setPinned: ({ workspaceId, pinned }) =>
           Promise.resolve({

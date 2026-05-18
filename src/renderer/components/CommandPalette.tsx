@@ -88,6 +88,7 @@ export function CommandPalette({
   const [filePaths, setFilePaths] = useState<string[]>([]);
   const [filesRunning, setFilesRunning] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const resultsRef = useRef<HTMLUListElement | null>(null);
   const messageTokenRef = useRef(0);
   const filesTokenRef = useRef(0);
   // Cache the loaded path list across keystrokes within a single palette
@@ -246,6 +247,17 @@ export function CommandPalette({
     }
   }, [flatRows, selectedIndex]);
 
+  // Keep the active row visible when ArrowUp/Down moves selection past the
+  // viewport. `block: "nearest"` avoids jumping when the row is already in
+  // view — long result lists otherwise hide the active row off-screen.
+  useEffect(() => {
+    if (!open) return;
+    const list = resultsRef.current;
+    if (!list) return;
+    const active = list.querySelector<HTMLElement>(".command-palette-result.selected");
+    active?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, open]);
+
   const groupCounts = useMemo(() => {
     const counts: Partial<Record<PaletteGroup, number>> = {};
     for (const row of flatRows) {
@@ -336,7 +348,12 @@ export function CommandPalette({
             onKeyDown={handleKeyDown}
           />
         </label>
-        <ul className="command-palette-results" role="listbox" aria-label="Command results">
+        <ul
+          ref={resultsRef}
+          className="command-palette-results"
+          role="listbox"
+          aria-label="Command results"
+        >
           {showingEmptyState ? (
             <li className="command-palette-empty" role="status">
               <span className="command-palette-empty-mark" aria-hidden="true">∅</span>

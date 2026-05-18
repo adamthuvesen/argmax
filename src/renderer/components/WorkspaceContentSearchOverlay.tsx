@@ -38,6 +38,7 @@ export function WorkspaceContentSearchOverlay({
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLUListElement>(null);
   const tokenRef = useRef(0);
 
   useEffect(() => {
@@ -73,6 +74,16 @@ export function WorkspaceContentSearchOverlay({
   useEffect(() => {
     if (selectedIndex >= flatRows.length) setSelectedIndex(0);
   }, [flatRows, selectedIndex]);
+
+  // Scroll the selected row into view when keyboard nav moves past the
+  // viewport. `block: "nearest"` is a no-op when already visible.
+  useEffect(() => {
+    if (!open) return;
+    const list = resultsRef.current;
+    if (!list) return;
+    const active = list.querySelector<HTMLElement>(".search-result.selected");
+    active?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, open]);
 
   const runSearch = useCallback(
     async (rawQuery: string): Promise<void> => {
@@ -200,7 +211,12 @@ export function WorkspaceContentSearchOverlay({
             {error}
           </p>
         ) : null}
-        <ul className="search-results" role="listbox" aria-label="Workspace content search results">
+        <ul
+          ref={resultsRef}
+          className="search-results"
+          role="listbox"
+          aria-label="Workspace content search results"
+        >
           {!running && trimmedQuery.length >= MIN_QUERY_LENGTH && totalMatches === 0 && !error ? (
             <li className="search-empty" role="status">
               No matches.

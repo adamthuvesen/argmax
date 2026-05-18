@@ -28,6 +28,7 @@ export function SearchOverlay({
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLUListElement>(null);
   const tokenRef = useRef(0);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
@@ -99,6 +100,17 @@ export function SearchOverlay({
     return () => clearTimeout(handle);
   }, [query, open, runSearch]);
 
+  // Keep the selected hit visible during ArrowUp/Down navigation. `block:
+  // "nearest"` is unintrusive for hits already on screen and only scrolls
+  // when the row would otherwise be clipped.
+  useEffect(() => {
+    if (!open) return;
+    const list = resultsRef.current;
+    if (!list) return;
+    const active = list.querySelector<HTMLElement>(".search-result.selected");
+    active?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, open]);
+
   if (!open) return null;
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
@@ -156,7 +168,7 @@ export function SearchOverlay({
             {error}
           </p>
         ) : null}
-        <ul className="search-results" role="listbox" aria-label="Search results">
+        <ul ref={resultsRef} className="search-results" role="listbox" aria-label="Search results">
           {!running && query && hits.length === 0 && !error ? (
             <li className="search-empty" role="status">
               No matches.

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { AlertCircle } from "lucide-react";
 import { tryFit } from "../lib/xtermFit.js";
 import { resolveMonoFontStack } from "../lib/fonts.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
 import "@xterm/xterm/css/xterm.css";
 
@@ -51,6 +52,8 @@ export function McpAuthDialog({
   onCompleted?: () => void;
 }): JSX.Element | null {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -66,6 +69,25 @@ export function McpAuthDialog({
 
   const [startError, setStartError] = useState<string | null>(null);
   const [exited, setExited] = useState<boolean>(false);
+
+  // Document-level Esc + outside-click via the shared hook. Listening at the
+  // document level keeps Esc working once xterm has captured key events.
+  useDismissOnOutsideOrEscape(dialogRef, open, onClose);
+
+  // Capture the previously focused element on open so the trigger gets focus
+  // back on close — matches CommandPalette/SearchOverlay/CommitDialog.
+  useEffect(() => {
+    if (!open) {
+      const previous = previousActiveElementRef.current;
+      previousActiveElementRef.current = null;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      }
+      return;
+    }
+    previousActiveElementRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,6 +110,10 @@ export function McpAuthDialog({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(container);
+    // Focus the terminal so the user can start typing immediately. Without
+    // this xterm captures input only after a click; the user typically has to
+    // mouse into the dialog before keyboard input takes effect.
+    term.focus();
     xtermRef.current = term;
     fitRef.current = fit;
 
@@ -174,13 +200,6 @@ export function McpAuthDialog({
 
   if (!open) return null;
 
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    }
-  };
-
   // Portal into document.body so the modal escapes any parent stacking
   // context (Settings overlay, scroll containers, etc.). Without the portal,
   // a Settings-scoped containing block can swallow position: fixed children
@@ -191,13 +210,8 @@ export function McpAuthDialog({
       role="dialog"
       aria-label="Authenticate MCP via Claude"
       aria-modal="true"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-      onKeyDown={handleKeyDown}
-      tabIndex={-1}
     >
-      <div className="mcp-auth-dialog">
+      <div className="mcp-auth-dialog" ref={dialogRef}>
         <header className="mcp-auth-dialog-header">
           <div>
             <h2>Authenticate MCP servers</h2>

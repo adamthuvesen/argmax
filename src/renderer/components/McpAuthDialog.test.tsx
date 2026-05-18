@@ -133,6 +133,32 @@ describe("McpAuthDialog", () => {
     await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
   });
 
+  it("closes on Escape via the document-level keydown handler", async () => {
+    const stub = installArgmaxStub();
+    const onClose = vi.fn();
+    render(<McpAuthDialog open={true} onClose={onClose} />);
+    await waitFor(() => expect(stub.start).toHaveBeenCalled());
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores focus to the previously focused element on close", async () => {
+    const stub = installArgmaxStub();
+    const trigger = document.createElement("button");
+    trigger.textContent = "Open auth dialog";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    try {
+      const { rerender } = render(<McpAuthDialog open={true} onClose={() => {}} />);
+      await waitFor(() => expect(stub.start).toHaveBeenCalled());
+      rerender(<McpAuthDialog open={false} onClose={() => {}} />);
+      expect(trigger).toHaveFocus();
+    } finally {
+      document.body.removeChild(trigger);
+    }
+  });
+
   it("surfaces a clear error when claude is not installed", async () => {
     const stub = installArgmaxStub({
       start: vi.fn().mockRejectedValue(new Error("Claude Code is not installed on this machine."))

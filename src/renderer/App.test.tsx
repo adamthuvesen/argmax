@@ -916,7 +916,7 @@ describe("App", () => {
 
     expect(await screen.findByText("New chat answer.")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New chat" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "New chat" })).toHaveAttribute("aria-current", "true");
   });
 
   it("displays an @-mention-only launch prompt as the user message in the new session", async () => {
@@ -1223,7 +1223,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Claude Sonnet 4.6");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-current", "true");
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
   });
 

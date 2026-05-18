@@ -496,7 +496,7 @@ export function Sidebar({
             >
               <div className="project-row">
                 <button
-                  aria-pressed={selectedProjectId === project.id && !selectedWorkspaceId}
+                  aria-current={selectedProjectId === project.id && !selectedWorkspaceId ? "true" : undefined}
                   className={
                     selectedProjectId === project.id && !selectedWorkspaceId ? "project-name active" : "project-name"
                   }

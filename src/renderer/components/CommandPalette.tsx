@@ -6,6 +6,7 @@ import {
   type PaletteHit,
   type PaletteItem
 } from "../lib/paletteSearch.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 
 export type { PaletteGroup, PaletteItem } from "../lib/paletteSearch.js";
 
@@ -88,9 +89,16 @@ export function CommandPalette({
   const [filePaths, setFilePaths] = useState<string[]>([]);
   const [filesRunning, setFilesRunning] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const paletteRef = useRef<HTMLDivElement | null>(null);
   const resultsRef = useRef<HTMLUListElement | null>(null);
   const messageTokenRef = useRef(0);
   const filesTokenRef = useRef(0);
+
+  // Document-level Esc + outside-click via the shared hook. Esc previously
+  // depended on the input's onKeyDown which only fires while the input has
+  // focus — adopting the hook means Esc works even if focus drifted to a
+  // result row (e.g. via screen-reader navigation).
+  useDismissOnOutsideOrEscape(paletteRef, open, onClose);
   // Cache the loaded path list across keystrokes within a single palette
   // session. Keyed by `${kind}:${id}` so switching workspace/project between
   // opens invalidates correctly.
@@ -293,10 +301,8 @@ export function CommandPalette({
       }
       return;
     }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    }
+    // Esc is handled by useDismissOnOutsideOrEscape at the document level,
+    // so it works regardless of which element holds focus inside the palette.
   };
 
   const trimmedQuery = query.trim();
@@ -314,11 +320,8 @@ export function CommandPalette({
       className="command-palette-overlay"
       role="dialog"
       aria-label="Command palette"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
     >
-      <div className="command-palette">
+      <div className="command-palette" ref={paletteRef}>
         <div className="command-palette-header" aria-hidden="true">
           <span className="command-palette-scope">
             <span className="command-palette-scope-mark">cmd</span>

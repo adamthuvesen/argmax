@@ -51,6 +51,55 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByRole("button", { name: "Archive session" })).toBeInTheDocument();
   });
 
+  it("ArrowDown / ArrowUp moves focus between session-link buttons across rows", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onOpen = vi.fn();
+    // Render two rows so we have a sibling to navigate to. Mount them under
+    // a shared container so they live in the same document.
+    render(
+      <div>
+        <SidebarSessionRow
+          workspace={{ ...workspaceBase, id: "ws-1", taskLabel: "First" }}
+          workspaceTokens={null}
+          isSelected={false}
+          isOpenInGrid={false}
+          canDragToGrid={true}
+          onOpenWorkspaceChat={onOpen}
+          onArchiveWorkspace={vi.fn()}
+          onOpenInIde={vi.fn()}
+          detectedIdes={detectedIdes}
+          defaultIde="vscode"
+          showTokens={false}
+        />
+        <SidebarSessionRow
+          workspace={{ ...workspaceBase, id: "ws-2", taskLabel: "Second" }}
+          workspaceTokens={null}
+          isSelected={false}
+          isOpenInGrid={false}
+          canDragToGrid={true}
+          onOpenWorkspaceChat={onOpen}
+          onArchiveWorkspace={vi.fn()}
+          onOpenInIde={vi.fn()}
+          detectedIdes={detectedIdes}
+          defaultIde="vscode"
+          showTokens={false}
+        />
+      </div>
+    );
+
+    const first = screen.getByRole("button", { name: /First/ });
+    const second = screen.getByRole("button", { name: /Second/ });
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second, { key: "ArrowUp" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "End" });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second, { key: "Home" });
+    expect(first).toHaveFocus();
+  });
+
   it("IDE picker opens with the current default focused and supports arrow-key nav", async () => {
     const { fireEvent } = await import("@testing-library/react");
     render(

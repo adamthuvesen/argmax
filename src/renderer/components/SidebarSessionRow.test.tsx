@@ -51,6 +51,43 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByRole("button", { name: "Archive session" })).toBeInTheDocument();
   });
 
+  it("IDE picker opens with the current default focused and supports arrow-key nav", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="cursor"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
+
+    // Preferred (default IDE) is focused first.
+    const cursorItem = await screen.findByRole("menuitem", { name: /Cursor/ });
+    expect(cursorItem).toHaveFocus();
+
+    // ArrowUp wraps to the previous menuitem (VS Code, which precedes Cursor).
+    fireEvent.keyDown(cursorItem, { key: "ArrowUp" });
+    expect(screen.getByRole("menuitem", { name: /VS Code/ })).toHaveFocus();
+
+    // ArrowDown comes back to Cursor.
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /VS Code/ }), { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: /Cursor/ })).toHaveFocus();
+
+    // End jumps to the last menuitem.
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Cursor/ }), { key: "End" });
+    expect(screen.getByRole("menuitem", { name: /Cursor/ })).toHaveFocus();
+  });
+
   it("memo comparator skips re-render when a new workspace object has identical visible fields (ralph C1)", () => {
     const onOpenWorkspaceChat = vi.fn();
     const onArchiveWorkspace = vi.fn();

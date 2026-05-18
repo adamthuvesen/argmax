@@ -30,13 +30,7 @@ import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { type ModelPickerSelection } from "../lib/models.js";
-import {
-  AGENT_MODE_LABELS,
-  LAUNCH_AGENT_MODE_KEY,
-  readStoredAgentMode,
-  toggleAgentMode,
-  writeStoredAgentMode
-} from "../lib/agentMode.js";
+import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
 import { Mascot } from "./Mascot.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
@@ -107,7 +101,7 @@ export function LaunchSurface({
   // exist yet, and the AttachmentStore only uses this string as a folder name.
   const launchAttachmentNamespaceRef = useRef<string>(`launch-${crypto.randomUUID()}`);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
-  const [agentMode, setAgentMode] = useState<AgentMode>(() => readStoredAgentMode(LAUNCH_AGENT_MODE_KEY));
+  const [agentMode, setAgentMode] = useState<AgentMode>("auto");
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const projectPickerRef = useRef<HTMLDivElement | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
@@ -195,10 +189,6 @@ export function LaunchSurface({
     setModelPickerOpen(false);
   }, []);
 
-  useEffect(() => {
-    writeStoredAgentMode(LAUNCH_AGENT_MODE_KEY, agentMode);
-  }, [agentMode]);
-
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
   }, []);
@@ -227,16 +217,16 @@ export function LaunchSurface({
   }, [project, onBranchSwitch]);
   const headingTemplate = useMemo(() => {
     const options = [
-      "{name}: the final frontier.",
-      "In space, no one can hear your {name} build fail.",
-      "You're gonna need a bigger {name}.",
-      "What we've got here is a failure to ship {name}.",
-      "{name} will remember that.",
-      "I'm sorry Dave, I can't merge that into {name}.",
-      "With great {name} comes great responsibility.",
-      "One does not simply deploy {name} to production.",
-      "{name}: it's alive!",
-      "I know kung fu. What are we building in {name}?",
+      "It's the final frontier.",
+      "In space, no one can hear your build fail.",
+      "You're gonna need a bigger commit.",
+      "What we've got here is a failure to ship.",
+      "I will remember that.",
+      "I'm sorry Dave, I can't merge that.",
+      "With great power comes great responsibility.",
+      "One does not simply deploy to production.",
+      "It's alive!",
+      "I know kung fu. What are we building?",
     ];
     return options[Math.floor(Math.random() * options.length)];
   }, []);
@@ -434,13 +424,6 @@ export function LaunchSurface({
     }
   };
 
-  const [headingBefore, headingAfter] = useMemo(() => {
-    const token = "{name}";
-    const idx = headingTemplate.indexOf(token);
-    if (idx === -1) return [headingTemplate, ""] as const;
-    return [headingTemplate.slice(0, idx), headingTemplate.slice(idx + token.length)] as const;
-  }, [headingTemplate]);
-
   const heroEyebrowDate = useMemo(() => {
     const d = new Date();
     const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
@@ -493,11 +476,7 @@ export function LaunchSurface({
             New session · {project.currentBranch} · {heroEyebrowDate}
           </span>
         </div>
-        <h1 className="launcher-hero-headline">
-          {headingBefore}
-          <span className="launcher-hero-project">{project.name}</span>
-          {headingAfter}
-        </h1>
+        <h1 className="launcher-hero-headline">{headingTemplate}</h1>
         <p className="launcher-hero-lede">
           Type a task. Press <kbd className="launcher-hero-kbd">⏎</kbd> and I'll spin up a fresh worktree, branch it, and stream the agent back here.
         </p>

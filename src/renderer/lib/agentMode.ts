@@ -5,8 +5,6 @@ export const AGENT_MODE_LABELS: Record<AgentMode, string> = {
   plan: "Plan"
 };
 
-export const LAUNCH_AGENT_MODE_KEY = "argmax.launch.agentMode";
-
 export function sessionAgentModeKey(sessionId: string): string {
   return `argmax.sessionAgentMode.${sessionId}`;
 }

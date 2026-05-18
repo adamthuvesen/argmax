@@ -4,9 +4,12 @@ import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.j
 import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
+export const expandedProjectsStorageKey = "argmax.sidebar.expandedProjects";
 export const projectOrderStorageKey = "argmax.sidebar.projectOrder";
 export const workspaceOrderStorageKey = "argmax.sidebar.workspaceOrder";
 export const projectSortModeStorageKey = "argmax.sidebar.projectSortMode";
+
+export const SIDEBAR_SESSION_LIMIT = 10;
 
 export type ProjectSortMode = "recent" | "alphabetical" | "manual";
 
@@ -40,6 +43,14 @@ export function loadCollapsedProjectIds(): Set<string> {
 
 export function saveCollapsedProjectIds(projectIds: Set<string>): void {
   writeStorageJson(collapsedProjectsStorageKey, [...projectIds]);
+}
+
+export function loadExpandedProjectIds(): Set<string> {
+  return new Set(loadStringArray(expandedProjectsStorageKey));
+}
+
+export function saveExpandedProjectIds(projectIds: Set<string>): void {
+  writeStorageJson(expandedProjectsStorageKey, [...projectIds]);
 }
 
 export function loadProjectOrder(): string[] {

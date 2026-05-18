@@ -136,6 +136,10 @@ describe("App", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    // Pre-seed the boot-collapse marker so existing App tests render the
+    // sidebar with projects expanded (the pre-fix behavior). Sidebar tests
+    // that exercise the boot-collapse seed clear this marker themselves.
+    window.sessionStorage.setItem("argmax.sidebar.bootCollapseSeeded", "1");
     createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
       snapshot.workspaces[0] ?? missingWorkspace()
     );
@@ -1245,14 +1249,14 @@ describe("App", () => {
     expect(screen.queryByPlaceholderText("Send a follow-up")).not.toBeInTheDocument();
   });
 
-  it("does not show a thinking indicator after assistant output is visible", async () => {
+  it("keeps the thinking indicator after assistant output when the session is still running", async () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     expect(await screen.findByText("Dashboard ready.")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("command-stream")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    expect(screen.getByTestId("command-stream")).toBeInTheDocument();
   });
 
   it("shows a thinking indicator for a follow-up turn after earlier assistant output", async () => {
@@ -1403,11 +1407,11 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const stopButton = await screen.findByRole("button", { name: "Stop session" });
-    // Send and Stop coexist while running so the user can queue follow-ups
-    // and still kill the current turn.
+    // Stop replaces the send/queue mascot in the same slot while running.
+    // Follow-ups are queued via Enter in the textarea, not via a visible button.
     expect(
-      screen.getByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
+    ).not.toBeInTheDocument();
 
     fireEvent.click(stopButton);
 
@@ -1895,10 +1899,9 @@ describe("App", () => {
 
     expect(await screen.findByText("2 files changed")).toBeInTheDocument();
     expect(screen.getByLabelText("2 additions, 17 deletions")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /src\/renderer\/App\.tsx/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle changed files" }));
+    expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /src\/renderer\/App\.tsx/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Open changed files in review panel" }));
 
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" });
     expect(reviewPanel).toBeInTheDocument();
@@ -1924,15 +1927,17 @@ describe("App", () => {
       { path: "src/renderer/App.tsx" },
       { path: "README.md" }
     ]);
-    readWorkspaceFile.mockImplementation(async (_workspaceId, filePath) => ({
-      kind: "text",
-      content:
-        filePath === "src/main/preload.ts"
-          ? "export const preload = true;\n"
-          : "export const hello = 'world';\n",
-      size: 30,
-      mtimeMs: 0
-    }));
+    readWorkspaceFile.mockImplementation((_workspaceId, filePath) =>
+      Promise.resolve({
+        kind: "text",
+        content:
+          filePath === "src/main/preload.ts"
+            ? "export const preload = true;\n"
+            : "export const hello = 'world';\n",
+        size: 30,
+        mtimeMs: 0
+      })
+    );
 
     render(<App />);
 

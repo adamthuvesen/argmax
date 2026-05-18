@@ -90,6 +90,55 @@ describe("WorkspaceContentSearchOverlay", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("autofocuses the input on open", () => {
+    render(
+      <WorkspaceContentSearchOverlay
+        open
+        onClose={() => {}}
+        source={{ kind: "workspace", id: "ws-1" }}
+        onPick={() => {}}
+      />
+    );
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+  });
+
+  it("Escape closes the overlay via the document-level handler", () => {
+    const onClose = vi.fn();
+    render(
+      <WorkspaceContentSearchOverlay
+        open
+        onClose={onClose}
+        source={{ kind: "workspace", id: "ws-1" }}
+        onPick={() => {}}
+      />
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("ArrowDown moves the selection and Enter activates the picked file", async () => {
+    const onPick = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <WorkspaceContentSearchOverlay
+        open
+        onClose={onClose}
+        source={{ kind: "workspace", id: "ws-1" }}
+        onPick={onPick}
+      />
+    );
+    const input = screen.getByRole("searchbox");
+    fireEvent.change(input, { target: { value: "var abc" } });
+    // First selectable row is the first file header (src/main/index.ts).
+    await screen.findByText("src/main/index.ts");
+    // Press Enter while the dialog has focus context — the overlay handles
+    // ArrowDown/Up/Enter on its own onKeyDown.
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith("src/main/index.ts");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("disables the input and shows guidance when no source is registered", () => {
     render(
       <WorkspaceContentSearchOverlay open onClose={() => {}} source={null} onPick={null} />

@@ -255,7 +255,9 @@ export function CommandPalette({
     const list = resultsRef.current;
     if (!list) return;
     const active = list.querySelector<HTMLElement>(".command-palette-result.selected");
-    active?.scrollIntoView({ block: "nearest" });
+    // Guard scrollIntoView for environments without layout (jsdom) — production
+    // browsers always have it, but the App test harness doesn't stub it.
+    active?.scrollIntoView?.({ block: "nearest" });
   }, [selectedIndex, open]);
 
   const groupCounts = useMemo(() => {

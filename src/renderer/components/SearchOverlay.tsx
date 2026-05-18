@@ -108,7 +108,8 @@ export function SearchOverlay({
     const list = resultsRef.current;
     if (!list) return;
     const active = list.querySelector<HTMLElement>(".search-result.selected");
-    active?.scrollIntoView({ block: "nearest" });
+    // Guard scrollIntoView — undefined in jsdom layout-less environments.
+    active?.scrollIntoView?.({ block: "nearest" });
   }, [selectedIndex, open]);
 
   if (!open) return null;

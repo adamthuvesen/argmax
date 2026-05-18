@@ -1,5 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  GIT_EXEC_BINARY_MAX_BUFFER,
+  GIT_EXEC_BINARY_TIMEOUT_MS,
+  GIT_EXEC_MAX_BUFFER,
+  GIT_EXEC_TIMEOUT_MS
+} from "../constants/timeouts.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -9,8 +15,8 @@ interface GitExecOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_BUFFER = 64 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = GIT_EXEC_TIMEOUT_MS;
+const DEFAULT_MAX_BUFFER = GIT_EXEC_MAX_BUFFER;
 
 /**
  * Force the C locale on every git invocation so stderr message text is
@@ -55,8 +61,8 @@ export async function runGitText(cwd: string, args: string[], options: GitExecOp
  */
 export async function runGitBuffer(cwd: string, args: string[], options: GitExecOptions = {}): Promise<Buffer> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
-    timeout: options.timeoutMs ?? 60_000,
-    maxBuffer: options.maxBufferBytes ?? 256 * 1024 * 1024,
+    timeout: options.timeoutMs ?? GIT_EXEC_BINARY_TIMEOUT_MS,
+    maxBuffer: options.maxBufferBytes ?? GIT_EXEC_BINARY_MAX_BUFFER,
     encoding: "buffer",
     env: gitEnv(options.env)
   });

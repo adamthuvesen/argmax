@@ -4,6 +4,7 @@ import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { CheckRun } from "../../shared/types.js";
 import { scheduleSigkillEscalation } from "../processControl.js";
 import { classifyCommandRisk } from "../approvals/dangerousActionPolicy.js";
+import { CHECK_DEFAULT_TIMEOUT_MS } from "../constants/timeouts.js";
 
 export interface RunWorkspaceCheckInput {
   workspaceId: string;
@@ -21,7 +22,7 @@ export interface RunWorkspaceCheckInput {
   timeoutMs?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_TIMEOUT_MS = CHECK_DEFAULT_TIMEOUT_MS;
 
 /**
  * Environment-variable names that look like credentials. Stripped from the

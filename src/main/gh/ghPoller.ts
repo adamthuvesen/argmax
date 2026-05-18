@@ -6,6 +6,7 @@ import type { GhService } from "./ghService.js";
 import type { NotificationService } from "../notifications/notificationService.js";
 import type { GhPrRecord } from "../../shared/types.js";
 import { listOpenGhPrSessionIds, markGhPrNotified } from "../persistence/gh.js";
+import { GH_POLL_INTERVAL_MS } from "../constants/timeouts.js";
 
 export interface CheckFailureContext {
   sessionId: string;
@@ -24,7 +25,7 @@ export interface GhPollerDeps {
   intervalMs?: number;
 }
 
-const DEFAULT_INTERVAL_MS = 60_000;
+const DEFAULT_INTERVAL_MS = GH_POLL_INTERVAL_MS;
 /**
  * Bound on concurrent `gh pr view` calls per tick. Without it, the loop runs
  * sequentially so a single slow `gh` (15s default timeout) holds the re-

@@ -5,11 +5,12 @@ import type { GhCheckState, GhPrRecord, GhPrState } from "../../shared/types.js"
 import { safeJsonParseObject } from "../../shared/safeJson.js";
 import { logger } from "../../shared/logger.js";
 import { errorMessage } from "../../shared/error.js";
+import { GH_EXEC_MAX_BUFFER, GH_EXEC_TIMEOUT_MS } from "../constants/timeouts.js";
 
 const execFileAsync = promisify(execFile);
 
-const DEFAULT_TIMEOUT_MS = 15_000;
-const DEFAULT_MAX_BUFFER = 8 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = GH_EXEC_TIMEOUT_MS;
+const DEFAULT_MAX_BUFFER = GH_EXEC_MAX_BUFFER;
 
 /**
  * Runs `gh` with the given args in `cwd`, returns stdout. Throws on non-zero

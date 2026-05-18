@@ -135,6 +135,54 @@ describe("CommitDialog", () => {
     expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
   });
 
+  it("commits on Cmd+Enter from the message textarea but newlines on plain Enter", async () => {
+    commitMock.mockResolvedValue({ commitSha: "feeddeadbeef", branch: "argmax/review" });
+    const onClose = vi.fn();
+    render(
+      <CommitDialog
+        open
+        onClose={onClose}
+        workspaceId="workspace-1"
+        files={FILES}
+        defaultMessage="fix: keyboard submit"
+      />
+    );
+
+    const messageBox = screen.getByLabelText<HTMLTextAreaElement>("Commit message");
+    messageBox.focus();
+
+    // Plain Enter must NOT submit — textarea owns it for newlines.
+    fireEvent.keyDown(messageBox, { key: "Enter" });
+    expect(commitMock).not.toHaveBeenCalled();
+
+    // Cmd+Enter (and Ctrl+Enter) submit.
+    fireEvent.keyDown(messageBox, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
+    expect(commitMock).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      message: "fix: keyboard submit",
+      selectedFiles: ["src/a.ts", "src/b.ts"]
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not submit on Cmd+Enter when the message is empty", () => {
+    render(
+      <CommitDialog
+        open
+        onClose={() => {}}
+        workspaceId="workspace-1"
+        files={FILES}
+        defaultMessage=""
+      />
+    );
+
+    const messageBox = screen.getByLabelText<HTMLTextAreaElement>("Commit message");
+    messageBox.focus();
+    fireEvent.keyDown(messageBox, { key: "Enter", ctrlKey: true });
+    expect(commitMock).not.toHaveBeenCalled();
+  });
+
   it("shows an empty state and keeps Commit disabled when there are no changed files", () => {
     render(
       <CommitDialog

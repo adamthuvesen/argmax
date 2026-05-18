@@ -224,7 +224,7 @@ function SidebarSessionRowInner({
   return (
     <div className="session-row">
       <button
-        aria-pressed={isSelected}
+        aria-current={isSelected ? "true" : undefined}
         className={isSelected ? "session-link active" : "session-link"}
         data-open={isOpenInGrid ? "true" : undefined}
         data-status={workspace.state}

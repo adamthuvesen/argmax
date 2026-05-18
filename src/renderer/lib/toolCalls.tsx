@@ -1,4 +1,4 @@
-import { FileText, Globe, Pencil, Search, Terminal, Wrench } from "lucide-react";
+import { Bot, FileText, Globe, Pencil, Search, Terminal, Wrench } from "lucide-react";
 import type { JSX } from "react";
 import { safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
@@ -82,10 +82,25 @@ export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
   };
 }
 
-type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bash" | "other";
+type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bash" | "agent" | "other";
+
+/**
+ * The sub-agent / Task tool gets its own bucket so a parent agent spawning a
+ * Task isn't lumped under "other" — instead it renders with the Agent label,
+ * Bot icon, and a distinct CSS accent so the user can tell at a glance that
+ * a different agent is doing the work.
+ */
+function isAgentTool(lower: string): boolean {
+  // Claude's built-in tool is exactly "Task"; Codex/Cursor variants use
+  // "agent"/"subagent" or names ending with "_agent". Anchor the literal
+  // matches so we don't sweep up "TaskList" or "agent_id"-style names.
+  return lower === "task" || lower === "agent" || lower === "subagent" ||
+    /(^|[_-])(sub-?agent|agent)$/.test(lower);
+}
 
 function getFineBucket(name: string): FineBucket {
   const lower = name.toLowerCase();
+  if (isAgentTool(lower)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
   if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
   if (/search|grep|find|glob/.test(lower)) return "search";
@@ -99,7 +114,16 @@ function getFineBucket(name: string): FineBucket {
   return "other";
 }
 
-const FINE_BUCKET_ORDER: FineBucket[] = ["read-files", "read-lists", "search", "web", "edit", "bash", "other"];
+const FINE_BUCKET_ORDER: FineBucket[] = [
+  "agent",
+  "read-files",
+  "read-lists",
+  "search",
+  "web",
+  "edit",
+  "bash",
+  "other"
+];
 
 // (verbForm, compactForm) per bucket. verbForm is used when the bucket is
 // the sole bucket OR the first clause of a multi-bucket headline. compactForm
@@ -108,6 +132,8 @@ const FINE_BUCKET_ORDER: FineBucket[] = ["read-files", "read-lists", "search", "
 function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string {
   const plural = (singular: string, pluralWord: string): string => (n === 1 ? singular : pluralWord);
   switch (bucket) {
+    case "agent":
+      return first ? `Spawned ${n} ${plural("agent", "agents")}` : `${n} ${plural("agent", "agents")}`;
     case "read-files":
       return first ? `Explored ${n} ${plural("file", "files")}` : `${n} ${plural("file", "files")}`;
     case "read-lists":
@@ -133,6 +159,11 @@ export function describeToolAction(tool: ToolCall): string {
     return trimmed.includes("/") ? trimmed.split("/").pop() ?? trimmed : trimmed;
   };
   switch (bucket) {
+    case "agent":
+      // Agent verb is rendered with a Bot icon and accent color so the
+      // "Agent" label + sub-agent description make it obvious a different
+      // agent is running this work — not the parent.
+      return preview ? `Agent ${preview}` : "Agent task";
     case "bash":
       return preview ? `Ran ${preview}` : "Ran command";
     case "edit":
@@ -246,6 +277,20 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
 
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
   const lower = name.toLowerCase();
+  if (isAgentTool(lower)) {
+    // Claude's Task tool input is `{ description, prompt, subagent_type }`.
+    // `description` is the human-friendly 3-5 word title; prefer it over the
+    // long prompt body so the collapsed row stays scannable.
+    const description = input.description;
+    if (typeof description === "string" && description.trim().length > 0) {
+      return description.slice(0, 72);
+    }
+    const subagentType = input.subagent_type ?? input.subagentType;
+    if (typeof subagentType === "string" && subagentType.trim().length > 0) {
+      return subagentType.slice(0, 72);
+    }
+    return "";
+  }
   if (lower.includes("bash") || lower.includes("shell") || lower.includes("exec")) {
     const cmd = input.command ?? input.cmd;
     if (typeof cmd === "string") return cmd.split("\n")[0]?.slice(0, 72) ?? "";
@@ -335,6 +380,9 @@ export function isBashLikeTool(name: string): boolean {
 
 export function getToolIcon(name: string): JSX.Element {
   const lower = name.toLowerCase();
+  if (isAgentTool(lower)) {
+    return <Bot size={13} />;
+  }
   if (lower.includes("bash") || lower.includes("shell") || lower.includes("terminal") || lower.includes("exec")) {
     return <Terminal size={13} />;
   }
@@ -353,10 +401,11 @@ export function getToolIcon(name: string): JSX.Element {
   return <Wrench size={13} />;
 }
 
-export type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "other";
+export type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "agent" | "other";
 
 export function getToolTypeBucket(name: string): ToolTypeBucket {
   const lower = name.toLowerCase();
+  if (isAgentTool(lower)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
   if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
   if (/read|view|open|cat|list/.test(lower)) return "read";
@@ -380,5 +429,6 @@ export const BUCKET_ICON_NAME: Record<ToolTypeBucket, string> = {
   read: "read_file",
   search: "search_files",
   web: "web_fetch",
+  agent: "agent",
   other: "tool",
 };

@@ -5490,6 +5490,28 @@ button {
   color: var(--muted);
 }
 
+/* Agent (Task tool / sub-agent invocation) — distinct from regular tool calls
+   so the user can tell at a glance that a different agent is doing the work,
+   not the parent. Left-border accent + colored verb + Bot icon all reinforce
+   the "this is an agent" affordance. */
+.tool-call-row[data-tool-type="agent"] {
+  border-left: 2px solid #7c3aed;
+  background: rgba(124, 58, 237, 0.04);
+  padding-left: 2px;
+}
+.tool-call-row[data-tool-type="agent"] .tool-call-row-verb {
+  color: #6d28d9;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.tool-call-row-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #7c3aed;
+  flex: 0 0 auto;
+  transform: translateY(1px);
+}
+
 /* ---- File change card (in-chat Write/Edit/Delete affordance) ---- */
 
 .file-change-card {

@@ -1,3 +1,4 @@
+import { Bot } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
 import { describeToolAction, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
@@ -69,9 +70,11 @@ function ToolCallRowInner({
   const overrideVerb = changes && changes.length > 0 ? verbForChanges(changes) : null;
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.target;
+  const toolTypeBucket = getToolTypeBucket(tool.name);
+  const isAgent = toolTypeBucket === "agent";
 
   return (
-    <div className="tool-call-row" data-status={tool.status} data-tool-type={getToolTypeBucket(tool.name)}>
+    <div className="tool-call-row" data-status={tool.status} data-tool-type={toolTypeBucket}>
       <button
         className="tool-call-row-button"
         type="button"
@@ -79,6 +82,11 @@ function ToolCallRowInner({
         aria-label={action}
         onClick={() => setExpanded((v) => !v)}
       >
+        {isAgent ? (
+          <span className="tool-call-row-icon" aria-hidden="true">
+            <Bot size={13} />
+          </span>
+        ) : null}
         {tool.status !== "done" ? (
           <span
             className="tool-call-row-dot"

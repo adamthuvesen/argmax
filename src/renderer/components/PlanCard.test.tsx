@@ -134,7 +134,26 @@ describe("PlanCard", () => {
     expect(screen.getAllByRole("option")[0]).toHaveAttribute("aria-selected", "true");
   });
 
-  it("collapses to a summary header on Escape and re-expands when the chevron is clicked", () => {
+  it("Escape is a no-op (cards are not dismissable — the answer is the dismiss)", () => {
+    const onAccept = vi.fn();
+    const onReject = vi.fn();
+    render(
+      <PlanCard
+        plan={samplePlan()}
+        createdAt="2026-05-16T14:30:00.000Z"
+        rawMarkdown="raw"
+        onAccept={onAccept}
+        onReject={onReject}
+      />
+    );
+    const listbox = screen.getByRole("listbox", { name: "Plan response" });
+    fireEvent.keyDown(listbox, { key: "Escape" });
+    expect(screen.getByRole("listbox", { name: "Plan response" })).toBeInTheDocument();
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
+  it("collapses to a summary header after submit and re-expands via the chevron", () => {
     render(
       <PlanCard
         plan={samplePlan()}
@@ -145,7 +164,7 @@ describe("PlanCard", () => {
       />
     );
     const listbox = screen.getByRole("listbox", { name: "Plan response" });
-    fireEvent.keyDown(listbox, { key: "Escape" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
     expect(screen.queryByRole("listbox", { name: "Plan response" })).toBeNull();
     expect(screen.getByRole("button", { name: "Expand plan" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Expand plan" }));

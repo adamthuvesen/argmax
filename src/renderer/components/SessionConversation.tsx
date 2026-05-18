@@ -1647,24 +1647,40 @@ export function SessionConversation({
           </div>
         ) : null}
         {pendingMessages.length > 0 ? (
-          <div className="composer-queued-lane" aria-label="Queued follow-ups">
-            {pendingMessages.map((entry) => (
-              <div key={entry.id} className="composer-queued-chip" title={entry.content}>
-                <span className="composer-queued-chip-label">{entry.content}</span>
-                <button
-                  type="button"
-                  className="composer-queued-chip-remove"
-                  aria-label="Cancel queued follow-up"
-                  title="Cancel queued follow-up"
-                  onClick={() => {
-                    if (!session || !onCancelQueuedMessage) return;
-                    void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+          <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
+            {pendingMessages.map((entry) => {
+              const cancel = (): void => {
+                if (!session || !onCancelQueuedMessage) return;
+                void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+              };
+              return (
+                <div
+                  key={entry.id}
+                  className="composer-queued-chip"
+                  role="listitem"
+                  tabIndex={0}
+                  title={entry.content}
+                  aria-label={`Queued follow-up: ${entry.content}`}
+                  onKeyDown={(event) => {
+                    if (event.key === "Backspace" || event.key === "Delete") {
+                      event.preventDefault();
+                      cancel();
+                    }
                   }}
                 >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+                  <span className="composer-queued-chip-label">{entry.content}</span>
+                  <button
+                    type="button"
+                    className="composer-queued-chip-remove"
+                    aria-label="Cancel queued follow-up"
+                    title="Cancel queued follow-up"
+                    onClick={cancel}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : null}
         <div className="session-input-field">

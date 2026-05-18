@@ -30,7 +30,7 @@ The renderer talks to main **only** through `window.argmax`, exposed by [src/mai
 - `webContents.setWindowOpenHandler` denies all `window.open` / `target="_blank"` attempts. `https?://` URLs route through `shell.openExternal`; everything else is dropped.
 - `webContents.on("will-navigate")` blocks any in-page navigation away from the loaded bundle (dev server origin or `file://`).
 
-Request/response IPC uses `ipcRenderer.invoke`; pushed events (`dashboard:delta`, `terminal:data`, `terminal:exit`, `menu:command`) use `ipcRenderer.on` with a returned unsubscribe. See [ipc.md](ipc.md) for the channel inventory.
+Request/response IPC uses `ipcRenderer.invoke`; pushed events (`dashboard:delta`, `terminal:data`, `terminal:exit`, `mcp:auth:data`, `mcp:auth:exit`, `menu:command`) use `ipcRenderer.on` with a returned unsubscribe. See [ipc.md](ipc.md) for the channel inventory.
 
 ## Lifecycle
 

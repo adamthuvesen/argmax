@@ -67,11 +67,11 @@ A future change can add a "fully autonomous" per-project setting that fires keep
 
 | Channel | Schema | Returns |
 |---|---|---|
-| `tournament:launch` | `tournamentLaunchInputSchema` | `Tournament` |
+| `tournament:launch` | `tournamentLaunchInputSchema` (2–8 contestants) | `Tournament` |
 | `tournament:list` | `{ projectId }` | `Tournament[]` |
 | `tournament:get` | `{ tournamentId }` | `TournamentLeaderboard` (also runs judge if quorum reached) |
 | `tournament:keep` | `{ tournamentId, contestantIndex, reason? }` | `TournamentLeaderboard` |
-| `scoring:listPolicies` | `void` | `ScoringPolicy[]` |
+| `scoring:list-policies` | `void` | `ScoringPolicy[]` |
 
 Polling-based for MVP: the `TournamentPanel` calls `tournament:get` every 2 seconds while a tournament is open. The judge runs synchronously on the IPC thread when `tournament:get` detects all contestants have reached a terminal state. A future change can swap to a `tournament:delta` push channel mirroring `dashboard:delta`.
 

@@ -113,6 +113,7 @@ Start with the map in [`AGENTS.md`](AGENTS.md) (also reachable as `CLAUDE.md`). 
 | Claude / Codex / Cursor adapters | [agents/docs/providers.md](agents/docs/providers.md) |
 | Worktrees, review, checkpoints, file preview | [agents/docs/workspaces.md](agents/docs/workspaces.md) |
 | Risk policy, approvals, workspace checks | [agents/docs/approvals-checks.md](agents/docs/approvals-checks.md) |
+| Plan / Question cards in chat, tool-deny handling | [agents/docs/chat-cards.md](agents/docs/chat-cards.md) |
 | Integrated terminal panel | [agents/docs/terminal.md](agents/docs/terminal.md) |
 | GitHub CI feedback loop | [agents/docs/gh.md](agents/docs/gh.md) |
 | Project-scoped learnings (memory) | [agents/docs/memory.md](agents/docs/memory.md) |

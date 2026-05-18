@@ -22,7 +22,7 @@ If you skipped `rebuild:node`, main-process tests fail with `NODE_MODULE_VERSION
 - Mock `window.argmax` in `beforeEach`. The component falls back to `demoSnapshot` only when `window.argmax` is `undefined` (browser-preview mode), so renderer tests must explicitly set the mock.
 - Include `dashboard.onDelta(listener)` in `ArgmaxApi` mocks: capture the listener, return an unsubscribe spy, and use `act()` when invoking the captured listener so React observes streamed updates.
 - Include the focused dashboard APIs: `dashboard.list()`, `session.eventsSince()`, `workspaces.status()`, `approvals.pending()`. Normal renderer refresh should not call `dashboard.load()`.
-- The renderer is delta-driven: there's no recurring `setInterval` poll. `workspaces.status()` + `approvals.pending()` fire on `document.visibilitychange` (tab focus). `App.test.tsx` pins this with `expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 1200)` — leave that assertion in place so a regression that reintroduces background polling fails loudly.
+- The renderer is delta-driven: there's no recurring `setInterval` poll. `workspaces.status()` + `approvals.pending()` fire on `document.visibilitychange` (tab focus, wired in [src/renderer/hooks/useDashboardSession.ts](../../src/renderer/hooks/useDashboardSession.ts)). `App.test.tsx` pins this with `expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 1200)` — leave that assertion in place so a regression that reintroduces background polling fails loudly.
 - See [src/renderer/App.test.tsx](../../src/renderer/App.test.tsx) for the canonical pattern — mocks of every IPC namespace, a fixture `snapshot`, captured listeners.
 
 ## Main-process conventions

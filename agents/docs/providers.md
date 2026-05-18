@@ -34,8 +34,8 @@ Argmax sessions are durable UI rows. The underlying provider may be one process 
 
 - `sessions.provider_conversation_id` stores the provider-side resume id.
 - **Claude** structured launches pass `--session-id <argmax session id>` and resume with `--resume <provider_conversation_id>`.
-- **Codex** structured launches capture `thread.started.thread_id` from the JSONL stream and resume with `codex exec resume <id> --json`.
-- **Cursor** structured launches resume with `cursor-agent agent -p --resume <id>`.
+- **Codex** structured launches capture `thread.started.thread_id` from the JSONL stream and resume with `codex exec resume --json … <id> -` (prompt arrives via stdin).
+- **Cursor** structured launches resume with `cursor-agent agent -p --resume <id> --output-format stream-json --stream-partial-output …`.
 
 `sessions.model_id`, `sessions.model_label`, and `sessions.reasoning_effort` are durable session state too. Changing the model in the renderer affects the **next** prompt in the same provider conversation; it does not push a live `/model` command into an already-running interactive process.
 

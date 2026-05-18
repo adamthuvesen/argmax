@@ -29,13 +29,14 @@ The channel inventory is the keys of the `ipcSchemas` object in [src/shared/ipcS
 | Namespace | Examples | Notes |
 |---|---|---|
 | `dashboard` | `list`, `load`, `onDelta` | Prefer focused reads; `load` is the compat wrapper |
-| `projects` | `list`, `pickFolder`, `register`, `updateSettings`, `listBranches`, `switchBranch` | |
+| `projects` | `list`, `pickFolder`, `register`, `remove`, `updateSettings`, `listBranches`, `switchBranch` | |
 | `workspaces` | `createIsolated`, `createCurrent`, `refreshStatus`, `status`, `keep`, `archive`, `openInIde`, `setPinned` | `status` is the polling read |
-| `providers` | `discover`, `launch`, `sendInput`, `resize`, `terminate` | See [providers.md](providers.md) |
+| `providers` | `discover`, `launch`, `sendInput`, `resize`, `terminate`, `cancelQueuedMessage` | See [providers.md](providers.md) |
+| `attachments` | `saveImage` | Composer image paste/drop — bytes land under userData, IPC returns an absolute path |
 | `approvals` | `pending`, `resolve` | |
 | `session` | `eventsSince`, `costSummary`, `search` | Cursor-based event tail |
 | `review` | `listChangedFiles`, `loadDiff`, `listChangedFilesForProject`, `loadDiffForProject` | Workspace + project-scoped variants for the review surface |
-| `workspace` (singular) | `listFiles`, `readFile`, `writeFile`, `statFile` (+ `…ForProject` variants) | File-tree + inline file editor; writes are mtime-checked |
+| `workspace` (singular) | `listFiles`, `readFile`, `writeFile`, `statFile` (+ `…ForProject` variants), `grepContent` | File-tree + inline file editor; writes are mtime-checked. `grepContent` powers ⌘⇧F. |
 | `checks` | `run` | |
 | `checkpoints` | `create` | Binary patches under `${dataDirectory}/checkpoints/` |
 | `attempts` | `selectPreferred` | Multi-attempt session preference |
@@ -47,6 +48,8 @@ The channel inventory is the keys of the `ipcSchemas` object in [src/shared/ipcS
 | `learnings` | `list`, `update`, `delete` | See [memory.md](memory.md) |
 | `prs` | `listForSession`, `refresh` | See [gh.md](gh.md) |
 | `terminal` | `spawn`, `write`, `resize`, `terminate`, `onData`, `onExit` | See [terminal.md](terminal.md) |
+| `tournaments` | `launch`, `list`, `get`, `keep` | See [tournaments.md](tournaments.md) |
+| `scoring` | `listPolicies` | Tournament judge policies |
 | `menu` | `onCommand` | App-menu → renderer command bus |
 
 ## Push channels

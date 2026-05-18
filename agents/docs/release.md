@@ -63,7 +63,7 @@ Watch for these failure modes:
 2. `npm run package`.
 3. Create a GitHub release tagged `v<version>`, upload the DMG, ZIP, and `latest-mac.yml` from `release/`.
 
-The in-app `Check for updates` menu item (App menu) and the boot-time auto-check both reach the configured GitHub feed.
+The in-app `Check for Updates…` menu item (App menu) and the boot-time auto-check both reach the configured GitHub feed.
 
 ## Verifying the bundle without credentials
 

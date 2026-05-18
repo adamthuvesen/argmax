@@ -32,9 +32,9 @@ Both are push-only — they don't go through Zod and don't belong in `IPC_CHANNE
 |---|---|
 | `terminal.write({ terminalId, data })` | Forwards `data` to the PTY's stdin. Used for keystrokes and pasted text. |
 | `terminal.resize({ terminalId, cols, rows })` | `pty.resize(cols, rows)`. The xterm fit-addon drives this on container resize. |
-| `terminal.terminate(terminalId)` | Sends SIGHUP; relies on `node-pty`'s normal teardown. The `exit` event still fires. |
+| `terminal.terminate(terminalId)` | Calls `safeKill(pty)` (swallows "already exited"). Disposables are not torn down here — the pty's own `onExit` clears the entry and broadcasts the exit event. |
 
-`disposeAll()` is wired to Electron's `before-quit` so spawned shells are torn down cleanly. The cleanup loop intentionally swallows individual errors so one stuck PTY doesn't strand the others.
+`disposeAll()` is wired to Electron's `before-quit` so spawned shells are torn down cleanly. Each PTY goes through the shared SIGTERM → SIGKILL escalation from `scheduleSigkillEscalation` so a trap'd shell can't survive app quit. The cleanup loop intentionally swallows individual errors so one stuck PTY doesn't strand the others.
 
 ## Renderer integration
 
@@ -45,7 +45,7 @@ xterm.js + the fit addon live in the renderer. Each tab owns one xterm instance 
 
 ## Tabs
 
-The panel is multi-tab: `TerminalTabsPanel` ([src/renderer/components/TerminalTabsPanel.tsx](../../src/renderer/components/TerminalTabsPanel.tsx)) owns the tab list and renders one `TerminalInstance` per tab. Each instance spawns its own PTY, so `terminal:spawn` is called once per `+`-click. The main-process surface is unchanged — every PTY is still keyed by its UUID `terminalId`, and `terminal:data` / `terminal:exit` push events are id-filtered in the leaf.
+The panel is multi-tab: `TerminalTabsPanel` ([src/renderer/components/TerminalTabsPanel.tsx](../../src/renderer/components/TerminalTabsPanel.tsx)) owns the tab list and renders one `TerminalInstance` ([src/renderer/components/TerminalPanel.tsx](../../src/renderer/components/TerminalPanel.tsx)) per tab. Each instance spawns its own PTY, so `terminal:spawn` is called once per `+`-click. The main-process surface is unchanged — every PTY is still keyed by its UUID `terminalId`, and `terminal:data` / `terminal:exit` push events are id-filtered in the leaf.
 
 Tabs are per-workspace: the parent passes `key={workspace.id}` so changing workspaces remounts the container, unmounting every leaf and terminating its PTY. Within a workspace, inactive tabs stay mounted (`display: none`) so long-running processes (`npm run dev`, `tail -f`) survive both tab switches and ⌘J collapse. The outer panel collapses via `data-collapsed="true"` rather than unmounting, preserving the same survival guarantee.
 

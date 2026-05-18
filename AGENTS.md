@@ -68,6 +68,7 @@ Start in **[architecture.md](agents/docs/architecture.md)** — it's the map. Fo
 - [gh.md](agents/docs/gh.md) — GitHub CI feedback loop (poller, follow-up sessions)
 - [memory.md](agents/docs/memory.md) — project-scoped learnings, extraction, injection
 - [tournaments.md](agents/docs/tournaments.md) — parallel agents in worktrees, deterministic judge, keep-winner flow
+- [chat-cards.md](agents/docs/chat-cards.md) — PlanCard / QuestionCard rendering, tool-deny handling, thinking-gate, submit-terminate flow
 
 ### Build & test
 - [electron.md](agents/docs/electron.md) — native-module rebuild dance, lifecycle, preload bridge, packaging

@@ -116,7 +116,6 @@ export interface ReviewState {
   diffState: AsyncState;
   diffError: string | null;
   isPanelOpen: boolean;
-  isSummaryCollapsed: boolean;
   mode: ReviewPanelMode;
   setMode: (mode: ReviewPanelMode) => void;
   workspaceFiles: WorkspaceFilesState;
@@ -125,7 +124,7 @@ export interface ReviewState {
   openInFilesView: (filePath: string) => void;
   closePanel: () => void;
   togglePanel: () => void;
-  toggleSummary: () => void;
+  toggleChangesPanel: () => void;
 }
 
 export function useReviewState(source: ReviewSource | null): ReviewState {
@@ -168,7 +167,6 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const [diffState, setDiffState] = useState<AsyncState>("idle");
   const [diffError, setDiffError] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
   const [mode, setMode] = useState<ReviewPanelMode>("changes");
   const [workspaceFileEntries, setWorkspaceFileEntries] = useState<WorkspaceFileEntry[]>([]);
   const [workspaceFilesListState, setWorkspaceFilesListState] = useState<AsyncState>("idle");
@@ -185,7 +183,9 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const workspaceSaveTokens = useRef(new Map<string, number>());
   const previousSourceId = useRef<string | null>(null);
   const isPanelOpenRef = useRef(false);
+  const modeRef = useRef<ReviewPanelMode>("changes");
   const filesCountRef = useRef(0);
+  const filesRef = useRef<ChangedFileSummary[]>([]);
   // Refs mirror the latest values for use inside event listeners (focus,
   // dashboard:delta) so we don't need to re-bind the listener on every keystroke.
   const sourceIdRef = useRef<string | null>(null);
@@ -212,7 +212,12 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, [isPanelOpen]);
 
   useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
     filesCountRef.current = files.length;
+    filesRef.current = files;
   }, [files]);
 
   const updateWorkspaceFileTab = useCallback(
@@ -280,7 +285,6 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       setDiffState("idle");
       setDiffError(null);
       setIsPanelOpen(false);
-      setIsSummaryCollapsed(true);
       setMode("changes");
       setWorkspaceFileEntries([]);
       setWorkspaceFilesListState("idle");
@@ -297,7 +301,6 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       setFilesState("idle");
       setFilesError(null);
       setIsPanelOpen(false);
-      setIsSummaryCollapsed(true);
       return;
     }
 
@@ -645,8 +648,16 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     setIsPanelOpen((open) => !open);
   }, []);
 
-  const toggleSummary = useCallback((): void => {
-    setIsSummaryCollapsed((current) => !current);
+  const toggleChangesPanel = useCallback((): void => {
+    if (isPanelOpenRef.current && modeRef.current === "changes") {
+      setIsPanelOpen(false);
+      return;
+    }
+    setMode("changes");
+    setIsPanelOpen(true);
+    // Mirror the auto-select-first-file behavior the file-load effect uses
+    // when the panel opens with files already loaded.
+    setSelectedFilePath((current) => current ?? filesRef.current[0]?.path ?? null);
   }, []);
 
   const workspaceFileTabSummaries: WorkspaceFileTab[] = workspaceFileTabs.map((tab) => ({
@@ -703,7 +714,6 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     diffState,
     diffError,
     isPanelOpen,
-    isSummaryCollapsed,
     mode,
     setMode,
     workspaceFiles,
@@ -712,6 +722,6 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     openInFilesView,
     closePanel,
     togglePanel,
-    toggleSummary
+    toggleChangesPanel
   };
 }

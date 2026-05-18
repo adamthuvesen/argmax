@@ -216,6 +216,84 @@ describe("normalizeProviderEvent", () => {
       }
     });
   });
+
+  it("drops sub-agent message text but keeps inline tool blocks (parent_tool_use_id)", () => {
+    // Claude Code streams sub-agent activity into the parent's session_id with
+    // `parent_tool_use_id` set. The sub-agent's user/assistant prose (its echo
+    // of the prompt, its internal narration) must NOT re-render as bubbles in
+    // the parent transcript. The inline tool_use/tool_result blocks must
+    // still surface so the parent's tool rollup stays accurate.
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "assistant",
+          parent_tool_use_id: "toolu_parent_task",
+          subagent_type: "Explore",
+          message: {
+            content: [
+              { type: "text", text: "Sub-agent saying something internal." },
+              { type: "tool_use", id: "tu_sub_1", name: "Bash", input: { command: "ls" } }
+            ]
+          }
+        }) + "\n"
+      ),
+      { provider: "claude" }
+    );
+
+    // Exactly one event: the inline tool_use block. The sub-agent's text is
+    // dropped on the floor.
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "command.started",
+      message: "Bash"
+    });
+  });
+
+  it("drops sub-agent user prompt echoes (parent_tool_use_id)", () => {
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "user",
+          parent_tool_use_id: "toolu_parent_task",
+          subagent_type: "Explore",
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Explore the documentation in this Electron/React Argmax project."
+              }
+            ]
+          }
+        }) + "\n"
+      ),
+      { provider: "claude" }
+    );
+
+    expect(events).toEqual([]);
+  });
+
+  it("still renders parent-level assistant text (parent_tool_use_id absent)", () => {
+    // Regression guard: the sub-agent filter must only fire when
+    // parent_tool_use_id is present. Ordinary parent assistant text stays.
+    const events = normalizeProviderEvent(
+      outputEvent(
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Parent speaking." }]
+          }
+        }) + "\n"
+      ),
+      { provider: "claude" }
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "message.completed",
+      message: "Parent speaking."
+    });
+  });
 });
 
 describe("mapProviderType", () => {
@@ -481,11 +559,12 @@ describe("detectPermissionGate (replayed from __fixtures__)", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       type: "approval.requested",
-      message: "Bash",
+      message: "rm -rf node_modules",
       payload: {
-        command: "Bash",
+        command: "rm -rf node_modules",
         reason: "Ask mode requires user approval for Bash",
         riskLevel: "high",
+        toolName: "Bash",
         toolUseId: "toolu_01ABC123"
       }
     });

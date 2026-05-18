@@ -14,7 +14,6 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     diffState: "idle",
     diffError: null,
     isPanelOpen: false,
-    isSummaryCollapsed: true,
     mode: "changes",
     setMode: () => {},
     workspaceFiles: {
@@ -51,7 +50,7 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     openInFilesView: () => {},
     closePanel: () => {},
     togglePanel: () => {},
-    toggleSummary: () => {},
+    toggleChangesPanel: () => {},
     ...overrides
   };
 }
@@ -77,6 +76,49 @@ const FAILED_RUN: CheckRun = {
   startedAt: "2026-05-12T10:00:30.000Z",
   completedAt: "2026-05-12T10:00:34.000Z"
 };
+
+describe("ChangedFilesCard summary header", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("opens the review panel in Changes mode when clicked", () => {
+    const toggleChangesPanel = vi.fn();
+    render(
+      <ChangedFilesCard
+        review={reviewStub({
+          files: [
+            { path: "src/a.ts", status: "modified", additions: 3, deletions: 1 },
+            { path: "src/b.ts", status: "added", additions: 7, deletions: 0 }
+          ],
+          toggleChangesPanel
+        })}
+      />
+    );
+
+    const header = screen.getByRole("button", { name: "Open changed files in review panel" });
+    expect(header).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(header);
+    expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks itself pressed when the panel is open in Changes mode and renders no inline file list", () => {
+    render(
+      <ChangedFilesCard
+        review={reviewStub({
+          files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1 }],
+          isPanelOpen: true,
+          mode: "changes"
+        })}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Open changed files in review panel" })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("src/a.ts")).toBeNull();
+  });
+});
 
 describe("ChangedFilesCard checks list", () => {
   afterEach(() => {

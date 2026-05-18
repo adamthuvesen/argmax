@@ -104,11 +104,17 @@ export class ApprovalService {
   ): ApprovalRequest {
     return this.database.connection.transaction((): ApprovalRequest => {
       const approval = this.database.resolveApproval(approvalId, status);
-      const state = status === "approved" ? "running" : "blocked";
-      this.database.updateSessionState(approval.sessionId, {
-        state,
-        attention: computeSessionAttention({ state })
-      });
+      const session = this.database.getSession(approval.sessionId);
+      // Provider-emitted permission gates can be persisted after the provider
+      // has already exited. Resolving that stale row should update the audit
+      // trail, but it must not revive a completed/failed/cancelled session.
+      if (session.state === "waiting") {
+        const state = status === "approved" ? "running" : "blocked";
+        this.database.updateSessionState(approval.sessionId, {
+          state,
+          attention: computeSessionAttention({ state })
+        });
+      }
       this.database.persistTimelineEvent({
         id: randomUUID(),
         sessionId: approval.sessionId,

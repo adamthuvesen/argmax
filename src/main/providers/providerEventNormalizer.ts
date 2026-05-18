@@ -256,6 +256,7 @@ function normalizeJsonPayload(
         reason: gate.reason,
         riskLevel: gate.riskLevel,
         ...(gate.cwd ? { cwd: gate.cwd } : {}),
+        ...(gate.toolName ? { toolName: gate.toolName } : {}),
         ...(gate.toolUseId ? { toolUseId: gate.toolUseId } : {}),
         ...(providerType ? { providerEventType: providerType } : {})
       },
@@ -319,6 +320,17 @@ function normalizeJsonPayload(
     return { events: results, usages };
   }
   if (!mappedType && !text) {
+    return { events: results, usages };
+  }
+
+  // Sub-agent (Task) events stream into the parent's session_id tagged with
+  // `parent_tool_use_id`. We already surfaced the Task tool_use as a collapsed
+  // "Agent" row, and the inline tool_use/tool_result blocks above keep the
+  // sub-agent's activity rollup ("Explored 6 files, ran 23 commands"). What
+  // we explicitly do NOT want is the sub-agent's own user/assistant prose —
+  // e.g. its echo of the prompt or its internal narration — re-rendering as
+  // standalone bubbles in the parent transcript.
+  if (typeof payload.parent_tool_use_id === "string" && payload.parent_tool_use_id.length > 0) {
     return { events: results, usages };
   }
 
@@ -617,6 +629,7 @@ interface PermissionGateInfo {
   reason: string;
   riskLevel: "low" | "medium" | "high";
   cwd?: string;
+  toolName?: string;
   toolUseId?: string;
 }
 
@@ -639,12 +652,14 @@ export function detectPermissionGate(
   if (provider !== "codex") {
     if (stringValue(payload.type) === "system" && stringValue(payload.subtype) === "permission_denied") {
       const tool = stringValue(payload.tool_name) ?? "tool";
+      const command = commandFromClaudePermissionMessage(stringValue(payload.message)) ?? tool;
       const reason =
         stringValue(payload.decision_reason) ?? stringValue(payload.message) ?? "permission denied";
       return {
-        command: tool,
+        command,
         reason,
-        riskLevel: classifyToolRisk(tool),
+        riskLevel: command === tool ? classifyToolRisk(tool) : classifyCommandRisk(command),
+        ...(command !== tool ? { toolName: tool } : {}),
         ...(stringValue(payload.tool_use_id) ? { toolUseId: stringValue(payload.tool_use_id) as string } : {})
       };
     }
@@ -691,6 +706,13 @@ function classifyToolRisk(tool: string): "low" | "medium" | "high" {
 function classifyCommandRisk(command: string): "low" | "medium" | "high" {
   if (HIGH_RISK_COMMAND_RE.test(command)) return "high";
   return "medium";
+}
+
+function commandFromClaudePermissionMessage(message: string | null): string | null {
+  if (!message) return null;
+  const match = message.match(/^User approval required to run:\s*(.+)$/s);
+  const command = match?.[1]?.trim();
+  return command ? command : null;
 }
 
 function isMessageEvent(eventType: EventType | null): boolean {

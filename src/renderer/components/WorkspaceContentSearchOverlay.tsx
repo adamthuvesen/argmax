@@ -1,5 +1,6 @@
 import { FileText, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { WorkspaceContentSearchFile, WorkspaceContentSearchResult } from "../../shared/types.js";
 
 const DEBOUNCE_MS = 180;
@@ -38,8 +39,13 @@ export function WorkspaceContentSearchOverlay({
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
   const tokenRef = useRef(0);
+
+  // Document-level Esc + outside-click via the shared hook. Esc no longer
+  // depends on the overlay div catching focus.
+  useDismissOnOutsideOrEscape(modalRef, open, onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -141,11 +147,7 @@ export function WorkspaceContentSearchOverlay({
   if (!open) return null;
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
+    // Esc handled by useDismissOnOutsideOrEscape at the document level.
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setSelectedIndex((current) => Math.min(current + 1, Math.max(flatRows.length - 1, 0)));
@@ -184,13 +186,10 @@ export function WorkspaceContentSearchOverlay({
       role="dialog"
       aria-label="Search workspace files"
       aria-modal="true"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      <div className="search-modal">
+      <div className="search-modal" ref={modalRef}>
         <div className="search-input-wrap">
           <Search size={14} aria-hidden="true" />
           <input

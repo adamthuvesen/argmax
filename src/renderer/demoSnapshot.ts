@@ -203,6 +203,35 @@ export const demoSnapshot: DashboardSnapshot = {
       createdAt: "2026-05-08T15:53:53.000Z"
     },
     {
+      id: "event-board-tool-5-s",
+      sessionId: "session-ui-board",
+      type: "command.started",
+      message: "Task",
+      payload: {
+        id: "tu_board_5",
+        name: "Task",
+        input: {
+          description: "Audit board density heuristics",
+          prompt:
+            "Read src/renderer/board/density.ts and check whether the attention-level → row-height mapping handles the edge cases: 0 sessions, single session, and >12 sessions. Report findings with file:line refs. Don't modify code.",
+          subagent_type: "general-purpose"
+        }
+      },
+      createdAt: "2026-05-08T15:53:54.000Z"
+    },
+    {
+      id: "event-board-tool-5-c",
+      sessionId: "session-ui-board",
+      type: "command.completed",
+      message: "tool_result",
+      payload: {
+        tool_use_id: "tu_board_5",
+        content:
+          "density.ts:18 handles 0 sessions by returning the default row height (good); :32 caps at 12 sessions but the cap is silent — flag in UI when truncated."
+      },
+      createdAt: "2026-05-08T15:53:58.000Z"
+    },
+    {
       id: "event-board-message",
       sessionId: "session-ui-board",
       type: "message.completed",

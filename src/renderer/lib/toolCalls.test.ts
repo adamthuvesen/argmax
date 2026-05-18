@@ -58,6 +58,47 @@ describe("extractToolUseId", () => {
   });
 });
 
+describe("Task / sub-agent tools", () => {
+  it("classifies the Task tool into the agent bucket (case-insensitive)", () => {
+    expect(getToolTypeBucket("Task")).toBe("agent");
+    expect(getToolTypeBucket("task")).toBe("agent");
+    expect(getToolTypeBucket("subagent")).toBe("agent");
+    expect(getToolTypeBucket("explore_sub_agent")).toBe("agent");
+  });
+
+  it("does not sweep up unrelated names containing 'task'", () => {
+    expect(getToolTypeBucket("TaskList")).not.toBe("agent");
+    expect(getToolTypeBucket("agent_id")).not.toBe("agent");
+  });
+
+  it("previews from the `description` field, not the long prompt body", () => {
+    expect(
+      extractToolInputPreview("Task", {
+        description: "Audit shared + scripts",
+        prompt: "A very long prompt body that should not surface in the row header...",
+        subagent_type: "general-purpose"
+      })
+    ).toBe("Audit shared + scripts");
+  });
+
+  it("describeToolAction renders the Agent verb so the row reads as 'Agent <description>'", () => {
+    const t = tool({
+      name: "Task",
+      inputPreview: "Audit shared + scripts",
+      inputFull: { description: "Audit shared + scripts" }
+    });
+    expect(describeToolAction(t)).toBe("Agent Audit shared + scripts");
+  });
+
+  it("group headline uses the 'Spawned' verb", () => {
+    const out = summarizeToolGroup([
+      tool({ name: "Task", id: "1" }),
+      tool({ name: "Task", id: "2" })
+    ]);
+    expect(out.headline).toBe("Spawned 2 agents");
+  });
+});
+
 describe("file_change tools", () => {
   it("previews changed file paths", () => {
     expect(

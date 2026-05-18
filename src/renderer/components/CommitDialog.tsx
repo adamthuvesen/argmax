@@ -202,6 +202,15 @@ export function CommitDialog({
           className="commit-dialog-message"
           value={message}
           onChange={(event) => setMessage(event.target.value)}
+          onKeyDown={(event) => {
+            // Cmd/Ctrl+Enter commits from the message textarea — plain Enter
+            // stays a newline so multi-line commit messages still work.
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              if (submitDisabled) return;
+              void handleSubmit();
+            }
+          }}
           rows={4}
           placeholder="type(scope): lowercase imperative"
           autoFocus

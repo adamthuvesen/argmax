@@ -121,8 +121,8 @@ const api: ArgmaxApi = {
       invoke("workspace:status", input) as Promise<WorkspaceStatusSnapshot>,
     keep: (workspaceId: string) =>
       invoke("workspaces:keep", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>,
-    archive: (workspaceId: string) =>
-      invoke("workspaces:archive", workspaceId) as Promise<DashboardSnapshot["workspaces"][number]>,
+    archive: (input: { workspaceId: string; force?: boolean }) =>
+      invoke("workspaces:archive", input) as Promise<DashboardSnapshot["workspaces"][number]>,
     openInIde: (input: OpenInIdeInput) =>
       invoke("workspaces:open-in-ide", input) as Promise<{ ok: true }>,
     setPinned: (input: { workspaceId: string; pinned: boolean }) =>

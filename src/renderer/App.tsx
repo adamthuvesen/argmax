@@ -593,17 +593,37 @@ export function App(): JSX.Element {
       setToast({ kind: "error", message: "Open the Electron app window to archive workspaces." });
       return;
     }
+    // A dirty workspace would otherwise come back as "kept" and the user
+    // would have to commit/discard then click archive again. Ask once,
+    // then pass force so the backend skips the dirty-keep guard. For
+    // isolated worktrees git removes the directory (branch preserved);
+    // shared workspaces leave the filesystem alone — only the sidebar
+    // row goes away.
+    const workspace = workspacesById.get(workspaceId);
+    let force = false;
+    if (workspace?.dirty) {
+      const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
+      const consequence = workspace.sharedWorkspace
+        ? "The files on disk stay; only the sidebar entry is removed."
+        : "Archiving will delete the worktree and discard these changes (the branch is preserved).";
+      const confirmed = window.confirm(
+        `${workspace.taskLabel} has ${fileLabel}. ${consequence} Continue?`
+      );
+      if (!confirmed) return;
+      force = true;
+    }
     let result: Awaited<ReturnType<typeof window.argmax.workspaces.archive>>;
     try {
-      result = await window.argmax.workspaces.archive(workspaceId);
+      result = await window.argmax.workspaces.archive({ workspaceId, force });
     } catch (error) {
       setToast({ kind: "error", message: error instanceof Error ? error.message : "Workspace archive failed." });
       return;
     }
     setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
-    // Backend refuses to remove a dirty worktree and falls back to "kept" —
-    // the row stays in the sidebar (filter only hides "archived"). Tell the
-    // user why, and don't clear selection since the workspace is still live.
+    // Without force a dirty worktree comes back as "kept" — the row stays
+    // in the sidebar (filter only hides "archived"). With force, that
+    // branch is unreachable. Either way, fall through to inform the user
+    // when the workspace did not actually archive.
     if (result.state !== "archived") {
       setToast({
         kind: "info",
@@ -617,7 +637,7 @@ export function App(): JSX.Element {
     }
     // The grid-reconcile effect drops cells whose session/workspace vanished
     // from the snapshot — no manual prune here.
-  }, [selectedWorkspaceId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
+  }, [selectedWorkspaceId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot, workspacesById]);
 
   const handleOpenInIde = useCallback(
     async (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }): Promise<void> => {

@@ -163,10 +163,10 @@ export class WorkspaceService {
    */
   async archiveWorkspace(
     workspaceId: string,
-    options: { cancelChecks?: (workspaceId: string) => void } = {}
+    options: { cancelChecks?: (workspaceId: string) => void; force?: boolean } = {}
   ): Promise<WorkspaceSummary> {
     const workspace = await this.refreshGitStatus(workspaceId);
-    if (workspace.dirty) {
+    if (workspace.dirty && !options.force) {
       this.closeWatcher(workspaceId);
       return this.database.updateWorkspaceState(workspaceId, "kept");
     }
@@ -184,22 +184,33 @@ export class WorkspaceService {
 
       // Re-check porcelain immediately before remove to close the TOCTOU
       // window between refreshGitStatus and worktree remove. A file added
-      // between the two calls would otherwise be lost.
-      const recheck = await runGitText(workspace.path, ["status", "--porcelain"]);
-      if (recheck.trim().length > 0) {
-        this.closeWatcher(workspaceId);
-        return this.database.updateWorkspaceState(workspaceId, "kept");
+      // between the two calls would otherwise be lost. Skipped under
+      // force: the caller already accepted that uncommitted work will be
+      // discarded along with the worktree directory.
+      if (!options.force) {
+        const recheck = await runGitText(workspace.path, ["status", "--porcelain"]);
+        if (recheck.trim().length > 0) {
+          this.closeWatcher(workspaceId);
+          return this.database.updateWorkspaceState(workspaceId, "kept");
+        }
       }
 
       // Close the watcher before remove so file events from the disappearing
       // worktree don't fire ENOENT-spam refresh attempts during teardown.
       this.closeWatcher(workspaceId);
 
+      // `worktree remove` refuses dirty trees; `--force` is required when
+      // the caller has accepted that local changes will be lost. The branch
+      // itself stays — only the worktree directory and git's worktree
+      // metadata are removed.
+      const removeArgs = options.force
+        ? ["worktree", "remove", "--force", workspace.path]
+        : ["worktree", "remove", workspace.path];
       try {
-        await runGitText(project.repoPath, ["worktree", "remove", workspace.path]);
+        await runGitText(project.repoPath, removeArgs);
       } catch (error) {
         const detail = errorMessage(error) || "Unknown git error";
-        throw new WorkspaceError(`Could not archive clean worktree. ${detail}`, "Review the worktree and retry archive.");
+        throw new WorkspaceError(`Could not archive worktree. ${detail}`, "Review the worktree and retry archive.");
       }
     } else {
       options.cancelChecks?.(workspaceId);

@@ -125,7 +125,12 @@ export function WorkspaceTree({
     setScrollTop(target);
   }, [state.selectedPath, visibleRows, effectiveHeight]);
 
-  const containerStyle = height === undefined ? { height: "100%" as const } : { height };
+  // When the parent provides an explicit height (e.g. the command palette pop-out),
+  // we honour it. Otherwise we let `.workspace-tree`'s flex sizing fill the
+  // available column — using inline `height: 100%` here fights the flex parent
+  // and leaves the scroll container without a definite height in some layouts
+  // (notably the LaunchSurface review-panel overlay), which kills scrolling.
+  const containerStyle = height === undefined ? undefined : { height };
 
   if (state.listState === "loading") {
     return (

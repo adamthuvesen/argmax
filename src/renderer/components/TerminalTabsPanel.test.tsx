@@ -262,6 +262,110 @@ describe("TerminalTabsPanel", () => {
     expect(await screen.findByRole("tab", { name: "zsh 2" })).toBeInTheDocument();
   });
 
+  it("uses roving tabindex — only the active tab is in the natural tab order", async () => {
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute("tabindex", "0");
+  });
+
+  it("ArrowRight / ArrowLeft moves the active tab and follows with focus", async () => {
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
+
+    const second = screen.getByRole("tab", { name: "zsh 2" });
+    second.focus();
+    fireEvent.keyDown(second, { key: "ArrowLeft" });
+
+    const first = screen.getByRole("tab", { name: "zsh" });
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(first).toHaveFocus();
+
+    // ArrowRight wraps within the list.
+    fireEvent.keyDown(first, { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveFocus();
+  });
+
+  it("Home and End jump to the first and last tabs", async () => {
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(3));
+
+    const second = screen.getByRole("tab", { name: "zsh 2" });
+    second.focus();
+    fireEvent.keyDown(second, { key: "Home" });
+    expect(screen.getByRole("tab", { name: "zsh" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "zsh" }), { key: "End" });
+    expect(screen.getByRole("tab", { name: "zsh 3" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "zsh 3" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+  });
+
+  it("Delete on a focused tab closes it and terminates its PTY", async () => {
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
+
+    const second = screen.getByRole("tab", { name: "zsh 2" });
+    second.focus();
+    fireEvent.keyDown(second, { key: "Delete" });
+
+    await waitFor(() => expect(stub.terminate).toHaveBeenCalledWith("pty-2"));
+    expect(screen.queryByRole("tab", { name: "zsh 2" })).not.toBeInTheDocument();
+  });
+
   it("emits terminal:data only to the matching xterm — listeners are id-filtered", async () => {
     render(
       <TerminalTabsPanel

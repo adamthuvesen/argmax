@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { buildSafeFtsPrefixQuery } from "../lib/ftsQuery.js";
 import { parseFtsSnippet } from "../lib/paletteSearch.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 
 export interface SearchHit {
   sessionId: string;
@@ -28,9 +29,14 @@ export function SearchOverlay({
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
   const tokenRef = useRef(0);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
+
+  // Document-level Esc + outside-click via the shared hook. The local
+  // overlay handlers used to require focus inside the modal to fire Esc.
+  useDismissOnOutsideOrEscape(modalRef, open, onClose);
 
   // Reset state every time the overlay re-opens, and restore focus to the
   // trigger when it closes so keyboard users land back where they invoked it.
@@ -115,11 +121,7 @@ export function SearchOverlay({
   if (!open) return null;
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
+    // Esc handled by useDismissOnOutsideOrEscape at the document level.
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setSelectedIndex((current) => Math.min(current + 1, Math.max(hits.length - 1, 0)));
@@ -145,13 +147,10 @@ export function SearchOverlay({
       role="dialog"
       aria-label="Search sessions"
       aria-modal="true"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      <div className="search-modal">
+      <div className="search-modal" ref={modalRef}>
         <div className="search-input-wrap">
           <Search size={14} aria-hidden="true" />
           <input

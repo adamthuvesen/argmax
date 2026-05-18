@@ -5913,8 +5913,8 @@ button {
   color: var(--text);
 }
 
-.changed-files-header[aria-expanded="true"] {
-  border-bottom: 1px solid var(--border);
+.changed-files-header[aria-pressed="true"] {
+  background: var(--panel-soft);
 }
 
 .changed-files-title {
@@ -5926,63 +5926,6 @@ button {
   align-items: center;
   gap: 12px;
   margin-left: auto;
-}
-
-.changed-files-chevron {
-  flex: 0 0 auto;
-  color: var(--muted);
-  transition: transform var(--duration-fast) var(--ease);
-}
-
-.changed-files-chevron.expanded {
-  transform: rotate(90deg);
-}
-
-.changed-files-list {
-  display: grid;
-  max-height: min(360px, 34vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.changed-file-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  gap: 10px;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 10px 0 12px;
-  color: var(--text);
-  font-size: 12px;
-  border: 0;
-  border-top: 1px solid var(--line-soft);
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.changed-file-row:first-child {
-  border-top: 0;
-}
-
-.changed-file-row:hover,
-.changed-file-row[aria-pressed="true"] {
-  background: var(--panel-soft);
-}
-
-.changed-file-status {
-  color: var(--muted-strong);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.changed-file-path {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .change-count {
@@ -9980,6 +9923,10 @@ button {
 .plan-card-option.is-active {
   background: rgba(90, 143, 114, 0.08);
   border-left-color: var(--sage);
+}
+
+.plan-card-option.is-focused:not(.is-active) {
+  background: rgba(90, 143, 114, 0.04);
 }
 
 .plan-card-option-num {

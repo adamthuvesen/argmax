@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { useMemo, type JSX } from "react";
 import { interpretFileChange } from "../lib/fileChange.js";
-import { extractOpenablePath, isBashLikeTool, type ToolCall } from "../lib/toolCalls.js";
+import { extractOpenablePath, getToolTypeBucket, isBashLikeTool, type ToolCall } from "../lib/toolCalls.js";
 import { FileChangeCard } from "./FileChangeCard.js";
 
 export function ToolCallDetail({
@@ -67,12 +67,22 @@ export function ToolCallDetail({
             );
           })()
         : null}
-      {Object.keys(tool.inputFull).length > 0 ? (
-        <div className="tool-call-section">
-          <p className="tool-call-section-label">Input</p>
-          <pre className="tool-call-code">{JSON.stringify(tool.inputFull, null, 2)}</pre>
-        </div>
-      ) : null}
+      {(() => {
+        // For Task (sub-agent) tools, drop the `prompt` field — it's a long
+        // multi-paragraph instruction that bloats the toggled detail and adds
+        // nothing the user can act on. Keep description + subagent_type.
+        const isAgent = getToolTypeBucket(tool.name) === "agent";
+        const visibleInput = isAgent
+          ? Object.fromEntries(Object.entries(tool.inputFull).filter(([k]) => k !== "prompt"))
+          : tool.inputFull;
+        if (Object.keys(visibleInput).length === 0) return null;
+        return (
+          <div className="tool-call-section">
+            <p className="tool-call-section-label">Input</p>
+            <pre className="tool-call-code">{JSON.stringify(visibleInput, null, 2)}</pre>
+          </div>
+        );
+      })()}
       {tool.output && !tool.error ? (
         <div className="tool-call-section">
           <p className="tool-call-section-label">

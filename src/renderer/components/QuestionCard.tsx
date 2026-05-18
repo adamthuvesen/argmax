@@ -37,6 +37,7 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
   // Per-question selection. For single-select we keep at most one index;
   // for multi-select we keep the full set.
   const [selected, setSelected] = useState<number[][]>(() => questions.map(() => []));
+  const [activeIndexes, setActiveIndexes] = useState<number[]>(() => questions.map(() => 0));
   const [submitted, setSubmitted] = useState(false);
   const optionsRefs = useRef<Array<HTMLUListElement | null>>([]);
 
@@ -62,6 +63,11 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
   const toggleOption = useCallback(
     (qIdx: number, oIdx: number): void => {
       if (submitted) return;
+      setActiveIndexes((prev) => {
+        const next = [...prev];
+        next[qIdx] = oIdx;
+        return next;
+      });
       setSelected((prev) => {
         const next = prev.map((row) => [...row]);
         const q = questions[qIdx];
@@ -98,18 +104,13 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
         const { key } = event;
         if (key === "ArrowDown" || key === "ArrowUp") {
           event.preventDefault();
-          const current = selected[qIdx]?.[0] ?? -1;
+          const current = q.multiSelect ? activeIndexes[qIdx] ?? 0 : selected[qIdx]?.[0] ?? -1;
           const delta = key === "ArrowDown" ? 1 : -1;
           const next = ((current === -1 ? 0 : current + delta) + optionCount) % optionCount;
           if (q.multiSelect) {
-            // Move focus visual only — multi-select still needs Space/click to toggle.
-            setSelected((prev) => {
-              const copy = prev.map((row) => [...row]);
-              // Track "active" as the last entry without altering selection set.
-              const row = copy[qIdx] ?? [];
-              // Stash focus index at end without duplicates; remove if already present.
-              const without = row.filter((idx) => idx !== next);
-              copy[qIdx] = [...without, next];
+            setActiveIndexes((prev) => {
+              const copy = [...prev];
+              copy[qIdx] = next;
               return copy;
             });
           } else {
@@ -127,8 +128,7 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
         }
         if (key === " " && q.multiSelect) {
           event.preventDefault();
-          const row = selected[qIdx] ?? [];
-          const focused = row[row.length - 1];
+          const focused = activeIndexes[qIdx] ?? 0;
           if (typeof focused === "number") toggleOption(qIdx, focused);
           return;
         }
@@ -137,13 +137,15 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
           submit();
         }
       },
-    [questions, selected, submit, submitted, toggleOption]
+    [activeIndexes, questions, selected, submit, submitted, toggleOption]
   );
 
   const isActive = (qIdx: number, oIdx: number): boolean => {
     const picks = selected[qIdx] ?? [];
     return picks.includes(oIdx);
   };
+
+  const isFocused = (qIdx: number, oIdx: number): boolean => activeIndexes[qIdx] === oIdx;
 
   return (
     <article className="plan-card question-card" aria-label="Question from agent">
@@ -187,10 +189,11 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
             >
               {q.options.map((option, oIdx) => {
                 const active = isActive(qIdx, oIdx);
+                const focused = isFocused(qIdx, oIdx);
                 return (
                   <li
                     key={oIdx}
-                    className={`plan-card-option${active ? " is-active" : ""}`}
+                    className={`plan-card-option${active ? " is-active" : ""}${focused ? " is-focused" : ""}`}
                     role="option"
                     aria-selected={active}
                     onClick={() => toggleOption(qIdx, oIdx)}

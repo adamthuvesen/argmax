@@ -81,7 +81,8 @@ import {
   extractToolUseId,
   isBashLikeTool,
   type ConversationItem,
-  type ToolCall
+  type ToolCall,
+  type ToolCallGroup
 } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
@@ -163,8 +164,51 @@ function foldTurnToolItems(toolItems: TurnToolItem[]): TurnToolItem[] {
   return folded;
 }
 
+function toolGroupWithoutHiddenTools(
+  group: ToolCallGroup,
+  hiddenToolIds: ReadonlySet<string>
+): ToolCallGroup | null {
+  const visibleTools = group.tools.filter((tool) => !hiddenToolIds.has(tool.id));
+  if (visibleTools.length === 0) return null;
+  if (visibleTools.length === group.tools.length) return group;
+  return { ...buildToolCallGroup(visibleTools), id: group.id };
+}
+
+function toolsNamed(toolItems: TurnToolItem[], name: string): ToolCall[] {
+  const matches: ToolCall[] = [];
+  for (const item of toolItems) {
+    if (item.kind === "tool") {
+      if (item.tool.name === name) matches.push(item.tool);
+      continue;
+    }
+    for (const tool of item.group.tools) {
+      if (tool.name === name) matches.push(tool);
+    }
+  }
+  return matches;
+}
+
+function visibleTurnToolItem(item: TurnToolItem, hiddenToolIds: ReadonlySet<string>): TurnToolItem | null {
+  if (item.kind === "tool") {
+    return hiddenToolIds.has(item.tool.id) ? null : item;
+  }
+  const filteredGroup = toolGroupWithoutHiddenTools(item.group, hiddenToolIds);
+  if (!filteredGroup) return null;
+  if (filteredGroup.tools.length === 1) {
+    const [tool] = filteredGroup.tools;
+    return tool ? { kind: "tool", tool } : null;
+  }
+  return { kind: "tool-group", group: filteredGroup };
+}
+
 function isPayloadTruncationMarker(event: TimelineEvent): boolean {
   return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
+}
+
+function isSubAgentProseEcho(event: TimelineEvent): boolean {
+  if (event.type !== "message.delta" && event.type !== "message.completed") return false;
+  const parentToolUseId = event.payload.parent_tool_use_id;
+  return typeof parentToolUseId === "string" && parentToolUseId.length > 0;
 }
 
 // Walk to the deepest last leaf, skipping into <code>/<pre> so the caret never
@@ -403,6 +447,7 @@ export function SessionConversation({
           (event) =>
             event.payload.raw !== true &&
             !isPayloadTruncationMarker(event) &&
+            !isSubAgentProseEcho(event) &&
             ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
             event.message !== "turn.completed"
         )
@@ -632,8 +677,30 @@ export function SessionConversation({
       ),
     [toolCalls]
   );
+  // An interactive card (Plan or Question) outstanding means the agent has
+  // handed the turn over to the user — even if the probe is still alive
+  // briefly emitting fallback text. From the user's perspective the agent
+  // is *waiting*, not thinking. Suppress Thinking until the user submits
+  // (which lands a new `user.message`, advancing `lastUserMessageTime` past
+  // the tool's `createdAt`).
+  const hasOutstandingCardAsk = useMemo(() => {
+    let lastUserMessageTime = "";
+    for (const e of events) {
+      if (e.type === "user.message" && e.createdAt > lastUserMessageTime) {
+        lastUserMessageTime = e.createdAt;
+      }
+    }
+    return toolCalls.some(
+      (tool) =>
+        (tool.name === "AskUserQuestion" || tool.name === "ExitPlanMode") &&
+        tool.createdAt > lastUserMessageTime
+    );
+  }, [events, toolCalls]);
   const isThinking =
-    session?.state === "running" && !anyVisibleToolRunning && !isStreamingMessage;
+    session?.state === "running" &&
+    !anyVisibleToolRunning &&
+    !isStreamingMessage &&
+    !hasOutstandingCardAsk;
 
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const metaCardsRef = useRef<HTMLDivElement | null>(null);
@@ -1190,15 +1257,18 @@ export function SessionConversation({
             // for the ~20ms between `command.started` and `command.completed`.
             const exitPlanToolIds = new Set<string>();
             let exitPlanTool: { id: string; createdAt: string; markdown: string } | null = null;
-            for (const t of item.toolItems) {
-              if (t.kind !== "tool") continue;
-              if (t.tool.name !== "ExitPlanMode") continue;
-              exitPlanToolIds.add(t.tool.id);
-              if (t.tool.status !== "done") continue;
-              const planArg = t.tool.inputFull?.plan;
+            for (const tool of toolsNamed(item.toolItems, "ExitPlanMode")) {
+              exitPlanToolIds.add(tool.id);
+              // Argmax's structured-json launch can deny ExitPlanMode the same
+              // way it denies AskUserQuestion ("Exit plan mode?" tool error).
+              // The plan markdown is in `inputFull.plan` regardless, so we
+              // render the card on any completed status — only skip while the
+              // tool is still in-flight so the card never appears half-baked.
+              if (tool.status === "running") continue;
+              const planArg = tool.inputFull?.plan;
               if (typeof planArg !== "string" || planArg.trim().length === 0) continue;
               if (!exitPlanTool) {
-                exitPlanTool = { id: t.tool.id, createdAt: t.tool.createdAt, markdown: planArg };
+                exitPlanTool = { id: tool.id, createdAt: tool.createdAt, markdown: planArg };
               }
             }
             const handlePlanAccept = (): void => {
@@ -1206,12 +1276,20 @@ export function SessionConversation({
               setAgentMode("auto");
               writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
               shouldRefocusInput.current = true;
-              void onSendSessionInput(
-                session.id,
-                "Proceed with the plan above.",
-                selectedModel,
-                "auto"
-              );
+              // The probe may still be alive emitting fallback narration
+              // after a denied ExitPlanMode. The user has accepted the plan;
+              // anything the previous probe is still saying is stale. Kill
+              // it so the answer doesn't sit in the queue waiting for that
+              // narration to finish, then send. Main's sendInput relaunches
+              // the agent when no live handle exists.
+              const sessionId = session.id;
+              if (session.state === "running") {
+                void onTerminateSession(sessionId).then(() =>
+                  onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto")
+                );
+              } else {
+                void onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto");
+              }
             };
             const handlePlanReject = (): void => {
               inputRef.current?.focus();
@@ -1227,33 +1305,20 @@ export function SessionConversation({
             // tool rows for every attempt so the UI shows one card, not a
             // pile of denied-tool rows above it.
             const askUserQuestionToolIds = new Set<string>();
-            const askUserQuestionGroupIds = new Set<string>();
             let askUserQuestionTool: { id: string; createdAt: string; questions: Question[] } | null = null;
             // Two retries inside the 75ms parallel-window fold into a
             // `tool-group`; only checking `t.kind === "tool"` would miss
             // those and the card would silently vanish. Flatten both kinds.
-            const askUserQuestionCandidates: ToolCall[] = [];
-            for (const t of item.toolItems) {
-              if (t.kind === "tool") {
-                if (t.tool.name === "AskUserQuestion") askUserQuestionCandidates.push(t.tool);
-                continue;
-              }
-              const groupHasMatch = t.group.tools.some((tool) => tool.name === "AskUserQuestion");
-              if (!groupHasMatch) continue;
-              askUserQuestionGroupIds.add(t.group.id);
-              for (const tool of t.group.tools) {
-                if (tool.name === "AskUserQuestion") askUserQuestionCandidates.push(tool);
-              }
-            }
+            const askUserQuestionCandidates = toolsNamed(item.toolItems, "AskUserQuestion");
             for (const tool of askUserQuestionCandidates) {
               // Add the ID before the status check so the raw tool row stays
-              // hidden while running. The card itself still waits for
-              // completion (next line) so it never appears half-rendered.
+              // hidden while running, including when the question is mixed
+              // into a parallel Agent/Bash tool group.
               askUserQuestionToolIds.add(tool.id);
-              if (tool.status === "running") continue;
               const raw = tool.inputFull?.questions;
               if (!Array.isArray(raw)) continue;
               const questions: Question[] = [];
+              let hasInvalidQuestionShape = false;
               for (const q of raw) {
                 if (!q || typeof q !== "object") continue;
                 const qq = q as Record<string, unknown>;
@@ -1261,6 +1326,10 @@ export function SessionConversation({
                 if (!questionText) continue;
                 const header = typeof qq.header === "string" ? qq.header : "";
                 const optionsRaw = Array.isArray(qq.options) ? qq.options : [];
+                if (optionsRaw.length > 4) {
+                  hasInvalidQuestionShape = true;
+                  break;
+                }
                 const options = optionsRaw
                   .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>) : null))
                   .filter((o): o is Record<string, unknown> => o !== null)
@@ -1277,6 +1346,7 @@ export function SessionConversation({
                   multiSelect: qq.multiSelect === true
                 });
               }
+              if (hasInvalidQuestionShape) continue;
               if (questions.length === 0) continue;
               // First valid attempt wins, and stays put. Later retries are
               // still added to `askUserQuestionToolIds` (so their raw rows
@@ -1290,12 +1360,19 @@ export function SessionConversation({
             const handleQuestionAnswer = (answerMarkdown: string): void => {
               if (!session) return;
               shouldRefocusInput.current = true;
-              void onSendSessionInput(
-                session.id,
-                answerMarkdown,
-                selectedModel,
-                turnAgentMode === "plan" ? "plan" : "auto"
-              );
+              // Same pattern as handlePlanAccept: terminate the probe first if
+              // it's still alive emitting fallback text after a denied
+              // AskUserQuestion. Otherwise the answer gets queued behind that
+              // narration and the user waits for the probe to die naturally.
+              const sessionId = session.id;
+              const nextAgentMode = turnAgentMode === "plan" ? "plan" : "auto";
+              if (session.state === "running") {
+                void onTerminateSession(sessionId).then(() =>
+                  onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode)
+                );
+              } else {
+                void onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode);
+              }
             };
             const questionCard: JSX.Element | null = askUserQuestionTool
               ? (
@@ -1347,8 +1424,22 @@ export function SessionConversation({
                 />
               );
             };
+            // When a PlanCard is the turn's authoritative artifact, hide
+            // assistant text that arrives AFTER the tool fired — the model
+            // often re-emits the plan as a text fallback when the tool returns
+            // an error in structured-json mode, duplicating the card below it.
+            // QuestionCard fallback prose is different: after a failed ask it
+            // can contain useful scan results plus a manual question, so keep
+            // it visible.
+            const cardCutoffs = [
+              exitPlanCard && exitPlanTool ? exitPlanTool.createdAt : null
+            ].filter((t): t is string => t !== null);
+            const cardCutoff = cardCutoffs.length > 0 ? cardCutoffs.reduce((a, b) => (a < b ? a : b)) : null;
+            const visibleAssistantGroups = cardCutoff
+              ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
+              : assistantGroups;
             type AnnotatedChild = TurnBodyChild & { createdAt: string };
-            const assistantChildren: AnnotatedChild[] = assistantGroups.map((group) => {
+            const assistantChildren: AnnotatedChild[] = visibleAssistantGroups.map((group) => {
               const planNode = tryRenderPlan(group);
               if (planNode) {
                 return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt };
@@ -1388,13 +1479,17 @@ export function SessionConversation({
                 createdAt: askUserQuestionTool.createdAt
               });
             }
+            const hiddenToolIds = new Set([...exitPlanToolIds, ...askUserQuestionToolIds]);
+            const visibleToolItems = item.toolItems
+              .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
+              .filter((tItem): tItem is TurnToolItem => tItem !== null);
             // A turn's tool groups stay expanded only while that turn is
             // "active": a tool is still running, or it's the last turn in the
             // list and the session is still streaming. Past turns collapse
             // regardless of the global "Show expanded" setting; the active
             // turn falls back to the global setting.
             const isLatestTurn = index === renderItems.length - 1;
-            const anyToolRunningInTurn = item.toolItems.some((tItem) =>
+            const anyToolRunningInTurn = visibleToolItems.some((tItem) =>
               tItem.kind === "tool"
                 ? tItem.tool.status === "running"
                 : tItem.group.tools.some((tool) => tool.status === "running")
@@ -1402,21 +1497,7 @@ export function SessionConversation({
             const sessionIsLive = session?.state === "running";
             const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
             const groupDefaultExpanded = turnIsActive ? defaultToolCallsExpanded : false;
-            const toolChildren: AnnotatedChild[] = item.toolItems
-              .filter((tItem) => {
-                if (tItem.kind === "tool-group") {
-                  // Hide a group entirely if it only existed because of
-                  // AskUserQuestion retries — otherwise we'd leave a stale
-                  // "Ran 2 commands" row alongside the QuestionCard.
-                  if (askUserQuestionGroupIds.has(tItem.group.id)) {
-                    return tItem.group.tools.some((tool) => tool.name !== "AskUserQuestion");
-                  }
-                  return true;
-                }
-                if (exitPlanToolIds.has(tItem.tool.id)) return false;
-                if (askUserQuestionToolIds.has(tItem.tool.id)) return false;
-                return true;
-              })
+            const toolChildren: AnnotatedChild[] = visibleToolItems
               .map((tItem) => {
               if (tItem.kind === "tool") {
                 return {
@@ -1456,7 +1537,7 @@ export function SessionConversation({
             return (
               <TurnBlock
                 key={item.id}
-                toolItems={item.toolItems}
+                toolItems={visibleToolItems}
                 assistantTimestamps={item.assistantTimestamps}
                 {...(session ? { providerLabel: providerLabel(session.provider) } : {})}
                 modelLabel={selectedModel.label}

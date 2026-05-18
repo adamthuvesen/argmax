@@ -1,12 +1,14 @@
 import { Archive, ChevronDown, ExternalLink, Pin, PinOff, Terminal } from "lucide-react";
 import {
   memo,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
   type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from "react";
 import { createPortal } from "react-dom";
@@ -63,7 +65,48 @@ function SidebarSessionRowInner({
   const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLUListElement | null>(null);
+  // Keep direct refs to every menuitem so ↑/↓ keyboard nav can move focus.
+  // The map is rebuilt every render from the `detectedIdes` list; reading
+  // `current` after layout is fine because the popover only mounts when
+  // `pickerOpen && popoverPos`.
+  const menuItemRefs = useRef(new Map<string, HTMLButtonElement | null>());
   useDismissOnOutsideOrEscape(pickerRef, pickerOpen, () => setPickerOpen(false), popoverRef);
+
+  // Focus the first menuitem (preferring the current default IDE) once the
+  // popover has been positioned and its menuitems have mounted into the DOM.
+  // The useLayoutEffect that sets popoverPos triggers a second render — this
+  // effect runs after that render commits, so the refs are populated.
+  useEffect(() => {
+    if (!pickerOpen || !popoverPos) return;
+    const preferredId =
+      detectedIdes.find((entry) => entry.id === defaultIde)?.id ?? detectedIdes[0]?.id;
+    if (!preferredId) return;
+    menuItemRefs.current.get(preferredId)?.focus();
+  }, [pickerOpen, popoverPos, detectedIdes, defaultIde]);
+
+  const handleMenuKeyDown = (
+    entryId: IdeId
+  ) => (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
+      return;
+    }
+    event.preventDefault();
+    const ids = detectedIdes.map((entry) => entry.id);
+    const currentIndex = ids.indexOf(entryId);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % ids.length;
+    } else if (event.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + ids.length) % ids.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = ids.length - 1;
+    }
+    const nextId = ids[nextIndex];
+    if (!nextId) return;
+    menuItemRefs.current.get(nextId)?.focus();
+  };
 
   useLayoutEffect(() => {
     if (!pickerOpen) {
@@ -233,10 +276,18 @@ function SidebarSessionRowInner({
               return (
                 <li key={entry.id} role="none">
                   <button
+                    ref={(node) => {
+                      if (node === null) {
+                        menuItemRefs.current.delete(entry.id);
+                      } else {
+                        menuItemRefs.current.set(entry.id, node);
+                      }
+                    }}
                     type="button"
                     className="project-picker-item"
                     role="menuitem"
                     aria-pressed={effectiveDefault === entry.id}
+                    onKeyDown={handleMenuKeyDown(entry.id)}
                     onClick={(event) => {
                       event.stopPropagation();
                       setPickerOpen(false);

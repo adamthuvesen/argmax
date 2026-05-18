@@ -14,7 +14,7 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 
 - **Light theme only.** No dark mode, no `prefers-color-scheme: dark` block.
 - **Monospace everywhere.** The UI and code use the same font family — both read from `--font-ui` / `--font-mono`. Don't introduce a separate sans for chrome.
-- **Lilex is the default**, kept Nerd-Font–patched so terminal-style glyphs still render. Alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) are loaded via `@fontsource` and selected from Settings → Appearance. New fonts live in [src/renderer/lib/fonts.ts](../../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
+- **Lilex is the default**, kept Nerd-Font–patched so terminal-style glyphs still render. Mono alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) and proportional sans options (Inter, Geist Sans, IBM Plex Sans, Manrope) are lazy-loaded via `@fontsource` / `@fontsource-variable` only when picked, and selected from Settings → Appearance. System fonts (System Mono, Menlo, Monaco) need no JS asset load. New fonts live in [src/renderer/lib/fonts.ts](../../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
 
 ## Tokens
 
@@ -55,7 +55,7 @@ User bubbles (`chat-bubble.user`) have a near-black background (`var(--ink)`) wi
 
 ## Conversation content width
 
-`--session-inline-padding` is defined on `.conversation-surface` as `clamp(40px, calc((100vw - 272px - 980px) / 2), 400px)`. This keeps readable content at roughly 980px wide on typical screens while letting the scrollable container remain full-width (so the scrollbar stays at the window edge). The negative `margin-right` on `.conversation-list` uses the same variable to extend the list to the surface's right edge — both values must stay `vw`/`px` based (not `%`) or the math breaks.
+`--session-inline-padding` is defined on `.session-main-column` as `clamp(36px, calc((100% - 920px) / 2), 2000px)`, with tighter variants when the review or log panel is open (`clamp(18px, calc((100% - 860px) / 2), 2000px)` and `clamp(10px, calc((100% - 780px) / 2), 2000px)`). This keeps readable content at roughly 920px wide while letting the scrollable container remain full-width (so the scrollbar stays at the panel edge). `.conversation-list` consumes the token as its inline padding.
 
 ## Don't
 
@@ -63,4 +63,3 @@ User bubbles (`chat-bubble.user`) have a near-black background (`var(--ink)`) wi
 - Don't introduce a UI library (shadcn, Radix, MUI, Tailwind). The whole point is a hand-built feel.
 - Don't add focus rings beyond `:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }` — the global rule already covers everything.
 - Don't write inline `style={{}}` props in JSX for anything beyond truly dynamic values; everything else belongs in `styles.css`.
-- Don't change `--session-inline-padding` to use `%` units — see the content width note above.

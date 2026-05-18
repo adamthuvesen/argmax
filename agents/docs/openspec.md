@@ -9,13 +9,14 @@ openspec/
 ├── changes/         Proposed and active changes — each has proposal.md, tasks.md, specs/* (delta specs)
 │   └── archive/     Completed changes after archival
 ├── specs/           Main specs (the source of truth, populated as changes archive)
+├── archive/         Completed Ralph autonomous-loop buckets (separate from changes/archive)
 └── custom/          Repo-specific extensions
-    ├── ralph/       Ralph autonomous-loop spec
+    ├── ralph/       Current Ralph autonomous-loop SPEC/PROGRESS (moves into ../archive/ when done)
     ├── issues/      Issue notes / bug receipts
     └── reviews/     Code-review checklists
 ```
 
-A change folder may not be present until you propose one; `archive/` and `specs/` populate as work flows through.
+All of `openspec/` is gitignored. A change folder may not be present until you propose one; `archive/` and `specs/` populate as work flows through.
 
 ## Workflow
 
@@ -33,4 +34,4 @@ A non-trivial change goes:
 - **Never modify scenarios outside the stated delta.** Each delta must be reviewable in isolation; reaching outside it makes archival unsafe.
 - Scenarios use `WHEN ... THEN ...` framing. They become the acceptance tests under `/opsx:impl-tdd`.
 - `tasks.md` is the running checklist — check items off as you go, but treat the proposal + spec deltas as the load-bearing artifacts.
-- Skill workflows live in `~/.claude/agents/` (user-global). This doc only points at them.
+- Skill workflows live in the user's dotfiles (`~/dotfiles/cursor/skills/opsx-*`) and are exposed as `/opsx:*` slash commands. This doc only points at them.

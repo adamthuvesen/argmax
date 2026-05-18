@@ -39,12 +39,16 @@ Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services,
 | Folder | Role |
 |---|---|
 | `approvals/` | `ApprovalService` + `dangerousActionPolicy` command-risk classifier |
+| `attachments/` | `AttachmentStore` + `argmax-attachment://` protocol handler for composer image paste/drop |
 | `checks/` | `CheckService` — spawns commands with 5-min wall-clock cap and cancellation |
+| `constants/` | Shared subsystem timeouts (provider PTY, check, gh poll, etc.) |
 | `dock/` | macOS dock badge for attention counts |
 | `files/` | Workspace file tree + previews (binary/size-skipped) |
 | `gh/` | `GhService` (gh CLI wrapper) + `GhPoller` (PR check-state polling) |
 | `git/` | `runGitText` / `runGitBuffer` + `GitOpsService` for commit/push/branch/PR actions |
 | `ide/` | `mdfind`-based IDE detection (VS Code, Cursor, Windsurf, etc.) + launch |
+| `ipc/` | Per-namespace handler registrars (`registerProjectHandlers`, `registerWorkspaceHandlers`, …) consumed by [src/main/ipc.ts](../../src/main/ipc.ts) |
+| `judges/` | Tournament judge — criterion runners + score aggregator |
 | `mcp/` | User-scope MCP registry + `McpAuthService` (interactive PTY for OAuth-style MCP server enrollment) |
 | `memory/` | `learningExtractor` + `learningInjector` (project-scoped pitfalls) |
 | `notifications/` | OS notifications gated on window-focus state |
@@ -55,11 +59,12 @@ Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services,
 | `sessions/` | `sessionAttention` (which sessions need a user nudge) |
 | `skills/` | Local skill registry — `~/.claude/skills`, `~/.codex/{skills,prompts}`, `~/.cursor/skills`, plugin caches, plus per-workspace `.claude` / `.codex` / `.cursor` directories. Precedence: workspace > user > codex-prompt > system > plugin |
 | `terminal/` | `TerminalService` — user-spawned PTYs for the integrated terminal panel |
+| `tournaments/` | `TournamentService` — parallel contestants in worktrees + deterministic judge pipeline |
 | `updater/` | `UpdateService` — `electron-updater` wrapper (packaged builds only) |
 | `util/` | Pure helpers: `workspacePaths`, `appNavigation`, `deltaCoalescer` (60 fps push throttle), `ipcLatency` (per-channel histogram), `startupTimer` (phase marks for diagnostics) |
 | `workspaces/` | `WorkspaceService` — git worktrees, fs.watch debouncing |
 
-`main.ts` wires services together in this order: `createDatabase()` → `NotificationService` → `DockBadgeService` → `ProviderSessionService` (then `recoverOrphanedSessions()` to mop up sessions left `running` from a previous crash) → `TerminalService` → `McpAuthService` → `registerIpcHandlers()` → `GhPoller.start()` → `UpdateService.runStartupCheck()` (packaged only) → application menu → `BrowserWindow`. The `dashboard:delta` publisher runs every push through `DeltaCoalescer` at ~60 fps so streaming-heavy turns don't pin the renderer.
+`main.ts` wires services together in this order: `createDatabase()` → `NotificationService` → `DockBadgeService` → `ProviderSessionService` (then `recoverOrphanedSessions()` to mop up sessions left `running` from a previous crash) → `TerminalService` → `McpAuthService` → `registerIpcHandlers()` → construct `GhPoller` + `UpdateService` (packaged only) → application menu → `BrowserWindow` (`createWindow()`) → `ghPoller.start()` → `updateService.runStartupCheck()`. The `dashboard:delta` publisher runs every push through `DeltaCoalescer` at ~60 fps so streaming-heavy turns don't pin the renderer.
 
 ## Renderer — `src/renderer/`
 

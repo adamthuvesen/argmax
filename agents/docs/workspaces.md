@@ -11,7 +11,7 @@ Two flavors:
 | Method | Behavior |
 |---|---|
 | `createIsolatedWorkspace({ projectId, taskLabel, baseRef? })` | New branch + new worktree directory under `project.settings.worktreeLocation`. Default base is `defaultBranch`, else `currentBranch`. |
-| `createCurrentWorkspace({ projectId, taskLabel })` | Shared workspace pointing at the repo's existing checkout — for in-place work without a new worktree. |
+| `createCurrentWorkspaceSession({ projectId, taskLabel })` | Shared workspace pointing at the repo's existing checkout — for in-place work without a new worktree. |
 
 **Safety rails:**
 
@@ -27,14 +27,14 @@ Two flavors:
 2. Updates `last_activity_at`.
 3. Publishes a `dashboard:delta` carrying the updated `WorkspaceSummary`.
 
-This is what makes the sidebar's change-count badge react to background tasks. The renderer's 1200 ms `workspaces.status()` poll is the cursor-style backstop — fs.watch fires for in-process edits, the poll covers everything else.
+This is what makes the sidebar's change-count badge react to background tasks. The renderer's `workspaces.status()` call on `visibilitychange` is the backstop — fs.watch fires for in-process edits, the visibility-refresh covers edits that landed while the window was hidden. There is no recurring renderer poll.
 
 ## Lifecycle states
 
 `WorkspaceState`: `created | running | waiting | blocked | complete | failed | cancelled | kept | archived`.
 
-- `kept` is sticky — the user marked it for retention; subsequent runs won't auto-clean.
-- `archived` removes the worktree directory but keeps the row for history. The watcher is torn down before the directory disappears.
+- `kept` is sticky — the user marked it for retention; subsequent runs won't auto-clean. `archiveWorkspace` also re-routes dirty worktrees into `kept` so user work never gets nuked silently.
+- `archived` runs `git worktree remove` for isolated workspaces (after cancelling in-flight checks via the optional `cancelChecks` hook and re-checking porcelain to close the TOCTOU window) and keeps the row for history. Shared workspaces just close the watcher and mark the row archived — there's no worktree to remove.
 
 ## Review
 
@@ -42,8 +42,8 @@ This is what makes the sidebar's change-count badge react to background tasks. T
 
 | Method | Returns |
 |---|---|
-| `listChangedFiles(workspaceId)` | `ChangedFileSummary[]` — `git diff --numstat` against `base_ref`, normalized |
-| `loadDiff(workspaceId, filePath?)` | `WorkspaceDiff` — unified diff, all-files when `filePath` is omitted |
+| `listChangedFiles(workspaceId)` | `ChangedFileSummary[]` — `git status --porcelain=v1 -z`, then per-file `git diff HEAD -- <path>` (untracked files get a synthesized diff) fanned out at `DIFF_FANOUT_LIMIT = 8` |
+| `loadDiff(workspaceId, filePath?)` | `WorkspaceDiff` — concatenated per-file diffs; all-files when `filePath` is omitted. Per-file content capped at `PER_FILE_DIFF_CAP_BYTES` (1 MiB) with a `[diff truncated …]` marker |
 
 The renderer's review panel renders these in `ReviewPanel.tsx` with `DiffBlocks.tsx`.
 
@@ -51,10 +51,9 @@ The renderer's review panel renders these in `ReviewPanel.tsx` with `DiffBlocks.
 
 [src/main/review/checkpointService.ts](../../src/main/review/checkpointService.ts) creates an in-place "save point" without touching the user's git history:
 
-1. Read `branch --show-current` and `rev-parse HEAD` in parallel.
-2. Generate a binary-safe diff via `git diff --binary` (so non-text changes round-trip).
-3. Write the patch to `${dataDirectory}/checkpoints/<id>.patch`.
-4. Persist a `Checkpoint` row pointing at the patch and the captured git ref.
+1. In parallel: `branch --show-current`, `rev-parse HEAD`, and build the patch via a temporary `GIT_INDEX_FILE` (`read-tree HEAD` → `add -A -- .` → `diff --binary --cached HEAD`) so untracked files are captured alongside tracked changes without touching the real index.
+2. Write the patch to `${dataDirectory}/checkpoints/<id>.patch`.
+3. Persist a `Checkpoint` row pointing at the patch and the captured git ref.
 
 Checkpoints are deliberately one-way today — restoring a patch isn't surfaced in the UI yet. The pattern leaves room for a future "snap back" affordance.
 

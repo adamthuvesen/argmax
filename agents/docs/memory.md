@@ -27,7 +27,7 @@ v1 heuristic is intentionally conservative: any tool/command that produced an **
 
 > Synthesizing many low-signal "learnings" is worse than missing some — they pollute the preamble.
 
-The extractor runs at session completion inside `ProviderSessionService`. Candidates write to `learnings` via `insertLearning`; existing rows with matching summary get their `last_seen_at` bumped instead of a duplicate insert.
+The extractor runs at session completion inside `ProviderSessionService` (`synthesizeLearnings`). Candidates write to `learnings` via `insertLearning` — a plain insert per candidate; there is no summary-level dedupe in persistence today.
 
 The `convention` and `command` kinds exist in the schema for future heuristics; v1 only emits `pitfall`.
 
@@ -35,7 +35,7 @@ The `convention` and `command` kinds exist in the schema for future heuristics; 
 
 [src/main/memory/learningInjector.ts](../../src/main/memory/learningInjector.ts) — `composeLearningPreamble(deps, projectId, originalPrompt)`.
 
-- Pulls `TOP_K` (5) most-recent learnings for the project via `listLearnings(projectId, TOP_K)`.
+- Pulls `TOP_K` (5) learnings for the project via `listLearnings(projectId, TOP_K)`, ordered by `verified DESC, hits DESC, last_seen_at DESC`.
 - Builds a bullet list under a fixed header (`"Project knowledge — facts captured from prior sessions in this project. Apply where relevant; ignore if not."`).
 - Hard-caps the preamble at `MAX_PREAMBLE_CHARS` (2000 — roughly 500 tokens). Bullets that would push past the cap are dropped, not truncated.
 - Returns `{ augmentedPrompt, injectedIds }`. The session service uses `injectedIds` to bump `hits` post-launch.

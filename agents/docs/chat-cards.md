@@ -1,0 +1,117 @@
+# Chat — interactive cards
+
+The chat surface renders two kinds of *interactive cards* on top of the normal
+assistant bubble stream: **PlanCard** (Claude Code plan mode) and
+**QuestionCard** (Claude Code `AskUserQuestion`). Everything here lives in
+[src/renderer/components/SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+plus the two card components ([PlanCard.tsx](../../src/renderer/components/PlanCard.tsx),
+[QuestionCard.tsx](../../src/renderer/components/QuestionCard.tsx)).
+
+## Why cards exist
+
+Claude Code's `ExitPlanMode` and `AskUserQuestion` tools are designed for
+interactive sessions. Argmax launches Claude in **structured-json** mode
+(`-p --output-format stream-json` — see
+[providerAdapters.ts](../../src/main/providers/providerAdapters.ts)), which
+has no interactive stdin. The CLI handles this by returning a
+`tool_result { is_error: true, content: "Exit plan mode?" / "Answer questions?" }`
+and ending the turn.
+
+The plan / question content the model wanted to deliver still arrives — it's
+in the tool's `input.plan` or `input.questions`. We extract that and render it
+ourselves as a card. The user clicks an option; the answer becomes the next
+user message; Claude's next turn picks it up via `--resume`.
+
+## Detection rules (per turn)
+
+Both detections run inside the `renderItems.map(...)` "turn" branch around
+[SessionConversation.tsx:1157](../../src/renderer/components/SessionConversation.tsx:1157).
+
+| Rule | Applies to | Why |
+|---|---|---|
+| **First valid wins** | `AskUserQuestion` | Haiku retries on validation/deny errors. Pinning the card key to the first valid tool keeps the user's in-progress selections alive across retries. |
+| **All matching ids hidden** | both tools | Every `ExitPlanMode` / `AskUserQuestion` tool id (any status) goes into a filter set so the raw tool row never renders. |
+| **Flatten tool-groups** | `AskUserQuestion` | Two retries inside the 75 ms parallel window fold into a `tool-group`. Detection looks inside groups; if the group is *only* `AskUserQuestion`s the group row is hidden too. |
+| **Card renders on `error` too** | both tools | The tool reliably ends in `error` in `-p` mode. Card-render path skips only `status === "running"`, never `done`-vs-`error`. |
+| **Post-card text suppressed** | `ExitPlanMode` only | Assistant text with `createdAt > tool.createdAt` is filtered out for PlanCards — the model often re-emits the plan as a fallback bubble and we don't want a duplicate. AskUserQuestion fallback prose is kept (can contain useful scan results alongside the manual question). Pre-tool intro narration always stays. |
+
+## Thinking indicator
+
+The "Thinking" bubble is suppressed when any of these are true:
+
+- `session.state !== "running"`
+- the last significant event is `message.delta` (streaming caret is the indicator)
+- a *visible* tool is running (`tool.name` is not `ExitPlanMode` / `AskUserQuestion`; the tool's own spinner is the indicator)
+- **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([SessionConversation.tsx:686](../../src/renderer/components/SessionConversation.tsx:686))
+
+The outstanding-card gate is the load-bearing one for cards: while a card is
+on screen waiting for the user, the agent is *waiting on the user*, not
+"thinking". Showing Thinking would mislead. When the user submits, a new
+`user.message` lands → `lastUserMessageTime` advances past the tool's
+`createdAt` → Thinking resumes for the new turn.
+
+## Submission flow
+
+When the user clicks Submit on a PlanCard or QuestionCard, the handler must
+terminate the still-alive probe *before* sending the answer. Otherwise the
+answer gets queued in main behind whatever fallback text the model is still
+emitting, and the user waits for that to finish before the next turn starts.
+
+```ts
+// SessionConversation.tsx, handlePlanAccept / handleQuestionAnswer
+if (session.state === "running") {
+  void onTerminateSession(sessionId).then(() =>
+    onSendSessionInput(sessionId, message, selectedModel, mode)
+  );
+} else {
+  void onSendSessionInput(sessionId, message, selectedModel, mode);
+}
+```
+
+Main's `sendInput` already relaunches the agent when no live handle exists
+(see [providerSessionService.ts](../../src/main/providers/providerSessionService.ts)),
+so the terminated session resumes cleanly via `--resume <conversationId>` with
+the answer as the next user message.
+
+## QuestionCard answer format
+
+The card formats the user's picks as `**<header>**: <chosen label>` per
+question, joined with blank lines. Multi-select joins selections with commas.
+The model has the full question text from the original tool call, so the
+short header is enough context.
+
+## Other knobs
+
+- **`exitPlanCard.onAccept`** writes `agentMode = "auto"` back to local
+  storage and sends `"Proceed with the plan above."` — leaving plan mode for
+  the next turn.
+- **`exitPlanCard.onReject`** focuses the composer for free-form feedback.
+- Cards re-use Plan-card CSS via the `.plan-card` class.
+  Question-specific tweaks (denser type, lighter dividers, integrated submit
+  pill) live under `.question-card` in [styles.css](../../src/renderer/styles.css).
+
+## Tests
+
+All of the above are locked in by
+[src/renderer/components/SessionConversation.test.tsx](../../src/renderer/components/SessionConversation.test.tsx) — search the file for the
+relevant `it(...)` titles:
+
+- "renders an ExitPlanMode tool call as a PlanCard, hiding the raw tool row"
+- "renders a PlanCard from ExitPlanMode even when the tool ended in error (denied in structured-json mode)"
+- "renders a failed AskUserQuestion tool call as a QuestionCard and submits the chosen answer"
+- "still renders the QuestionCard when AskUserQuestion retries fold into a tool-group"
+- "hides the ExitPlanMode tool row immediately, even while still running (no flicker)"
+- "renders an AskUserQuestion card immediately from command.started and hides the raw row"
+- "suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)"
+- "restores Thinking once the user submits and a new user.message arrives"
+- "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"
+- "terminates the in-flight probe before sending the QuestionCard answer (no queue wait)"
+
+## When to revisit
+
+If Claude Code ever supports `AskUserQuestion` / `ExitPlanMode` *non-interactively*
+in `-p` mode (i.e. returns success instead of erroring), all the
+"render-card-on-error" logic still works but the outstanding-card gate would
+need refinement — the tool's `command.completed` would arrive with success
+content rather than the user's eventual answer. Today the gate releases only
+when a new `user.message` lands, which is correct for the current behavior.

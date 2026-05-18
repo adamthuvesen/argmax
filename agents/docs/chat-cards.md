@@ -80,6 +80,31 @@ question, joined with blank lines. Multi-select joins selections with commas.
 The model has the full question text from the original tool call, so the
 short header is enough context.
 
+## Keyboard contract (PlanCard + QuestionCard, and any future ask-user card)
+
+One contract; deviations are bugs. Locked by component tests in
+[PlanCard.test.tsx](../../src/renderer/components/PlanCard.test.tsx) and
+[QuestionCard.test.tsx](../../src/renderer/components/QuestionCard.test.tsx).
+
+| Key            | Effect                                                                    |
+| -------------- | ------------------------------------------------------------------------- |
+| `↑` / `↓`      | Move selection between options                                            |
+| `1`–`9`        | Pick the nth option (also moves selection)                                |
+| `Space`        | Toggle the focused option — multi-select questions only                   |
+| `Enter`        | Submit. Triggers `onAccept`/`onReject` (PlanCard) or `onAnswer` (QuestionCard) |
+| `Escape`       | **No-op.** Cards are not dismissable; the answer is the dismiss.          |
+
+On submit the card collapses to a one-line summary header with an Expand
+chevron so the chat history stays scannable. Once collapsed, the user can
+still expand to review what they answered.
+
+Cards autofocus their listbox on mount, but never steal focus from a text
+input the user is typing in (the [useEffect typing-target guard](../../src/renderer/components/PlanCard.tsx) skips
+when `document.activeElement` is an `INPUT`/`TEXTAREA`/contenteditable).
+
+The footer surfaces the contract visually as decorative `aria-hidden` key
+hints, so sighted keyboard users don't have to discover it.
+
 ## Other knobs
 
 - **`exitPlanCard.onAccept`** writes `agentMode = "auto"` back to local

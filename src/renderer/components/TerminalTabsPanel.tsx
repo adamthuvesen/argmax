@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent
+} from "react";
 import { TerminalInstance } from "./TerminalPanel.js";
 
 interface TerminalTab {
@@ -92,6 +100,66 @@ export function TerminalTabsPanel({
     setTabs((prev) => prev.filter((t) => t.id !== tabId));
   }, []);
 
+  // Refs to each tab's label button so keyboard nav can move focus along with
+  // the active tab. WAI-ARIA tabs pattern: ←/→ moves between tabs, Home/End
+  // jumps to first/last, Delete closes the focused tab.
+  const tabButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  const setTabButtonRef = useCallback(
+    (tabId: string) =>
+      (node: HTMLButtonElement | null): void => {
+        if (node === null) {
+          tabButtonRefs.current.delete(tabId);
+        } else {
+          tabButtonRefs.current.set(tabId, node);
+        }
+      },
+    []
+  );
+
+  const focusTab = useCallback((tabId: string): void => {
+    const button = tabButtonRefs.current.get(tabId);
+    button?.focus();
+  }, []);
+
+  const handleTabKeyDown = useCallback(
+    (tabId: string) =>
+      (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+        const currentIndex = tabs.findIndex((t) => t.id === tabId);
+        if (currentIndex === -1) return;
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          event.preventDefault();
+          const delta = event.key === "ArrowLeft" ? -1 : 1;
+          const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
+          const next = tabs[nextIndex];
+          if (!next) return;
+          setActiveTabId(next.id);
+          focusTab(next.id);
+          return;
+        }
+        if (event.key === "Home") {
+          event.preventDefault();
+          const first = tabs[0];
+          if (!first) return;
+          setActiveTabId(first.id);
+          focusTab(first.id);
+          return;
+        }
+        if (event.key === "End") {
+          event.preventDefault();
+          const last = tabs[tabs.length - 1];
+          if (!last) return;
+          setActiveTabId(last.id);
+          focusTab(last.id);
+          return;
+        }
+        if (event.key === "Delete" || event.key === "Backspace") {
+          event.preventDefault();
+          closeTab(tabId);
+        }
+      },
+    [closeTab, focusTab, tabs]
+  );
+
   return (
     <>
       <div className="terminal-panel-header">
@@ -99,6 +167,7 @@ export function TerminalTabsPanel({
           className="terminal-tab-bar"
           role="tablist"
           aria-label="Terminal tabs"
+          aria-orientation="horizontal"
         >
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -109,13 +178,16 @@ export function TerminalTabsPanel({
                 data-active={isActive}
               >
                 <button
+                  ref={setTabButtonRef(tab.id)}
                   type="button"
                   className="terminal-tab-label"
                   role="tab"
                   aria-selected={isActive}
                   aria-controls={`terminal-tabpanel-${tab.id}`}
                   id={`terminal-tab-${tab.id}`}
+                  tabIndex={isActive ? 0 : -1}
                   onClick={() => setActiveTabId(tab.id)}
+                  onKeyDown={handleTabKeyDown(tab.id)}
                   title={tab.label}
                 >
                   {tab.label}

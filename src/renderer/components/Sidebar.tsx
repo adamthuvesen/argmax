@@ -14,19 +14,48 @@ import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../.
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import {
   loadCollapsedProjectIds,
+  loadExpandedProjectIds,
   loadProjectOrder,
   loadProjectSortMode,
   loadWorkspaceOrders,
   saveCollapsedProjectIds,
+  saveExpandedProjectIds,
   saveProjectOrder,
   saveProjectSortMode,
   saveWorkspaceOrders,
+  SIDEBAR_SESSION_LIMIT,
   sortProjectsBy,
   sortWorkspaceGroup,
   type ProjectSortMode
 } from "../lib/projects.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
+
+// Marker stored in sessionStorage (cleared on app quit / window close in
+// Electron) so the "collapse every project on launch" seed fires exactly
+// once per real app launch — not on every Sidebar mount. Tests that want
+// the old "respect persisted localStorage" behavior pre-set this marker
+// in their beforeEach.
+const BOOT_COLLAPSE_SEED_KEY = "argmax.sidebar.bootCollapseSeeded";
+
+function readBootCollapseSeeded(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.sessionStorage.getItem(BOOT_COLLAPSE_SEED_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+function markBootCollapseSeeded(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(BOOT_COLLAPSE_SEED_KEY, "1");
+  } catch {
+    // SecurityError / QuotaExceeded — fall through; worst case we collapse
+    // again on the next render, which is harmless.
+  }
+}
 
 const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
   { value: "recent", label: "Recent activity", description: "Most recently active project first" },
@@ -90,7 +119,23 @@ export function Sidebar({
   defaultIde: IdeId | null;
   showSessionTokens: boolean;
 }): JSX.Element {
-  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => loadCollapsedProjectIds());
+  // Per-launch behavior: every project starts collapsed so no sessions are
+  // visible on app start. After the first non-empty snapshot, we set a
+  // sessionStorage marker so subsequent re-mounts within the same renderer
+  // process (e.g. hot-reload) respect the persisted state and don't
+  // re-collapse projects the user has since expanded.
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() =>
+    readBootCollapseSeeded() ? loadCollapsedProjectIds() : new Set()
+  );
+  const startupCollapseInitializedRef = useRef(readBootCollapseSeeded());
+  if (!startupCollapseInitializedRef.current && snapshot.projects.length > 0) {
+    startupCollapseInitializedRef.current = true;
+    markBootCollapseSeeded();
+    const allCollapsed = new Set(snapshot.projects.map((project) => project.id));
+    setCollapsedProjectIds(allCollapsed);
+    saveCollapsedProjectIds(allCollapsed);
+  }
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => loadExpandedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
@@ -216,6 +261,20 @@ export function Sidebar({
       saveCollapsedProjectIds(next);
     },
     [collapsedProjectIds]
+  );
+
+  const toggleProjectExpansion = useCallback(
+    (projectId: string): void => {
+      const next = new Set(expandedProjectIds);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      setExpandedProjectIds(next);
+      saveExpandedProjectIds(next);
+    },
+    [expandedProjectIds]
   );
 
   const handleDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
@@ -409,6 +468,18 @@ export function Sidebar({
           const projectWorkspaces = liveWorkspaces;
           const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
           const isCollapsed = collapsedProjectIds.has(project.id);
+          const totalCount = projectWorkspaces.length;
+          const isExpanded = expandedProjectIds.has(project.id);
+          const selectedIndex = selectedWorkspaceId
+            ? projectWorkspaces.findIndex((workspace) => workspace.id === selectedWorkspaceId)
+            : -1;
+          const forceExpand = selectedIndex >= SIDEBAR_SESSION_LIMIT;
+          const showAll = isExpanded || forceExpand;
+          const visibleWorkspaces = showAll
+            ? projectWorkspaces
+            : projectWorkspaces.slice(0, SIDEBAR_SESSION_LIMIT);
+          const hiddenCount = totalCount - visibleWorkspaces.length;
+          const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
           const isDragging = draggingId === project.id;
           const isDragOver = dragOverId === project.id && !isDragging;
           return (
@@ -478,10 +549,11 @@ export function Sidebar({
                   <ChevronRight size={14} />
                 </button>
               </div>
-              {isCollapsed
-                ? null
-                : projectWorkspaces.map((workspace, workspaceIndex) => {
-                    const isLast = workspaceIndex === projectWorkspaces.length - 1;
+              {isCollapsed ? null : (
+                <>
+                  {visibleWorkspaces.map((workspace, workspaceIndex) => {
+                    const isLast =
+                      !hasOverflow && workspaceIndex === visibleWorkspaces.length - 1;
                     return (
                       <div
                         key={workspace.id}
@@ -514,6 +586,23 @@ export function Sidebar({
                       </div>
                     );
                   })}
+                  {hasOverflow ? (
+                    <button
+                      type="button"
+                      className="sidebar-show-more"
+                      aria-expanded={showAll}
+                      aria-label={
+                        showAll
+                          ? `Show fewer ${project.name} sessions`
+                          : `Show ${hiddenCount} more ${project.name} sessions`
+                      }
+                      onClick={() => toggleProjectExpansion(project.id)}
+                    >
+                      {showAll ? "Show less" : `Show ${hiddenCount} more`}
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
           );
         })}

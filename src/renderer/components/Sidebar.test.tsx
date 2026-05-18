@@ -126,6 +126,9 @@ describe("Sidebar — localStorage write isolation", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    // Clear the boot-collapse seed marker so the new mount triggers the
+    // "collapse every project on launch" behavior these tests exercise.
+    window.sessionStorage.clear();
     setItemSpy = vi.spyOn(Storage.prototype, "setItem");
   });
 
@@ -139,6 +142,11 @@ describe("Sidebar — localStorage write isolation", () => {
     // would persist twice when StrictMode double-invokes the updater in
     // dev. The fix computes `next` outside the updater and calls the
     // storage writer exactly once per user action.
+    //
+    // The sidebar boots every project collapsed (so no sessions are visible
+    // on launch), so we first expand the project, then collapse it again
+    // and assert that the second (collapse-direction) click writes exactly
+    // once with `["project-1"]`.
     render(
       <StrictMode>
         <Sidebar
@@ -164,8 +172,10 @@ describe("Sidebar — localStorage write isolation", () => {
       </StrictMode>
     );
 
-    const chevron = screen.getByRole("button", { name: "Hide Argmax sessions" });
-    fireEvent.click(chevron);
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    setItemSpy.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide Argmax sessions" }));
 
     const collapsedWrites = setItemSpy.mock.calls.filter(
       ([key]) => key === collapsedProjectsStorageKey
@@ -175,10 +185,9 @@ describe("Sidebar — localStorage write isolation", () => {
   });
 
   it("writes the collapsed-projects key exactly once per expand click under StrictMode", () => {
-    // Same property, the inverse direction. Persist the collapsed state first
-    // (so the chevron starts in the "Show" position), then expand and assert
-    // a single write back to the empty array.
-    window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify(["project-1"]));
+    // Same property, the inverse direction. The sidebar boots collapsed by
+    // default, so we don't need to pre-persist anything — clicking the
+    // "Show" chevron once should write `[]` exactly once.
 
     render(
       <StrictMode>
@@ -373,6 +382,12 @@ describe("Sidebar — project removal menu", () => {
 });
 
 describe("Sidebar — workspaces without sessions", () => {
+  beforeEach(() => {
+    // Clear the boot-collapse seed so each test starts with all projects
+    // collapsed (matching the real per-launch behavior).
+    window.sessionStorage.clear();
+  });
+
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
@@ -426,9 +441,24 @@ describe("Sidebar — workspaces without sessions", () => {
 
     render(<Sidebar {...baseProps} snapshot={snapshotWithOrphan} />);
 
+    // Sidebar boots every project collapsed; expand to see its sessions.
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+
     // The session-backed workspace is visible.
     expect(screen.getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
     // The orphan is hidden.
     expect(screen.queryByRole("button", { name: /What is this project about/ })).toBeNull();
+  });
+
+  it("boots with every project collapsed so no workspaces are visible on startup", () => {
+    // Even if a previous session expanded the project (persisted as []
+    // in collapsedProjectsStorageKey), each new launch should re-collapse
+    // everything so the sidebar starts empty.
+    window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([]));
+
+    render(<Sidebar {...baseProps} snapshot={snapshot} />);
+
+    expect(screen.getByRole("button", { name: "Show Argmax sessions" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Build dashboard/ })).toBeNull();
   });
 });

@@ -279,6 +279,50 @@ describe("SessionConversation — model selection persistence", () => {
     expect(screen.getAllByText(text)).toHaveLength(1);
   });
 
+  it("renders exactly one streaming caret regardless of nested list depth", () => {
+    const nestedMarkdown = [
+      "Tasks:",
+      "",
+      "1. Use Glob to find all files",
+      "2. For each file, note:",
+      "   - Path",
+      "   - Length",
+      "   - Recently updated?",
+      "3. Identify patterns:",
+      "   - Sibling code",
+      "   - Cross-references",
+      "   - Orphans",
+      "",
+      "Return a structured list."
+    ].join("\n");
+
+    const { container } = renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "scan repo", "2026-05-12T15:00:00.000Z"),
+        event("d1", "message.delta", nestedMarkdown, "2026-05-12T15:00:01.000Z")
+      ]
+    );
+
+    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(1);
+    expect(container.querySelector(".markdown-streaming .streaming-caret")).not.toBeNull();
+  });
+
+  it("removes the streaming caret once the assistant message completes", () => {
+    const text = "1. First\n2. Second";
+
+    const { container } = renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "go", "2026-05-12T15:00:00.000Z"),
+        event("m1", "message.completed", text, "2026-05-12T15:00:01.000Z")
+      ]
+    );
+
+    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
+    expect(container.querySelector(".markdown-streaming")).toBeNull();
+  });
+
   it("folds Codex command_execution singletons into the turn command group", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
@@ -346,6 +390,320 @@ describe("SessionConversation — model selection persistence", () => {
 
     // Only the real event's bubble — the synth must drop out of renderItems.
     expect(screen.getAllByText("@AGENTS.md", { selector: "p" })).toHaveLength(1);
+  });
+
+  it("renders an ExitPlanMode tool call as a PlanCard, hiding the raw tool row", () => {
+    const planMarkdown =
+      "## Refactor auth module\n\n" +
+      "**Files to change:** auth.ts, login.tsx\n\n" +
+      "Approve this plan?";
+    renderConversation(
+      baseSession({ provider: "claude", state: "complete" }),
+      [
+        event("u1", "user.message", "refactor auth", "2026-05-12T15:00:00.000Z", {
+          agentMode: "plan"
+        }),
+        event(
+          "m1",
+          "message.completed",
+          "Let me lay out a plan.",
+          "2026-05-12T15:00:01.000Z"
+        ),
+        event("tu-start", "command.started", "ExitPlanMode", "2026-05-12T15:00:02.000Z", {
+          type: "tool_use",
+          id: "tu_plan_1",
+          name: "ExitPlanMode",
+          input: { plan: planMarkdown }
+        }),
+        event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "tu_plan_1",
+          content: "ok"
+        })
+      ]
+    );
+
+    expect(screen.getByLabelText(/Plan: /)).toBeInTheDocument();
+    expect(screen.getByText("Refactor auth module")).toBeInTheDocument();
+    expect(screen.getByText("Let me lay out a plan.")).toBeInTheDocument();
+    // The raw ExitPlanMode tool row should not appear once the card has the plan.
+    expect(screen.queryByText("ExitPlanMode")).not.toBeInTheDocument();
+  });
+
+  it("renders a failed AskUserQuestion tool call as a QuestionCard and submits the chosen answer", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {
+            agentMode: "plan"
+          }),
+          event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_q_1",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick a direction",
+                  header: "Direction",
+                  multiSelect: false,
+                  options: [
+                    { label: "Fix audit findings", description: "Address 4 high-severity bugs" },
+                    { label: "General maintenance", description: "Clean up timestamps" }
+                  ]
+                }
+              ]
+            }
+          }),
+          event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+            tool_use_id: "tu_q_1",
+            content: "Answer questions?",
+            is_error: true
+          })
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={onSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.getByText("Pick a direction")).toBeInTheDocument();
+    // Tool row is hidden once the card renders.
+    expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("option", { name: /Fix audit findings/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const [, message, , agentMode] = onSend.mock.calls[0];
+    expect(message).toContain("**Direction**: Fix audit findings");
+    expect(agentMode).toBe("plan");
+  });
+
+  it("shows the Thinking indicator between events while the session is still running", () => {
+    // After `message.completed` (or `command.completed`) while the session
+    // is still running, the model is mid-turn — deciding what to do next.
+    // Before the next event arrives there's no streaming caret or tool
+    // spinner on screen, so the chat would otherwise sit silent. Thinking
+    // should fill the gap.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
+        event("m1", "message.completed", "Working on it.", "2026-05-12T15:00:01.000Z")
+      ]
+    );
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("shows the Thinking indicator while a hidden AskUserQuestion tool is running", () => {
+    // AskUserQuestion is rendered as a QuestionCard, not a tool row. While
+    // it's running there is no card yet AND no tool spinner — Thinking has
+    // to fill the gap, otherwise the chat is silent.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
+          agentMode: "plan"
+        }),
+        event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_q_running",
+          name: "AskUserQuestion",
+          input: { questions: [{ question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] }] }
+        })
+        // No command.completed yet — tool still running.
+      ]
+    );
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("hides the Thinking indicator while a regular tool is actually running on screen", () => {
+    // For a visible tool, the row's own spinner is the progress indicator —
+    // no need to double up with Thinking.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+        event("tu-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_bash_running",
+          name: "Bash",
+          input: { command: "ls" }
+        })
+      ]
+    );
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("hides the AskUserQuestion tool row immediately, even while still running (no flicker)", () => {
+    // Only `command.started` has arrived — the tool is still running and
+    // the card can't render yet. The raw tool row must NOT appear; otherwise
+    // every AskUserQuestion call flashes visible for the ~20ms gap before
+    // its `command.completed` lands.
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "decide", "2026-05-12T15:00:00.000Z", {
+            agentMode: "plan"
+          }),
+          event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_q_running",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Pick",
+                  header: "Pick",
+                  multiSelect: false,
+                  options: [{ label: "A" }, { label: "B" }]
+                }
+              ]
+            }
+          })
+          // No `command.completed` event yet — the tool is still running.
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "running" })}
+        workspace={workspace}
+      />
+    );
+
+    // Tool row hidden from the moment it fires.
+    expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
+    // Card waits for completion — neither path leaks the raw tool.
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
+  });
+
+  it("hides the ExitPlanMode tool row immediately, even while still running (no flicker)", () => {
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "plan it", "2026-05-12T15:00:00.000Z", {
+            agentMode: "plan"
+          }),
+          event("tu-start", "command.started", "ExitPlanMode", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_plan_running",
+            name: "ExitPlanMode",
+            input: { plan: "## Title\n\n**Section:** body\n\nApprove?" }
+          })
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "running" })}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.queryByText("ExitPlanMode")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Plan: /)).not.toBeInTheDocument();
+  });
+
+  it("still renders the QuestionCard when AskUserQuestion retries fold into a tool-group", () => {
+    // Two AskUserQuestion calls within the 75ms parallel-window fold into
+    // a `tool-group`. Detection that only checks `t.kind === "tool"` would
+    // silently miss this case and the card would vanish after a brief flash.
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "what should we do", "2026-05-12T15:00:00.000Z", {
+            agentMode: "plan"
+          }),
+          event("tu1-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_q_a",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "First attempt",
+                  header: "First",
+                  multiSelect: false,
+                  options: [{ label: "Option A" }, { label: "Option B" }]
+                }
+              ]
+            }
+          }),
+          event("tu1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.020Z", {
+            tool_use_id: "tu_q_a",
+            content: "Answer questions?",
+            is_error: true
+          }),
+          event("tu2-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.040Z", {
+            type: "tool_use",
+            id: "tu_q_b",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Refined ask — what's the priority?",
+                  header: "Priority",
+                  multiSelect: false,
+                  options: [{ label: "Fix bugs" }, { label: "Add features" }]
+                }
+              ]
+            }
+          }),
+          event("tu2-end", "command.completed", "tool_result", "2026-05-12T15:00:01.060Z", {
+            tool_use_id: "tu_q_b",
+            content: "Answer questions?",
+            is_error: true
+          })
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    // First valid attempt wins and stays put — swapping to the retry would
+    // remount the card and wipe in-progress selections.
+    expect(screen.getByText("First attempt")).toBeInTheDocument();
+    expect(screen.queryByText(/Refined ask/)).not.toBeInTheDocument();
+    // The fold-induced tool-group row is suppressed.
+    expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();
   });
 
   it("hides oversized-payload truncation markers from chat", () => {

@@ -4826,13 +4826,12 @@ button {
   50%      { opacity: 0.9; }
 }
 
-/* Streaming caret — appended to the last paragraph of a bubble that is still
-   receiving message.delta events. Vanishes when the provider's final
-   message.completed arrives. */
-.markdown-streaming p:last-of-type::after,
-.markdown-streaming li:last-of-type::after,
-.markdown-streaming > *:last-child:not(p):not(li)::after {
-  content: "";
+/* Streaming caret — a single <span class="streaming-caret"> is appended to
+   the deepest last leaf of a streaming bubble by useStreamingCaret in
+   SessionConversation.tsx, and removed when message.completed arrives.
+   Pseudo-element selectors aren't usable here: `:last-of-type` would match
+   the last <p>/<li> within EACH parent, producing one caret per nested list. */
+.streaming-caret {
   display: inline-block;
   width: 2px;
   height: 1em;
@@ -8355,6 +8354,59 @@ button {
   opacity: 0.55;
 }
 
+.sidebar-show-more {
+  position: relative;
+  display: block;
+  width: calc(100% - 6px);
+  margin-left: 6px;
+  padding: 4px 8px 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.sidebar-show-more::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 0;
+  width: 1px;
+  height: 10px;
+  background: var(--line);
+  transition: background var(--duration-fast) var(--ease);
+  pointer-events: none;
+}
+
+.sidebar-show-more::after {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 10px;
+  width: 4px;
+  height: 1px;
+  background: var(--line);
+  transition: background var(--duration-fast) var(--ease);
+  pointer-events: none;
+}
+
+.sidebar-show-more:hover,
+.sidebar-show-more:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.sidebar-show-more:hover::before,
+.sidebar-show-more:hover::after,
+.sidebar-show-more:focus-visible::before,
+.sidebar-show-more:focus-visible::after {
+  background: var(--line-strong);
+}
+
 .session-pin-btn {
   display: inline-grid;
   place-items: center;
@@ -9503,8 +9555,11 @@ button {
   width: 100%;
   max-width: 940px;
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 30, 0.03),
+    0 8px 24px rgba(15, 23, 30, 0.05);
   display: grid;
   grid-template-columns: 168px 1fr;
   position: relative;
@@ -9718,10 +9773,10 @@ button {
 
 .plan-card-title {
   font-family: var(--font-ui);
-  font-size: 26px;
+  font-size: 23px;
   font-weight: 500;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
+  line-height: 1.08;
+  letter-spacing: -0.022em;
   color: var(--text);
   margin: 0;
 }
@@ -9764,10 +9819,10 @@ button {
 }
 
 .plan-card-summary {
-  font-size: var(--text-md);
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.55;
   color: var(--text);
-  max-width: 64ch;
+  max-width: 66ch;
   letter-spacing: -0.003em;
   margin: 0;
 }
@@ -9782,10 +9837,10 @@ button {
 }
 
 .plan-card-section-note {
-  font-size: var(--text-base);
-  line-height: 1.6;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--muted-strong);
-  max-width: 64ch;
+  max-width: 66ch;
   margin: 0;
 }
 
@@ -9800,7 +9855,7 @@ button {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: 14px;
 }
 
 .plan-card-change-head {
@@ -9812,15 +9867,16 @@ button {
 
 .plan-card-change-marker {
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--muted-strong);
-  padding-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  padding-top: 1px;
 }
 
 .plan-card-change-title {
-  font-size: var(--text-md);
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.45;
   color: var(--text);
   letter-spacing: -0.003em;
   font-weight: 500;
@@ -9922,8 +9978,8 @@ button {
 }
 
 .plan-card-option.is-active {
-  background: var(--sage-soft);
-  border-left-color: var(--muted-strong);
+  background: rgba(90, 143, 114, 0.08);
+  border-left-color: var(--sage);
 }
 
 .plan-card-option-num {
@@ -9998,6 +10054,117 @@ button {
   font-weight: 500;
   letter-spacing: 0;
   line-height: 1;
+}
+
+.question-card-option-desc {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Submit lives outside an action-block (one card may have several
+   questions), so we add the breathing room here that the action-block would
+   normally provide. */
+.question-card .plan-card-action-foot {
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+/* Question card is denser than Plan card — multiple questions per card
+   stretch vertically fast otherwise. Scope every tweak to .question-card so
+   the Plan card stays unchanged. */
+.question-card .plan-card-action-block {
+  margin-top: 0;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--line);
+  background: transparent;
+}
+
+.question-card .plan-card-action-block:first-child {
+  border-top: 0;
+}
+
+.question-card .plan-card-action-q {
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0 0 10px;
+}
+
+.question-card .plan-card-options {
+  gap: 0;
+  margin: 0;
+}
+
+.question-card .plan-card-option {
+  padding: 6px 10px 6px 10px;
+  margin-left: -10px;
+  grid-template-columns: 20px 1fr 12px;
+}
+
+.question-card .plan-card-option-num {
+  font-size: 11px;
+}
+
+.question-card .plan-card-option-label {
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.question-card .plan-card-option-arrow {
+  font-size: 11px;
+}
+
+.question-card .question-card-option-desc {
+  font-size: 12px;
+}
+
+.question-card-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 6px;
+  background: #000;
+  color: #fff;
+  border: 1px solid #000;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.question-card-submit-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #fff;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.question-card-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.question-card-submit:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.question-card-submit:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 /* Stay readable when the meta rail can't sit beside the content. */

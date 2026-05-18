@@ -1,6 +1,7 @@
 import { ChevronRight, Loader2 } from "lucide-react";
-import { Fragment, useMemo, useState, type JSX, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { formatElapsed } from "../formatElapsed.js";
+import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { ToolCall, ToolCallGroup } from "../lib/toolCalls.js";
 
 export type TurnToolItem =
@@ -132,12 +133,16 @@ export function TurnBlock({
   const subtitleParts = [providerLabelText, modelLabel].filter((v): v is string => Boolean(v));
   const subtitle = subtitleParts.join(" · ");
   const elapsedLabel = formatElapsed(elapsedMs);
-  const chipLabel = running
-    ? "Working…"
-    : elapsedLabel
-      ? `Worked for ${elapsedLabel}`
-      : "Worked";
+  const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
   const hasTools = toolItems.length > 0;
+
+  const liveStartMs = running && bounds.startedAt > 0 ? bounds.startedAt : null;
+  const liveRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    const node = liveRef.current;
+    if (!node || liveStartMs === null) return;
+    return registerLiveTimer(node, () => Date.now() - liveStartMs, formatElapsed);
+  }, [liveStartMs]);
 
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>
@@ -148,14 +153,20 @@ export function TurnBlock({
             type="button"
             className="turn-block-chip"
             aria-expanded={expanded}
-            aria-label={running ? "Working" : `Worked for ${elapsedLabel || "a moment"}`}
-            title={chipLabel}
+            aria-label={staticChipLabel}
+            title={staticChipLabel}
             onClick={() => setUserToggle(!expanded)}
           >
             {running ? (
               <Loader2 size={11} className="turn-block-spinner" aria-hidden="true" />
             ) : null}
-            <span>{chipLabel}</span>
+            {liveStartMs !== null ? (
+              <span>
+                Working for <span ref={liveRef} />
+              </span>
+            ) : (
+              <span>{staticChipLabel}</span>
+            )}
             <ChevronRight
               size={11}
               className={`turn-block-chevron${expanded ? " expanded" : ""}`}

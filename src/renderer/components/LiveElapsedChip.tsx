@@ -1,7 +1,8 @@
-import type { JSX } from "react";
-import { useLiveNow } from "../hooks/nowContext.js";
+import { useEffect, useRef, type JSX } from "react";
+import { formatElapsed } from "../formatElapsed.js";
+import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { ToolCall } from "../lib/toolCalls.js";
-import { ToolStatusChip } from "./ToolStatusChip.js";
+import { ToolStatusChip, ToolStatusChipLive } from "./ToolStatusChip.js";
 
 type Props = {
   status: ToolCall["status"];
@@ -33,14 +34,15 @@ function StaticElapsedChip({
   );
 }
 
-function RunningElapsedChip({ status, startedAtMs, showFastFailureText }: Props): JSX.Element {
-  const now = useLiveNow();
-  const elapsedMs = Number.isFinite(startedAtMs) ? Math.max(0, now - startedAtMs) : 0;
-  return (
-    <ToolStatusChip
-      status={status}
-      elapsedMs={elapsedMs}
-      {...(showFastFailureText ? { showFastFailureText: true } : {})}
-    />
-  );
+function RunningElapsedChip({ status, startedAtMs }: Props): JSX.Element {
+  const ref = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !Number.isFinite(startedAtMs)) return;
+    return registerLiveTimer(node, () => Date.now() - startedAtMs, formatElapsed);
+  }, [startedAtMs]);
+
+  // Screen readers don't need 60fps updates; a static "running" label is plenty.
+  return <ToolStatusChipLive status={status} ariaLabel="running" timeRef={ref} />;
 }

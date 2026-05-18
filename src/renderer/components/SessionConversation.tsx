@@ -23,7 +23,8 @@ import {
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject
 } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
@@ -92,8 +93,8 @@ import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { FilePopover } from "./FilePopover.js";
 import { Mascot } from "./Mascot.js";
 import { ModelSelector } from "./ModelSelector.js";
-import { NowProvider } from "./NowProvider.js";
 import { PlanCard } from "./PlanCard.js";
+import { QuestionCard, type Question } from "./QuestionCard.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { ThinkingTranscript } from "./ThinkingTranscript.js";
 import { ThinkingVerbs } from "./ThinkingVerbs.js";
@@ -164,6 +165,135 @@ function foldTurnToolItems(toolItems: TurnToolItem[]): TurnToolItem[] {
 
 function isPayloadTruncationMarker(event: TimelineEvent): boolean {
   return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
+}
+
+// Walk to the deepest last leaf, skipping into <code>/<pre> so the caret never
+// lands inside a syntax-highlighted block. We fall back to the parent of a
+// code/pre child rather than descending in.
+function findCaretAnchor(root: HTMLElement): HTMLElement {
+  let node: HTMLElement = root;
+  while (true) {
+    const next = node.lastElementChild as HTMLElement | null;
+    if (!next) return node;
+    const tag = next.tagName;
+    if (tag === "CODE" || tag === "PRE") return node;
+    node = next;
+  }
+}
+
+function useStreamingCaret(
+  rootRef: RefObject<HTMLDivElement | null>,
+  streaming: boolean,
+  text: string
+): void {
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    // Always sweep any prior caret first — we own this DOM node.
+    root.querySelectorAll(".streaming-caret").forEach((node) => node.remove());
+    if (!streaming) return undefined;
+    const anchor = findCaretAnchor(root);
+    const caret = root.ownerDocument.createElement("span");
+    caret.className = "streaming-caret";
+    caret.setAttribute("aria-hidden", "true");
+    anchor.appendChild(caret);
+    return () => caret.remove();
+    // `text` is included so a re-render after new deltas re-runs the walk and
+    // moves the caret to the newest last leaf.
+  }, [rootRef, streaming, text]);
+}
+
+function StreamingMarkdown({
+  text,
+  streaming,
+  workspace,
+  onOpenFile
+}: {
+  text: string;
+  streaming: boolean;
+  workspace?: WorkspaceSummary | null;
+  onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
+}): JSX.Element {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useStreamingCaret(rootRef, streaming, text);
+  return (
+    <div
+      ref={rootRef}
+      className={`markdown${streaming ? " markdown-streaming" : ""}`}
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code: ({ className, children, ...rest }) => {
+            const isFenced = typeof className === "string" && className.includes("language-");
+            if (isFenced) {
+              return <CodeBlock className={className}>{children}</CodeBlock>;
+            }
+            const codeText = Array.isArray(children)
+              ? children.map((c) => (typeof c === "string" ? c : "")).join("")
+              : typeof children === "string"
+                ? children
+                : "";
+            const match = matchFileChip(codeText);
+            if (match) {
+              return (
+                <FileChip
+                  path={match.path}
+                  line={match.line}
+                  workspaceId={workspace?.id ?? null}
+                  workspaceCwd={workspace?.path ?? null}
+                  onOpen={onOpenFile}
+                />
+              );
+            }
+            return (
+              <code className={className} {...rest}>
+                {children}
+              </code>
+            );
+          },
+          a: ({ href, children, ...rest }) => {
+            if (!href || href.startsWith("#")) {
+              return (
+                <a href={href} {...rest}>
+                  {children}
+                </a>
+              );
+            }
+            // External links open in the user's default browser via
+            // main.ts setWindowOpenHandler -> shell.openExternal.
+            if (/^(?:https?:|mailto:)/.test(href)) {
+              return (
+                <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+                  {children}
+                </a>
+              );
+            }
+            const match = matchFileChip(href);
+            if (!match) {
+              return (
+                <a href={href} {...rest}>
+                  {children}
+                </a>
+              );
+            }
+            return (
+              <FileChip
+                path={match.path}
+                line={match.line}
+                workspaceId={workspace?.id ?? null}
+                workspaceCwd={workspace?.path ?? null}
+                onOpen={onOpenFile}
+              />
+            );
+          },
+          pre: ({ children }) => <>{children}</>
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 export function SessionConversation({
@@ -385,7 +515,6 @@ export function SessionConversation({
     return folded;
   }, [conversationEvents, toolCalls]);
 
-  const anyToolRunning = toolCalls.some((tool) => tool.status === "running");
   const isFreshTool = useFreshSet(toolCalls, (tool) => tool.id, session?.id ?? "");
 
   // Second-level fold: group user→assistant→tools into a single "turn" so the
@@ -481,17 +610,30 @@ export function SessionConversation({
         event.type === "command.started" ||
         event.type === "command.completed")
   );
-  // The "Thinking" bubble is a pre-answer affordance only. Hide it as soon
-  // as ANY visible assistant event arrives — a streamed message, a tool
-  // started, or a tool completed. A running tool already has its own spinner;
-  // a parallel "Thinking" row alongside it is redundant and violates the
-  // CLAUDE.md rule. (audit-2026-05-17 M2)
-  const hasVisibleAssistantActivity =
-    lastSignificantEvent?.type === "message.delta" ||
-    lastSignificantEvent?.type === "message.completed" ||
-    lastSignificantEvent?.type === "command.started" ||
-    lastSignificantEvent?.type === "command.completed";
-  const isThinking = session?.state === "running" && !hasVisibleAssistantActivity;
+  // Show the "Thinking" bubble whenever the session is running and there is
+  // no other live progress indicator on screen. The two indicators that
+  // already convey "work is happening" are:
+  //   (a) the streaming caret on an actively-deltaing message bubble, and
+  //   (b) the running spinner on a visible tool row.
+  // Between events — say, after a `message.completed` while the model is
+  // deciding the next tool — neither (a) nor (b) is on, and the chat would
+  // otherwise sit silent. Show Thinking there. Also: the `ExitPlanMode` /
+  // `AskUserQuestion` tools are *hidden* (rendered as cards), so a running
+  // instance of either gives no on-screen indicator either; treat them as
+  // "no visible tool running" and let Thinking show.
+  const isStreamingMessage = lastSignificantEvent?.type === "message.delta";
+  const anyVisibleToolRunning = useMemo(
+    () =>
+      toolCalls.some(
+        (tool) =>
+          tool.status === "running" &&
+          tool.name !== "ExitPlanMode" &&
+          tool.name !== "AskUserQuestion"
+      ),
+    [toolCalls]
+  );
+  const isThinking =
+    session?.state === "running" && !anyVisibleToolRunning && !isStreamingMessage;
 
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const metaCardsRef = useRef<HTMLDivElement | null>(null);
@@ -944,7 +1086,6 @@ export function SessionConversation({
         </div>
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
-        <NowProvider active={anyToolRunning}>
         {renderItems.length > 0 ? (
           renderItems.map((item, index) => {
             if (item.kind === "user-message") {
@@ -1039,27 +1180,161 @@ export function SessionConversation({
               priorItem && priorItem.kind === "user-message"
                 ? stringValue(priorItem.event.payload.agentMode)
                 : null;
+            // Claude Code emits the plan through its ExitPlanMode tool, not
+            // assistant text. The structured plan markdown lives at
+            // payload.input.plan; the surrounding narrative bubbles are just
+            // commentary. When the tool fires, it's authoritative.
+            // Collect every ExitPlanMode tool id up front — regardless of
+            // status — so the raw tool row is hidden from the moment the tool
+            // fires, not after completion. Otherwise the row flashes visible
+            // for the ~20ms between `command.started` and `command.completed`.
+            const exitPlanToolIds = new Set<string>();
+            let exitPlanTool: { id: string; createdAt: string; markdown: string } | null = null;
+            for (const t of item.toolItems) {
+              if (t.kind !== "tool") continue;
+              if (t.tool.name !== "ExitPlanMode") continue;
+              exitPlanToolIds.add(t.tool.id);
+              if (t.tool.status !== "done") continue;
+              const planArg = t.tool.inputFull?.plan;
+              if (typeof planArg !== "string" || planArg.trim().length === 0) continue;
+              if (!exitPlanTool) {
+                exitPlanTool = { id: t.tool.id, createdAt: t.tool.createdAt, markdown: planArg };
+              }
+            }
+            const handlePlanAccept = (): void => {
+              if (!session) return;
+              setAgentMode("auto");
+              writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
+              shouldRefocusInput.current = true;
+              void onSendSessionInput(
+                session.id,
+                "Proceed with the plan above.",
+                selectedModel,
+                "auto"
+              );
+            };
+            const handlePlanReject = (): void => {
+              inputRef.current?.focus();
+            };
+            // Claude Code's AskUserQuestion tool can't be answered in
+            // structured-json mode (no interactive stdin) — the tool errors
+            // out, but its input still carries the structured question +
+            // options. Render that as an interactive card so the user can
+            // pick an answer; the chosen value is sent as a follow-up user
+            // message (the model already remembers what it asked).
+            // Walk every AskUserQuestion attempt in the turn. Render only the
+            // most recent (the model's final, refined ask), but hide the raw
+            // tool rows for every attempt so the UI shows one card, not a
+            // pile of denied-tool rows above it.
+            const askUserQuestionToolIds = new Set<string>();
+            const askUserQuestionGroupIds = new Set<string>();
+            let askUserQuestionTool: { id: string; createdAt: string; questions: Question[] } | null = null;
+            // Two retries inside the 75ms parallel-window fold into a
+            // `tool-group`; only checking `t.kind === "tool"` would miss
+            // those and the card would silently vanish. Flatten both kinds.
+            const askUserQuestionCandidates: ToolCall[] = [];
+            for (const t of item.toolItems) {
+              if (t.kind === "tool") {
+                if (t.tool.name === "AskUserQuestion") askUserQuestionCandidates.push(t.tool);
+                continue;
+              }
+              const groupHasMatch = t.group.tools.some((tool) => tool.name === "AskUserQuestion");
+              if (!groupHasMatch) continue;
+              askUserQuestionGroupIds.add(t.group.id);
+              for (const tool of t.group.tools) {
+                if (tool.name === "AskUserQuestion") askUserQuestionCandidates.push(tool);
+              }
+            }
+            for (const tool of askUserQuestionCandidates) {
+              // Add the ID before the status check so the raw tool row stays
+              // hidden while running. The card itself still waits for
+              // completion (next line) so it never appears half-rendered.
+              askUserQuestionToolIds.add(tool.id);
+              if (tool.status === "running") continue;
+              const raw = tool.inputFull?.questions;
+              if (!Array.isArray(raw)) continue;
+              const questions: Question[] = [];
+              for (const q of raw) {
+                if (!q || typeof q !== "object") continue;
+                const qq = q as Record<string, unknown>;
+                const questionText = typeof qq.question === "string" ? qq.question : "";
+                if (!questionText) continue;
+                const header = typeof qq.header === "string" ? qq.header : "";
+                const optionsRaw = Array.isArray(qq.options) ? qq.options : [];
+                const options = optionsRaw
+                  .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>) : null))
+                  .filter((o): o is Record<string, unknown> => o !== null)
+                  .map((o) => ({
+                    label: typeof o.label === "string" ? o.label : "",
+                    ...(typeof o.description === "string" ? { description: o.description } : {})
+                  }))
+                  .filter((o) => o.label.length > 0);
+                if (options.length === 0) continue;
+                questions.push({
+                  question: questionText,
+                  header,
+                  options,
+                  multiSelect: qq.multiSelect === true
+                });
+              }
+              if (questions.length === 0) continue;
+              // First valid attempt wins, and stays put. Later retries are
+              // still added to `askUserQuestionToolIds` (so their raw rows
+              // stay hidden) but the card key is pinned to this tool's id —
+              // otherwise a model retry mid-interaction would remount the
+              // card and wipe the user's in-progress selections. (audit-2026-05-17)
+              if (!askUserQuestionTool) {
+                askUserQuestionTool = { id: tool.id, createdAt: tool.createdAt, questions };
+              }
+            }
+            const handleQuestionAnswer = (answerMarkdown: string): void => {
+              if (!session) return;
+              shouldRefocusInput.current = true;
+              void onSendSessionInput(
+                session.id,
+                answerMarkdown,
+                selectedModel,
+                turnAgentMode === "plan" ? "plan" : "auto"
+              );
+            };
+            const questionCard: JSX.Element | null = askUserQuestionTool
+              ? (
+                  <QuestionCard
+                    key={`question-${askUserQuestionTool.id}`}
+                    questions={askUserQuestionTool.questions}
+                    createdAt={askUserQuestionTool.createdAt}
+                    modelLabel={selectedModel.label}
+                    onAnswer={handleQuestionAnswer}
+                  />
+                )
+              : null;
+            const exitPlanCard: JSX.Element | null = exitPlanTool
+              ? (() => {
+                  const plan = parsePlan(exitPlanTool.markdown);
+                  if (!plan) return null;
+                  return (
+                    <PlanCard
+                      key={`plan-${exitPlanTool.id}`}
+                      plan={plan}
+                      createdAt={exitPlanTool.createdAt}
+                      rawMarkdown={exitPlanTool.markdown}
+                      modelLabel={selectedModel.label}
+                      onAccept={handlePlanAccept}
+                      onReject={handlePlanReject}
+                    />
+                  );
+                })()
+              : null;
+            // Narrative-text plan path (Codex / Cursor). Skip when an
+            // ExitPlanMode card already rendered — Claude's narrative
+            // bubbles should remain as plain text alongside the card.
             const tryRenderPlan = (
               group: { id: string; createdAt: string; text: string; streaming: boolean }
             ): JSX.Element | null => {
+              if (exitPlanCard) return null;
               if (turnAgentMode !== "plan" || group.streaming) return null;
               const plan = parsePlan(group.text);
               if (!plan) return null;
-              const handleAccept = (): void => {
-                if (!session) return;
-                setAgentMode("auto");
-                writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
-                shouldRefocusInput.current = true;
-                void onSendSessionInput(
-                  session.id,
-                  "Proceed with the plan above.",
-                  selectedModel,
-                  "auto"
-                );
-              };
-              const handleReject = (): void => {
-                inputRef.current?.focus();
-              };
               return (
                 <PlanCard
                   key={group.id}
@@ -1067,8 +1342,8 @@ export function SessionConversation({
                   createdAt={group.createdAt}
                   rawMarkdown={group.text}
                   modelLabel={selectedModel.label}
-                  onAccept={handleAccept}
-                  onReject={handleReject}
+                  onAccept={handlePlanAccept}
+                  onReject={handlePlanReject}
                 />
               );
             };
@@ -1085,83 +1360,34 @@ export function SessionConversation({
                   createdAt={group.createdAt}
                   rawMarkdown={group.text}
                 >
-                  <div className={`markdown${group.streaming ? " markdown-streaming" : ""}`}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        code: ({ className, children, ...rest }) => {
-                          const isFenced = typeof className === "string" && className.includes("language-");
-                          if (isFenced) {
-                            return <CodeBlock className={className}>{children}</CodeBlock>;
-                          }
-                          const text = Array.isArray(children)
-                            ? children.map((c) => (typeof c === "string" ? c : "")).join("")
-                            : typeof children === "string"
-                              ? children
-                              : "";
-                          const match = matchFileChip(text);
-                          if (match) {
-                            return (
-                              <FileChip
-                                path={match.path}
-                                line={match.line}
-                                workspaceId={workspace?.id ?? null}
-                                workspaceCwd={workspace?.path ?? null}
-                                onOpen={onOpenFile}
-                              />
-                            );
-                          }
-                          return (
-                            <code className={className} {...rest}>
-                              {children}
-                            </code>
-                          );
-                        },
-                        a: ({ href, children, ...rest }) => {
-                        if (!href || href.startsWith("#")) {
-                          return (
-                            <a href={href} {...rest}>
-                              {children}
-                            </a>
-                          );
-                        }
-                        // External links open in the user's default browser via
-                        // main.ts setWindowOpenHandler -> shell.openExternal.
-                        if (/^(?:https?:|mailto:)/.test(href)) {
-                          return (
-                            <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
-                              {children}
-                            </a>
-                          );
-                        }
-                        const match = matchFileChip(href);
-                        if (!match) {
-                          return (
-                            <a href={href} {...rest}>
-                              {children}
-                            </a>
-                          );
-                        }
-                        return (
-                          <FileChip
-                            path={match.path}
-                            line={match.line}
-                            workspaceId={workspace?.id ?? null}
-                            workspaceCwd={workspace?.path ?? null}
-                            onOpen={onOpenFile}
-                          />
-                        );
-                      },
-                        pre: ({ children }) => <>{children}</>
-                      }}
-                    >
-                      {group.text}
-                    </ReactMarkdown>
-                  </div>
+                  <StreamingMarkdown
+                    text={group.text}
+                    streaming={group.streaming}
+                    workspace={workspace}
+                    onOpenFile={onOpenFile}
+                  />
                 </ChatBubble>
               );
               return { kind: "assistant", id: group.id, node, createdAt: group.createdAt };
             });
+            // Insert the ExitPlanMode card alongside the narrative bubbles so
+            // it interleaves chronologically with everything else in the turn.
+            if (exitPlanCard && exitPlanTool) {
+              assistantChildren.push({
+                kind: "assistant",
+                id: `plan-${exitPlanTool.id}`,
+                node: exitPlanCard,
+                createdAt: exitPlanTool.createdAt
+              });
+            }
+            if (questionCard && askUserQuestionTool) {
+              assistantChildren.push({
+                kind: "assistant",
+                id: `question-${askUserQuestionTool.id}`,
+                node: questionCard,
+                createdAt: askUserQuestionTool.createdAt
+              });
+            }
             // A turn's tool groups stay expanded only while that turn is
             // "active": a tool is still running, or it's the last turn in the
             // list and the session is still streaming. Past turns collapse
@@ -1176,7 +1402,22 @@ export function SessionConversation({
             const sessionIsLive = session?.state === "running";
             const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
             const groupDefaultExpanded = turnIsActive ? defaultToolCallsExpanded : false;
-            const toolChildren: AnnotatedChild[] = item.toolItems.map((tItem) => {
+            const toolChildren: AnnotatedChild[] = item.toolItems
+              .filter((tItem) => {
+                if (tItem.kind === "tool-group") {
+                  // Hide a group entirely if it only existed because of
+                  // AskUserQuestion retries — otherwise we'd leave a stale
+                  // "Ran 2 commands" row alongside the QuestionCard.
+                  if (askUserQuestionGroupIds.has(tItem.group.id)) {
+                    return tItem.group.tools.some((tool) => tool.name !== "AskUserQuestion");
+                  }
+                  return true;
+                }
+                if (exitPlanToolIds.has(tItem.tool.id)) return false;
+                if (askUserQuestionToolIds.has(tItem.tool.id)) return false;
+                return true;
+              })
+              .map((tItem) => {
               if (tItem.kind === "tool") {
                 return {
                   kind: "tool",
@@ -1254,7 +1495,6 @@ export function SessionConversation({
             <ThinkingTranscript command={`run --model ${thinkingModelSlug(selectedModel)}`} />
           )
         ) : null}
-        </NowProvider>
       </div>
       <div
         className="session-meta-cards"

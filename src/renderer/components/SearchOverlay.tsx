@@ -172,7 +172,7 @@ export function SearchOverlay({
         <ul ref={resultsRef} className="search-results" role="listbox" aria-label="Search results">
           {!running && query && hits.length === 0 && !error ? (
             <li className="search-empty" role="status">
-              No matches.
+              No matches — try shorter terms.
             </li>
           ) : null}
           {hits.map((hit, index) => {

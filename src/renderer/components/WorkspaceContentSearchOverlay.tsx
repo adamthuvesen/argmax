@@ -220,7 +220,7 @@ export function WorkspaceContentSearchOverlay({
         >
           {!running && trimmedQuery.length >= MIN_QUERY_LENGTH && totalMatches === 0 && !error ? (
             <li className="search-empty" role="status">
-              No matches.
+              No matches — try shorter terms.
             </li>
           ) : null}
           {flatRows.map((row, index) => {

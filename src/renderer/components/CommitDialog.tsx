@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { ChangedFileSummary, GitCommitResult } from "../../shared/types.js";
 
@@ -37,6 +37,55 @@ export function CommitDialog({
     setSubmitting(false);
     setFeedback(null);
   }, [open, allPaths, defaultMessage]);
+
+  // Capture the focused element on open and restore on close so the trigger
+  // gets focus back, matching CommandPalette/SearchOverlay. Without this the
+  // dialog leaves focus on <body>. (audit-2026-05-17 H15)
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    previousActiveElementRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    return () => {
+      const previous = previousActiveElementRef.current;
+      previousActiveElementRef.current = null;
+      if (previous && typeof previous.focus === "function") {
+        previous.focus();
+      }
+    };
+  }, [open]);
+
+  // Document-level Esc + focus trap. Esc must fire even if focus drifts out
+  // of the dialog (Cancel button blur, mouse click on the overlay edge).
+  // Tab cycles within the dialog's focusable elements. (audit-2026-05-17 H15)
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: globalThis.KeyboardEvent): void {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && (active === first || !dialogRef.current.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialogRef.current.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -95,6 +144,7 @@ export function CommitDialog({
       role="dialog"
       aria-label="Commit selected changes"
       aria-modal="true"
+      ref={dialogRef}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -154,6 +204,7 @@ export function CommitDialog({
           onChange={(event) => setMessage(event.target.value)}
           rows={4}
           placeholder="type(scope): lowercase imperative"
+          autoFocus
         />
 
         {feedback ? (

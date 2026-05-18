@@ -230,15 +230,6 @@ function tallyHunks(blocks: ParsedDiffBlock[]): { adds: number; dels: number } {
   return { adds, dels };
 }
 
-export function countVisibleDiffLines(blocks: ParsedDiffBlock[]): number {
-  let n = 0;
-  for (const block of blocks) {
-    if (block.kind === "hunk") n += block.lines.length + 1; // +1 for hunk header
-    else n += 1; // omitted placeholder row
-  }
-  return n;
-}
-
 function pickString(input: Record<string, unknown>, keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = input[key];

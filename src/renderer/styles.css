@@ -606,10 +606,115 @@ button {
 
 .project-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 22px;
+  grid-template-columns: minmax(0, 1fr) 22px 22px;
   align-items: center;
   gap: 2px;
   margin-bottom: 2px;
+}
+
+/* Sidebar project row "..." trigger — hidden until row hover (matches the
+   chevron-visibility pattern just below). Opens a small popover anchored to
+   the right edge so it stays inside the sidebar column. */
+.project-actions-anchor {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+}
+
+.project-actions-trigger {
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  color: var(--muted);
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.project-row:hover .project-actions-trigger,
+.project-row:focus-within .project-actions-trigger,
+.project-actions-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.project-actions-popover {
+  top: calc(100% + 4px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  width: 248px;
+  min-width: 0;
+  padding: 4px;
+  list-style: none;
+}
+
+/* Destructive item — quiet by default, rose-tinted on hover.
+   Inside the confirm-step buttons, the same class becomes a solid filled
+   button (see `.project-actions-confirm-buttons` rules below). */
+.project-actions-destructive {
+  color: var(--rose);
+}
+
+.project-actions-destructive:hover {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+
+/* Confirm step ---------------------------------------------------------- */
+
+.project-actions-confirm-text {
+  margin: 0;
+  padding: 10px 10px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.project-actions-confirm-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.project-actions-confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 4px 4px 4px;
+  border-top: 1px solid var(--line-soft);
+  margin-top: 4px;
+}
+
+.project-actions-confirm-buttons .project-picker-item {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 6px 10px;
+  justify-content: center;
+  font-weight: 500;
+}
+
+.project-actions-confirm-cancel {
+  color: var(--text-soft);
+}
+
+.project-actions-confirm-cancel:hover {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+/* Filled destructive button — only inside the confirm step, scoped to
+   `.project-actions-confirm-buttons` so the menu's "Remove project" row
+   stays quiet. */
+.project-actions-confirm-buttons .project-actions-destructive {
+  background: var(--rose);
+  color: var(--bg);
+}
+
+.project-actions-confirm-buttons .project-actions-destructive:hover {
+  background: #9d4855;
+  color: var(--bg);
+}
+
+.project-actions-confirm-buttons .project-actions-destructive svg {
+  color: var(--bg);
 }
 
 .project-name {
@@ -1122,12 +1227,12 @@ button {
   flex: 0 0 auto;
   place-items: center;
   color: var(--text);
+  transform: translateY(2px);
 }
 
 .identity-avatar-mascot {
   width: 28px;
   height: 28px;
-  transform: translateY(4px);
 }
 
 .identity-meta {
@@ -3509,6 +3614,28 @@ button {
   margin: 4px 6px;
 }
 
+/* Sidebar "sort projects" menu — opens downward from the rail-heading
+   trigger and anchors to the trigger's right edge so it stays inside the
+   sidebar column. */
+.rail-sort-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  min-width: 180px;
+  list-style: none;
+}
+
+.rail-sort-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text);
+  flex: 0 0 auto;
+}
+
 /* Session actions menu — replaces the row of header icons. Sized to fit short
    text labels; opens downward and anchors to the trigger's right edge.
    The "Git actions" item swaps the menu's contents in place instead of
@@ -5469,12 +5596,9 @@ button {
 
 .file-change-card-body {
   position: relative;
-  overflow: hidden;
-}
-
-.file-change-card-body[data-collapsed="true"] {
   max-height: calc(16 * 1.5em);
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .file-change-card-body .diff-blocks {
@@ -5524,31 +5648,6 @@ button {
   border-top: 1px solid var(--line-soft);
   color: var(--muted-strong);
   font-size: var(--text-xs);
-}
-
-.file-change-card-toggle {
-  width: 100%;
-  padding: 6px var(--space-3);
-  background: var(--panel-soft);
-  border: 0;
-  border-top: 1px solid var(--line-soft);
-  color: var(--muted-strong);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  text-align: center;
-  cursor: pointer;
-  transition: background var(--motion-fast) var(--ease),
-    color var(--motion-fast) var(--ease);
-}
-
-.file-change-card-toggle:hover {
-  color: var(--text);
-  background: var(--panel-sunken);
-}
-
-.file-change-card-toggle:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
 }
 
 .tool-call-row-dot[data-status="running"] {

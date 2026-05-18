@@ -5,8 +5,11 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../../shared/providerModels.js";
-import type { ProjectSettings, ProjectSummary, RegisterProjectInput, UpdateProjectSettingsInput } from "../../shared/types.js";
+import type { ProjectSettings, ProjectSummary, RegisterProjectInput, RemoveProjectInput, UpdateProjectSettingsInput } from "../../shared/types.js";
+import type { WorkspaceService } from "../workspaces/workspaceOrchestration.js";
+import type { AttachmentStore } from "../attachments/attachmentStore.js";
 import { errorMessage } from "../../shared/error.js";
+import { logger } from "../../shared/logger.js";
 import { runGitMaybe, runGitText } from "../git/exec.js";
 
 const execFileAsync = promisify(execFile);
@@ -40,7 +43,11 @@ async function runFsOp<T>(op: () => Promise<T>, prefix: string): Promise<T> {
 }
 
 export class ProjectService {
-  constructor(private readonly database: ArgmaxDatabase) {}
+  constructor(
+    private readonly database: ArgmaxDatabase,
+    private readonly workspaces?: WorkspaceService,
+    private readonly attachments?: AttachmentStore
+  ) {}
 
   async registerProject(input: RegisterProjectInput): Promise<ProjectSummary> {
     const canonicalPath = await canonicalizeRepoPath(input.repoPath);
@@ -65,6 +72,65 @@ export class ProjectService {
 
   updateSettings(input: UpdateProjectSettingsInput): ProjectSummary {
     return this.database.updateProjectSettings(input.projectId, input.settings);
+  }
+
+  /**
+   * Forget a project: remove its row from SQLite (cascading to workspaces,
+   * sessions, events, approvals, checks, learnings, tournaments, etc.) and
+   * close any open file watchers for its workspaces. Files on disk are left
+   * untouched — the user can re-add the project later and the repo remains
+   * exactly as they left it.
+   *
+   * Refuses when any session in the project is still running so we don't
+   * orphan a provider process writing to a row that's about to vanish. The
+   * caller should ask the user to stop those sessions first.
+   */
+  removeProject(input: RemoveProjectInput): { projectId: string } {
+    const project = this.database.getProject(input.projectId);
+
+    const snapshot = this.database.listWorkspaceStatus();
+    const projectWorkspaceIds = new Set(
+      snapshot.workspaces
+        .filter((workspace) => workspace.projectId === input.projectId)
+        .map((workspace) => workspace.id)
+    );
+
+    const runningInProject = snapshot.sessions.some(
+      (session) => session.state === "running" && projectWorkspaceIds.has(session.workspaceId)
+    );
+    if (runningInProject) {
+      throw new ProjectRegistrationError(
+        `Stop the running sessions in "${project.name}" before removing the project.`
+      );
+    }
+
+    if (this.workspaces) {
+      this.workspaces.closeWatchersForWorkspaces([...projectWorkspaceIds]);
+    }
+
+    // Snapshot the affected session IDs BEFORE deletion so the cascading
+    // session row removal doesn't strand their attachments on disk under
+    // userData. (audit-2026-05-17 M15)
+    const affectedSessionIds = snapshot.sessions
+      .filter((session) => projectWorkspaceIds.has(session.workspaceId))
+      .map((session) => session.id);
+
+    this.database.deleteProject(input.projectId);
+
+    if (this.attachments && affectedSessionIds.length > 0) {
+      void Promise.all(
+        affectedSessionIds.map((sessionId) =>
+          this.attachments!.pruneSession(sessionId).catch((error) =>
+            logger.warn("projects.removeProject", "attachment prune failed", {
+              projectId: input.projectId,
+              sessionId,
+              error: errorMessage(error)
+            })
+          )
+        )
+      );
+    }
+    return { projectId: input.projectId };
   }
 }
 

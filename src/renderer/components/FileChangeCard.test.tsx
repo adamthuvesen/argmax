@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/highlighter.js", () => ({
@@ -64,18 +64,16 @@ describe("FileChangeCard", () => {
     expect(screen.getByText("File removed.")).toBeInTheDocument();
   });
 
-  it("collapses bodies that exceed the threshold and toggles on click", () => {
+  it("renders large diffs in a single scrollable body, no toggle", () => {
     const big = Array.from({ length: 40 }, (_, i) => `line${i}`).join("\n");
     const change = changeFor("Write", { file_path: "/tmp/big.ts", content: big });
     const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
     const body = container.querySelector(".file-change-card-body");
-    expect(body?.getAttribute("data-collapsed")).toBe("true");
-    const toggle = screen.getByRole("button", { name: /^Show all \d+ lines$/ });
-    fireEvent.click(toggle);
-    expect(container.querySelector(".file-change-card-body")?.getAttribute("data-collapsed")).toBe(
-      "false"
-    );
-    expect(screen.getByRole("button", { name: "Show less" })).toBeInTheDocument();
+    expect(body).not.toBeNull();
+    expect(body?.hasAttribute("data-collapsed")).toBe(false);
+    expect(container.querySelectorAll(".diff-line").length).toBeGreaterThanOrEqual(40);
+    expect(screen.queryByRole("button", { name: /^Show all \d+ lines$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show less" })).toBeNull();
   });
 
   it("hides line numbers for MultiEdit hunks", () => {

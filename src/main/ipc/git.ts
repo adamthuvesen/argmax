@@ -24,7 +24,7 @@ export function registerGitHandlers(
   };
 
   register(
-    "prs:listForSession",
+    "prs:list-for-session",
     withValidation(z.object({ sessionId: z.string().min(1) }), (input) =>
       ghService.listForSession(input.sessionId)
     )
@@ -42,11 +42,11 @@ export function registerGitHandlers(
     withValidation(gitPushInputSchema, (input) => gitOps.push(input))
   );
   register(
-    "git:createBranch",
+    "git:create-branch",
     withValidation(gitCreateBranchInputSchema, (input) => gitOps.createBranch(input))
   );
   register(
-    "git:viewOrCreatePr",
+    "git:view-or-create-pr",
     withValidation(gitViewOrCreatePrInputSchema, async (input) => {
       const result = await gitOps.viewOrCreatePr(input);
       // Defer to Electron's default browser handler so the PR opens in the

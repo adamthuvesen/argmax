@@ -119,8 +119,9 @@ export function registerIpcHandlers(
   terminals: TerminalService,
   mcpAuth: McpAuthService
 ): readonly string[] {
-  const projects = new ProjectService(database);
   const workspaces = new WorkspaceService(database);
+  const attachments = new AttachmentStore();
+  const projects = new ProjectService(database, workspaces, attachments);
   const review = new GitReviewService(database);
   const workspaceFiles = new WorkspaceFilesService(database);
   const checks = new CheckService(database);
@@ -138,7 +139,6 @@ export function registerIpcHandlers(
   } catch {
     /* boot-time reconciler is non-critical; first IPC call retries on demand. */
   }
-  const attachments = new AttachmentStore();
   const registeredChannels: IpcChannel[] = [];
   const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
     // SPEC P4.02 / P7.02 — every channel funnels through `timed()` so the
@@ -237,5 +237,5 @@ export function registerIpcHandlers(
 export const REGISTERED_IPC_CHANNELS: readonly IpcChannel[] = IPC_CHANNELS;
 
 // `resolveDefaultIde` now lives in `./ipc/workspaces.ts` alongside the
-// workspaces:openInIde handler that uses it.
+// workspaces:open-in-ide handler that uses it.
 export { resolveDefaultIde } from "./ipc/workspaces.js";

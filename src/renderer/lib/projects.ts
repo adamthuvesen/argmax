@@ -6,6 +6,33 @@ import type { ProjectSummary, ProviderId } from "../../shared/types.js";
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 export const projectOrderStorageKey = "argmax.sidebar.projectOrder";
 export const workspaceOrderStorageKey = "argmax.sidebar.workspaceOrder";
+export const projectSortModeStorageKey = "argmax.sidebar.projectSortMode";
+
+export type ProjectSortMode = "recent" | "alphabetical" | "manual";
+
+const projectSortModes: readonly ProjectSortMode[] = ["recent", "alphabetical", "manual"];
+
+export function loadProjectSortMode(): ProjectSortMode {
+  if (typeof window === "undefined") return "recent";
+  const raw = window.localStorage.getItem(projectSortModeStorageKey);
+  if (raw === null) return "recent";
+  // The value is a bare JSON string ("recent"); tolerate plain strings too in
+  // case the key was set manually for debugging.
+  let parsed: unknown = raw;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = raw;
+  }
+  if (typeof parsed === "string" && (projectSortModes as readonly string[]).includes(parsed)) {
+    return parsed as ProjectSortMode;
+  }
+  return "recent";
+}
+
+export function saveProjectSortMode(mode: ProjectSortMode): void {
+  writeStorageJson(projectSortModeStorageKey, mode);
+}
 
 export function loadCollapsedProjectIds(): Set<string> {
   return new Set(loadStringArray(collapsedProjectsStorageKey));
@@ -89,6 +116,19 @@ export function sortWorkspaceGroup<T extends { id: string; pinned: boolean; last
     if (a.lastActivityAt === b.lastActivityAt) return 0;
     return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
   });
+}
+
+export function sortProjectsBy(
+  projects: ProjectSummary[],
+  mode: ProjectSortMode,
+  manualOrder: string[]
+): ProjectSummary[] {
+  if (mode === "manual") return applyProjectOrder(projects, manualOrder);
+  if (mode === "alphabetical") {
+    return [...projects].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  }
+  // "recent" — pass through the snapshot order (DB sorts by latest activity DESC).
+  return projects;
 }
 
 export function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {

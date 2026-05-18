@@ -80,11 +80,48 @@ export function listWorkspaceStatus(
       ).all(...workspaceFilter.params) as WorkspaceRow[]
     ).map((row) => workspaceRowToSummary(row));
 
+    // Sessions are pulled from two overlapping sets so the snapshot can never
+    // surface a workspace whose session is missing:
+    //   A. Top DASHBOARD_ROW_LIMIT sessions by activity (existing behavior —
+    //      preserves multiple sessions per workspace when they're recent).
+    //   B. The latest session for each workspace in the top-DASHBOARD_ROW_LIMIT
+    //      workspace set (gap-filler — covers the cap-desync where a workspace
+    //      stays in the workspace top-N but its session has dropped below the
+    //      session top-N).
+    // Without B, a click on an older terminal-state workspace in the sidebar
+    // can silently fail because the renderer's .find(workspaceId) returns
+    // undefined. The NOT EXISTS clause keeps B at one row per workspace
+    // (latest by last_activity_at, tiebreak by id). Total row count is bounded
+    // by 2 * DASHBOARD_ROW_LIMIT.
     const sessions = (
       prepared(
         connection,
-        `SELECT * FROM sessions${sessionFilter.where} ORDER BY last_activity_at DESC LIMIT ${DASHBOARD_ROW_LIMIT}`
-      ).all(...sessionFilter.params) as SessionRow[]
+        `
+          SELECT outer_s.*
+          FROM sessions outer_s
+          WHERE outer_s.id IN (
+              SELECT id FROM sessions${sessionFilter.where}
+              ORDER BY last_activity_at DESC
+              LIMIT ${DASHBOARD_ROW_LIMIT}
+            )
+            OR (
+              outer_s.workspace_id IN (
+                SELECT id FROM workspaces${workspaceFilter.where}
+                ORDER BY last_activity_at DESC
+                LIMIT ${DASHBOARD_ROW_LIMIT}
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM sessions s2
+                WHERE s2.workspace_id = outer_s.workspace_id
+                  AND (
+                    s2.last_activity_at > outer_s.last_activity_at
+                    OR (s2.last_activity_at = outer_s.last_activity_at AND s2.id > outer_s.id)
+                  )
+              )
+            )
+          ORDER BY outer_s.last_activity_at DESC
+        `
+      ).all(...sessionFilter.params, ...workspaceFilter.params) as SessionRow[]
     ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
 
     const checks = (
@@ -175,9 +212,13 @@ function buildWorkspaceFilter(
   if (!workspaceIds || workspaceIds.length === 0) {
     return { where: "", params: [] };
   }
-
+  // Serialize the IDs through json_each(?) instead of expanding to N
+  // placeholders. Without this, every distinct workspaceIds.length produces
+  // a different SQL string and therefore a different `prepared()` cache
+  // entry — the cache grows unbounded as filter sizes vary across a long-
+  // running session. (audit-2026-05-17 M4)
   return {
-    where: ` WHERE ${columnName} IN (${workspaceIds.map(() => "?").join(", ")})`,
-    params: workspaceIds
+    where: ` WHERE ${columnName} IN (SELECT value FROM json_each(?))`,
+    params: [JSON.stringify(workspaceIds)]
   };
 }

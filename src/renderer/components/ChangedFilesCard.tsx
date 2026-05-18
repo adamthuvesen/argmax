@@ -19,9 +19,6 @@ export function ChangedFilesCard({
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
 }): JSX.Element | null {
   const showChecks = checkCommands.length > 0;
-  if (review.filesState === "idle" && !showChecks) {
-    return null;
-  }
 
   let filesSection: JSX.Element | null = null;
   if (review.filesState === "loading") {
@@ -37,14 +34,8 @@ export function ChangedFilesCard({
         <span className="review-error">{review.filesError}</span>
       </div>
     );
-  } else if (review.filesState === "idle") {
+  } else if (review.filesState === "idle" || review.files.length === 0) {
     filesSection = null;
-  } else if (review.files.length === 0) {
-    filesSection = (
-      <div className="changed-files-header changed-files-header-static">
-        <span className="changed-files-title">No changes yet</span>
-      </div>
-    );
   } else {
     const totals = summarizeChangedFiles(review.files);
     filesSection = (
@@ -56,7 +47,7 @@ export function ChangedFilesCard({
           aria-label="Toggle changed files"
           onClick={review.toggleSummary}
         >
-          <span className="changed-files-title">{review.files.length} files changed</span>
+          <span className="changed-files-title">{review.files.length} {review.files.length === 1 ? "file" : "files"} changed</span>
           <span className="changed-files-actions">
             <ChangeCount additions={totals.additions} deletions={totals.deletions} />
           </span>
@@ -83,6 +74,10 @@ export function ChangedFilesCard({
         ) : null}
       </>
     );
+  }
+
+  if (!filesSection && !showChecks) {
+    return null;
   }
 
   return (

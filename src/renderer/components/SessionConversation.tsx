@@ -6,7 +6,6 @@ import {
   Folder,
   GitBranch,
   GitCommit,
-  Mic,
   MoreHorizontal,
   Plus,
   Square,
@@ -479,17 +478,20 @@ export function SessionConversation({
       (event.type === "user.message" ||
         event.type === "message.delta" ||
         event.type === "message.completed" ||
+        event.type === "command.started" ||
         event.type === "command.completed")
   );
-  // Keep the "Thinking" affordance visible alongside tool rows so the user
-  // always has a live signal that the agent is working. Only suppress it
-  // once an assistant message is on screen — at that point the streaming
-  // reply bubble is the activity indicator and a parallel "Thinking" row
-  // below it would be redundant.
-  const lastIsAssistantMessage =
+  // The "Thinking" bubble is a pre-answer affordance only. Hide it as soon
+  // as ANY visible assistant event arrives — a streamed message, a tool
+  // started, or a tool completed. A running tool already has its own spinner;
+  // a parallel "Thinking" row alongside it is redundant and violates the
+  // CLAUDE.md rule. (audit-2026-05-17 M2)
+  const hasVisibleAssistantActivity =
     lastSignificantEvent?.type === "message.delta" ||
-    lastSignificantEvent?.type === "message.completed";
-  const isThinking = session?.state === "running" && !lastIsAssistantMessage;
+    lastSignificantEvent?.type === "message.completed" ||
+    lastSignificantEvent?.type === "command.started" ||
+    lastSignificantEvent?.type === "command.completed";
+  const isThinking = session?.state === "running" && !hasVisibleAssistantActivity;
 
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const metaCardsRef = useRef<HTMLDivElement | null>(null);
@@ -1440,9 +1442,6 @@ export function SessionConversation({
             </div>
           ) : null}
           <span className="session-toolbar-spacer" />
-          <button className="composer-tool" type="button" title="Voice input" disabled={!canSend || isSending}>
-            <Mic size={16} />
-          </button>
           {session && session.state === "running" ? (
             <button
               className="session-send-button session-stop-button"

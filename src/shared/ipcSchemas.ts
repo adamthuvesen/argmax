@@ -31,6 +31,21 @@ export const MAX_STREAM_CHUNK_BYTES = 64 * 1024;
  */
 export const MAX_FILE_CONTENT_BYTES = 4 * 1024 * 1024;
 
+/**
+ * z.string().max() counts UTF-16 code units. For "this string can't be larger
+ * than N bytes when serialized" semantics (any user-supplied payload that
+ * passes a stream chunk or file-content cap), we need an explicit byte check
+ * — otherwise a string full of multibyte chars can be up to ~3× the declared
+ * cap once encoded. (audit-2026-05-17 H3)
+ */
+function utf8Bytes(maxBytes: number) {
+  return z
+    .string()
+    .refine((value) => Buffer.byteLength(value, "utf8") <= maxBytes, {
+      message: `must not exceed ${maxBytes} bytes when encoded as UTF-8`
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Shared building blocks
 // ---------------------------------------------------------------------------
@@ -158,6 +173,10 @@ export const updateProjectSettingsInputSchema = z.object({
   settings: projectSettingsSchema
 });
 
+export const removeProjectInputSchema = z.object({
+  projectId: projectIdSchema
+});
+
 export const createWorkspaceInputSchema = z.object({
   projectId: projectIdSchema,
   taskLabel: z.string().min(1),
@@ -198,7 +217,7 @@ export const composerAttachmentSchema = z.object({
     .min(1)
     .max(2048)
     .refine((v) => isAbsolute(v), { message: "filePath must be absolute" })
-    .refine((v) => !v.includes(" "), { message: "filePath cannot contain null bytes" }),
+    .refine((v) => !v.includes("\u0000"), { message: "filePath cannot contain null bytes" }),
   mimeType: attachmentMimeTypeSchema,
   sizeBytes: z.number().int().positive().max(ATTACHMENT_BYTE_CAP)
 });
@@ -273,7 +292,7 @@ export const terminalSpawnInputSchema = z.object({
 
 export const terminalWriteInputSchema = z.object({
   terminalId: terminalIdSchema,
-  data: z.string().max(MAX_STREAM_CHUNK_BYTES)
+  data: utf8Bytes(MAX_STREAM_CHUNK_BYTES)
 });
 
 export const terminalResizeInputSchema = z.object({
@@ -301,7 +320,7 @@ export const mcpAuthStartInputSchema = z.object({
 
 export const mcpAuthWriteInputSchema = z.object({
   sessionId: mcpAuthSessionIdSchema,
-  data: z.string().max(MAX_STREAM_CHUNK_BYTES)
+  data: utf8Bytes(MAX_STREAM_CHUNK_BYTES)
 });
 
 export const mcpAuthResizeInputSchema = z.object({
@@ -382,7 +401,7 @@ export const workspaceReadFileForProjectInputSchema = z.object({
 export const workspaceWriteFileInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   filePath: relativeFilePathSchema,
-  content: z.string().max(MAX_FILE_CONTENT_BYTES),
+  content: utf8Bytes(MAX_FILE_CONTENT_BYTES),
   expectedMtimeMs: z.number().nonnegative().nullable()
 });
 
@@ -394,7 +413,7 @@ export const workspaceStatFileInputSchema = z.object({
 export const workspaceWriteFileForProjectInputSchema = z.object({
   projectId: projectIdSchema,
   filePath: relativeFilePathSchema,
-  content: z.string().max(MAX_FILE_CONTENT_BYTES),
+  content: utf8Bytes(MAX_FILE_CONTENT_BYTES),
   expectedMtimeMs: z.number().nonnegative().nullable()
 });
 
@@ -439,8 +458,12 @@ const contestantConfigSchema = z.object({
   modelId: z.string().min(1).max(256),
   modelLabel: z.string().min(1).max(256),
   reasoningEffort: reasoningEffortSchema.optional(),
+  // Restrict the contestant config blob to JSON-flat scalar values so it
+  // cannot smuggle arbitrary nested structures that would later be persisted
+  // and re-ferried through the dashboard delta channel. The byte cap stays
+  // as a backstop. (audit-2026-05-17 M1)
   config: z
-    .record(z.unknown())
+    .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
     .optional()
     .superRefine((value, ctx) => {
       if (!value) return;
@@ -547,7 +570,7 @@ export const sessionCostSummaryInputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// IDE launcher — `workspaces:openInIde` and `system:listDetectedIdes`
+// IDE launcher — `workspaces:open-in-ide` and `system:list-detected-ides`
 // ---------------------------------------------------------------------------
 
 export const ideIdSchema = z.enum([
@@ -585,6 +608,7 @@ export const ipcSchemas = {
   "projects:pick-folder": projectsPickFolderInputSchema,
   "dashboard:list": dashboardListInputSchema,
   "projects:register": registerProjectInputSchema,
+  "projects:remove": removeProjectInputSchema,
   "projects:update-settings": updateProjectSettingsInputSchema,
   "projects:list-branches": listBranchesInputSchema,
   "projects:switch-branch": switchBranchInputSchema,
@@ -593,7 +617,7 @@ export const ipcSchemas = {
   "workspaces:refresh-status": workspaceIdInputSchema,
   "workspaces:keep": workspaceIdInputSchema,
   "workspaces:archive": workspaceIdInputSchema,
-  "workspaces:openInIde": openInIdeInputSchema,
+  "workspaces:open-in-ide": openInIdeInputSchema,
   "workspace:status": workspaceStatusInputSchema,
   "providers:discover": providersDiscoverInputSchema,
   "providers:launch": launchProviderSessionInputSchema,
@@ -608,7 +632,7 @@ export const ipcSchemas = {
   "terminal:terminate": terminalTerminateInputSchema,
   "approvals:resolve": resolveApprovalInputSchema,
   "approvals:pending": approvalsPendingInputSchema,
-  "session:eventsSince": sessionEventsSinceInputSchema,
+  "session:events-since": sessionEventsSinceInputSchema,
   "review:list-changed-files": reviewListChangedFilesInputSchema,
   "review:load-diff": loadDiffInputSchema,
   "review:list-changed-files-for-project": reviewListChangedFilesForProjectInputSchema,
@@ -628,15 +652,15 @@ export const ipcSchemas = {
   "dashboard:load": dashboardLoadInputSchema,
   "skills:list": skillsListInputSchema,
   "system:open-path": systemOpenPathInputSchema,
-  "system:listDetectedIdes": listDetectedIdesInputSchema,
+  "system:list-detected-ides": listDetectedIdesInputSchema,
   "system:diagnostics": z.void(),
-  "system:vacuumDatabase": z.void(),
+  "system:vacuum-database": z.void(),
   "mcp:list": z.void(),
   "mcp:auth:start": mcpAuthStartInputSchema,
   "mcp:auth:write": mcpAuthWriteInputSchema,
   "mcp:auth:resize": mcpAuthResizeInputSchema,
   "mcp:auth:terminate": mcpAuthTerminateInputSchema,
-  "session:costSummary": sessionCostSummaryInputSchema,
+  "session:cost-summary": sessionCostSummaryInputSchema,
   "learnings:list": z.object({
     projectId: projectIdSchema,
     limit: z.number().int().min(1).max(200).optional()
@@ -657,17 +681,17 @@ export const ipcSchemas = {
     workspaceId: workspaceIdSchema,
     pinned: z.boolean()
   }),
-  "prs:listForSession": z.object({ sessionId: sessionIdSchema }),
+  "prs:list-for-session": z.object({ sessionId: sessionIdSchema }),
   "prs:refresh": z.object({ sessionId: sessionIdSchema }),
   "git:commit": gitCommitInputSchema,
   "git:push": gitPushInputSchema,
-  "git:createBranch": gitCreateBranchInputSchema,
-  "git:viewOrCreatePr": gitViewOrCreatePrInputSchema,
+  "git:create-branch": gitCreateBranchInputSchema,
+  "git:view-or-create-pr": gitViewOrCreatePrInputSchema,
   "tournament:launch": tournamentLaunchInputSchema,
   "tournament:list": tournamentListInputSchema,
   "tournament:get": tournamentGetInputSchema,
   "tournament:keep": tournamentKeepInputSchema,
-  "scoring:listPolicies": z.void()
+  "scoring:list-policies": z.void()
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -679,6 +703,7 @@ export const IPC_CHANNELS: readonly IpcChannel[] = Object.keys(ipcSchemas) as Ip
 
 // Inferred input type aliases — convenient for handler signatures.
 export type RegisterProjectInputParsed = z.infer<typeof registerProjectInputSchema>;
+export type RemoveProjectInputParsed = z.infer<typeof removeProjectInputSchema>;
 export type UpdateProjectSettingsInputParsed = z.infer<typeof updateProjectSettingsInputSchema>;
 export type CreateWorkspaceInputParsed = z.infer<typeof createWorkspaceInputSchema>;
 export type CreateCurrentWorkspaceInputParsed = z.infer<typeof createCurrentWorkspaceInputSchema>;

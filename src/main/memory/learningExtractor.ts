@@ -1,8 +1,16 @@
 import { createHash } from "node:crypto";
 import type { TimelineEvent } from "../../shared/types.js";
 
+/**
+ * Narrowed to `"pitfall"` — the extractor's v1 heuristic only produces
+ * recurring-failure candidates. The broader `"pitfall" | "convention" |
+ * "command"` union lives on the persisted `Learning` type (persistence
+ * layer) because the SQLite CHECK constraint and downstream UI accept all
+ * three; the extractor will widen this union back when "convention" or
+ * "command" heuristics land. (audit-2026-05-17 L12)
+ */
 export interface LearningCandidate {
-  kind: "pitfall" | "convention" | "command";
+  kind: "pitfall";
   summary: string;
   evidenceSessionId: string | null;
   evidenceEventId: string | null;

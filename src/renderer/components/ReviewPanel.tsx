@@ -191,7 +191,7 @@ export function ReviewPanel({
 
   const isChanges = review.mode === "changes";
   const subtitle = isChanges
-    ? `${review.files.length} files changed`
+    ? `${review.files.length} ${review.files.length === 1 ? "file" : "files"} changed`
     : "Files";
   const eyebrow = isChanges ? "Review // Changes" : "Review // Files";
   const summaryStrip = isChanges && review.files.length > 0

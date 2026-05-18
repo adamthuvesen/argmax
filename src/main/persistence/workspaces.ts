@@ -107,9 +107,19 @@ export function updateWorkspaceState(
   state: WorkspaceSummary["state"]
 ): WorkspaceSummary {
   const timestamp = new Date().toISOString();
-  const result = connection
-    .prepare("UPDATE workspaces SET state = ?, last_activity_at = ?, updated_at = ? WHERE id = ?")
-    .run(state, timestamp, timestamp, workspaceId);
+  // Archiving/keeping is a user action, not session activity. Bumping
+  // last_activity_at here would re-sort the row to the top of the sidebar
+  // (visible for "kept", since only "archived" is filtered out). Preserve
+  // the existing activity timestamp for these terminal states; other
+  // transitions (running/failed/cancelled) are real activity and still bump.
+  const isUserArchiveAction = state === "archived" || state === "kept";
+  const result = isUserArchiveAction
+    ? connection
+        .prepare("UPDATE workspaces SET state = ?, updated_at = ? WHERE id = ?")
+        .run(state, timestamp, workspaceId)
+    : connection
+        .prepare("UPDATE workspaces SET state = ?, last_activity_at = ?, updated_at = ? WHERE id = ?")
+        .run(state, timestamp, timestamp, workspaceId);
   if (result.changes === 0) {
     throw new RecordNotFoundError("workspace", workspaceId);
   }

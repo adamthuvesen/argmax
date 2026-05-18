@@ -319,7 +319,14 @@ export function App(): JSX.Element {
       const workspace = workspacesById.get(workspaceId);
       if (!workspace) return;
       const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
-      if (!sessionForWorkspace) return;
+      if (!sessionForWorkspace) {
+        // A grid cell needs a sessionId, so we can't open the pane without
+        // one. The snapshot guarantee in listWorkspaceStatus should keep
+        // this branch from firing in normal use; surface a toast so the
+        // user gets feedback when it does (instead of a silent no-op).
+        showErrorToast("This session isn't loaded — try refreshing the dashboard.");
+        return;
+      }
       setSelectedProjectId(workspace.projectId);
       setGrid((current) =>
         openWorkspaceInGrid(
@@ -329,7 +336,7 @@ export function App(): JSX.Element {
         )
       );
     },
-    [snapshot.sessions, workspacesById, setSelectedProjectId]
+    [snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
   );
 
   const closePane = useCallback((coord: GridCoord): void => {
@@ -352,7 +359,10 @@ export function App(): JSX.Element {
       const workspace = workspacesById.get(workspaceId);
       if (!workspace) return;
       const sessionForWorkspace = snapshot.sessions.find((s) => s.workspaceId === workspaceId);
-      if (!sessionForWorkspace) return;
+      if (!sessionForWorkspace) {
+        showErrorToast("This session isn't loaded — try refreshing the dashboard.");
+        return;
+      }
       setSelectedProjectId(workspace.projectId);
       setGrid((current) =>
         dropWorkspaceInGrid(
@@ -362,7 +372,7 @@ export function App(): JSX.Element {
         )
       );
     },
-    [snapshot.sessions, workspacesById, setSelectedProjectId]
+    [snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
   );
 
   const handleWorkspaceDragStart = useCallback((workspaceId: string): void => {
@@ -657,6 +667,46 @@ export function App(): JSX.Element {
     }
   }, [setSelectedProjectId, setSnapshot]);
 
+  const removeProject = useCallback(async (projectId: string): Promise<void> => {
+    if (!window.argmax) {
+      setToast({ kind: "error", message: "Open the Electron app window to remove a project." });
+      return;
+    }
+    const projectName = snapshot.projects.find((p) => p.id === projectId)?.name ?? "project";
+    try {
+      await window.argmax.projects.remove({ projectId });
+      // Drop the project + its workspaces + its sessions from the local snapshot
+      // so the sidebar re-renders before the next full refresh lands.
+      setSnapshot((current) => ({
+        ...current,
+        projects: current.projects.filter((p) => p.id !== projectId),
+        workspaces: current.workspaces.filter((w) => w.projectId !== projectId),
+        sessions: current.sessions.filter((s) =>
+          current.workspaces.some((w) => w.id === s.workspaceId && w.projectId !== projectId)
+        )
+      }));
+      if (selectedProject?.id === projectId) {
+        setSelectedProjectId(null);
+        setSelectedWorkspaceId(null);
+        setSelectedSessionId(null);
+        setGrid(EMPTY_GRID);
+      }
+      setToast({ kind: "info", message: `Removed ${projectName}.` });
+    } catch (error) {
+      setToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : `Could not remove ${projectName}.`
+      });
+    }
+  }, [
+    snapshot.projects,
+    selectedProject?.id,
+    setSelectedProjectId,
+    setSelectedSessionId,
+    setSelectedWorkspaceId,
+    setSnapshot
+  ]);
+
   const sendSessionInput = useCallback(
     async (
       sessionId: string,
@@ -714,6 +764,63 @@ export function App(): JSX.Element {
     },
     [refreshDashboardStatus]
   );
+
+  // Stable per-row callbacks so SidebarSessionRow's memo comparator (which
+  // checks reference equality on each prop) doesn't re-render every row on
+  // every dashboard:delta. The inline-lambda versions used to be created
+  // fresh each App render, busting the memo. (audit-2026-05-17 M19)
+  const onToggleWorkspacePinnedRow = useCallback(
+    (workspaceId: string, pinned: boolean): void => {
+      void toggleWorkspacePinned(workspaceId, pinned);
+    },
+    [toggleWorkspacePinned]
+  );
+  const onAddProjectRow = useCallback((): void => {
+    void addProject();
+  }, [addProject]);
+  const onRemoveProjectRow = useCallback(
+    (id: string): void => {
+      void removeProject(id);
+    },
+    [removeProject]
+  );
+  const onArchiveWorkspaceRow = useCallback(
+    (id: string): void => {
+      void handleArchiveWorkspace(id);
+    },
+    [handleArchiveWorkspace]
+  );
+  const onOpenInIdeRow = useCallback(
+    (workspaceId: string, ide: Parameters<typeof handleOpenInIde>[1], options: Parameters<typeof handleOpenInIde>[2]): void => {
+      void handleOpenInIde(workspaceId, ide, options);
+    },
+    [handleOpenInIde]
+  );
+  const onOpenProjectRow = useCallback(
+    (projectId: string): void => {
+      setIsSettingsOpen(false);
+      setIsFullLauncherOpen(false);
+      setGrid(EMPTY_GRID);
+      openProjectLauncher(projectId);
+    },
+    [openProjectLauncher, setIsSettingsOpen, setIsFullLauncherOpen, setGrid]
+  );
+  const onOpenSettingsRow = useCallback((): void => {
+    setIsFullLauncherOpen(false);
+    setIsSettingsOpen(true);
+  }, [setIsFullLauncherOpen, setIsSettingsOpen]);
+  const onOpenWorkspaceChatRow = useCallback(
+    (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
+      setIsSettingsOpen(false);
+      setIsFullLauncherOpen(false);
+      openWorkspaceChat(workspaceId, modifiers);
+    },
+    [openWorkspaceChat, setIsSettingsOpen, setIsFullLauncherOpen]
+  );
+  const onOpenLauncherRow = useCallback((): void => {
+    setIsSettingsOpen(false);
+    openNewSessionPane();
+  }, [openNewSessionPane, setIsSettingsOpen]);
 
   const runCheck = useCallback(
     async (workspaceId: string, command: string): Promise<void> => {
@@ -1076,29 +1183,15 @@ export function App(): JSX.Element {
       <PerfOverlay />
       <Sidebar
         loadState={loadState}
-        onToggleWorkspacePinned={(workspaceId, pinned) => void toggleWorkspacePinned(workspaceId, pinned)}
-        onOpenLauncher={() => {
-          setIsSettingsOpen(false);
-          openNewSessionPane();
-        }}
-        onAddProject={() => void addProject()}
-        onArchiveWorkspace={(id) => void handleArchiveWorkspace(id)}
-        onOpenInIde={(workspaceId, ide, options) => void handleOpenInIde(workspaceId, ide, options)}
-        onOpenProject={(projectId) => {
-          setIsSettingsOpen(false);
-          setIsFullLauncherOpen(false);
-          setGrid(EMPTY_GRID);
-          openProjectLauncher(projectId);
-        }}
-        onOpenSettings={() => {
-          setIsFullLauncherOpen(false);
-          setIsSettingsOpen(true);
-        }}
-        onOpenWorkspaceChat={(workspaceId, modifiers) => {
-          setIsSettingsOpen(false);
-          setIsFullLauncherOpen(false);
-          openWorkspaceChat(workspaceId, modifiers);
-        }}
+        onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
+        onOpenLauncher={onOpenLauncherRow}
+        onAddProject={onAddProjectRow}
+        onRemoveProject={onRemoveProjectRow}
+        onArchiveWorkspace={onArchiveWorkspaceRow}
+        onOpenInIde={onOpenInIdeRow}
+        onOpenProject={onOpenProjectRow}
+        onOpenSettings={onOpenSettingsRow}
+        onOpenWorkspaceChat={onOpenWorkspaceChatRow}
         onWorkspaceDragStart={handleWorkspaceDragStart}
         onWorkspaceDragEnd={handleWorkspaceDragEnd}
         onResizeMouseDown={onResizeMouseDown}

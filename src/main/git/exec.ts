@@ -54,6 +54,30 @@ export async function runGitText(cwd: string, args: string[], options: GitExecOp
   }
 }
 
+export async function runGitTextAllowExitCodes(
+  cwd: string,
+  args: string[],
+  allowedExitCodes: readonly number[],
+  options: GitExecOptions = {}
+): Promise<{ stdout: string; exitCode: number }> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+      timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      maxBuffer: options.maxBufferBytes ?? DEFAULT_MAX_BUFFER,
+      encoding: "utf8",
+      env: gitEnv(options.env)
+    });
+    return { stdout, exitCode: 0 };
+  } catch (error) {
+    const exitCode = extractExitCode(error);
+    if (exitCode !== null && allowedExitCodes.includes(exitCode)) {
+      return { stdout: extractStdout(error), exitCode };
+    }
+    const stderrText = extractStderr(error);
+    throw new Error(`git failed: ${stderrText.slice(0, 4096)}`);
+  }
+}
+
 /**
  * Variant that returns stdout as a Buffer — used by checkpoint snapshots that
  * include base64-encoded binary patch hunks where utf-8 decoding would corrupt
@@ -81,9 +105,26 @@ export async function runGitMaybe(cwd: string, args: string[], options: GitExecO
 function extractStderr(error: unknown): string {
   if (error && typeof error === "object" && "stderr" in error) {
     const stderr = (error as { stderr?: unknown }).stderr;
-    if (typeof stderr === "string") return stderr;
-    if (Buffer.isBuffer(stderr)) return stderr.toString("utf8");
+    if (typeof stderr === "string" && stderr.length > 0) return stderr;
+    if (Buffer.isBuffer(stderr) && stderr.length > 0) return stderr.toString("utf8");
   }
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function extractStdout(error: unknown): string {
+  if (error && typeof error === "object" && "stdout" in error) {
+    const stdout = (error as { stdout?: unknown }).stdout;
+    if (typeof stdout === "string") return stdout;
+    if (Buffer.isBuffer(stdout)) return stdout.toString("utf8");
+  }
+  return "";
+}
+
+function extractExitCode(error: unknown): number | null {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "number") return code;
+  }
+  return null;
 }

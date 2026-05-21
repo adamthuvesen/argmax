@@ -1,6 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { useRef, useState, type JSX, type ReactNode } from "react";
-import type { DiagnosticsReport, LogEntry } from "../../../shared/types.js";
+import type { DiagnosticsReport } from "../../../shared/types.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../../lib/fonts.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { readFirstContentMeasure } from "../../lib/paintTimings.js";
@@ -239,34 +239,6 @@ export function ToggleRow({
   );
 }
 
-/**
- * SPEC P8.04 — "Save log file" writes the in-memory log buffer as JSONL and
- * triggers a browser-style download via Blob + anchor click. The renderer
- * can't reach `shell.openPath` without a new main-process IPC; the download
- * dialog is the contained renderer-only path.
- */
-export function saveLogsFile(entries: ReadonlyArray<LogEntry>, setStatus: (status: string | null) => void): void {
-  if (entries.length === 0) {
-    setStatus("No log entries to save.");
-    return;
-  }
-  try {
-    const jsonl = entries.map((entry) => JSON.stringify(entry)).join("\n");
-    const blob = new Blob([jsonl], { type: "application/jsonl" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    anchor.download = `argmax-logs-${stamp}.jsonl`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-    setStatus(`Saved ${entries.length} log entries.`);
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Could not save log file.");
-  }
-}
 
 export function FontFamilyPicker({
   value,

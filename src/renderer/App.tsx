@@ -41,8 +41,8 @@ const SearchOverlay = lazy(async () => ({
   default: (await importSearchOverlay()).SearchOverlay
 }));
 import { PerfOverlay } from "./components/PerfOverlay.js";
-// SettingsPanel is lazy-mounted (ralph B1) — heavy diagnostics tiles, MCP
-// dialog, and provider discovery shouldn't ship in the launcher's first paint.
+// SettingsPanel is lazy-mounted so diagnostics, MCP auth, and provider
+// discovery stay out of the launcher's first paint.
 const SettingsPanel = lazy(async () => ({
   default: (await importSettingsPanel()).SettingsPanel
 }));
@@ -106,39 +106,21 @@ import {
   readStoredThinkingStyle,
   type ThinkingStyle
 } from "./lib/thinkingStyle.js";
+import {
+  CHAT_COST_KEY,
+  readStoredChatCostVisible,
+  readStoredSidebarTokensVisible,
+  readStoredToolCallGroupsExpanded,
+  readStoredToolCallsExpanded,
+  SIDEBAR_TOKENS_KEY,
+  TOOL_CALL_GROUPS_EXPANDED_KEY,
+  TOOL_CALLS_EXPANDED_KEY
+} from "./lib/uiPreferences.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 
 import { withToast, type ToastMessage } from "./lib/withToast.js";
-
-const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
-const CHAT_COST_KEY = "argmax.chat.cost.visible";
-const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
-const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
-
-function readStoredSidebarTokensVisible(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(SIDEBAR_TOKENS_KEY) === "true";
-}
-
-function readStoredChatCostVisible(): boolean {
-  if (typeof window === "undefined") return true;
-  const raw = window.localStorage.getItem(CHAT_COST_KEY);
-  return raw === null ? true : raw === "true";
-}
-
-function readStoredToolCallsExpanded(): boolean {
-  if (typeof window === "undefined") return true;
-  const raw = window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY);
-  return raw === null ? true : raw === "true";
-}
-
-function readStoredToolCallGroupsExpanded(): boolean {
-  if (typeof window === "undefined") return true;
-  const raw = window.localStorage.getItem(TOOL_CALL_GROUPS_EXPANDED_KEY);
-  return raw === null ? true : raw === "true";
-}
 
 export function App(): JSX.Element {
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
@@ -537,7 +519,7 @@ export function App(): JSX.Element {
     window.localStorage.setItem(FONT_STORAGE_KEY, fontFamily);
     applyFontToDocument(fontFamily);
     // Non-default font families dynamic-import their @fontsource CSS so the
-    // cold-launch bundle doesn't ship every alternative (ralph B6).
+    // cold-launch bundle doesn't ship every alternative.
     void loadFontAssets(fontFamily);
   }, [fontFamily]);
 
@@ -822,8 +804,8 @@ export function App(): JSX.Element {
 
   // Stable per-row callbacks so SidebarSessionRow's memo comparator (which
   // checks reference equality on each prop) doesn't re-render every row on
-  // every dashboard:delta. The inline-lambda versions used to be created
-  // fresh each App render, busting the memo. (audit-2026-05-17 M19)
+  // every dashboard:delta. Inline lambdas would be recreated each render and
+  // bust the memo.
   const onToggleWorkspacePinnedRow = useCallback(
     (workspaceId: string, pinned: boolean): void => {
       void toggleWorkspacePinned(workspaceId, pinned);
@@ -1123,8 +1105,8 @@ export function App(): JSX.Element {
   const handleBranchSwitch = useCallback(
     (updated: ProjectSummary): void => {
       setSnapshot((s) => {
-        // Skip reallocation when nothing actually changed (ralph E4) —
-        // `git switch` to the same branch is a no-op.
+        // Skip reallocation when nothing actually changed; `git switch` to the
+        // same branch is a no-op.
         const existing = s.projects.find((p) => p.id === updated.id);
         if (existing === updated) return s;
         let mutated = false;

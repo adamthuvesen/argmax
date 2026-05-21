@@ -18,9 +18,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
-  type ClipboardEvent as ReactClipboardEvent,
-  type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
@@ -30,15 +27,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   appendReferencesToPrompt,
-  buildAttachmentReferences,
-  imageAttachmentReference,
-  isSupportedImageMime,
-  readBlobAsBase64
+  imageAttachmentReference
 } from "../lib/composerAttachments.js";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   AgentMode,
-  AttachmentMimeType,
   CheckRun,
   ComposerAttachment,
   GhPrRecord,
@@ -53,12 +46,14 @@ import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useFreshSet } from "../hooks/useFreshSet.js";
+import { MASCOT_BOB_MS, useMascotFlash } from "../hooks/useMascotFlash.js";
+import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
+import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import { repoNameFromPath } from "../lib/projects.js";
-import { decideSmartFollow } from "../lib/smartFollow.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
@@ -90,6 +85,8 @@ import { ChatBubble } from "./ChatBubble.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { CostPanel } from "./CostPanel.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
+import { computeTurnModelHeaderMap } from "../lib/turnHeaderModel.js";
+import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { FilePopover } from "./FilePopover.js";
 import { Mascot } from "./Mascot.js";
@@ -389,9 +386,6 @@ export function SessionConversation({
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [pendingAttachments, setPendingAttachments] = useState<
-    Array<ComposerAttachment & { id: string; thumbnailDataUrl: string }>
-  >([]);
   const [prs, setPrs] = useState<GhPrRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
   const [agentMode, setAgentMode] = useState<AgentMode>(() =>
@@ -399,7 +393,6 @@ export function SessionConversation({
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldRefocusInput = useRef(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsMode, setActionsMode] = useState<"main" | "git">("main");
@@ -504,123 +497,17 @@ export function SessionConversation({
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }, [events]);
 
-  const conversationItems = useMemo((): ConversationItem[] => {
-    // Pre-fold items hold only message/tool kinds — `tool-group` is built by
-    // the folding pass below. Narrowing the array type lets `itemTime` drop
-    // its previously-unreachable `tool-group` branch.
-    type PreFoldItem = Extract<ConversationItem, { kind: "message" } | { kind: "tool" }>;
-    const items: PreFoldItem[] = [
-      ...conversationEvents.map((event) => ({ kind: "message" as const, event })),
-      ...toolCalls.map((tool) => ({ kind: "tool" as const, tool }))
-    ];
-    const itemTime = (item: PreFoldItem): string =>
-      item.kind === "message" ? item.event.createdAt : item.tool.createdAt;
-    const sorted: ConversationItem[] = items.sort((a, b) => itemTime(a).localeCompare(itemTime(b)));
-    const folded: ConversationItem[] = [];
-    let i = 0;
-    while (i < sorted.length) {
-      const item = sorted[i];
-      if (!item) {
-        i++;
-        continue;
-      }
-      if (item.kind !== "tool") {
-        folded.push(item);
-        i++;
-        continue;
-      }
-      const run: ToolCall[] = [item.tool];
-      let j = i + 1;
-      while (j < sorted.length) {
-        const next = sorted[j];
-        if (!next || next.kind !== "tool") break;
-        run.push(next.tool);
-        j++;
-      }
-      if (run.length === 1) {
-        folded.push(item);
-      } else {
-        folded.push({ kind: "tool-group", group: buildToolCallGroup(run) });
-      }
-      i = j;
-    }
-    return folded;
-  }, [conversationEvents, toolCalls]);
+  const conversationItems = useMemo(
+    () => foldConversationItems(conversationEvents, toolCalls),
+    [conversationEvents, toolCalls]
+  );
 
   const isFreshTool = useFreshSet(toolCalls, (tool) => tool.id, session?.id ?? "");
 
-  // Second-level fold: group user→assistant→tools into a single "turn" so the
-  // chat has Codex-style rhythm. User messages stay standalone; everything
-  // between two user messages folds under one "Worked for Xs" chip header.
-  type RenderItem =
-    | { kind: "user-message"; event: TimelineEvent }
-    | {
-        kind: "turn";
-        id: string;
-        assistantEvents: TimelineEvent[];
-        toolItems: TurnToolItem[];
-        assistantTimestamps: number[];
-      };
-  const renderItems = useMemo((): RenderItem[] => {
-    const out: RenderItem[] = [];
-    let pending:
-      | { assistantEvents: TimelineEvent[]; toolItems: TurnToolItem[]; firstId: string | null }
-      | null = null;
-    const flush = (): void => {
-      if (!pending) return;
-      if (pending.assistantEvents.length === 0 && pending.toolItems.length === 0) {
-        pending = null;
-        return;
-      }
-      out.push({
-        kind: "turn",
-        id: pending.firstId ?? `turn-${out.length}`,
-        assistantEvents: pending.assistantEvents,
-        toolItems: foldTurnToolItems(pending.toolItems),
-        assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt))
-      });
-      pending = null;
-    };
-    for (const item of conversationItems) {
-      if (item.kind === "message" && item.event.type === "user.message") {
-        flush();
-        out.push({ kind: "user-message", event: item.event });
-        continue;
-      }
-      if (!pending) pending = { assistantEvents: [], toolItems: [], firstId: null };
-      if (item.kind === "message") {
-        pending.assistantEvents.push(item.event);
-        if (!pending.firstId) pending.firstId = `turn-${item.event.id}`;
-      } else if (item.kind === "tool") {
-        pending.toolItems.push({ kind: "tool", tool: item.tool });
-        if (!pending.firstId) pending.firstId = `turn-${item.tool.id}`;
-      } else {
-        pending.toolItems.push({ kind: "tool-group", group: item.group });
-        if (!pending.firstId) pending.firstId = `turn-${item.group.id}`;
-      }
-    }
-    flush();
-    // Bridge the brief window between launch and the first user.message event
-    // arriving over dashboard:delta. `session.prompt` is set synchronously on
-    // launch, so we can show it as a placeholder bubble until the real event
-    // lands and naturally takes its place.
-    const hasUserMessage = out.some((item) => item.kind === "user-message");
-    const prompt = session?.prompt?.trim();
-    if (!hasUserMessage && session && prompt) {
-      out.unshift({
-        kind: "user-message",
-        event: {
-          id: `synth-user-${session.id}`,
-          sessionId: session.id,
-          type: "user.message",
-          message: session.prompt,
-          payload: { source: "composer" },
-          createdAt: session.startedAt
-        }
-      });
-    }
-    return out;
-  }, [conversationItems, session]);
+  const renderItems = useMemo(
+    (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
+    [conversationItems, session]
+  );
 
   // Composer is enabled whenever the session is alive — `running` no longer
   // blocks: typed messages get queued in main and drain when the current turn
@@ -689,127 +576,31 @@ export function SessionConversation({
     !isStreamingMessage &&
     !hasOutstandingCardAsk;
 
-  const conversationListRef = useRef<HTMLDivElement | null>(null);
-  const metaCardsRef = useRef<HTMLDivElement | null>(null);
-  const wasNearBottomRef = useRef<boolean>(true);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [newBelowCount, setNewBelowCount] = useState(0);
-  const lastSeenItemCountRef = useRef<number>(0);
-  // Mascot happy-flash: pops to "happy" for a short beat after the most
-  // recent assistant message.completed. Keeps the mood derivation pure
-  // by gating on a wall-clock timestamp.
-  const [happyFlashUntilMs, setHappyFlashUntilMs] = useState(0);
-  const lastCompletedIdRef = useRef<string | null>(null);
-  // Submit-bob: the Mascot already animates a "pet" on its own click handler.
-  // We mirror that animation onto the wrapper for a brief moment when the
-  // user submits via Enter, so keyboard submissions also feel kinetic.
-  const [justSentAt, setJustSentAt] = useState(0);
-
-  const handleConversationScroll = useCallback((): void => {
-    const el = conversationListRef.current;
-    if (!el) return;
-    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
-    wasNearBottomRef.current = decision.pinToBottom;
-    setShowScrollToBottom(decision.showFab);
-    if (!decision.showFab) {
-      setNewBelowCount(0);
-    }
-  }, []);
-
-  const scrollConversationToBottom = useCallback((): void => {
-    const el = conversationListRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    setNewBelowCount(0);
-  }, []);
-
-  // Snap to the latest content when the session changes — the previous
-  // session's scroll position would otherwise leave the new conversation
-  // mid-scroll.
-  useEffect(() => {
-    const el = conversationListRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-    wasNearBottomRef.current = true;
-  }, [session?.id]);
-
-  // Smart follow: if the user is already at (or near) the bottom, keep them
-  // pinned as new messages / tool rows arrive. If they've scrolled up to read,
-  // don't yank them back down. `now` is intentionally excluded — re-scrolling
-  // every 250ms while a tool is running would be jittery.
-  useEffect(() => {
-    const el = conversationListRef.current;
-    if (!el || !wasNearBottomRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [conversationItems, isThinking]);
-
-  // Count new items that have arrived while the user is scrolled up. Resets
-  // when they catch up (scrollListener flips showScrollToBottom false) or
-  // when they tap the FAB.
-  useEffect(() => {
-    const current = conversationItems.length;
-    const previous = lastSeenItemCountRef.current;
-    lastSeenItemCountRef.current = current;
-    if (showScrollToBottom && current > previous) {
-      setNewBelowCount((n) => n + (current - previous));
-    }
-  }, [conversationItems, showScrollToBottom]);
-
-  // Reset the counter when switching sessions. The delta-tracking effect
-  // above will pick up the new length on its next run.
-  useEffect(() => {
-    lastSeenItemCountRef.current = Number.POSITIVE_INFINITY;
-    setNewBelowCount(0);
-  }, [session?.id]);
-
-  // Watch for the newest message.completed event; when it changes, flash
-  // the send-button mascot to "happy" for 1.5s. lastCompletedIdRef avoids
-  // re-flashing on incidental re-renders.
-  useEffect(() => {
-    const latest = events.find((e) => e.type === "message.completed");
-    if (!latest) return;
-    if (lastCompletedIdRef.current === latest.id) return;
-    const prev = lastCompletedIdRef.current;
-    lastCompletedIdRef.current = latest.id;
-    // Skip the very first observation per session — we don't want a stale
-    // "happy" pop the moment the user opens a session that completed long ago.
-    if (prev === null) return;
-    setHappyFlashUntilMs(Date.now() + 1500);
-  }, [events]);
-
-  useEffect(() => {
-    if (happyFlashUntilMs === 0) return;
-    const remaining = happyFlashUntilMs - Date.now();
-    if (remaining <= 0) {
-      setHappyFlashUntilMs(0);
-      return;
-    }
-    const id = setTimeout(() => setHappyFlashUntilMs(0), remaining);
-    return () => clearTimeout(id);
-  }, [happyFlashUntilMs]);
-
-  useEffect(() => {
-    setHappyFlashUntilMs(0);
-    lastCompletedIdRef.current = null;
-  }, [session?.id]);
-
-  // The meta-cards row (changed files + cost) shares vertical space with the
-  // conversation list via grid 1fr. When it grows or shrinks, the list's
-  // viewport changes height without any of the smart-follow deps changing, so
-  // the latest content can slip behind the cards. Re-pin to bottom whenever
-  // the cards resize and the user was already near the bottom.
-  useEffect(() => {
-    const cards = metaCardsRef.current;
-    if (!cards || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      if (!wasNearBottomRef.current) return;
-      const el = conversationListRef.current;
-      if (!el) return;
-      el.scrollTop = el.scrollHeight;
-    });
-    observer.observe(cards);
-    return () => observer.disconnect();
-  }, []);
+  const {
+    conversationListRef,
+    metaCardsRef,
+    showScrollToBottom,
+    newBelowCount,
+    scrollToBottom: scrollConversationToBottom,
+    handleScroll: handleConversationScroll
+  } = useSmartFollowScroll(sessionId, conversationItems, isThinking);
+  const { happyFlashUntilMs, justSentAt, markSent } = useMascotFlash(sessionId ?? null, events);
+  const {
+    pendingAttachments,
+    attachmentInputRef,
+    removePendingAttachment,
+    onComposerDragOver,
+    onComposerDrop,
+    onComposerPaste,
+    onAttachmentInputChange,
+    openFilePicker,
+    clearAttachments
+  } = useComposerAttachments({
+    sessionId,
+    workspacePath: workspace?.path ?? null,
+    setInput,
+    setStatus
+  });
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
   // Depend on session.id rather than the session object: the parent rebuilds
@@ -818,7 +609,6 @@ export function SessionConversation({
   useEffect(() => {
     setSelectedModel(modelSelectionFromSession(session));
     setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto");
-    setPendingAttachments([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [sessionId]);
 
@@ -915,128 +705,6 @@ export function SessionConversation({
     }
   };
 
-  const attachFiles = useCallback(
-    (files: Iterable<File> | Iterable<{ path?: string }>): void => {
-      const refs = buildAttachmentReferences(files, workspace?.path ?? null);
-      if (refs.length === 0) return;
-      setInput((prev) => appendReferencesToPrompt(prev, refs));
-    },
-    [workspace?.path]
-  );
-
-  const attachImageBlobs = useCallback(
-    async (blobs: Blob[]): Promise<void> => {
-      if (!session || blobs.length === 0) return;
-      const api = window.argmax;
-      if (!api) {
-        setStatus("Open the Electron app window to attach images.");
-        return;
-      }
-      try {
-        for (const blob of blobs) {
-          if (!isSupportedImageMime(blob.type)) continue;
-          const dataBase64 = await readBlobAsBase64(blob);
-          const saved = await api.attachments.saveImage({
-            sessionId: session.id,
-            mimeType: blob.type,
-            dataBase64
-          });
-          const thumbnailDataUrl = `data:${blob.type};base64,${dataBase64}`;
-          setPendingAttachments((prev) => [
-            ...prev,
-            {
-              id: `${saved.filePath}-${prev.length}`,
-              filePath: saved.filePath,
-              mimeType: blob.type as AttachmentMimeType,
-              sizeBytes: saved.sizeBytes,
-              thumbnailDataUrl
-            }
-          ]);
-        }
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Could not attach image.");
-      }
-    },
-    [session]
-  );
-
-  const removePendingAttachment = useCallback((id: string): void => {
-    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
-  }, []);
-
-  const onComposerDragOver = (event: ReactDragEvent<HTMLFormElement>): void => {
-    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
-    event.preventDefault();
-  };
-
-  const onComposerDrop = (event: ReactDragEvent<HTMLFormElement>): void => {
-    if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
-    event.preventDefault();
-    // Split: files with a disk path use the existing @-mention flow; files
-    // without a path (browser drags, Slack drags) but with an image MIME get
-    // persisted via the AttachmentStore so the agent can still read them.
-    const withPath: File[] = [];
-    const imageBlobs: Blob[] = [];
-    for (const file of Array.from(event.dataTransfer.files)) {
-      const path = (file as { path?: string }).path;
-      if (typeof path === "string" && path.length > 0) {
-        withPath.push(file);
-      } else if (isSupportedImageMime(file.type)) {
-        imageBlobs.push(file);
-      }
-    }
-    if (withPath.length > 0) attachFiles(withPath);
-    if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
-    if (withPath.length === 0 && imageBlobs.length === 0) {
-      setStatus("Only files with a disk path or images can be attached.");
-    }
-  };
-
-  const onComposerPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
-    const items = event.clipboardData?.items;
-    if (!items || items.length === 0) return;
-    const images: Blob[] = [];
-    for (const item of Array.from(items)) {
-      if (item.kind !== "file") continue;
-      if (!isSupportedImageMime(item.type)) continue;
-      const file = item.getAsFile();
-      if (file) images.push(file);
-    }
-    if (images.length === 0) return;
-    event.preventDefault();
-    void attachImageBlobs(images);
-  };
-
-  const onAttachmentInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    if (event.target.files && event.target.files.length > 0) {
-      // Honor the same split rule as drop: path-based files use @-reference,
-      // path-less images get persisted. File-picker selections normally have
-      // a path, but a packaged distribution path may differ across Electron
-      // versions — keep the fallback so a missing path doesn't silently drop.
-      const withPath: File[] = [];
-      const imageBlobs: Blob[] = [];
-      for (const file of Array.from(event.target.files)) {
-        const path = (file as { path?: string }).path;
-        if (typeof path === "string" && path.length > 0) {
-          withPath.push(file);
-        } else if (isSupportedImageMime(file.type)) {
-          imageBlobs.push(file);
-        }
-      }
-      if (withPath.length > 0) attachFiles(withPath);
-      if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
-      if (withPath.length === 0 && imageBlobs.length === 0) {
-        setStatus("Only files with a disk path or images can be attached.");
-      }
-    }
-    // Clear the value so the same file can be selected again next time.
-    event.target.value = "";
-  };
-
-  const openFilePicker = (): void => {
-    attachmentInputRef.current?.click();
-  };
-
   const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedInput = input.trim();
@@ -1055,7 +723,7 @@ export function SessionConversation({
     setIsSending(true);
     setStatus(null);
     shouldRefocusInput.current = true;
-    setJustSentAt(Date.now());
+    markSent();
     try {
       await onSendSessionInput(
         session.id,
@@ -1065,7 +733,7 @@ export function SessionConversation({
         attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
       );
       setInput("");
-      setPendingAttachments([]);
+      clearAttachments();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not send input.");
     } finally {
@@ -1214,20 +882,7 @@ export function SessionConversation({
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         {renderItems.length > 0 ? (
           (() => {
-            // Persistent model identity: only render the "GPT-5.5"-style
-            // subtitle on the first turn of a consecutive run with the same
-            // model. Today the parent passes selectedModel.label to every
-            // turn, so this resolves to "first turn only" — but the dedupe
-            // is computed correctly so a future per-turn model switch will
-            // surface a new header at the boundary.
-            const turnShowsModelHeader = new Map<number, boolean>();
-            let lastShownModelLabel: string | null = null;
-            renderItems.forEach((rItem, rIndex) => {
-              if (rItem.kind !== "turn") return;
-              const show = lastShownModelLabel !== selectedModel.label;
-              turnShowsModelHeader.set(rIndex, show);
-              if (show) lastShownModelLabel = selectedModel.label;
-            });
+            const turnShowsModelHeader = computeTurnModelHeaderMap(renderItems, selectedModel.label);
             return renderItems.map((item, index) => {
             if (item.kind === "user-message") {
               const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
@@ -1945,7 +1600,7 @@ export function SessionConversation({
                   : session?.state === "running"
                     ? "working"
                     : "idle";
-            const bobbing = justSentAt > 0 && Date.now() - justSentAt < 320;
+            const bobbing = justSentAt > 0 && Date.now() - justSentAt < MASCOT_BOB_MS;
             return (
               <Mascot
                 size={36}

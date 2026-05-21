@@ -144,10 +144,18 @@ export class McpAuthService {
   disposeAll(): void {
     // SIGTERM-then-SIGKILL escalation — a Claude CLI hung at an OAuth
     // browser-callback prompt would otherwise survive app quit because it
-    // traps SIGHUP. (audit-2026-05-17 M16)
+    // traps SIGHUP. Pre-dispose installs a final onExit so the SIGKILL
+    // timer is cancelled (and the PID-reuse hazard avoided) when the pty
+    // exits cleanly inside the grace window.
     for (const [, entry] of this.sessions) {
+      let exited = false;
+      let cancelEscalation: (() => void) | null = null;
+      const exitDisposable = entry.pty.onExit(() => {
+        exited = true;
+        cancelEscalation?.();
+      });
       for (const d of entry.disposables) d.dispose();
-      scheduleSigkillEscalation(
+      const escalation = scheduleSigkillEscalation(
         () => safeKill(entry.pty),
         () => {
           try {
@@ -155,8 +163,11 @@ export class McpAuthService {
           } catch {
             /* already exited */
           }
-        }
+        },
+        { isStillAlive: () => !exited }
       );
+      cancelEscalation = escalation.cancel;
+      if (exited) exitDisposable.dispose();
     }
     this.sessions.clear();
   }

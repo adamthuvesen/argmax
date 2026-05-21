@@ -114,7 +114,7 @@ export function updateCheck(
   checkId: string,
   input: UpdateCheckInput
 ): CheckRun {
-  connection
+  const result = connection
     .prepare(
       `
         UPDATE checks
@@ -124,6 +124,9 @@ export function updateCheck(
     )
     .run(input.status, input.exitCode, input.summary, input.completedAt ?? new Date().toISOString(), checkId);
 
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("check", checkId);
+  }
   return findCheckById(connection, checkId);
 }
 

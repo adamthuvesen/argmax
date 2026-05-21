@@ -34,13 +34,13 @@ export function parseGitGrepOutput(
 ): WorkspaceContentSearchResult {
   if (!raw) return { files: [], truncated: false };
   const fields = raw.split("\0");
-  // Trailing NUL means a final empty string; drop it.
-  while (fields.length > 0 && fields[fields.length - 1] === "") fields.pop();
+  // Trailing NUL adds one trailing empty string; drop it (at most one).
+  if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop();
 
   const filesByPath = new Map<string, WorkspaceContentSearchFile>();
   let truncated = false;
 
-  for (let i = 0; i + 2 < fields.length + 1; ) {
+  for (let i = 0; i + 2 < fields.length; ) {
     const path = fields[i];
     const lineRaw = fields[i + 1];
     const previewRaw = fields[i + 2];

@@ -25,7 +25,16 @@ export function isAllowedAppNavigation(url: string, loadedOrigin: string): boole
     // first normalize away `..` segments so traversal can't escape.
     const originPath = new URL(loadedOrigin).pathname;
     const targetPath = target.pathname;
-    if (targetPath.includes("/../") || targetPath.endsWith("/..")) return false;
+    // Decode percent-encoded segments before the traversal check — the WHATWG
+    // URL parser leaves `%2e%2e` unchanged so an attacker-controlled URL like
+    // `file:///app/%2e%2e/etc/passwd` would otherwise pass the `/../` check.
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent(targetPath);
+    } catch {
+      return false;
+    }
+    if (decodedPath.includes("/../") || decodedPath.endsWith("/..")) return false;
     return targetPath === originPath || targetPath.startsWith(originPath);
   }
   let origin: URL;

@@ -270,11 +270,14 @@ export function setTournamentVerdict(
   verdict: TournamentVerdict
 ): Tournament {
   const now = new Date().toISOString();
-  connection
+  const result = connection
     .prepare(
       `UPDATE tournaments SET verdict_json = ?, updated_at = ? WHERE id = ?`
     )
     .run(JSON.stringify(verdict), now, tournamentId);
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("tournament", tournamentId);
+  }
   return findTournamentById(connection, tournamentId);
 }
 
@@ -284,13 +287,16 @@ export function setTournamentDecision(
   decision: TournamentDecision
 ): Tournament {
   const now = new Date().toISOString();
-  connection
+  const result = connection
     .prepare(
       `UPDATE tournaments
        SET decision_json = ?, state = 'decided', decided_at = ?, updated_at = ?
        WHERE id = ?`
     )
     .run(JSON.stringify(decision), now, now, tournamentId);
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("tournament", tournamentId);
+  }
   return findTournamentById(connection, tournamentId);
 }
 
@@ -366,13 +372,16 @@ export function updateContestantOutcome(
   contestantIndex: number,
   outcome: ContestantOutcome
 ): void {
-  connection
+  const result = connection
     .prepare(
       `UPDATE tournament_contestants
        SET outcome = ?
        WHERE tournament_id = ? AND contestant_index = ?`
     )
     .run(outcome, tournamentId, contestantIndex);
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("tournament_contestant", `${tournamentId}#${contestantIndex}`);
+  }
 }
 
 export function persistCriterionScore(

@@ -25,7 +25,23 @@ export function upsertGhPr(connection: Database.Database, input: GhPrRecord): Gh
       updatedAt: input.updatedAt,
       prState: input.prState ?? null
     });
-  return input;
+  // Read back so the surviving `notified_at` (which the upsert deliberately
+  // preserves) is reflected in the returned record; without this, callers
+  // would see `notifiedAt: undefined` and silently overwrite the dedup stamp.
+  const row = connection
+    .prepare(
+      `SELECT session_id AS sessionId,
+              pr_number AS prNumber,
+              head_sha AS headSha,
+              last_seen_check_state AS lastSeenCheckState,
+              updated_at AS updatedAt,
+              pr_state AS prState,
+              notified_at AS notifiedAt
+       FROM gh_pr
+       WHERE session_id = ? AND pr_number = ?`
+    )
+    .get(input.sessionId, input.prNumber) as GhPrRecord | undefined;
+  return row ?? input;
 }
 
 export function listGhPrForSession(connection: Database.Database, sessionId: string): GhPrRecord[] {

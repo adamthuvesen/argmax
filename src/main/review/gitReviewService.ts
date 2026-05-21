@@ -130,7 +130,7 @@ function parsePorcelainZ(value: string): ChangedFileSummary[] {
   const out: ChangedFileSummary[] = [];
   for (let i = 0; i < records.length; i += 1) {
     const record = records[i];
-    if (record.length < 3) continue;
+    if (record.length < 4) continue;
     const status = record.slice(0, 2).trim() || "?";
     const path = record.slice(3);
     let oldPath: string | undefined;

@@ -278,36 +278,21 @@ describe("SessionConversation — model selection persistence", () => {
     expect(screen.getAllByText(text)).toHaveLength(1);
   });
 
-  it("renders exactly one streaming caret regardless of nested list depth", () => {
-    const nestedMarkdown = [
-      "Tasks:",
-      "",
-      "1. Use Glob to find all files",
-      "2. For each file, note:",
-      "   - Path",
-      "   - Length",
-      "   - Recently updated?",
-      "3. Identify patterns:",
-      "   - Sibling code",
-      "   - Cross-references",
-      "   - Orphans",
-      "",
-      "Return a structured list."
-    ].join("\n");
-
+  it("marks an in-flight assistant bubble with .markdown-streaming while deltas arrive", () => {
     const { container } = renderConversation(
       baseSession({ state: "running" }),
       [
         event("u1", "user.message", "scan repo", "2026-05-12T15:00:00.000Z"),
-        event("d1", "message.delta", nestedMarkdown, "2026-05-12T15:00:01.000Z")
+        event("d1", "message.delta", "1. First\n2. Second", "2026-05-12T15:00:01.000Z")
       ]
     );
 
-    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(1);
-    expect(container.querySelector(".markdown-streaming .streaming-caret")).not.toBeNull();
+    expect(container.querySelector(".markdown-streaming")).not.toBeNull();
+    // No blinking-caret DOM element — token-by-token text is the streaming indicator.
+    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
-  it("removes the streaming caret once the assistant message completes", () => {
+  it("drops the streaming class once the assistant message completes", () => {
     const text = "1. First\n2. Second";
 
     const { container } = renderConversation(
@@ -318,8 +303,8 @@ describe("SessionConversation — model selection persistence", () => {
       ]
     );
 
-    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
     expect(container.querySelector(".markdown-streaming")).toBeNull();
+    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
   it("folds Codex command_execution singletons into the turn command group", () => {

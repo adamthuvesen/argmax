@@ -4824,27 +4824,6 @@ button {
   50%      { opacity: 0.9; }
 }
 
-/* Streaming caret — a single <span class="streaming-caret"> is appended to
-   the deepest last leaf of a streaming bubble by useStreamingCaret in
-   SessionConversation.tsx, and removed when message.completed arrives.
-   Pseudo-element selectors aren't usable here: `:last-of-type` would match
-   the last <p>/<li> within EACH parent, producing one caret per nested list. */
-.streaming-caret {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 2px;
-  vertical-align: -2px;
-  background: var(--text);
-  opacity: 0.6;
-  animation: streaming-caret 900ms steps(2, end) infinite;
-}
-
-@keyframes streaming-caret {
-  0%, 100% { opacity: 0.6; }
-  50%      { opacity: 0; }
-}
-
 @keyframes msg-in {
   from {
     opacity: 0;

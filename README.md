@@ -1,6 +1,10 @@
 # Argmax
 
-A local desktop app for orchestrating AI coding agents (Claude Code, Codex, Cursor) in parallel git worktrees.
+<p align="center">
+  <img src="assets/icon.png" alt="Argmax purple mascot" width="96" height="96">
+</p>
+
+A local desktop app for running Claude Code, Codex, and Cursor Agent in isolated git worktrees.
 
 Single-user, on-device, no cloud, no auth. Built for sessions that need real repo context — persistent transcripts, review tools, checks, approvals, and worktree isolation.
 
@@ -76,6 +80,8 @@ CI runs `npm run lint`, `npm run typecheck`, and `npm test` on macOS for every p
 
 ## Project layout
 
+Tracked source and docs:
+
 ```
 src/
 ├── main/         Electron main process — services, IPC, persistence, lifecycle
@@ -84,12 +90,19 @@ src/
 └── test/         Vitest setup
 
 agents/docs/      Deep-dive docs (architecture, providers, data, …)
-openspec/         OpenSpec change & spec artifacts
 scripts/          Native-module rebuild helpers
 assets/           App icon
 build/            Hardened-runtime entitlements
-dist/             Build output (gitignored)
-release/          Packaged distributable output (gitignored)
+```
+
+Local/generated paths:
+
+```
+dist/             Build output from `npm run build` (gitignored)
+release/          Packaged DMG/ZIP output from `npm run package` (gitignored)
+openspec/         Local OpenSpec change artifacts (gitignored)
+*.sqlite*         Local SQLite databases and WAL/SHM files (gitignored)
+node_modules/     Installed dependencies (gitignored)
 ```
 
 ## Going deeper
@@ -98,7 +111,7 @@ Conventions, subsystem docs, and the full index live in [`AGENTS.md`](AGENTS.md)
 
 ## Local data
 
-Runtime state is stored under `app.getPath("userData")/local-state/argmax.sqlite`. Checkpoint patches live alongside the database under `checkpoints/`. Generated build output lives in `dist/`; packaged distributables land in `release/`.
+Runtime state is stored under `app.getPath("userData")/local-state/argmax.sqlite`. Checkpoint patches live alongside the database under `checkpoints/`. Repo-local generated output is ignored: builds land in `dist/`, packaged distributables land in `release/`, and local OpenSpec drafts can live in `openspec/`.
 
 `raw_outputs` rows older than 7 days are pruned daily; everything else is retained indefinitely. The Help menu exposes a one-shot `Vacuum database` action if you need to reclaim space after deleting projects.
 

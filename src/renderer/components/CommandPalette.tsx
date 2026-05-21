@@ -338,7 +338,6 @@ export function CommandPalette({
           </span>
         </div>
         <label className="command-palette-input-wrap">
-          <span className="command-palette-prompt" aria-hidden="true">&gt;</span>
           <input
             ref={inputRef}
             className="command-palette-input"

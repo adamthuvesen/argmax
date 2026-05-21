@@ -1791,14 +1791,6 @@ button {
   color: var(--muted);
 }
 
-.settings-hero-rule-tail::after {
-  content: " ▍";
-  margin-left: 1px;
-  color: var(--ink);
-  animation: inkwell-caret 1.4s steps(2) infinite;
-  animation-delay: 600ms;
-}
-
 /* ---- Group landing strip ---- */
 
 .settings-group-intro {
@@ -1876,14 +1868,6 @@ button {
   .settings-group-map li {
     min-width: 0;
   }
-}
-
-/* Shared caret blink for every prompt/marker across the app (Settings hero
-   tail, Settings footer, LaunchSurface composer marker, command palette
-   prompt). One keyframe, one cadence — no competing phases. */
-@keyframes inkwell-caret {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
 }
 
 /* ---- Section header (numbered marker + eyebrow + title) ---- */
@@ -3029,15 +3013,7 @@ button {
   color: var(--line-strong);
 }
 
-.settings-footer-caret {
-  color: var(--ink);
-  margin-left: auto;
-  animation: inkwell-caret 1.4s steps(2) infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .settings-hero-rule-tail::after,
-  .settings-footer-caret,
   .settings-hero-dot,
   .settings-status-chip-dot {
     animation: none;
@@ -3271,26 +3247,6 @@ button {
   border-color: var(--ink);
   box-shadow: var(--shadow-2),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-.composer-marker {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  /* Match the textarea's first-line box (padding-top + line-height) so the
-     caret glyph sits centered on the input text instead of floating above it. */
-  margin-top: 11px;
-  font-family: var(--font-mono);
-  font-size: 15px;
-  line-height: 1.45;
-  color: var(--ink);
-  letter-spacing: 0;
-  user-select: none;
-  animation: inkwell-caret 1.4s steps(2) infinite;
-}
-
-.composer-input:focus-within .composer-marker {
-  color: var(--ink);
-  animation-duration: 1s;
 }
 
 .composer-input input,
@@ -4859,8 +4815,7 @@ button {
 
 /* Thinking transcript — a single line of mono on paper.
    The sage dot pulses as the only loading state; the command text types
-   itself in via React; the caret blinks twice and settles. No pill, no
-   border, no scan effect — just typography. */
+   itself in via React. No pill, no border, no scan effect — just typography. */
 .thinking-indicator {
   width: auto;
   max-width: 100%;
@@ -4923,21 +4878,6 @@ button {
   white-space: pre;
 }
 
-.thinking-caret {
-  display: inline-block;
-  width: 6px;
-  height: 12px;
-  margin-left: 2px;
-  background: var(--sage-deep);
-  border-radius: 1px;
-  transform: translateY(2px);
-  animation: thinking-caret-blink 0.9s steps(2, end) infinite;
-}
-
-.thinking-caret.settled {
-  animation: thinking-caret-settle 0.9s steps(2, end) 2 forwards;
-}
-
 @keyframes thinking-fade-in {
   from { opacity: 0; transform: translateY(2px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -4954,16 +4894,6 @@ button {
     opacity: 1;
     box-shadow: 0 0 0 4px rgba(90, 143, 114, 0.22);
   }
-}
-
-@keyframes thinking-caret-blink {
-  0%, 49%   { opacity: 0.25; }
-  50%, 100% { opacity: 0.95; }
-}
-
-@keyframes thinking-caret-settle {
-  0%, 49%   { opacity: 0.25; }
-  50%, 100% { opacity: 0; }
 }
 
 /* Playful-verb variant — keyed remount per verb runs this swap animation. */
@@ -6353,21 +6283,6 @@ button {
   gap: 10px;
   padding: 10px 18px 12px;
   border-bottom: 1px solid var(--line);
-}
-
-.command-palette-prompt {
-  flex: 0 0 auto;
-  font-family: var(--font-mono);
-  font-size: 16px;
-  line-height: 1;
-  color: var(--ink);
-  user-select: none;
-  letter-spacing: 0;
-  animation: inkwell-caret 1.4s steps(2) infinite;
-}
-
-.command-palette-input-wrap:focus-within .command-palette-prompt {
-  animation-duration: 1s;
 }
 
 .command-palette-input {
@@ -8216,8 +8131,7 @@ button {
   .command-palette-overlay,
   .search-overlay,
   .command-palette,
-  .search-modal,
-  .command-palette-prompt {
+  .search-modal {
     animation: none;
   }
 }
@@ -9230,8 +9144,7 @@ button {
     transition-duration: 0.001ms !important;
   }
 
-  .thinking-pulse,
-  .thinking-caret {
+  .thinking-pulse {
     opacity: 0.7;
     transform: none;
     box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.14);
@@ -9239,17 +9152,6 @@ button {
 
   .thinking-verb {
     animation: none;
-  }
-
-  /* The blink keyframe collapses to "off" under the global `animation-duration:
-     0.001ms` rule, leaving carets at whichever step landed (often invisible).
-     Force them back to a solid character for reduced-motion users. */
-  .composer-marker,
-  .command-palette-prompt,
-  .settings-hero-rule-tail::after,
-  .settings-footer-caret {
-    animation: none !important;
-    opacity: 1 !important;
   }
 }
 

@@ -4,6 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Argmax</title>
+    <script>
+      // Resolve theme before React mounts to avoid a light/dark flash on cold
+      // start. Mirrors lib/theme.ts; intentionally inline + dependency-free.
+      (function () {
+        try {
+          var raw = localStorage.getItem("argmax.theme.mode");
+          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "system";
+          var resolved =
+            mode === "system"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : mode;
+          document.documentElement.setAttribute("data-theme", resolved);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

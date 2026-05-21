@@ -8,7 +8,8 @@ import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { yaml } from "@codemirror/lang-yaml";
-import { StreamLanguage } from "@codemirror/language";
+import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { EditorView, keymap } from "@codemirror/view";
@@ -243,43 +244,77 @@ function StaleBanner({
 }
 
 /**
- * Light, paper-toned theme for the editor — keeps it visually flush with the
- * surrounding panel rather than fighting Argmax's light-only design tokens.
- * Sizing matches the previous `<pre>` ladder so swapping editors doesn't
- * reshuffle layout.
+ * Editor chrome theme — colors read from the same token palette as the rest of
+ * the app, so flipping the page theme (light ↔ dark) reflows the editor with
+ * no per-theme branch. The `dark` flag is omitted intentionally; CodeMirror
+ * derives selection/cursor luminance from `.cm-content`'s computed color.
  */
-const editorTheme = EditorView.theme(
-  {
-    "&": {
-      fontSize: "12.5px",
-      backgroundColor: "transparent",
-      height: "100%"
-    },
-    ".cm-scroller": {
-      fontFamily: "var(--font-mono)",
-      lineHeight: "1.5"
-    },
-    ".cm-content": {
-      caretColor: "var(--text)"
-    },
-    ".cm-gutters": {
-      backgroundColor: "transparent",
-      border: "none",
-      color: "var(--muted)"
-    },
-    ".cm-activeLine": {
-      backgroundColor: "rgba(0, 0, 0, 0.025)"
-    },
-    ".cm-activeLineGutter": {
-      backgroundColor: "transparent",
-      color: "var(--muted-strong)"
-    },
-    "&.cm-focused": {
-      outline: "none"
-    }
+const editorTheme = EditorView.theme({
+  "&": {
+    fontSize: "12.5px",
+    backgroundColor: "transparent",
+    height: "100%",
+    color: "var(--text)"
   },
-  { dark: false }
-);
+  ".cm-scroller": {
+    fontFamily: "var(--font-mono)",
+    lineHeight: "1.5"
+  },
+  ".cm-content": {
+    caretColor: "var(--text)",
+    color: "var(--text)"
+  },
+  ".cm-gutters": {
+    backgroundColor: "transparent",
+    border: "none",
+    color: "var(--muted)"
+  },
+  ".cm-activeLine": {
+    backgroundColor: "var(--overlay-soft)"
+  },
+  ".cm-activeLineGutter": {
+    backgroundColor: "transparent",
+    color: "var(--muted-strong)"
+  },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
+    background: "var(--selection-bg) !important"
+  },
+  "&.cm-focused": {
+    outline: "none"
+  }
+});
+
+/**
+ * Syntax highlight palette wired to design tokens. The same style serves both
+ * themes — `--sage` etc. resolve to the lifted dark-mode variants in dark and
+ * the deeper light-mode variants in light, so we never need a second style.
+ * Choices favor muted, editorial color over the saturated rainbow CodeMirror
+ * ships by default (which reads as bright pastels against warm charcoal).
+ */
+const editorHighlightStyle = HighlightStyle.define([
+  { tag: t.keyword, color: "var(--rose)", fontWeight: "500" },
+  { tag: [t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: "var(--rose)" },
+  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "var(--text)" },
+  { tag: [t.function(t.variableName), t.labelName], color: "var(--amber)" },
+  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "var(--amber)" },
+  { tag: [t.definition(t.name), t.separator], color: "var(--text-soft)" },
+  { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace],
+    color: "var(--amber)" },
+  { tag: [t.operator, t.special(t.string), t.punctuation], color: "var(--muted-strong)" },
+  { tag: [t.url, t.escape, t.regexp, t.link], color: "var(--sage)" },
+  { tag: [t.meta, t.comment], color: "var(--muted)", fontStyle: "italic" },
+  { tag: t.tagName, color: "var(--rose)" },
+  { tag: [t.attributeName], color: "var(--amber)" },
+  { tag: [t.attributeValue, t.string], color: "var(--sage)" },
+  { tag: t.heading, fontWeight: "600", color: "var(--text)" },
+  { tag: [t.atom, t.bool, t.special(t.variableName)], color: "var(--amber)" },
+  { tag: t.invalid, color: "var(--rose)" },
+  { tag: t.strong, fontWeight: "600" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strikethrough, textDecoration: "line-through" }
+]);
+
+const editorSyntaxHighlighting = syntaxHighlighting(editorHighlightStyle);
 
 function SourceEditor({
   path,
@@ -311,9 +346,10 @@ function SourceEditor({
             ...editorLanguageFor(path),
             keymap.of([{ key: "Mod-s", preventDefault: true, run: handleSave }]),
             editorTheme,
+            editorSyntaxHighlighting,
             EditorView.lineWrapping
           ]
-        : [...editorLanguageFor(path), editorTheme, EditorView.lineWrapping],
+        : [...editorLanguageFor(path), editorTheme, editorSyntaxHighlighting, EditorView.lineWrapping],
     [path, handleSave, editable]
   );
 

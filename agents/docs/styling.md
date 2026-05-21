@@ -12,7 +12,7 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 
 ## Hard constraints
 
-- **Light theme only.** No dark mode, no `prefers-color-scheme: dark` block.
+- **Three themes: Light / Dark / System.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Tokens live in `:root` (light) and `:root[data-theme="dark"]`. Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Electron-side for no-flash startup). See [src/renderer/lib/theme.ts](../../src/renderer/lib/theme.ts).
 - **Monospace everywhere.** The UI and code use the same font family — both read from `--font-ui` / `--font-mono`. Don't introduce a separate sans for chrome.
 - **Lilex is the default**, kept Nerd-Font–patched so terminal-style glyphs still render. Mono alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) and proportional sans options (Inter, Geist Sans, IBM Plex Sans, Manrope) are lazy-loaded via `@fontsource` / `@fontsource-variable` only when picked, and selected from Settings → Appearance. System fonts (System Mono, Menlo, Monaco) need no JS asset load. New fonts live in [src/renderer/lib/fonts.ts](../../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
 
@@ -57,9 +57,20 @@ User bubbles (`chat-bubble.user`) have a near-black background (`var(--ink)`) wi
 
 `--session-inline-padding` is defined on `.session-main-column` as `clamp(36px, calc((100% - 920px) / 2), 2000px)`, with tighter variants when the review or log panel is open (`clamp(18px, calc((100% - 860px) / 2), 2000px)` and `clamp(10px, calc((100% - 780px) / 2), 2000px)`). This keeps readable content at roughly 920px wide while letting the scrollable container remain full-width (so the scrollbar stays at the panel edge). `.conversation-list` consumes the token as its inline padding.
 
+## Dark theme — Warm Charcoal Editorial
+
+Same room with the lights off. Five rules:
+
+1. **Warm blacks, never blue.** Hues sit around 80° (yellow side of neutral), chroma stays very low.
+2. **Paper-inversion.** The body grain SVG references `var(--grain-color)` so it flips polarity automatically.
+3. **Accents lifted, not loud.** Sage / amber / rose gain ~10pp lightness and shed ~15% chroma — warm and confident, never neon.
+4. **Depth from edges, not shadows.** Dark elevation uses a 1px inset top-highlight + heavier drop in `--shadow-1/2/3`. The pixel of warm light at the top of an elevated card is the signature detail.
+5. **`color-scheme` follows.** `:root` declares `light`, `:root[data-theme="dark"]` declares `dark`, so native form controls + scrollbars track.
+
+Status colors keep semantic meaning across modes; values differ. Add new tokens to both `:root` blocks at the same time.
+
 ## Don't
 
-- Don't add color-mode toggles or theme picker UI.
 - Don't introduce a UI library (shadcn, Radix, MUI, Tailwind). The whole point is a hand-built feel.
 - Don't add focus rings beyond `:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }` — the global rule already covers everything.
 - Don't write inline `style={{}}` props in JSX for anything beyond truly dynamic values; everything else belongs in `styles.css`.

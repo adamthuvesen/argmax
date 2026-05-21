@@ -46,7 +46,6 @@ describe("TurnBlock", () => {
         toolItems={items}
         assistantTimestamps={[]}
         body={body(assistantChild("assistant"), toolChild("tools"))}
-        providerLabel="Cursor"
         modelLabel="Composer 2"
       />
     );

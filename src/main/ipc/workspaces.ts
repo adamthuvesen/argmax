@@ -1,22 +1,23 @@
-import { ipcMain } from "electron";
-import { z } from "zod";
 import {
   archiveWorkspaceInputSchema,
   createCurrentWorkspaceInputSchema,
   createWorkspaceInputSchema,
   openInIdeInputSchema,
   workspaceIdInputSchema,
+  workspaceSetPinnedInputSchema,
   workspaceStatusInputSchema,
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { CheckService } from "../checks/checkService.js";
+import type { NotificationService } from "../notifications/notificationService.js";
+import { listSessionIdsForWorkspace } from "../persistence/sessions.js";
 import type { WorkspaceService } from "../workspaces/workspaceOrchestration.js";
 import type { DetectedIde, IdeId } from "../../shared/types.js";
 import { detectInstalledIdes } from "../ide/ideDetection.js";
 import { launchIde } from "../ide/ideLaunch.js";
-import { timed } from "../util/ipcLatency.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 
 /**
  * Workspace orchestration IPC handlers (Ralph SPEC D3 — sixth split).
@@ -27,13 +28,10 @@ import { withValidation } from "../ipc.js";
 export function registerWorkspaceHandlers(
   database: ArgmaxDatabase,
   workspaces: WorkspaceService,
-  checks: CheckService
+  checks: CheckService,
+  notifications: NotificationService | null = null
 ): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "workspaces:create-isolated",
@@ -53,9 +51,21 @@ export function registerWorkspaceHandlers(
   );
   register(
     "workspaces:archive",
-    withValidation(archiveWorkspaceInputSchema, (input) => {
-      checks.cancelWorkspaceChecks(input.workspaceId);
-      return workspaces.archiveWorkspace(input.workspaceId, { force: input.force });
+    withValidation(archiveWorkspaceInputSchema, async (input) => {
+      // Pass cancelChecks through so archiveWorkspace can run it AFTER the
+      // dirty/force decision and the 200 ms porcelain settle window — clean
+      // archives no longer pay an unnecessary SIGTERM round, and the dirty
+      // path still gets its settle window.
+      const workspace = await workspaces.archiveWorkspace(input.workspaceId, {
+        force: input.force,
+        cancelChecks: (id) => checks.cancelWorkspaceChecks(id)
+      });
+      if (workspace.state === "archived" && notifications) {
+        for (const sessionId of listSessionIdsForWorkspace(database.connection, input.workspaceId)) {
+          notifications.forget(sessionId);
+        }
+      }
+      return workspace;
     })
   );
   register(
@@ -73,9 +83,8 @@ export function registerWorkspaceHandlers(
   );
   register(
     "workspaces:set-pinned",
-    withValidation(
-      z.object({ workspaceId: z.string().min(1), pinned: z.boolean() }),
-      (input) => database.setWorkspacePinned(input.workspaceId, input.pinned)
+    withValidation(workspaceSetPinnedInputSchema, (input) =>
+      database.setWorkspacePinned(input.workspaceId, input.pinned)
     )
   );
   register(

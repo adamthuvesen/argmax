@@ -1,21 +1,23 @@
-import { ipcMain, shell } from "electron";
-import { isAbsolute, relative as relativePath, resolve as resolvePath } from "node:path";
-import { statSync } from "node:fs";
+import { app, nativeTheme, shell } from "electron";
+import { isAbsolute, relative as relativePath, resolve as resolvePath, join as joinPath } from "node:path";
+import { statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { realpath } from "node:fs/promises";
 import { z } from "zod";
 import {
   listDetectedIdesInputSchema,
   systemOpenPathInputSchema,
+  systemSetThemeInputSchema,
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { DatabaseStats } from "../../shared/types.js";
 import { detectInstalledIdes } from "../ide/ideDetection.js";
 import { readPhases as readStartupPhases } from "../util/startupTimer.js";
-import { readHistogram as readIpcHistogram, timed } from "../util/ipcLatency.js";
+import { readHistogram as readIpcHistogram } from "../util/ipcLatency.js";
 import { readLogBuffer } from "../../shared/logger.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 import { getDatabasePath } from "../paths.js";
 
 /**
@@ -30,11 +32,7 @@ import { getDatabasePath } from "../paths.js";
  * the contract.
  */
 export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "system:list-detected-ides",
@@ -82,6 +80,24 @@ export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcCh
   );
 
   register(
+    "system:set-theme",
+    withValidation(systemSetThemeInputSchema, (input) => {
+      // Track the chosen mode in nativeTheme so OS-level chrome (titlebar
+      // buttons, native dialogs) follows. Persist a side-channel cache so the
+      // *next* cold start can pick the matching BrowserWindow.backgroundColor
+      // before the renderer ever runs.
+      nativeTheme.themeSource = input.mode;
+      try {
+        const cachePath = joinPath(app.getPath("userData"), "theme.json");
+        writeFileSync(cachePath, JSON.stringify({ mode: input.mode }), "utf-8");
+      } catch {
+        /* userData may be read-only in some sandboxed launches — ignore */
+      }
+      return { ok: true } as const;
+    })
+  );
+
+  register(
     "system:open-path",
     withValidation(systemOpenPathInputSchema, async (input) => {
       const target = isAbsolute(input.path)
@@ -97,6 +113,7 @@ export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcCh
       // root as cwd. Callers that genuinely need to open paths outside any
       // workspace (settings panel, database file) just omit `cwd`.
       // (audit-2026-05-17 H14)
+      let openTarget = target;
       if (input.cwd) {
         try {
           const cwdReal = await realpath(input.cwd);
@@ -105,13 +122,17 @@ export function registerSystemHandlers(database: ArgmaxDatabase): readonly IpcCh
           if (rel.startsWith("..") || isAbsolute(rel)) {
             throw new Error("path escapes cwd");
           }
+          // Open the canonicalized path so a symlink swap between the
+          // realpath() above and shell.openPath() below can't redirect us
+          // outside the cwd (TOCTOU).
+          openTarget = targetReal;
         } catch (error) {
           if (error instanceof Error && error.message === "path escapes cwd") throw error;
           // realpath failed (ENOENT etc.) — fall through to shell.openPath so
           // it can return its own user-readable error message.
         }
       }
-      const error = await shell.openPath(target);
+      const error = await shell.openPath(openTarget);
       if (error) throw new Error(error);
       return { ok: true } as const;
     })

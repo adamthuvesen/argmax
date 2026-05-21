@@ -68,6 +68,7 @@ import {
   persistSession,
   selectPreferredAttempt,
   updateSessionAgentMode,
+  updateSessionLastActivity,
   updateSessionLastModelId,
   updateSessionModel,
   updateSessionProviderConversationId,
@@ -203,6 +204,7 @@ export interface ArgmaxDatabase {
   updateSessionAgentMode: (sessionId: string, input: SessionAgentModeInput) => SessionSummary;
   updateSessionProviderConversationId: (sessionId: string, providerConversationId: string) => SessionSummary;
   updateSessionState: (sessionId: string, input: SessionStateInput) => SessionSummary;
+  updateSessionLastActivity: (sessionId: string, lastActivityAt: string) => SessionSummary;
   persistTimelineEvent: (input: PersistTimelineEventInput) => TimelineEvent;
   persistRawOutput: (input: PersistRawOutputInput) => RawProviderOutput;
   insertUsageEvent: (input: InsertUsageEventInput) => void;
@@ -306,6 +308,8 @@ export function createDatabase(databasePath = getDatabasePath(), options: { seed
     updateSessionProviderConversationId: (sessionId, providerConversationId) =>
       updateSessionProviderConversationId(connection, sessionId, providerConversationId),
     updateSessionState: (sessionId, input) => updateSessionState(connection, sessionId, input),
+    updateSessionLastActivity: (sessionId, lastActivityAt) =>
+      updateSessionLastActivity(connection, sessionId, lastActivityAt),
     persistTimelineEvent: (input) => persistTimelineEvent(connection, input),
     persistRawOutput: (input) => persistRawOutput(connection, input),
     insertUsageEvent: (input) => insertUsageEvent(connection, input),

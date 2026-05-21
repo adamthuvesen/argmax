@@ -34,6 +34,7 @@ import { CheckpointService } from "./review/checkpointService.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
 import { TournamentService } from "./tournaments/tournamentService.js";
+import type { NotificationService } from "./notifications/notificationService.js";
 import { AttachmentStore } from "./attachments/attachmentStore.js";
 import { timed } from "./util/ipcLatency.js";
 
@@ -51,26 +52,26 @@ export interface IpcInvalidInputError extends Error {
   issues: ZodIssue[];
 }
 
+function parseOrInvalidInput<T>(schema: ZodType<T>, raw: unknown): T {
+  try {
+    return schema.parse(raw);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      const wrapped: IpcInvalidInputError = Object.assign(new Error("INVALID_INPUT"), {
+        code: "INVALID_INPUT" as const,
+        issues: error.issues
+      });
+      throw wrapped;
+    }
+    throw error;
+  }
+}
+
 export function withValidation<TIn, TOut>(
   schema: ZodType<TIn>,
   fn: (input: TIn) => TOut | Promise<TOut>
 ): (event: unknown, rawInput: unknown) => Promise<TOut> {
-  return async (_event, rawInput) => {
-    let parsed: TIn;
-    try {
-      parsed = schema.parse(rawInput);
-    } catch (error) {
-      if (error instanceof ZodError) {
-        const wrapped: IpcInvalidInputError = Object.assign(new Error("INVALID_INPUT"), {
-          code: "INVALID_INPUT" as const,
-          issues: error.issues
-        });
-        throw wrapped;
-      }
-      throw error;
-    }
-    return fn(parsed);
-  };
+  return async (_event, rawInput) => fn(parseOrInvalidInput(schema, rawInput));
 }
 
 /**
@@ -83,22 +84,7 @@ export function withTupleValidation<TTuple extends readonly unknown[], TOut>(
   schema: ZodType<TTuple>,
   fn: (input: TTuple) => TOut | Promise<TOut>
 ): (event: unknown, ...rawArgs: unknown[]) => Promise<TOut> {
-  return async (_event, ...rawArgs) => {
-    let parsed: TTuple;
-    try {
-      parsed = schema.parse(rawArgs);
-    } catch (error) {
-      if (error instanceof ZodError) {
-        const wrapped: IpcInvalidInputError = Object.assign(new Error("INVALID_INPUT"), {
-          code: "INVALID_INPUT" as const,
-          issues: error.issues
-        });
-        throw wrapped;
-      }
-      throw error;
-    }
-    return fn(parsed);
-  };
+  return async (_event, ...rawArgs) => fn(parseOrInvalidInput(schema, rawArgs));
 }
 
 /**
@@ -113,12 +99,18 @@ export function withTupleValidation<TTuple extends readonly unknown[], TOut>(
  * `withValidation`; runtime drift between renderer and main now rejects with
  * `INVALID_INPUT` instead of crashing inside a service.
  */
+export interface RegisteredIpc {
+  channels: readonly string[];
+  tournaments: TournamentService;
+}
+
 export function registerIpcHandlers(
   database: ArgmaxDatabase,
   providerSessions: ProviderSessionService,
   terminals: TerminalService,
-  mcpAuth: McpAuthService
-): readonly string[] {
+  mcpAuth: McpAuthService,
+  notifications: NotificationService | null = null
+): RegisteredIpc {
   const workspaces = new WorkspaceService(database);
   const attachments = new AttachmentStore();
   const projects = new ProjectService(database, workspaces, attachments);
@@ -193,7 +185,7 @@ export function registerIpcHandlers(
   for (const channel of registerProjectHandlers(database, projects)) {
     registeredChannels.push(channel);
   }
-  for (const channel of registerWorkspaceHandlers(database, workspaces, checks)) {
+  for (const channel of registerWorkspaceHandlers(database, workspaces, checks, notifications)) {
     registeredChannels.push(channel);
   }
   for (const channel of registerSystemHandlers(database)) {
@@ -227,7 +219,7 @@ export function registerIpcHandlers(
     registeredChannels.push(channel);
   }
 
-  return registeredChannels;
+  return { channels: registeredChannels, tournaments };
 }
 
 /**

@@ -234,7 +234,9 @@ const api: ArgmaxApi = {
       invoke("system:open-path", input) as Promise<{ ok: true }>,
     listDetectedIdes: () => invoke("system:list-detected-ides") as Promise<DetectedIde[]>,
     diagnostics: () => invoke("system:diagnostics") as Promise<DiagnosticsReport>,
-    vacuumDatabase: () => invoke("system:vacuum-database") as Promise<{ ok: true }>
+    vacuumDatabase: () => invoke("system:vacuum-database") as Promise<{ ok: true }>,
+    setTheme: (mode: "light" | "dark" | "system") =>
+      invoke("system:set-theme", { mode }) as Promise<{ ok: true }>
   },
   mcp: {
     list: () => invoke("mcp:list") as Promise<McpClientListing[]>,

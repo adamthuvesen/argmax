@@ -1,11 +1,13 @@
-import { ipcMain } from "electron";
-import { z } from "zod";
 import {
   createCheckpointInputSchema,
+  learningsDeleteInputSchema,
+  learningsListInputSchema,
+  learningsUpdateInputSchema,
   runCheckInputSchema,
   selectPreferredAttemptInputSchema,
   sessionCostSummaryInputSchema,
   sessionEventsSinceInputSchema,
+  sessionSearchInputSchema,
   skillsListInputSchema,
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
@@ -13,8 +15,8 @@ import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { CheckService } from "../checks/checkService.js";
 import type { CheckpointService } from "../review/checkpointService.js";
 import { listSkills } from "../skills/skillRegistry.js";
-import { timed } from "../util/ipcLatency.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 
 /**
  * Sessions / learnings / checks / checkpoints / skills IPC handlers
@@ -27,43 +29,26 @@ export function registerSessionHandlers(
   checks: CheckService,
   checkpoints: CheckpointService
 ): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "learnings:list",
-    withValidation(
-      z.object({ projectId: z.string().min(1), limit: z.number().int().min(1).max(200).optional() }),
-      (input) => database.listLearnings(input.projectId, input.limit)
-    )
+    withValidation(learningsListInputSchema, (input) => database.listLearnings(input.projectId, input.limit))
   );
   register(
     "learnings:update",
-    withValidation(
-      z.object({
-        id: z.string().min(1),
-        summary: z.string().min(1).optional(),
-        verified: z.boolean().optional()
-      }),
-      (input) => database.updateLearning(input)
-    )
+    withValidation(learningsUpdateInputSchema, (input) => database.updateLearning(input))
   );
   register(
     "learnings:delete",
-    withValidation(z.object({ id: z.string().min(1) }), (input) => {
+    withValidation(learningsDeleteInputSchema, (input) => {
       database.deleteLearning(input.id);
       return { ok: true } as const;
     })
   );
   register(
     "session:search",
-    withValidation(
-      z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(200).optional() }),
-      (input) => database.searchEvents(input)
-    )
+    withValidation(sessionSearchInputSchema, (input) => database.searchEvents(input))
   );
   register(
     "session:events-since",

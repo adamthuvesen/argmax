@@ -1,20 +1,17 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { watch, type FSWatcher } from "node:fs";
 import { mkdir, realpath, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
-import { promisify } from "node:util";
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
-import { runGitText } from "../git/exec.js";
+import { runGitMaybe, runGitText } from "../git/exec.js";
 
 // One-time guard so the "recursive watch unavailable" log fires once per
 // process even if many workspaces are opened on Linux.
 let warnedRecursiveUnavailable = false;
 
-const execFileAsync = promisify(execFile);
 
 /** Re-export for tests that exercise the timeout / maxBuffer / stderr-surfacing contract. */
 export const git = runGitText;
@@ -80,9 +77,13 @@ export class WorkspaceService {
     // bad persisted setting (e.g. `/tmp/argmax-oops`) doesn't side-effect a
     // directory on disk that then gets rejected on the next line. The
     // post-mkdir realpath-based check below still defeats symlinks.
-    assertWorktreeLocationPathContained(project.repoPath, project.settings.worktreeLocation);
+    await assertWorktreeLocationContained(project.repoPath, project.settings.worktreeLocation, {
+      realpath: false
+    });
     await mkdir(project.settings.worktreeLocation, { recursive: true });
-    await assertWorktreeLocationContained(project.repoPath, project.settings.worktreeLocation);
+    await assertWorktreeLocationContained(project.repoPath, project.settings.worktreeLocation, {
+      realpath: true
+    });
 
     // Pre-flight: detect branch-name collision early so the error message
     // tells the user what to retry instead of relying on git's terse output.
@@ -390,21 +391,7 @@ export class WorkspaceService {
 }
 
 
-/**
- * Path-string containment check that does NOT touch the filesystem. Validates
- * before the directory exists so mkdir doesn't side-effect a bad path. The
- * post-mkdir realpath-based `assertWorktreeLocationContained` runs after and
- * additionally defeats symlinks.
- */
-function assertWorktreeLocationPathContained(repoPath: string, worktreeLocation: string): void {
-  if (!isAbsolute(worktreeLocation)) {
-    throw new WorkspaceError(
-      `worktreeLocation must be absolute, got ${worktreeLocation}`,
-      "Configure project.worktreeLocation to an absolute path inside the repo."
-    );
-  }
-  const repoResolved = resolve(repoPath);
-  const worktreeResolved = resolve(worktreeLocation);
+function assertResolvedWorktreeInsideRepo(repoResolved: string, worktreeResolved: string): void {
   const repoPrefix = repoResolved.endsWith(sep) ? repoResolved : repoResolved + sep;
   if (worktreeResolved !== repoResolved && !worktreeResolved.startsWith(repoPrefix)) {
     throw new WorkspaceError(
@@ -414,22 +401,27 @@ function assertWorktreeLocationPathContained(repoPath: string, worktreeLocation:
   }
 }
 
-async function assertWorktreeLocationContained(repoPath: string, worktreeLocation: string): Promise<void> {
+/**
+ * Containment check for worktree paths. With `realpath: false`, validates the
+ * string path before mkdir; with `realpath: true`, canonicalizes after the
+ * directory exists to defeat symlinks.
+ */
+async function assertWorktreeLocationContained(
+  repoPath: string,
+  worktreeLocation: string,
+  options: { realpath: boolean }
+): Promise<void> {
   if (!isAbsolute(worktreeLocation)) {
     throw new WorkspaceError(
       `worktreeLocation must be absolute, got ${worktreeLocation}`,
       "Configure project.worktreeLocation to an absolute path inside the repo."
     );
   }
-  const repoResolved = await realpath(repoPath);
-  const worktreeResolved = await realpath(worktreeLocation);
-  const repoPrefix = repoResolved.endsWith(sep) ? repoResolved : repoResolved + sep;
-  if (worktreeResolved !== repoResolved && !worktreeResolved.startsWith(repoPrefix)) {
-    throw new WorkspaceError(
-      `worktreeLocation ${worktreeResolved} must be inside repoPath ${repoResolved}`,
-      "Choose a worktree location inside the project's repo and retry."
-    );
+  if (options.realpath) {
+    assertResolvedWorktreeInsideRepo(await realpath(repoPath), await realpath(worktreeLocation));
+    return;
   }
+  assertResolvedWorktreeInsideRepo(resolve(repoPath), resolve(worktreeLocation));
 }
 
 async function assertValidRef(repoPath: string, ref: string): Promise<void> {
@@ -437,16 +429,13 @@ async function assertValidRef(repoPath: string, ref: string): Promise<void> {
   // "feature-x"; without it `check-ref-format` requires a slash. We never
   // pass user input to `--branch` because that flag does DWIM expansion
   // (e.g. `@{-1}` resolves to a previous branch) which we want to refuse.
-  try {
-    await execFileAsync(
-      "git",
-      ["-C", repoPath, "check-ref-format", "--allow-onelevel", ref],
-      {
-        timeout: 5_000,
-        encoding: "utf8"
-      }
-    );
-  } catch {
+  //
+  // The trailing `--` makes the call invariant against a future regression
+  // of the schema layer's `-`-prefix guard on user-controlled refs.
+  const ok = await runGitMaybe(repoPath, ["check-ref-format", "--allow-onelevel", ref], {
+    timeoutMs: 5_000
+  });
+  if (ok === null) {
     throw new WorkspaceError(
       `Invalid git ref ${ref}`,
       "Pick a base ref that conforms to git's ref-format rules."

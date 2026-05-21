@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import {
   terminalResizeInputSchema,
   terminalSpawnInputSchema,
@@ -7,16 +6,12 @@ import {
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
 import type { TerminalService } from "../terminal/terminalService.js";
-import { timed } from "../util/ipcLatency.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 
 /** Integrated-terminal IPC handlers (Ralph SPEC D3 — second split). */
 export function registerTerminalHandlers(terminals: TerminalService): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "terminal:spawn",

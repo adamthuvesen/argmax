@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import {
   tournamentGetInputSchema,
   tournamentKeepInputSchema,
@@ -7,8 +6,8 @@ import {
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
 import type { TournamentService } from "../tournaments/tournamentService.js";
-import { timed } from "../util/ipcLatency.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 import { z } from "zod";
 
 const scoringListInputSchema = z.void();
@@ -17,11 +16,7 @@ const scoringListInputSchema = z.void();
 export function registerTournamentHandlers(
   tournaments: TournamentService
 ): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "tournament:launch",

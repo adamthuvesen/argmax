@@ -1,17 +1,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
-
-export type QuestionOption = {
-  label: string;
-  description?: string;
-};
-
-export type Question = {
-  question: string;
-  header: string;
-  options: QuestionOption[];
-  multiSelect: boolean;
-};
+import type { Question } from "../lib/questions.js";
+export type { Question, QuestionOption } from "../lib/questions.js";
 
 export type QuestionCardProps = {
   questions: Question[];

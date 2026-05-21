@@ -3,19 +3,9 @@ import type { JSX } from "react";
 import type { DiscoveredProvider } from "../../../shared/types.js";
 import type { ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode } from "../../lib/permissionMode.js";
+import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
 import { CombinedModelSelector } from "../ModelSelector.js";
 import { SectionHeader, Segmented } from "./settingsPrimitives.js";
-
-export const PROVIDER_INSTALL_HINTS: Record<string, { label: string; url: string }> = {
-  claude: {
-    label: "Install Claude Code CLI",
-    url: "https://docs.claude.com/en/docs/claude-code/install"
-  },
-  codex: {
-    label: "Install Codex CLI",
-    url: "https://github.com/openai/codex"
-  }
-};
 
 export function AgentsSettings({
   defaultModel,

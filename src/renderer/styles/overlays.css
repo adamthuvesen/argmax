@@ -11,8 +11,8 @@
   display: grid;
   place-items: start center;
   padding-top: 12vh;
-  background: rgba(20, 24, 32, 0.30);
-  background-image: linear-gradient(180deg, rgba(20, 24, 32, 0.10), rgba(20, 24, 32, 0.34));
+  background: var(--modal-backdrop);
+  background-image: var(--modal-backdrop-gradient);
   /* Sits above the launcher's review panel (z 120) so ⌘K stays the topmost
      modal even when ⌘B has opened the project Files panel. */
   z-index: 140;
@@ -1270,7 +1270,7 @@
    selection) but cap the outer height so the scroller stays inside the panel
    instead of pushing the parent's flex layout around. */
 .file-preview-editor {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
   padding: 6px 0 16px;
@@ -1278,6 +1278,7 @@
 
 .file-preview-editor [class*="cm-editor"] {
   height: 100%;
+  min-height: 0;
 }
 
 /* CodeMirror ships its own light-theme baseline (.cm-editor + .cm-content
@@ -1292,6 +1293,11 @@
 .file-preview-editor .cm-gutter {
   background: transparent;
   color: var(--text);
+}
+
+.file-preview-editor .cm-scroller {
+  min-height: 0;
+  overflow: auto;
 }
 
 .file-preview-editor .cm-editor.cm-focused {
@@ -1656,8 +1662,8 @@
   display: grid;
   place-items: start center;
   padding-top: 12vh;
-  background: rgba(20, 24, 32, 0.30);
-  background-image: linear-gradient(180deg, rgba(20, 24, 32, 0.10), rgba(20, 24, 32, 0.34));
+  background: var(--modal-backdrop);
+  background-image: var(--modal-backdrop-gradient);
   /* Match the command-palette overlay (z 140) so search stays the topmost
      modal even when ⌘B has opened the launcher's project Files panel
      (`.launcher-shell[data-review-open] .review-panel` sits at z 120). The

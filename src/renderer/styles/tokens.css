@@ -85,6 +85,8 @@
   --overlay-soft: rgba(0, 0, 0, 0.025);
   --overlay-med: rgba(31, 28, 24, 0.06);
   --overlay-strong: rgba(31, 28, 24, 0.12);
+  --modal-backdrop: rgba(31, 28, 24, 0.30);
+  --modal-backdrop-gradient: linear-gradient(180deg, rgba(31, 28, 24, 0.10), rgba(31, 28, 24, 0.34));
   --selection-bg: rgba(90, 143, 114, 0.22);
   --selection-bg-on-ink: rgba(255, 255, 255, 0.28);
   --bubble-on-ink: #ffffff;
@@ -169,6 +171,8 @@
   --overlay-soft: rgba(255, 250, 235, 0.04);
   --overlay-med: rgba(255, 250, 235, 0.07);
   --overlay-strong: rgba(255, 250, 235, 0.12);
+  --modal-backdrop: rgba(14, 14, 12, 0.36);
+  --modal-backdrop-gradient: linear-gradient(180deg, rgba(14, 14, 12, 0.14), rgba(14, 14, 12, 0.42));
   --selection-bg: rgba(127, 180, 148, 0.28);
   --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 

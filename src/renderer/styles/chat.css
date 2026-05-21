@@ -1418,7 +1418,7 @@
 
 .chat-bubble.user {
   align-self: flex-end;
-  max-width: min(62%, 680px);
+  max-width: min(80%, 880px);
   color: var(--bubble-on-ink);
   background: var(--ink);
   box-shadow: none;

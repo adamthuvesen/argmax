@@ -98,6 +98,30 @@ import { PlanCard } from "./PlanCard.js";
 import { QuestionCard, type Question } from "./QuestionCard.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { ThinkingTranscript } from "./ThinkingTranscript.js";
+
+/** Terminate a running probe (if needed) then send follow-up input; surfaces errors. */
+function sendAfterTerminate(
+  sessionId: string,
+  isRunning: boolean,
+  onTerminateSession: (id: string) => Promise<void>,
+  send: () => Promise<void>,
+  onError: (message: string) => void
+): void {
+  const runSend = (): void => {
+    void send().catch((error) => {
+      onError(error instanceof Error ? error.message : "Could not send input.");
+    });
+  };
+  if (isRunning) {
+    void onTerminateSession(sessionId)
+      .then(runSend)
+      .catch((error) => {
+        onError(error instanceof Error ? error.message : "Could not terminate session.");
+      });
+  } else {
+    runSend();
+  }
+}
 import { ThinkingVerbs } from "./ThinkingVerbs.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
@@ -228,15 +252,17 @@ function StreamingMarkdown({
         remarkPlugins={[remarkGfm]}
         components={{
           code: ({ className, children, ...rest }) => {
-            const isFenced = typeof className === "string" && className.includes("language-");
-            if (isFenced) {
-              return <CodeBlock className={className}>{children}</CodeBlock>;
-            }
+            const hasLanguage = typeof className === "string" && className.includes("language-");
             const codeText = Array.isArray(children)
               ? children.map((c) => (typeof c === "string" ? c : "")).join("")
               : typeof children === "string"
                 ? children
                 : "";
+            // Fenced blocks (language-tagged or bare ``` with newlines) route to
+            // CodeBlock so the <pre> wrapper survives the pre: <>{children}</> override.
+            if (hasLanguage || codeText.includes("\n")) {
+              return <CodeBlock className={className}>{children}</CodeBlock>;
+            }
             const match = matchFileChip(codeText);
             if (match) {
               return (
@@ -667,6 +693,17 @@ export function SessionConversation({
   const metaCardsRef = useRef<HTMLDivElement | null>(null);
   const wasNearBottomRef = useRef<boolean>(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [newBelowCount, setNewBelowCount] = useState(0);
+  const lastSeenItemCountRef = useRef<number>(0);
+  // Mascot happy-flash: pops to "happy" for a short beat after the most
+  // recent assistant message.completed. Keeps the mood derivation pure
+  // by gating on a wall-clock timestamp.
+  const [happyFlashUntilMs, setHappyFlashUntilMs] = useState(0);
+  const lastCompletedIdRef = useRef<string | null>(null);
+  // Submit-bob: the Mascot already animates a "pet" on its own click handler.
+  // We mirror that animation onto the wrapper for a brief moment when the
+  // user submits via Enter, so keyboard submissions also feel kinetic.
+  const [justSentAt, setJustSentAt] = useState(0);
 
   const handleConversationScroll = useCallback((): void => {
     const el = conversationListRef.current;
@@ -674,12 +711,16 @@ export function SessionConversation({
     const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
     wasNearBottomRef.current = decision.pinToBottom;
     setShowScrollToBottom(decision.showFab);
+    if (!decision.showFab) {
+      setNewBelowCount(0);
+    }
   }, []);
 
   const scrollConversationToBottom = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    setNewBelowCount(0);
   }, []);
 
   // Snap to the latest content when the session changes — the previous
@@ -701,6 +742,56 @@ export function SessionConversation({
     if (!el || !wasNearBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [conversationItems, isThinking]);
+
+  // Count new items that have arrived while the user is scrolled up. Resets
+  // when they catch up (scrollListener flips showScrollToBottom false) or
+  // when they tap the FAB.
+  useEffect(() => {
+    const current = conversationItems.length;
+    const previous = lastSeenItemCountRef.current;
+    lastSeenItemCountRef.current = current;
+    if (showScrollToBottom && current > previous) {
+      setNewBelowCount((n) => n + (current - previous));
+    }
+  }, [conversationItems, showScrollToBottom]);
+
+  // Reset the counter when switching sessions. The delta-tracking effect
+  // above will pick up the new length on its next run.
+  useEffect(() => {
+    lastSeenItemCountRef.current = Number.POSITIVE_INFINITY;
+    setNewBelowCount(0);
+  }, [session?.id]);
+
+  // Watch for the newest message.completed event; when it changes, flash
+  // the send-button mascot to "happy" for 1.5s. lastCompletedIdRef avoids
+  // re-flashing on incidental re-renders.
+  useEffect(() => {
+    const latest = events.find((e) => e.type === "message.completed");
+    if (!latest) return;
+    if (lastCompletedIdRef.current === latest.id) return;
+    const prev = lastCompletedIdRef.current;
+    lastCompletedIdRef.current = latest.id;
+    // Skip the very first observation per session — we don't want a stale
+    // "happy" pop the moment the user opens a session that completed long ago.
+    if (prev === null) return;
+    setHappyFlashUntilMs(Date.now() + 1500);
+  }, [events]);
+
+  useEffect(() => {
+    if (happyFlashUntilMs === 0) return;
+    const remaining = happyFlashUntilMs - Date.now();
+    if (remaining <= 0) {
+      setHappyFlashUntilMs(0);
+      return;
+    }
+    const id = setTimeout(() => setHappyFlashUntilMs(0), remaining);
+    return () => clearTimeout(id);
+  }, [happyFlashUntilMs]);
+
+  useEffect(() => {
+    setHappyFlashUntilMs(0);
+    lastCompletedIdRef.current = null;
+  }, [session?.id]);
 
   // The meta-cards row (changed files + cost) shares vertical space with the
   // conversation list via grid 1fr. When it grows or shrinks, the list's
@@ -896,6 +987,9 @@ export function SessionConversation({
     }
     if (withPath.length > 0) attachFiles(withPath);
     if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
+    if (withPath.length === 0 && imageBlobs.length === 0) {
+      setStatus("Only files with a disk path or images can be attached.");
+    }
   };
 
   const onComposerPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
@@ -931,6 +1025,9 @@ export function SessionConversation({
       }
       if (withPath.length > 0) attachFiles(withPath);
       if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
+      if (withPath.length === 0 && imageBlobs.length === 0) {
+        setStatus("Only files with a disk path or images can be attached.");
+      }
     }
     // Clear the value so the same file can be selected again next time.
     event.target.value = "";
@@ -958,6 +1055,7 @@ export function SessionConversation({
     setIsSending(true);
     setStatus(null);
     shouldRefocusInput.current = true;
+    setJustSentAt(Date.now());
     try {
       await onSendSessionInput(
         session.id,
@@ -1115,7 +1213,22 @@ export function SessionConversation({
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         {renderItems.length > 0 ? (
-          renderItems.map((item, index) => {
+          (() => {
+            // Persistent model identity: only render the "GPT-5.5"-style
+            // subtitle on the first turn of a consecutive run with the same
+            // model. Today the parent passes selectedModel.label to every
+            // turn, so this resolves to "first turn only" — but the dedupe
+            // is computed correctly so a future per-turn model switch will
+            // surface a new header at the boundary.
+            const turnShowsModelHeader = new Map<number, boolean>();
+            let lastShownModelLabel: string | null = null;
+            renderItems.forEach((rItem, rIndex) => {
+              if (rItem.kind !== "turn") return;
+              const show = lastShownModelLabel !== selectedModel.label;
+              turnShowsModelHeader.set(rIndex, show);
+              if (show) lastShownModelLabel = selectedModel.label;
+            });
+            return renderItems.map((item, index) => {
             if (item.kind === "user-message") {
               const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
               const attachments = rawAttachments
@@ -1139,7 +1252,6 @@ export function SessionConversation({
                 <ChatBubble
                   key={item.event.id}
                   kind="user"
-                  createdAt={item.event.createdAt}
                   rawMarkdown={displayMessage}
                 >
                   {attachments.length > 0 ? (
@@ -1244,13 +1356,13 @@ export function SessionConversation({
               // narration to finish, then send. Main's sendInput relaunches
               // the agent when no live handle exists.
               const sessionId = session.id;
-              if (session.state === "running") {
-                void onTerminateSession(sessionId).then(() =>
-                  onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto")
-                );
-              } else {
-                void onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto");
-              }
+              sendAfterTerminate(
+                sessionId,
+                session.state === "running",
+                onTerminateSession,
+                () => onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto"),
+                setStatus
+              );
             };
             const handlePlanReject = (): void => {
               inputRef.current?.focus();
@@ -1327,13 +1439,13 @@ export function SessionConversation({
               // narration and the user waits for the probe to die naturally.
               const sessionId = session.id;
               const nextAgentMode = turnAgentMode === "plan" ? "plan" : "auto";
-              if (session.state === "running") {
-                void onTerminateSession(sessionId).then(() =>
-                  onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode)
-                );
-              } else {
-                void onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode);
-              }
+              sendAfterTerminate(
+                sessionId,
+                session.state === "running",
+                onTerminateSession,
+                () => onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode),
+                setStatus
+              );
             };
             const questionCard: JSX.Element | null = askUserQuestionTool
               ? (
@@ -1414,7 +1526,6 @@ export function SessionConversation({
                 <ChatBubble
                   key={group.id}
                   kind="assistant"
-                  createdAt={group.createdAt}
                   rawMarkdown={group.text}
                 >
                   <StreamingMarkdown
@@ -1537,19 +1648,29 @@ export function SessionConversation({
             const bodyChildren: TurnBodyChild[] = [...assistantChildren, ...toolChildren]
               .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
               .map(({ kind, id, node }) => ({ kind, id, node }));
+            // Earliest assistant or tool createdAt in the turn — used as the
+            // single canonical timestamp shown in the turn header. Per-paragraph
+            // timestamps inside this turn are visually suppressed.
+            const earliestCreatedAt = [...assistantChildren, ...toolChildren]
+              .map((c) => c.createdAt)
+              .filter((t): t is string => typeof t === "string" && t.length > 0)
+              .sort()[0];
+            const showModelHeader = turnShowsModelHeader.get(index) ?? false;
             return (
               <TurnBlock
                 key={item.id}
                 toolItems={visibleToolItems}
                 assistantTimestamps={item.assistantTimestamps}
-                modelLabel={selectedModel.label}
+                {...(showModelHeader ? { modelLabel: selectedModel.label } : {})}
                 {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
                 {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
                 isTurnActive={isTurnLiveTicking}
                 body={bodyChildren}
+                {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
               />
             );
-          })
+            });
+          })()
         ) : terminalTranscript ? (
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>
@@ -1566,11 +1687,15 @@ export function SessionConversation({
           <button
             type="button"
             className="scroll-to-bottom-fab"
-            aria-label="Scroll to latest"
-            title="Scroll to latest"
+            data-has-count={newBelowCount > 0 ? "true" : "false"}
+            aria-label={newBelowCount > 0 ? `${newBelowCount} new — scroll to latest` : "Scroll to latest"}
+            title={newBelowCount > 0 ? `${newBelowCount} new` : "Scroll to latest"}
             onClick={scrollConversationToBottom}
           >
             <ChevronDown size={16} aria-hidden="true" />
+            {newBelowCount > 0 ? (
+              <span className="scroll-to-bottom-fab-count">{newBelowCount} new</span>
+            ) : null}
           </button>
         ) : null}
         {isThinking ? (
@@ -1738,28 +1863,32 @@ export function SessionConversation({
             <Plus size={16} />
           </button>
           {session ? (
-            <ModelSelector
-              provider={session.provider}
-              value={selectedModel}
-              onChange={setSelectedModel}
-              ariaLabel="Session model"
-            />
+            <div className="composer-chips-group composer-chips-model">
+              <ModelSelector
+                provider={session.provider}
+                value={selectedModel}
+                onChange={setSelectedModel}
+                ariaLabel="Session model"
+              />
+            </div>
           ) : null}
           {session ? (
-            <button
-              type="button"
-              className="composer-context-chip agent-mode-toggle"
-              aria-label="Agent mode"
-              aria-pressed={agentMode === "plan"}
-              title="Toggle agent mode (Shift+Tab)"
-              disabled={!canSend || isSending}
-              onClick={toggleMode}
-            >
-              {AGENT_MODE_LABELS[agentMode]}
-            </button>
+            <div className="composer-chips-group composer-chips-mode">
+              <button
+                type="button"
+                className="composer-context-chip agent-mode-toggle"
+                aria-label="Agent mode"
+                aria-pressed={agentMode === "plan"}
+                title="Toggle agent mode (Shift+Tab)"
+                disabled={!canSend || isSending}
+                onClick={toggleMode}
+              >
+                {AGENT_MODE_LABELS[agentMode]}
+              </button>
+            </div>
           ) : null}
           {workspace ? (
-            <div className="composer-footer" aria-label="Workspace context">
+            <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
               {workspace.sharedWorkspace ? null : (
                 <button
                   type="button"
@@ -1802,15 +1931,30 @@ export function SessionConversation({
             const sendTitle = isQueueing
               ? "Queue follow-up — sent when the current turn finishes"
               : "Send follow-up";
+            const happy = happyFlashUntilMs > Date.now();
+            // Derive the mascot mood from real session state. Order matters:
+            // happy (post-completion flash) overrides idle; thinking and
+            // working only apply while a turn is in flight; sad is the
+            // disabled fallback.
+            const mood: "idle" | "thinking" | "happy" | "sad" | "working" = happy
+              ? "happy"
+              : sendDisabled
+                ? "sad"
+                : isThinking
+                  ? "thinking"
+                  : session?.state === "running"
+                    ? "working"
+                    : "idle";
+            const bobbing = justSentAt > 0 && Date.now() - justSentAt < 320;
             return (
               <Mascot
                 size={36}
-                mood={sendDisabled ? "sad" : "idle"}
+                mood={mood}
                 type="submit"
                 disabled={sendDisabled}
                 title={sendTitle}
                 label={sendTitle}
-                buttonClassName="session-send-mascot"
+                buttonClassName={`session-send-mascot${bobbing ? " session-send-mascot--bob" : ""}`}
               />
             );
           })()}

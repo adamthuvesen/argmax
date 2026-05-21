@@ -155,9 +155,9 @@ describe("TurnBlock", () => {
           turnStartedAtMs={start}
         />
       );
-      const live = container.querySelector(".turn-block-chip span span") as HTMLElement | null;
+      const live = container.querySelector(".turn-block-chip span span");
       expect(live).not.toBeNull();
-      expect(live!.textContent).toBe("0s");
+      expect(live?.textContent).toBe("0s");
       // Mid-second: chip must still read "0s" — no 0.4s noise.
       nowSpy.mockReturnValue(start + 400);
       __liveTimerTickForTest();

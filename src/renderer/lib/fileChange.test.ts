@@ -53,6 +53,16 @@ describe("interpretFileChange — Claude Write", () => {
     expect(change.hunks.length).toBeGreaterThan(0);
   });
 
+  it("renders text with spaces as a normal create preview (audit-2026-05-18 C1)", () => {
+    const { change } = firstChange("Write", {
+      file_path: "/tmp/hello.ts",
+      content: "export const hello = 'world';\n"
+    });
+    if (change.kind !== "create") throw new Error("bad kind");
+    expect(change.note).toBeUndefined();
+    expect(change.hunks.length).toBeGreaterThan(0);
+  });
+
   it("flags binary content via a NUL byte", () => {
     const { change } = firstChange("Write", {
       file_path: "/tmp/img.bin",

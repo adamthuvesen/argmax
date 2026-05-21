@@ -75,7 +75,13 @@ export function useDashboardSession(
   const setSelectedProjectId = useCallback((value: string | null) => setSelectedProjectIdState(value), []);
   const setSelectedWorkspaceId = useCallback((value: string | null) => setSelectedWorkspaceIdState(value), []);
 
+  // Independent tokens for full snapshot loads (loadDashboard) and incremental
+  // refreshes (refresh). Sharing a token caused `refresh` to cancel a
+  // concurrent `loadDashboard` (and vice versa) — including `refresh`'s own
+  // re-entrant call into `loadDashboard` when `window.argmax` is missing.
+  // (audit-2026-05-18 M12)
   const dashboardLoadToken = useRef(0);
+  const dashboardRefreshToken = useRef(0);
   const dashboardDeltaRevision = useRef(0);
   const sessionCursorsRef = useRef(new Map<string, SessionCursor>());
   const resolveApprovalToken = useRef(0);
@@ -115,7 +121,39 @@ export function useDashboardSession(
       if (token !== dashboardLoadToken.current) {
         return;
       }
-      setSnapshot((current) => (deltaRevision === dashboardDeltaRevision.current ? data : mergeDashboardDelta(data, current)));
+      setSnapshot((current) => {
+        if (deltaRevision === dashboardDeltaRevision.current) {
+          return data;
+        }
+        // `dashboard:delta` pushes while loadSnapshot() was in flight. Server
+        // lists are authoritative; upsert concurrent entity rows without
+        // resurrecting pruned event tails from the pre-load `current` snapshot.
+        const liveSessionIds = new Set(data.sessions.map((session) => session.id));
+        const merged = mergeDashboardDelta(data, {
+          sessions: current.sessions,
+          workspaces: current.workspaces,
+          checks: current.checks,
+          checkpoints: current.checkpoints,
+          projects: current.projects
+        });
+        return {
+          ...merged,
+          events: pruneSupersededDeltas(
+            mergeByCreatedAt(
+              data.events,
+              current.events.filter((event) => liveSessionIds.has(event.sessionId)),
+              500,
+              "desc"
+            )
+          ),
+          rawOutputs: mergeByCreatedAt(
+            data.rawOutputs,
+            current.rawOutputs.filter((output) => liveSessionIds.has(output.sessionId)),
+            100,
+            "desc"
+          )
+        };
+      });
       setLoadState("ready");
       setLoadError(null);
     } catch (error) {
@@ -128,7 +166,7 @@ export function useDashboardSession(
   }, [loadSnapshot]);
 
   const refresh = useCallback(async (): Promise<void> => {
-    const token = ++dashboardLoadToken.current;
+    const token = ++dashboardRefreshToken.current;
     try {
       if (!window.argmax) {
         await loadDashboard();
@@ -139,7 +177,7 @@ export function useDashboardSession(
         window.argmax.workspaces.status(),
         window.argmax.approvals.pending()
       ]);
-      if (token !== dashboardLoadToken.current) {
+      if (token !== dashboardRefreshToken.current) {
         return;
       }
       // Upsert workspaces/sessions/checks/checkpoints via mergeDashboardDelta

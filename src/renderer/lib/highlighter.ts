@@ -23,13 +23,20 @@ import sql from "shiki/langs/sql.mjs";
 import yaml from "shiki/langs/yaml.mjs";
 import toml from "shiki/langs/toml.mjs";
 import vitesseLight from "shiki/themes/vitesse-light.mjs";
+import vitesseDark from "shiki/themes/vitesse-dark.mjs";
 
 export interface HighlightToken {
   content: string;
   color?: string;
 }
 
-const THEME_NAME = "vitesse-light";
+const LIGHT_THEME = "vitesse-light";
+const DARK_THEME = "vitesse-dark";
+
+function activeThemeName(): string {
+  if (typeof document === "undefined") return LIGHT_THEME;
+  return document.documentElement.getAttribute("data-theme") === "dark" ? DARK_THEME : LIGHT_THEME;
+}
 
 const CURATED_LANGS = [
   typescript,
@@ -57,7 +64,7 @@ function ensureHighlighter(): HighlighterCore | null {
   if (highlighter) return highlighter;
   if (highlighterPromise) return null;
   highlighterPromise = createHighlighterCore({
-    themes: [vitesseLight],
+    themes: [vitesseLight, vitesseDark],
     langs: CURATED_LANGS,
     engine: createJavaScriptRegexEngine()
   })
@@ -108,7 +115,7 @@ export function highlightLine(content: string, lang: string | null): HighlightTo
   const instance = ensureHighlighter();
   if (!instance) return [{ content }];
   try {
-    const result = instance.codeToTokens(content, { theme: THEME_NAME, lang });
+    const result = instance.codeToTokens(content, { theme: activeThemeName(), lang });
     const firstLine = result.tokens[0];
     if (!firstLine) return [{ content }];
     return firstLine.map((token) => ({ content: token.content, color: token.color }));
@@ -125,7 +132,7 @@ export function highlightCode(code: string, lang: string | null): HighlightToken
   const instance = ensureHighlighter();
   if (!instance) return code.split("\n").map((line) => [{ content: line }]);
   try {
-    const result = instance.codeToTokens(code, { theme: THEME_NAME, lang });
+    const result = instance.codeToTokens(code, { theme: activeThemeName(), lang });
     return result.tokens.map((line) =>
       line.map((token) => ({ content: token.content, color: token.color }))
     );

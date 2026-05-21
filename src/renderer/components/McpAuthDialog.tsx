@@ -7,32 +7,9 @@ import { tryFit } from "../lib/xtermFit.js";
 import { resolveMonoFontStack } from "../lib/fonts.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
+import { readActiveXtermTheme } from "../lib/xtermTheme.js";
+import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import "@xterm/xterm/css/xterm.css";
-
-const LIGHT_THEME = {
-  background: "#fbfbfa",
-  foreground: "#1c1b18",
-  cursor: "#1c1b18",
-  cursorAccent: "#fbfbfa",
-  selectionBackground: "rgba(90, 143, 114, 0.28)",
-  selectionForeground: "#1c1b18",
-  black: "#1c1b18",
-  red: "#b85763",
-  green: "#3d6a52",
-  yellow: "#b08039",
-  blue: "#406789",
-  magenta: "#8a4577",
-  cyan: "#3f7a85",
-  white: "#5d594f",
-  brightBlack: "#3a3833",
-  brightRed: "#cc6873",
-  brightGreen: "#5a8f72",
-  brightYellow: "#c89653",
-  brightBlue: "#5687a8",
-  brightMagenta: "#a55c92",
-  brightCyan: "#5b95a1",
-  brightWhite: "#8a857b"
-};
 
 /**
  * Modal that hosts an interactive `claude` PTY for completing MCP OAuth via
@@ -53,7 +30,6 @@ export function McpAuthDialog({
 }): JSX.Element | null {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -75,19 +51,7 @@ export function McpAuthDialog({
   useDismissOnOutsideOrEscape(dialogRef, open, onClose, undefined, { trapFocus: true });
 
   // Capture the previously focused element on open so the trigger gets focus
-  // back on close — matches CommandPalette/SearchOverlay/CommitDialog.
-  useEffect(() => {
-    if (!open) {
-      const previous = previousActiveElementRef.current;
-      previousActiveElementRef.current = null;
-      if (previous && document.contains(previous)) {
-        previous.focus();
-      }
-      return;
-    }
-    previousActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  }, [open]);
+  useRestoreFocus(open);
 
   useEffect(() => {
     if (!open) return;
@@ -103,7 +67,7 @@ export function McpAuthDialog({
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,
-      theme: LIGHT_THEME,
+      theme: readActiveXtermTheme(),
       allowProposedApi: true,
       scrollback: 5000
     });
@@ -125,6 +89,7 @@ export function McpAuthDialog({
     let localSessionId: string | null = null;
     let unsubscribeData: (() => void) | null = null;
     let unsubscribeExit: (() => void) | null = null;
+    let inputSub: { dispose: () => void } | null = null;
 
     void window.argmax.mcp.auth
       .start({ cols, rows })
@@ -152,11 +117,9 @@ export function McpAuthDialog({
           }
         });
 
-        const dataSub = term.onData((data) => {
+        inputSub = term.onData((data) => {
           void window.argmax?.mcp.auth.write({ sessionId, data });
         });
-
-        (term as unknown as { __argmaxInputSub: { dispose: () => void } }).__argmaxInputSub = dataSub;
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : "Could not start Claude.";
@@ -180,7 +143,6 @@ export function McpAuthDialog({
       ro.disconnect();
       unsubscribeData?.();
       unsubscribeExit?.();
-      const inputSub = (term as unknown as { __argmaxInputSub?: { dispose: () => void } }).__argmaxInputSub;
       inputSub?.dispose();
       if (localSessionId) {
         void window.argmax?.mcp.auth.terminate(localSessionId);

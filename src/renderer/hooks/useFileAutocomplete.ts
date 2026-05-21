@@ -133,8 +133,10 @@ export function useFileAutocomplete({
         setEntriesBySource(new Map(cacheRef.current));
       })
       .catch(() => {
-        if (cancelled) return;
-        inflightRef.current = null;
+        // swallow — next activation retries via the cleared inflight marker
+      })
+      .finally(() => {
+        if (inflightRef.current === key) inflightRef.current = null;
       });
     return () => {
       cancelled = true;

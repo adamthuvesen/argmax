@@ -181,6 +181,52 @@ export function describeToolAction(tool: ToolCall): string {
   }
 }
 
+// Extract a short, human-scannable token from a single tool call. For file
+// tools that's the basename; for shell commands it's the first real binary
+// word, peeking through `zsh -lc '…'` / `bash -c '…'` wrappers and stripping
+// leading quotes so `'git status --short'` reads as `git`.
+function previewTokenForTool(tool: ToolCall): string | null {
+  const bucket = getFineBucket(tool.name);
+  const raw = (tool.inputPreview ?? "").trim();
+  if (!raw) return null;
+  const basenameOf = (p: string): string => {
+    const t = p.replace(/\/$/, "");
+    return t.includes("/") ? t.split("/").pop() ?? t : t;
+  };
+  if (bucket === "bash") return extractBashCommandName(raw);
+  if (bucket === "web") {
+    // Strip scheme + host to a compact hostname hint.
+    const match = raw.match(/^https?:\/\/([^/?#]+)/i);
+    return match?.[1] ?? raw.slice(0, 28);
+  }
+  // read-files / read-lists / edit / search / agent / other — prefer the
+  // basename of any path-looking input; otherwise keep the raw input clipped.
+  const candidate = raw.includes("/") ? basenameOf(raw) : raw;
+  const stripped = candidate.replace(/^['"`]|['"`]$/g, "").trim();
+  if (!stripped) return null;
+  return stripped.slice(0, 28);
+}
+
+function extractBashCommandName(input: string): string | null {
+  // Peel surrounding quotes and shell-wrapper prefixes so the inner command
+  // surfaces. Handles `zsh -lc 'rg foo'`, `bash -c "git status"`, and the
+  // common `sh -c <cmd>` shape. Falls back to the first whitespace-delimited
+  // word for plain commands.
+  let s = input.trim();
+  s = s.replace(/^(?:zsh|bash|sh)\s+-l?c\s+/, "");
+  s = s.replace(/^['"`]|['"`]$/g, "").trim();
+  // After unwrapping, take the first meaningful word.
+  const firstWord = s.split(/[\s|;&]/, 1)[0] ?? "";
+  if (!firstWord) return null;
+  // For `git status --short`, the user reads it as "git status" — surface a
+  // two-word hint when the first word is a known multiverb command driver.
+  if (firstWord === "git" || firstWord === "npm" || firstWord === "yarn" || firstWord === "pnpm") {
+    const second = s.split(/[\s|;&]/)[1] ?? "";
+    return second ? `${firstWord} ${second}`.slice(0, 28) : firstWord;
+  }
+  return firstWord.slice(0, 28);
+}
+
 export function summarizeToolGroup(tools: ToolCall[]): {
   headline: string;
   preview: string;
@@ -202,25 +248,37 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   }
   const headline = clauses.length > 0 ? clauses.join(", ") : `${tools.length} tool calls`;
 
+  // Build a scannable preview: filenames for read/edit/list/search tools,
+  // distinct binary names for bash commands. Dedupes so a group running
+  // `rg` three times shows "rg" once, not three slash-joined repetitions.
+  // The prior shape joined raw shell text ("zsh -lc 'git status --short'…")
+  // which was a wall, not a preview.
+  const seen = new Set<string>();
   const previewParts: string[] = [];
-  // Track explicit truncation so " / …" only renders when we genuinely broke
-  // early — the previous shape over-counted because un-iterated tools were
-  // conservatively treated as valid, which could append " / …" even when
-  // every remaining tool had an empty inputPreview (R-035).
   let truncated = false;
   for (let i = 0; i < tools.length; i++) {
-    const raw = tools[i]?.inputPreview;
-    if (!raw) continue;
-    const candidate = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
-    const trimmed = candidate.trim();
-    if (!trimmed) continue;
-    previewParts.push(trimmed.slice(0, 28));
+    const tool = tools[i];
+    if (!tool) continue;
+    const token = previewTokenForTool(tool);
+    if (!token) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    previewParts.push(token);
     if (previewParts.length === 3) {
-      truncated = i + 1 < tools.length;
+      // Mark truncated if any later tool would have produced a new token.
+      for (let j = i + 1; j < tools.length; j++) {
+        const next = tools[j];
+        if (!next) continue;
+        const t = previewTokenForTool(next);
+        if (t && !seen.has(t)) {
+          truncated = true;
+          break;
+        }
+      }
       break;
     }
   }
-  const preview = previewParts.join(" / ") + (truncated ? " / …" : "");
+  const preview = previewParts.join(", ") + (truncated ? ", …" : "");
 
   let hasError = false;
   let latestRunning: ToolCall | null = null;

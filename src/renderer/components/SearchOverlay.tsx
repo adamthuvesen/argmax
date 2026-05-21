@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent 
 import { buildSafeFtsPrefixQuery } from "../lib/ftsQuery.js";
 import { parseFtsSnippet } from "../lib/paletteSearch.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 
 export interface SearchHit {
   sessionId: string;
@@ -32,25 +33,11 @@ export function SearchOverlay({
   const modalRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
   const tokenRef = useRef(0);
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
-
-  // Document-level Esc + outside-click via the shared hook. The local
-  // overlay handlers used to require focus inside the modal to fire Esc.
   useDismissOnOutsideOrEscape(modalRef, open, onClose, undefined, { trapFocus: true });
+  useRestoreFocus(open);
 
-  // Reset state every time the overlay re-opens, and restore focus to the
-  // trigger when it closes so keyboard users land back where they invoked it.
   useEffect(() => {
-    if (!open) {
-      const previous = previousActiveElementRef.current;
-      previousActiveElementRef.current = null;
-      if (previous && document.contains(previous)) {
-        previous.focus();
-      }
-      return;
-    }
-    previousActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!open) return;
     setQuery("");
     setHits([]);
     setRunning(false);

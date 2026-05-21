@@ -57,15 +57,15 @@ export function useSlashAutocomplete({
     if (fetchedFor.current === cacheKey) {
       return;
     }
-    // Set synchronously so re-entrant renders during the in-flight window
-    // don't fire duplicate IPC calls; cleared in .catch so a transient
-    // failure can be retried on the next render.
-    fetchedFor.current = cacheKey;
-    let cancelled = false;
     const api = window.argmax?.skills;
     if (!api?.list) {
       return;
     }
+    // Set synchronously so re-entrant renders during the in-flight window
+    // don't fire duplicate IPC calls; cleared on failure so a transient
+    // error can be retried on the next render.
+    fetchedFor.current = cacheKey;
+    let cancelled = false;
     void api
       .list(workspaceId ? { provider, workspaceId } : { provider })
       .then((result) => {

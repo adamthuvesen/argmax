@@ -1,6 +1,7 @@
 import { Check, ChevronRight, MoreHorizontal, Plus, Settings, Trash2 } from "lucide-react";
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -130,11 +131,17 @@ export function Sidebar({
   const startupCollapseInitializedRef = useRef(readBootCollapseSeeded());
   if (!startupCollapseInitializedRef.current && snapshot.projects.length > 0) {
     startupCollapseInitializedRef.current = true;
-    markBootCollapseSeeded();
     const allCollapsed = new Set(snapshot.projects.map((project) => project.id));
     setCollapsedProjectIds(allCollapsed);
-    saveCollapsedProjectIds(allCollapsed);
   }
+  // Persist the boot seed and collapsed set as an effect so StrictMode's
+  // double render doesn't double-write localStorage.
+  useEffect(() => {
+    if (!readBootCollapseSeeded() && snapshot.projects.length > 0) {
+      markBootCollapseSeeded();
+      saveCollapsedProjectIds(collapsedProjectIds);
+    }
+  }, [snapshot.projects.length, collapsedProjectIds]);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => loadExpandedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());

@@ -7,6 +7,7 @@ import {
   type PaletteItem
 } from "../lib/paletteSearch.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 
 export type { PaletteGroup, PaletteItem } from "../lib/paletteSearch.js";
 
@@ -103,10 +104,7 @@ export function CommandPalette({
   // session. Keyed by `${kind}:${id}` so switching workspace/project between
   // opens invalidates correctly.
   const filesCacheKeyRef = useRef<string | null>(null);
-  // Capture the element that had focus before the palette opened so we can
-  // restore it on close — otherwise focus drops to <body> and the keyboard
-  // user loses their place.
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  useRestoreFocus(open);
 
   useEffect(() => {
     if (!open) {
@@ -117,15 +115,8 @@ export function CommandPalette({
       setFilePaths([]);
       setFilesRunning(false);
       filesCacheKeyRef.current = null;
-      const previous = previousActiveElementRef.current;
-      previousActiveElementRef.current = null;
-      if (previous && document.contains(previous)) {
-        previous.focus();
-      }
       return;
     }
-    previousActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     inputRef.current?.focus();
   }, [open]);
 

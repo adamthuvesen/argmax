@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { buildFileTree } from "../lib/fileTree.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
@@ -97,6 +97,27 @@ describe("WorkspaceTree virtualization", () => {
     // src directory + README.md visible (src not expanded by default).
     expect(screen.getByText("src")).toBeTruthy();
     expect(screen.getByText("README.md")).toBeTruthy();
+  });
+
+  it("preserves scroll when entries refresh without shape change (audit M19)", () => {
+    const entriesA: WorkspaceFileEntry[] = [
+      { path: "src/a.ts" },
+      { path: "src/b.ts" },
+      { path: "src/z.ts" }
+    ];
+    const entriesB: WorkspaceFileEntry[] = [
+      { path: "src/a.ts" },
+      { path: "src/c.ts" },
+      { path: "src/z.ts" }
+    ];
+
+    const { rerender } = render(<WorkspaceTree state={makeState(entriesA)} height={600} />);
+    const scroller = screen.getByRole("tree");
+    scroller.scrollTop = 120;
+    fireEvent.scroll(scroller);
+
+    rerender(<WorkspaceTree state={makeState(entriesB)} height={600} />);
+    expect(scroller.scrollTop).toBe(120);
   });
 
   it("auto-expands the ancestors of selectedPath so the row is visible", () => {

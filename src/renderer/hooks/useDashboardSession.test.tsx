@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ApprovalRequest,
   ArgmaxApi,
+  DashboardDelta,
   DashboardSnapshot,
   SessionSummary,
   WorkspaceSummary
@@ -206,5 +207,63 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
 
     expect(result.current.snapshot.approvals).toEqual([]);
+  });
+
+  it("keeps sessions added by delta during loadSnapshot (audit M11)", async () => {
+    const deltaSession = makeSession({
+      id: "session-delta",
+      workspaceId: "ws-delta",
+      prompt: "from delta"
+    });
+    const deltaWorkspace = makeWorkspace({ id: "ws-delta", taskLabel: "Delta" });
+
+    let deltaHandler: ((delta: DashboardDelta) => void) | null = null;
+    (window as unknown as { argmax: ArgmaxApi }).argmax = {
+      workspaces: { status: statusMock } as unknown as ArgmaxApi["workspaces"],
+      approvals: { pending: pendingMock } as unknown as ArgmaxApi["approvals"],
+      dashboard: {
+        onDelta: (handler: (delta: DashboardDelta) => void) => {
+          deltaHandler = handler;
+          return () => {
+            deltaHandler = null;
+          };
+        }
+      } as unknown as ArgmaxApi["dashboard"],
+      session: {
+        eventsSince: vi.fn().mockResolvedValue({
+          events: [],
+          rawOutputs: [],
+          eventCursor: 0,
+          rawOutputCursor: 0
+        })
+      } as unknown as ArgmaxApi["session"]
+    } as unknown as ArgmaxApi;
+
+    let resolveLoad!: (snapshot: DashboardSnapshot) => void;
+    const loadSnapshot = (): Promise<DashboardSnapshot> =>
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      });
+
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(deltaHandler).not.toBeNull());
+
+    act(() => {
+      deltaHandler?.({ sessions: [deltaSession], workspaces: [deltaWorkspace] });
+    });
+
+    await act(async () => {
+      resolveLoad({
+        ...baseSnapshot,
+        sessions: baseSnapshot.sessions,
+        workspaces: baseSnapshot.workspaces
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    expect(result.current.snapshot.sessions.map((session) => session.id).sort()).toEqual(
+      ["session-delta", "session-existing"]
+    );
   });
 });

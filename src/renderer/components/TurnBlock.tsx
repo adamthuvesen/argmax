@@ -72,8 +72,7 @@ function isToolRunning(item: TurnToolItem): boolean {
 // adjacent tools share the tight 8px gap, while assistant text and tool runs
 // keep the looser 18px body gap. When collapsed, tool children are dropped
 // entirely and only assistant children render.
-function renderBody(children: TurnBodyChild[], expanded: boolean): ReactNode {
-  const visible = expanded ? children : children.filter((c) => c.kind === "assistant");
+function renderPhaseChildren(children: TurnBodyChild[]): ReactNode {
   const fragments: ReactNode[] = [];
   let toolRun: TurnBodyChild[] = [];
   const flushTools = (): void => {
@@ -92,7 +91,7 @@ function renderBody(children: TurnBodyChild[], expanded: boolean): ReactNode {
     );
     toolRun = [];
   };
-  for (const child of visible) {
+  for (const child of children) {
     if (child.kind === "tool") {
       toolRun.push(child);
     } else {
@@ -104,6 +103,15 @@ function renderBody(children: TurnBodyChild[], expanded: boolean): ReactNode {
   return fragments;
 }
 
+// Render the turn body as a plain stream of children. We previously split
+// into Plan / Work / Result phases with a left rail, but the rail read as
+// noisy chrome rather than helpful navigation — and consistency across
+// single-phase and multi-phase turns mattered more than the timeline visual.
+function renderBody(children: TurnBodyChild[], expanded: boolean): ReactNode {
+  const visible = expanded ? children : children.filter((c) => c.kind === "assistant");
+  return renderPhaseChildren(visible);
+}
+
 export function TurnBlock({
   toolItems,
   assistantTimestamps,
@@ -111,7 +119,8 @@ export function TurnBlock({
   modelLabel,
   defaultExpanded,
   turnStartedAtMs,
-  isTurnActive
+  isTurnActive,
+  headerTimestampIso
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
@@ -128,6 +137,10 @@ export function TurnBlock({
   // QuestionCard); we used to infer this purely from tool status, which
   // missed the thinking-only phase.
   isTurnActive?: boolean;
+  // The canonical timestamp shown in the turn header (typically the earliest
+  // assistant event in the turn). Per-paragraph timestamps inside the body
+  // are visually suppressed once a turn-level one is available.
+  headerTimestampIso?: string;
 }): JSX.Element {
   const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
   // `running` controls the chip's "Working" label, spinner and live ticker —
@@ -137,9 +150,10 @@ export function TurnBlock({
   // get a "Working" chip while their tools are mid-flight.
   const running = isTurnActive ?? toolRunning;
   const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
-  const startedAtMs = Number.isFinite(turnStartedAtMs ?? Number.NaN)
-    ? (turnStartedAtMs as number)
-    : bounds.startedAt;
+  const startedAtMs =
+    typeof turnStartedAtMs === "number" && turnStartedAtMs > 0 && Number.isFinite(turnStartedAtMs)
+      ? turnStartedAtMs
+      : bounds.startedAt;
   const elapsedMs =
     bounds.endedAt !== null && startedAtMs > 0 ? Math.max(0, bounds.endedAt - startedAtMs) : 0;
 
@@ -155,6 +169,21 @@ export function TurnBlock({
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
   const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
   const hasTools = toolItems.length > 0;
+  const headerTimestampLabel = useMemo(() => {
+    if (!headerTimestampIso) return "";
+    const ms = Date.parse(headerTimestampIso);
+    if (!Number.isFinite(ms)) return "";
+    const d = new Date(ms);
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    if (sameDay) {
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }, [headerTimestampIso]);
   // Show the chip whenever the turn is in flight (so the ticker is visible
   // during pure-thinking phases too) or after completion if there was tool
   // work worth labelling. Pure-text completed turns stay chip-less.
@@ -168,10 +197,34 @@ export function TurnBlock({
     return registerLiveTimer(node, () => Date.now() - liveStartMs, formatElapsedSeconds);
   }, [liveStartMs]);
 
+  // Thinking → answered transition. The very first time this turn's body
+  // gains content (an assistant token or tool row), set `data-just-revealed`
+  // for 280ms so the first child animates "landing" instead of popping in.
+  // Subsequent additions stream normally — the animation is reserved for the
+  // moment the indeterminate "Thinking" state becomes determinate.
+  const wasEmptyRef = useRef<boolean>(true);
+  const [justRevealed, setJustRevealed] = useState(false);
+  useEffect(() => {
+    if (!wasEmptyRef.current) return;
+    if (body.length === 0) return;
+    wasEmptyRef.current = false;
+    setJustRevealed(true);
+    const id = setTimeout(() => setJustRevealed(false), 280);
+    return () => clearTimeout(id);
+  }, [body.length]);
+
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>
       <div className="turn-block-header">
         {subtitle ? <span className="turn-block-subtitle">{subtitle}</span> : null}
+        {headerTimestampLabel ? (
+          <span
+            className="turn-block-timestamp"
+            title={headerTimestampIso ? new Date(headerTimestampIso).toISOString() : undefined}
+          >
+            {headerTimestampLabel}
+          </span>
+        ) : null}
         {showChip ? (
           <button
             type="button"
@@ -199,7 +252,12 @@ export function TurnBlock({
           </button>
         ) : null}
       </div>
-      <div className="turn-block-body">{renderBody(body, expanded)}</div>
+      <div
+        className="turn-block-body"
+        data-just-revealed={justRevealed ? "true" : undefined}
+      >
+        {renderBody(body, expanded)}
+      </div>
     </div>
   );
 }

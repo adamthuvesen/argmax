@@ -33,6 +33,7 @@ const WorkspaceContentSearchOverlay = lazy(async () => ({
   default: (await importWorkspaceContentSearch()).WorkspaceContentSearchOverlay
 }));
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
+import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
@@ -77,6 +78,15 @@ import {
   readStoredFont,
   type FontFamilyId
 } from "./lib/fonts.js";
+import {
+  animateThemeChange,
+  applyThemeToDocument,
+  prefersDarkSystem,
+  readStoredTheme,
+  resolveTheme,
+  writeStoredTheme,
+  type ThemeMode
+} from "./lib/theme.js";
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "./lib/ide.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
 import { buildSafeFtsPrefixQuery } from "./lib/ftsQuery.js";
@@ -159,6 +169,7 @@ export function App(): JSX.Element {
   const [sidebarTokensVisible, setSidebarTokensVisible] = useState<boolean>(() => readStoredSidebarTokensVisible());
   const [chatCostVisible, setChatCostVisible] = useState<boolean>(() => readStoredChatCostVisible());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
@@ -169,6 +180,7 @@ export function App(): JSX.Element {
   // — it never persists; only the user's choice in Settings persists.
   const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
+  const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
   const [grid, setGrid] = useState<GridState>(EMPTY_GRID);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
   // The active surface (focused SessionPane, or the LaunchSurface when no
@@ -479,10 +491,9 @@ export function App(): JSX.Element {
           setRightPanelToggleSignal((signal) => signal + 1);
           return;
         case "toggle-debug-log":
+          setDebugLogToggleSignal((signal) => signal + 1);
+          return;
         case "check-for-updates":
-          // Wired in later phase tasks (P2.06 cheat sheet, P4 review
-          // surface for debug-log lift, P7 updater). Menu accelerator
-          // still fires when the native menu has focus.
           return;
       }
     },
@@ -516,21 +527,10 @@ export function App(): JSX.Element {
     onCloseSettings: closeSettingsFromKeybinding
   });
 
-  useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_TOKENS_KEY, String(sidebarTokensVisible));
-  }, [sidebarTokensVisible]);
-
-  useEffect(() => {
-    window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
-  }, [toolCallsExpanded]);
-
-  useEffect(() => {
-    window.localStorage.setItem(TOOL_CALL_GROUPS_EXPANDED_KEY, String(toolCallGroupsExpanded));
-  }, [toolCallGroupsExpanded]);
-
-  useEffect(() => {
-    window.localStorage.setItem(CHAT_COST_KEY, String(chatCostVisible));
-  }, [chatCostVisible]);
+  usePersistedSetting(SIDEBAR_TOKENS_KEY, String(sidebarTokensVisible));
+  usePersistedSetting(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
+  usePersistedSetting(TOOL_CALL_GROUPS_EXPANDED_KEY, String(toolCallGroupsExpanded));
+  usePersistedSetting(CHAT_COST_KEY, String(chatCostVisible));
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -540,6 +540,38 @@ export function App(): JSX.Element {
     // cold-launch bundle doesn't ship every alternative (ralph B6).
     void loadFontAssets(fontFamily);
   }, [fontFamily]);
+
+  // Theme: apply resolved value on every change, listen to OS-level dark
+  // preference when mode is "system", and notify main so the BrowserWindow
+  // background colour + cached userData/theme.json stay in sync.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const apply = () => {
+      const resolved = resolveTheme(themeMode, prefersDarkSystem());
+      applyThemeToDocument(resolved);
+      writeStoredTheme(themeMode);
+      const argmax = (window as unknown as {
+        argmax?: { system?: { setTheme?: (m: ThemeMode) => Promise<unknown> } };
+      }).argmax;
+      if (argmax?.system?.setTheme) {
+        void argmax.system.setTheme(themeMode);
+      }
+    };
+    apply();
+    if (themeMode !== "system" || !window.matchMedia) return;
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      animateThemeChange();
+      apply();
+    };
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+    // Safari/older Electron fallback.
+    mql.addListener(onChange);
+    return () => mql.removeListener(onChange);
+  }, [themeMode]);
 
   // Fetch detected IDEs once. Main caches detection across the app lifetime,
   // so the second-mount cost is just one IPC round trip — but we still avoid
@@ -566,20 +598,9 @@ export function App(): JSX.Element {
     }
   }, [defaultIde]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(PERMISSION_MODE_KEY, permissionMode);
-  }, [permissionMode]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(THINKING_STYLE_KEY, thinkingStyle);
-  }, [thinkingStyle]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(NEW_SESSION_MODE_KEY, newSessionMode);
-  }, [newSessionMode]);
+  usePersistedSetting(PERMISSION_MODE_KEY, permissionMode);
+  usePersistedSetting(THINKING_STYLE_KEY, thinkingStyle);
+  usePersistedSetting(NEW_SESSION_MODE_KEY, newSessionMode);
 
   // Esc closes the standalone full launcher (only meaningful when the grid
   // has active panes — when the grid is empty, the LaunchSurface is the only
@@ -1267,6 +1288,11 @@ export function App(): JSX.Element {
                 onChatCostVisibleChange={setChatCostVisible}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
+                themeMode={themeMode}
+                onThemeModeChange={(mode) => {
+                  animateThemeChange();
+                  setThemeMode(mode);
+                }}
                 detectedIdes={detectedIdes}
                 defaultIde={defaultIde}
                 onDefaultIdeChange={setDefaultIde}
@@ -1297,6 +1323,7 @@ export function App(): JSX.Element {
               showCostPanel={chatCostVisible}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
+              debugLogToggleSignal={debugLogToggleSignal}
               renderLauncher={renderLaunchSurface}
               dragSourceWorkspaceId={draggingWorkspaceId}
               onFocusPane={focusPane}

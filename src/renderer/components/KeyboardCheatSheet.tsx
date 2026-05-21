@@ -1,6 +1,7 @@
 import { useEffect, useRef, type JSX } from "react";
 import { KEYBOARD_BINDINGS } from "../lib/keyboardBindings.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 
 export function KeyboardCheatSheet({
   open,
@@ -11,28 +12,11 @@ export function KeyboardCheatSheet({
 }): JSX.Element | null {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
-
-  // Document-level Esc + outside-click. Listening at the document means Esc
-  // fires regardless of where focus lives — previously the dialog held a
-  // local `onKeyDown` that never ran when the cheat sheet was opened via the
-  // native menu while the composer textarea kept focus (the useOverlays Esc
-  // handler skips typing targets by design).
   useDismissOnOutsideOrEscape(dialogRef, open, onClose, undefined, { trapFocus: true });
+  useRestoreFocus(open);
 
-  // Focus the close button on open so keyboard users land somewhere inside
-  // the dialog, and restore focus to the trigger on close.
   useEffect(() => {
-    if (!open) {
-      const previous = previousActiveElementRef.current;
-      previousActiveElementRef.current = null;
-      if (previous && document.contains(previous)) {
-        previous.focus();
-      }
-      return;
-    }
-    previousActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!open) return;
     closeButtonRef.current?.focus();
   }, [open]);
 

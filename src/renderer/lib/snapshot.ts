@@ -31,37 +31,41 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   const last = events[events.length - 1];
   const isDescending = !!first && !!last && isAfter(first, last);
   const ascending = isDescending ? [...events].reverse() : events;
-  const kept: TimelineEvent[] = [];
-  let mutated = false;
-  for (let i = 0; i < ascending.length; i++) {
-    const event = ascending[i];
-    if (!event) continue;
-    if (event.type !== "message.delta") {
-      kept.push(event);
+
+  // Single right-to-left sweep: for each session, track "the next turn-boundary
+  // event AFTER my position". A delta at index i is superseded iff that
+  // boundary is a message.completed (a later user.message would mean the next
+  // turn started without ever completing this one — keep the delta). O(n) vs
+  // the previous nested-walk O(n²). (audit-2026-05-18 M10)
+  type Boundary = "completed" | "user";
+  const nextBoundary = new Map<string, Boundary>();
+  const supersededIndices = new Set<number>();
+  for (let i = ascending.length - 1; i >= 0; i--) {
+    const e = ascending[i];
+    if (!e) continue;
+    if (e.type === "message.delta") {
+      // nextBoundary reflects the closest boundary at j > i because boundaries
+      // at j > i were processed in earlier iterations of this loop.
+      if (nextBoundary.get(e.sessionId) === "completed") {
+        supersededIndices.add(i);
+      }
       continue;
     }
-    let superseded = false;
-    for (let j = i + 1; j < ascending.length; j++) {
-      const next = ascending[j];
-      if (!next) break;
-      if (next.sessionId !== event.sessionId) continue;
-      if (next.type === "user.message") break;
-      if (next.type === "message.completed") {
-        superseded = true;
-        break;
-      }
-    }
-    if (superseded) {
-      mutated = true;
-    } else {
-      kept.push(event);
+    if (e.type === "message.completed") {
+      nextBoundary.set(e.sessionId, "completed");
+    } else if (e.type === "user.message") {
+      nextBoundary.set(e.sessionId, "user");
     }
   }
-  // Return the input reference when nothing was pruned so downstream identity
-  // checks (mergeDashboardDelta) don't rebuild a snapshot for an unchanged
-  // event list — the previous always-new-array shape forced a re-render per
-  // streamed event.
-  if (!mutated) return events;
+
+  if (supersededIndices.size === 0) return events;
+  const kept: TimelineEvent[] = [];
+  for (let i = 0; i < ascending.length; i++) {
+    if (!supersededIndices.has(i)) {
+      const e = ascending[i];
+      if (e) kept.push(e);
+    }
+  }
   return isDescending ? kept.reverse() : kept;
 }
 

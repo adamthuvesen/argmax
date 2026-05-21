@@ -338,7 +338,7 @@ describe("ProviderSessionService", () => {
     database.connection.close();
   });
 
-  it("drops the failed batch and clears the queue when persistence fails (audit-2026-05-17 H4)", async () => {
+  it("keeps the failed batch queued and retries when persistence recovers", async () => {
     const database = createDatabase(":memory:", { seed: false });
     const workspace = persistWorkspaceFixture(database);
     const fakeProvider = createFakeProvider("codex");
@@ -369,16 +369,22 @@ describe("ProviderSessionService", () => {
         createdAt: "2026-05-08T16:00:00.000Z"
       });
 
-      // The old behavior re-threw and left items in `pendingRawOutputs`,
-      // which poisoned the queue: every subsequent scheduleFlush retried the
-      // same broken batch forever. The new behavior drops the batch and logs
-      // a warn so the delta stream recovers.
       (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id);
       expect(deltas).toEqual([]);
       const buffers = (service as unknown as {
-        buffers: Map<string, { pendingRawOutputs: unknown[] }>;
+        buffers: Map<string, { pendingRawOutputs: unknown[]; failedFlushes: number }>;
       }).buffers;
+      expect(buffers.get(session.id)?.pendingRawOutputs.length).toBe(1);
+      expect(buffers.get(session.id)?.failedFlushes).toBe(1);
+
+      persistRawOutput.mockRestore();
+      (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id);
+
       expect(buffers.get(session.id)?.pendingRawOutputs.length).toBe(0);
+      expect(buffers.get(session.id)?.failedFlushes).toBe(0);
+      expect(database.listSessionEventsSince({ sessionId: session.id }).rawOutputs.map((output) => output.content)).toContain(
+        "plain log line\n"
+      );
     } finally {
       persistRawOutput.mockRestore();
       await service.terminate(session.id);

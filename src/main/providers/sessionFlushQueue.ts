@@ -36,6 +36,7 @@ export interface FlushQueueState {
   pendingUsages: NormalizedUsage[];
   pendingApprovals: PersistApprovalInput[];
   pendingSessionUpdate: SessionSummary | null;
+  failedFlushes: number;
 }
 
 /**
@@ -46,7 +47,8 @@ export interface FlushQueueState {
 export function scheduleFlush(
   state: FlushQueueState,
   sessionId: string,
-  runFlush: (sessionId: string) => void
+  runFlush: (sessionId: string) => void,
+  delayMs = MICRO_BATCH_MS
 ): void {
   if (state.flushTimer) {
     return;
@@ -54,7 +56,7 @@ export function scheduleFlush(
   state.flushTimer = setTimeout(() => {
     state.flushTimer = null;
     runFlush(sessionId);
-  }, MICRO_BATCH_MS);
+  }, delayMs);
   if (typeof state.flushTimer.unref === "function") {
     state.flushTimer.unref();
   }
@@ -79,7 +81,8 @@ export function flushSessionBuffer(
   state: FlushQueueState,
   sessionId: string,
   database: ArgmaxDatabase,
-  publishDelta: (delta: DashboardDelta) => void
+  publishDelta: (delta: DashboardDelta) => void,
+  scheduleRetry?: (delayMs: number) => void
 ): void {
   if (state.flushTimer) {
     clearTimeout(state.flushTimer);
@@ -139,27 +142,28 @@ export function flushSessionBuffer(
   try {
     persist();
   } catch (error) {
-    // Drop the batch unconditionally. Originally only `session-gone` cleared
-    // the queue and any other failure rethrew — which left the same items in
-    // `pendingEvents` for the next scheduleFlush(), so a single bad batch
-    // would poison the delta stream for that session forever. Drop with a
-    // warn so the failure is observable. (audit-2026-05-17 H4)
     const gone = isSessionGoneError(error, sessionId);
-    state.pendingRawOutputs.length = 0;
-    state.pendingEvents.length = 0;
-    state.pendingUsages.length = 0;
-    state.pendingApprovals.length = 0;
-    state.pendingSessionUpdate = null;
-    if (!gone) {
-      logger.warn("providers.flush", "dropped batch after transaction failure", {
-        sessionId,
-        rawOutputs: rawOutputs.length,
-        events: events.length,
-        usages: usages.length,
-        approvals: approvals.length,
-        error: errorMessage(error)
-      });
+    if (gone) {
+      state.pendingRawOutputs.length = 0;
+      state.pendingEvents.length = 0;
+      state.pendingUsages.length = 0;
+      state.pendingApprovals.length = 0;
+      state.pendingSessionUpdate = null;
+      state.failedFlushes = 0;
+      return;
     }
+    state.failedFlushes += 1;
+    const retryDelayMs = Math.min(1_000, MICRO_BATCH_MS * 2 ** Math.min(state.failedFlushes - 1, 6));
+    logger.warn("providers.flush", "will retry pending batch after transaction failure", {
+      sessionId,
+      rawOutputs: rawOutputs.length,
+      events: events.length,
+      usages: usages.length,
+      approvals: approvals.length,
+      retryDelayMs,
+      error: errorMessage(error)
+    });
+    scheduleRetry?.(retryDelayMs);
     return;
   }
 
@@ -168,6 +172,7 @@ export function flushSessionBuffer(
   state.pendingUsages.splice(0, usages.length);
   state.pendingApprovals.splice(0, approvals.length);
   state.pendingSessionUpdate = null;
+  state.failedFlushes = 0;
 
   if (usages.length > 0) {
     try {

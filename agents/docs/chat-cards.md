@@ -141,3 +141,31 @@ in `-p` mode (i.e. returns success instead of erroring), all the
 need refinement — the tool's `command.completed` would arrive with success
 content rather than the user's eventual answer. Today the gate releases only
 when a new `user.message` lands, which is correct for the current behavior.
+
+## Adjacent chat surface notes
+
+Not card-specific, but living next to cards in the same conversation surface
+(file these here so they aren't lost):
+
+- **Per-turn timestamps, not per-bubble.** `TurnBlock` renders a single
+  `headerTimestampIso` in its header (same-day → `HH:mm`, otherwise short
+  date + time). `ChatBubble` no longer renders a `chat-bubble-timestamp` —
+  the per-bubble timestamp was removed when the turn header took over.
+- **Mascot happy-flash.** The composer mascot pops to its "happy" expression
+  for 1.5 s after each `message.completed`. `SessionConversation` tracks
+  `lastCompletedIdRef` so re-renders don't re-fire the flash; the first
+  observation per session is skipped (stale completions on open).
+- **Thinking → answered reveal.** `TurnBlock` sets `data-just-revealed` on
+  `.turn-block-body` for 280 ms the first time the turn gains any visible
+  child, so the first element animates in instead of popping.
+- **FileChip basename + hover-intent preview.** `FileChip` shows
+  `basename` (+ optional `:line`) — full path lives in `aria-label`, the
+  tooltip, and the hover-intent popover. After 500 ms of hover (or
+  immediately on focus) a `FilePreviewPopover` mounts and fetches a
+  `useFilePreview` snippet via `workspace:readFile`; module-level cache
+  keyed by `workspaceId|path|line`. The popover stays out of IPC traffic
+  during passive scroll-by because the timer never fires.
+- **Submit terminate helper.** `sendAfterTerminate(sessionId, isRunning,
+  onTerminateSession, send, onError)` in `SessionConversation` factors out
+  the "terminate-then-send" dance used by PlanCard / QuestionCard submits
+  and other card-style flows.

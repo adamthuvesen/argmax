@@ -14,6 +14,8 @@ SQLite is the source of truth. The renderer never persists state — every refre
 
 Schema is owned by [src/main/persistence/migrations.ts](../../src/main/persistence/migrations.ts). Each migration declares an `affectedTables` manifest; the runner verifies `PRAGMA table_info` against an in-source expected-columns map and throws `MigrationDriftError` if drift is detected. **Never edit a previously-applied migration** — every applied migration is stored with a SHA checksum, and the boot path will refuse to run a tampered one.
 
+The current head is **v20** (`events_session_rowid_index`) — a `CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id)` to back the per-session event tail (`listSessionEventsSince` filters on `session_id` then orders by `rowid`). When you add a new migration, bump the head here and confirm the new version matches the highest `version:` in `migrations.ts`.
+
 | Table | Purpose |
 |---|---|
 | `projects` | Registered repos + settings (default provider/model, worktree location, setup command, check commands, optional `gh` remote owner/name, `ui_preferences_json` blob) |
@@ -54,6 +56,8 @@ Hot paths are deliberately narrow:
 | `listRunningSessionIds()` | `string[]` | `GhPoller.tick()` |
 
 **Cursor semantics.** `listSessionEventsSince` uses SQLite `rowid` cursors, not timestamps. Two events can share a `created_at` during a streaming burst; `rowid` is monotonic per-table so the cursor never duplicates or skips. Tests should assert rowid behavior, not timestamp ordering.
+
+**Activity-tick write.** The streaming hot path (`ProviderSessionService` event normalizer) updates `sessions.last_activity_at` via `updateSessionLastActivity(connection, sessionId, lastActivityAt)` — a single-column UPDATE that intentionally skips the `getSession` round-trip and `ui_state` range-scan that `updateSessionState` would pay. The wider state transitions (`state`, `attention`, `completedAt`) still go through `updateSessionState` at lifecycle boundaries; the throttled tick should never use that heavier path.
 
 **Caps:**
 

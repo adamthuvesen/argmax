@@ -20,6 +20,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { formatBytes } from "../lib/formatBytes.js";
+import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 
 function isMarkdownPath(path: string | null): boolean {
   if (!path) return false;
@@ -170,7 +171,24 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
       ) : null}
       {showRendered ? (
         <div className="file-preview-markdown markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{buffer}</ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              img: ({ src, alt, ...rest }) => {
+                const resolved = resolveMarkdownImageSrc(
+                  typeof src === "string" ? src : undefined,
+                  state.rootPath,
+                  state.selectedPath
+                );
+                if (!resolved) {
+                  return <span className="file-preview-broken-image">{alt ?? "image"}</span>;
+                }
+                return <img src={resolved} alt={alt ?? ""} {...rest} />;
+              }
+            }}
+          >
+            {buffer}
+          </ReactMarkdown>
         </div>
       ) : (
         <SourceEditor

@@ -13,6 +13,7 @@ function makeState(entries: WorkspaceFileEntry[]): WorkspaceFilesState {
     tabs: [],
     activeTabPath: null,
     selectedPath: null,
+    rootPath: null,
     preview: null,
     previewState: "idle",
     previewError: null,

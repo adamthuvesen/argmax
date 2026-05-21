@@ -18,6 +18,10 @@ import {
   registerAttachmentProtocolHandler,
   registerAttachmentSchemeAsPrivileged
 } from "./attachments/attachmentProtocol.js";
+import {
+  registerWorkspaceAssetProtocolHandler,
+  registerWorkspaceAssetSchemeAsPrivileged
+} from "./assets/workspaceAssetProtocol.js";
 import { PROVIDER_MODEL_DEFAULTS } from "../shared/providerModels.js";
 import type {
   DashboardDelta,
@@ -49,9 +53,11 @@ app.on("second-instance", () => {
   }
 });
 
-// Must register the custom scheme as privileged BEFORE app.whenReady so the
-// renderer treats argmax-attachment:// as a trusted origin and <img src> works.
+// Must register the custom schemes as privileged BEFORE app.whenReady so the
+// renderer treats argmax-attachment:// and argmax-asset:// as trusted origins
+// and <img src> works.
 registerAttachmentSchemeAsPrivileged();
+registerWorkspaceAssetSchemeAsPrivileged();
 
 let mainWindow: BrowserWindow | null = null;
 let database: ArgmaxDatabase | null = null;
@@ -158,6 +164,20 @@ void app.whenReady().then(async () => {
   registerAttachmentProtocolHandler();
   database = createDatabase();
   markStartupPhase("db.open");
+  // Scope the workspace-asset scheme to known project + workspace roots so
+  // a malicious README can't pull arbitrary files via the privileged scheme.
+  // Roots are re-read on every request because the user adds/removes
+  // workspaces at runtime.
+  registerWorkspaceAssetProtocolHandler({
+    getAllowedRoots: () => {
+      if (!database) return [];
+      const snapshot = database.listDashboard();
+      return [
+        ...snapshot.projects.map((p) => p.repoPath),
+        ...snapshot.workspaces.map((w) => w.path)
+      ];
+    }
+  });
   const notifications = new NotificationService({
     isWindowFocused: () => mainWindow?.isFocused() === true
   });

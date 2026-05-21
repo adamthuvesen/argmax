@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { FilePreview } from "./FilePreview.js";
+import { FilePreview, resolveMarkdownImageSrc } from "./FilePreview.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
+import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
 
 // CodeMirror leans on browser APIs (focus, range selection) that jsdom only
 // partially supports. We exercise the React-side contract — dirty marker,
@@ -28,6 +29,7 @@ function makeState(overrides: Partial<WorkspaceFilesState> = {}): WorkspaceFiles
     tabs: [],
     activeTabPath: "src/index.ts",
     selectedPath: "src/index.ts",
+    rootPath: "/tmp/argmax-test-root",
     preview: { kind: "text", content: "export const ok = true;\n", size: 24, mtimeMs: 1000 },
     previewState: "ready",
     previewError: null,
@@ -136,5 +138,60 @@ describe("FilePreview", () => {
       />
     );
     expect(screen.getByRole("alert")).toHaveTextContent("disk full");
+  });
+
+  it("rewrites a relative README image into an argmax-asset:// URL", () => {
+    render(
+      <FilePreview
+        state={makeState({
+          selectedPath: "README.md",
+          rootPath: "/Users/me/repo",
+          preview: { kind: "text", content: "![logo](docs/assets/logo.png)\n", size: 30, mtimeMs: 1 },
+          buffer: "![logo](docs/assets/logo.png)\n"
+        })}
+      />
+    );
+    const img = screen.getByRole("img", { name: "logo" });
+    const src = img.getAttribute("src") ?? "";
+    expect(src.startsWith(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file`)).toBe(true);
+    expect(src).toContain("Users");
+    expect(src).toContain("repo");
+    expect(src).toContain("docs");
+    expect(src).toContain("logo.png");
+  });
+});
+
+describe("resolveMarkdownImageSrc", () => {
+  it("passes through absolute http(s) and data URLs untouched", () => {
+    expect(resolveMarkdownImageSrc("https://example.com/x.png", "/repo", "README.md")).toBe(
+      "https://example.com/x.png"
+    );
+    expect(resolveMarkdownImageSrc("data:image/png;base64,AAA", "/repo", "README.md")).toBe(
+      "data:image/png;base64,AAA"
+    );
+  });
+
+  it("joins relative paths against the directory of the markdown file", () => {
+    const resolved = resolveMarkdownImageSrc("assets/logo.png", "/repo", "docs/intro.md");
+    expect(resolved).toBe(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/repo/docs/assets/logo.png`);
+  });
+
+  it("collapses ./ and ../ segments correctly", () => {
+    const resolved = resolveMarkdownImageSrc("../img/logo.png", "/repo", "docs/intro.md");
+    expect(resolved).toBe(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/repo/img/logo.png`);
+  });
+
+  it("treats a leading slash as relative to the repository root", () => {
+    const resolved = resolveMarkdownImageSrc("/banner.png", "/repo", "docs/intro.md");
+    expect(resolved).toBe(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/repo/banner.png`);
+  });
+
+  it("returns undefined when traversal escapes the root", () => {
+    expect(resolveMarkdownImageSrc("../../../etc/passwd.png", "/repo", "README.md")).toBeUndefined();
+  });
+
+  it("returns the original src when there is no rootPath or selectedPath", () => {
+    expect(resolveMarkdownImageSrc("logo.png", null, "README.md")).toBe("logo.png");
+    expect(resolveMarkdownImageSrc("logo.png", "/repo", null)).toBe("logo.png");
   });
 });

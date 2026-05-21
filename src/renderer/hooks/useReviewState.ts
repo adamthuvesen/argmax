@@ -78,6 +78,11 @@ export interface WorkspaceFilesState {
   tabs: WorkspaceFileTab[];
   activeTabPath: string | null;
   selectedPath: string | null;
+  /** Absolute filesystem root for the current source (workspace.path or
+   *  project.repoPath). Threaded through so the markdown preview can resolve
+   *  relative image URLs against the on-disk file location. Null when no
+   *  source is active. */
+  rootPath: string | null;
   preview: WorkspaceFilePreview | null;
   previewState: AsyncState;
   previewError: string | null;
@@ -675,6 +680,12 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
       ? { path: dirtyCloseTab.path }
       : null;
 
+  const sourceRootPath: string | null = source
+    ? source.kind === "workspace"
+      ? source.workspace.path
+      : source.project.repoPath
+    : null;
+
   const workspaceFiles: WorkspaceFilesState = {
     entries: workspaceFileEntries,
     listState: workspaceFilesListState,
@@ -682,6 +693,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     tabs: workspaceFileTabSummaries,
     activeTabPath: activeWorkspaceFileTab?.path ?? null,
     selectedPath: activeWorkspaceFileTab?.path ?? null,
+    rootPath: sourceRootPath,
     preview: activeWorkspaceFileTab?.preview ?? null,
     previewState: activeWorkspaceFileTab?.previewState ?? "idle",
     previewError: activeWorkspaceFileTab?.previewError ?? null,

@@ -122,13 +122,13 @@ export class GhPoller {
       this.queued.add(dedupKey);
       return;
     }
-    this.queued.add(dedupKey);
     let session;
     try {
       session = this.deps.database.getSession(sessionId);
     } catch {
       return;
     }
+    this.queued.add(dedupKey);
     this.deps.notifications?.notifyCheckFailure(session, latest);
     try {
       await this.deps.launchFollowUp({
@@ -150,6 +150,7 @@ export class GhPoller {
         prNumber: latest.prNumber,
         error: errorMessage(error)
       });
+      this.queued.delete(dedupKey);
     }
   }
 }

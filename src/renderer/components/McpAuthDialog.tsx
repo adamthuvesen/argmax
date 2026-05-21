@@ -72,7 +72,7 @@ export function McpAuthDialog({
 
   // Document-level Esc + outside-click via the shared hook. Listening at the
   // document level keeps Esc working once xterm has captured key events.
-  useDismissOnOutsideOrEscape(dialogRef, open, onClose);
+  useDismissOnOutsideOrEscape(dialogRef, open, onClose, undefined, { trapFocus: true });
 
   // Capture the previously focused element on open so the trigger gets focus
   // back on close — matches CommandPalette/SearchOverlay/CommitDialog.

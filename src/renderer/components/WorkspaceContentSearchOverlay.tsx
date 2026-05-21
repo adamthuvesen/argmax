@@ -45,7 +45,7 @@ export function WorkspaceContentSearchOverlay({
 
   // Document-level Esc + outside-click via the shared hook. Esc no longer
   // depends on the overlay div catching focus.
-  useDismissOnOutsideOrEscape(modalRef, open, onClose);
+  useDismissOnOutsideOrEscape(modalRef, open, onClose, undefined, { trapFocus: true });
 
   useEffect(() => {
     if (!open) return;

@@ -36,7 +36,7 @@ export function SearchOverlay({
 
   // Document-level Esc + outside-click via the shared hook. The local
   // overlay handlers used to require focus inside the modal to fire Esc.
-  useDismissOnOutsideOrEscape(modalRef, open, onClose);
+  useDismissOnOutsideOrEscape(modalRef, open, onClose, undefined, { trapFocus: true });
 
   // Reset state every time the overlay re-opens, and restore focus to the
   // trigger when it closes so keyboard users land back where they invoked it.

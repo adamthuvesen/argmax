@@ -18,7 +18,7 @@ export function KeyboardCheatSheet({
   // local `onKeyDown` that never ran when the cheat sheet was opened via the
   // native menu while the composer textarea kept focus (the useOverlays Esc
   // handler skips typing targets by design).
-  useDismissOnOutsideOrEscape(dialogRef, open, onClose);
+  useDismissOnOutsideOrEscape(dialogRef, open, onClose, undefined, { trapFocus: true });
 
   // Focus the close button on open so keyboard users land somewhere inside
   // the dialog, and restore focus to the trigger on close.

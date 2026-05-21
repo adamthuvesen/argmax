@@ -39,6 +39,12 @@ function makeSession(i: number): SessionSummary {
   };
 }
 
+function percentile(sortedDurations: number[], ratio: number): number {
+  if (sortedDurations.length === 0) return 0;
+  const index = Math.ceil(sortedDurations.length * ratio) - 1;
+  return sortedDurations[Math.max(0, Math.min(index, sortedDurations.length - 1))] ?? 0;
+}
+
 describe("perf budgets", () => {
   it("mergeDashboardDelta over a 200-session payload completes p95 < 5 ms", () => {
     const base: DashboardSnapshot = {
@@ -54,7 +60,7 @@ describe("perf budgets", () => {
       durations.push(performance.now() - start);
     }
     durations.sort((a, b) => a - b);
-    const p95 = durations[Math.floor(durations.length * 0.95)] ?? 0;
+    const p95 = percentile(durations, 0.95);
     expect(p95).toBeLessThan(5);
   });
 
@@ -116,7 +122,7 @@ describe("perf budgets", () => {
       durations.push(performance.now() - start);
     }
     durations.sort((a, b) => a - b);
-    const p95 = durations[Math.floor(durations.length * 0.95)] ?? 0;
+    const p95 = percentile(durations, 0.95);
     // 20 ms slack: p95 stays ~3–8 ms in isolation but can spike when the full
     // suite runs hot on a shared CI runner (audit-2026-05-18 perf flake).
     expect(p95).toBeLessThan(20);

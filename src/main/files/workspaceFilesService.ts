@@ -9,7 +9,7 @@ import type {
   WorkspaceFileStat,
   WorkspaceFileWriteResult
 } from "../../shared/types.js";
-import { runGitMaybe, runGitText } from "../git/exec.js";
+import { runGitText, runGitTextAllowExitCodes } from "../git/exec.js";
 import { parseGitGrepOutput } from "./gitGrepParser.js";
 import { MAX_FILE_CONTENT_BYTES } from "../../shared/ipcSchemas.js";
 import { assertContainedPath, assertSafeRelativePath } from "../util/workspacePaths.js";
@@ -64,9 +64,10 @@ export class WorkspaceFilesService {
     //   --untracked     also include untracked-but-not-ignored files
     //   -e <pattern>    pattern separator so a query starting with '-' is
     //                   not parsed as a flag
-    // git grep exits 1 when there are no matches — `runGitMaybe` swallows
-    // that so an empty result isn't surfaced as an error.
-    const output = await runGitMaybe(repoPath, [
+    // git grep exits 1 when there are no matches. Treat only that exit as an
+    // empty search; timeout/max-buffer failures should surface so the UI
+    // doesn't lie with "no results" on a too-broad query.
+    const result = await runGitTextAllowExitCodes(repoPath, [
       "grep",
       "-n",
       "--null",
@@ -76,9 +77,9 @@ export class WorkspaceFilesService {
       "--untracked",
       "-e",
       trimmed
-    ]);
-    if (output === null) return { files: [], truncated: false };
-    return parseGitGrepOutput(output, { maxFiles: 50, maxMatchesPerFile: 10 });
+    ], [1]);
+    if (result.exitCode === 1) return { files: [], truncated: false };
+    return parseGitGrepOutput(result.stdout, { maxFiles: 50, maxMatchesPerFile: 10 });
   }
 
   async readFile(workspaceId: string, filePath: string): Promise<WorkspaceFilePreview> {

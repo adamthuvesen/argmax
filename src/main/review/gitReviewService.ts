@@ -185,7 +185,7 @@ async function synthesizeUntrackedDiff(workspacePath: string, filePath: string):
   // pointing at a directory or a vanished file.
   let content: string;
   try {
-    content = await readFile(safeAbsolutePath, "utf8");
+    content = await readFile(fileRealPath, "utf8");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException | null)?.code;
     if (code === "EISDIR" || code === "ENOENT") {

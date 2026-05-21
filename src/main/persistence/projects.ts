@@ -71,7 +71,12 @@ export function listProjects(connection: Database.Database): ProjectSummary[] {
           COALESCE(ss.session_failed,       0) AS session_failed,
           COALESCE(ss.session_review_ready, 0) AS session_review_ready,
           ws.workspace_latest               AS workspace_latest,
-          ss.session_latest                 AS session_latest
+          ss.session_latest                 AS session_latest,
+          COALESCE(
+            NULLIF(max(COALESCE(ws.workspace_latest, ''), COALESCE(ss.session_latest, '')), ''),
+            p.updated_at,
+            ''
+          ) AS latest_sort
         FROM projects p
         LEFT JOIN (
           SELECT
@@ -95,7 +100,7 @@ export function listProjects(connection: Database.Database): ProjectSummary[] {
           JOIN workspaces w ON w.id = s.workspace_id
           GROUP BY w.project_id
         ) ss ON ss.project_id = p.id
-        ORDER BY COALESCE(ws.workspace_latest, ss.session_latest, p.updated_at) DESC
+        ORDER BY latest_sort DESC
       `
     )
     .all() as ProjectAggregateRow[];

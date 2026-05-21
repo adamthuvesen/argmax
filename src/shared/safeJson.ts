@@ -24,6 +24,10 @@ const WARNING_INTERVAL_MS = 60_000;
 // generous for the static set we use today.
 const lastWarnedAt = new BoundedMap<string, number>(200);
 
+export function resetSafeJsonWarningsForTesting(): void {
+  lastWarnedAt.clear();
+}
+
 function warnRateLimited(context: string | undefined, error: unknown): void {
   // Context-less callers used to be silently dropped, which meant a corrupt
   // row hit via `safeJsonParse(value)` (no context arg) gave zero

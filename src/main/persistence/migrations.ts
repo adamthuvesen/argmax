@@ -1119,4 +1119,8 @@ export function runMigrations(database: Database.Database): void {
       );
     }
   }
+
+  for (const table of latestAffectedVersion.keys()) {
+    verifyTableColumns(database, table);
+  }
 }

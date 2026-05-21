@@ -599,6 +599,9 @@ export const sessionCostSummaryInputSchema = z.object({
   sessionId: sessionIdSchema
 });
 
+export const prsListForSessionInputSchema = z.object({ sessionId: sessionIdSchema });
+export const prsRefreshInputSchema = z.object({ sessionId: sessionIdSchema });
+
 // ---------------------------------------------------------------------------
 // IDE launcher — `workspaces:open-in-ide` and `system:list-detected-ides`
 // ---------------------------------------------------------------------------
@@ -709,8 +712,8 @@ export const ipcSchemas = {
   "learnings:delete": learningsDeleteInputSchema,
   "session:search": sessionSearchInputSchema,
   "workspaces:set-pinned": workspaceSetPinnedInputSchema,
-  "prs:list-for-session": z.object({ sessionId: sessionIdSchema }),
-  "prs:refresh": z.object({ sessionId: sessionIdSchema }),
+  "prs:list-for-session": prsListForSessionInputSchema,
+  "prs:refresh": prsRefreshInputSchema,
   "git:commit": gitCommitInputSchema,
   "git:push": gitPushInputSchema,
   "git:create-branch": gitCreateBranchInputSchema,

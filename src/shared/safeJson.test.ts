@@ -1,11 +1,17 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readLogBuffer, resetLogBufferForTesting } from "./logger.js";
-import { safeJsonParse, safeJsonParseArray, safeJsonParseRecord } from "./safeJson.js";
+import {
+  resetSafeJsonWarningsForTesting,
+  safeJsonParse,
+  safeJsonParseArray,
+  safeJsonParseRecord
+} from "./safeJson.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+  resetSafeJsonWarningsForTesting();
 });
 
 describe("safeJsonParse — always returns unknown", () => {
@@ -47,11 +53,12 @@ describe("safeJsonParse — always returns unknown", () => {
     expect(warnsAfterWait).toHaveLength(2);
   });
 
-  it("does not log when no context is provided", () => {
+  it("logs malformed contextless JSON under the unknown bucket", () => {
     resetLogBufferForTesting();
     safeJsonParse("{bad");
     const warns = readLogBuffer().filter((e) => e.scope === "safeJson");
-    expect(warns).toHaveLength(0);
+    expect(warns).toHaveLength(1);
+    expect(warns[0]?.fields).toMatchObject({ context: "<unknown>" });
   });
 });
 

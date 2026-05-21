@@ -57,7 +57,7 @@ import type { ReviewState } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
 import { parsePlan } from "../lib/parsePlan.js";
-import { providerLabel, repoNameFromPath } from "../lib/projects.js";
+import { repoNameFromPath } from "../lib/projects.js";
 import { decideSmartFollow } from "../lib/smartFollow.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
@@ -1542,7 +1542,6 @@ export function SessionConversation({
                 key={item.id}
                 toolItems={visibleToolItems}
                 assistantTimestamps={item.assistantTimestamps}
-                {...(session ? { providerLabel: providerLabel(session.provider) } : {})}
                 modelLabel={selectedModel.label}
                 {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
                 {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}

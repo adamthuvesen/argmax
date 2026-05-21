@@ -108,7 +108,6 @@ export function TurnBlock({
   toolItems,
   assistantTimestamps,
   body,
-  providerLabel: providerLabelText,
   modelLabel,
   defaultExpanded,
   turnStartedAtMs,
@@ -117,7 +116,6 @@ export function TurnBlock({
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
   body: TurnBodyChild[];
-  providerLabel?: string;
   modelLabel?: string;
   defaultExpanded?: boolean;
   // When provided, the live ticker anchors here instead of the earliest
@@ -153,8 +151,7 @@ export function TurnBlock({
   const autoExpanded = toolRunning || (defaultExpanded ?? false);
   const expanded = userToggle ?? autoExpanded;
 
-  const subtitleParts = [providerLabelText, modelLabel].filter((v): v is string => Boolean(v));
-  const subtitle = subtitleParts.join(" · ");
+  const subtitle = modelLabel ?? "";
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
   const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
   const hasTools = toolItems.length > 0;

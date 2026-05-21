@@ -106,9 +106,157 @@
   /* Focus ring (Ralph SPEC F4). Single source for every focus-visible style. */
   --ring: 0 0 0 2px rgba(90, 143, 114, 0.5);
 
+  /* Body grain — swapped per theme so the paper texture inverts to film grain
+     in dark mode. The noise SVG itself flips via the feColorMatrix values in
+     the data URI; --grain-image is the single switch every consumer reads. */
+  --grain-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08  0 0 0 0 0.085  0 0 0 0 0.09  0 0 0 0.018 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+
+  /* Theme-aware overlays — light by default, swapped in dark block below.
+     These replace ad-hoc rgba(0,0,0,*) overlay literals scattered across
+     component CSS so the dark theme inverts them automatically. */
+  --overlay-soft: rgba(0, 0, 0, 0.025);
+  --overlay-med: rgba(31, 28, 24, 0.06);
+  --overlay-strong: rgba(31, 28, 24, 0.12);
+  --selection-bg: rgba(90, 143, 114, 0.22);
+  --selection-bg-on-ink: rgba(255, 255, 255, 0.28);
+  --bubble-on-ink: #ffffff;
+
+  /* Diff add/delete surfaces. Paired tokens so dark mode can keep the same
+     semantic green/red without the glaring near-white pastels. */
+  --diff-add-bg: #eaf7ef;
+  --diff-add-gutter-bg: #dcf2e4;
+  --diff-add-gutter-fg: #007a35;
+  --diff-del-bg: #fdebea;
+  --diff-del-gutter-bg: #fbdedc;
+  --diff-del-gutter-fg: #c91822;
+
+  /* Atmospheric paper highlights. Bright white in light (mimics paper bias);
+     suppressed in dark (room with the lights off — no diffuse spotlights). */
+  --paper-highlight-strong: rgba(255, 255, 255, 0.55);
+  --paper-highlight-soft: rgba(255, 255, 255, 0.6);
+
+  /* Hover wash for sidebar rows, nav items, and other quiet hover surfaces.
+     In light this is a near-opaque white that brightens against the cream
+     paper. In dark it becomes a low-alpha warm-white film — present enough
+     to register, never bright enough to read as a spotlight. */
+  --row-hover: rgba(255, 255, 255, 0.6);
+
   font-family: var(--font-ui);
   font-feature-settings: "calt", "ss01", "tnum";
   background: var(--bg);
+  color: var(--text);
+}
+
+/* Dark theme — "Warm Charcoal Editorial".
+   Warm gray-black backgrounds (hue ~80°, very low chroma), never midnight blue.
+   Sage/amber/rose lifted ~10pp lightness, slightly desaturated. Shadows replace
+   the light-mode drop with an inset top-highlight (one pixel of warm light at
+   the top of each elevated surface) plus a heavier drop for separation. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0e0e0c;
+  --sidebar: #131311;
+  --panel: #1a1a17;
+  --panel-soft: #1f1f1c;
+  --panel-sunken: #0a0a09;
+
+  --line: #2a2a25;
+  --line-soft: #1f1f1b;
+  --line-strong: #3a3a33;
+
+  --text: #f4f2ec;
+  --text-soft: #dcd8cf;
+  --muted: #8a857b;
+  --muted-strong: #b5b1a7;
+
+  --sage: #7fb494;
+  --sage-soft: rgba(127, 180, 148, 0.14);
+  --sage-deep: #5a8f72;
+  --amber: #d9a566;
+  --amber-soft: rgba(217, 165, 102, 0.14);
+  --rose: #e08591;
+  --rose-soft: rgba(224, 133, 145, 0.14);
+
+  /* --ink inverts to a warm white so user bubbles invert cleanly: dark text
+     on a near-white bubble in dark mode, mirroring the white-on-dark of light
+     mode. --bubble-on-ink follows. */
+  --ink: #f4f2ec;
+  --ink-soft: #e5e1d7;
+  --bubble-on-ink: #0e0e0c;
+
+  --shadow-1: inset 0 1px 0 rgba(255, 250, 235, 0.04), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: inset 0 1px 0 rgba(255, 250, 235, 0.05), 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-3: inset 0 1px 0 rgba(255, 250, 235, 0.06), 0 24px 60px rgba(0, 0, 0, 0.65);
+
+  --ring: 0 0 0 2px rgba(127, 180, 148, 0.45);
+
+  /* Light-on-dark grain — same fractal noise SVG, light pixels instead of dark,
+     lower alpha so it reads as film grain rather than texture. */
+  --grain-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.95  0 0 0 0 0.93  0 0 0 0.022 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+
+  --overlay-soft: rgba(255, 250, 235, 0.04);
+  --overlay-med: rgba(255, 250, 235, 0.07);
+  --overlay-strong: rgba(255, 250, 235, 0.12);
+  --selection-bg: rgba(127, 180, 148, 0.28);
+  --selection-bg-on-ink: rgba(14, 14, 12, 0.32);
+
+  /* Diff palette tuned for warm charcoal: low-alpha sage/rose washes so the
+     code stays the focal point, not the background. The gutter values are
+     slightly stronger so the line numbers still register at a glance. */
+  --diff-add-bg: rgba(127, 180, 148, 0.12);
+  --diff-add-gutter-bg: rgba(127, 180, 148, 0.22);
+  --diff-add-gutter-fg: #9fc9af;
+  --diff-del-bg: rgba(224, 133, 145, 0.12);
+  --diff-del-gutter-bg: rgba(224, 133, 145, 0.22);
+  --diff-del-gutter-fg: #f0a3ad;
+
+  /* Suppress the paper-mimic gradients in dark — they were paper-bias
+     hints, not architecture. Dark mode keeps its surfaces flat-with-grain. */
+  --paper-highlight-strong: transparent;
+  --paper-highlight-soft: transparent;
+
+  /* Low-alpha warm white for hover surfaces in dark — present enough to
+     register, far below the glaring light-gray that rgba(255,255,255,0.6)
+     resolves to against warm charcoal. */
+  --row-hover: rgba(255, 250, 235, 0.06);
+}
+
+/* Smooth crossfade when toggling themes. The .theme-transition class is added
+   to <html> for one frame around a theme change (see lib/theme.ts) so the
+   ramp only runs intentionally, not on every property change. */
+:root.theme-transition,
+:root.theme-transition *,
+:root.theme-transition *::before,
+:root.theme-transition *::after {
+  transition: background-color 220ms var(--ease-out, ease-out),
+              color 220ms var(--ease-out, ease-out),
+              border-color 220ms var(--ease-out, ease-out),
+              box-shadow 220ms var(--ease-out, ease-out) !important;
+}
+
+/* Dark-mode polish — the moments that earn the "fabulous" descriptor.
+   The principle: light gets shadows, dark gets *light*. In dark mode every
+   focus state and primary action picks up a soft warm glow instead of a
+   crisp ring. Scoped tight so the effect feels intentional, not noisy. */
+:root[data-theme="dark"] .composer-submit:not(:disabled):hover,
+:root[data-theme="dark"] .question-card-submit:not(:disabled):hover,
+:root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
+  box-shadow: var(--shadow-1),
+              0 0 28px -8px color-mix(in oklab, var(--sage) 55%, transparent);
+}
+
+/* Subtle hover-lift on chat bubbles in dark — the inset highlight catches
+   the eye, and a 1px translate would feel cheap, so we just brighten the
+   top edge for a moment. */
+:root[data-theme="dark"] .chat-bubble.assistant {
+  box-shadow: var(--shadow-1);
+}
+
+/* ::selection on the user (inverted) bubble already swaps via the
+   --selection-bg-on-ink token; this is just the global selection in dark. */
+:root[data-theme="dark"] ::selection {
+  background: color-mix(in oklab, var(--sage) 35%, transparent);
   color: var(--text);
 }
 
@@ -185,13 +333,13 @@
 }
 
 ::selection {
-  background: rgba(90, 143, 114, 0.22);
+  background: var(--selection-bg);
   color: var(--text);
 }
 
 .chat-bubble.user ::selection {
-  background: rgba(255, 255, 255, 0.28);
-  color: #ffffff;
+  background: var(--selection-bg-on-ink);
+  color: var(--bubble-on-ink);
 }
 
 body {
@@ -199,7 +347,7 @@ body {
   min-width: 900px;
   min-height: 0;
   background-color: var(--bg);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08  0 0 0 0 0.085  0 0 0 0 0.09  0 0 0 0.018 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-image: var(--grain-image);
   overflow: hidden;
 }
 
@@ -275,7 +423,7 @@ button {
   padding: 12px 14px 12px;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+  background-image: linear-gradient(180deg, var(--paper-highlight-strong), transparent);
   transition: opacity var(--duration-base) var(--ease);
 }
 
@@ -382,7 +530,7 @@ button {
 
 .rail-nav-item:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--row-hover);
 }
 
 .rail-nav-item svg {
@@ -441,7 +589,7 @@ button {
   height: 22px;
   border-radius: 6px;
   background: var(--ink);
-  color: #fff;
+  color: var(--bubble-on-ink);
   flex: 0 0 auto;
   transition: background var(--duration-fast) var(--ease);
 }
@@ -451,7 +599,7 @@ button {
 }
 
 .rail-nav-cta .rail-nav-glyph svg {
-  color: #fff;
+  color: var(--bubble-on-ink);
 }
 
 .rail-nav-cta .rail-nav-label {
@@ -709,7 +857,7 @@ button {
 }
 
 .project-actions-confirm-buttons .project-actions-destructive:hover {
-  background: #9d4855;
+  background: color-mix(in oklab, var(--rose) 80%, black);
   color: var(--bg);
 }
 
@@ -735,7 +883,7 @@ button {
 }
 
 .project-name:hover {
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--row-hover);
 }
 
 .project-name:hover .project-visibility,
@@ -779,7 +927,7 @@ button {
 
 .project-visibility:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--row-hover);
   opacity: 1;
 }
 
@@ -816,7 +964,7 @@ button {
 
 .session-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--row-hover);
 }
 
 .session-link[data-open="true"]:not(.active) {
@@ -1094,7 +1242,7 @@ button {
 .cost-panel {
   margin: 0;
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.02);
 }
@@ -1153,7 +1301,7 @@ button {
 
 .cost-panel-table thead th {
   font-weight: 500;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 
 .cost-panel-chevron {
@@ -1324,10 +1472,10 @@ button {
   background: var(--panel);
   background-image: radial-gradient(
       120% 60% at 50% 0%,
-      rgba(255, 255, 255, 0.6),
-      rgba(255, 255, 255, 0) 60%
+      var(--paper-highlight-soft),
+      transparent 60%
     ),
-    radial-gradient(80% 40% at 100% 100%, rgba(176, 128, 57, 0.04), rgba(255, 255, 255, 0) 60%);
+    radial-gradient(80% 40% at 100% 100%, rgba(176, 128, 57, 0.04), transparent 60%);
 }
 
 .work-scroll {
@@ -1359,7 +1507,7 @@ button {
   display: grid;
   width: 100%;
   gap: 22px;
-  transform: translateY(-3dvh);
+  margin-block-start: -3dvh;
   animation: surface-in 420ms var(--ease) both;
   /* position:relative + z-index:26 puts this stacking context above the
      portaled .picker-dismiss-layer (z-index:25). Without position, z-index is
@@ -1601,7 +1749,7 @@ button {
 
 .settings-nav-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.68);
+  background: var(--row-hover);
   border-color: var(--line-soft);
 }
 
@@ -2012,7 +2160,7 @@ button {
   height: 44px;
   border-radius: 12px;
   background: var(--ink);
-  color: #fff;
+  color: var(--bubble-on-ink);
   flex: 0 0 auto;
   box-shadow: var(--shadow-1);
   position: relative;
@@ -2238,7 +2386,7 @@ button {
 
 .settings-segmented-option[data-checked="true"] {
   background: var(--ink);
-  color: #fff;
+  color: var(--bubble-on-ink);
   box-shadow: var(--shadow-1);
 }
 
@@ -2321,7 +2469,7 @@ button {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--panel);
   box-shadow: 0 1px 2px rgba(31, 28, 24, 0.18);
   transition: left var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease);
@@ -2469,6 +2617,139 @@ button {
   overflow-x: auto;
   font-feature-settings: "calt", "ss01", "tnum";
 }
+
+/* ---- Theme picker ---- */
+
+.theme-picker {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.theme-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.theme-picker-chip:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.theme-picker-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.theme-picker-chip[data-selected] {
+  border-color: var(--sage);
+  background: var(--sage-soft);
+  color: var(--text);
+  box-shadow: 0 0 24px -10px color-mix(in oklab, var(--sage) 60%, transparent);
+}
+
+.theme-picker-label {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* Each swatch is a 28×18 rounded rect with three diagonal stripes representing
+   that mode's --bg, --text, and --sage. We override the local custom props on
+   the chip so dark/light/system each preview their own palette without flipping
+   the page's actual theme. The "system" variant splits diagonally between the
+   two — a half-sun, half-moon affordance. */
+.theme-picker-swatch {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--swatch-bg, var(--bg));
+}
+
+.theme-picker-swatch-bg,
+.theme-picker-swatch-text,
+.theme-picker-swatch-accent {
+  position: absolute;
+  inset: 0;
+}
+
+.theme-picker-swatch-text {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 35%,
+    var(--swatch-text, var(--text)) 35%,
+    var(--swatch-text, var(--text)) 65%,
+    transparent 65%,
+    transparent 100%
+  );
+  opacity: 0.85;
+  clip-path: inset(0 50% 0 12%);
+}
+
+.theme-picker-swatch-accent {
+  background: var(--swatch-accent, var(--sage));
+  width: 6px;
+  left: auto;
+  right: 4px;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 2px;
+  inset: auto 4px 4px auto;
+  width: 4px;
+  height: 10px;
+}
+
+.theme-picker-chip[data-theme-mode="light"] .theme-picker-swatch {
+  --swatch-bg: #fdfdfd;
+  --swatch-text: #1c1b18;
+  --swatch-accent: #5a8f72;
+}
+
+.theme-picker-chip[data-theme-mode="dark"] .theme-picker-swatch {
+  --swatch-bg: #0e0e0c;
+  --swatch-text: #f4f2ec;
+  --swatch-accent: #7fb494;
+}
+
+.theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch {
+  --swatch-bg: #fdfdfd;
+  --swatch-text: #1c1b18;
+  --swatch-accent: #5a8f72;
+  background:
+    linear-gradient(135deg, #fdfdfd 0%, #fdfdfd 50%, #0e0e0c 50%, #0e0e0c 100%);
+}
+
+.theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch-text {
+  /* Split-text stripe: top half dark on light, bottom half light on dark. */
+  background:
+    linear-gradient(135deg,
+      transparent 0%, transparent 50%, transparent 50%, transparent 100%);
+  /* Two pseudo-ish bars stacked: one over the light half (dark text), one over
+     the dark half (light text). Easier to read this as the two swatch halves
+     having their own little caption bars. */
+}
+
+.theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch-accent {
+  background: linear-gradient(180deg, #5a8f72 0%, #5a8f72 50%, #7fb494 50%, #7fb494 100%);
+}
+
 
 /* ---- Refresh button ---- */
 
@@ -2965,7 +3246,7 @@ button {
   border: 1px solid var(--ink);
   border-radius: 8px;
   background: var(--ink);
-  color: #fff;
+  color: var(--bubble-on-ink);
   font: inherit;
   font-size: 11px;
   letter-spacing: 0.02em;
@@ -3096,7 +3377,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px;
-  background: #fbfbfa;
+  background: var(--panel-soft);
   overflow: hidden;
 }
 
@@ -3120,28 +3401,10 @@ button {
   position: relative;
 }
 
-.chat-bubble-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--muted);
-}
-
-.chat-bubble-timestamp {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.55;
-  transition: opacity var(--duration-fast) var(--ease);
-}
-
-.chat-bubble:hover .chat-bubble-timestamp,
-.chat-bubble:focus-within .chat-bubble-timestamp {
-  opacity: 1;
-}
-
 .chat-bubble-copy {
-  margin-left: auto;
+  position: absolute;
+  top: 4px;
+  right: 4px;
   display: inline-flex;
   align-items: center;
   padding: 2px;
@@ -3203,7 +3466,7 @@ button {
   gap: 8px;
   min-height: 42px;
   padding: 0 14px;
-  color: #fff;
+  color: var(--bubble-on-ink);
   border: 0;
   border-radius: 8px;
   background: var(--ink);
@@ -3269,7 +3532,7 @@ button {
 
 .composer-input input::placeholder,
 .composer-input textarea::placeholder {
-  color: #a9a59a;
+  color: var(--muted);
 }
 
 .composer-tool,
@@ -3300,7 +3563,7 @@ button {
 }
 
 .send-button {
-  color: #fff;
+  color: var(--bubble-on-ink);
   background: var(--ink);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
   box-shadow:
@@ -3740,7 +4003,7 @@ button {
   border: 0;
   border-radius: 8px;
   background: var(--sage);
-  color: white;
+  color: var(--bubble-on-ink);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -4233,10 +4496,10 @@ button {
 }
 
 .markdown code {
-  padding: 1px 6px;
-  border-radius: 5px;
+  padding: 0 4px;
+  border-radius: 4px;
   background: var(--sage-soft);
-  border: 1px solid rgba(90, 143, 114, 0.18);
+  border: 0;
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-variant-ligatures: none;
@@ -4264,13 +4527,37 @@ button {
 
 .markdown ul,
 .markdown ol {
-  margin: 10px 0 16px;
-  padding-left: 22px;
+  margin: 14px 0 6px;
+  padding-left: 24px;
 }
 
 .markdown ol {
-  padding-left: 32px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Single-item ordered list directly followed by bullets is the LLM's section-heading
+   pattern (`1. Heading` then `- bullet`). Style the heading as a heading, and pull
+   the bullets up so they read as its children — not as a parallel sibling list. */
+.markdown ol:has(> li:only-child) {
+  margin-bottom: 2px;
+}
+
+.markdown ol > li:only-child {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--text);
+  margin: 24px 0 4px;
+  line-height: 1.35;
+}
+
+.markdown ol > li:only-child::marker {
+  color: var(--sage);
+  font-weight: 600;
+}
+
+.markdown ol:has(> li:only-child) + ul {
+  margin-top: 2px;
 }
 
 .markdown ul:last-child,
@@ -4412,14 +4699,14 @@ button {
 .chat-bubble.user {
   align-self: flex-end;
   max-width: min(62%, 680px);
-  color: #ffffff;
+  color: var(--bubble-on-ink);
   background: var(--ink);
   box-shadow: none;
   animation-name: msg-in-right;
 }
 
 .chat-bubble.user p {
-  color: #ffffff;
+  color: var(--bubble-on-ink);
 }
 
 /* Floating "scroll to latest" button. Anchors to the conversation list (which
@@ -4431,27 +4718,50 @@ button {
 .scroll-to-bottom-fab {
   position: sticky;
   bottom: 12px;
-  align-self: center;
+  /* Dock to the right edge instead of floating centered — a control on
+     the gutter reads as UI; a centered control reads as orphan content. */
+  align-self: flex-end;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   width: 32px;
   height: 32px;
   padding: 0;
   margin-top: -32px;
+  margin-right: 4px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
   color: var(--text);
-  box-shadow: var(--shadow-1);
+  box-shadow: 0 4px 14px rgba(31, 28, 24, 0.10), 0 1px 0 rgba(31, 28, 24, 0.04);
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease), width var(--duration-base) var(--ease), padding var(--duration-base) var(--ease);
   z-index: 2;
+}
+
+.scroll-to-bottom-fab[data-has-count="true"] {
+  width: auto;
+  padding: 0 12px 0 10px;
+  background: var(--sage-deep);
+  color: var(--bubble-on-ink);
+  border-color: var(--sage-deep);
+}
+
+.scroll-to-bottom-fab-count {
+  font-size: 11.5px;
+  font-weight: 540;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .scroll-to-bottom-fab:hover {
   background: var(--panel-soft);
   transform: translateY(-1px);
+}
+
+.scroll-to-bottom-fab[data-has-count="true"]:hover {
+  background: var(--sage);
 }
 
 /* Composer footer — workspace branch + worktree chips, shared by launcher and
@@ -4531,7 +4841,7 @@ button {
   padding: 0 5px;
   border-radius: 999px;
   background: var(--amber);
-  color: #ffffff;
+  color: var(--bubble-on-ink);
   font-size: 11px;
   font-weight: 600;
 }
@@ -4554,37 +4864,149 @@ button {
 }
 
 /* Inline file chip — replaces a plain `<code>` pill when the text matches a
-   file-path pattern. Click opens the file in the workspace's IDE. */
+   file-path pattern. Styled to read like a markdown link so file references
+   sit inline with prose instead of breaking the line with a chunky button.
+   Click opens the file in the workspace's IDE. */
 .file-chip {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px 1px 5px;
-  margin: 0 1px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--panel-sunken);
-  color: var(--text);
+  align-items: baseline;
+  gap: 3px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sage-deep);
   font-family: var(--font-mono);
   font-size: 12.5px;
-  line-height: 1.4;
+  line-height: inherit;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(61, 106, 82, 0.4);
+  transition: text-decoration-color var(--duration-fast) var(--ease);
   vertical-align: baseline;
 }
 
 .file-chip:hover {
-  background: var(--panel-soft);
-  border-color: var(--line-strong);
+  text-decoration-color: var(--sage-deep);
 }
 
 .file-chip svg {
-  opacity: 0.65;
+  opacity: 0.55;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .file-chip-path {
   white-space: nowrap;
+}
+
+/* Code-pill hover preview — rendered into a body portal so it escapes any
+   scroll/overflow clipping in the conversation list. Position is computed
+   in JS against the chip's bounding rect. */
+.file-preview-popover {
+  position: fixed;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(31, 28, 24, 0.12), 0 1px 0 rgba(31, 28, 24, 0.04);
+  overflow: hidden;
+  font-size: 12px;
+  pointer-events: none;
+  animation: file-preview-pop 140ms var(--ease) both;
+}
+
+@keyframes file-preview-pop {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.file-preview-popover-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.file-preview-popover-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-strong);
+}
+
+.file-preview-popover-range {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.file-preview-popover-more {
+  margin-left: 4px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.file-preview-popover-state {
+  padding: 10px 12px;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.file-preview-popover-state--error {
+  color: var(--rose);
+}
+
+.file-preview-popover-snippet {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 6px 0;
+  overflow: auto;
+  max-height: 240px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.file-preview-popover-line {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 8px;
+  padding: 0 10px;
+  white-space: pre;
+}
+
+.file-preview-popover-line.is-target {
+  background: var(--sage-soft);
+}
+
+.file-preview-popover-gutter {
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.file-preview-popover-code {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Fenced code block — header strip with language label and copy button.
@@ -4594,8 +5016,8 @@ button {
   margin: 14px 0;
   border: 1px solid var(--line-soft);
   border-radius: 12px;
-  background: #fbfaf6;
-  box-shadow: 0 1px 0 rgba(31, 28, 24, 0.025), 0 1px 3px rgba(31, 28, 24, 0.04);
+  background: var(--panel-soft);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
 }
 
@@ -4605,7 +5027,7 @@ button {
   justify-content: space-between;
   height: 30px;
   padding: 0 8px 0 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0));
+  background: linear-gradient(180deg, color-mix(in oklab, var(--panel) 85%, transparent), transparent);
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -4715,6 +5137,20 @@ button {
   opacity: 0.7;
 }
 
+.turn-block-timestamp {
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.turn-block:hover .turn-block-timestamp {
+  opacity: 0.9;
+}
+
 .turn-block-chip {
   display: inline-flex;
   align-items: center;
@@ -4775,6 +5211,24 @@ button {
   animation: turn-block-pulse 1600ms var(--ease) infinite;
 }
 
+/* Thinking → answered transition. The first visible child of a freshly
+   populated turn body settles in with a soft translate+fade, marking the
+   moment the agent's indeterminate "thinking" becomes determinate output. */
+.turn-block-body[data-just-revealed="true"] > *:first-child {
+  animation: turn-phase-land 280ms var(--ease) both;
+}
+
+@keyframes turn-phase-land {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes turn-block-pulse {
   0%, 100% { opacity: 0.5; }
   50%      { opacity: 0.9; }
@@ -4809,7 +5263,7 @@ button {
   }
   to {
     opacity: 1;
-    transform: translateY(-3dvh);
+    transform: translateY(0);
   }
 }
 
@@ -4995,7 +5449,7 @@ button {
 }
 
 .tool-call-header:hover {
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--row-hover);
   color: var(--text);
 }
 
@@ -5067,9 +5521,9 @@ button {
 }
 
 .tool-call-item[data-status="error"] .tool-call-status-chip {
-  color: var(--muted-strong);
-  background: var(--panel-sunken);
-  border-color: var(--line);
+  color: var(--rose);
+  background: var(--rose-soft);
+  border-color: rgba(184, 87, 99, 0.28);
 }
 
 .tool-call-spinner {
@@ -5229,7 +5683,12 @@ button {
 
 .tool-call-group[data-status="error"]::before {
   background: var(--rose);
-  opacity: 0.7;
+  opacity: 1;
+  width: 2px;
+}
+
+.tool-call-group[data-status="error"] .tool-call-group-eyebrow-label {
+  color: var(--rose);
 }
 
 @keyframes rail-pulse {
@@ -5690,7 +6149,7 @@ button {
 .changed-files-card {
   margin-top: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.02);
 }
@@ -5698,7 +6157,7 @@ button {
 .checks-list {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding: 6px 12px 8px;
   gap: 4px;
   font-size: 12px;
@@ -5736,7 +6195,7 @@ button {
 .checks-row-expand {
   width: 22px;
   height: 22px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
   cursor: pointer;
@@ -5882,6 +6341,44 @@ button {
   gap: 4px;
 }
 
+/* Composer chip grouping — model picker, agent mode, and workspace context
+   are three separate concepts. Sibling chip groups are visually distinguished
+   with a faint hairline separator and a slightly wider gap, so the user reads
+   "who" (model), "how" (mode), "where" (context) instead of one undifferentiated
+   row of pills. */
+.composer-chips-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 0;
+  position: relative;
+}
+
+.composer-chips-group + .composer-chips-group {
+  padding-left: 12px;
+  margin-left: 4px;
+}
+
+.composer-chips-group + .composer-chips-group::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background: var(--line);
+  opacity: 0.6;
+}
+
+/* The context group already uses .composer-footer's flex-wrap / padding; the
+   added .composer-chips-group sets gap and the separator pseudo, but its own
+   padding shouldn't compound with composer-footer's. Reset the inherited
+   padding so the separator sits flush. */
+.composer-footer.composer-chips-group {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .composer-attachments {
   display: flex;
   flex-wrap: wrap;
@@ -5920,7 +6417,7 @@ button {
   border: 0;
   border-radius: 9999px;
   background: rgba(31, 28, 24, 0.75);
-  color: #fff;
+  color: var(--bubble-on-ink);
   cursor: pointer;
   line-height: 0;
 }
@@ -6152,7 +6649,7 @@ button {
   height: 36px;
   flex: 0 0 auto;
   place-items: center;
-  color: #fff;
+  color: var(--bubble-on-ink);
   border: 0;
   border-radius: 999px;
   background: var(--ink);
@@ -6396,7 +6893,7 @@ button {
 }
 
 .command-palette-result.selected .command-palette-sigil {
-  color: #fff;
+  color: var(--bubble-on-ink);
   background: var(--ink);
   border-color: var(--ink);
 }
@@ -6853,7 +7350,7 @@ button {
   gap: 12px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.94);
+  background: color-mix(in oklab, var(--panel) 94%, transparent);
   backdrop-filter: blur(10px);
   font-size: 13px;
 }
@@ -6911,7 +7408,7 @@ button {
   color: var(--rose);
   border-style: solid;
   border-color: rgba(184, 87, 99, 0.4);
-  background: #fff;
+  background: var(--panel);
 }
 
 .review-toolbar-titles {
@@ -7122,7 +7619,7 @@ button {
 
 .commit-dialog-actions .commit-dialog-submit {
   background: var(--ink, #1f2937);
-  color: #fff;
+  color: var(--bubble-on-ink);
   border-color: var(--ink, #1f2937);
 }
 
@@ -7235,7 +7732,7 @@ button {
 .file-tabs-shell {
   flex: 0 0 auto;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.96);
+  background: color-mix(in oklab, var(--panel) 96%, transparent);
 }
 
 .file-tabs {
@@ -7372,7 +7869,7 @@ button {
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.94);
+  background: color-mix(in oklab, var(--panel) 94%, transparent);
   backdrop-filter: blur(10px);
 }
 
@@ -7448,6 +7945,33 @@ button {
 
 .file-preview-editor [class*="cm-editor"] {
   height: 100%;
+}
+
+/* CodeMirror ships its own light-theme baseline (.cm-editor + .cm-content
+   default to white). Without these explicit overrides the editor surface
+   ignores the page theme — code reads white-on-white in dark mode. Scoping
+   to .file-preview-editor keeps the side-by-side review diff (which uses a
+   different DOM path) untouched. */
+.file-preview-editor .cm-editor,
+.file-preview-editor .cm-scroller,
+.file-preview-editor .cm-content,
+.file-preview-editor .cm-gutters,
+.file-preview-editor .cm-gutter {
+  background: transparent;
+  color: var(--text);
+}
+
+.file-preview-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.file-preview-editor .cm-lineNumbers .cm-gutterElement {
+  color: var(--muted);
+}
+
+.file-preview-editor .cm-cursor,
+.file-preview-editor .cm-dropCursor {
+  border-left-color: var(--text);
 }
 
 .file-preview-editor[data-saving="true"] [class*="cm-editor"] {
@@ -7549,7 +8073,7 @@ button {
   text-align: right;
   user-select: none;
   border-right: 1px solid var(--line-soft);
-  background: #f7f8f8;
+  background: var(--panel-sunken);
   position: sticky;
   z-index: 1;
 }
@@ -7782,7 +8306,7 @@ button {
 
 .project-knowledge-verify[aria-pressed="true"] {
   background: #2f7a4f;
-  color: #fff;
+  color: var(--bubble-on-ink);
   border-color: #2f7a4f;
 }
 
@@ -8247,21 +8771,21 @@ button {
 }
 
 .diff-line.addition {
-  background: #eaf7ef;
+  background: var(--diff-add-bg);
 }
 
 .diff-line.deletion {
-  background: #fdebea;
+  background: var(--diff-del-bg);
 }
 
 .diff-line.addition .diff-line-number {
-  color: #007a35;
-  background: #dcf2e4;
+  color: var(--diff-add-gutter-fg);
+  background: var(--diff-add-gutter-bg);
 }
 
 .diff-line.deletion .diff-line-number {
-  color: #c91822;
-  background: #fbdedc;
+  color: var(--diff-del-gutter-fg);
+  background: var(--diff-del-gutter-bg);
 }
 
 @keyframes chips-in {
@@ -8405,7 +8929,7 @@ button {
 }
 
 .approval-actions button:last-child {
-  color: white;
+  color: var(--bubble-on-ink);
   border-color: var(--sage-deep);
   background: var(--sage-deep);
 }
@@ -8534,6 +9058,20 @@ button {
 .mascot-button.session-send-mascot .mascot {
   width: 30px;
   height: 30px;
+}
+
+/* Submit bob — keyboard-submitted sends miss the Mascot's built-in click
+   pet animation. This re-creates the same beat on the wrapper button so an
+   Enter submission still feels kinetic. */
+.mascot-button.session-send-mascot--bob {
+  animation: mascot-bob 320ms var(--ease);
+}
+
+@keyframes mascot-bob {
+  0%   { transform: translateY(0) scale(1); }
+  30%  { transform: translateY(-3px) scale(1.04); }
+  60%  { transform: translateY(1px) scale(0.98); }
+  100% { transform: translateY(0) scale(1); }
 }
 
 .mascot[data-mood="thinking"] .mascot-rain-dot-1 {
@@ -9962,9 +10500,9 @@ button {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   border-radius: 6px;
-  background: #000;
-  color: #fff;
-  border: 1px solid #000;
+  background: var(--ink);
+  color: var(--bubble-on-ink);
+  border: 1px solid var(--ink);
   cursor: pointer;
   transition: opacity 120ms ease;
 }
@@ -9982,7 +10520,7 @@ button {
   background: rgba(255, 255, 255, 0.08);
   font-family: var(--font-mono);
   font-size: 10px;
-  color: #fff;
+  color: var(--bubble-on-ink);
   font-weight: 500;
   letter-spacing: 0;
   line-height: 1;

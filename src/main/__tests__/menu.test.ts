@@ -64,13 +64,13 @@ describe("buildAppMenuTemplate", () => {
     expect(submenuRoles).toContain("toggleDevTools");
   });
 
-  it("invokes onCheckForUpdates when the menu item is clicked", () => {
-    const onCheckForUpdates = vi.fn<() => void>();
-    const template = buildAppMenuTemplate({ onCommand, onCheckForUpdates });
+  it("dispatches check-for-updates through onCommand", () => {
+    const template = buildAppMenuTemplate({ onCommand });
     const item = findItem(template, "Check for Updates…");
     expect(item).not.toBeNull();
+    onCommand.mockClear();
     (item?.click as ((...args: unknown[]) => void) | undefined)?.();
-    expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
+    expect(onCommand).toHaveBeenCalledWith("check-for-updates");
   });
 });
 
@@ -105,6 +105,7 @@ describe("menu ↔ cheat-sheet single-source-of-truth", () => {
 
     const flat = walk(template);
     for (const binding of MENU_KEYBINDINGS) {
+      if (!binding.accelerator) continue;
       const found = flat.find((item) => item.accelerator === binding.accelerator);
       expect(found, `missing menu entry for ${binding.accelerator}`).not.toBeUndefined();
     }

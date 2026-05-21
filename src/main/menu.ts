@@ -35,10 +35,7 @@ export function buildAppMenuTemplate(config: MenuConfig): MenuItemConstructorOpt
       { role: "about", label: `About ${appName}` },
       { type: "separator" },
       menuItem("open-settings", "Settings…", dispatch),
-      {
-        label: "Check for Updates…",
-        click: () => config.onCheckForUpdates?.()
-      },
+      menuItem("check-for-updates", "Check for Updates…", dispatch),
       { type: "separator" },
       { role: "services" },
       { type: "separator" },

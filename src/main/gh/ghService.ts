@@ -95,7 +95,14 @@ export class GhService {
       // so a transient/auth failure doesn't masquerade as "no PR for this
       // branch" indefinitely. (audit-2026-05-17 M12)
       const category = ghErrorCategory(error);
-      if (category !== "no-pr" && category !== "unknown") {
+      if (category === "unknown") {
+        // Log unknown errors so a `gh` upgrade that reworded an error message
+        // doesn't manifest as "PRs aren't refreshing" with zero diagnostic.
+        logger.info("gh.detectAndStoreRemote", "gh failed with unknown error", {
+          projectId,
+          error: errorMessage(error)
+        });
+      } else if (category !== "no-pr") {
         logger.warn("gh.detectAndStoreRemote", `gh failed (${category})`, {
           projectId,
           error: errorMessage(error)
@@ -144,7 +151,12 @@ export class GhService {
       ]);
     } catch (error) {
       const category = ghErrorCategory(error);
-      if (category !== "no-pr" && category !== "unknown") {
+      if (category === "unknown") {
+        logger.info("gh.refresh", "gh failed with unknown error", {
+          sessionId,
+          error: errorMessage(error)
+        });
+      } else if (category !== "no-pr") {
         logger.warn("gh.refresh", `gh failed (${category})`, {
           sessionId,
           error: errorMessage(error)

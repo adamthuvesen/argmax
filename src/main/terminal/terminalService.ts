@@ -115,10 +115,21 @@ export class TerminalService {
     // SIGTERM-then-SIGKILL escalation so a trap'd shell (vim, a script
     // ignoring SIGHUP) is forcibly killed within the grace window instead
     // of surviving app quit. Same pattern providerSessions/checkService
-    // already use. (audit-2026-05-17 M16)
+    // already use.
+    //
+    // Two guards against the PID-reuse hazard called out in processControl.ts:
+    // a private `exited` flag set by a dedicated `onExit` installed BEFORE
+    // the existing disposables are cleared, and an `isStillAlive` probe that
+    // short-circuits SIGKILL when the pty has already exited.
     for (const [, entry] of this.terminals) {
+      let exited = false;
+      let cancelEscalation: (() => void) | null = null;
+      const exitDisposable = entry.pty.onExit(() => {
+        exited = true;
+        cancelEscalation?.();
+      });
       for (const d of entry.disposables) d.dispose();
-      scheduleSigkillEscalation(
+      const escalation = scheduleSigkillEscalation(
         () => safeKill(entry.pty),
         () => {
           try {
@@ -126,8 +137,11 @@ export class TerminalService {
           } catch {
             /* already exited */
           }
-        }
+        },
+        { isStillAlive: () => !exited }
       );
+      cancelEscalation = escalation.cancel;
+      if (exited) exitDisposable.dispose();
     }
     this.terminals.clear();
   }

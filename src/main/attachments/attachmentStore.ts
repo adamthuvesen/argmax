@@ -105,7 +105,15 @@ export class AttachmentStore {
    *  not an error. Exposed for housekeeping; not wired today because sessions
    *  are never deleted from the database. */
   async pruneSession(sessionId: string): Promise<void> {
-    const sessionDir = path.join(this.baseDir, sessionId);
+    const sessionDir = path.resolve(this.baseDir, sessionId);
+    const baseResolved = path.resolve(this.baseDir);
+    const baseWithSep = baseResolved.endsWith(path.sep) ? baseResolved : baseResolved + path.sep;
+    if (sessionDir === baseResolved || !sessionDir.startsWith(baseWithSep)) {
+      throw new AttachmentStoreError(
+        `sessionId resolves outside the attachments root: ${sessionId}`,
+        "INVALID_SESSION_ID"
+      );
+    }
     await rm(sessionDir, { recursive: true, force: true });
   }
 }

@@ -64,8 +64,10 @@ const highRiskPatterns: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\bmkfs(\.[a-z0-9]+)?\b/i, reason: "Filesystem creation" },
   // chmod with a world-writable bit (mode digit 7 or 6 in the world slot).
   // Matches numeric modes like 777, 666, 0777, -R 777. Does NOT match
-  // chmod +x, chmod u+x, chmod g-w.
-  { pattern: /\bchmod\s+(?:-R\s+)?0?[0-7]?[0-7]?[67]\b/i, reason: "World-writable chmod" },
+  // chmod +x, chmod u+x, chmod g-w. Requires a 3- or 4-digit numeric mode so
+  // single-digit calls like `chmod 6 file` (which set the SUID/SGID bits but
+  // are not world-writable) don't trip the gate.
+  { pattern: /\bchmod\s+(?:-R\s+)?0?[0-7][0-7][67]\b/i, reason: "World-writable chmod" },
   // git destructive operations.
   { pattern: /\bgit\s+reset\b[^\n;|&]*\s--hard\b/i, reason: "Hard git reset" },
   { pattern: /\bgit\s+reset\b/i, reason: "Git reset" },

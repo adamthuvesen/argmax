@@ -73,8 +73,11 @@ export function extractLearningCandidates(events: readonly TimelineEvent[]): Lea
       buckets.set(key, { count: 1, firstEvent: event });
     }
   }
+  // Highest-frequency buckets first — the cap intends to keep the strongest
+  // signal, not the first-seen one (Map iteration is insertion-ordered).
+  const sortedBuckets = Array.from(buckets.entries()).sort((a, b) => b[1].count - a[1].count);
   const candidates: LearningCandidate[] = [];
-  for (const [key, bucket] of buckets) {
+  for (const [key, bucket] of sortedBuckets) {
     if (bucket.count < MIN_REPETITIONS) continue;
     candidates.push({
       kind: "pitfall",

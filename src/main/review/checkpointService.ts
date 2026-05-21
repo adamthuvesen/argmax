@@ -7,6 +7,20 @@ import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { Checkpoint } from "../../shared/types.js";
 import { runGitBuffer, runGitText } from "../git/exec.js";
 
+/** Max bytes a single checkpoint diff may occupy on disk. Hitting this means
+ *  the worktree has a multi-megabyte lockfile / binary churn — refuse rather
+ *  than silently persisting hundreds of MB per checkpoint. */
+const MAX_CHECKPOINT_DIFF_BYTES = 32 * 1024 * 1024; // 32 MiB
+
+export class CheckpointTooLargeError extends Error {
+  readonly code = "CHECKPOINT_TOO_LARGE" as const;
+  constructor(public readonly byteLength: number) {
+    super(
+      `Checkpoint diff is ${byteLength} bytes, exceeds ${MAX_CHECKPOINT_DIFF_BYTES} byte cap.`
+    );
+  }
+}
+
 export interface CreateCheckpointInput {
   workspaceId: string;
   label: string;
@@ -27,6 +41,9 @@ export class CheckpointService {
       runGitText(workspace.path, ["rev-parse", "HEAD"]),
       buildCheckpointDiff(workspace.path)
     ]);
+    if (diff.byteLength > MAX_CHECKPOINT_DIFF_BYTES) {
+      throw new CheckpointTooLargeError(diff.byteLength);
+    }
     const branch = branchRaw.trim() || workspace.branch;
     const gitRef = gitRefRaw.trim() || null;
     const patchPath = join(this.checkpointDirectory, `${id}.patch`);

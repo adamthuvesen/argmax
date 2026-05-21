@@ -118,13 +118,28 @@ export function deleteLearning(connection: Database.Database, id: string): void 
  * the matching session id, event id, an FTS5 snippet (with `<b>` markers
  * around the matched tokens), and the raw rank (lower = more relevant).
  *
- * The query is passed straight into MATCH so callers can use the standard
- * FTS5 operators (prefix `term*`, phrase `"foo bar"`, NEAR, AND/OR/NOT). To
- * accept untrusted free-text without surprising operator behavior, wrap the
- * user input in double quotes before invoking — that's the renderer's
- * responsibility, not this helper's.
+ * Free-text input is quoted and escaped so FTS5 operator syntax doesn't leak
+ * — `"`, `*`, `(`, `AND`/`OR`/`NEAR` etc. are no longer special. Use
+ * {@link searchEventsRaw} when you actually want operator syntax (CLI usage,
+ * power-user palette).
  */
 export function searchEvents(
+  connection: Database.Database,
+  query: string,
+  limit = 50
+): Array<{ sessionId: string; eventId: string; snippet: string; rank: number }> {
+  return searchEventsRaw(connection, escapeFts5(query), limit);
+}
+
+/** Wrap user input so FTS5 treats it as a literal phrase, escaping any
+ *  embedded double quotes. Whitespace inside the phrase still tokenises. */
+function escapeFts5(query: string): string {
+  const trimmed = query.trim();
+  if (!trimmed) return "";
+  return `"${trimmed.replace(/"/g, '""')}"`;
+}
+
+export function searchEventsRaw(
   connection: Database.Database,
   query: string,
   limit = 50

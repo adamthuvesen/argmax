@@ -70,6 +70,11 @@ export class CheckService {
    * needing the individual run handles.
    */
   private readonly running = new Map<string, Set<ChildProcess>>();
+  /** Children we explicitly cancelled via cancelWorkspaceChecks. Read in
+   *  runWorkspaceCheck's finish() so the persisted status is "cancelled"
+   *  rather than "failed" with exit code 143. WeakSet drops the entry when
+   *  the ChildProcess is GC'd, so we never leak. */
+  private readonly cancelledChildren = new WeakSet<ChildProcess>();
 
   constructor(private readonly database: ArgmaxDatabase) {}
 
@@ -99,6 +104,7 @@ export class CheckService {
     let timedOut = false;
     let aborted = false;
     let escalation: { cancel: () => void } | null = null;
+    let spawnedChild: ChildProcess | null = null;
 
     const exitCode = await new Promise<number>((resolve) => {
       // detached: true puts the child in its own process group so we can
@@ -110,6 +116,7 @@ export class CheckService {
         env: filterSensitiveEnv(process.env),
         detached: true
       });
+      spawnedChild = child;
 
       this.trackChild(workspace.id, child);
 
@@ -214,7 +221,7 @@ export class CheckService {
     if (timedOut) {
       status = "cancelled";
       summaryPrefix = "[timed-out] ";
-    } else if (aborted) {
+    } else if (aborted || (spawnedChild !== null && this.cancelledChildren.has(spawnedChild))) {
       status = "cancelled";
       summaryPrefix = "[cancelled] ";
     } else {
@@ -244,6 +251,10 @@ export class CheckService {
     for (const child of children) {
       if (typeof child.pid !== "number") continue;
       const pid = child.pid;
+      // Mark the child as user-cancelled so runWorkspaceCheck's finish()
+      // persists status="cancelled" rather than "failed" with the SIGTERM
+      // exit code (143).
+      this.cancelledChildren.add(child);
       // Attach the cancel handle to the child's exit so the 2s SIGKILL timer
       // doesn't fire against a (possibly recycled) pgid after the child has
       // already gone. runWorkspaceCheck's own exit handler still resolves the

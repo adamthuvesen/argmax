@@ -23,8 +23,7 @@ import {
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type RefObject
+  type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
@@ -212,42 +211,6 @@ function isSubAgentProseEcho(event: TimelineEvent): boolean {
   return typeof parentToolUseId === "string" && parentToolUseId.length > 0;
 }
 
-// Walk to the deepest last leaf, skipping into <code>/<pre> so the caret never
-// lands inside a syntax-highlighted block. We fall back to the parent of a
-// code/pre child rather than descending in.
-function findCaretAnchor(root: HTMLElement): HTMLElement {
-  let node: HTMLElement = root;
-  while (true) {
-    const next = node.lastElementChild as HTMLElement | null;
-    if (!next) return node;
-    const tag = next.tagName;
-    if (tag === "CODE" || tag === "PRE") return node;
-    node = next;
-  }
-}
-
-function useStreamingCaret(
-  rootRef: RefObject<HTMLDivElement | null>,
-  streaming: boolean,
-  text: string
-): void {
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return undefined;
-    // Always sweep any prior caret first — we own this DOM node.
-    root.querySelectorAll(".streaming-caret").forEach((node) => node.remove());
-    if (!streaming) return undefined;
-    const anchor = findCaretAnchor(root);
-    const caret = root.ownerDocument.createElement("span");
-    caret.className = "streaming-caret";
-    caret.setAttribute("aria-hidden", "true");
-    anchor.appendChild(caret);
-    return () => caret.remove();
-    // `text` is included so a re-render after new deltas re-runs the walk and
-    // moves the caret to the newest last leaf.
-  }, [rootRef, streaming, text]);
-}
-
 function StreamingMarkdown({
   text,
   streaming,
@@ -259,13 +222,8 @@ function StreamingMarkdown({
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  useStreamingCaret(rootRef, streaming, text);
   return (
-    <div
-      ref={rootRef}
-      className={`markdown${streaming ? " markdown-streaming" : ""}`}
-    >
+    <div className={`markdown${streaming ? " markdown-streaming" : ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

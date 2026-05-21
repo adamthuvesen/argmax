@@ -1,17 +1,6 @@
 # Architecture
 
-Two processes, three folders, one IPC contract.
-
-```
-┌────────────────────────────┐         ┌────────────────────────────┐
-│ Renderer (React + Vite)    │  IPC    │ Main (Electron, Node)      │
-│ ────────────────────────── │ ◀────▶  │ ────────────────────────── │
-│ • Composes UI from focused │         │ • SQLite (better-sqlite3)  │
-│   IPC reads + live deltas  │         │ • Provider PTYs / stdio    │
-│ • No direct Node access    │         │ • Workspaces, checks,      │
-│   (window.argmax only)     │         │   approvals, review, gh    │
-└────────────────────────────┘         └────────────────────────────┘
-```
+Two processes, three source folders, one IPC contract.
 
 Open the right deep dive when you need it:
 

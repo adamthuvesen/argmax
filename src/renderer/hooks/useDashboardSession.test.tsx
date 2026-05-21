@@ -53,6 +53,7 @@ describe("useDashboardSession — refresh / delta race", () => {
   let baseSnapshot: DashboardSnapshot;
   let statusMock: ReturnType<typeof vi.fn<ArgmaxApi["workspaces"]["status"]>>;
   let pendingMock: ReturnType<typeof vi.fn<ArgmaxApi["approvals"]["pending"]>>;
+  let resolveApprovalMock: ReturnType<typeof vi.fn<ArgmaxApi["approvals"]["resolve"]>>;
   // The hook subscribes via dashboard.onDelta on mount but the tests below
   // exercise the refresh path directly — they don't dispatch deltas, so the
   // captured listener stays unused. The stub still has to return a noop
@@ -101,10 +102,13 @@ describe("useDashboardSession — refresh / delta race", () => {
     pendingMock = vi
       .fn<ArgmaxApi["approvals"]["pending"]>()
       .mockResolvedValue([]);
+    resolveApprovalMock = vi
+      .fn<ArgmaxApi["approvals"]["resolve"]>()
+      .mockResolvedValue({} as Awaited<ReturnType<ArgmaxApi["approvals"]["resolve"]>>);
 
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
       workspaces: { status: statusMock } as unknown as ArgmaxApi["workspaces"],
-      approvals: { pending: pendingMock } as unknown as ArgmaxApi["approvals"],
+      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
       dashboard: {
         onDelta: () => () => {}
       } as unknown as ArgmaxApi["dashboard"],
@@ -209,6 +213,26 @@ describe("useDashboardSession — refresh / delta race", () => {
     expect(result.current.snapshot.approvals).toEqual([]);
   });
 
+  it("surfaces refresh errors after earlier refreshes have bumped the refresh token", async () => {
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.loadState).toBe("ready");
+
+    statusMock.mockRejectedValueOnce(new Error("status refresh failed"));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.loadState).toBe("error");
+    expect(result.current.loadError).toBe("status refresh failed");
+  });
+
   it("keeps sessions added by delta during loadSnapshot (audit M11)", async () => {
     const deltaSession = makeSession({
       id: "session-delta",
@@ -220,7 +244,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     let deltaHandler: ((delta: DashboardDelta) => void) | null = null;
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
       workspaces: { status: statusMock } as unknown as ArgmaxApi["workspaces"],
-      approvals: { pending: pendingMock } as unknown as ArgmaxApi["approvals"],
+      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
       dashboard: {
         onDelta: (handler: (delta: DashboardDelta) => void) => {
           deltaHandler = handler;
@@ -264,6 +288,71 @@ describe("useDashboardSession — refresh / delta race", () => {
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
     expect(result.current.snapshot.sessions.map((session) => session.id).sort()).toEqual(
       ["session-delta", "session-existing"]
+    );
+  });
+
+  it("rolls back only the failed approval when approval resolves overlap", async () => {
+    const approvalA: ApprovalRequest = {
+      id: "approval-a",
+      sessionId: "session-existing",
+      command: "npm test",
+      cwd: "/tmp/existing",
+      provider: "claude",
+      riskLevel: "low",
+      status: "pending",
+      createdAt: "2026-05-12T15:00:02.000Z",
+      resolvedAt: null
+    };
+    const approvalB: ApprovalRequest = {
+      ...approvalA,
+      id: "approval-b",
+      command: "npm run lint",
+      createdAt: "2026-05-12T15:00:03.000Z"
+    };
+    baseSnapshot = { ...baseSnapshot, approvals: [approvalA, approvalB] };
+
+    let rejectA!: (error: Error) => void;
+    const pendingA = new Promise<ApprovalRequest>((_resolve, reject) => {
+      rejectA = reject;
+    });
+    const pendingB = new Promise<ApprovalRequest>(() => undefined);
+    resolveApprovalMock.mockImplementation((input) =>
+      input.approvalId === "approval-a" ? pendingA : pendingB
+    );
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.snapshot.approvals).toHaveLength(2));
+
+    let resolveA!: Promise<void>;
+    act(() => {
+      resolveA = result.current.resolveApproval("approval-a", "approved");
+    });
+    await waitFor(() =>
+      expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-a")?.status).toBe(
+        "approved"
+      )
+    );
+
+    act(() => {
+      void result.current.resolveApproval("approval-b", "rejected");
+    });
+    await waitFor(() =>
+      expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-b")?.status).toBe(
+        "rejected"
+      )
+    );
+
+    await act(async () => {
+      rejectA(new Error("approval failed"));
+      await resolveA;
+    });
+
+    expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-a")?.status).toBe(
+      "pending"
+    );
+    expect(result.current.snapshot.approvals.find((approval) => approval.id === "approval-b")?.status).toBe(
+      "rejected"
     );
   });
 });

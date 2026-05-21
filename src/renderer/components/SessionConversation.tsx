@@ -75,7 +75,6 @@ import {
   extractToolOutput,
   extractToolUseId,
   isBashLikeTool,
-  type ConversationItem,
   type ToolCall,
   type ToolCallGroup
 } from "../lib/toolCalls.js";
@@ -207,6 +206,37 @@ function toolsNamed(toolItems: TurnToolItem[], name: string): ToolCall[] {
     }
   }
   return matches;
+}
+
+function questionsFromAskUserQuestionTool(tool: ToolCall): Question[] | null {
+  const raw = tool.inputFull?.questions;
+  if (!Array.isArray(raw)) return null;
+  const questions: Question[] = [];
+  for (const q of raw) {
+    if (!q || typeof q !== "object") continue;
+    const qq = q as Record<string, unknown>;
+    const questionText = typeof qq.question === "string" ? qq.question : "";
+    if (!questionText) continue;
+    const header = typeof qq.header === "string" ? qq.header : "";
+    const optionsRaw = Array.isArray(qq.options) ? qq.options : [];
+    if (optionsRaw.length > 4) return null;
+    const options = optionsRaw
+      .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>) : null))
+      .filter((o): o is Record<string, unknown> => o !== null)
+      .map((o) => ({
+        label: typeof o.label === "string" ? o.label : "",
+        ...(typeof o.description === "string" ? { description: o.description } : {})
+      }))
+      .filter((o) => o.label.length > 0);
+    if (options.length === 0) continue;
+    questions.push({
+      question: questionText,
+      header,
+      options,
+      multiSelect: qq.multiSelect === true
+    });
+  }
+  return questions.length > 0 ? questions : null;
 }
 
 function visibleTurnToolItem(item: TurnToolItem, hiddenToolIds: ReadonlySet<string>): TurnToolItem | null {
@@ -547,7 +577,7 @@ export function SessionConversation({
         (tool) =>
           tool.status === "running" &&
           tool.name !== "ExitPlanMode" &&
-          tool.name !== "AskUserQuestion"
+          (tool.name !== "AskUserQuestion" || !questionsFromAskUserQuestionTool(tool))
       ),
     [toolCalls]
   );
@@ -566,7 +596,8 @@ export function SessionConversation({
     }
     return toolCalls.some(
       (tool) =>
-        (tool.name === "AskUserQuestion" || tool.name === "ExitPlanMode") &&
+        ((tool.name === "AskUserQuestion" && questionsFromAskUserQuestionTool(tool)) ||
+          tool.name === "ExitPlanMode") &&
         tool.createdAt > lastUserMessageTime
     );
   }, [events, toolCalls]);
@@ -1032,50 +1063,16 @@ export function SessionConversation({
             // most recent (the model's final, refined ask), but hide the raw
             // tool rows for every attempt so the UI shows one card, not a
             // pile of denied-tool rows above it.
-            const askUserQuestionToolIds = new Set<string>();
+            const askUserQuestionCandidateIds = new Set<string>();
             let askUserQuestionTool: { id: string; createdAt: string; questions: Question[] } | null = null;
             // Two retries inside the 75ms parallel-window fold into a
             // `tool-group`; only checking `t.kind === "tool"` would miss
             // those and the card would silently vanish. Flatten both kinds.
             const askUserQuestionCandidates = toolsNamed(item.toolItems, "AskUserQuestion");
             for (const tool of askUserQuestionCandidates) {
-              // Add the ID before the status check so the raw tool row stays
-              // hidden while running, including when the question is mixed
-              // into a parallel Agent/Bash tool group.
-              askUserQuestionToolIds.add(tool.id);
-              const raw = tool.inputFull?.questions;
-              if (!Array.isArray(raw)) continue;
-              const questions: Question[] = [];
-              let hasInvalidQuestionShape = false;
-              for (const q of raw) {
-                if (!q || typeof q !== "object") continue;
-                const qq = q as Record<string, unknown>;
-                const questionText = typeof qq.question === "string" ? qq.question : "";
-                if (!questionText) continue;
-                const header = typeof qq.header === "string" ? qq.header : "";
-                const optionsRaw = Array.isArray(qq.options) ? qq.options : [];
-                if (optionsRaw.length > 4) {
-                  hasInvalidQuestionShape = true;
-                  break;
-                }
-                const options = optionsRaw
-                  .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>) : null))
-                  .filter((o): o is Record<string, unknown> => o !== null)
-                  .map((o) => ({
-                    label: typeof o.label === "string" ? o.label : "",
-                    ...(typeof o.description === "string" ? { description: o.description } : {})
-                  }))
-                  .filter((o) => o.label.length > 0);
-                if (options.length === 0) continue;
-                questions.push({
-                  question: questionText,
-                  header,
-                  options,
-                  multiSelect: qq.multiSelect === true
-                });
-              }
-              if (hasInvalidQuestionShape) continue;
-              if (questions.length === 0) continue;
+              askUserQuestionCandidateIds.add(tool.id);
+              const questions = questionsFromAskUserQuestionTool(tool);
+              if (!questions) continue;
               // First valid attempt wins, and stays put. Later retries are
               // still added to `askUserQuestionToolIds` (so their raw rows
               // stay hidden) but the card key is pinned to this tool's id —
@@ -1085,6 +1082,7 @@ export function SessionConversation({
                 askUserQuestionTool = { id: tool.id, createdAt: tool.createdAt, questions };
               }
             }
+            const askUserQuestionToolIds = askUserQuestionTool ? askUserQuestionCandidateIds : new Set<string>();
             const handleQuestionAnswer = (answerMarkdown: string): void => {
               if (!session) return;
               shouldRefocusInput.current = true;

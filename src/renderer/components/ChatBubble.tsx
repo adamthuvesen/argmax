@@ -1,5 +1,5 @@
 import { Copy } from "lucide-react";
-import { memo, type JSX, type ReactNode } from "react";
+import { type JSX, type ReactNode } from "react";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 
 type ChatBubbleProps = {
@@ -8,7 +8,7 @@ type ChatBubbleProps = {
   children: ReactNode;
 };
 
-function ChatBubbleInner({ kind, rawMarkdown, children }: ChatBubbleProps): JSX.Element {
+export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JSX.Element {
   const [copied, copy] = useCopyToClipboard();
 
   const handleCopy = (): void => {
@@ -30,7 +30,3 @@ function ChatBubbleInner({ kind, rawMarkdown, children }: ChatBubbleProps): JSX.
     </article>
   );
 }
-
-export const ChatBubble = memo(ChatBubbleInner, (prev, next) => {
-  return prev.kind === next.kind && prev.rawMarkdown === next.rawMarkdown;
-});

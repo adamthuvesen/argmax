@@ -1,10 +1,14 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ArgmaxApi, WorkspaceSummary } from "../../shared/types.js";
+import type { ArgmaxApi, ProjectSummary, WorkspaceSummary } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "./useReviewState.js";
 
 function workspaceSource(workspace: WorkspaceSummary): ReviewSource {
   return { kind: "workspace", workspace };
+}
+
+function projectSource(project: ProjectSummary): ReviewSource {
+  return { kind: "project", project };
 }
 
 function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
@@ -25,12 +29,34 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
   };
 }
 
+function makeProject(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
+  return {
+    id: "project-1",
+    name: "Argmax",
+    repoPath: "/tmp/repo",
+    currentBranch: "main",
+    defaultBranch: "main",
+    settings: {
+      defaultProvider: "codex",
+      defaultModelLabel: "GPT-5.3 Codex",
+      worktreeLocation: "/tmp/wt",
+      setupCommand: "",
+      checkCommands: []
+    },
+    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
+    latestActivityAt: "2026-05-12T15:54:00.000Z",
+    ...overrides
+  };
+}
+
 describe("useReviewState — IPC fan-out resistance", () => {
   let listChangedFiles: ReturnType<typeof vi.fn<ArgmaxApi["review"]["listChangedFiles"]>>;
   let listWorkspaceFiles: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["listFiles"]>>;
   let readWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
   let writeWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFile"]>>;
   let statWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["statFile"]>>;
+  let readProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFileForProject"]>>;
+  let writeProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFileForProject"]>>;
 
   beforeEach(() => {
     listChangedFiles = vi
@@ -48,6 +74,12 @@ describe("useReviewState — IPC fan-out resistance", () => {
     statWorkspaceFile = vi
       .fn<ArgmaxApi["workspace"]["statFile"]>()
       .mockResolvedValue({ mtimeMs: 1, size: 0 });
+    readProjectFile = vi
+      .fn<ArgmaxApi["workspace"]["readFileForProject"]>()
+      .mockResolvedValue({ kind: "text", content: "project\n", size: 8, mtimeMs: 10 });
+    writeProjectFile = vi
+      .fn<ArgmaxApi["workspace"]["writeFileForProject"]>()
+      .mockResolvedValue({ ok: true, mtimeMs: 11, size: 0 });
 
     Object.defineProperty(window, "argmax", {
       configurable: true,
@@ -65,8 +97,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
           writeFile: writeWorkspaceFile,
           statFile: statWorkspaceFile,
           listFilesForProject: vi.fn().mockResolvedValue([]),
-          readFileForProject: vi.fn(),
-          writeFileForProject: vi.fn(),
+          readFileForProject: readProjectFile,
+          writeFileForProject: writeProjectFile,
           statFileForProject: vi.fn(),
           grepContent: vi.fn().mockResolvedValue({ files: [], truncated: false })
         }
@@ -347,5 +379,29 @@ describe("useReviewState — IPC fan-out resistance", () => {
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
     expect(result.current.workspaceFiles.tabs).toHaveLength(0);
     expect(result.current.workspaceFiles.activeTabPath).toBeNull();
+  });
+
+  it("keeps project file browsing read-only", async () => {
+    const { result } = renderHook(() => useReviewState(projectSource(makeProject())));
+
+    await waitFor(() => expect(result.current.filesState).toBe("ready"));
+    act(() => {
+      result.current.openInFilesView("src/project.ts");
+    });
+    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith("project-1", "src/project.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+
+    expect(result.current.workspaceFiles.canEdit).toBe(false);
+    act(() => {
+      result.current.workspaceFiles.editFile("mutated\n");
+    });
+    expect(result.current.workspaceFiles.buffer).toBe("project\n");
+    expect(result.current.workspaceFiles.isDirty).toBe(false);
+
+    await act(async () => {
+      await result.current.workspaceFiles.saveFile();
+    });
+
+    expect(writeProjectFile).not.toHaveBeenCalled();
   });
 });

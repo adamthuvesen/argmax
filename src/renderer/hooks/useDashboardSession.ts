@@ -142,11 +142,27 @@ export function useDashboardSession(
       if (token !== dashboardLoadToken.current) {
         return;
       }
-      setSnapshot((current) => ({
-        ...current,
-        ...status,
-        approvals
-      }));
+      // Upsert workspaces/sessions/checks/checkpoints via mergeDashboardDelta
+      // instead of spreading them on top. Spreading races with concurrent
+      // dashboard deltas: if a delta arrived during the await with a
+      // newly-launched session, the status response (captured before the
+      // delta) wouldn't include it, and the spread would erase the session
+      // from the snapshot — making the grid reconcile drop its cell and the
+      // chat unmount-remount. Upsert semantics keep additions that arrived
+      // mid-refresh.
+      //
+      // Approvals stay a full replacement: the pending list IS the current
+      // truth, and merging would leave resolved approvals lingering in
+      // snapshot.approvals because mergeSlice never deletes.
+      setSnapshot((current) => {
+        const merged = mergeDashboardDelta(current, {
+          workspaces: status.workspaces,
+          sessions: status.sessions,
+          checks: status.checks,
+          checkpoints: status.checkpoints
+        });
+        return merged.approvals === approvals ? merged : { ...merged, approvals };
+      });
       setLoadState("ready");
       setLoadError(null);
     } catch (error) {

@@ -8,7 +8,6 @@ export interface MenuConfig {
   appName?: string;
   isDev?: boolean;
   onCommand: (command: MenuCommand) => void;
-  onCheckForUpdates?: () => void;
 }
 
 function menuItem(

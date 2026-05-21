@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatBubble } from "./ChatBubble.js";
 
@@ -16,7 +16,7 @@ describe("ChatBubble", () => {
     expect(screen.getByRole("button", { name: "Copy bubble" })).toBeInTheDocument();
   });
 
-  it("calls clipboard.writeText with the raw markdown on copy", () => {
+  it("calls clipboard.writeText with the raw markdown on copy", async () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -27,7 +27,9 @@ describe("ChatBubble", () => {
         <p>**bold**</p>
       </ChatBubble>
     );
-    screen.getByRole("button", { name: "Copy bubble" }).click();
+    const button = screen.getByRole("button", { name: "Copy bubble" });
+    fireEvent.click(button);
     expect(writeText).toHaveBeenCalledWith("**bold**");
+    await waitFor(() => expect(button).toHaveAttribute("title", "Copied!"));
   });
 });

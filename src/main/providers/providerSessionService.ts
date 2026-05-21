@@ -62,7 +62,8 @@ import {
 } from "./sessionPayloadCaps.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 import type { NotificationService } from "../notifications/notificationService.js";
-import { extractLearningCandidates } from "../memory/learningExtractor.js";
+import { bumpInjectedLearningHits, synthesizeLearnings } from "./providerSessionLearnings.js";
+import { recoverOrphanedSessions } from "./providerSessionRecovery.js";
 import { composeLearningPreamble } from "../memory/learningInjector.js";
 import { promptForAgentMode } from "./agentModePrompt.js";
 
@@ -664,129 +665,16 @@ export class ProviderSessionService {
    * `session.recovered-from-crash` timeline event so users see why a session
    * they expected to be live is no longer running.
    */
-  /**
-   * Extract and persist learning candidates from a completed session's
-   * timeline. Best-effort: a failing insert (e.g. project was archived
-   * mid-flight) is swallowed so the session-complete pipeline can't fail.
-   */
   private bumpInjectedLearningHits(ids: readonly string[]): void {
-    try {
-      const now = new Date().toISOString();
-      const stmt = this.database.connection.prepare(
-        "UPDATE learnings SET hits = hits + 1, last_seen_at = ? WHERE id = ?"
-      );
-      this.database.connection.transaction(() => {
-        for (const id of ids) {
-          stmt.run(now, id);
-        }
-      })();
-    } catch (error) {
-      logger.warn("providers.memory", "bumpInjectedLearningHits failed", {
-        error: errorMessage(error),
-        batchSize: ids.length,
-        ids: ids.slice(0, 16)
-      });
-    }
+    bumpInjectedLearningHits(this.database, ids);
   }
 
   private synthesizeLearnings(sessionId: string, workspaceId: string): void {
-    try {
-      const workspace = this.database.getWorkspace(workspaceId);
-      const events = this.listAllSessionEvents(sessionId);
-      const candidates = extractLearningCandidates(events);
-      for (const candidate of candidates) {
-        this.database.insertLearning({
-          projectId: workspace.projectId,
-          kind: candidate.kind,
-          summary: candidate.summary,
-          evidenceSessionId: candidate.evidenceSessionId,
-          evidenceEventId: candidate.evidenceEventId
-        });
-      }
-    } catch (error) {
-      // Synthesizer is non-critical; log and move on.
-      logger.warn("providers.memory", "synthesizeLearnings failed", {
-        error: errorMessage(error)
-      });
-    }
-  }
-
-  private listAllSessionEvents(sessionId: string): TimelineEvent[] {
-    // Cap the synthesis input. The learning extractor is bucket-based and
-    // doesn't need every event ever — a session with tens of thousands of
-    // events used to load the entire timeline into main memory on every
-    // session-complete. 5,000 events is enough to cover any plausible recent
-    // history while keeping peak memory bounded.
-    const SYNTHESIS_EVENT_CAP = 5_000;
-    const events: TimelineEvent[] = [];
-    let eventCursor = 0;
-    while (events.length < SYNTHESIS_EVENT_CAP) {
-      const page = this.database.listSessionEventsSince({
-        sessionId,
-        eventCursor,
-        rawOutputCursor: Number.MAX_SAFE_INTEGER
-      });
-      if (page.events.length === 0 || page.eventCursor <= eventCursor) {
-        return events;
-      }
-      // Slice the page before push so peak memory stays at SYNTHESIS_EVENT_CAP
-      // exactly — without this guard a 500-row page that lands past the cap
-      // would push then slice, briefly holding cap+page-size events in RAM.
-      const remaining = SYNTHESIS_EVENT_CAP - events.length;
-      if (page.events.length <= remaining) {
-        events.push(...page.events);
-      } else {
-        events.push(...page.events.slice(0, remaining));
-        return events;
-      }
-      eventCursor = page.eventCursor;
-    }
-    return events;
+    synthesizeLearnings(this.database, sessionId, workspaceId);
   }
 
   recoverOrphanedSessions(): { recoveredCount: number } {
-    const ids = this.database.listRunningSessionIds();
-    if (ids.length === 0) {
-      return { recoveredCount: 0 };
-    }
-    const completedAt = new Date().toISOString();
-    const recoveredSessions = [];
-    const recoveredWorkspaces = [];
-    const recoveryEvents = [];
-    for (const sessionId of ids) {
-      try {
-        const session = this.database.updateSessionState(sessionId, {
-          state: "cancelled",
-          attention: computeSessionAttention({ state: "cancelled" }),
-          completedAt,
-          lastActivityAt: completedAt
-        });
-        recoveredSessions.push(session);
-        const workspace = this.database.updateWorkspaceState(session.workspaceId, "cancelled");
-        recoveredWorkspaces.push(workspace);
-        const event = this.database.persistTimelineEvent({
-          id: randomUUID(),
-          sessionId,
-          type: "session.recovered-from-crash",
-          message: "Argmax restarted while this session was still running; marking as cancelled.",
-          payload: {},
-          createdAt: completedAt
-        });
-        recoveryEvents.push(event);
-      } catch (error) {
-        if (error instanceof RecordNotFoundError) continue;
-        throw error;
-      }
-    }
-    if (recoveredSessions.length > 0) {
-      this.publishDashboardDelta({
-        projects: this.database.listProjects(),
-        workspaces: recoveredWorkspaces,
-        sessions: recoveredSessions,
-        events: recoveryEvents
-      });
-    }
-    return { recoveredCount: recoveredSessions.length };
+    return recoverOrphanedSessions(this.database, (delta) => this.publishDelta(delta));
   }
 
   private cancelSession(sessionId: string): void {

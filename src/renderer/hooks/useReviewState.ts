@@ -318,9 +318,6 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
           }
           return listenerStateRef.current.isPanelOpen ? sorted[0]?.path ?? null : null;
         });
-        if (sorted.length === 0) {
-          setIsPanelOpen(false);
-        }
       })
       .catch((error) => {
         if (token !== fileLoadToken.current) {

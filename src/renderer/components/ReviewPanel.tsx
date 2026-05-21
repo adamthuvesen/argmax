@@ -254,6 +254,12 @@ export function ReviewPanel({
       <div className="review-body">
         <div className="review-list-col" style={{ width: leftColumnWidth }}>
           {isChanges ? (
+            review.filesState === "ready" && review.files.length === 0 ? (
+              <p className="review-empty">
+                <span className="review-empty-mark" aria-hidden="true">∅</span>
+                <span>No changes.</span>
+              </p>
+            ) : (
             <div className="review-file-tabs" aria-label="Changed file list">
               {review.files.map((file) => {
                 const name = fileBasename(file.path);
@@ -278,6 +284,7 @@ export function ReviewPanel({
                 );
               })}
             </div>
+            )
           ) : (
             <WorkspaceTree state={review.workspaceFiles} />
           )}

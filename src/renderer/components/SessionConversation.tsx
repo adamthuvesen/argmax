@@ -302,6 +302,7 @@ function StreamingMarkdown({
 export function SessionConversation({
   checks,
   defaultToolCallsExpanded,
+  defaultToolCallGroupsExpanded,
   events,
   isLogOpen,
   onClose,
@@ -325,6 +326,7 @@ export function SessionConversation({
 }: {
   checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
+  defaultToolCallGroupsExpanded?: boolean;
   events: TimelineEvent[];
   isLogOpen: boolean;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
@@ -1490,7 +1492,14 @@ export function SessionConversation({
               }
               if (Number.isFinite(earliest)) turnStartedAtMs = earliest;
             }
-            const groupDefaultExpanded = turnIsActive ? defaultToolCallsExpanded : false;
+            // The inner toggle controls whether each tool group bubble and
+            // standalone tool row reveals its detail body by default. While
+            // the turn is live the rows still auto-expand so the user can see
+            // streaming output regardless of this preference; after the turn
+            // completes the row's own user toggle takes over.
+            const groupDefaultExpanded = turnIsActive
+              ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded)
+              : false;
             const toolChildren: AnnotatedChild[] = visibleToolItems
               .map((tItem) => {
               if (tItem.kind === "tool") {

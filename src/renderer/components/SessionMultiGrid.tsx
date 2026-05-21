@@ -42,6 +42,7 @@ interface SessionMultiGridProps {
   workspacesById: Map<string, WorkspaceSummary>;
   sessionsById: Map<string, SessionSummary>;
   defaultToolCallsExpanded?: boolean;
+  defaultToolCallGroupsExpanded?: boolean;
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
   rightPanelToggleSignal?: number;
@@ -80,6 +81,7 @@ export function SessionMultiGrid({
   workspacesById,
   sessionsById,
   defaultToolCallsExpanded,
+  defaultToolCallGroupsExpanded,
   showCostPanel = true,
   thinkingStyle,
   rightPanelToggleSignal,
@@ -234,6 +236,7 @@ export function SessionMultiGrid({
                         approvals={approvals}
                         checks={checks}
                         defaultToolCallsExpanded={defaultToolCallsExpanded}
+                        defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         events={events}
                         showCostPanel={showCostPanel}
                         isFocused={focused}

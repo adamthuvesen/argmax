@@ -105,6 +105,7 @@ import { withToast, type ToastMessage } from "./lib/withToast.js";
 const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
 const CHAT_COST_KEY = "argmax.chat.cost.visible";
 const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
+const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
 
 function readStoredSidebarTokensVisible(): boolean {
   if (typeof window === "undefined") return false;
@@ -120,6 +121,12 @@ function readStoredChatCostVisible(): boolean {
 function readStoredToolCallsExpanded(): boolean {
   if (typeof window === "undefined") return true;
   const raw = window.localStorage.getItem(TOOL_CALLS_EXPANDED_KEY);
+  return raw === null ? true : raw === "true";
+}
+
+function readStoredToolCallGroupsExpanded(): boolean {
+  if (typeof window === "undefined") return true;
+  const raw = window.localStorage.getItem(TOOL_CALL_GROUPS_EXPANDED_KEY);
   return raw === null ? true : raw === "true";
 }
 
@@ -145,6 +152,9 @@ export function App(): JSX.Element {
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize();
   const [toolCallsExpanded, setToolCallsExpanded] = useState<boolean>(() =>
     readStoredToolCallsExpanded()
+  );
+  const [toolCallGroupsExpanded, setToolCallGroupsExpanded] = useState<boolean>(() =>
+    readStoredToolCallGroupsExpanded()
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useState<boolean>(() => readStoredSidebarTokensVisible());
   const [chatCostVisible, setChatCostVisible] = useState<boolean>(() => readStoredChatCostVisible());
@@ -513,6 +523,10 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, String(toolCallsExpanded));
   }, [toolCallsExpanded]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TOOL_CALL_GROUPS_EXPANDED_KEY, String(toolCallGroupsExpanded));
+  }, [toolCallGroupsExpanded]);
 
   useEffect(() => {
     window.localStorage.setItem(CHAT_COST_KEY, String(chatCostVisible));
@@ -1245,6 +1259,8 @@ export function App(): JSX.Element {
                 onDefaultModelChange={setLaunchModel}
                 toolCallsExpanded={toolCallsExpanded}
                 onToolCallsExpandedChange={setToolCallsExpanded}
+                toolCallGroupsExpanded={toolCallGroupsExpanded}
+                onToolCallGroupsExpandedChange={setToolCallGroupsExpanded}
                 sidebarTokensVisible={sidebarTokensVisible}
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
                 chatCostVisible={chatCostVisible}
@@ -1277,6 +1293,7 @@ export function App(): JSX.Element {
               workspacesById={workspacesById}
               sessionsById={sessionsById}
               defaultToolCallsExpanded={toolCallsExpanded}
+              defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               showCostPanel={chatCostVisible}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}

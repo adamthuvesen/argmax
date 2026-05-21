@@ -719,6 +719,18 @@ export const migrations: Migration[] = [
       ALTER TABLE gh_pr ADD COLUMN pr_state TEXT;
       ALTER TABLE gh_pr ADD COLUMN notified_at TEXT;
     `
+  },
+  {
+    version: 20,
+    name: "events_session_rowid_index",
+    // Per-session tail reads filter on session_id then ORDER BY rowid. SQLite
+    // rejects `rowid` inside CREATE INDEX for TEXT PRIMARY KEY tables, so we
+    // reinforce the session_id seek; idx_events_session_created already covers
+    // (session_id, created_at) for alternate sort paths. (audit-2026-05-18 M14)
+    affectedTables: ["events"],
+    up: `
+      CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id);
+    `
   }
 ];
 

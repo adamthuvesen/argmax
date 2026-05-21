@@ -1,10 +1,11 @@
 import { shell } from "electron";
-import { z } from "zod";
 import {
   gitCommitInputSchema,
   gitCreateBranchInputSchema,
   gitPushInputSchema,
   gitViewOrCreatePrInputSchema,
+  prsListForSessionInputSchema,
+  prsRefreshInputSchema,
   type IpcChannel
 } from "../../shared/ipcSchemas.js";
 import type { GhService } from "../gh/ghService.js";
@@ -21,13 +22,13 @@ export function registerGitHandlers(
 
   register(
     "prs:list-for-session",
-    withValidation(z.object({ sessionId: z.string().min(1) }), (input) =>
+    withValidation(prsListForSessionInputSchema, (input) =>
       ghService.listForSession(input.sessionId)
     )
   );
   register(
     "prs:refresh",
-    withValidation(z.object({ sessionId: z.string().min(1) }), (input) => ghService.refresh(input.sessionId))
+    withValidation(prsRefreshInputSchema, (input) => ghService.refresh(input.sessionId))
   );
   register(
     "git:commit",

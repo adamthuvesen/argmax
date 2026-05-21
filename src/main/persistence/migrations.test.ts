@@ -116,6 +116,15 @@ describe("runMigrations — destructive recipe FK guard", () => {
       .get() as { n: number };
     expect(row.n).toBe(1);
   });
+
+  it("checks the final column manifest even when all migrations are already applied", () => {
+    const database = new Database(":memory:");
+    runMigrations(database);
+    database.exec("ALTER TABLE projects ADD COLUMN drift TEXT");
+
+    expect(() => runMigrations(database)).toThrow(MigrationDriftError);
+    expect(() => runMigrations(database)).toThrow(/Schema drift on table "projects"/);
+  });
 });
 
 /**

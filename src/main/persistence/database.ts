@@ -161,7 +161,10 @@ const RAW_OUTPUT_RETENTION = "-7 days";
 export function pruneOldRawOutputs(connection: Database.Database): void {
   try {
     connection
-      .prepare(`DELETE FROM raw_outputs WHERE created_at < datetime('now', '${RAW_OUTPUT_RETENTION}')`)
+      .prepare(
+        `DELETE FROM raw_outputs
+         WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${RAW_OUTPUT_RETENTION}')`
+      )
       .run();
   } catch (error) {
     logger.warn("database.prune", "pruneRawOutputs failed", {

@@ -407,6 +407,31 @@ describe("listProjects aggregation (audit H9)", () => {
 
     database.connection.close();
   });
+
+  it("orders projects by the newest session or workspace activity", () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const sessionHotProject = seedProject(database, "session-hot");
+    const workspaceHotProject = seedProject(database, "workspace-hot");
+    seedWorkspace(database, "ws-session-hot", sessionHotProject, "running");
+    seedWorkspace(database, "ws-workspace-hot", workspaceHotProject, "running");
+    seedSession(database, "s-session-hot", "ws-session-hot");
+
+    database.connection
+      .prepare("UPDATE workspaces SET last_activity_at = ? WHERE id = ?")
+      .run("2026-05-12T10:00:00.000Z", "ws-session-hot");
+    database.connection
+      .prepare("UPDATE sessions SET last_activity_at = ? WHERE id = ?")
+      .run("2026-05-12T12:00:00.000Z", "s-session-hot");
+    database.connection
+      .prepare("UPDATE workspaces SET last_activity_at = ? WHERE id = ?")
+      .run("2026-05-12T11:00:00.000Z", "ws-workspace-hot");
+
+    const projects = database.listProjects();
+
+    expect(projects[0]?.id).toBe("session-hot");
+    expect(projects[0]?.latestActivityAt).toBe("2026-05-12T12:00:00.000Z");
+    database.connection.close();
+  });
 });
 
 describe("selectPreferredAttempt atomicity (audit H12, task 10.3)", () => {
@@ -893,13 +918,15 @@ describe("pruneOldRawOutputs (ralph D4)", () => {
       new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
     insert.run("ro-old-10d", "session-prune-1", "stdout", "old", days(10));
     insert.run("ro-old-30d", "session-prune-1", "stdout", "older", days(30));
+    insert.run("ro-old-boundary", "session-prune-1", "stdout", "old-boundary", days(7 + 1 / 24));
+    insert.run("ro-fresh-boundary", "session-prune-1", "stdout", "fresh-boundary", days(7 - 1 / 24));
     insert.run("ro-fresh-1d", "session-prune-1", "stdout", "fresh", days(1));
     insert.run("ro-fresh-6d", "session-prune-1", "stdout", "near-edge", days(6));
 
     const countBefore = (
       database.connection.prepare("SELECT COUNT(*) AS c FROM raw_outputs").get() as { c: number }
     ).c;
-    expect(countBefore).toBe(4);
+    expect(countBefore).toBe(6);
 
     pruneOldRawOutputs(database.connection);
 
@@ -909,7 +936,7 @@ describe("pruneOldRawOutputs (ralph D4)", () => {
         .all() as Array<{ id: string }>
     ).map((row) => row.id);
 
-    expect(remaining).toEqual(["ro-fresh-6d", "ro-fresh-1d"]);
+    expect(remaining).toEqual(["ro-fresh-boundary", "ro-fresh-6d", "ro-fresh-1d"]);
 
     database.close();
   });

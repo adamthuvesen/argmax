@@ -791,13 +791,19 @@ describe("SessionConversation — model selection persistence", () => {
     expect(screen.queryByRole("button", { name: /Working/ })).not.toBeInTheDocument();
   });
 
-  it("keeps useful assistant fallback text after an AskUserQuestion card", () => {
+  it("hides hallucinated assistant prose emitted AFTER an AskUserQuestion card", () => {
+    // When AskUserQuestion errors out in structured-json mode, the model
+    // sometimes confabulates a "Thanks based on your input" message with
+    // fabricated answers BEFORE the user has touched the card. The card
+    // already conveys the ask, so post-tool prose is suppressed — same rule
+    // as PlanCard. Pre-tool intro narration stays (it's useful context).
     renderConversation(
       baseSession({ provider: "claude", state: "complete" }),
       [
         event("u1", "user.message", "scan and ask", "2026-05-12T15:00:00.000Z", {
           agentMode: "plan"
         }),
+        event("m0", "message.completed", "Scanning the repo now.", "2026-05-12T15:00:00.500Z"),
         event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
           type: "tool_use",
           id: "tu_q_fallback",
@@ -821,14 +827,17 @@ describe("SessionConversation — model selection persistence", () => {
         event(
           "m1",
           "message.completed",
-          "The docs scan found thin release notes. What should we prioritize?",
+          "Thanks! Based on your input: Priority: Runbooks.",
           "2026-05-12T15:00:08.000Z"
         )
       ]
     );
 
     expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
-    expect(screen.getByText("The docs scan found thin release notes. What should we prioritize?")).toBeInTheDocument();
+    expect(screen.getByText("Scanning the repo now.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Thanks! Based on your input: Priority: Runbooks.")
+    ).not.toBeInTheDocument();
   });
 
   it("hides invalid running AskUserQuestion attempts and renders the first valid retry", () => {

@@ -140,6 +140,8 @@ export function SettingsPanel({
   onDefaultModelChange,
   toolCallsExpanded,
   onToolCallsExpandedChange,
+  toolCallGroupsExpanded,
+  onToolCallGroupsExpandedChange,
   sidebarTokensVisible,
   onSidebarTokensVisibleChange,
   chatCostVisible,
@@ -162,6 +164,8 @@ export function SettingsPanel({
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   toolCallsExpanded: boolean;
   onToolCallsExpandedChange: (v: boolean) => void;
+  toolCallGroupsExpanded: boolean;
+  onToolCallGroupsExpandedChange: (v: boolean) => void;
   sidebarTokensVisible: boolean;
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
@@ -510,7 +514,7 @@ export function SettingsPanel({
             id="settings-agent-defaults-h"
             eyebrow="Session defaults"
             title="Model defaults"
-            description="Pick the model that pre-fills the launcher when you start a new session, and choose how much tool-call detail is visible by default."
+            description="Pick the model that pre-fills the launcher when you start a new session, and choose how much tool-call detail is visible by default. The two tool-call toggles are independent — keep the chat-level chip expanded while collapsing inner group bubbles, or any other combination."
           />
           <div className="settings-card">
             <div className="settings-row">
@@ -523,7 +527,7 @@ export function SettingsPanel({
               />
             </div>
             <Segmented
-              legend="Tool calls"
+              legend="Tool calls in chat"
               name="tool-calls-expand"
               value={toolCallsExpanded ? "show" : "hide"}
               onChange={(v) => onToolCallsExpandedChange(v === "show")}
@@ -532,6 +536,24 @@ export function SettingsPanel({
                 { value: "hide", label: "Show collapsed" }
               ]}
             />
+            <p className="settings-hint">
+              Controls the “Working for…” chip on each turn — whether the tool
+              activity for a turn is visible by default.
+            </p>
+            <Segmented
+              legend="Tool call groups"
+              name="tool-call-groups-expand"
+              value={toolCallGroupsExpanded ? "show" : "hide"}
+              onChange={(v) => onToolCallGroupsExpandedChange(v === "show")}
+              options={[
+                { value: "show", label: "Show expanded" },
+                { value: "hide", label: "Show collapsed" }
+              ]}
+            />
+            <p className="settings-hint">
+              Controls the inner bubbles like “Explored 6 files” — when collapsed,
+              you see the summary instead of every individual tool row.
+            </p>
           </div>
         </section>
 

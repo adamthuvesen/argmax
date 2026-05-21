@@ -55,6 +55,7 @@ export function SessionPane({
   approvals,
   checks,
   defaultToolCallsExpanded,
+  defaultToolCallGroupsExpanded,
   events,
   isFocused = true,
   onClose,
@@ -78,6 +79,7 @@ export function SessionPane({
   approvals: ApprovalRequest[];
   checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
+  defaultToolCallGroupsExpanded?: boolean;
   events: TimelineEvent[];
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
   isFocused?: boolean;
@@ -394,6 +396,7 @@ export function SessionPane({
         <SessionConversation
           checks={checks}
           defaultToolCallsExpanded={defaultToolCallsExpanded}
+          defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
           events={visibleEvents}
           isLogOpen={isLogOpen}
           onClose={onClose}

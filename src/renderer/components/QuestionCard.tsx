@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 export type QuestionOption = {
@@ -39,6 +40,7 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
   const [selected, setSelected] = useState<number[][]>(() => questions.map(() => []));
   const [activeIndexes, setActiveIndexes] = useState<number[]>(() => questions.map(() => 0));
   const [submitted, setSubmitted] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const optionsRefs = useRef<Array<HTMLUListElement | null>>([]);
 
   // Auto-focus the first question's listbox so keyboard nav works without
@@ -91,6 +93,7 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
   const submit = useCallback((): void => {
     if (submitted || !canSubmit) return;
     setSubmitted(true);
+    setCollapsed(true);
     onAnswer(formatAnswer(questions, selected));
   }, [canSubmit, onAnswer, questions, selected, submitted]);
 
@@ -146,6 +149,32 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
   };
 
   const isFocused = (qIdx: number, oIdx: number): boolean => activeIndexes[qIdx] === oIdx;
+
+  if (collapsed) {
+    const label =
+      questions.length === 1
+        ? (questions[0]?.question ?? "Question")
+        : `${questions.length} questions answered`;
+    return (
+      <article className="plan-card plan-card-collapsed question-card" aria-label="Question from agent">
+        <div className="plan-card-collapsed-row">
+          <span className="plan-card-eyebrow">
+            <span className="plan-card-eyebrow-dot" aria-hidden="true" />
+            Question
+          </span>
+          <span className="plan-card-collapsed-title">{label}</span>
+          <button
+            type="button"
+            className="plan-card-icon-btn"
+            aria-label="Expand question"
+            onClick={() => setCollapsed(false)}
+          >
+            <ChevronDown size={14} />
+          </button>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article className="plan-card question-card" aria-label="Question from agent">
@@ -233,6 +262,16 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
             {submitted ? "Sent" : "Submit"}
             <span className="question-card-submit-key" aria-hidden="true">↵</span>
           </button>
+          {submitted ? (
+            <button
+              type="button"
+              className="plan-card-icon-btn"
+              aria-label="Collapse question"
+              onClick={() => setCollapsed(true)}
+            >
+              <ChevronUp size={14} />
+            </button>
+          ) : null}
         </div>
       </div>
     </article>

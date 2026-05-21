@@ -1424,15 +1424,20 @@ export function SessionConversation({
                 />
               );
             };
-            // When a PlanCard is the turn's authoritative artifact, hide
-            // assistant text that arrives AFTER the tool fired — the model
-            // often re-emits the plan as a text fallback when the tool returns
-            // an error in structured-json mode, duplicating the card below it.
-            // QuestionCard fallback prose is different: after a failed ask it
-            // can contain useful scan results plus a manual question, so keep
-            // it visible.
+            // When a PlanCard or QuestionCard is the turn's authoritative
+            // artifact, hide assistant text that arrives AFTER the tool fired.
+            // In structured-json mode both tools error out and the model often
+            // confabulates a fallback: re-emitting the plan as a chat bubble
+            // (PlanCard) or hallucinating a "Thanks based on your input"
+            // message with fake answers BEFORE the user has touched the card
+            // (QuestionCard). Either way the card already conveys the ask;
+            // the fallback prose is noise at best, misleading at worst. The
+            // cutoff is per-turn — the user's submitted answer creates a new
+            // user.message and a new turn, so genuine follow-up scan results
+            // still come through unblocked.
             const cardCutoffs = [
-              exitPlanCard && exitPlanTool ? exitPlanTool.createdAt : null
+              exitPlanCard && exitPlanTool ? exitPlanTool.createdAt : null,
+              questionCard && askUserQuestionTool ? askUserQuestionTool.createdAt : null
             ].filter((t): t is string => t !== null);
             const cardCutoff = cardCutoffs.length > 0 ? cardCutoffs.reduce((a, b) => (a < b ? a : b)) : null;
             const visibleAssistantGroups = cardCutoff
@@ -1572,6 +1577,8 @@ export function SessionConversation({
                 {...(session ? { providerLabel: providerLabel(session.provider) } : {})}
                 modelLabel={selectedModel.label}
                 {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
+                {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
+                isTurnActive={isTurnLiveTicking}
                 body={bodyChildren}
               />
             );

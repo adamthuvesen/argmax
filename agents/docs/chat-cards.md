@@ -33,7 +33,7 @@ Both detections run inside the `renderItems.map(...)` "turn" branch around
 | **All matching ids hidden** | both tools | Every `ExitPlanMode` / `AskUserQuestion` tool id (any status) goes into a filter set so the raw tool row never renders. |
 | **Flatten tool-groups** | `AskUserQuestion` | Two retries inside the 75 ms parallel window fold into a `tool-group`. Detection looks inside groups; if the group is *only* `AskUserQuestion`s the group row is hidden too. |
 | **Card renders on `error` too** | both tools | The tool reliably ends in `error` in `-p` mode. Card-render path skips only `status === "running"`, never `done`-vs-`error`. |
-| **Post-card text suppressed** | `ExitPlanMode` only | Assistant text with `createdAt > tool.createdAt` is filtered out for PlanCards — the model often re-emits the plan as a fallback bubble and we don't want a duplicate. AskUserQuestion fallback prose is kept (can contain useful scan results alongside the manual question). Pre-tool intro narration always stays. |
+| **Post-card text suppressed** | both tools | Assistant text with `createdAt > tool.createdAt` is filtered out. For PlanCards the model re-emits the plan as a duplicate bubble; for QuestionCards it confabulates "Thanks based on your input" with fabricated answers BEFORE the user has touched the card. The card already conveys the ask in both cases. The cutoff is per-turn, so genuine follow-up scan results in the *next* turn (after the user submits) still come through. Pre-tool intro narration always stays. |
 
 ## Thinking indicator
 
@@ -130,6 +130,7 @@ relevant `it(...)` titles:
 - "suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)"
 - "restores Thinking once the user submits and a new user.message arrives"
 - "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"
+- "hides hallucinated assistant prose emitted AFTER an AskUserQuestion card"
 - "terminates the in-flight probe before sending the QuestionCard answer (no queue wait)"
 
 ## When to revisit

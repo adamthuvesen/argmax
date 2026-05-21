@@ -1211,8 +1211,7 @@
 
 /* Stale-buffer banner — fires when fs.watch / focus polling spots an external
    edit. Uses the warm amber rail so it reads as "needs attention" without
-   looking like an error. The "Reload from disk" and "Keep my edits" buttons
-   are presented as quiet text actions, not heavy CTAs. */
+   looking like an error. */
 .file-preview-stale {
   display: flex;
   align-items: center;
@@ -1235,7 +1234,26 @@
 .file-preview-stale-actions {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 6px;
+}
+
+.file-preview-stale-secondary {
+  height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.file-preview-stale-secondary:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
 }
 
 .file-preview-save-error {

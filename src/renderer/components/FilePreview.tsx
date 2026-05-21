@@ -224,18 +224,23 @@ function StaleBanner({
     <div className="file-preview-stale" role="alert" aria-label="File changed on disk">
       <span className="file-preview-stale-text">{headline}</span>
       <div className="file-preview-stale-actions">
-        <button type="button" className="small-icon" onClick={onReload} aria-label="Reload from disk">
+        <button
+          type="button"
+          className="small-icon"
+          onClick={onReload}
+          aria-label="Reload from disk"
+          title="Reload from disk"
+        >
           <RotateCcw size={12} />
-          <span>Reload from disk</span>
         </button>
         {isDirty ? (
           <button
             type="button"
-            className="small-icon"
+            className="file-preview-stale-secondary"
             onClick={onKeepMine}
             aria-label="Keep my edits and overwrite on save"
           >
-            <span>Keep my edits</span>
+            Keep my edits
           </button>
         ) : null}
       </div>

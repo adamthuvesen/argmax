@@ -49,9 +49,9 @@ A loop-wide sweep replacing every existing raw value would land 700+ line edits.
 
 ## Chat bubbles
 
-User bubbles (`chat-bubble.user`) have a near-black background (`var(--ink)`) with white text — set `color: #ffffff` on both the bubble and its `p` descendants when targeting them. Do not revert to the light-gray style.
+User bubbles (`chat-bubble.user`) use `--user-bubble-bg` / `--user-bubble-fg`. In light mode those map to the near-black `--ink` treatment; in dark mode they shift to a softer warm gray so long user prompts do not become bright slabs.
 
-`::selection` uses a translucent sage tint (`rgba(90, 143, 114, 0.22)`) globally. Inside user bubbles, a separate `.chat-bubble.user ::selection` rule switches to a translucent white so the highlight is visible on the dark background.
+`::selection` uses a translucent sage tint (`rgba(90, 143, 114, 0.22)`) globally. Inside user bubbles, `.chat-bubble.user ::selection` uses `--selection-bg-on-ink` so the highlight stays visible against each theme's user-bubble color.
 
 ## Conversation content width
 

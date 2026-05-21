@@ -88,6 +88,8 @@
   --selection-bg: rgba(90, 143, 114, 0.22);
   --selection-bg-on-ink: rgba(255, 255, 255, 0.28);
   --bubble-on-ink: #ffffff;
+  --user-bubble-bg: var(--ink);
+  --user-bubble-fg: var(--bubble-on-ink);
 
   /* Diff add/delete surfaces. Paired tokens so dark mode can keep the same
      semantic green/red without the glaring near-white pastels. */
@@ -146,12 +148,13 @@
   --rose: #e08591;
   --rose-soft: rgba(224, 133, 145, 0.14);
 
-  /* --ink inverts to a warm white so user bubbles invert cleanly: dark text
-     on a near-white bubble in dark mode, mirroring the white-on-dark of light
-     mode. --bubble-on-ink follows. */
+  /* --ink still inverts for primary controls; chat user bubbles get their own
+     softer dark-mode tokens below so they don't become bright slabs. */
   --ink: #f4f2ec;
   --ink-soft: #e5e1d7;
   --bubble-on-ink: #0e0e0c;
+  --user-bubble-bg: #2d2c27;
+  --user-bubble-fg: #f4f2ec;
 
   --shadow-1: inset 0 1px 0 rgba(255, 250, 235, 0.04), 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-2: inset 0 1px 0 rgba(255, 250, 235, 0.05), 0 8px 24px rgba(0, 0, 0, 0.55);
@@ -167,7 +170,7 @@
   --overlay-med: rgba(255, 250, 235, 0.07);
   --overlay-strong: rgba(255, 250, 235, 0.12);
   --selection-bg: rgba(127, 180, 148, 0.28);
-  --selection-bg-on-ink: rgba(14, 14, 12, 0.32);
+  --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 
   /* Diff palette tuned for warm charcoal: low-alpha sage/rose washes so the
      code stays the focal point, not the background. The gutter values are
@@ -221,8 +224,8 @@
   box-shadow: var(--shadow-1);
 }
 
-/* ::selection on the user (inverted) bubble already swaps via the
-   --selection-bg-on-ink token; this is just the global selection in dark. */
+/* User-bubble selection swaps via --selection-bg-on-ink; this is just the
+   global selection in dark. */
 :root[data-theme="dark"] ::selection {
   background: color-mix(in oklab, var(--sage) 35%, transparent);
   color: var(--text);
@@ -307,7 +310,7 @@
 
 .chat-bubble.user ::selection {
   background: var(--selection-bg-on-ink);
-  color: var(--bubble-on-ink);
+  color: var(--user-bubble-fg);
 }
 
 body {

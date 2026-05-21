@@ -1419,14 +1419,14 @@
 .chat-bubble.user {
   align-self: flex-end;
   max-width: min(80%, 880px);
-  color: var(--bubble-on-ink);
-  background: var(--ink);
+  color: var(--user-bubble-fg);
+  background: var(--user-bubble-bg);
   box-shadow: none;
   animation-name: msg-in-right;
 }
 
 .chat-bubble.user p {
-  color: var(--bubble-on-ink);
+  color: var(--user-bubble-fg);
 }
 
 /* Floating "scroll to latest" button. Anchors to the conversation list (which
@@ -3402,4 +3402,3 @@
 .session-stop-button:hover:not(:disabled) {
   background-color: #8c1d17;
 }
-

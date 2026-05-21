@@ -539,7 +539,7 @@ async function launchStructuredProcess(
         createdAt: createdAt()
       });
     });
-    childProcess.on("exit", (exitCode, signal) => {
+    childProcess.on("close", (exitCode, signal) => {
       killEscalation?.cancel();
       killEscalation = null;
       const wasAlreadyDisposed = handle.disposed;

@@ -39,8 +39,7 @@ import type {
   LaunchProviderSessionInput,
   PendingMessage,
   ProviderId,
-  SessionSummary,
-  TimelineEvent
+  SessionSummary
 } from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
 import {
@@ -108,6 +107,7 @@ interface SessionBuffer {
   pendingUsages: NormalizedUsage[];
   pendingApprovals: PersistApprovalInput[];
   pendingSessionUpdate: SessionSummary | null;
+  failedFlushes: number;
   /** Latest output createdAt seen, used for throttled lastActivityAt updates. */
   lastActivityWriteAt: number;
   workspaceId: string;
@@ -806,6 +806,7 @@ export class ProviderSessionService {
       pendingUsages: [],
       pendingApprovals: [],
       pendingSessionUpdate: null,
+      failedFlushes: 0,
       lastActivityWriteAt: 0,
       workspaceId,
       workspacePath,
@@ -1184,7 +1185,13 @@ export class ProviderSessionService {
     if (!sessionState) {
       return;
     }
-    flushSessionBuffer(sessionState, sessionId, this.database, (delta) => this.publishDelta(delta));
+    flushSessionBuffer(
+      sessionState,
+      sessionId,
+      this.database,
+      (delta) => this.publishDelta(delta),
+      (delayMs) => scheduleFlushQueue(sessionState, sessionId, (sid) => this.flushBatch(sid), delayMs)
+    );
   }
 
   private publishDashboardDelta(delta: DashboardDelta): void {

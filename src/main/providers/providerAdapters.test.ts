@@ -221,7 +221,7 @@ describe("provider PTY adapters", () => {
     await adapters
       .get("claude")
       ?.launch({ ...launchInput("claude"), mode: "structured-json", permissionMode: "ask-each-time" }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     const args = processSpawnCalls[0]?.args ?? [];
     expect(args).not.toContain("--permission-mode");
@@ -233,7 +233,7 @@ describe("provider PTY adapters", () => {
     await adapters
       .get("codex")
       ?.launch({ ...launchInput("codex"), mode: "structured-json", permissionMode: "ask-each-time" }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     const args = processSpawnCalls[0]?.args ?? [];
     expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
@@ -244,7 +244,7 @@ describe("provider PTY adapters", () => {
     await adapters
       .get("claude")
       ?.launch({ ...launchInput("claude"), mode: "structured-json", reasoningEffort: "high" }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     const args = processSpawnCalls[0]?.args ?? [];
     expect(args).toContain("--append-system-prompt");
@@ -269,7 +269,7 @@ describe("provider PTY adapters", () => {
     await adapters
       .get("claude")
       ?.launch({ ...launchInput("claude"), mode: "structured-json", reasoningEffort: undefined }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     const args = processSpawnCalls[0]?.args ?? [];
     expect(args).not.toContain("--append-system-prompt");
@@ -280,7 +280,7 @@ describe("provider PTY adapters", () => {
     await adapters
       .get("claude")
       ?.launch({ ...launchInput("claude"), mode: "structured-json", agentMode: "plan" }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     const args = processSpawnCalls[0]?.args ?? [];
     expect(args).toContain("--permission-mode");
@@ -296,7 +296,7 @@ describe("provider PTY adapters", () => {
       events.push(event)
     );
     processes[0].stdout.write('{"type":"assistant","message":"done"}\n');
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/claude",
@@ -320,6 +320,24 @@ describe("provider PTY adapters", () => {
     expect(events[1]).toMatchObject({ type: "exit", exitCode: 0 });
   });
 
+  it("keeps structured stdout open until the child close event", async () => {
+    const { adapters, processes } = createTestAdapters();
+    const events: ProviderEvent[] = [];
+
+    await adapters.get("claude")?.launch({ ...launchInput("claude"), mode: "structured-json" }, (event) =>
+      events.push(event)
+    );
+
+    processes[0].emit("exit", 0, null);
+    processes[0].stdout.write('{"type":"assistant","message":"late"}\n');
+    processes[0].emit("close", 0, null);
+
+    expect(events.map((event) => event.stream)).toEqual(["stdout", "system"]);
+    expect(events[0]).toMatchObject({ type: "output", stream: "stdout" });
+    expect(events[0]?.message).toContain("late");
+    expect(events[1]).toMatchObject({ type: "exit", exitCode: 0 });
+  });
+
   it("launches Codex structured probes with exec JSONL output", async () => {
     const { adapters, processes, processSpawnCalls } = createTestAdapters();
     const events: ProviderEvent[] = [];
@@ -328,7 +346,7 @@ describe("provider PTY adapters", () => {
       events.push(event)
     );
     processes[0].stderr.write("warning\n");
-    processes[0].emit("exit", 1, null);
+    processes[0].emit("close", 1, null);
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/codex",
@@ -358,7 +376,7 @@ describe("provider PTY adapters", () => {
     await adapters
       .get("codex")
       ?.launch({ ...launchInput("codex"), mode: "structured-json", agentMode: "plan" }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     const stdin = String(processes[0].stdin.read());
     expect(stdin).toContain("Plan mode:");
@@ -396,7 +414,7 @@ describe("provider PTY adapters", () => {
     const { adapters, processes, processSpawnCalls } = createTestAdapters();
 
     await adapters.get("cursor")?.launch(launchInput("cursor"), () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     expect(processSpawnCalls[0]).toMatchObject({
       file: "/usr/local/bin/cursor-agent",
@@ -422,7 +440,7 @@ describe("provider PTY adapters", () => {
     const { adapters, processes, processSpawnCalls } = createTestAdapters();
 
     await adapters.get("cursor")?.launch({ ...launchInput("cursor"), agentMode: "plan" }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     expect(processSpawnCalls[0]?.args).toContain("--plan");
   });
@@ -432,7 +450,7 @@ describe("provider PTY adapters", () => {
     await adapters
       .get("cursor")
       ?.launch({ ...launchInput("cursor"), permissionMode: "ask-each-time" }, () => undefined);
-    processes[0].emit("exit", 0, null);
+    processes[0].emit("close", 0, null);
 
     const args = processSpawnCalls[0]?.args ?? [];
     expect(args).not.toContain("--force");

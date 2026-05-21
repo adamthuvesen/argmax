@@ -1,17 +1,8 @@
 # Argmax
 
-A local Electron command center for running AI coding agents in parallel git worktrees.
+A local desktop app for orchestrating AI coding agents (Claude Code, Codex, Cursor) in parallel git worktrees.
 
-Single-user, on-device, no cloud, no auth. Designed for Claude Code, Codex, and Cursor Agent sessions that need real repo context — persistent transcripts, review tools, checks, approvals, and worktree isolation.
-
-```
-┌────────────────────────────┐         ┌────────────────────────────┐
-│ React renderer (Vite)      │   IPC   │ Electron main (Node)       │
-│ • Focused reads + deltas   │ ◀────▶  │ • SQLite (better-sqlite3)  │
-│ • window.argmax only       │         │ • Provider PTYs / stdio    │
-└────────────────────────────┘         │ • Workspaces, checks, gh   │
-                                       └────────────────────────────┘
-```
+Single-user, on-device, no cloud, no auth. Built for sessions that need real repo context — persistent transcripts, review tools, checks, approvals, and worktree isolation.
 
 ## What it does
 
@@ -28,7 +19,7 @@ Single-user, on-device, no cloud, no auth. Designed for Claude Code, Codex, and 
 | Layer | Tooling |
 |---|---|
 | Runtime | Electron 35, Node.js (system Node for tests) |
-| Renderer | React 19 + Vite + plain CSS (light theme only) |
+| Renderer | React 19 + Vite + plain CSS (Light / Dark / System) |
 | Language | TypeScript, ESM, NodeNext imports |
 | Persistence | SQLite via `better-sqlite3`; FTS5 sidecars for events + learnings |
 | PTY | `node-pty` (provider sessions + integrated terminal) |
@@ -103,25 +94,7 @@ release/          Packaged distributable output (gitignored)
 
 ## Going deeper
 
-Start with the map in [`AGENTS.md`](AGENTS.md) (also reachable as `CLAUDE.md`). It indexes the deep-dive docs under `agents/docs/`:
-
-| Topic | Doc |
-|---|---|
-| Process boundaries, services, dashboard reads | [agents/docs/architecture.md](agents/docs/architecture.md) |
-| IPC channels, schemas, adding a channel | [agents/docs/ipc.md](agents/docs/ipc.md) |
-| SQLite schema, migrations, retention, FTS5 | [agents/docs/data.md](agents/docs/data.md) |
-| Claude / Codex / Cursor adapters | [agents/docs/providers.md](agents/docs/providers.md) |
-| Worktrees, review, checkpoints, file preview | [agents/docs/workspaces.md](agents/docs/workspaces.md) |
-| Risk policy, approvals, workspace checks | [agents/docs/approvals-checks.md](agents/docs/approvals-checks.md) |
-| Plan / Question cards in chat, tool-deny handling | [agents/docs/chat-cards.md](agents/docs/chat-cards.md) |
-| Integrated terminal panel | [agents/docs/terminal.md](agents/docs/terminal.md) |
-| GitHub CI feedback loop | [agents/docs/gh.md](agents/docs/gh.md) |
-| Project-scoped learnings (memory) | [agents/docs/memory.md](agents/docs/memory.md) |
-| Native rebuilds, lifecycle, preload, packaging | [agents/docs/electron.md](agents/docs/electron.md) |
-| Test conventions and regression tests | [agents/docs/testing.md](agents/docs/testing.md) |
-| Design tokens, motion, the light-theme rule | [agents/docs/styling.md](agents/docs/styling.md) |
-| Signing + notarization | [agents/docs/release.md](agents/docs/release.md) |
-| OpenSpec workflow | [agents/docs/openspec.md](agents/docs/openspec.md) |
+Conventions, subsystem docs, and the full index live in [`AGENTS.md`](AGENTS.md) (also reachable as `CLAUDE.md`).
 
 ## Local data
 

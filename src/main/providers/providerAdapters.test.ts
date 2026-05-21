@@ -409,7 +409,7 @@ describe("provider PTY adapters", () => {
         "--force",
         "--trust",
         "--model",
-        "composer-2",
+        "composer-2.5",
         "Implement the task"
       ],
       cwd: "/repo/worktree"
@@ -459,7 +459,7 @@ describe("provider PTY adapters", () => {
         "--force",
         "--trust",
         "--model",
-        "composer-2",
+        "composer-2.5",
         "Implement the task"
       ],
       cwd: "/repo/worktree"
@@ -545,10 +545,10 @@ function launchInput(provider: "claude" | "codex" | "cursor"): ProviderLaunchInp
     provider === "claude"
       ? "Claude Haiku"
       : provider === "cursor"
-        ? "Cursor Composer 2"
+        ? "Composer 2.5 (Cursor)"
         : "GPT-5.3 Codex Spark Low";
   const modelId =
-    provider === "claude" ? "haiku" : provider === "cursor" ? "composer-2" : "gpt-5.3-codex-spark";
+    provider === "claude" ? "haiku" : provider === "cursor" ? "composer-2.5" : "gpt-5.3-codex-spark";
   return {
     sessionId: "session-1",
     workspacePath: "/repo/worktree",

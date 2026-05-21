@@ -345,7 +345,7 @@ describe("normalizeProviderEvent — Cursor stream-json", () => {
           type: "system",
           subtype: "init",
           session_id: "cursor-uuid-1",
-          model: "composer-2",
+          model: "composer-2.5",
           cwd: "/repo/worktree"
         }) + "\n"
       ),
@@ -521,12 +521,12 @@ describe("normalizeProviderEvent — Cursor stream-json", () => {
           usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 0 }
         }) + "\n"
       ),
-      { provider: "cursor", context: createNormalizerSessionContext({ cursorCurrentModel: "composer-2" }) }
+      { provider: "cursor", context: createNormalizerSessionContext({ cursorCurrentModel: "composer-2.5" }) }
     );
     expect(result.events).toEqual([]);
     expect(result.usages).toEqual([
       {
-        modelId: "composer-2",
+        modelId: "composer-2.5",
         tokens: { input: 100, output: 50, cacheRead: 10, cacheWrite: 0 },
         costUsd: 0
       }

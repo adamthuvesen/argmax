@@ -1037,7 +1037,7 @@ describe("ProviderSessionService", () => {
       rows: 24
     });
 
-    const updateSpy = vi.spyOn(database, "updateSessionState");
+    const updateSpy = vi.spyOn(database, "updateSessionLastActivity");
     const baseline = updateSpy.mock.calls.length;
 
     fakeProvider.emit({

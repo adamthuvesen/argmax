@@ -6,6 +6,8 @@ Vitest + jsdom + colocated `*.test.ts(x)` files. Config: [vitest.config.ts](../.
 
 ```bash
 npm test                                  # all tests, rebuild:node first
+npm run test:unit                         # normal suite, excludes perf microbenches
+npm run test:perf                         # isolated perf budgets
 npx vitest run src/renderer/              # one folder
 npx vitest run src/renderer/App.test.tsx  # one file
 npx vitest                                # watch mode (no rebuild)

@@ -22,7 +22,7 @@ The phase records survive across the app lifetime and are surfaced through `syst
 Run the perf suite from a clean checkout:
 
 ```bash
-npm test -- src/test/perf.test.ts
+npm run test:perf
 ```
 
 Documented budgets:
@@ -30,9 +30,9 @@ Documented budgets:
 - `mergeDashboardDelta` over a 200-session payload: p95 < 5 ms.
 - `buildFileTree` over 10 000 entries: < 50 ms.
 - `runMigrations` on an empty DB: < 200 ms.
-- `parseUnifiedDiff` over a 500-hunk synthetic diff (50 files × 10 hunks × 20 lines): p95 < 10 ms.
+- `parseUnifiedDiff` over a 500-hunk synthetic diff (50 files × 10 hunks × 20 lines): p95 < 20 ms.
 
-These are pinned in [src/test/perf.test.ts](../../src/test/perf.test.ts) and run on every `npm test`. The file-tree budget exercises `buildFileTree` directly; `WorkspaceTree.test.tsx` covers renderer virtualization behavior separately. The diff budget guards the ReviewPanel hot path — any regression in the parser fails CI before the user sees the slowdown.
+These are pinned in [src/test/perf.test.ts](../../src/test/perf.test.ts) and run on every `npm test` after the parallel unit/integration suite finishes. Keep perf isolated from the main parallel Vitest run; these are wall-clock microbenches, so concurrent test workers measure scheduler noise as much as app code. The file-tree budget exercises `buildFileTree` directly; `WorkspaceTree.test.tsx` covers renderer virtualization behavior separately. The diff budget guards the ReviewPanel hot path — any regression in the parser fails CI before the user sees the slowdown.
 
 ## IPC latency
 

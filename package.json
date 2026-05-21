@@ -16,7 +16,9 @@
     "lint": "eslint .",
     "rebuild:electron": "electron-rebuild -o better-sqlite3,node-pty && node scripts/ensure-node-pty-helper.cjs",
     "rebuild:node": "npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
-    "test": "npm run rebuild:node && vitest run",
+    "test": "npm run rebuild:node && npm run test:unit && npm run test:perf",
+    "test:unit": "vitest run --exclude src/test/perf.test.ts",
+    "test:perf": "vitest run src/test/perf.test.ts --no-file-parallelism",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit"
   },

@@ -42,13 +42,37 @@ Two TS configs: [tsconfig.json](tsconfig.json) for renderer/shared, [tsconfig.ma
 - **Native modules** (`better-sqlite3`, `node-pty`) compile per-runtime. `npm run dev` runs `rebuild:electron`; `npm test` runs `rebuild:node`. A `NODE_MODULE_VERSION` mismatch means you skipped one of those — re-run, don't reinstall.
 - **Renderer tests** query by **role / aria-label / title**, never by `className`. Visual changes must not break tests; `aria-pressed`, `aria-label`, and `title` are part of the contract.
 - **Three themes: Light / Dark / System.** Default is System (tracks macOS via `prefers-color-scheme`). Dark mode is warm charcoal — yellow-leaning grays, never midnight blue. Tokens live in `:root` (light) and `:root[data-theme="dark"]` in [src/renderer/styles.css](src/renderer/styles.css); persist via `argmax.theme.mode` localStorage key + `userData/theme.json` for Electron-side no-flash. Font family is user-pickable from Settings → Appearance (Lilex is the default; alternates load via `@fontsource`). See [agents/docs/styling.md](agents/docs/styling.md).
-- **Shared values, not duplicates.** Model labels/ids/reasoning/launch mode and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts) — `PROVIDER_MODEL_DEFAULTS` and `MODEL_PRICING` are the single source of truth. Current launch fallbacks: Claude Haiku 4.5 (structured JSON), Codex Spark medium (structured JSON), Cursor Composer 2 (structured JSON). Renderer ships a picker; defaults are only the fallback.
+- **Shared values, not duplicates.** Model labels/ids/reasoning/launch mode and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts) — `PROVIDER_MODEL_DEFAULTS` and `MODEL_PRICING` are the single source of truth. Current launch fallbacks: Claude Haiku 4.5 (structured JSON), Codex Spark medium (structured JSON), Composer 2.5 (Cursor, structured JSON). Renderer ships a picker; defaults are only the fallback.
 - **Provider protocol output is not chat.** Raw JSONL provider events (`type: "init"`, `thread.started`, `turn.started`, etc.) may be persisted for debugging, but the renderer must not show them as assistant bubbles. Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
 - **Dashboard state is SQLite-first and delta-driven.** `dashboard:load` stays public as a compatibility wrapper, but normal renderer refresh uses focused reads: `dashboard.list()` + `approvals.pending()` for initial state, `workspaces.status()` + `approvals.pending()` for visibility-change refresh, and `session.eventsSince()` rowid cursors for the selected session's event/raw-output tail. Steady-state freshness is the `dashboard:delta` push (coalesced at ~60 fps in main); there is no recurring renderer poll. Do not reread the whole dashboard just because one token streamed.
 - **Thinking state yields to content.** The chat "Thinking" bubble is a pre-answer affordance only. Hide it as soon as any visible assistant event arrives, even if the session is still marked `running`.
 - **Auto-approve is the default permission mode.** Provider sessions launch with broad permissions (`bypassPermissions` / `--dangerously-bypass-approvals-and-sandbox` / `--force --trust`) because Argmax is a trusted single-user desktop app. Keep these flags centralized in [src/main/providers/providerAdapters.ts](src/main/providers/providerAdapters.ts).
 - **SQLite migrations are append-only and checksummed.** Never edit a previously-applied migration; the boot path refuses to run a tampered one. See [agents/docs/data.md](agents/docs/data.md#writing-a-new-column).
 - **Never commit secrets, `.env`, or AI-attribution lines.** Match recent commit style: `type(scope): lowercase imperative` (run `git log --oneline -10`).
+
+## Read the docs before you touch the code
+
+**Mandatory, not optional.** Before editing or generating code in a subsystem, read the matching `agents/docs/*.md`. These docs encode hard-won constraints that aren't visible from the file alone — IPC channels are checksum-tested, migrations are append-only, the dashboard is delta-driven, cards must terminate the probe before answering, dark mode tokens live in two `:root` blocks, etc. Skipping them is the fastest way to ship something the regression tests will reject.
+
+Match the task to the doc(s):
+
+- **Touching IPC / preload / `window.argmax`** → [ipc.md](agents/docs/ipc.md) *before* you add a channel.
+- **Adding a migration or column** → [data.md](agents/docs/data.md) — the 12-step recipe + the head-version note.
+- **Working in `src/main/providers/`** → [providers.md](agents/docs/providers.md).
+- **Worktrees, archive, review, checkpoints** → [workspaces.md](agents/docs/workspaces.md).
+- **Approval policy, command-risk gates, workspace checks** → [approvals-checks.md](agents/docs/approvals-checks.md).
+- **Integrated terminal panel** → [terminal.md](agents/docs/terminal.md).
+- **GitHub PR / CI feedback loop** → [gh.md](agents/docs/gh.md).
+- **Learnings extraction / project memory** → [memory.md](agents/docs/memory.md).
+- **Chat surface (cards, thinking gate, per-turn header, file preview popover)** → [chat-cards.md](agents/docs/chat-cards.md).
+- **Tournaments backend** → [tournaments.md](agents/docs/tournaments.md).
+- **Styles, tokens, light/dark theme** → [styling.md](agents/docs/styling.md).
+- **Native module rebuild, lifecycle, preload bridge, packaging** → [electron.md](agents/docs/electron.md) and [release.md](agents/docs/release.md).
+- **Test layout, jsdom traps, regression tests** → [testing.md](agents/docs/testing.md).
+- **Perf budgets** → [performance.md](agents/docs/performance.md).
+- **OpenSpec change → propose → apply → verify → archive** → [openspec.md](agents/docs/openspec.md).
+
+If a doc disagrees with the code, **fix the doc in the same change** rather than letting the drift compound. If you touch a subsystem whose doc isn't listed above, check the Index below and add one if the gap matters.
 
 ## Index
 

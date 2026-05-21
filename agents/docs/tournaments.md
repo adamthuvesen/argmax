@@ -18,7 +18,7 @@ A `tournament` row owns N `tournament_contestants`; each contestant points at ex
 - [src/main/judges/scoreAggregator.ts](../../src/main/judges/scoreAggregator.ts) — pool-normalize + apply weights → verdict
 - [src/main/persistence/tournamentsRepository.ts](../../src/main/persistence/tournamentsRepository.ts) — CRUD + leaderboard read
 - [src/main/persistence/scoringPoliciesRepository.ts](../../src/main/persistence/scoringPoliciesRepository.ts) — CRUD + built-in protection
-- [src/renderer/components/TournamentPanel.tsx](../../src/renderer/components/TournamentPanel.tsx) — launch form + leaderboard
+- *(Renderer surface: no longer present — the `TournamentPanel` component was removed. The backend IPC surface below stays; a future change re-mounts a UI on it.)*
 
 ## Scoring policies
 
@@ -73,11 +73,13 @@ A future change can add a "fully autonomous" per-project setting that fires keep
 | `tournament:keep` | `{ tournamentId, contestantIndex, reason? }` | `TournamentLeaderboard` |
 | `scoring:list-policies` | `void` | `ScoringPolicy[]` |
 
-Polling-based for MVP: the `TournamentPanel` calls `tournament:get` every 2 seconds while a tournament is open. The judge runs synchronously on the IPC thread when `tournament:get` detects all contestants have reached a terminal state. A future change can swap to a `tournament:delta` push channel mirroring `dashboard:delta`.
+Polling-based for MVP: callers of `tournament:get` are expected to poll every ~2 seconds while a tournament is open. The judge runs synchronously on the IPC thread when `tournament:get` detects all contestants have reached a terminal state. A future change can swap to a `tournament:delta` push channel mirroring `dashboard:delta`.
 
-## Wiring the panel into the UI
+The `TournamentService` is constructed inside `registerIpcHandlers` and threaded back out through the `RegisteredIpc` return value so `main.ts` can `dispose()` it during shutdown alongside the other long-lived services.
 
-The `TournamentPanel` component is standalone but not yet mounted in App navigation. To enable in your local build, drop it into [SettingsPanel.tsx](../../src/renderer/components/SettingsPanel.tsx) as a new `<section>` (gate behind a feature-flag preference if you want it off by default), or add a top-level route in [App.tsx](../../src/renderer/App.tsx). Pass `project={currentProject}` and reuse `cols`/`rows` from the existing launcher.
+## Wiring a new panel into the UI
+
+The previous `TournamentPanel.tsx` component was removed because nothing in the renderer mounted it. To re-introduce a UI, build a new component that calls the IPC surface above (start with `tournament:list` for the project and `tournament:get` for the open tournament), and add it to App navigation — either as a new `<section>` inside the settings split ([src/renderer/components/settings/](../../src/renderer/components/settings/)) or as a top-level route in [App.tsx](../../src/renderer/App.tsx). Reuse `cols`/`rows` from the existing launcher and pass `project={currentProject}`.
 
 ## What's deferred
 

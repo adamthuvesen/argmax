@@ -8,7 +8,9 @@ The contract between renderer and main. Two surfaces: **request/response** (vali
 |---|---|
 | [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts) | Zod schema per channel + `IPC_CHANNELS` (`Object.keys(ipcSchemas)`) |
 | [src/shared/types.ts](../../src/shared/types.ts) | `ArgmaxApi` — the shape `window.argmax` exposes |
-| [src/main/ipc.ts](../../src/main/ipc.ts) | `withValidation()` + `registerIpcHandlers()`; one `ipcMain.handle` per channel |
+| [src/main/ipc.ts](../../src/main/ipc.ts) | `withValidation()` + `registerIpcHandlers()`; composes per-module handler registrations and returns `{ channels, tournaments }` |
+| [src/main/ipc/registry.ts](../../src/main/ipc/registry.ts) | `createIpcRegistrar()` — shared `ipcMain.handle` + latency-wrapper factory used by every IPC submodule |
+| [src/main/ipc/](../../src/main/ipc/) | Per-namespace handler modules (`approvals.ts`, `attachments.ts`, `git.ts`, `mcp.ts`, `projects.ts`, `providers.ts`, `review.ts`, `sessions.ts`, `system.ts`, `terminal.ts`, `tournaments.ts`, `workspaces.ts`) — each calls `createIpcRegistrar()` and returns the channels it registered |
 | [src/main/preload.ts](../../src/main/preload.ts) | The renderer-side bridge via `contextBridge.exposeInMainWorld("argmax", api)` |
 
 ## Request/response
@@ -16,11 +18,19 @@ The contract between renderer and main. Two surfaces: **request/response** (vali
 Every channel is validated. `withValidation(schema, fn)` parses `rawInput` with Zod; on failure it throws an `IpcInvalidInputError` (`code: "INVALID_INPUT"`, `issues: ZodIssue[]`) so the renderer's `invoke()` rejects with a structured payload instead of crashing mid-service.
 
 ```ts
-ipcMain.handle("channel:name", withValidation(channelSchema, async (input) => {
-  // input is fully typed via z.infer
-  return service.doThing(input);
-}));
+// Inside a per-namespace registrar function in src/main/ipc/<namespace>.ts:
+const { register, channels: registered } = createIpcRegistrar();
+
+register(
+  "channel:name",
+  withValidation(channelSchema, async (input) => {
+    // input is fully typed via z.infer
+    return service.doThing(input);
+  })
+);
 ```
+
+Inline `z.object` literals belong in [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts) as top-level exports, not at the call site — the schema module is the single inventory the regression test reads. The registrar wraps each call in the `timed()` latency probe so every channel reports to the perf histogram.
 
 The channel inventory is the keys of the `ipcSchemas` object in [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts). The regression test [src/main/__tests__/ipcHandlers.test.ts](../../src/main/__tests__/ipcHandlers.test.ts) enforces parity between `IPC_CHANNELS` and the actually-registered `ipcMain.handle` set — if you add a channel and skip a step, this test fails.
 
@@ -69,8 +79,8 @@ Push events use `webContents.send` from main and `ipcRenderer.on` in preload. Th
 
 Five steps. Skip any and you break the boot, the regression test, or the renderer:
 
-1. **Schema** — add a Zod schema + parsed-type alias in [ipcSchemas.ts](../../src/shared/ipcSchemas.ts). The key in the `ipcSchemas` object becomes the channel name and gets typed automatically into `IpcChannel`.
-2. **Handler** — register with `ipcMain.handle("channel:name", withValidation(schema, async (input) => …))` in [ipc.ts](../../src/main/ipc.ts).
+1. **Schema** — add a Zod schema + parsed-type alias in [ipcSchemas.ts](../../src/shared/ipcSchemas.ts) as a top-level export, and reference it in the `ipcSchemas` map. The key in that map becomes the channel name and gets typed automatically into `IpcChannel`.
+2. **Handler** — call `register("channel:name", withValidation(schema, async (input) => …))` inside the matching per-namespace function in [src/main/ipc/](../../src/main/ipc/) (e.g. `registerWorkspaceHandlers` for `workspaces:*`). The registrar is built via `createIpcRegistrar()` and the returned channel list is concatenated in [src/main/ipc.ts](../../src/main/ipc.ts).
 3. **Preload** — expose the method on the right namespace in [preload.ts](../../src/main/preload.ts), invoking `ipcRenderer.invoke`.
 4. **API type** — add the typed signature to `ArgmaxApi` in [types.ts](../../src/shared/types.ts).
 5. **Test** — `npx vitest run src/main/__tests__/ipcHandlers.test.ts` to confirm parity, then add coverage where the service handler lives.

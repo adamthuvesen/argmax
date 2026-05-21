@@ -10,7 +10,7 @@ Argmax orchestrates three CLIs: **Claude Code**, **Codex**, and **Cursor Agent**
 |---|---|---|---|
 | `claude` | Claude Haiku 4.5 | — | `structured-json` |
 | `codex` | Codex Spark | `medium` | `structured-json` |
-| `cursor` | Cursor Composer 2 | — | `structured-json` |
+| `cursor` | Composer 2.5 (Cursor) | — | `structured-json` |
 
 Do not duplicate model labels, ids, reasoning values, or launch modes in renderer fixtures, seed data, or docs examples. Always read from the registry.
 

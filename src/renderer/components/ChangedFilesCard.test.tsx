@@ -23,6 +23,7 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       tabs: [],
       activeTabPath: null,
       selectedPath: null,
+      rootPath: null,
       preview: null,
       previewState: "idle",
       previewError: null,

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnBlock, type TurnBodyChild, type TurnToolItem } from "./TurnBlock.js";
+import { __liveTimerTickForTest } from "../lib/liveTimer.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -114,7 +115,7 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("tools")).toBeInTheDocument();
   });
 
-  it("omits the chip when there are no tool items", () => {
+  it("omits the chip when the turn is complete and had no tool items (pure text reply)", () => {
     render(
       <TurnBlock
         toolItems={[]}
@@ -124,6 +125,54 @@ describe("TurnBlock", () => {
     );
     expect(screen.queryByRole("button", { name: /Worked|Working/ })).not.toBeInTheDocument();
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
+  });
+
+  it("shows the 'Working' chip during an active turn even with no tools yet (thinking phase)", () => {
+    // Pre-2026-05-18 the chip only appeared once a tool fired, so the
+    // thinking phase looked silent. Now isTurnActive opens the chip
+    // immediately and the live ticker starts counting from turnStartedAtMs.
+    render(
+      <TurnBlock
+        toolItems={[]}
+        assistantTimestamps={[]}
+        body={body(assistantChild("assistant", "..."))}
+        isTurnActive
+        turnStartedAtMs={Date.parse("2026-05-12T15:00:00.000Z")}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
+  });
+
+  it("live ticker advances in whole-second steps, not fractional", () => {
+    const start = Date.parse("2026-05-12T15:00:00.000Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(start);
+    try {
+      const { container } = render(
+        <TurnBlock
+          toolItems={[]}
+          assistantTimestamps={[]}
+          body={body(assistantChild("assistant", "..."))}
+          isTurnActive
+          turnStartedAtMs={start}
+        />
+      );
+      const live = container.querySelector(".turn-block-chip span span") as HTMLElement | null;
+      expect(live).not.toBeNull();
+      expect(live!.textContent).toBe("0s");
+      // Mid-second: chip must still read "0s" — no 0.4s noise.
+      nowSpy.mockReturnValue(start + 400);
+      __liveTimerTickForTest();
+      expect(live!.textContent).toBe("0s");
+      // A full second later: ticker flips to "1s".
+      nowSpy.mockReturnValue(start + 1_000);
+      __liveTimerTickForTest();
+      expect(live!.textContent).toBe("1s");
+      nowSpy.mockReturnValue(start + 3_750);
+      __liveTimerTickForTest();
+      expect(live!.textContent).toBe("3s");
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("renders body children in the order given so tools stay where they happened in chat", () => {

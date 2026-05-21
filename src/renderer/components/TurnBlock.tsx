@@ -1,6 +1,6 @@
 import { ChevronRight, Loader2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
-import { formatElapsed } from "../formatElapsed.js";
+import { formatElapsedSeconds } from "../formatElapsed.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { ToolCall, ToolCallGroup } from "../lib/toolCalls.js";
 
@@ -110,7 +110,9 @@ export function TurnBlock({
   body,
   providerLabel: providerLabelText,
   modelLabel,
-  defaultExpanded
+  defaultExpanded,
+  turnStartedAtMs,
+  isTurnActive
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
@@ -118,37 +120,62 @@ export function TurnBlock({
   providerLabel?: string;
   modelLabel?: string;
   defaultExpanded?: boolean;
+  // When provided, the live ticker anchors here instead of the earliest
+  // tool/assistant timestamp. The parent passes the preceding user.message
+  // timestamp so the chip starts ticking from the moment the turn began —
+  // including the thinking phase before any tools fire.
+  turnStartedAtMs?: number;
+  // Authoritative "agent is still working" signal from the parent. The parent
+  // knows about session state and any user-input pauses (PlanCard,
+  // QuestionCard); we used to infer this purely from tool status, which
+  // missed the thinking-only phase.
+  isTurnActive?: boolean;
 }): JSX.Element {
-  const running = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
+  const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
+  // `running` controls the chip's "Working" label, spinner and live ticker —
+  // the parent's isTurnActive flag is authoritative because it also knows
+  // about thinking phases and user-input pauses (PlanCard / QuestionCard).
+  // Fall back to tool status so back-compat callers without the prop still
+  // get a "Working" chip while their tools are mid-flight.
+  const running = isTurnActive ?? toolRunning;
   const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
-  const elapsedMs = bounds.endedAt !== null ? Math.max(0, bounds.endedAt - bounds.startedAt) : 0;
+  const startedAtMs = Number.isFinite(turnStartedAtMs ?? Number.NaN)
+    ? (turnStartedAtMs as number)
+    : bounds.startedAt;
+  const elapsedMs =
+    bounds.endedAt !== null && startedAtMs > 0 ? Math.max(0, bounds.endedAt - startedAtMs) : 0;
 
-  // Expanded while running so users see live progress; when done, falls back
-  // to defaultExpanded. The user's manual toggle wins in both directions and
-  // sticks for the lifetime of the turn.
+  // Body auto-expansion is driven by tool status, NOT by the parent's
+  // isTurnActive. If the agent is paused on a QuestionCard while parallel
+  // tools are still running, the user still needs to see those tools'
+  // progress — collapsing them when "Working" turns off would hide live work.
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
-  const autoExpanded = running || (defaultExpanded ?? false);
+  const autoExpanded = toolRunning || (defaultExpanded ?? false);
   const expanded = userToggle ?? autoExpanded;
 
   const subtitleParts = [providerLabelText, modelLabel].filter((v): v is string => Boolean(v));
   const subtitle = subtitleParts.join(" · ");
-  const elapsedLabel = formatElapsed(elapsedMs);
+  const elapsedLabel = formatElapsedSeconds(elapsedMs);
   const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
   const hasTools = toolItems.length > 0;
+  // Show the chip whenever the turn is in flight (so the ticker is visible
+  // during pure-thinking phases too) or after completion if there was tool
+  // work worth labelling. Pure-text completed turns stay chip-less.
+  const showChip = running || hasTools;
 
-  const liveStartMs = running && bounds.startedAt > 0 ? bounds.startedAt : null;
+  const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;
   const liveRef = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
     const node = liveRef.current;
     if (!node || liveStartMs === null) return;
-    return registerLiveTimer(node, () => Date.now() - liveStartMs, formatElapsed);
+    return registerLiveTimer(node, () => Date.now() - liveStartMs, formatElapsedSeconds);
   }, [liveStartMs]);
 
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>
       <div className="turn-block-header">
         {subtitle ? <span className="turn-block-subtitle">{subtitle}</span> : null}
-        {hasTools ? (
+        {showChip ? (
           <button
             type="button"
             className="turn-block-chip"

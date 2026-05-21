@@ -1496,6 +1496,36 @@ export function SessionConversation({
             );
             const sessionIsLive = session?.state === "running";
             const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
+            // The agent is "paused on user input" once a QuestionCard or
+            // PlanCard renders — those cards take over the UI and the model
+            // is blocked until the user acts. We stop the live ticker here so
+            // the chip doesn't keep counting wall-clock time the agent isn't
+            // actually spending.
+            const isPausedOnUserInput = askUserQuestionTool !== null || exitPlanTool !== null;
+            const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
+            // Prefer the preceding user.message timestamp as turn start — that's
+            // when the agent began working from the user's perspective, even
+            // before the first tool or assistant token lands. Fall back to the
+            // earliest in-turn signal if there's no prior user message.
+            let turnStartedAtMs = Number.NaN;
+            if (priorItem && priorItem.kind === "user-message") {
+              const parsed = Date.parse(priorItem.event.createdAt);
+              if (Number.isFinite(parsed)) turnStartedAtMs = parsed;
+            }
+            if (!Number.isFinite(turnStartedAtMs)) {
+              let earliest = Number.POSITIVE_INFINITY;
+              for (const ts of item.assistantTimestamps) {
+                if (Number.isFinite(ts)) earliest = Math.min(earliest, ts);
+              }
+              for (const tItem of item.toolItems) {
+                const tools = tItem.kind === "tool" ? [tItem.tool] : tItem.group.tools;
+                for (const t of tools) {
+                  const s = Date.parse(t.createdAt);
+                  if (Number.isFinite(s)) earliest = Math.min(earliest, s);
+                }
+              }
+              if (Number.isFinite(earliest)) turnStartedAtMs = earliest;
+            }
             const groupDefaultExpanded = turnIsActive ? defaultToolCallsExpanded : false;
             const toolChildren: AnnotatedChild[] = visibleToolItems
               .map((tItem) => {

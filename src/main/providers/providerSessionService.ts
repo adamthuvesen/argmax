@@ -149,7 +149,12 @@ const STREAM_BUFFER_CAP = 1_048_576;
  */
 const MAX_PENDING_QUEUE = 64;
 
-const DEBUG = process.env.DEBUG_ARGMAX === "1";
+const STRUCTURED_LAUNCH_COLS = 120;
+const STRUCTURED_LAUNCH_ROWS = 32;
+
+function isDebugArgmaxEnabled(): boolean {
+  return process.env.DEBUG_ARGMAX === "1";
+}
 
 export class ProviderSessionService {
   private readonly handles = new Map<string, HandleEntry>();
@@ -181,7 +186,7 @@ export class ProviderSessionService {
   }
 
   private logHandleCount(action: string, sessionId: string): void {
-    if (!DEBUG) return;
+    if (!isDebugArgmaxEnabled()) return;
     logger.debug("providers.session", "handle count", {
       handles: this.openHandleCount,
       action,
@@ -409,8 +414,8 @@ export class ProviderSessionService {
           mode: modelDefault.launchMode,
           permissionMode: session.permissionMode,
           agentMode,
-          cols: 120,
-          rows: 32
+          cols: STRUCTURED_LAUNCH_COLS,
+          rows: STRUCTURED_LAUNCH_ROWS
         },
         (event) => this.handleProviderEvent(workspace.id, session.provider, event)
       );
@@ -677,7 +682,9 @@ export class ProviderSessionService {
       })();
     } catch (error) {
       logger.warn("providers.memory", "bumpInjectedLearningHits failed", {
-        error: errorMessage(error)
+        error: errorMessage(error),
+        batchSize: ids.length,
+        ids: ids.slice(0, 16)
       });
     }
   }
@@ -719,13 +726,22 @@ export class ProviderSessionService {
         eventCursor,
         rawOutputCursor: Number.MAX_SAFE_INTEGER
       });
-      events.push(...page.events);
       if (page.events.length === 0 || page.eventCursor <= eventCursor) {
+        return events;
+      }
+      // Slice the page before push so peak memory stays at SYNTHESIS_EVENT_CAP
+      // exactly — without this guard a 500-row page that lands past the cap
+      // would push then slice, briefly holding cap+page-size events in RAM.
+      const remaining = SYNTHESIS_EVENT_CAP - events.length;
+      if (page.events.length <= remaining) {
+        events.push(...page.events);
+      } else {
+        events.push(...page.events.slice(0, remaining));
         return events;
       }
       eventCursor = page.eventCursor;
     }
-    return events.slice(0, SYNTHESIS_EVENT_CAP);
+    return events;
   }
 
   recoverOrphanedSessions(): { recoveredCount: number } {
@@ -826,7 +842,7 @@ export class ProviderSessionService {
 
   async disposeAll(): Promise<void> {
     const sessions = [...this.handles.keys()];
-    if (DEBUG && sessions.length > 0) {
+    if (isDebugArgmaxEnabled() && sessions.length > 0) {
       logger.debug("providers.session", "disposeAll terminating handles", { count: sessions.length });
     }
     await Promise.allSettled(
@@ -1186,13 +1202,13 @@ export class ProviderSessionService {
     }
     sessionState.lastActivityWriteAt = now;
     try {
-      const session = this.database.getSession(event.sessionId);
-      sessionState.pendingSessionUpdate = this.database.updateSessionState(event.sessionId, {
-        state: session.state,
-        attention: session.attention,
-        completedAt: session.completedAt ?? null,
-        lastActivityAt: event.createdAt
-      });
+      // Single-column update — avoids the getSession round-trip + ui_state
+      // range scan that updateSessionState would pay every 2 s during the
+      // event hot path.
+      sessionState.pendingSessionUpdate = this.database.updateSessionLastActivity(
+        event.sessionId,
+        event.createdAt
+      );
     } catch (error) {
       if (error instanceof RecordNotFoundError && error.kind === "session") return;
       throw error;
@@ -1231,6 +1247,12 @@ export class ProviderSessionService {
     if (!sessionState) {
       return;
     }
+    // Prefer the most recent observed activity timestamp so the trailing
+    // fragment doesn't slot AFTER unrelated wall-clock events when terminate
+    // races with output (event-ordering hazard). Fall back to Date.now() if
+    // we have no observed activity yet.
+    const fallbackTimestamp =
+      sessionState.pendingSessionUpdate?.lastActivityAt ?? new Date().toISOString();
     for (const [stream, trailing] of sessionState.streamBuffers) {
       if (!trailing) continue;
       sessionState.streamBuffers.set(stream, "");
@@ -1245,7 +1267,7 @@ export class ProviderSessionService {
           type: "output",
           stream: "stderr",
           message: `[argmax: dropped truncated JSON fragment (${trailing.length} bytes)]`,
-          createdAt: new Date().toISOString()
+          createdAt: fallbackTimestamp
         });
         continue;
       }
@@ -1254,7 +1276,7 @@ export class ProviderSessionService {
         type: "output",
         stream,
         message: `${trailing}\n`,
-        createdAt: new Date().toISOString()
+        createdAt: fallbackTimestamp
       };
       const normalized = normalizeProviderEventWithUsage(synthetic, {
         provider: sessionState.provider,

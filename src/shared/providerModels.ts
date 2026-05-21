@@ -48,7 +48,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "high" }
   ],
   cursor: [
-    { label: "Cursor Composer 2", modelId: "composer-2" },
+    { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" },
     { label: "GPT-5.5 (Cursor)", modelId: "gpt-5.5-medium" },
     { label: "Claude Opus 4.7 (Cursor)", modelId: "claude-opus-4-7-medium" }
   ]
@@ -67,8 +67,8 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     launchMode: "structured-json"
   },
   cursor: {
-    label: "Cursor Composer 2",
-    modelId: "composer-2",
+    label: "Composer 2.5 (Cursor)",
+    modelId: "composer-2.5",
     launchMode: "structured-json"
   }
 };
@@ -126,7 +126,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // cost telemetry doesn't claim charges that aren't incurred at the API
   // layer. (audit-2026-05-17 H2 — the `-medium` aliased ids previously
   // mirrored base pricing, contradicting this rule.)
-  "composer-2":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "composer-2.5":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-7-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.5-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };

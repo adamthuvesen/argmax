@@ -235,6 +235,34 @@ function normalizeJsonPayload(
   }
 
   if (provider === "cursor" && isCursorLifecycleEvent(providerType, stringValue(payload.subtype))) {
+    // Defensive: today's Cursor stream emits the final cumulative `assistant`
+    // row BEFORE `result/success`, so that row drives `message.completed` and
+    // resets `cursorAssistantText`. If the order ever flips, this branch
+    // would otherwise leave the renderer's coalesced bubble in a permanently
+    // streaming state. Synthesize a `message.completed` from the buffered
+    // text so the turn closes cleanly. (audit-2026-05-18 H7)
+    if (
+      context &&
+      typeof context.cursorAssistantText === "string" &&
+      providerType === "result" &&
+      stringValue(payload.subtype) === "success"
+    ) {
+      const finalText = context.cursorAssistantText;
+      context.cursorAssistantText = null;
+      return {
+        events: [
+          {
+            id: randomUUID(),
+            sessionId: event.sessionId,
+            type: "message.completed",
+            message: finalText,
+            payload: { synthesizedFromResult: true, text: finalText },
+            createdAt: event.createdAt
+          }
+        ],
+        usages
+      };
+    }
     return { events: [], usages };
   }
 
@@ -490,11 +518,14 @@ function normalizeCursorAssistantText(
   }
   const prior = context.cursorAssistantText ?? "";
   context.cursorAssistantText = text;
-  // Defensive: if Cursor ever emits a delta that *doesn't* extend the prior
-  // snapshot (truncation, model retry, etc.), fall back to the full text so
-  // we don't drop content. The renderer's coalesced bubble will reset on the
-  // next message.completed.
-  return text.startsWith(prior) ? text.slice(prior.length) : text;
+  if (text.startsWith(prior)) {
+    return text.slice(prior.length);
+  }
+  // Prefix mismatch (truncation, model retry). Returning the full cumulative
+  // text here would visibly concatenate against the prior delta in the
+  // renderer; drop this row instead and let the next message.completed emit
+  // the authoritative final text.
+  return null;
 }
 
 function extractClaudeMessageContent(payload: Record<string, unknown>): string | null {
@@ -649,7 +680,7 @@ export function detectPermissionGate(
   payload: Record<string, unknown>,
   provider: ProviderId | undefined
 ): PermissionGateInfo | null {
-  if (provider !== "codex") {
+  if (provider === "claude") {
     if (stringValue(payload.type) === "system" && stringValue(payload.subtype) === "permission_denied") {
       const tool = stringValue(payload.tool_name) ?? "tool";
       const command = commandFromClaudePermissionMessage(stringValue(payload.message)) ?? tool;
@@ -663,9 +694,7 @@ export function detectPermissionGate(
         ...(stringValue(payload.tool_use_id) ? { toolUseId: stringValue(payload.tool_use_id) as string } : {})
       };
     }
-  }
-
-  if (provider !== "claude") {
+  } else if (provider === "codex") {
     const method = stringValue(payload.method);
     if (
       method &&

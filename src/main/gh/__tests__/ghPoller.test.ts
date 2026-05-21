@@ -233,4 +233,27 @@ describe("GhPoller.tick", () => {
     expect(launchFollowUp).not.toHaveBeenCalled();
     database.connection.close();
   });
+
+  it("retries a failed follow-up launch on the next tick", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const { sessionId } = seed(database);
+
+    const refresh = vi.fn<(sid: string) => Promise<GhPrRecord[]>>().mockResolvedValue([makeRow({ sessionId })]);
+    const launchFollowUp = vi
+      .fn<(ctx: CheckFailureContext) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockResolvedValueOnce(undefined);
+
+    const poller = new GhPoller({
+      database,
+      ghService: { refresh },
+      launchFollowUp
+    });
+
+    await poller.tick();
+    await poller.tick();
+
+    expect(launchFollowUp).toHaveBeenCalledTimes(2);
+    database.connection.close();
+  });
 });

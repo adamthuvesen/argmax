@@ -171,6 +171,30 @@ describe("PlanCard", () => {
     expect(screen.getByRole("listbox", { name: "Plan response" })).toBeInTheDocument();
   });
 
+  it("does not submit again after collapse and re-expand", () => {
+    const onAccept = vi.fn();
+    const onReject = vi.fn();
+    render(
+      <PlanCard
+        plan={samplePlan()}
+        createdAt="2026-05-16T14:30:00.000Z"
+        rawMarkdown="raw"
+        onAccept={onAccept}
+        onReject={onReject}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Plan response" }), { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Expand plan" }));
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Plan response" }), { key: "Enter" });
+    const [firstOption] = screen.getAllByRole("option");
+    if (!firstOption) throw new Error("expected option to be in document");
+    fireEvent.click(firstOption);
+
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
   it("invokes onAccept when option 1 is clicked", () => {
     const onAccept = vi.fn();
     const onReject = vi.fn();

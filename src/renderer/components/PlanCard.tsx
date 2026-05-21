@@ -95,6 +95,7 @@ function PlanCardInner({
 }: PlanCardProps): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [copied, copy] = useCopyToClipboard();
   const [feedback, setFeedback] = useState<FeedbackState>("none");
   const optionsRef = useRef<HTMLUListElement | null>(null);
@@ -107,8 +108,10 @@ function PlanCardInner({
 
   const submit = useCallback(
     (index: number): void => {
+      if (submitted) return;
       const option = options[index];
       if (!option) return;
+      setSubmitted(true);
       // Collapse on submit — Escape no longer collapses (cards are not
       // dismissable), so the answer is what hides the card.
       setCollapsed(true);
@@ -119,12 +122,13 @@ function PlanCardInner({
         onReject();
       }
     },
-    [options, onAccept, onReject]
+    [options, onAccept, onReject, submitted]
   );
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLUListElement>): void => {
       const { key } = event;
+      if (submitted) return;
       if (key === "ArrowDown") {
         event.preventDefault();
         setSelectedIndex((idx) => (idx + 1) % optionCount);
@@ -151,7 +155,7 @@ function PlanCardInner({
       // a no-op so it doesn't accidentally collapse an in-progress decision,
       // matching QuestionCard.
     },
-    [optionCount, selectedIndex, submit]
+    [optionCount, selectedIndex, submit, submitted]
   );
 
   // Auto-focus the listbox on mount so `Enter` / `1` / `2` / arrow keys
@@ -354,6 +358,7 @@ function PlanCardInner({
             className="plan-card-options"
             role="listbox"
             aria-label="Plan response"
+            aria-disabled={submitted}
             tabIndex={0}
             onKeyDown={handleKeyDown}
           >
@@ -365,7 +370,9 @@ function PlanCardInner({
                   className={`plan-card-option${isActive ? " is-active" : ""}`}
                   role="option"
                   aria-selected={isActive}
+                  aria-disabled={submitted}
                   onClick={() => {
+                    if (submitted) return;
                     setSelectedIndex(idx);
                     submit(idx);
                   }}
@@ -378,12 +385,18 @@ function PlanCardInner({
             })}
           </ul>
           <div className="plan-card-action-foot">
-            <span className="plan-card-key-hint">
-              <span className="plan-card-key-cap">↑↓</span> move
-            </span>
-            <span className="plan-card-key-hint">
-              <span className="plan-card-key-cap">↵</span> submit
-            </span>
+            {submitted ? (
+              <span className="plan-card-key-hint">Submitted</span>
+            ) : (
+              <>
+                <span className="plan-card-key-hint">
+                  <span className="plan-card-key-cap">↑↓</span> move
+                </span>
+                <span className="plan-card-key-hint">
+                  <span className="plan-card-key-cap">↵</span> submit
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>

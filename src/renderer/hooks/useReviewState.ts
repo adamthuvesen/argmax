@@ -145,7 +145,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   // edge is the signal to ask git for the authoritative file list.
   const changedFilesKey: string | null =
     source?.kind === "workspace" ? `${source.workspace.changedFiles}:${source.workspace.state}` : null;
-  const canEdit = sourceKind === "workspace" || sourceKind === "project";
+  const canEdit = sourceKind === "workspace";
 
   // Single dispatch object bound to the active source. Cached per (kind, id)
   // so the six closures keep stable identities until the user navigates to
@@ -189,6 +189,8 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const previousSourceId = useRef<string | null>(null);
   const activeWorkspaceFileTab =
     workspaceFileTabs.find((tab) => tab.path === workspaceActiveFilePath) ?? null;
+  const activeWorkspaceFilePath = activeWorkspaceFileTab?.path;
+  const activeWorkspaceFilePreviewState = activeWorkspaceFileTab?.previewState;
   // Single mirror for listener/callback paths — updated synchronously each render
   // so the first call after a state change never reads a stale closure.
   const listenerStateRef = useRef({
@@ -392,15 +394,15 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   useEffect(() => {
     if (mode !== "files" || !isPanelOpen) return;
     if (!sourceId || !sourceKind || !window.argmax) return;
-    if (!activeWorkspaceFileTab || activeWorkspaceFileTab.previewState !== "idle") return;
-    loadWorkspaceFile(activeWorkspaceFileTab.path);
+    if (!activeWorkspaceFilePath || activeWorkspaceFilePreviewState !== "idle") return;
+    loadWorkspaceFile(activeWorkspaceFilePath);
   }, [
     mode,
     isPanelOpen,
     sourceId,
     sourceKind,
-    activeWorkspaceFileTab?.path,
-    activeWorkspaceFileTab?.previewState,
+    activeWorkspaceFilePath,
+    activeWorkspaceFilePreviewState,
     loadWorkspaceFile
   ]);
 

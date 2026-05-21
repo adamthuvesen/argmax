@@ -84,7 +84,7 @@ export function useDashboardSession(
   const dashboardRefreshToken = useRef(0);
   const dashboardDeltaRevision = useRef(0);
   const sessionCursorsRef = useRef(new Map<string, SessionCursor>());
-  const resolveApprovalToken = useRef(0);
+  const resolveApprovalTokens = useRef(new Map<string, number>());
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
 
   const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
@@ -204,7 +204,7 @@ export function useDashboardSession(
       setLoadState("ready");
       setLoadError(null);
     } catch (error) {
-      if (token !== dashboardLoadToken.current) {
+      if (token !== dashboardRefreshToken.current) {
         return;
       }
       setLoadState("error");
@@ -353,12 +353,13 @@ export function useDashboardSession(
 
   const resolveApproval = useCallback(
     async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
-      const token = ++resolveApprovalToken.current;
+      const token = (resolveApprovalTokens.current.get(approvalId) ?? 0) + 1;
+      resolveApprovalTokens.current.set(approvalId, token);
       // Use the ref so the callback's identity doesn't depend on `snapshot`;
       // depending on snapshot would rebuild this callback on every dashboard
       // delta, defeating memoization in every consumer that takes it as a
       // prop.
-      const previousSnapshot = snapshotRef.current;
+      const previousApproval = snapshotRef.current.approvals.find((approval) => approval.id === approvalId) ?? null;
 
       // Optimistic update.
       setSnapshot((current) => ({
@@ -371,20 +372,30 @@ export function useDashboardSession(
       }));
 
       if (!window.argmax) {
+        resolveApprovalTokens.current.delete(approvalId);
         return;
       }
 
       try {
         await window.argmax.approvals.resolve({ approvalId, status });
-        if (token !== resolveApprovalToken.current) {
+        if (token !== resolveApprovalTokens.current.get(approvalId)) {
           return;
         }
+        resolveApprovalTokens.current.delete(approvalId);
         await refresh();
       } catch (error) {
-        if (token !== resolveApprovalToken.current) {
+        if (token !== resolveApprovalTokens.current.get(approvalId)) {
           return;
         }
-        setSnapshot(previousSnapshot);
+        resolveApprovalTokens.current.delete(approvalId);
+        if (previousApproval) {
+          setSnapshot((current) => ({
+            ...current,
+            approvals: current.approvals.map((approval) =>
+              approval.id === approvalId ? previousApproval : approval
+            )
+          }));
+        }
         onErrorToastRef.current?.(
           error instanceof Error ? error.message : "Could not resolve approval."
         );

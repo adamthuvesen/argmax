@@ -891,6 +891,42 @@ describe("SessionConversation — model selection persistence", () => {
     expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
   });
 
+  it("shows the raw AskUserQuestion row when the only ask is invalid", () => {
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("u1", "user.message", "decide", "2026-05-12T15:00:00.000Z", {
+          agentMode: "plan"
+        }),
+        event("bad-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_q_bad_only",
+          name: "AskUserQuestion",
+          input: {
+            questions: [
+              {
+                question: "Too many options",
+                header: "Bad",
+                multiSelect: false,
+                options: [
+                  { label: "A" },
+                  { label: "B" },
+                  { label: "C" },
+                  { label: "D" },
+                  { label: "E" }
+                ]
+              }
+            ]
+          }
+        })
+      ]
+    );
+
+    expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
+    expect(screen.getByText("AskUserQuestion")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
   it("renders a running AskUserQuestion card when it is mixed into an active tool group", () => {
     render(
       <SessionConversation

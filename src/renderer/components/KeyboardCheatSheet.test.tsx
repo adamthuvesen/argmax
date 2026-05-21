@@ -45,6 +45,40 @@ describe("KeyboardCheatSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("traps Tab inside the dialog — Tab from the close button wraps back to itself", () => {
+    const onClose = vi.fn();
+    // Background button outside the dialog. Without a trap, Tab from the
+    // dialog's close button would escape to here.
+    const background = document.createElement("button");
+    background.textContent = "Background";
+    document.body.appendChild(background);
+    try {
+      render(<KeyboardCheatSheet open={true} onClose={onClose} />);
+      const close = screen.getByRole("button", { name: "Close" });
+      expect(close).toHaveFocus();
+
+      // Tab forward: the dialog has only one focusable (the close button),
+      // so the trap should wrap back to the first focusable — itself.
+      const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+      document.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(close).toHaveFocus();
+
+      // Shift+Tab from the first focusable also wraps to the last (itself).
+      const shiftEvent = new KeyboardEvent("keydown", {
+        key: "Tab",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true
+      });
+      document.dispatchEvent(shiftEvent);
+      expect(shiftEvent.defaultPrevented).toBe(true);
+      expect(close).toHaveFocus();
+    } finally {
+      document.body.removeChild(background);
+    }
+  });
+
   it("restores focus to the previously focused element on close", () => {
     const onClose = vi.fn();
     const trigger = document.createElement("button");

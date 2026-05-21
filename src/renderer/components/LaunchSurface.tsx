@@ -215,21 +215,6 @@ export function LaunchSurface({
       setStatus(error instanceof Error ? error.message : "Could not switch branch.");
     }
   }, [project, onBranchSwitch]);
-  const headingTemplate = useMemo(() => {
-    const options = [
-      "It's the final frontier.",
-      "In space, no one can hear your build fail.",
-      "You're gonna need a bigger commit.",
-      "What we've got here is a failure to ship.",
-      "I will remember that.",
-      "I'm sorry Dave, I can't merge that.",
-      "With great power comes great responsibility.",
-      "One does not simply deploy to production.",
-      "It's alive!",
-      "I know kung fu. What are we building?",
-    ];
-    return options[Math.floor(Math.random() * options.length)];
-  }, []);
   const placeholderText = useMemo(() => {
     const options = [
       "Do or do not. There is no try.",
@@ -482,10 +467,6 @@ export function LaunchSurface({
             New session · {project.currentBranch} · {heroEyebrowDate}
           </span>
         </div>
-        <h1 className="launcher-hero-headline">{headingTemplate}</h1>
-        <p className="launcher-hero-lede">
-          Type a task. Press <kbd className="launcher-hero-kbd">⏎</kbd> and I'll spin up a fresh worktree, branch it, and stream the agent back here.
-        </p>
       </header>
       <form
         className="composer"

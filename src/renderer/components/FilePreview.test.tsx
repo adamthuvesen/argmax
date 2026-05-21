@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { FilePreview, resolveMarkdownImageSrc } from "./FilePreview.js";
+import { FilePreview } from "./FilePreview.js";
+import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
 

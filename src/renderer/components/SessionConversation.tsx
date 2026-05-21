@@ -59,6 +59,7 @@ import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import { providerLabel, repoNameFromPath } from "../lib/projects.js";
+import { decideSmartFollow } from "../lib/smartFollow.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
@@ -710,9 +711,9 @@ export function SessionConversation({
   const handleConversationScroll = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    wasNearBottomRef.current = distanceFromBottom < 80;
-    setShowScrollToBottom(distanceFromBottom > 120);
+    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
+    wasNearBottomRef.current = decision.pinToBottom;
+    setShowScrollToBottom(decision.showFab);
   }, []);
 
   const scrollConversationToBottom = useCallback((): void => {

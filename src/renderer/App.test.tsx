@@ -452,6 +452,9 @@ describe("App", () => {
 
     const settingsGroups = screen.getByRole("complementary", { name: "Settings groups" });
     fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`\\b${group}\\b`) }));
+    if (group === "System") {
+      await screen.findByText("No learnings captured yet. Complete a session to start filling this list.");
+    }
   }
 
   it("opens the settings page from the sidebar and lets the user close it", async () => {

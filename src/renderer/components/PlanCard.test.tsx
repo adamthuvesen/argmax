@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Plan } from "../lib/parsePlan.js";
 import { PlanCard } from "./PlanCard.js";
@@ -266,7 +266,7 @@ describe("PlanCard", () => {
     expect(onReject).not.toHaveBeenCalled();
   });
 
-  it("copies the raw markdown when the copy button is clicked", () => {
+  it("copies the raw markdown when the copy button is clicked", async () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -281,7 +281,12 @@ describe("PlanCard", () => {
         onReject={() => {}}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Copy plan" }));
+    const button = screen.getByRole("button", { name: "Copy plan" });
+    fireEvent.click(button);
     expect(writeText).toHaveBeenCalledWith("# Plan\n\nbody");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(button).toHaveAttribute("title", "Copied!");
   });
 });

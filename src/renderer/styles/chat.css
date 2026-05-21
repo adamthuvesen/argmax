@@ -1153,6 +1153,7 @@
 .chat-bubble p {
   margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   line-height: 1.55;
   font-size: 14px;
   color: var(--text);

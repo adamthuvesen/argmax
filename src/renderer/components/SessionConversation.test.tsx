@@ -358,7 +358,9 @@ describe("SessionConversation — model selection persistence", () => {
       ]
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    // Session is still "running", so the chip now says "Working" — the live
+    // ticker covers the post-tool thinking window the old behavior left blank.
+    fireEvent.click(screen.getByRole("button", { name: /Working|Worked for/ }));
 
     expect(screen.getByRole("button", { name: /Ran 3 commands/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();

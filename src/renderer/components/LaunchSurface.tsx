@@ -516,7 +516,6 @@ export function LaunchSurface({
           </div>
         ) : null}
         <div className="composer-input">
-          <span className="composer-marker" aria-hidden="true">▍</span>
           <textarea
             aria-label="Task prompt"
             aria-autocomplete="list"

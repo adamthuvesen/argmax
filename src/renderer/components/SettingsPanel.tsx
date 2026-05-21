@@ -322,7 +322,7 @@ export function SettingsPanel({
             no cloud account, no telemetry, no sync.
           </p>
           <div className="settings-hero-rule" aria-hidden="true">
-            <span className="settings-hero-rule-tail">└── single user · zero telemetry · ready</span>
+            <span>└── single user · zero telemetry · ready</span>
           </div>
         </header>
 
@@ -1067,7 +1067,6 @@ export function SettingsPanel({
           <span>preferences saved instantly</span>
           <span className="settings-footer-sep">·</span>
           <span>zero telemetry</span>
-          <span className="settings-footer-caret">▍</span>
         </footer>
       </div>
 

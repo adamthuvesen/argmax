@@ -32,7 +32,6 @@ export function ThinkingTranscript({ command }: { command: string }): JSX.Elemen
   }, [command]);
 
   const visible = command.slice(0, revealed);
-  const done = revealed >= command.length;
 
   return (
     <article
@@ -45,7 +44,6 @@ export function ThinkingTranscript({ command }: { command: string }): JSX.Elemen
         <span className="thinking-line">
           <span className="thinking-prompt">argmax</span>
           <span className="thinking-text">{visible}</span>
-          <span className={`thinking-caret${done ? " settled" : ""}`} />
         </span>
       </div>
     </article>

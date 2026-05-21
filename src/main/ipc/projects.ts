@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import {
   listBranchesInputSchema,
   registerProjectInputSchema,
@@ -10,19 +9,15 @@ import {
 import type { ArgmaxDatabase } from "../persistence/database.js";
 import type { ProjectService } from "../projects/projectRegistration.js";
 import { runGitText } from "../git/exec.js";
-import { timed } from "../util/ipcLatency.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 
 /** Project registration + branch IPC handlers (Ralph SPEC D3 — seventh split). */
 export function registerProjectHandlers(
   database: ArgmaxDatabase,
   projects: ProjectService
 ): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "projects:register",

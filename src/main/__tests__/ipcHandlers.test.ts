@@ -248,7 +248,7 @@ describe("projects:switch-branch invokes git with the `--` argv separator", () =
 
     const registered = registerIpcHandlers(stubDatabase, stubProviders, stubTerminals, stubMcpAuth);
 
-    expect(registered).toEqual(captured.map((entry) => entry.channel));
-    expect(new Set(registered)).toEqual(new Set(REGISTERED_IPC_CHANNELS));
+    expect(registered.channels).toEqual(captured.map((entry) => entry.channel));
+    expect(new Set(registered.channels)).toEqual(new Set(REGISTERED_IPC_CHANNELS));
   });
 });

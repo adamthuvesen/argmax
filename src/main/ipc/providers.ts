@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import {
   launchProviderSessionInputSchema,
   providerSessionInputSchema,
@@ -10,18 +9,14 @@ import {
 } from "../../shared/ipcSchemas.js";
 import type { ProviderSessionService } from "../providers/providerSessionService.js";
 import { discoverProviders } from "../providers/providerDiscovery.js";
-import { timed } from "../util/ipcLatency.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 
 /** Provider lifecycle IPC handlers (Ralph SPEC D3 — fourth split). */
 export function registerProviderHandlers(
   providerSessions: ProviderSessionService
 ): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register("providers:discover", withValidation(providersDiscoverInputSchema, () => discoverProviders()));
   register(

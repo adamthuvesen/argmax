@@ -1,4 +1,4 @@
-import { ipcMain, shell } from "electron";
+import { shell } from "electron";
 import { z } from "zod";
 import {
   gitCommitInputSchema,
@@ -9,19 +9,15 @@ import {
 } from "../../shared/ipcSchemas.js";
 import type { GhService } from "../gh/ghService.js";
 import type { GitOpsService } from "../git/gitOpsService.js";
-import { timed } from "../util/ipcLatency.js";
 import { withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 
 /** Git + PR IPC handlers (Ralph SPEC D3 — third split). */
 export function registerGitHandlers(
   ghService: GhService,
   gitOps: GitOpsService
 ): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "prs:list-for-session",

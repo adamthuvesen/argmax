@@ -1,10 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { createDatabase, type ArgmaxDatabase } from "./persistence/database.js";
 import { registerIpcHandlers } from "./ipc.js";
+import type { TournamentService } from "./tournaments/tournamentService.js";
 let registeredChannels: readonly string[] = [];
+let tournaments: TournamentService | null = null;
 import { ProviderSessionService } from "./providers/providerSessionService.js";
 import { TerminalService } from "./terminal/terminalService.js";
 import { McpAuthService } from "./mcp/mcpAuthService.js";
@@ -71,6 +74,29 @@ let shutdownInProgress = false;
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 const iconPath = join(currentDirectory, "..", "..", "assets", "icon.png");
 
+// Theme cache (synced by the renderer via IPC) lets us match BrowserWindow's
+// backgroundColor to the resolved theme *before* the renderer mounts —
+// otherwise dark-mode users see ~150ms of light bg flash at cold start.
+const LIGHT_BG = "#fbfbfa";
+const DARK_BG = "#0e0e0c";
+
+function resolveStartupBackground(): string {
+  let mode: "light" | "dark" | "system" = "system";
+  try {
+    const raw = readFileSync(join(app.getPath("userData"), "theme.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { mode?: unknown };
+    if (parsed?.mode === "light" || parsed?.mode === "dark" || parsed?.mode === "system") {
+      mode = parsed.mode;
+    }
+  } catch {
+    /* missing cache (cold install, first launch) — default to system */
+  }
+  nativeTheme.themeSource = mode;
+  if (mode === "dark") return DARK_BG;
+  if (mode === "light") return LIGHT_BG;
+  return nativeTheme.shouldUseDarkColors ? DARK_BG : LIGHT_BG;
+}
+
 async function createWindow(): Promise<void> {
   const rendererIndexPath = join(currentDirectory, "../renderer/index.html");
   // Open the window covering the primary display's work area (between the
@@ -89,7 +115,7 @@ async function createWindow(): Promise<void> {
     resizable: true,
     title: "Argmax",
     icon: iconPath,
-    backgroundColor: "#fbfbfa",
+    backgroundColor: resolveStartupBackground(),
     // The first paint of the renderer lands ~150 ms after window construction.
     // Hide the window until `ready-to-show` fires (handler below) so the user
     // never sees the empty Electron-default chrome flash before the React
@@ -204,7 +230,9 @@ void app.whenReady().then(async () => {
   });
   dockBadge.update();
   markStartupPhase("services.construct");
-  registeredChannels = registerIpcHandlers(database, providerSessions, terminals, mcpAuth);
+  const registered = registerIpcHandlers(database, providerSessions, terminals, mcpAuth, notifications);
+  registeredChannels = registered.channels;
+  tournaments = registered.tournaments;
   markStartupPhase("ipc.register");
 
   // CI feedback loop: poll PR check status for every running session; on a
@@ -248,26 +276,31 @@ void app.whenReady().then(async () => {
     });
   }
 
+  const runCheckForUpdates = (): void => {
+    if (!updateService) {
+      // Dev / unpackaged: surface a quick "no updater here" dialog so the
+      // menu item still reads as wired-up instead of doing nothing.
+      void dialog.showMessageBox({
+        type: "info",
+        title: "Updates",
+        message: "Auto-update is only available in packaged builds.",
+        buttons: ["OK"]
+      });
+      return;
+    }
+    void updateService.checkOnUserRequest();
+  };
+
   const menuTemplate = buildAppMenuTemplate({
     isDev: is.dev,
     onCommand: (command: MenuCommand) => {
+      if (command === "check-for-updates") {
+        runCheckForUpdates();
+        return;
+      }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("menu:command", command);
       }
-    },
-    onCheckForUpdates: () => {
-      if (!updateService) {
-        // Dev / unpackaged: surface a quick "no updater here" dialog so the
-        // menu item still reads as wired-up instead of doing nothing.
-        void dialog.showMessageBox({
-          type: "info",
-          title: "Updates",
-          message: "Auto-update is only available in packaged builds.",
-          buttons: ["OK"]
-        });
-        return;
-      }
-      void updateService.checkOnUserRequest();
     }
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
@@ -369,6 +402,10 @@ async function shutdown(exitCode = 0): Promise<void> {
   if (mcpAuth) {
     await safeDispose("mcpAuth.disposeAll", () => mcpAuth?.disposeAll());
     mcpAuth = null;
+  }
+  if (tournaments) {
+    await safeDispose("tournaments.dispose", () => tournaments?.dispose());
+    tournaments = null;
   }
   for (const channel of registeredChannels) {
     ipcMain.removeHandler(channel);

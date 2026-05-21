@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import {
   loadDiffInputSchema,
   loadDiffForProjectInputSchema,
@@ -17,19 +16,15 @@ import {
 } from "../../shared/ipcSchemas.js";
 import type { GitReviewService } from "../review/gitReviewService.js";
 import type { WorkspaceFilesService } from "../files/workspaceFilesService.js";
-import { timed } from "../util/ipcLatency.js";
 import { withTupleValidation, withValidation } from "../ipc.js";
+import { createIpcRegistrar } from "./registry.js";
 
 /** Review/diff + workspace files IPC handlers (Ralph SPEC D3 — fifth split). */
 export function registerReviewHandlers(
   review: GitReviewService,
   workspaceFiles: WorkspaceFilesService
 ): readonly IpcChannel[] {
-  const registered: IpcChannel[] = [];
-  const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
-    ipcMain.handle(channel, timed(channel, listener as (event: unknown, ...args: unknown[]) => unknown));
-    registered.push(channel);
-  };
+  const { register, channels: registered } = createIpcRegistrar();
 
   register(
     "review:list-changed-files",

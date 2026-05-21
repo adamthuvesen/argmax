@@ -429,7 +429,7 @@ export const workspaceStatFileForProjectInputSchema = z.object({
 
 export const runCheckInputSchema = z.object({
   workspaceId: workspaceIdSchema,
-  command: z.string().min(1)
+  command: utf8Bytes(8192)
 });
 
 export const createCheckpointInputSchema = z.object({
@@ -439,6 +439,31 @@ export const createCheckpointInputSchema = z.object({
 
 export const selectPreferredAttemptInputSchema = z.object({
   sessionId: sessionIdSchema
+});
+
+export const learningsListInputSchema = z.object({
+  projectId: projectIdSchema,
+  limit: z.number().int().min(1).max(200).optional()
+});
+
+export const learningsUpdateInputSchema = z.object({
+  id: z.string().min(1),
+  summary: z.string().min(1).optional(),
+  verified: z.boolean().optional()
+});
+
+export const learningsDeleteInputSchema = z.object({
+  id: z.string().min(1)
+});
+
+export const sessionSearchInputSchema = z.object({
+  query: z.string().min(1).max(200),
+  limit: z.number().int().min(1).max(200).optional()
+});
+
+export const workspaceSetPinnedInputSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  pinned: z.boolean()
 });
 
 // ---------------------------------------------------------------------------
@@ -604,6 +629,18 @@ export const listDetectedIdesOutputSchema = z.array(
 );
 
 // ---------------------------------------------------------------------------
+// Theme — renderer notifies main on every theme-mode change so the
+// BrowserWindow background colour + cached userData/theme.json stay in sync.
+// The cached value is what blocks the white-flash on cold start (main reads
+// it before constructing the BrowserWindow).
+// ---------------------------------------------------------------------------
+
+export const themeModeSchema = z.enum(["light", "dark", "system"]);
+export const systemSetThemeInputSchema = z.object({
+  mode: themeModeSchema
+});
+
+// ---------------------------------------------------------------------------
 // Channel → schema map
 // ---------------------------------------------------------------------------
 
@@ -660,32 +697,18 @@ export const ipcSchemas = {
   "system:list-detected-ides": listDetectedIdesInputSchema,
   "system:diagnostics": z.void(),
   "system:vacuum-database": z.void(),
+  "system:set-theme": systemSetThemeInputSchema,
   "mcp:list": z.void(),
   "mcp:auth:start": mcpAuthStartInputSchema,
   "mcp:auth:write": mcpAuthWriteInputSchema,
   "mcp:auth:resize": mcpAuthResizeInputSchema,
   "mcp:auth:terminate": mcpAuthTerminateInputSchema,
   "session:cost-summary": sessionCostSummaryInputSchema,
-  "learnings:list": z.object({
-    projectId: projectIdSchema,
-    limit: z.number().int().min(1).max(200).optional()
-  }),
-  "learnings:update": z.object({
-    id: z.string().min(1),
-    summary: z.string().min(1).optional(),
-    verified: z.boolean().optional()
-  }),
-  "learnings:delete": z.object({
-    id: z.string().min(1)
-  }),
-  "session:search": z.object({
-    query: z.string().min(1).max(200),
-    limit: z.number().int().min(1).max(200).optional()
-  }),
-  "workspaces:set-pinned": z.object({
-    workspaceId: workspaceIdSchema,
-    pinned: z.boolean()
-  }),
+  "learnings:list": learningsListInputSchema,
+  "learnings:update": learningsUpdateInputSchema,
+  "learnings:delete": learningsDeleteInputSchema,
+  "session:search": sessionSearchInputSchema,
+  "workspaces:set-pinned": workspaceSetPinnedInputSchema,
   "prs:list-for-session": z.object({ sessionId: sessionIdSchema }),
   "prs:refresh": z.object({ sessionId: sessionIdSchema }),
   "git:commit": gitCommitInputSchema,

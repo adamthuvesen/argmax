@@ -223,7 +223,7 @@ export function findSessionById(connection: Database.Database, sessionId: string
   if (!row) {
     throw new RecordNotFoundError("session", sessionId);
   }
-  return sessionRowToSummary(row, isPreferredSession(connection, row.id));
+  return sessionRowToSummary(row, isPreferredSession(connection, row.id, row.workspace_id));
 }
 
 /**
@@ -255,6 +255,26 @@ export function updateSessionLastModelId(
   connection
     .prepare("UPDATE sessions SET last_model_id = ? WHERE id = ?")
     .run(modelId, sessionId);
+}
+
+/**
+ * Single-column write for the throttled provider-event activity tick — avoids
+ * the `getSession` round-trip + range scan on `ui_state` that
+ * `updateSessionState` would otherwise pay every 2 s during streaming. Returns
+ * the resulting summary via the existing NoPreferred fast path.
+ */
+export function updateSessionLastActivity(
+  connection: Database.Database,
+  sessionId: string,
+  lastActivityAt: string
+): SessionSummary {
+  const result = connection
+    .prepare("UPDATE sessions SET last_activity_at = ? WHERE id = ?")
+    .run(lastActivityAt, sessionId);
+  if (result.changes === 0) {
+    throw new RecordNotFoundError("session", sessionId);
+  }
+  return findSessionByIdNoPreferred(connection, sessionId);
 }
 
 export function selectPreferredAttempt(
@@ -302,10 +322,33 @@ export function loadPreferredSessionIds(connection: Database.Database): Set<stri
   );
 }
 
-function isPreferredSession(connection: Database.Database, sessionId: string): boolean {
-  return loadPreferredSessionIds(connection).has(sessionId);
+export function listSessionIdsForWorkspace(connection: Database.Database, workspaceId: string): string[] {
+  const rows = connection
+    .prepare("SELECT id FROM sessions WHERE workspace_id = ?")
+    .all(workspaceId) as Array<{ id: string }>;
+  return rows.map((row) => row.id);
+}
+
+function isPreferredSession(
+  connection: Database.Database,
+  sessionId: string,
+  workspaceId: string
+): boolean {
+  const workspace = findWorkspaceById(connection, workspaceId);
+  const key = preferredAttemptKey(workspace.projectId, workspace.taskLabel);
+  const row = connection.prepare("SELECT value_json FROM ui_state WHERE key = ?").get(key) as
+    | { value_json: string }
+    | undefined;
+  if (!row) {
+    return false;
+  }
+  const parsed = safeJsonParseRecord(row.value_json, "sessions.preferredAttempt");
+  return parsed.sessionId === sessionId;
 }
 
 function preferredAttemptKey(projectId: string, taskLabel: string): string {
-  return `preferred-attempt:${projectId}:${taskLabel}`;
+  // Encode the task label so a `:` inside it can't collide with the
+  // delimiter structure (e.g. a label literally containing a UUID-shaped
+  // substring won't smear into the project segment).
+  return `preferred-attempt:${projectId}:${encodeURIComponent(taskLabel)}`;
 }

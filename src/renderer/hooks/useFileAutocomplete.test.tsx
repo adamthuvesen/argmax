@@ -123,6 +123,39 @@ describe("useFileAutocomplete", () => {
     delete (window as unknown as { argmax?: unknown }).argmax;
   });
 
+  it("does not apply listFiles after unmount (audit-2026-05-18 H1)", async () => {
+    let resolveList!: (entries: WorkspaceFileEntry[]) => void;
+    listFiles.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveList = resolve;
+        })
+    );
+
+    const { unmount } = render(<Harness initialInput="@" />);
+    const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
+    act(() => {
+      setCaret(probe, 1);
+    });
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+    unmount();
+
+    act(() => {
+      resolveList([{ path: "stale-after-unmount.ts" }]);
+    });
+
+    listFiles.mockResolvedValue([{ path: "fresh.ts" }]);
+    render(<Harness initialInput="@" />);
+    const probe2 = screen.getByLabelText<HTMLTextAreaElement>("probe");
+    act(() => {
+      setCaret(probe2, 1);
+    });
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryAllByTestId("entry-file").map((node) => node.textContent)).toEqual(["fresh.ts"])
+    );
+  });
+
   it("opens the popover with files and derived folders when the user types `@`", async () => {
     const entries: WorkspaceFileEntry[] = [
       { path: "src/main/main.ts" },
@@ -143,6 +176,22 @@ describe("useFileAutocomplete", () => {
     expect(screen.getByTestId("filtered-count").textContent).toBe("5");
     expect(screen.queryAllByTestId("entry-file")).toHaveLength(2);
     expect(screen.queryAllByTestId("entry-dir")).toHaveLength(3);
+  });
+
+  it("shows project-scoped files after the bridge resolves (audit-2026-05-18 H2)", async () => {
+    listFilesForProject.mockResolvedValue([{ path: "packages/shared/index.ts" }]);
+
+    render(<Harness initialInput="@" source={{ kind: "project", id: "project-1" }} />);
+
+    const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
+    act(() => {
+      setCaret(probe, 1);
+    });
+
+    await waitFor(() => expect(listFilesForProject).toHaveBeenCalledWith("project-1"));
+    await waitFor(() => expect(screen.getByTestId("popover-open").textContent).toBe("yes"));
+    expect(screen.getByText("packages/shared/index.ts")).toBeTruthy();
+    expect(listFiles).not.toHaveBeenCalled();
   });
 
   it("matches short prefixes that are not at a non-alphanumeric boundary (regression)", async () => {

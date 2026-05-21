@@ -4,10 +4,9 @@
  * Sidebar shows input + output only (the intuitive "tokens used" number).
  * Cache reads/writes are aggregated separately and surfaced in the tooltip.
  *
- * "k" is the minimum unit for non-zero values — sub-thousand counts still
- * render as e.g. "0.7k" so the badge has a consistent shape. We floor at
- * "0.1k" so very small counts don't collapse to "0k", which would read as
- * "no usage" when usage actually occurred.
+ * Sub-thousand counts render as the raw integer (e.g. "42") so the badge
+ * does not overstate small usage as "0.1k". From 100 upward we use the
+ * compact k/M/B shape.
  *
  * Negative values are preserved with a leading minus rather than collapsed —
  * if an upstream sign bug ever ships, we want it visible, not hidden.
@@ -18,7 +17,7 @@ export function formatTokens(value: number | null | undefined): string {
   const sign = v < 0 ? "-" : "";
   const abs = Math.abs(v);
   if (abs < 1_000_000) {
-    if (abs < 100) return `${sign}0.1k`;
+    if (abs < 100) return `${sign}${Math.round(abs)}`;
     return `${sign}${trim(abs / 1_000)}k`;
   }
   if (abs < 1_000_000_000) return `${sign}${trim(abs / 1_000_000)}M`;

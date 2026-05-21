@@ -33,6 +33,13 @@ export function WorkspaceTree({
   height?: number;
 }): JSX.Element {
   const tree = useMemo(() => buildFileTree(state.entries), [state.entries]);
+  // Stable fingerprint so streaming refreshes that rebuild `entries` with the
+  // same paths don't reset scroll (audit-2026-05-18 M19).
+  const entriesShapeKey = useMemo(() => {
+    const paths = state.entries.map((entry) => entry.path);
+    if (paths.length === 0) return "0";
+    return `${paths.length}:${paths[0] ?? ""}:${paths[paths.length - 1] ?? ""}`;
+  }, [state.entries]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [scrollTop, setScrollTop] = useState(0);
   // Fallback used when `height` is omitted — the tree fills a flex parent and
@@ -106,7 +113,7 @@ export function WorkspaceTree({
       scrollRef.current.scrollTop = 0;
     }
     setScrollTop(0);
-  }, [tree]);
+  }, [entriesShapeKey]);
 
   // Center the selected row when it sits outside the current scroll window.
   useEffect(() => {

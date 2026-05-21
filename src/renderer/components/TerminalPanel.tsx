@@ -4,32 +4,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { tryFit } from "../lib/xtermFit.js";
 import { resolveMonoFontStack } from "../lib/fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
+import { getXtermTheme, readActiveXtermTheme } from "../lib/xtermTheme.js";
 import "@xterm/xterm/css/xterm.css";
-
-const LIGHT_THEME = {
-  background: "#fbfbfa",
-  foreground: "#1c1b18",
-  cursor: "#1c1b18",
-  cursorAccent: "#fbfbfa",
-  selectionBackground: "rgba(90, 143, 114, 0.28)",
-  selectionForeground: "#1c1b18",
-  black: "#1c1b18",
-  red: "#b85763",
-  green: "#3d6a52",
-  yellow: "#b08039",
-  blue: "#406789",
-  magenta: "#8a4577",
-  cyan: "#3f7a85",
-  white: "#5d594f",
-  brightBlack: "#3a3833",
-  brightRed: "#cc6873",
-  brightGreen: "#5a8f72",
-  brightYellow: "#c89653",
-  brightBlue: "#5687a8",
-  brightMagenta: "#a55c92",
-  brightCyan: "#5b95a1",
-  brightWhite: "#8a857b"
-};
 
 /**
  * One xterm instance bound to one PTY. Keyed by `instanceKey` (not workspaceId)
@@ -65,7 +41,7 @@ export function TerminalInstance({
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,
-      theme: LIGHT_THEME,
+      theme: readActiveXtermTheme(),
       allowProposedApi: true,
       scrollback: 5000
     });
@@ -74,6 +50,18 @@ export function TerminalInstance({
     term.open(container);
     xtermRef.current = term;
     fitRef.current = fit;
+
+    // Watch <html data-theme="..."> so the terminal palette flips live when
+    // the user toggles theme in Settings (or the OS preference changes under
+    // "System"). MutationObserver is the smallest hammer here.
+    const themeObserver = new MutationObserver(() => {
+      const attr = document.documentElement.getAttribute("data-theme");
+      term.options.theme = getXtermTheme(attr === "dark" ? "dark" : "light");
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"]
+    });
 
     // Initial fit before spawn so cols/rows match what the user will see.
     // ResizeObserver below retries once the container has dimensions.
@@ -84,6 +72,7 @@ export function TerminalInstance({
     let localTerminalId: string | null = null;
     let unsubscribeData: (() => void) | null = null;
     let unsubscribeExit: (() => void) | null = null;
+    let inputSub: { dispose: () => void } | null = null;
 
     void window.argmax.terminal
       .spawn({ workspaceId, cols, rows })
@@ -106,13 +95,9 @@ export function TerminalInstance({
           term.write(exitLine);
         });
 
-        const dataSub = term.onData((data) => {
+        inputSub = term.onData((data) => {
           void window.argmax?.terminal.write({ terminalId, data });
         });
-
-        // Stash on the xterm instance for cleanup; xterm has no dedicated
-        // disposer registry exposed here, so we attach to the cleanup closure.
-        (term as unknown as { __argmaxInputSub: { dispose: () => void } }).__argmaxInputSub = dataSub;
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : "Unknown error";
@@ -134,9 +119,9 @@ export function TerminalInstance({
     return () => {
       disposed = true;
       ro.disconnect();
+      themeObserver.disconnect();
       unsubscribeData?.();
       unsubscribeExit?.();
-      const inputSub = (term as unknown as { __argmaxInputSub?: { dispose: () => void } }).__argmaxInputSub;
       inputSub?.dispose();
       if (localTerminalId) {
         void window.argmax?.terminal.terminate(localTerminalId);

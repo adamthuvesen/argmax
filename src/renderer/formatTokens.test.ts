@@ -10,9 +10,9 @@ describe("formatTokens", () => {
   });
 
   it("floors sub-100 non-zero counts at '0.1k' so usage never collapses to '0k'", () => {
-    expect(formatTokens(1)).toBe("0.1k");
-    expect(formatTokens(50)).toBe("0.1k");
-    expect(formatTokens(99)).toBe("0.1k");
+    expect(formatTokens(1)).toBe("1");
+    expect(formatTokens(50)).toBe("50");
+    expect(formatTokens(99)).toBe("99");
   });
 
   it("renders 100–999 with one decimal in the k unit", () => {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { ChangedFileSummary, GitCommitResult } from "../../shared/types.js";
 
@@ -38,21 +39,7 @@ export function CommitDialog({
     setFeedback(null);
   }, [open, allPaths, defaultMessage]);
 
-  // Capture the focused element on open and restore on close so the trigger
-  // gets focus back, matching CommandPalette/SearchOverlay. Without this the
-  // dialog leaves focus on <body>. (audit-2026-05-17 H15)
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    previousActiveElementRef.current = (document.activeElement as HTMLElement | null) ?? null;
-    return () => {
-      const previous = previousActiveElementRef.current;
-      previousActiveElementRef.current = null;
-      if (previous && typeof previous.focus === "function") {
-        previous.focus();
-      }
-    };
-  }, [open]);
+  useRestoreFocus(open);
 
   // Document-level Esc + focus trap. Esc must fire even if focus drifts out
   // of the dialog (Cancel button blur, mouse click on the overlay edge).

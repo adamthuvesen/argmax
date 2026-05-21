@@ -187,43 +187,34 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const workspaceSaveSeq = useRef(0);
   const workspaceSaveTokens = useRef(new Map<string, number>());
   const previousSourceId = useRef<string | null>(null);
-  const isPanelOpenRef = useRef(false);
-  const modeRef = useRef<ReviewPanelMode>("changes");
-  const filesCountRef = useRef(0);
-  const filesRef = useRef<ChangedFileSummary[]>([]);
-  // Refs mirror the latest values for use inside event listeners (focus,
-  // dashboard:delta) so we don't need to re-bind the listener on every keystroke.
-  const sourceIdRef = useRef<string | null>(null);
-  const sourceKindRef = useRef<SourceKind | null>(null);
-  const canEditRef = useRef(false);
-  const workspaceFileTabsRef = useRef<WorkspaceFileTabState[]>([]);
-  const workspaceActiveFilePathRef = useRef<string | null>(null);
-  const workspaceActiveDiskMtimeMsRef = useRef<number | null>(null);
-
   const activeWorkspaceFileTab =
     workspaceFileTabs.find((tab) => tab.path === workspaceActiveFilePath) ?? null;
-  workspaceFileTabsRef.current = workspaceFileTabs;
-  workspaceActiveFilePathRef.current = workspaceActiveFilePath;
-  workspaceActiveDiskMtimeMsRef.current = activeWorkspaceFileTab?.diskMtimeMs ?? null;
-
-  useEffect(() => {
-    sourceIdRef.current = sourceId;
-    sourceKindRef.current = sourceKind;
-    canEditRef.current = canEdit;
-  }, [sourceId, sourceKind, canEdit]);
-
-  useEffect(() => {
-    isPanelOpenRef.current = isPanelOpen;
-  }, [isPanelOpen]);
-
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
-
-  useEffect(() => {
-    filesCountRef.current = files.length;
-    filesRef.current = files;
-  }, [files]);
+  // Single mirror for listener/callback paths — updated synchronously each render
+  // so the first call after a state change never reads a stale closure.
+  const listenerStateRef = useRef({
+    sourceId: null as string | null,
+    sourceKind: null as SourceKind | null,
+    canEdit: false,
+    isPanelOpen: false,
+    mode: "changes",
+    filesCount: 0,
+    files: [] as ChangedFileSummary[],
+    workspaceFileTabs: [] as WorkspaceFileTabState[],
+    workspaceActiveFilePath: null as string | null,
+    workspaceActiveDiskMtimeMs: null as number | null
+  });
+  listenerStateRef.current = {
+    sourceId,
+    sourceKind,
+    canEdit,
+    isPanelOpen,
+    mode,
+    filesCount: files.length,
+    files,
+    workspaceFileTabs,
+    workspaceActiveFilePath,
+    workspaceActiveDiskMtimeMs: activeWorkspaceFileTab?.diskMtimeMs ?? null
+  };
 
   const updateWorkspaceFileTab = useCallback(
     (filePath: string, update: (tab: WorkspaceFileTabState) => WorkspaceFileTabState): void => {
@@ -236,8 +227,8 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
 
   const loadWorkspaceFile = useCallback(
     (filePath: string): void => {
-      const id = sourceIdRef.current;
-      const kind = sourceKindRef.current;
+      const id = listenerStateRef.current.sourceId;
+      const kind = listenerStateRef.current.sourceKind;
       if (!id || !kind || !window.argmax) return;
       const ipc = dispatchRef.current;
       if (!ipc) return;
@@ -323,7 +314,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
           if (currentPath && sorted.some((file) => file.path === currentPath)) {
             return currentPath;
           }
-          return isPanelOpenRef.current ? sorted[0]?.path ?? null : null;
+          return listenerStateRef.current.isPanelOpen ? sorted[0]?.path ?? null : null;
         });
         if (sorted.length === 0) {
           setIsPanelOpen(false);
@@ -428,13 +419,13 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, []);
 
   const selectWorkspaceFileTab = useCallback((filePath: string): void => {
-    if (!workspaceFileTabsRef.current.some((tab) => tab.path === filePath)) return;
+    if (!listenerStateRef.current.workspaceFileTabs.some((tab) => tab.path === filePath)) return;
     setWorkspaceActiveFilePath(filePath);
     setWorkspaceDirtyClosePath(null);
   }, []);
 
   const forceCloseWorkspaceFile = useCallback((filePath: string): void => {
-    const current = workspaceFileTabsRef.current;
+    const current = listenerStateRef.current.workspaceFileTabs;
     const index = current.findIndex((tab) => tab.path === filePath);
     if (index < 0) return;
     const remaining = current.filter((tab) => tab.path !== filePath);
@@ -452,9 +443,9 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, []);
 
   const closeWorkspaceFile = useCallback((filePath: string): void => {
-    const tab = workspaceFileTabsRef.current.find((candidate) => candidate.path === filePath) ?? null;
+    const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
     if (!tab) return;
-    if (isWorkspaceFileTabDirty(tab, canEditRef.current)) {
+    if (isWorkspaceFileTabDirty(tab, listenerStateRef.current.canEdit)) {
       setWorkspaceActiveFilePath(filePath);
       setWorkspaceDirtyClosePath(filePath);
       return;
@@ -469,8 +460,8 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, [openWorkspaceFile]);
 
   const editWorkspaceFile = useCallback((content: string): void => {
-    if (!canEditRef.current) return;
-    const filePath = workspaceActiveFilePathRef.current;
+    if (!listenerStateRef.current.canEdit) return;
+    const filePath = listenerStateRef.current.workspaceActiveFilePath;
     if (!filePath) return;
     updateWorkspaceFileTab(filePath, (tab) => ({
       ...tab,
@@ -481,15 +472,15 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, [updateWorkspaceFileTab]);
 
   const reloadWorkspaceFile = useCallback((): void => {
-    const filePath = workspaceActiveFilePathRef.current;
+    const filePath = listenerStateRef.current.workspaceActiveFilePath;
     if (!filePath) return;
     loadWorkspaceFile(filePath);
   }, [loadWorkspaceFile]);
 
   const dismissExternalChange = useCallback((): void => {
-    const id = sourceIdRef.current;
-    const kind = sourceKindRef.current;
-    const filePath = workspaceActiveFilePathRef.current;
+    const id = listenerStateRef.current.sourceId;
+    const kind = listenerStateRef.current.sourceKind;
+    const filePath = listenerStateRef.current.workspaceActiveFilePath;
     if (!id || !kind || !filePath) return;
     const ipc = dispatchRef.current;
     const statPromise = ipc?.statFile(filePath);
@@ -511,10 +502,10 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, [updateWorkspaceFileTab]);
 
   const saveWorkspaceFilePath = useCallback(async (filePath: string): Promise<boolean> => {
-    const id = sourceIdRef.current;
-    const kind = sourceKindRef.current;
-    const tab = workspaceFileTabsRef.current.find((candidate) => candidate.path === filePath) ?? null;
-    if (!id || !kind || !tab || !canEditRef.current) return false;
+    const id = listenerStateRef.current.sourceId;
+    const kind = listenerStateRef.current.sourceKind;
+    const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
+    if (!id || !kind || !tab || !listenerStateRef.current.canEdit) return false;
     if (tab.buffer === null || tab.buffer === tab.original) return true;
     const contentToSave = tab.buffer;
     const token = ++workspaceSaveSeq.current;
@@ -562,7 +553,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, [updateWorkspaceFileTab]);
 
   const saveWorkspaceFile = useCallback(async (): Promise<void> => {
-    const filePath = workspaceActiveFilePathRef.current;
+    const filePath = listenerStateRef.current.workspaceActiveFilePath;
     if (!filePath) return;
     await saveWorkspaceFilePath(filePath);
   }, [saveWorkspaceFilePath]);
@@ -590,10 +581,10 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   }, []);
 
   const checkActiveWorkspaceFileExternalChange = useCallback((): void => {
-    const id = sourceIdRef.current;
-    const kind = sourceKindRef.current;
-    const filePath = workspaceActiveFilePathRef.current;
-    const baseline = workspaceActiveDiskMtimeMsRef.current;
+    const id = listenerStateRef.current.sourceId;
+    const kind = listenerStateRef.current.sourceKind;
+    const filePath = listenerStateRef.current.workspaceActiveFilePath;
+    const baseline = listenerStateRef.current.workspaceActiveDiskMtimeMs;
     if (!id || !kind || !filePath || baseline === null) return;
     const ipc = dispatchRef.current;
     const statPromise = ipc?.statFile(filePath);
@@ -647,14 +638,14 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   const togglePanel = useCallback((): void => {
     // Opening with nothing in Changes? Land on the file tree instead of an
     // empty Changes view — the user almost certainly wants to browse files.
-    if (!isPanelOpenRef.current && filesCountRef.current === 0) {
+    if (!listenerStateRef.current.isPanelOpen && listenerStateRef.current.filesCount === 0) {
       setMode("files");
     }
     setIsPanelOpen((open) => !open);
   }, []);
 
   const toggleChangesPanel = useCallback((): void => {
-    if (isPanelOpenRef.current && modeRef.current === "changes") {
+    if (listenerStateRef.current.isPanelOpen && listenerStateRef.current.mode === "changes") {
       setIsPanelOpen(false);
       return;
     }
@@ -662,7 +653,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     setIsPanelOpen(true);
     // Mirror the auto-select-first-file behavior the file-load effect uses
     // when the panel opens with files already loaded.
-    setSelectedFilePath((current) => current ?? filesRef.current[0]?.path ?? null);
+    setSelectedFilePath((current) => current ?? listenerStateRef.current.files[0]?.path ?? null);
   }, []);
 
   const workspaceFileTabSummaries: WorkspaceFileTab[] = workspaceFileTabs.map((tab) => ({

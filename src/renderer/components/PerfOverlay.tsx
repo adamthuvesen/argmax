@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type JSX } from "react";
 import type { IpcChannelStats } from "../../shared/types.js";
 
 export const PERF_OVERLAY_KEY = "argmax.perfOverlay";
@@ -27,6 +27,19 @@ function readEnabled(): boolean {
   }
 }
 
+function subscribeEnabled(onStoreChange: () => void): () => void {
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key === PERF_OVERLAY_KEY || event.key === null) onStoreChange();
+  };
+  const onFocus = (): void => onStoreChange();
+  window.addEventListener("storage", onStorage);
+  window.addEventListener("focus", onFocus);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("focus", onFocus);
+  };
+}
+
 function fmt(ms: number): string {
   if (!Number.isFinite(ms)) return "—";
   if (ms < 1) return `${(ms * 1000).toFixed(0)}μs`;
@@ -35,7 +48,7 @@ function fmt(ms: number): string {
 }
 
 export function PerfOverlay(): JSX.Element | null {
-  const [enabled] = useState<boolean>(() => readEnabled());
+  const enabled = useSyncExternalStore(subscribeEnabled, readEnabled, () => false);
   const [stats, setStats] = useState<IpcChannelStats[]>([]);
   const aliveRef = useRef<boolean>(true);
 
@@ -73,12 +86,12 @@ export function PerfOverlay(): JSX.Element | null {
         right: 12,
         bottom: 12,
         zIndex: 9999,
-        background: "rgba(20, 22, 26, 0.92)",
-        color: "#f4f5f7",
+        background: "var(--ink)",
+        color: "var(--bubble-on-ink)",
         font: "11px/1.3 'Lilex', ui-monospace, Menlo, monospace",
         padding: "8px 10px",
         borderRadius: 8,
-        boxShadow: "0 4px 16px rgba(0, 0, 0, 0.18)",
+        boxShadow: "var(--shadow-2)",
         pointerEvents: "none",
         minWidth: 220
       }}

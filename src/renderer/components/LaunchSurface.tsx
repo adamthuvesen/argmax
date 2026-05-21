@@ -352,6 +352,9 @@ export function LaunchSurface({
     }
     if (withPath.length > 0) attachFiles(withPath);
     if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
+    if (withPath.length === 0 && imageBlobs.length === 0) {
+      setStatus("Only files with a disk path or images can be attached.");
+    }
   };
 
   const onComposerPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
@@ -383,6 +386,9 @@ export function LaunchSurface({
       }
       if (withPath.length > 0) attachFiles(withPath);
       if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
+      if (withPath.length === 0 && imageBlobs.length === 0) {
+        setStatus("Only files with a disk path or images can be attached.");
+      }
     }
     event.target.value = "";
   };

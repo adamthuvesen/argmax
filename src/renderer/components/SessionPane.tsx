@@ -71,6 +71,7 @@ export function SessionPane({
   rawOutputs,
   registerPaletteFileContext,
   rightPanelToggleSignal,
+  debugLogToggleSignal,
   session,
   showCostPanel = true,
   thinkingStyle,
@@ -97,6 +98,7 @@ export function SessionPane({
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
   rightPanelToggleSignal?: number;
+  debugLogToggleSignal?: number;
   session: SessionSummary | null;
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
@@ -197,35 +199,6 @@ export function SessionPane({
     window.localStorage.setItem(TERMINAL_HEIGHT_KEY, String(terminalHeight));
   }, [terminalHeight]);
 
-  useEffect(() => {
-    if (!isFocused) return undefined;
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "j") return;
-      // Allow toggling when focus is inside the terminal itself, since the
-      // panel is the thing the shortcut controls.
-      const target = event.target as HTMLElement | null;
-      const insideTerminal = target?.closest('[data-argmax-terminal="true"]') !== null;
-      if (!insideTerminal && isTypingTarget(event.target)) return;
-      event.preventDefault();
-      setIsTerminalOpen((open) => !open);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFocused]);
-
-  useEffect(() => {
-    if (!isFocused || !isLogOpen) return;
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      if (isTypingTarget(event.target)) return;
-      event.preventDefault();
-      setIsLogOpen(false);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFocused, isLogOpen]);
 
   // Destructure so the effect's dep is the stable useCallback from inside
   // useReviewState — not the parent object, which would expand the effect's
@@ -257,6 +230,7 @@ export function SessionPane({
     [reviewOpenInFilesView, workspaceId]
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
+  const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
 
   // Register this pane's file source + pick handler with the command
   // palette when focused. Only the focused pane registers so multiple
@@ -272,18 +246,6 @@ export function SessionPane({
     });
     return () => registerPaletteFileContext(null);
   }, [isFocused, workspace, registerPaletteFileContext, reviewOpenInFilesView]);
-  useEffect(() => {
-    if (!isFocused) return undefined;
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "b") return;
-      event.preventDefault();
-      reviewTogglePanel();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFocused, reviewTogglePanel]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
@@ -294,16 +256,47 @@ export function SessionPane({
   }, [isFocused, reviewTogglePanel, rightPanelToggleSignal, workspace]);
 
   useEffect(() => {
-    if (!isFocused || !reviewIsPanelOpen) return undefined;
+    if (debugLogToggleSignal === lastDebugLogToggleSignal.current) return;
+    lastDebugLogToggleSignal.current = debugLogToggleSignal;
+    if (!isFocused) return;
+    toggleLog();
+  }, [debugLogToggleSignal, isFocused, toggleLog]);
+
+  useEffect(() => {
+    if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      if (isTypingTarget(event.target)) return;
-      event.preventDefault();
-      reviewClosePanel();
+      if (event.key === "Escape") {
+        if (isLogOpen) {
+          if (isTypingTarget(event.target)) return;
+          event.preventDefault();
+          setIsLogOpen(false);
+          return;
+        }
+        if (reviewIsPanelOpen) {
+          if (isTypingTarget(event.target)) return;
+          event.preventDefault();
+          reviewClosePanel();
+        }
+        return;
+      }
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "j") {
+        const target = event.target as HTMLElement | null;
+        const insideTerminal = target?.closest('[data-argmax-terminal="true"]') !== null;
+        if (!insideTerminal && isTypingTarget(event.target)) return;
+        event.preventDefault();
+        setIsTerminalOpen((open) => !open);
+        return;
+      }
+      if (key === "b") {
+        event.preventDefault();
+        reviewTogglePanel();
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFocused, reviewClosePanel, reviewIsPanelOpen]);
+  }, [isFocused, isLogOpen, reviewClosePanel, reviewIsPanelOpen, reviewTogglePanel]);
 
   // Backfill timeline events for this pane on mount and whenever the session
   // changes. Each pane backfills independently of the focused-pane selection,

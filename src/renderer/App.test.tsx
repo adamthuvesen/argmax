@@ -369,7 +369,8 @@ describe("App", () => {
         openPath: () => Promise.resolve({ ok: true }),
         listDetectedIdes: listDetectedIdes,
         diagnostics: diagnosticsStub,
-        vacuumDatabase: vacuumDatabaseStub
+        vacuumDatabase: vacuumDatabaseStub,
+        setTheme: () => Promise.resolve({ ok: true })
       },
       mcp: {
         list: () => Promise.resolve([]),

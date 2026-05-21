@@ -25,7 +25,8 @@ import { MAX_CELLS, MAX_COLS, MAX_ROWS, WORKSPACE_DRAG_MIME } from "../lib/gridS
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { SessionPane } from "./SessionPane.js";
 
-const MIN_RESIZED_CELL_WIDTH = 220;
+/** Minimum width floor when resizing a grid cell (audit-2026-05-18 L6). */
+const MAX_CELL_WIDTH_FLOOR = 220;
 type EdgeDropPosition = Exclude<SplitPosition, "replace">;
 
 function totalCells(grid: GridState): number {
@@ -46,6 +47,7 @@ interface SessionMultiGridProps {
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
   rightPanelToggleSignal?: number;
+  debugLogToggleSignal?: number;
   renderLauncher: (project: ProjectSummary | null) => JSX.Element;
   /** Which workspace is currently being dragged from the sidebar. The drop
       handlers use this directly instead of round-tripping through
@@ -85,6 +87,7 @@ export function SessionMultiGrid({
   showCostPanel = true,
   thinkingStyle,
   rightPanelToggleSignal,
+  debugLogToggleSignal,
   renderLauncher,
   dragSourceWorkspaceId,
   onFocusPane,
@@ -150,7 +153,7 @@ export function SessionMultiGrid({
       const totalWeight = startWeights.reduce((sum, value) => sum + Math.max(value, 0.01), 0);
       const startWidths = startWeights.map((weight) => (Math.max(weight, 0.01) / totalWeight) * availableWidth);
       const pairWidth = startWidths[dividerIndex] + startWidths[dividerIndex + 1];
-      const minWidth = Math.min(MIN_RESIZED_CELL_WIDTH, Math.max(120, pairWidth / 3));
+      const minWidth = Math.min(MAX_CELL_WIDTH_FLOOR, Math.max(120, pairWidth / 3));
 
       setIsResizing(true);
       document.body.style.cursor = "col-resize";
@@ -252,6 +255,7 @@ export function SessionMultiGrid({
                         project={project}
                         rawOutputs={rawOutputs}
                         rightPanelToggleSignal={rightPanelToggleSignal}
+                        debugLogToggleSignal={debugLogToggleSignal}
                         session={session}
                         thinkingStyle={thinkingStyle}
                         workspace={workspace}

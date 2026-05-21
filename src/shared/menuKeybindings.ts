@@ -43,6 +43,13 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     menuLocation: "app"
   },
   {
+    command: "check-for-updates",
+    accelerator: "",
+    displayAccelerator: "",
+    label: "Check for Updates",
+    menuLocation: "app"
+  },
+  {
     command: "new-session",
     accelerator: "CmdOrCtrl+N",
     displayAccelerator: "⌘N",

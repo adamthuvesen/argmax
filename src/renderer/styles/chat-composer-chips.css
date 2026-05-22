@@ -1,0 +1,341 @@
+/* Composer chip grouping — model picker, agent mode, and workspace context
+   are three separate concepts. Sibling chip groups are visually distinguished
+   with a faint hairline separator and a slightly wider gap, so the user reads
+   "who" (model), "how" (mode), "where" (context) instead of one undifferentiated
+   row of pills. */
+.composer-chips-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 0;
+  position: relative;
+}
+
+.composer-chips-group + .composer-chips-group {
+  padding-left: 12px;
+  margin-left: 4px;
+}
+
+.composer-chips-group + .composer-chips-group::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background: var(--line);
+  opacity: 0.6;
+}
+
+/* The context group already uses .composer-footer's flex-wrap / padding; the
+   added .composer-chips-group sets gap and the separator pseudo, but its own
+   padding shouldn't compound with composer-footer's. Reset the inherited
+   padding so the separator sits flush. */
+.composer-footer.composer-chips-group {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px 0;
+}
+
+.composer-attachment-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface, var(--panel));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.composer-attachment-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.composer-attachment-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(31, 28, 24, 0.75);
+  color: var(--bubble-on-ink);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.composer-attachment-remove:hover {
+  background: rgba(31, 28, 24, 0.92);
+}
+
+.composer-queued-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 6px 0;
+}
+
+.composer-queued-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: var(--surface, var(--panel));
+  color: var(--text-muted, var(--text));
+  font-size: 12px;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+.composer-queued-chip-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-queued-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(31, 28, 24, 0.08);
+  color: var(--text-muted, var(--text));
+  cursor: pointer;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.composer-queued-chip-remove:hover {
+  background: rgba(31, 28, 24, 0.18);
+}
+
+.user-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.user-message-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-family: var(--mono, ui-monospace, "SF Mono", monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-toolbar-spacer {
+  flex: 1;
+}
+
+.session-input input,
+.session-input textarea {
+  min-width: 0;
+  flex: 1;
+  min-height: 48px;
+  max-height: 140px;
+  padding: 12px 10px;
+  color: var(--text);
+  border: 0;
+  border-radius: 10px;
+  outline: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: hidden;
+}
+
+.session-input-field {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.session-input-field input,
+.session-input-field textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.skill-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  z-index: 30;
+}
+
+.skill-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.skill-option.is-selected,
+.skill-option[aria-selected="true"] {
+  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+}
+
+.skill-option-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.skill-option-description {
+  color: var(--text-soft, #6a6a6a);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  z-index: 30;
+}
+
+.file-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-popover-item.is-selected,
+.file-popover-item[aria-selected="true"] {
+  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+}
+
+.file-popover-icon {
+  flex: 0 0 auto;
+  color: var(--text-soft, #6a6a6a);
+}
+
+.file-popover-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-popover-empty {
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-soft, #6a6a6a);
+  font-style: italic;
+}
+
+.session-input input::placeholder,
+.session-input textarea::placeholder {
+  color: #b8bbbe;
+}
+
+.session-send-button {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--bubble-on-ink);
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.18),
+    0 6px 14px -8px rgba(0, 0, 0, 0.4);
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease);
+}
+
+.session-send-button:hover:not(:disabled) {
+  background-color: var(--ink-soft);
+  transform: translateY(-1px);
+}
+
+.session-send-button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.session-send-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.session-stop-button {
+  background: #b3261e;
+}
+
+.session-stop-button:hover:not(:disabled) {
+  background-color: #8c1d17;
+}

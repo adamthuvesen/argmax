@@ -1,37 +1,9 @@
-/**
- * Architectural decision — 2026-05-14 quality sweep (Ralph SPEC D5).
- *
- * This service is ~1000 lines because it owns the full provider-session
- * lifecycle: launch, sendInput, terminate, the event flush queue, learning
- * synthesis, conversation-id capture, dashboard delta publishing, and crash
- * recovery. The prior Snappy SPEC proposed splitting flush/orchestration into
- * a separate class; deferred here because:
- *
- * - The flush queue reads private `buffers` and writes per-session state on
- *   `handleProviderEvent`; an extracted class would have to expose ~half of
- *   the current private surface and the indirection adds boilerplate without
- *   simplifying any single call site.
- * - Tests cover the integrated surface (launch + sendInput + terminate +
- *   flush) end-to-end. Splitting now would require restructuring those tests
- *   without changing the behaviour they assert.
- *
- * Revisit if a future change to flush orchestration needs to touch the class
- * in a way that conflicts with concurrent lifecycle work — until then the
- * cohesion is genuine.
- */
-
 import { randomUUID } from "node:crypto";
-import {
-  RecordNotFoundError,
-  type ArgmaxDatabase,
-  type PersistApprovalInput,
-  type PersistTimelineEventInput
-} from "../persistence/database.js";
+import { RecordNotFoundError, type ArgmaxDatabase } from "../persistence/database.js";
 import { computeSessionAttention } from "../sessions/sessionAttention.js";
 import { PROVIDER_MODEL_DEFAULTS, type ReasoningEffort } from "../../shared/providerModels.js";
 import { logger } from "../../shared/logger.js";
 import { errorMessage } from "../../shared/error.js";
-import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type {
   DashboardDelta,
   AgentMode,
@@ -42,29 +14,15 @@ import type {
   SessionSummary
 } from "../../shared/types.js";
 import { getProviderAdapter } from "./providerAdapters.js";
-import {
-  createNormalizerSessionContext,
-  normalizeProviderEventWithUsage,
-  type NormalizedUsage,
-  type NormalizerSessionContext
-} from "./providerEventNormalizer.js";
-import {
-  flushSessionBuffer,
-  isSessionGoneError,
-  scheduleFlush as scheduleFlushQueue
-} from "./sessionFlushQueue.js";
-import {
-  capEventPayload,
-  capRawContent,
-  capRawTruncationMarker,
-  extractProviderConversationId
-} from "./sessionPayloadCaps.js";
+import { isSessionGoneError } from "./sessionFlushQueue.js";
+import { capEventPayload, capRawContent } from "./sessionPayloadCaps.js";
 import type { ProviderAdapter, ProviderEvent, ProviderSessionHandle } from "./providerTypes.js";
 import type { NotificationService } from "../notifications/notificationService.js";
 import { bumpInjectedLearningHits, synthesizeLearnings } from "./providerSessionLearnings.js";
 import { recoverOrphanedSessions } from "./providerSessionRecovery.js";
 import { composeLearningPreamble } from "../memory/learningInjector.js";
 import { promptForAgentMode } from "./agentModePrompt.js";
+import { ProviderEventFlushQueue } from "./providerEventFlushQueue.js";
 
 interface FollowUpModelSelection {
   modelLabel: string;
@@ -83,40 +41,6 @@ interface PendingOp {
   payload?: unknown;
 }
 
-interface SessionBuffer {
-  /**
-   * Per-stream line buffers. Each stream (stdout/stderr/pty) is reassembled
-   * independently so that a partial JSON object on stdout never gets glued to
-   * an unrelated PTY chunk. Trailing partial lines are flushed on terminate.
-   */
-  streamBuffers: Map<ProviderEvent["stream"], string>;
-  sequence: number;
-  lastFlushAt: number;
-  flushTimer: NodeJS.Timeout | null;
-  /** Coalesced events accumulated during the current micro-batch window. */
-  pendingEvents: PersistTimelineEventInput[];
-  /** Coalesced raw outputs for the current micro-batch window. */
-  pendingRawOutputs: Array<{
-    id: string;
-    sessionId: string;
-    stream: ProviderEvent["stream"];
-    content: string;
-    createdAt: string;
-  }>;
-  /** Coalesced usage events accumulated during the current micro-batch window. */
-  pendingUsages: NormalizedUsage[];
-  pendingApprovals: PersistApprovalInput[];
-  pendingSessionUpdate: SessionSummary | null;
-  failedFlushes: number;
-  /** Latest output createdAt seen, used for throttled lastActivityAt updates. */
-  lastActivityWriteAt: number;
-  workspaceId: string;
-  workspacePath: string;
-  provider: ProviderId;
-  /** Session-scoped normalizer context, e.g. most-recent Codex turn_context model. */
-  normalizerContext: NormalizerSessionContext;
-}
-
 interface PendingHandleEntry {
   kind: "pending";
   ops: PendingOp[];
@@ -131,17 +55,8 @@ interface ResolvedHandleEntry {
 
 type HandleEntry = PendingHandleEntry | ResolvedHandleEntry;
 
-/** 2 s minimum interval between lastActivityAt writes per session. */
-const ACTIVITY_THROTTLE_MS = 2_000;
 /** Timeout to wait for natural exit during disposeAll before resolving. */
 const DISPOSE_GRACE_MS = 2_500;
-/**
- * Cap on the per-stream partial-line buffer. A provider emitting megabytes
- * without a newline (misbehavior or stuck stream) would otherwise grow this
- * buffer without bound. Raw bytes are still persisted via raw_outputs;
- * crossing this cap drops the partial and surfaces a marker event.
- */
-const STREAM_BUFFER_CAP = 1_048_576;
 
 /**
  * Per-session cap on queued follow-up messages. A renderer can't legitimately
@@ -159,7 +74,7 @@ function isDebugArgmaxEnabled(): boolean {
 
 export class ProviderSessionService {
   private readonly handles = new Map<string, HandleEntry>();
-  private readonly buffers = new Map<string, SessionBuffer>();
+  private readonly flushQueue: ProviderEventFlushQueue;
   /**
    * In-memory queue of follow-up messages composed while the agent was working.
    * Per-session FIFO. Drained one-at-a-time when the session reaches `complete`
@@ -173,7 +88,9 @@ export class ProviderSessionService {
     private readonly adapterFactory: (provider: ProviderId) => ProviderAdapter = getProviderAdapter,
     private readonly publishDelta: (delta: DashboardDelta) => void = () => undefined,
     private readonly notifications: NotificationService | null = null
-  ) {}
+  ) {
+    this.flushQueue = new ProviderEventFlushQueue(this.database, (delta) => this.publishDelta(delta));
+  }
 
   /** Number of sessions with an active (non-disposed) handle. */
   get openHandleCount(): number {
@@ -255,14 +172,14 @@ export class ProviderSessionService {
           : {})
       }
     });
-    this.publishDashboardDelta({
+    this.flushQueue.publishDashboardDelta({
       projects: this.database.listProjects(),
       workspaces: [runningWorkspace],
       sessions: [session],
       events: [userMessage, sessionStarted]
     });
 
-    this.initializeBuffer(sessionId, workspace.id, workspace.path, input.provider, input.modelId);
+    this.flushQueue.initializeBuffer(sessionId, workspace.id, workspace.path, input.provider, input.modelId);
     // Register a pending placeholder synchronously so any racing operations are
     // queued into arrival order against the real handle once launch resolves.
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
@@ -373,7 +290,7 @@ export class ProviderSessionService {
       }
     });
     if (liveHandle) {
-      this.publishDashboardDelta({ events: [userMessage] });
+      this.flushQueue.publishDashboardDelta({ events: [userMessage] });
       return { queued: false };
     }
 
@@ -390,14 +307,14 @@ export class ProviderSessionService {
       completedAt: null
     });
     const runningWorkspace = this.database.updateWorkspaceState(workspace.id, "running");
-    this.publishDashboardDelta({
+    this.flushQueue.publishDashboardDelta({
       projects: this.database.listProjects(),
       workspaces: [runningWorkspace],
       sessions: [runningSession],
       events: [userMessage]
     });
 
-    this.initializeBuffer(sessionId, workspace.id, workspace.path, session.provider, session.modelId);
+    this.flushQueue.initializeBuffer(sessionId, workspace.id, workspace.path, session.provider, session.modelId);
     const pending: PendingHandleEntry = { kind: "pending", ops: [], rejected: false, cancelled: false };
     this.handles.set(sessionId, pending);
     const modelDefault = PROVIDER_MODEL_DEFAULTS[session.provider];
@@ -459,7 +376,7 @@ export class ProviderSessionService {
     error: unknown;
     fallbackMessage: string;
   }): void {
-    this.deleteBuffer(args.sessionId);
+    this.flushQueue.deleteBuffer(args.sessionId);
     const message = args.error instanceof Error ? args.error.message : args.fallbackMessage;
     const failedSession = this.database.updateSessionState(args.sessionId, {
       state: "failed",
@@ -477,7 +394,7 @@ export class ProviderSessionService {
         provider: args.provider
       }
     });
-    this.publishDashboardDelta({
+    this.flushQueue.publishDashboardDelta({
       projects: this.database.listProjects(),
       workspaces: [failedWorkspace],
       sessions: [failedSession],
@@ -532,8 +449,8 @@ export class ProviderSessionService {
     }
     // Flush any buffered partial line so the trailing fragment surfaces before
     // termination tears down the per-session state.
-    this.flushTrailingFragment(sessionId);
-    this.flushBatch(sessionId);
+    this.flushQueue.flushTrailingFragment(sessionId);
+    this.flushQueue.flushBatch(sessionId);
     this.clearQueue(sessionId);
     await entry.handle.terminate();
     this.cancelSession(sessionId);
@@ -613,7 +530,7 @@ export class ProviderSessionService {
 
   private publishPendingMessages(sessionId: string): void {
     const queue = this.queues.get(sessionId) ?? [];
-    this.publishDashboardDelta({
+    this.flushQueue.publishDashboardDelta({
       pendingMessages: { [sessionId]: queue.map((entry) => ({ ...entry })) }
     });
   }
@@ -678,17 +595,17 @@ export class ProviderSessionService {
   }
 
   private cancelSession(sessionId: string): void {
-    this.flushTrailingFragment(sessionId);
-    this.flushBatch(sessionId);
+    this.flushQueue.flushTrailingFragment(sessionId);
+    this.flushQueue.flushBatch(sessionId);
     const completedAt = new Date().toISOString();
-    const sessionState = this.buffers.get(sessionId);
+    const bufferWorkspaceId = this.flushQueue.getBufferWorkspaceId(sessionId);
     // If the in-memory buffer is gone AND the session row was also deleted
     // (workspace archived mid-terminate, CASCADE), there's nothing to cancel.
     // Surfacing a RecordNotFoundError to IPC for a benign race is noise.
     // (audit-2026-05-17 H6)
     let workspaceId: string;
-    if (sessionState) {
-      workspaceId = sessionState.workspaceId;
+    if (bufferWorkspaceId) {
+      workspaceId = bufferWorkspaceId;
     } else {
       try {
         workspaceId = this.database.getSession(sessionId).workspaceId;
@@ -718,9 +635,9 @@ export class ProviderSessionService {
     });
     this.handles.delete(sessionId);
     this.logHandleCount("cancelled", sessionId);
-    this.deleteBuffer(sessionId);
+    this.flushQueue.deleteBuffer(sessionId);
     this.clearQueue(sessionId);
-    this.publishDashboardDelta({
+    this.flushQueue.publishDashboardDelta({
       projects: this.database.listProjects(),
       workspaces: [workspace],
       sessions: [session],
@@ -743,14 +660,14 @@ export class ProviderSessionService {
           entry.cancelled = true;
           entry.rejected = true;
           this.handles.delete(sessionId);
-          this.deleteBuffer(sessionId);
+          this.flushQueue.deleteBuffer(sessionId);
           return;
         }
         if (entry.handle.disposed) {
           return;
         }
-        this.flushTrailingFragment(sessionId);
-        this.flushBatch(sessionId);
+        this.flushQueue.flushTrailingFragment(sessionId);
+        this.flushQueue.flushBatch(sessionId);
         // terminate() resolves on real child exit; the race is a safety net
         // for the unkillable-child case so disposeAll can't hang shutdown.
         await Promise.race([
@@ -789,113 +706,20 @@ export class ProviderSessionService {
     }
   }
 
-  private initializeBuffer(
-    sessionId: string,
-    workspaceId: string,
-    workspacePath: string,
-    provider: ProviderId,
-    modelId: string
-  ): void {
-    this.buffers.set(sessionId, {
-      streamBuffers: new Map(),
-      sequence: 0,
-      lastFlushAt: 0,
-      flushTimer: null,
-      pendingEvents: [],
-      pendingRawOutputs: [],
-      pendingUsages: [],
-      pendingApprovals: [],
-      pendingSessionUpdate: null,
-      failedFlushes: 0,
-      lastActivityWriteAt: 0,
-      workspaceId,
-      workspacePath,
-      provider,
-      normalizerContext: createNormalizerSessionContext(
-        provider === "codex"
-          ? { codexCurrentModel: modelId }
-          : provider === "cursor"
-            ? { cursorCurrentModel: modelId }
-            : {}
-      )
-    });
-  }
-
-  private deleteBuffer(sessionId: string): void {
-    const entry = this.buffers.get(sessionId);
-    if (entry?.flushTimer) {
-      clearTimeout(entry.flushTimer);
-    }
-    this.buffers.delete(sessionId);
-  }
-
   private handleProviderEvent(
     workspaceId: string,
     provider: ProviderId,
     event: ProviderEvent
   ): void {
-    const sessionState = this.buffers.get(event.sessionId);
-
     if (event.type === "output") {
-      // Persist raw output (with truncation) directly into the pending batch.
-      this.queueRawOutput(event);
-
-      // Append into the per-stream line buffer for this session; only feed
-      // completed lines into the normalizer. Trailing partial line is held
-      // for the next chunk on the same stream.
-      if (sessionState) {
-        const previous = sessionState.streamBuffers.get(event.stream) ?? "";
-        const combined = previous + event.message;
-        const newlineIndex = combined.lastIndexOf("\n");
-        if (newlineIndex >= 0) {
-          const completed = combined.slice(0, newlineIndex + 1);
-          sessionState.streamBuffers.set(event.stream, combined.slice(newlineIndex + 1));
-          const providerConversationId = extractProviderConversationId(completed, provider);
-          if (providerConversationId) {
-            this.recordProviderConversationId(event.sessionId, providerConversationId);
-          }
-          const syntheticEvent: ProviderEvent = { ...event, message: completed };
-          const normalized = normalizeProviderEventWithUsage(syntheticEvent, {
-            provider,
-            context: sessionState.normalizerContext
-          });
-          for (const ev of normalized.events) {
-            this.queueTimelineEvent(event.sessionId, ev);
-          }
-          for (const usage of normalized.usages) {
-            this.queueUsage(event.sessionId, usage);
-          }
-        } else if (combined.length > STREAM_BUFFER_CAP) {
-          // Drop the partial-line buffer when it crosses the cap. Raw bytes
-          // are already in raw_outputs; surface a marker so the chat reflects
-          // the truncation rather than silently swallowing megabytes.
-          const droppedBytes = combined.length;
-          sessionState.streamBuffers.set(event.stream, "");
-          const marker = `\n[argmax: dropped ${droppedBytes} bytes of unparseable stream output (no newline)]\n`;
-          const syntheticEvent: ProviderEvent = { ...event, message: marker };
-          const normalized = normalizeProviderEventWithUsage(syntheticEvent, {
-            provider,
-            context: sessionState.normalizerContext
-          });
-          for (const ev of normalized.events) {
-            this.queueTimelineEvent(event.sessionId, ev);
-          }
-          for (const usage of normalized.usages) {
-            this.queueUsage(event.sessionId, usage);
-          }
-        } else {
-          sessionState.streamBuffers.set(event.stream, combined);
-        }
-        this.maybeUpdateLastActivity(event);
-        this.scheduleFlush(event.sessionId);
-      }
+      this.flushQueue.handleOutputEvent(provider, event);
       return;
     }
 
     // Lifecycle event: flush any held partial line and any pending batch
     // synchronously, then update state and remove the handle.
-    this.flushTrailingFragment(event.sessionId);
-    this.flushBatch(event.sessionId);
+    this.flushQueue.flushTrailingFragment(event.sessionId);
+    this.flushQueue.flushBatch(event.sessionId);
 
     const completedAt = event.createdAt;
     const succeeded = event.type === "exit" && event.exitCode === 0;
@@ -927,7 +751,7 @@ export class ProviderSessionService {
         }).payload,
         createdAt: event.createdAt
       });
-      this.publishDashboardDelta({
+      this.flushQueue.publishDashboardDelta({
         projects: this.database.listProjects(),
         workspaces: [workspace],
         sessions: [session],
@@ -955,7 +779,7 @@ export class ProviderSessionService {
     }
     this.handles.delete(event.sessionId);
     this.logHandleCount("closed", event.sessionId);
-    this.deleteBuffer(event.sessionId);
+    this.flushQueue.deleteBuffer(event.sessionId);
     // Drain runs AFTER the handle is gone so the re-launch path in sendInput
     // doesn't try to write into the dead PTY. No-op when the queue is empty
     // or the session didn't succeed (failure cleared it above).
@@ -964,237 +788,8 @@ export class ProviderSessionService {
     }
   }
 
-  private queueRawOutput(event: ProviderEvent): void {
-    const sessionState = this.buffers.get(event.sessionId);
-    const { content } = capRawContent(event.message);
-    const truncatedDelta = capRawTruncationMarker(event);
-    const id = randomUUID();
-    if (sessionState) {
-      sessionState.pendingRawOutputs.push({
-        id,
-        sessionId: event.sessionId,
-        stream: event.stream,
-        content,
-        createdAt: event.createdAt
-      });
-      if (truncatedDelta) {
-        this.queueTimelineEvent(event.sessionId, truncatedDelta);
-      }
-    } else {
-      // Defensive: persist directly when no buffer exists.
-      const rawOutputInput = {
-        id,
-        sessionId: event.sessionId,
-        stream: event.stream,
-        content,
-        createdAt: event.createdAt
-      };
-      const rawOutput = this.database.persistRawOutput(rawOutputInput);
-      this.publishDashboardDelta({ rawOutputs: [rawOutput] });
-      if (truncatedDelta) {
-        const persisted = this.database.persistTimelineEvent(truncatedDelta);
-        this.publishDashboardDelta({ events: [persisted] });
-      }
-    }
-  }
-
-  private queueUsage(sessionId: string, usage: NormalizedUsage): void {
-    const sessionState = this.buffers.get(sessionId);
-    if (sessionState) {
-      sessionState.pendingUsages.push(usage);
-      return;
-    }
-    // Defensive: no buffer (post-disposal) — write through synchronously so
-    // late-arriving usage is not dropped.
-    this.database.insertUsageEvent({
-      sessionId,
-      ...(usage.eventId ? { eventId: usage.eventId } : {}),
-      modelId: usage.modelId,
-      tokens: usage.tokens,
-      costUsd: usage.costUsd
-    });
-  }
-
-  private queueTimelineEvent(sessionId: string, event: PersistTimelineEventInput): void {
-    const sessionState = this.buffers.get(sessionId);
-    const { payload, sibling } = capEventPayload(event.payload, event.type);
-    const stamped: PersistTimelineEventInput & { sequence?: number } = {
-      ...event,
-      payload
-    };
-    if (sessionState) {
-      sessionState.sequence += 1;
-      (stamped as PersistTimelineEventInput & { sequence: number }).sequence = sessionState.sequence;
-      sessionState.pendingEvents.push(stamped);
-      const approval = this.approvalFromEvent(sessionId, sessionState, stamped);
-      if (approval) {
-        sessionState.pendingApprovals.push(approval);
-      }
-      if (sibling) {
-        sessionState.sequence += 1;
-        const stampedSibling: PersistTimelineEventInput & { sequence: number } = {
-          ...sibling,
-          sessionId,
-          sequence: sessionState.sequence
-        };
-        sessionState.pendingEvents.push(stampedSibling);
-      }
-    } else {
-      const persisted = this.database.persistTimelineEvent(stamped);
-      const events = [persisted];
-      if (sibling) {
-        events.push(this.database.persistTimelineEvent({ ...sibling, sessionId }));
-      }
-      this.publishDashboardDelta({ events });
-    }
-  }
-
-  private approvalFromEvent(
-    sessionId: string,
-    sessionState: SessionBuffer,
-    event: PersistTimelineEventInput
-  ): PersistApprovalInput | null {
-    if (event.type !== "approval.requested") {
-      return null;
-    }
-    const command = typeof event.payload.command === "string" ? event.payload.command : event.message;
-    if (!command.trim()) {
-      return null;
-    }
-    const riskLevel =
-      event.payload.riskLevel === "low" || event.payload.riskLevel === "medium" || event.payload.riskLevel === "high"
-        ? event.payload.riskLevel
-        : "medium";
-    return {
-      id: randomUUID(),
-      sessionId,
-      command,
-      cwd: typeof event.payload.cwd === "string" && event.payload.cwd.trim() ? event.payload.cwd : sessionState.workspacePath,
-      provider: sessionState.provider,
-      riskLevel,
-      status: "pending",
-      ...(event.createdAt ? { createdAt: event.createdAt } : {})
-    };
-  }
-
-  private maybeUpdateLastActivity(event: ProviderEvent): void {
-    const sessionState = this.buffers.get(event.sessionId);
-    if (!sessionState) {
-      return;
-    }
-    const now = Date.parse(event.createdAt);
-    if (Number.isNaN(now)) {
-      return;
-    }
-    if (now - sessionState.lastActivityWriteAt < ACTIVITY_THROTTLE_MS) {
-      return;
-    }
-    sessionState.lastActivityWriteAt = now;
-    try {
-      // Single-column update — avoids the getSession round-trip + ui_state
-      // range scan that updateSessionState would pay every 2 s during the
-      // event hot path.
-      sessionState.pendingSessionUpdate = this.database.updateSessionLastActivity(
-        event.sessionId,
-        event.createdAt
-      );
-    } catch (error) {
-      if (error instanceof RecordNotFoundError && error.kind === "session") return;
-      throw error;
-    }
-  }
-
-  private recordProviderConversationId(sessionId: string, providerConversationId: string): void {
-    try {
-      const session = this.database.getSession(sessionId);
-      if (session.providerConversationId === providerConversationId) {
-        return;
-      }
-      const updated = this.database.updateSessionProviderConversationId(sessionId, providerConversationId);
-      const sessionState = this.buffers.get(sessionId);
-      if (sessionState) {
-        sessionState.pendingSessionUpdate = updated;
-        return;
-      }
-      this.publishDashboardDelta({ sessions: [updated] });
-    } catch (error) {
-      if (error instanceof RecordNotFoundError && error.kind === "session") return;
-      throw error;
-    }
-  }
-
-  private scheduleFlush(sessionId: string): void {
-    const sessionState = this.buffers.get(sessionId);
-    if (!sessionState) {
-      return;
-    }
-    scheduleFlushQueue(sessionState, sessionId, (sid) => this.flushBatch(sid));
-  }
-
-  private flushTrailingFragment(sessionId: string): void {
-    const sessionState = this.buffers.get(sessionId);
-    if (!sessionState) {
-      return;
-    }
-    // Prefer the most recent observed activity timestamp so the trailing
-    // fragment doesn't slot AFTER unrelated wall-clock events when terminate
-    // races with output (event-ordering hazard). Fall back to Date.now() if
-    // we have no observed activity yet.
-    const fallbackTimestamp =
-      sessionState.pendingSessionUpdate?.lastActivityAt ?? new Date().toISOString();
-    for (const [stream, trailing] of sessionState.streamBuffers) {
-      if (!trailing) continue;
-      sessionState.streamBuffers.set(stream, "");
-      // A `{`-prefixed trailing fragment is a truncated JSON line — feeding it
-      // to the normalizer would surface half a JSON blob as an assistant
-      // message. Persist it as a debug raw_output instead and skip the
-      // timeline emission. Plain-text fragments (PTY output) still flow
-      // through the normalizer.
-      if (trailing.trimStart().startsWith("{") && !tryParseJsonObject(trailing.trim())) {
-        this.queueRawOutput({
-          sessionId,
-          type: "output",
-          stream: "stderr",
-          message: `[argmax: dropped truncated JSON fragment (${trailing.length} bytes)]`,
-          createdAt: fallbackTimestamp
-        });
-        continue;
-      }
-      const synthetic: ProviderEvent = {
-        sessionId,
-        type: "output",
-        stream,
-        message: `${trailing}\n`,
-        createdAt: fallbackTimestamp
-      };
-      const normalized = normalizeProviderEventWithUsage(synthetic, {
-        provider: sessionState.provider,
-        context: sessionState.normalizerContext
-      });
-      for (const ev of normalized.events) {
-        this.queueTimelineEvent(sessionId, ev);
-      }
-      for (const usage of normalized.usages) {
-        this.queueUsage(sessionId, usage);
-      }
-    }
-  }
-
+  /** Test surface: delegates to the flush queue micro-batch drain. */
   private flushBatch(sessionId: string): void {
-    const sessionState = this.buffers.get(sessionId);
-    if (!sessionState) {
-      return;
-    }
-    flushSessionBuffer(
-      sessionState,
-      sessionId,
-      this.database,
-      (delta) => this.publishDelta(delta),
-      (delayMs) => scheduleFlushQueue(sessionState, sessionId, (sid) => this.flushBatch(sid), delayMs)
-    );
-  }
-
-  private publishDashboardDelta(delta: DashboardDelta): void {
-    this.publishDelta(delta);
+    this.flushQueue.flushBatch(sessionId);
   }
 }

@@ -116,21 +116,25 @@ describe("ProjectService", () => {
 
 function createGitRepo(): string {
   const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-"));
-  execFileSync("git", ["init", "--initial-branch=main", repoPath]);
+  git(["init", "--initial-branch=main", repoPath]);
   return realpathSync(repoPath);
 }
 
 function createGitRepoWithBranches(branches: readonly string[], initialBranch: string): string {
   const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-multi-"));
-  execFileSync("git", ["init", `--initial-branch=${initialBranch}`, repoPath]);
-  execFileSync("git", ["-C", repoPath, "config", "user.email", "test@example.com"]);
-  execFileSync("git", ["-C", repoPath, "config", "user.name", "Test"]);
-  execFileSync("git", ["-C", repoPath, "commit", "--allow-empty", "-m", "init"]);
+  git(["init", `--initial-branch=${initialBranch}`, repoPath]);
+  git(["-C", repoPath, "config", "user.email", "test@example.com"]);
+  git(["-C", repoPath, "config", "user.name", "Test"]);
+  git(["-C", repoPath, "commit", "--allow-empty", "-m", "init"]);
   for (const branch of branches) {
     if (branch === initialBranch) continue;
-    execFileSync("git", ["-C", repoPath, "branch", branch]);
+    git(["-C", repoPath, "branch", branch]);
   }
   // Re-checkout initial branch so `branch --show-current` is deterministic.
-  execFileSync("git", ["-C", repoPath, "checkout", initialBranch]);
+  git(["-C", repoPath, "checkout", initialBranch]);
   return realpathSync(repoPath);
+}
+
+function git(args: string[]): void {
+  execFileSync("git", args, { stdio: "pipe" });
 }

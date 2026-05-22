@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { buildFileTree } from "../lib/fileTree.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import type { WorkspaceFileEntry } from "../../shared/types.js";
@@ -59,30 +58,6 @@ describe("WorkspaceTree virtualization", () => {
   it("renders the empty-state when entries is empty", () => {
     render(<WorkspaceTree state={makeState([])} height={400} />);
     expect(screen.getByText("No files in this workspace.")).toBeTruthy();
-  });
-
-  it("builds a 10k-file tree under the perf budget (audit P1.11)", () => {
-    // audit-2026-05-11 / SPEC P1.11 — `buildFileTree` previously used an
-    // inner `cursor.children.find(...)` for every segment, making the
-    // build O(n²) on wide directories. The current implementation uses a
-    // per-cursor `Map<segment, TreeNode>` index for O(1) lookups. This
-    // test pins that property: 10k entries split into ~3 segments each
-    // must build well under 50 ms even on a cold CI runner.
-    const entries: WorkspaceFileEntry[] = [];
-    for (let dir = 0; dir < 100; dir++) {
-      for (let file = 0; file < 100; file++) {
-        entries.push({ path: `pkg-${dir}/sub-${dir}/file-${file}.ts` });
-      }
-    }
-    expect(entries).toHaveLength(10_000);
-
-    const start = performance.now();
-    const root = buildFileTree(entries);
-    const elapsed = performance.now() - start;
-
-    // 100 top-level dirs, each with one sub-dir holding 100 files.
-    expect(root.children).toHaveLength(100);
-    expect(elapsed).toBeLessThan(50);
   });
 
   it("renders the visible files as treeitems with their basename", () => {

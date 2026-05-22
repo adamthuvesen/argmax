@@ -1,6 +1,6 @@
 # Providers
 
-Argmax orchestrates three CLIs: **Claude Code**, **Codex**, and **Cursor Agent**. Adapters live in [src/main/providers/providerAdapters.ts](../../src/main/providers/providerAdapters.ts); the orchestrator is [providerSessionService.ts](../../src/main/providers/providerSessionService.ts).
+Argmax orchestrates three CLIs: **Claude Code**, **Codex**, and **Cursor Agent**. Adapters live in [src/main/providers/providerAdapters.ts](../../src/main/providers/providerAdapters.ts). Session lifecycle (launch, send, terminate, follow-up queue, recovery) is [providerSessionService.ts](../../src/main/providers/providerSessionService.ts); per-session output buffering, micro-batch SQLite writes, and mid-stream `dashboard:delta` publish are [providerEventFlushQueue.ts](../../src/main/providers/providerEventFlushQueue.ts) (transaction + timer in [sessionFlushQueue.ts](../../src/main/providers/sessionFlushQueue.ts)).
 
 ## Defaults
 
@@ -91,7 +91,7 @@ Union: `"low" | "medium" | "high" | "xhigh"` (matches the Codex CLI — don't in
 
 ## Session lifecycle
 
-- `ProviderSessionService` tracks sessions in-memory and persists every transition.
+- `ProviderSessionService` tracks handles, follow-up queues, and lifecycle transitions; `ProviderEventFlushQueue` owns stream buffers and coalesced event/raw-output batches until commit.
 - `recoverOrphanedSessions()` runs at boot — anything left in `running` from a previous process is reconciled before IPC accepts connections.
 - Output is coalesced into micro-batches; `dashboard:delta` is broadcast only after the SQLite write commits. Launch deltas include the session + workspace + `user.message` + `session.started`; mid-stream deltas include persisted events, raw outputs, session activity, and refreshed projects; exit/failure deltas include the final event and refreshed state.
 - `disposeAll()` is wired to Electron's `before-quit` — every spawned PTY/child is killed gracefully (then SIGKILL-escalated by `scheduleSigkillEscalation` if it ignores the polite signal).

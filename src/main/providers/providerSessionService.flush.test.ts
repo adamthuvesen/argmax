@@ -1,0 +1,478 @@
+// @vitest-environment node
+import { describe, expect, it, vi } from "vitest";
+import { createDatabase } from "../persistence/database.js";
+import type { DashboardDelta } from "../../shared/types.js";
+import { ProviderSessionService } from "./providerSessionService.js";
+import { createFakeProvider, persistWorkspaceFixture } from "../../test/providerSessionTestFixtures.js";
+
+describe("ProviderSessionService flush", () => {
+  it("publishes output micro-batches as dashboard deltas", async () => {
+    vi.useFakeTimers();
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    try {
+      const session = await service.launch({
+        workspaceId: workspace.id,
+        provider: "codex",
+        prompt: "Ship",
+        modelLabel: "GPT-5.3 Codex Spark Low",
+        modelId: "gpt-5.3-codex-spark",
+        reasoningEffort: "low",
+        cols: 80,
+        rows: 24
+      });
+      deltas.length = 0;
+
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: '{"type":"message.delta","message":"Streaming now."}\n',
+        createdAt: "2026-05-08T16:00:00.000Z"
+      });
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(deltas).toContainEqual(
+        expect.objectContaining({
+          rawOutputs: [expect.objectContaining({ sessionId: session.id, stream: "stdout" })],
+          events: [expect.objectContaining({ sessionId: session.id, message: "Streaming now." })],
+          sessions: [expect.objectContaining({ id: session.id, lastActivityAt: "2026-05-08T16:00:00.000Z" })]
+        })
+      );
+    } finally {
+      database.clearPruneInterval();
+      vi.useRealTimers();
+      database.connection.close();
+    }
+  });
+  it("drops the partial-line buffer and emits a marker when stream output exceeds 1 MiB without a newline", async () => {
+    vi.useFakeTimers();
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    try {
+      const session = await service.launch({
+        workspaceId: workspace.id,
+        provider: "codex",
+        prompt: "Ship",
+        modelLabel: "GPT-5.3 Codex Spark Low",
+        modelId: "gpt-5.3-codex-spark",
+        reasoningEffort: "low",
+        cols: 80,
+        rows: 24
+      });
+      deltas.length = 0;
+
+      // Two ~600 KB chunks of pure text with no newline — together they push
+      // the per-stream buffer past the 1 MiB cap.
+      const chunk = "x".repeat(600_000);
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: chunk,
+        createdAt: "2026-05-08T16:00:00.000Z"
+      });
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: chunk,
+        createdAt: "2026-05-08T16:00:00.100Z"
+      });
+      await vi.advanceTimersByTimeAsync(20);
+
+      const buffers = (service as unknown as {
+        flushQueue: { buffers: Map<string, { streamBuffers: Map<string, string> }> };
+      }).flushQueue.buffers;
+      expect(buffers.get(session.id)?.streamBuffers.get("stdout")).toBe("");
+      const truncationDelta = deltas.find((d) =>
+        d.events?.some((ev) => ev.message.includes("argmax: dropped"))
+      );
+      expect(truncationDelta).toBeDefined();
+    } finally {
+      database.clearPruneInterval();
+      vi.useRealTimers();
+      database.connection.close();
+    }
+  });
+  it("keeps the failed batch queued and retries when persistence recovers", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+    const persistRawOutput = vi.spyOn(database, "persistRawOutput").mockImplementation(() => {
+      throw new Error("write failed");
+    });
+
+    try {
+      fakeProvider.emit({
+        sessionId: session.id,
+        type: "output",
+        stream: "stdout",
+        message: "plain log line\n",
+        createdAt: "2026-05-08T16:00:00.000Z"
+      });
+
+      (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id);
+      expect(deltas).toEqual([]);
+      const buffers = (service as unknown as {
+        flushQueue: { buffers: Map<string, { pendingRawOutputs: unknown[]; failedFlushes: number }> };
+      }).flushQueue.buffers;
+      expect(buffers.get(session.id)?.pendingRawOutputs.length).toBe(1);
+      expect(buffers.get(session.id)?.failedFlushes).toBe(1);
+
+      persistRawOutput.mockRestore();
+      (service as unknown as { flushBatch: (sessionId: string) => void }).flushBatch(session.id);
+
+      expect(buffers.get(session.id)?.pendingRawOutputs.length).toBe(0);
+      expect(buffers.get(session.id)?.failedFlushes).toBe(0);
+      expect(database.listSessionEventsSince({ sessionId: session.id }).rawOutputs.map((output) => output.content)).toContain(
+        "plain log line\n"
+      );
+    } finally {
+      persistRawOutput.mockRestore();
+      await service.terminate(session.id);
+      database.connection.close();
+    }
+  });
+  it("drops a truncated JSON trailing fragment instead of rendering it as a chat message", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+
+    // Emit a half-finished JSON line (no newline, no closing brace). It
+    // stays in the per-stream partial-line buffer until terminate triggers
+    // a flush.
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: '{"type":"message.delta","text":"never finishe',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    await service.terminate(session.id);
+
+    const everyTimelineMessage = deltas.flatMap((d) => d.events ?? []).map((e) => e.message);
+    // The fragment must NOT have been emitted as an assistant message.delta.
+    expect(everyTimelineMessage.some((msg) => msg.includes("never finishe"))).toBe(false);
+    // It must be surfaced somewhere — as a raw stderr debug entry.
+    const rawOutputs = deltas.flatMap((d) => d.rawOutputs ?? []);
+    expect(rawOutputs.some((r) => r.stream === "stderr" && r.content.includes("argmax: dropped truncated JSON"))).toBe(true);
+
+    database.connection.close();
+  });
+  it("drops the batch without throwing when the session row is deleted mid-flush", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const deltas: DashboardDelta[] = [];
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter, (delta) => deltas.push(delta));
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+    deltas.length = 0;
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: "plain log line\n",
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+
+    database.connection.prepare("DELETE FROM sessions WHERE id = ?").run(session.id);
+
+    expect(() => (service as unknown as { flushBatch: (id: string) => void }).flushBatch(session.id)).not.toThrow();
+    expect(deltas).toEqual([]);
+
+    const rawOutputCount = database.connection
+      .prepare("SELECT COUNT(*) AS c FROM raw_outputs WHERE session_id = ?")
+      .get(session.id) as { c: number };
+    expect(rawOutputCount.c).toBe(0);
+
+    database.connection.close();
+  });
+  it("reassembles a JSON object split across two PTY chunks without parse failures", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: '{"type":"command.started"',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: ',"message":"npm test"}\n',
+      createdAt: "2026-05-08T16:00:00.500Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+
+    const snapshot = database.loadDashboard();
+    const commandStarted = snapshot.events.filter((event) => event.type === "command.started");
+    expect(commandStarted).toHaveLength(1);
+    expect(commandStarted[0]?.message).toBe("npm test");
+
+    // No raw fallback events for the partial halves.
+    const rawDeltas = snapshot.events.filter(
+      (event) => event.type === "message.delta" && (event.payload as { raw?: boolean })?.raw === true
+    );
+    expect(rawDeltas).toEqual([]);
+
+    database.connection.close();
+  });
+  it("emits both JSON and raw timeline events when a chunk mixes parsed and unparsed lines", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: '{"type":"command.started","message":"npm test"}\nplain text line\n',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+
+    const snapshot = database.loadDashboard();
+    expect(snapshot.events.some((event) => event.type === "command.started" && event.message === "npm test")).toBe(true);
+    expect(
+      snapshot.events.some(
+        (event) =>
+          event.type === "message.delta" &&
+          event.message === "plain text line" &&
+          (event.payload as { raw?: boolean })?.raw === true
+      )
+    ).toBe(true);
+
+    database.connection.close();
+  });
+  it("flushes a partial trailing line as a final event on exit", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+
+    // Emit a JSON line missing its trailing newline; only the next event flushes it.
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: '{"type":"message.completed","message":"All set."}',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    // No flush yet — partial line still buffered.
+    expect(database.loadDashboard().events.some((event) => event.message === "All set.")).toBe(false);
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+
+    const snapshot = database.loadDashboard();
+    expect(snapshot.events.some((event) => event.type === "message.completed" && event.message === "All set.")).toBe(true);
+
+    database.connection.close();
+  });
+  it("emits multiple events at the same timestamp without dropping any", async () => {
+    // Sequence is in-memory and per-session-instance; not persisted to a
+    // dedicated column. This test validates the consumer-visible behaviour:
+    // when two events emit within a single output chunk (same createdAt
+    // millisecond), neither is dropped.
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message:
+        '{"type":"command.started","message":"step one"}\n' +
+        '{"type":"command.completed","message":"step two"}\n',
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "exit",
+      stream: "system",
+      message: "Codex exited with code 0.",
+      exitCode: 0,
+      createdAt: "2026-05-08T16:00:01.000Z"
+    });
+
+    const snapshot = database.loadDashboard();
+    const sameMillis = snapshot.events.filter((event) => event.createdAt === "2026-05-08T16:00:00.000Z");
+    const stepOne = sameMillis.find((event) => event.message === "step one");
+    const stepTwo = sameMillis.find((event) => event.message === "step two");
+    expect(stepOne).toBeDefined();
+    expect(stepTwo).toBeDefined();
+
+    database.connection.close();
+  });
+  it("throttles lastActivityAt updates to once per ~2 seconds while streaming", async () => {
+    const database = createDatabase(":memory:", { seed: false });
+    const workspace = persistWorkspaceFixture(database);
+    const fakeProvider = createFakeProvider("codex");
+    const service = new ProviderSessionService(database, () => fakeProvider.adapter);
+
+    const session = await service.launch({
+      workspaceId: workspace.id,
+      provider: "codex",
+      prompt: "Ship",
+      modelLabel: "GPT-5.3 Codex Spark Low",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "low",
+      cols: 80,
+      rows: 24
+    });
+
+    const updateSpy = vi.spyOn(database, "updateSessionLastActivity");
+    const baseline = updateSpy.mock.calls.length;
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: "plain log line\n",
+      createdAt: "2026-05-08T16:00:00.000Z"
+    });
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: "another log line\n",
+      createdAt: "2026-05-08T16:00:00.100Z"
+    });
+    const afterClose = updateSpy.mock.calls.length - baseline;
+    expect(afterClose).toBe(1);
+
+    fakeProvider.emit({
+      sessionId: session.id,
+      type: "output",
+      stream: "stdout",
+      message: "after gap\n",
+      createdAt: "2026-05-08T16:00:03.000Z"
+    });
+    expect(updateSpy.mock.calls.length - baseline).toBe(2);
+
+    // Clean up: terminate flushes pending state synchronously and clears timers.
+    await service.terminate(session.id);
+    updateSpy.mockRestore();
+    database.connection.close();
+  });
+});

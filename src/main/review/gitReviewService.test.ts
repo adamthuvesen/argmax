@@ -1,10 +1,10 @@
 // @vitest-environment node
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDatabase } from "../persistence/database.js";
+import { runGit } from "../../test/gitTestUtils.js";
 import { GitReviewService } from "./gitReviewService.js";
 
 describe("GitReviewService", () => {
@@ -13,7 +13,7 @@ describe("GitReviewService", () => {
     writeFileSync(join(repoPath, "src/index.ts"), "export const ok = false;\n");
     writeFileSync(join(repoPath, "src/new.ts"), "export const added = true;\n");
     writeFileSync(join(repoPath, "src/staged.ts"), "export const staged = true;\n");
-    git(repoPath, ["add", "src/staged.ts"]);
+    runGit(repoPath, ["add", "src/staged.ts"]);
     unlinkSync(join(repoPath, "src/delete-me.ts"));
     const database = createDatabase(":memory:", { seed: false });
     database.persistProject({
@@ -202,17 +202,13 @@ describe("GitReviewService", () => {
 
 function createCommittedGitRepo(): string {
   const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-review-")));
-  git(repoPath, ["init", "--initial-branch=main"]);
-  git(repoPath, ["config", "user.email", "argmax@example.test"]);
-  git(repoPath, ["config", "user.name", "Argmax Test"]);
+  runGit(repoPath, ["init", "--initial-branch=main"]);
+  runGit(repoPath, ["config", "user.email", "argmax@example.test"]);
+  runGit(repoPath, ["config", "user.name", "Argmax Test"]);
   mkdirSync(join(repoPath, "src"));
   writeFileSync(join(repoPath, "src/index.ts"), "export const ok = true;\n");
   writeFileSync(join(repoPath, "src/delete-me.ts"), "export const remove = true;\n");
-  git(repoPath, ["add", "src/index.ts", "src/delete-me.ts"]);
-  git(repoPath, ["commit", "-m", "test: seed repo"]);
+  runGit(repoPath, ["add", "src/index.ts", "src/delete-me.ts"]);
+  runGit(repoPath, ["commit", "-m", "test: seed repo"]);
   return repoPath;
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }

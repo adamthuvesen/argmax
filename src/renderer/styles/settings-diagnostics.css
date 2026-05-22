@@ -1,0 +1,482 @@
+/* ---- Providers ---- */
+
+.settings-providers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+
+.settings-provider-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.settings-provider-row + .settings-provider-row {
+  border-top: 1px solid var(--line-soft);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.settings-provider-row:hover {
+  background: var(--panel-soft);
+}
+
+.settings-provider-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1.5px solid var(--line-strong);
+}
+
+.settings-provider-row[data-installed="true"] .settings-provider-dot {
+  background: var(--sage);
+  border-color: var(--sage);
+  box-shadow: 0 0 0 3px var(--sage-soft);
+}
+
+.settings-provider-row[data-installed="true"] {
+  background: transparent;
+}
+
+.settings-provider-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-provider-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.003em;
+}
+
+.settings-provider-status {
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.settings-provider-row[data-installed="true"] .settings-provider-status {
+  color: var(--sage-deep);
+}
+
+.settings-provider-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  color: var(--text);
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  transition: border-color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.settings-provider-link:hover {
+  border-color: var(--ink);
+  background: var(--panel-sunken);
+}
+
+/* ---- Diagnostics ---- */
+
+.settings-diagnostics-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--text-soft);
+}
+
+.settings-diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-diagnostics-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  transition: border-color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.settings-diagnostics-actions button:hover:not(:disabled) {
+  border-color: var(--ink);
+  background: var(--panel-sunken);
+}
+
+.settings-diagnostics-actions button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.settings-diagnostics-actions button svg {
+  color: var(--muted-strong);
+}
+
+.settings-diagnostics-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-diagnostics-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sage);
+}
+
+/* ---- Logs ---- */
+
+.settings-logs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel-soft);
+}
+
+.settings-logs-entry {
+  display: grid;
+  grid-template-columns: 12px auto 56px 1fr;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  border-top: 1px dashed var(--line-soft);
+  color: var(--text-soft);
+}
+
+.settings-logs-entry:first-child {
+  border-top: 0;
+}
+
+.settings-logs-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.settings-logs-entry[data-log-level="error"] .settings-logs-dot { background: var(--rose); }
+.settings-logs-entry[data-log-level="warn"] .settings-logs-dot { background: var(--amber); }
+.settings-logs-entry[data-log-level="info"] .settings-logs-dot { background: var(--sage); }
+.settings-logs-entry[data-log-level="debug"] .settings-logs-dot { background: var(--muted); opacity: 0.6; }
+
+.settings-logs-timestamp {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-logs-level {
+  display: inline-flex;
+  justify-content: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted-strong);
+}
+
+.settings-logs-entry[data-log-level="error"] .settings-logs-level {
+  color: var(--rose);
+  border-color: rgba(184, 87, 99, 0.4);
+  background: var(--rose-soft);
+}
+
+.settings-logs-entry[data-log-level="warn"] .settings-logs-level {
+  color: var(--amber);
+  border-color: rgba(176, 128, 57, 0.4);
+  background: var(--amber-soft);
+}
+
+.settings-logs-entry[data-log-level="info"] .settings-logs-level {
+  color: var(--sage-deep);
+  border-color: rgba(90, 143, 114, 0.4);
+  background: var(--sage-soft);
+}
+
+.settings-logs-scope {
+  color: var(--text-soft);
+  font-size: 11.5px;
+}
+
+.settings-logs-message {
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* ---- Tables ---- */
+
+.settings-startup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+
+.settings-startup-table th,
+.settings-startup-table td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px dashed var(--line-soft);
+}
+
+.settings-startup-table thead th {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-startup-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.settings-startup-table tbody td {
+  color: var(--text);
+  font-feature-settings: "tnum", "zero";
+}
+
+.settings-startup-table tbody td code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.settings-startup-table tbody tr[data-over-budget="true"] td:first-child {
+  color: var(--rose);
+}
+
+.settings-startup-table tbody tr[data-over-budget="true"] code {
+  color: var(--rose);
+}
+
+.settings-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  color: var(--rose);
+  background: var(--rose-soft);
+  border: 1px solid rgba(184, 87, 99, 0.4);
+}
+
+/* ---- MCP ---- */
+
+.settings-mcp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-mcp-client {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+}
+
+.settings-mcp-client-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.settings-mcp-client-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.004em;
+  color: var(--text);
+}
+
+.settings-mcp-client-count {
+  margin-right: auto;
+  margin-left: 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.settings-mcp-server-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.settings-mcp-server-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.settings-mcp-server-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-mcp-server-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-mcp-server-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.settings-mcp-server-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--muted-strong);
+  background: var(--panel);
+}
+
+.settings-mcp-server-badge[data-transport="stdio"] {
+  border-color: rgba(90, 143, 114, 0.4);
+  color: var(--sage-deep);
+  background: var(--sage-soft);
+}
+
+.settings-mcp-server-badge[data-transport="http"],
+.settings-mcp-server-badge[data-transport="sse"] {
+  border-color: rgba(176, 128, 57, 0.4);
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.settings-mcp-server-detail {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-mcp-server-envs {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.settings-mcp-config-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  transition: color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.settings-mcp-config-link:hover {
+  color: var(--text);
+  border-color: var(--ink);
+}
+
+.settings-mcp-auth {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bubble-on-ink);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.settings-mcp-auth:hover {
+  background: var(--ink-soft);
+}
+
+.settings-mcp-auth:active {
+  transform: translateY(1px);
+}
+
+.settings-mcp-auth[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

@@ -1,0 +1,877 @@
+/* ---- Footer ribbon ---- */
+
+.settings-footer {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  justify-self: start;
+}
+
+.settings-footer-prompt {
+  color: var(--text);
+}
+
+.settings-footer-sep {
+  color: var(--line-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-hero-dot,
+  .settings-status-chip-dot {
+    animation: none;
+  }
+  .settings-section { animation: none; }
+}
+
+.mcp-auth-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 24, 32, 0.36);
+  z-index: 200;
+}
+
+.mcp-auth-dialog {
+  width: min(820px, 94vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--panel, #ffffff);
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
+  padding: 20px 24px 18px;
+}
+
+.mcp-auth-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mcp-auth-dialog-header h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.mcp-auth-dialog-header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-strong);
+}
+
+.mcp-auth-dialog-header code {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 11px;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 3px;
+}
+
+.mcp-auth-dialog-header button {
+  background: transparent;
+  border: 0;
+  font-size: 20px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mcp-auth-dialog-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  background: var(--danger-soft, rgba(220, 38, 38, 0.08));
+  color: var(--danger-strong, #b91c1c);
+}
+
+.mcp-auth-dialog-terminal {
+  flex: 1;
+  min-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+
+.mcp-auth-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mcp-auth-dialog-actions button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chat-bubble {
+  position: relative;
+}
+
+.chat-bubble-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.chat-bubble:hover .chat-bubble-copy,
+.chat-bubble:focus-within .chat-bubble-copy {
+  opacity: 1;
+}
+
+.chat-bubble-copy:hover {
+  color: var(--text);
+}
+
+.error-boundary {
+  display: grid;
+  gap: 12px;
+  padding: 48px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.error-boundary h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.error-boundary-message {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.error-boundary-actions button {
+  padding: 8px 14px;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  color: var(--bubble-on-ink);
+  border: 0;
+  border-radius: 8px;
+  background: var(--ink);
+  cursor: pointer;
+  box-shadow: var(--shadow-2);
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.primary-action:hover {
+  background: var(--ink-soft);
+  transform: translateY(-1px);
+}
+
+.composer {
+  display: grid;
+  gap: 14px;
+}
+
+.composer-input,
+.composer-context,
+.provider-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.composer-input {
+  position: relative;
+  gap: 8px;
+  min-height: 76px;
+  padding: 14px 14px 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.composer-input:focus-within {
+  border-color: var(--ink);
+  box-shadow: var(--shadow-2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.composer-input input,
+.composer-input textarea {
+  min-width: 0;
+  flex: 1;
+  min-height: 44px;
+  max-height: 140px;
+  padding: 11px 12px 11px 4px;
+  color: var(--text);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: hidden;
+}
+
+.composer-input input::placeholder,
+.composer-input textarea::placeholder {
+  color: var(--muted);
+}
+
+.composer-tool,
+.send-button {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
+}
+
+.composer-tool {
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.composer-tool:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+  border-color: var(--line);
+}
+
+.send-button {
+  color: var(--bubble-on-ink);
+  background: var(--ink);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 1px 2px rgba(31, 28, 24, 0.20),
+    0 8px 18px -10px rgba(31, 28, 24, 0.45);
+}
+
+.send-button:hover:not(:disabled) {
+  background-color: var(--ink-soft);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.07) inset,
+    0 1px 2px rgba(31, 28, 24, 0.24),
+    0 12px 22px -10px rgba(31, 28, 24, 0.5);
+}
+
+.send-button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.composer-tool:disabled,
+.send-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+
+
+.composer-context {
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.composer-context-tree {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--line-strong);
+  user-select: none;
+  margin-right: 2px;
+}
+
+.composer-context span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.composer-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.composer-context-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--line-strong);
+}
+
+.composer-context-chip:hover {
+  background: var(--panel-sunken);
+  color: var(--muted-strong);
+}
+
+.agent-mode-toggle {
+  min-width: 48px;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 11.5px;
+}
+
+.agent-mode-toggle[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--sage);
+  background: rgba(90, 143, 114, 0.12);
+}
+
+.agent-mode-toggle:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.composer-context svg {
+  color: var(--muted);
+}
+
+.provider-toggle {
+  position: relative;
+  gap: 0;
+  min-height: 28px;
+  padding: 3px;
+  margin-left: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.provider-toggle button {
+  position: relative;
+  z-index: 1;
+  min-height: 22px;
+  padding: 0 11px;
+  color: var(--muted-strong);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.provider-toggle button:hover {
+  color: var(--text);
+}
+
+.provider-toggle button.active {
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04), 0 1px 3px rgba(31, 28, 24, 0.10);
+}
+
+.model-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.model-selector select,
+.model-selector input {
+  min-height: 30px;
+  max-width: 220px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+}
+
+.model-selector select {
+  padding: 0 28px 0 10px;
+}
+
+.model-selector input {
+  width: min(180px, 34vw);
+  padding: 0 9px;
+}
+
+.project-picker-anchor {
+  position: relative;
+}
+
+.picker-dismiss-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.project-picker-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 200px;
+  max-height: 260px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+}
+
+.project-picker-popover.settings-picker-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  min-width: 100%;
+  max-height: 280px;
+}
+
+/* New-session composer chips: open menu below the trigger (default .project-picker-popover is upward). */
+.composer-context .project-picker-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  /* Keep the menu within the viewport so it isn’t clipped by .work-scroll; otherwise the ul’s
+     scrollbar sits in the clipped region / wheel scroll hits the outer scroller instead. */
+  max-height: min(260px, 22dvh, calc(100dvh - 96px));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.model-picker-popover .project-picker-item {
+  white-space: nowrap;
+}
+
+.project-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  color: var(--text-soft);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.project-picker-item:hover {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.project-picker-item[aria-pressed="true"] {
+  background: var(--panel-sunken);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.project-picker-item:disabled,
+.project-picker-item[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.project-picker-item:disabled:hover,
+.project-picker-item[disabled]:hover {
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.project-picker-divider {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 4px 6px;
+}
+
+/* Sidebar "sort projects" menu — opens downward from the rail-heading
+   trigger and anchors to the trigger's right edge so it stays inside the
+   sidebar column. */
+.rail-sort-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  min-width: 180px;
+  list-style: none;
+}
+
+.rail-sort-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text);
+  flex: 0 0 auto;
+}
+
+/* Session actions menu — replaces the row of header icons. Sized to fit short
+   text labels; opens downward and anchors to the trigger's right edge.
+   The "Git actions" item swaps the menu's contents in place instead of
+   cascading a second popover, so we widen min-width for the longer git
+   labels (e.g. "Create pull request"). */
+.session-actions-popover {
+  top: auto;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  min-width: 240px;
+  padding: 6px;
+}
+
+.session-actions-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* "Git actions ▸" trigger — labels and chevron align to opposite edges. */
+.session-actions-submenu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-actions-submenu-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.session-actions-submenu-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+/* "Back" + GitActionsMenu container — same column layout as the main list. */
+.session-actions-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-actions-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px 4px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.session-actions-back:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+/* Git actions dropdown — opens DOWNWARD from the conversation header. */
+.git-actions-popover {
+  top: calc(100% + 8px);
+  bottom: auto;
+  right: 0;
+  left: auto;
+  min-width: 300px;
+  padding: 10px;
+}
+
+.git-actions-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.git-actions-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 6px 8px;
+}
+
+.git-actions-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 -2px 2px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.git-actions-back:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+.git-actions-label {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.git-actions-textarea,
+.git-actions-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.git-actions-textarea {
+  min-height: 88px;
+}
+
+.git-actions-textarea:focus,
+.git-actions-input:focus {
+  outline: 2px solid var(--sage);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.git-actions-submit {
+  align-self: flex-end;
+  margin-top: 4px;
+  padding: 7px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--sage);
+  color: var(--bubble-on-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.git-actions-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.git-actions-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.git-actions-feedback svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.git-actions-feedback--success {
+  background: var(--sage-soft);
+  border-color: color-mix(in srgb, var(--sage) 30%, transparent);
+  color: var(--sage-deep);
+}
+
+.git-actions-feedback--error {
+  background: var(--rose-soft);
+  border-color: color-mix(in srgb, var(--rose) 35%, transparent);
+  color: var(--rose);
+}
+
+.git-actions-busy {
+  margin: 8px 6px 0;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.project-picker-group-label {
+  padding: 4px 10px 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.composer-status {
+  margin: 8px 8px 0;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  width: max-content;
+  max-width: 100%;
+}
+
+.composer-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rose);
+  flex: 0 0 auto;
+}
+
+.launcher-starters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 2px 8px 0;
+  padding-top: 4px;
+}
+
+.launcher-starters-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.launcher-starters ul {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.launcher-starter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted-strong);
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.launcher-starter-chip:hover {
+  color: var(--text);
+  border-color: var(--ink);
+  border-style: solid;
+  background: var(--panel);
+}
+
+.launcher-starter-chip:active {
+  transform: translateY(1px);
+}
+
+.session-scroll {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+

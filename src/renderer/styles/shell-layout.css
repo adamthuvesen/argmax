@@ -1,0 +1,539 @@
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 14px 12px;
+  border-right: 1px solid var(--line);
+  background: var(--sidebar);
+  background-image: linear-gradient(180deg, var(--paper-highlight-strong), transparent);
+  transition: opacity var(--duration-base) var(--ease);
+}
+
+.sidebar[data-loading="true"] {
+  opacity: 0.62;
+}
+
+.window-controls {
+  app-region: drag;
+  -webkit-app-region: drag;
+  height: 36px;
+  margin-bottom: 4px;
+}
+
+/* ---- Margin Notes: nameplate ---- */
+
+.sidebar-nameplate {
+  display: grid;
+  gap: 2px;
+  margin: 2px 12px 12px;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.sidebar-nameplate-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-nameplate-mark {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.sidebar-nameplate-slash {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--line-strong);
+  letter-spacing: 0.02em;
+}
+
+.sidebar-nameplate-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  margin-left: auto;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.sidebar-nameplate-dot[data-state="ready"] {
+  background: var(--sage);
+  box-shadow: 0 0 0 3px var(--sage-soft);
+  animation: status-pulse 2.6s var(--ease) infinite;
+}
+
+.sidebar-nameplate-dot[data-state="loading"] {
+  background: var(--amber);
+  animation: status-pulse 1.2s var(--ease) infinite;
+}
+
+.sidebar-nameplate-dot[data-state="issue"] {
+  background: var(--rose);
+}
+
+.sidebar-nameplate-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---- Margin Notes: CTA + rail nav ---- */
+
+.rail-nav {
+  display: grid;
+  gap: 1px;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.rail-nav-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--text-soft);
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.rail-nav-item:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.rail-nav-item svg {
+  flex: 0 0 auto;
+  color: var(--muted-strong);
+}
+
+.rail-nav-item:hover svg {
+  color: var(--text);
+}
+
+.rail-nav-item > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-nav-cta {
+  position: relative;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 8px 0 8px;
+  margin: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  box-shadow: var(--shadow-1);
+  transition: border-color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.rail-nav-cta:hover {
+  border-color: var(--muted);
+  background: var(--panel);
+}
+
+.rail-nav-cta:active {
+  transform: translateY(1px);
+}
+
+.rail-nav-cta .rail-nav-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bubble-on-ink);
+  flex: 0 0 auto;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.rail-nav-cta:hover .rail-nav-glyph {
+  background: var(--ink-soft);
+}
+
+.rail-nav-cta .rail-nav-glyph svg {
+  color: var(--bubble-on-ink);
+}
+
+.rail-nav-cta .rail-nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.rail-nav-kbd {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--panel-sunken);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.rail-nav-item:hover .rail-nav-kbd,
+.rail-nav-item:focus-visible .rail-nav-kbd,
+.rail-nav-cta .rail-nav-kbd {
+  opacity: 1;
+}
+
+.rail-nav-cta:hover .rail-nav-kbd {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.small-icon {
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--muted-strong);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.small-icon:hover,
+.small-icon[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+.small-icon:disabled,
+.small-icon[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.small-icon:disabled:hover,
+.small-icon[disabled]:hover {
+  background: transparent;
+  color: var(--muted-strong);
+}
+
+.small-icon svg {
+  transition: transform var(--duration-base) var(--ease);
+}
+
+.sidebar-footer .small-icon:hover svg {
+  transform: rotate(22deg);
+}
+
+.project-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden auto;
+  padding-right: 2px;
+  margin-right: -2px;
+}
+
+.rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  margin: 20px 4px 6px 12px;
+}
+
+.rail-label {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.rail-label-text {
+  flex: 0 0 auto;
+}
+
+.rail-heading .small-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.project-group {
+  position: relative;
+  display: grid;
+  gap: 0;
+  margin-bottom: 2px;
+  padding-left: 0;
+}
+
+.project-group.dragging {
+  opacity: 0.4;
+}
+
+.project-group.drag-over > .project-row {
+  background: var(--panel-sunken);
+  border-radius: 8px;
+  outline: 1.5px solid var(--line-strong);
+  outline-offset: -1px;
+}
+
+.project-group > .project-row {
+  cursor: grab;
+}
+
+.project-group > .project-row:active {
+  cursor: grabbing;
+}
+
+.project-group > .project-row button {
+  cursor: pointer;
+}
+
+.project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px 22px;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+/* Sidebar project row "..." trigger — hidden until row hover (matches the
+   chevron-visibility pattern just below). Opens a small popover anchored to
+   the right edge so it stays inside the sidebar column. */
+.project-actions-anchor {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+}
+
+.project-actions-trigger {
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  color: var(--muted);
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.project-row:hover .project-actions-trigger,
+.project-row:focus-within .project-actions-trigger,
+.project-actions-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.project-actions-popover {
+  top: calc(100% + 4px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  width: 248px;
+  min-width: 0;
+  padding: 4px;
+  list-style: none;
+}
+
+/* Destructive item — quiet by default, rose-tinted on hover.
+   Inside the confirm-step buttons, the same class becomes a solid filled
+   button (see `.project-actions-confirm-buttons` rules below). */
+.project-actions-destructive {
+  color: var(--rose);
+}
+
+.project-actions-destructive:hover {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+
+/* Confirm step ---------------------------------------------------------- */
+
+.project-actions-confirm-text {
+  margin: 0;
+  padding: 10px 10px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.project-actions-confirm-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.project-actions-confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 4px 4px 4px;
+  border-top: 1px solid var(--line-soft);
+  margin-top: 4px;
+}
+
+.project-actions-confirm-buttons .project-picker-item {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 6px 10px;
+  justify-content: center;
+  font-weight: 500;
+}
+
+.project-actions-confirm-cancel {
+  color: var(--text-soft);
+}
+
+.project-actions-confirm-cancel:hover {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+/* Filled destructive button — only inside the confirm step, scoped to
+   `.project-actions-confirm-buttons` so the menu's "Remove project" row
+   stays quiet. */
+.project-actions-confirm-buttons .project-actions-destructive {
+  background: var(--rose);
+  color: var(--bg);
+}
+
+.project-actions-confirm-buttons .project-actions-destructive:hover {
+  background: color-mix(in oklab, var(--rose) 80%, black);
+  color: var(--bg);
+}
+
+.project-actions-confirm-buttons .project-actions-destructive svg {
+  color: var(--bg);
+}
+
+.project-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 6px 0 8px;
+  color: var(--muted-strong);
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.project-name:hover {
+  background: var(--row-hover);
+}
+
+.project-name:hover .project-visibility,
+.project-row:hover .project-visibility,
+.project-row:focus-within .project-visibility {
+  opacity: 1;
+}
+
+.project-name.active {
+  color: var(--text);
+  background: transparent;
+}
+
+.project-name-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: lowercase;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.project-visibility {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: var(--muted);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease);
+}
+
+.project-visibility:hover {
+  color: var(--text);
+  background: var(--row-hover);
+  opacity: 1;
+}
+
+.project-visibility svg {
+  width: 12px;
+  height: 12px;
+  transform: rotate(90deg);
+  transition: transform var(--duration-base) var(--ease);
+}
+
+.project-visibility[aria-expanded="false"] svg {
+  transform: rotate(0deg);
+}
+

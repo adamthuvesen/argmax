@@ -1,0 +1,663 @@
+/* ---------- Plan Card ---------------------------------------------------
+   Rendered in place of ChatBubble for assistant replies produced in plan
+   mode. Uses only existing tokens: monochrome, sage-soft chip color, no
+   new fonts, no warm-paper palette. The structural moves come from
+   design/plan-card/plan-card.html. */
+.plan-card {
+  width: 100%;
+  max-width: 940px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 30, 0.03),
+    0 8px 24px rgba(15, 23, 30, 0.05);
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  position: relative;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: plan-card-rise var(--motion-slow) var(--ease-out) forwards;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+@keyframes plan-card-rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.plan-card-collapsed {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+}
+
+.plan-card-collapsed-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.plan-card-collapsed-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Meta rail (left) ---------- */
+.plan-card-rail {
+  padding: var(--space-6) var(--space-5) var(--space-5) var(--space-6);
+  border-right: 1px solid var(--line);
+  background: var(--panel-soft);
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.plan-card-eyebrow-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.plan-card-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.plan-card-eyebrow-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--sage);
+  box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.16);
+  flex-shrink: 0;
+}
+
+.plan-card-eyebrow-rule {
+  width: 22px;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.plan-card-meta-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.plan-card-meta-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.plan-card-meta-value {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-card-rail-foot {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plan-card-folio {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.plan-card-folio-time {
+  color: var(--muted-strong);
+}
+
+/* ---------- Content column (right) ---------- */
+.plan-card-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plan-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5) 0 var(--space-6);
+  gap: var(--space-4);
+}
+
+.plan-card-spine {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.plan-card-spine-dot {
+  width: 3px;
+  height: 3px;
+  background: var(--muted);
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+.plan-card-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.plan-card-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.plan-card-icon-btn:hover {
+  background: var(--sage-soft);
+  color: var(--text);
+}
+
+.plan-card-icon-btn:active {
+  transform: scale(0.94);
+}
+
+.plan-card-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.plan-card-icon-btn.is-active {
+  background: var(--sage-soft);
+  color: var(--text);
+}
+
+/* ---------- Title ---------- */
+.plan-card-title-block {
+  padding: var(--space-5) var(--space-6) 0;
+}
+
+.plan-card-title {
+  font-family: var(--font-ui);
+  font-size: 23px;
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.022em;
+  color: var(--text);
+  margin: 0;
+}
+
+.plan-card-title-rule {
+  margin-top: var(--space-4);
+  width: 48px;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+/* ---------- Sections ---------- */
+.plan-card-section {
+  padding: var(--space-6) var(--space-6) 0;
+}
+
+.plan-card-section-label {
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.plan-card-section-num {
+  color: var(--muted-strong);
+}
+
+.plan-card-section-sep {
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.plan-card-section-name {
+  color: var(--muted-strong);
+}
+
+.plan-card-summary {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  max-width: 66ch;
+  letter-spacing: -0.003em;
+  margin: 0;
+}
+
+.plan-card-summary + .plan-card-summary {
+  margin-top: var(--space-3);
+}
+
+.plan-card-summary-secondary {
+  color: var(--muted-strong);
+  font-size: var(--text-base);
+}
+
+.plan-card-section-note {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--muted-strong);
+  max-width: 66ch;
+  margin: 0;
+}
+
+.plan-card-section-note + .plan-card-change-list {
+  margin-top: var(--space-4);
+}
+
+/* ---------- Change list ---------- */
+.plan-card-change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plan-card-change-head {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.plan-card-change-marker {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  padding-top: 1px;
+}
+
+.plan-card-change-title {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  letter-spacing: -0.003em;
+  font-weight: 500;
+}
+
+.plan-card-sublist {
+  list-style: none;
+  margin: var(--space-3) 0 0 36px;
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-card-subitem {
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--muted-strong);
+  position: relative;
+  padding-left: var(--space-3);
+}
+
+.plan-card-subitem::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.7em;
+  width: 6px;
+  height: 1px;
+  background: var(--muted);
+  opacity: 0.65;
+}
+
+/* ---------- Inline chip (sage-soft, matches the rest of the chat) ---------- */
+.plan-card-chip {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--sage-soft);
+  color: var(--text);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+/* ---------- Action block ---------- */
+.plan-card-action-block {
+  margin-top: var(--space-7);
+  padding: var(--space-6) var(--space-6) var(--space-6);
+  border-top: 1px solid var(--line-strong);
+  background: var(--panel-soft);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.plan-card-action-q {
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  margin: 0 0 var(--space-4);
+}
+
+.plan-card-options {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+}
+
+.plan-card-options:focus-visible {
+  /* Focus indicator goes on the active option, not the listbox itself. */
+  outline: none;
+}
+
+.plan-card-option {
+  display: grid;
+  grid-template-columns: 24px 1fr 16px;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 10px 12px 10px 10px;
+  margin-left: -10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+  position: relative;
+  border-left: 2px solid transparent;
+  outline: none;
+}
+
+.plan-card-option:hover {
+  background: var(--sage-soft);
+}
+
+.plan-card-option.is-active {
+  background: rgba(90, 143, 114, 0.08);
+  border-left-color: var(--sage);
+}
+
+.plan-card-option.is-focused:not(.is-active) {
+  background: rgba(90, 143, 114, 0.04);
+}
+
+.plan-card-option-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-weight: 500;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.plan-card-option:hover .plan-card-option-num,
+.plan-card-option.is-active .plan-card-option-num {
+  color: var(--muted-strong);
+}
+
+.plan-card-option-label {
+  font-size: var(--text-md);
+  color: var(--text);
+  letter-spacing: -0.003em;
+}
+
+.plan-card-option-arrow {
+  color: var(--muted-strong);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  transform: translateX(-4px);
+  line-height: 1;
+  justify-self: end;
+}
+
+.plan-card-option:hover .plan-card-option-arrow,
+.plan-card-option.is-active .plan-card-option-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.plan-card-action-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.plan-card-key-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plan-card-key-cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text);
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.question-card-option-desc {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Submit lives outside an action-block (one card may have several
+   questions), so we add the breathing room here that the action-block would
+   normally provide. */
+.question-card .plan-card-action-foot {
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+/* Question card is denser than Plan card — multiple questions per card
+   stretch vertically fast otherwise. Scope every tweak to .question-card so
+   the Plan card stays unchanged. */
+.question-card .plan-card-action-block {
+  margin-top: 0;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--line);
+  background: transparent;
+}
+
+.question-card .plan-card-action-block:first-child {
+  border-top: 0;
+}
+
+.question-card .plan-card-action-q {
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0 0 10px;
+}
+
+.question-card .plan-card-options {
+  gap: 0;
+  margin: 0;
+}
+
+.question-card .plan-card-option {
+  padding: 6px 10px 6px 10px;
+  margin-left: -10px;
+  grid-template-columns: 20px 1fr 12px;
+}
+
+.question-card .plan-card-option-num {
+  font-size: 11px;
+}
+
+.question-card .plan-card-option-label {
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.question-card .plan-card-option-arrow {
+  font-size: 11px;
+}
+
+.question-card .question-card-option-desc {
+  font-size: 12px;
+}
+
+.question-card-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bubble-on-ink);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.question-card-submit-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--bubble-on-ink);
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.question-card-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.question-card-submit:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.question-card-submit:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Stay readable when the meta rail can't sit beside the content. */
+@media (max-width: 760px) {
+  .plan-card {
+    grid-template-columns: 1fr;
+  }
+  .plan-card-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    border-top-right-radius: var(--radius-md);
+    border-bottom-left-radius: 0;
+    padding: var(--space-4) var(--space-5);
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-4) var(--space-6);
+    align-items: flex-start;
+  }
+  .plan-card-rail-foot {
+    margin-top: 0;
+    margin-left: auto;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .plan-card-header {
+    padding: var(--space-4) var(--space-4) 0;
+  }
+  .plan-card-title-block {
+    padding: var(--space-4) var(--space-4) 0;
+  }
+  .plan-card-title {
+    font-size: 22px;
+  }
+  .plan-card-section {
+    padding: var(--space-5) var(--space-4) 0;
+  }
+  .plan-card-action-block {
+    padding: var(--space-5) var(--space-4);
+  }
+}

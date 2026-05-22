@@ -9,6 +9,60 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 | Add an animation | [Patterns](#patterns) — reuse `--ease`, respect `prefers-reduced-motion` |
 | Add a font | `src/renderer/lib/fonts.ts` + matching `:root[data-font="…"]` block |
 | Style markdown | `.markdown <selector>` rules (defined for headings, lists, code, etc.) |
+| Style overlays (⌘K, ⌘P, review, session chrome) | [overlays-*.css](#overlay-stylesheets) — keep import order in `overlays.css` |
+| Style app shell / sidebar | [shell-*.css](#shell-stylesheets) — `shell.css` aggregator |
+| Style Settings | [settings-*.css](#settings-stylesheets) — `settings.css` aggregator |
+| Style chat / composer / tools | [chat-*.css](#chat-stylesheets) — `chat.css` aggregator |
+
+## Shell stylesheets
+
+`styles.css` imports [shell.css](../../src/renderer/styles/shell.css) (aggregator only). **Import order is part of the cascade contract.**
+
+| File | Scope |
+|---|---|
+| `shell-layout.css` | `.app-shell`, sidebar chrome, projects rail, margin-notes nameplate/CTA |
+| `shell-sessions.css` | Session rows, pin/archive menus, sidebar search, launcher wrapper hooks |
+
+## Settings stylesheets
+
+`styles.css` imports [settings.css](../../src/renderer/styles/settings.css) (aggregator only).
+
+| File | Scope |
+|---|---|
+| `settings-layout.css` | Settings shell — left rail, hero, sections, cards, account, metrics |
+| `settings-controls.css` | Segmented controls, toggles, font/theme pickers, refresh |
+| `settings-diagnostics.css` | Providers list, diagnostics tiles, logs, tables, MCP |
+
+## Chat stylesheets
+
+`styles.css` imports [chat.css](../../src/renderer/styles/chat.css) (aggregator only).
+
+| File | Scope |
+|---|---|
+| `chat-chrome.css` | Footer ribbon, pickers, git/session header menus, `.session-scroll` |
+| `chat-conversation.css` | Multi-pane grid, conversation surface, bubbles, `.markdown`, scroll-to-bottom FAB |
+| `chat-composer.css` | Composer footer chips, approvals banner, file/code preview popovers |
+| `chat-turns.css` | `TurnBlock`, thinking indicator, tool-call rows and groups |
+| `chat-tools.css` | In-chat file-change cards, diff hunks, expanded tool detail |
+| `chat-composer-chips.css` | Model/mode/context chip grouping in composer toolbar |
+
+Keep each module under **1000 lines**. Add rules to the matching surface file; do not grow aggregators beyond imports and a short header.
+
+## Overlay stylesheets
+
+`styles.css` imports [overlays.css](../../src/renderer/styles/overlays.css), which is only an aggregator (<200 lines). Surface rules live in sibling files under `src/renderer/styles/`; **import order in `overlays.css` is part of the cascade contract** (mirrors the old monolithic file).
+
+| File | Scope |
+|---|---|
+| `overlays-inkwell.css` | Command palette (⌘K), cheat sheet, file/workspace search modals — shared `.command-palette-overlay` / `.search-overlay` backdrop uses `--modal-backdrop` from `tokens.css` |
+| `overlays-review.css` | Review panel chrome — toolbar, diff list, commit dialog, mode tabs, composer toolbar overrides in review |
+| `overlays-review-files.css` | Review file surface — workspace tree, file tabs, file preview (CodeMirror), diff blocks, project-knowledge rows |
+| `overlays-launcher.css` | Launcher/session shell — session rows, sidebar tree chrome, approval surface, diff line gutters |
+| `overlays-launcher-composer.css` | Composer affordances — mascot/send buttons, empty state, bridge banner, toasts |
+| `overlays-launcher-panels.css` | Session panels — debug log, integrated terminal, responsive review/log stacking |
+| `overlays-launcher-cards.css` | Chat cards in session — plan card and question card |
+
+Keep each stylesheet module under **1000 lines** (OpenSpec maintainability sweep). Split further by surface if a file grows past the cap. Add new rules to the matching surface file. Do not grow aggregator files (`overlays.css`, `shell.css`, `settings.css`, `chat.css`) beyond imports and a short header comment.
 
 ## Hard constraints
 

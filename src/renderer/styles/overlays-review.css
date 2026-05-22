@@ -1,0 +1,548 @@
+.session-input-toolbar .composer-tool {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: inherit;
+}
+
+.session-input-toolbar .composer-context-chip {
+  font-size: 12px;
+}
+
+/* ============================================================
+   Review panel — "Editorial Review"
+   Same mono+hairline grammar as Settings/Launcher/Sidebar/Inkwell.
+   Two layout modes wrap this surface (.launcher-shell[data-review-open]
+   and .session-grid.review-open) without changing its internal chrome.
+   ============================================================ */
+
+.review-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.review-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--line);
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.review-eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.review-toolbar h2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.review-title-text {
+  font-feature-settings: "tnum", "zero";
+}
+
+.review-body {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+}
+
+.review-list-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.review-file-tabs {
+  display: grid;
+  align-content: start;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 0;
+  scrollbar-gutter: stable;
+}
+
+.review-file-tabs button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 12px 4px 10px;
+  margin: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.review-file-tabs button:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+.review-file-tabs button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+.review-file-row-status {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted-strong);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.review-file-tabs button[data-status="a"] .review-file-row-status {
+  color: var(--sage-deep);
+}
+
+.review-file-tabs button[data-status="m"] .review-file-row-status {
+  color: var(--amber);
+}
+
+.review-file-tabs button[data-status="d"] .review-file-row-status {
+  color: var(--rose);
+}
+
+.review-file-tabs button[data-status="r"] .review-file-row-status,
+.review-file-tabs button[data-status="c"] .review-file-row-status {
+  color: var(--text);
+}
+
+.review-file-tabs button[aria-pressed="true"] .review-file-row-status {
+  color: var(--text);
+}
+
+.review-file-row-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.review-file-row-name {
+  font-weight: 400;
+  color: var(--text);
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-file-row-dir {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
+.review-resize-handle {
+  position: relative;
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.review-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--line-soft);
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.review-resize-handle:hover::after,
+.review-resize-handle:active::after {
+  background: var(--line-strong);
+}
+
+.review-diff {
+  flex: 1 1 0;
+  min-width: 200px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.review-diff-files {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.review-diff-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--panel) 94%, transparent);
+  backdrop-filter: blur(10px);
+  font-size: 13px;
+}
+
+.review-diff-heading > div {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.review-diff-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.review-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px;
+  padding: 12px 14px;
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.review-empty-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.review-error {
+  color: var(--rose);
+  border-color: rgba(184, 87, 99, 0.4);
+  background: var(--rose-soft);
+}
+
+.review-error .review-empty-mark {
+  color: var(--rose);
+  border-style: solid;
+  border-color: rgba(184, 87, 99, 0.4);
+  background: var(--panel);
+}
+
+.review-toolbar-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.review-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.review-toolbar-actions button[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.review-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-feature-settings: "tnum", "zero";
+}
+
+.review-footer-mark {
+  color: var(--line-strong);
+}
+
+.review-footer-text {
+  color: var(--text-soft);
+}
+
+.commit-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 24, 32, 0.32);
+  z-index: 90;
+}
+
+.commit-dialog {
+  width: min(560px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel, #ffffff);
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
+  padding: 20px 24px 18px;
+}
+
+.commit-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.commit-dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.commit-dialog-header button {
+  background: transparent;
+  border: 0;
+  font-size: 20px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.commit-dialog-stage-all {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted-strong);
+}
+
+.commit-dialog-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  max-height: 28vh;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.commit-dialog-files li {
+  border-top: 1px solid var(--line-soft);
+}
+
+.commit-dialog-files li:first-child {
+  border-top: 0;
+}
+
+.commit-dialog-files label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.commit-dialog-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace);
+}
+
+.commit-dialog-file-counts {
+  display: inline-flex;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.commit-dialog-additions {
+  color: #2f7a4f;
+}
+
+.commit-dialog-deletions {
+  color: #b3261e;
+}
+
+.commit-dialog-message-label {
+  font-size: 12px;
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+}
+
+.commit-dialog-message {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 13px;
+}
+
+.commit-dialog-empty {
+  margin: 0;
+  padding: 12px 0;
+  color: var(--muted-strong);
+  font-size: 13px;
+  text-align: center;
+}
+
+.commit-dialog-feedback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.commit-dialog-feedback--error {
+  background: var(--danger-soft, rgba(220, 38, 38, 0.08));
+  color: var(--danger-strong, #b91c1c);
+}
+
+.commit-dialog-feedback--success {
+  background: var(--success-soft, rgba(34, 197, 94, 0.08));
+  color: var(--success-strong, #15803d);
+}
+
+.commit-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.commit-dialog-actions button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.commit-dialog-actions .commit-dialog-submit {
+  background: var(--ink, #1f2937);
+  color: var(--bubble-on-ink);
+  border-color: var(--ink, #1f2937);
+}
+
+.commit-dialog-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.review-mode-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 6px;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.review-mode-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease);
+}
+
+.review-mode-tabs button:hover {
+  color: var(--text);
+}
+
+.review-mode-tabs button[aria-selected="true"] {
+  color: var(--text);
+}
+
+.review-mode-tabs button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+

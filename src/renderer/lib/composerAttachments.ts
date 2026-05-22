@@ -26,7 +26,7 @@ export function buildAttachmentReferences(
 ): string[] {
   const refs: string[] = [];
   for (const file of files) {
-    const path = (file as { path?: string }).path;
+    const path = "path" in file ? file.path : undefined;
     if (typeof path !== "string" || path.length === 0) continue;
     refs.push(toReference(path, workspacePath));
   }

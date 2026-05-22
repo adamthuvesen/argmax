@@ -27,8 +27,10 @@ user message; Claude's next turn picks it up via `--resume`.
 
 ## Detection rules (per turn)
 
-Both detections run inside the `renderItems.map(...)` "turn" branch around
-[SessionConversation.tsx:824](../../src/renderer/components/SessionConversation.tsx:824).
+Turn view-model prep (assistant group fold, card cutoff, hidden tool ids) lives in
+[sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts). The `renderItems.map(...)`
+turn branch in [SessionConversation.tsx:824](../../src/renderer/components/SessionConversation.tsx:824)
+consumes `buildTurnRenderState` and renders cards.
 
 | Rule | Applies to | Why |
 |---|---|---|

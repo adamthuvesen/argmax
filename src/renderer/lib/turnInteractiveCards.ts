@@ -15,7 +15,7 @@ export type ResolvedAskUserQuestionTool = {
   questions: Question[];
 };
 
-export function collectExitPlanState(toolItems: TurnToolItem[]): {
+export function collectExitPlanState(toolItems: readonly TurnToolItem[]): {
   tool: ResolvedExitPlanTool | null;
   hiddenToolIds: Set<string>;
 } {
@@ -33,7 +33,7 @@ export function collectExitPlanState(toolItems: TurnToolItem[]): {
   return { tool, hiddenToolIds };
 }
 
-export function collectAskUserQuestionState(toolItems: TurnToolItem[]): {
+export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]): {
   tool: ResolvedAskUserQuestionTool | null;
   hiddenToolIds: Set<string>;
 } {

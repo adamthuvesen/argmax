@@ -6,7 +6,7 @@ import {
   type TurnToolItem
 } from "./toolCalls.js";
 
-export function foldTurnToolItems(toolItems: TurnToolItem[]): TurnToolItem[] {
+export function foldTurnToolItems(toolItems: readonly TurnToolItem[]): TurnToolItem[] {
   const folded: TurnToolItem[] = [];
   let commandRun: ToolCall[] = [];
 
@@ -45,7 +45,7 @@ function toolGroupWithoutHiddenTools(
   return { ...buildToolCallGroup(visibleTools), id: group.id };
 }
 
-export function toolsNamed(toolItems: TurnToolItem[], name: string): ToolCall[] {
+export function toolsNamed(toolItems: readonly TurnToolItem[], name: string): ToolCall[] {
   const matches: ToolCall[] = [];
   for (const item of toolItems) {
     if (item.kind === "tool") {

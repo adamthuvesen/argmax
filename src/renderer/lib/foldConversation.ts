@@ -1,5 +1,5 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
-import type { TurnToolItem } from "../components/TurnBlock.js";
+import type { TurnToolItem } from "./toolCalls.js";
 import {
   buildToolCallGroup,
   type ConversationItem,

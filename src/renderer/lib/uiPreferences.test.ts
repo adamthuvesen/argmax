@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   CHAT_COST_KEY,
   readStoredChatCostVisible,
@@ -11,8 +11,11 @@ import {
 } from "./uiPreferences.js";
 
 describe("uiPreferences", () => {
-  it("uses product defaults when no preference is stored", () => {
+  beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  it("uses product defaults when no preference is stored", () => {
 
     expect(readStoredSidebarTokensVisible()).toBe(false);
     expect(readStoredChatCostVisible()).toBe(true);

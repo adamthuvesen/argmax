@@ -83,10 +83,14 @@ import { CostPanel } from "./CostPanel.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
 import { computeTurnModelHeaderMap } from "../lib/turnHeaderModel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
+import { parseQuestionsFromToolInput } from "../lib/questions.js";
+import {
+  collectAskUserQuestionState,
+  collectExitPlanState,
+  hasOutstandingCardAsk as sessionHasOutstandingCardAsk
+} from "../lib/turnInteractiveCards.js";
 import {
   foldTurnToolItems,
-  questionsFromAskUserQuestionTool,
-  toolsNamed,
   visibleTurnToolItem
 } from "../lib/turnToolItems.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
@@ -94,7 +98,7 @@ import { FilePopover } from "./FilePopover.js";
 import { Mascot } from "./Mascot.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { PlanCard } from "./PlanCard.js";
-import { QuestionCard, type Question } from "./QuestionCard.js";
+import { QuestionCard } from "./QuestionCard.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { ThinkingTranscript } from "./ThinkingTranscript.js";
 
@@ -483,7 +487,7 @@ export function SessionConversation({
         (tool) =>
           tool.status === "running" &&
           tool.name !== "ExitPlanMode" &&
-          (tool.name !== "AskUserQuestion" || !questionsFromAskUserQuestionTool(tool))
+          (tool.name !== "AskUserQuestion" || !parseQuestionsFromToolInput(tool))
       ),
     [toolCalls]
   );
@@ -493,20 +497,10 @@ export function SessionConversation({
   // is *waiting*, not thinking. Suppress Thinking until the user submits
   // (which lands a new `user.message`, advancing `lastUserMessageTime` past
   // the tool's `createdAt`).
-  const hasOutstandingCardAsk = useMemo(() => {
-    let lastUserMessageTime = "";
-    for (const e of events) {
-      if (e.type === "user.message" && e.createdAt > lastUserMessageTime) {
-        lastUserMessageTime = e.createdAt;
-      }
-    }
-    return toolCalls.some(
-      (tool) =>
-        ((tool.name === "AskUserQuestion" && questionsFromAskUserQuestionTool(tool)) ||
-          tool.name === "ExitPlanMode") &&
-        tool.createdAt > lastUserMessageTime
-    );
-  }, [events, toolCalls]);
+  const hasOutstandingCardAsk = useMemo(
+    () => sessionHasOutstandingCardAsk(events, toolCalls),
+    [events, toolCalls]
+  );
   const isThinking =
     session?.state === "running" &&
     !anyVisibleToolRunning &&
@@ -920,22 +914,9 @@ export function SessionConversation({
             // status — so the raw tool row is hidden from the moment the tool
             // fires, not after completion. Otherwise the row flashes visible
             // for the ~20ms between `command.started` and `command.completed`.
-            const exitPlanToolIds = new Set<string>();
-            let exitPlanTool: { id: string; createdAt: string; markdown: string } | null = null;
-            for (const tool of toolsNamed(item.toolItems, "ExitPlanMode")) {
-              exitPlanToolIds.add(tool.id);
-              // Argmax's structured-json launch can deny ExitPlanMode the same
-              // way it denies AskUserQuestion ("Exit plan mode?" tool error).
-              // The plan markdown is in `inputFull.plan` regardless, so we
-              // render the card on any completed status — only skip while the
-              // tool is still in-flight so the card never appears half-baked.
-              if (tool.status === "running") continue;
-              const planArg = tool.inputFull?.plan;
-              if (typeof planArg !== "string" || planArg.trim().length === 0) continue;
-              if (!exitPlanTool) {
-                exitPlanTool = { id: tool.id, createdAt: tool.createdAt, markdown: planArg };
-              }
-            }
+            const { tool: exitPlanTool, hiddenToolIds: exitPlanToolIds } = collectExitPlanState(
+              item.toolItems
+            );
             const handlePlanAccept = (): void => {
               if (!session) return;
               setAgentMode("auto");
@@ -969,26 +950,8 @@ export function SessionConversation({
             // most recent (the model's final, refined ask), but hide the raw
             // tool rows for every attempt so the UI shows one card, not a
             // pile of denied-tool rows above it.
-            const askUserQuestionCandidateIds = new Set<string>();
-            let askUserQuestionTool: { id: string; createdAt: string; questions: Question[] } | null = null;
-            // Two retries inside the 75ms parallel-window fold into a
-            // `tool-group`; only checking `t.kind === "tool"` would miss
-            // those and the card would silently vanish. Flatten both kinds.
-            const askUserQuestionCandidates = toolsNamed(item.toolItems, "AskUserQuestion");
-            for (const tool of askUserQuestionCandidates) {
-              askUserQuestionCandidateIds.add(tool.id);
-              const questions = questionsFromAskUserQuestionTool(tool);
-              if (!questions) continue;
-              // First valid attempt wins, and stays put. Later retries are
-              // still added to `askUserQuestionToolIds` (so their raw rows
-              // stay hidden) but the card key is pinned to this tool's id —
-              // otherwise a model retry mid-interaction would remount the
-              // card and wipe the user's in-progress selections.
-              if (!askUserQuestionTool) {
-                askUserQuestionTool = { id: tool.id, createdAt: tool.createdAt, questions };
-              }
-            }
-            const askUserQuestionToolIds = askUserQuestionTool ? askUserQuestionCandidateIds : new Set<string>();
+            const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionToolIds } =
+              collectAskUserQuestionState(item.toolItems);
             const handleQuestionAnswer = (answerMarkdown: string): void => {
               if (!session) return;
               shouldRefocusInput.current = true;

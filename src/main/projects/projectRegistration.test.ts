@@ -1,9 +1,9 @@
 // @vitest-environment node
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { runGitRaw } from "../../test/gitTestUtils.js";
 import { createDatabase } from "../persistence/database.js";
 import { ProjectRegistrationError, ProjectService } from "./projectRegistration.js";
 
@@ -116,25 +116,21 @@ describe("ProjectService", () => {
 
 function createGitRepo(): string {
   const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-"));
-  git(["init", "--initial-branch=main", repoPath]);
+  runGitRaw(["init", "--initial-branch=main", repoPath]);
   return realpathSync(repoPath);
 }
 
 function createGitRepoWithBranches(branches: readonly string[], initialBranch: string): string {
   const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-multi-"));
-  git(["init", `--initial-branch=${initialBranch}`, repoPath]);
-  git(["-C", repoPath, "config", "user.email", "test@example.com"]);
-  git(["-C", repoPath, "config", "user.name", "Test"]);
-  git(["-C", repoPath, "commit", "--allow-empty", "-m", "init"]);
+  runGitRaw(["init", `--initial-branch=${initialBranch}`, repoPath]);
+  runGitRaw(["-C", repoPath, "config", "user.email", "test@example.com"]);
+  runGitRaw(["-C", repoPath, "config", "user.name", "Test"]);
+  runGitRaw(["-C", repoPath, "commit", "--allow-empty", "-m", "init"]);
   for (const branch of branches) {
     if (branch === initialBranch) continue;
-    git(["-C", repoPath, "branch", branch]);
+    runGitRaw(["-C", repoPath, "branch", branch]);
   }
   // Re-checkout initial branch so `branch --show-current` is deterministic.
-  git(["-C", repoPath, "checkout", initialBranch]);
+  runGitRaw(["-C", repoPath, "checkout", initialBranch]);
   return realpathSync(repoPath);
-}
-
-function git(args: string[]): void {
-  execFileSync("git", args, { stdio: "pipe" });
 }

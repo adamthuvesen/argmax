@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { runGit } from "../../test/gitTestUtils.js";
 import { createDatabase } from "../persistence/database.js";
 import { ProjectService } from "../projects/projectRegistration.js";
 import { git, WorkspaceError, WorkspaceService } from "./workspaceOrchestration.js";
@@ -84,7 +85,7 @@ describe("WorkspaceService", () => {
       attention: "normal"
     });
 
-    gitSync(workspace.path, ["checkout", "-b", "manual-change"]);
+    runGit(workspace.path, ["checkout", "-b", "manual-change"]);
 
     await service.refreshGitStatus(workspace.id);
 
@@ -300,16 +301,12 @@ describe("git() helper", () => {
 
 function createCommittedGitRepo(): string {
   const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-worktree-")));
-  gitSync(repoPath, ["init", "--initial-branch=main"]);
-  gitSync(repoPath, ["config", "user.email", "argmax@example.test"]);
-  gitSync(repoPath, ["config", "user.name", "Argmax Test"]);
+  runGit(repoPath, ["init", "--initial-branch=main"]);
+  runGit(repoPath, ["config", "user.email", "argmax@example.test"]);
+  runGit(repoPath, ["config", "user.name", "Argmax Test"]);
   mkdirSync(join(repoPath, "src"));
   writeFileSync(join(repoPath, "src", "index.ts"), "export const ok = true;\n");
-  gitSync(repoPath, ["add", "src/index.ts"]);
-  gitSync(repoPath, ["commit", "-m", "test: seed repo"]);
+  runGit(repoPath, ["add", "src/index.ts"]);
+  runGit(repoPath, ["commit", "-m", "test: seed repo"]);
   return repoPath;
-}
-
-function gitSync(cwd: string, args: string[]): string {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }

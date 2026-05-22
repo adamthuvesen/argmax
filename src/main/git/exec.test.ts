@@ -1,9 +1,9 @@
 // @vitest-environment node
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { runGit } from "../../test/gitTestUtils.js";
 import { runGitTextAllowExitCodes } from "./exec.js";
 
 describe("runGitTextAllowExitCodes", () => {
@@ -26,15 +26,11 @@ describe("runGitTextAllowExitCodes", () => {
 
 function createCommittedGitRepo(): string {
   const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-git-exec-")));
-  git(repoPath, ["init", "--initial-branch=main"]);
-  git(repoPath, ["config", "user.email", "argmax@example.test"]);
-  git(repoPath, ["config", "user.name", "Argmax Test"]);
+  runGit(repoPath, ["init", "--initial-branch=main"]);
+  runGit(repoPath, ["config", "user.email", "argmax@example.test"]);
+  runGit(repoPath, ["config", "user.name", "Argmax Test"]);
   writeFileSync(join(repoPath, "file.txt"), "needle\n");
-  git(repoPath, ["add", "file.txt"]);
-  git(repoPath, ["commit", "-m", "test: seed repo"]);
+  runGit(repoPath, ["add", "file.txt"]);
+  runGit(repoPath, ["commit", "-m", "test: seed repo"]);
   return repoPath;
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }

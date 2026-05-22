@@ -34,6 +34,10 @@ Documented budgets:
 
 These are pinned in [src/test/perf.test.ts](../../src/test/perf.test.ts) and run on every `npm test` after the parallel unit/integration suite finishes. Keep perf isolated from the main parallel Vitest run; these are wall-clock microbenches, so concurrent test workers measure scheduler noise as much as app code. The file-tree budget exercises `buildFileTree` directly; `WorkspaceTree.test.tsx` covers renderer virtualization behavior separately. The diff budget guards the ReviewPanel hot path — any regression in the parser fails CI before the user sees the slowdown.
 
+## Renderer bundle budget
+
+`npm run build` runs Vite and then `npm run check:bundle`. The custom bundle gate is the source of truth for renderer chunk size: the main `index-*.js` chunk must stay under 2.0 MB raw, while lazy chunks are reported separately so code-splitting wins remain visible. Vite's generic `chunkSizeWarningLimit` is set to the same 2 MB threshold to keep build output quiet until a chunk crosses the repo-owned budget.
+
 ## IPC latency
 
 Every registered request/response IPC handler is wrapped by `timed(channel, listener)` in [src/main/ipc.ts](../../src/main/ipc.ts). The histogram keeps the last 100 samples per channel plus a total-sample count, and `system:diagnostics` exposes it as `ipcStats`. Settings → Diagnostics → IPC renders p50 / p99 / count. Budget: any handler whose p99 exceeds 100 ms is investigated.

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { parseQuestionsFromToolInput } from "./questions.js";
 import {
   foldTurnToolItems,
-  questionsFromAskUserQuestionTool,
   toolsNamed,
   visibleTurnToolItem
 } from "./turnToolItems.js";
 import { buildToolCallGroup, type ToolCall } from "./toolCalls.js";
-import type { TurnToolItem } from "../components/TurnBlock.js";
+import type { TurnToolItem } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "id" | "name">): ToolCall {
   return {
@@ -58,7 +58,7 @@ describe("turnToolItems", () => {
   });
 
   it("parses valid AskUserQuestion input and rejects oversized option sets", () => {
-    const parsed = questionsFromAskUserQuestionTool(
+    const parsed = parseQuestionsFromToolInput(
       tool({
         id: "ask",
         name: "AskUserQuestion",
@@ -87,7 +87,7 @@ describe("turnToolItems", () => {
       }
     ]);
 
-    const invalid = questionsFromAskUserQuestionTool(
+    const invalid = parseQuestionsFromToolInput(
       tool({
         id: "ask-invalid",
         name: "AskUserQuestion",

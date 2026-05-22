@@ -1,4 +1,6 @@
-export const PROVIDER_INSTALL_HINTS: Record<string, { label: string; url: string }> = {
+import type { ProviderId } from "../../shared/types.js";
+
+export const PROVIDER_INSTALL_HINTS: Record<ProviderId, { label: string; url: string }> = {
   claude: {
     label: "Install Claude Code CLI",
     url: "https://docs.claude.com/en/docs/claude-code/install"

@@ -25,6 +25,10 @@ export type ToolCallGroup = {
   parallelGroupId: Map<string, string>;
 };
 
+export type TurnToolItem =
+  | { kind: "tool"; tool: ToolCall }
+  | { kind: "tool-group"; group: ToolCallGroup };
+
 export type ConversationItem =
   | { kind: "message"; event: TimelineEvent }
   | { kind: "tool"; tool: ToolCall }

@@ -1,0 +1,349 @@
+/* Composer footer — workspace branch + worktree chips, shared by launcher and
+   the session toolbar row. */
+.composer-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 2px;
+  flex-wrap: wrap;
+}
+
+.composer-footer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.composer-footer-chip:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.composer-footer-chip svg {
+  opacity: 0.7;
+}
+
+.session-input-toolbar .composer-footer {
+  min-width: 0;
+  padding: 0;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+}
+
+.session-input-toolbar .composer-footer-chip {
+  max-width: 180px;
+}
+
+.session-input-toolbar .composer-footer-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Approvals banner — soft amber row above the composer that surfaces pending
+   approvals when the user is scrolled away from the approval surface below. */
+.composer-approvals-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 var(--session-inline-padding) 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.composer-approvals-banner-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: var(--bubble-on-ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.composer-approvals-banner-cta {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.composer-approvals-banner-cta:hover {
+  background: rgba(176, 128, 57, 0.16);
+}
+
+/* Inline file chip — replaces a plain `<code>` pill when the text matches a
+   file-path pattern. Styled to read like a markdown link so file references
+   sit inline with prose instead of breaking the line with a chunky button.
+   Click opens the file in the workspace's IDE. */
+.file-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sage-deep);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(61, 106, 82, 0.4);
+  transition: text-decoration-color var(--duration-fast) var(--ease);
+  vertical-align: baseline;
+}
+
+.file-chip:hover {
+  text-decoration-color: var(--sage-deep);
+}
+
+.file-chip svg {
+  opacity: 0.55;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.file-chip-path {
+  white-space: nowrap;
+}
+
+/* Code-pill hover preview — rendered into a body portal so it escapes any
+   scroll/overflow clipping in the conversation list. Position is computed
+   in JS against the chip's bounding rect. */
+.file-preview-popover {
+  position: fixed;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(31, 28, 24, 0.12), 0 1px 0 rgba(31, 28, 24, 0.04);
+  overflow: hidden;
+  font-size: 12px;
+  pointer-events: none;
+  animation: file-preview-pop 140ms var(--ease) both;
+}
+
+@keyframes file-preview-pop {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.file-preview-popover-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.file-preview-popover-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-strong);
+}
+
+.file-preview-popover-range {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.file-preview-popover-more {
+  margin-left: 4px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.file-preview-popover-state {
+  padding: 10px 12px;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.file-preview-popover-state--error {
+  color: var(--rose);
+}
+
+.file-preview-popover-snippet {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 6px 0;
+  overflow: auto;
+  max-height: 240px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.file-preview-popover-line {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 8px;
+  padding: 0 10px;
+  white-space: pre;
+}
+
+.file-preview-popover-line.is-target {
+  background: var(--sage-soft);
+}
+
+.file-preview-popover-gutter {
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.file-preview-popover-code {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Fenced code block — header strip with language label and copy button.
+   Replaces the bare `<pre>` rendering for fenced code in assistant markdown. */
+.code-block {
+  position: relative;
+  margin: 14px 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 8px 0 14px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--panel) 85%, transparent), transparent);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.code-block-lang {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+
+.code-block-lang--blank {
+  min-height: 11px;
+}
+
+.code-block-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: background var(--duration-fast) var(--ease),
+              color var(--duration-fast) var(--ease),
+              opacity var(--duration-fast) var(--ease);
+}
+
+.code-block:hover .code-block-copy,
+.code-block:focus-within .code-block-copy {
+  opacity: 1;
+}
+
+.code-block-copy:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 14px 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+  overflow-x: auto;
+  font-variant-ligatures: none;
+}
+
+.code-block pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+.code-block-line {
+  display: block;
+}
+
+.code-block .hl-token {
+  animation: hl-token-in 220ms var(--ease) both;
+}
+
+@keyframes hl-token-in {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+

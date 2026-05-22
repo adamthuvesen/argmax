@@ -1,15 +1,19 @@
 # Testing
 
-Vitest + jsdom + colocated `*.test.ts(x)` files. Config: [vitest.config.ts](../../vitest.config.ts). Setup: [src/test/setup.ts](../../src/test/setup.ts) (loads `@testing-library/jest-dom`).
+Vitest + jsdom + colocated `*.test.ts(x)` files. Config: [vitest.config.ts](../../vitest.config.ts). Setup: [src/test/setup.ts](../../src/test/setup.ts) (loads `@testing-library/jest-dom` and the shared CodeMirror mock in [src/test/codemirrorMock.tsx](../../src/test/codemirrorMock.tsx)). Git fixture helpers live in [src/test/gitTestUtils.ts](../../src/test/gitTestUtils.ts) (`seedGitRepo`, `runGit`). Provider-session fakes live in [src/test/providerSessionTestFixtures.ts](../../src/test/providerSessionTestFixtures.ts).
 
 ## Running
 
 ```bash
 npm test                                  # all tests, rebuild:node first
+npm run test:unit                         # normal suite, excludes perf microbenches
+npm run test:perf                         # isolated perf budgets (vitest.perf.config.ts)
 npx vitest run src/renderer/              # one folder
 npx vitest run src/renderer/App.test.tsx  # one file
 npx vitest                                # watch mode (no rebuild)
 ```
+
+`npx vitest` / `npm run test:watch` use [vitest.config.ts](../../vitest.config.ts), which **excludes** [src/test/perf.test.ts](../../src/test/perf.test.ts) from the default include list. Wall-clock perf benches can flake in watch mode; prefer `npm run test:unit -- --watch` when iterating on product code, or run `npm run test:perf` separately when touching budgets.
 
 If you skipped `rebuild:node`, main-process tests fail with `NODE_MODULE_VERSION` errors from `better-sqlite3`. **Renderer + shared tests don't touch native modules** — `npx vitest run src/renderer/ src/shared/` is the fast path when iterating on UI.
 
@@ -27,12 +31,12 @@ If you skipped `rebuild:node`, main-process tests fail with `NODE_MODULE_VERSION
 
 ## Main-process conventions
 
-Most services have unit tests next to them: `approvalService.test.ts`, `providerSessionService.test.ts`, `database.test.ts`, `gitReviewService.test.ts`, `terminalService.test.ts`, `ghPoller` tests under `gh/__tests__/`, etc. They construct an in-memory SQLite via `createDatabase(":memory:")` where applicable.
+Most services have unit tests next to them: `approvalService.test.ts`, `providerSessionService.lifecycle.test.ts` / `providerSessionService.flush.test.ts` (shared fixtures in [src/test/providerSessionTestFixtures.ts](../../src/test/providerSessionTestFixtures.ts)), `database.*.test.ts` (shared fixtures in `databaseTestFixtures.ts`), `gitReviewService.test.ts`, `terminalService.test.ts`, `ghPoller` tests under `gh/__tests__/`, etc. They construct an in-memory SQLite via `createDatabase(":memory:")` where applicable.
 
 - Tests that need real git operate against `os.tmpdir()` scratch repos created and destroyed per-test. Never against the working repo.
 - Provider-session tests verify delta publishing happens **after** the SQLite write commits. For failure-path coverage, force persistence to throw and assert no `DashboardDelta` is published before the transaction completes.
 - Focused dashboard DB tests cover `listDashboard()`, `listWorkspaceStatus()`, `listPendingApprovals()`, and `listSessionEventsSince()`. For event tails, assert SQLite `rowid` cursor behavior, not timestamp ordering — timestamps can tie during provider streaming.
-- Migration tests live in `persistence/database.test.ts`. A failing one usually means the in-source `expectedColumns` manifest in `migrations.ts` drifted from the SQL; see [data.md](data.md) for the drift-detection contract.
+- Migration tests live in `persistence/migrations.test.ts`. Database behavior tests are split under `persistence/database.*.test.ts` with shared seeds in `databaseTestFixtures.ts`. A failing migration test usually means the in-source `expectedColumns` manifest in `migrations.ts` drifted from the SQL; see [data.md](data.md) for the drift-detection contract.
 
 ## Regression tests worth knowing
 

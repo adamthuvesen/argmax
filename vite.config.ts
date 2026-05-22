@@ -9,6 +9,10 @@ export default defineConfig({
   build: {
     outDir: "dist/renderer",
     emptyOutDir: true,
+    // Argmax enforces the renderer's main-chunk budget in `npm run check:bundle`.
+    // Keep Vite's generic warning aligned with that policy so build output stays
+    // quiet until a chunk crosses the repo-owned 2 MB threshold.
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: resolve(__dirname, "index.html"),
       output: {

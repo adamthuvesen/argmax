@@ -2,10 +2,13 @@
 
 The chat surface renders two kinds of *interactive cards* on top of the normal
 assistant bubble stream: **PlanCard** (Claude Code plan mode) and
-**QuestionCard** (Claude Code `AskUserQuestion`). Everything here lives in
-[src/renderer/components/SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
-plus the two card components ([PlanCard.tsx](../../src/renderer/components/PlanCard.tsx),
-[QuestionCard.tsx](../../src/renderer/components/QuestionCard.tsx)).
+**QuestionCard** (Claude Code `AskUserQuestion`). Turn detection and card
+state live in [turnInteractiveCards.ts](../../src/renderer/lib/turnInteractiveCards.ts)
+and [turnToolItems.ts](../../src/renderer/lib/turnToolItems.ts); question parsing
+in [questions.ts](../../src/renderer/lib/questions.ts). Rendering still flows
+through [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+plus [PlanCard.tsx](../../src/renderer/components/PlanCard.tsx) and
+[QuestionCard.tsx](../../src/renderer/components/QuestionCard.tsx).
 
 ## Why cards exist
 
@@ -24,8 +27,10 @@ user message; Claude's next turn picks it up via `--resume`.
 
 ## Detection rules (per turn)
 
-Both detections run inside the `renderItems.map(...)` "turn" branch around
-[SessionConversation.tsx:1157](../../src/renderer/components/SessionConversation.tsx:1157).
+Turn view-model prep (assistant group fold, card cutoff, hidden tool ids) lives in
+[sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts). The `renderItems.map(...)`
+turn branch in [SessionConversation.tsx:824](../../src/renderer/components/SessionConversation.tsx:824)
+consumes `buildTurnRenderState` and renders cards.
 
 | Rule | Applies to | Why |
 |---|---|---|
@@ -42,7 +47,8 @@ The "Thinking" bubble is suppressed when any of these are true:
 - `session.state !== "running"`
 - the last significant event is `message.delta` (streaming caret is the indicator)
 - a *visible* tool is running (`tool.name` is not `ExitPlanMode` / `AskUserQuestion`; the tool's own spinner is the indicator)
-- **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([SessionConversation.tsx:686](../../src/renderer/components/SessionConversation.tsx:686))
+- **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../../src/renderer/lib/turnInteractiveCards.ts) /
+[SessionConversation.tsx:497](../../src/renderer/components/SessionConversation.tsx:497))
 
 The outstanding-card gate is the load-bearing one for cards: while a card is
 on screen waiting for the user, the agent is *waiting on the user*, not

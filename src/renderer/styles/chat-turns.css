@@ -1,0 +1,765 @@
+/* TurnBlock — wraps an assistant turn (one user message → assistant response
+   + tool calls) so the entire run reads as a single "Worked for Xs" beat,
+   matching Codex's calmer chat rhythm. */
+.turn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.turn-block-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 18px;
+}
+
+.turn-block-subtitle {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+
+.turn-block-timestamp {
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.turn-block:hover .turn-block-timestamp {
+  opacity: 0.9;
+}
+
+.turn-block-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: 999px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.turn-block-chip:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.turn-block-chevron {
+  transition: transform var(--duration-fast) var(--ease);
+  opacity: 0.6;
+}
+
+.turn-block-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.turn-block-spinner {
+  animation: turn-block-spin 900ms linear infinite;
+}
+
+@keyframes turn-block-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.turn-block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.turn-block-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Running turn — subtle pulse on the subtitle to confirm activity without
+   yelling. */
+.turn-block[data-running="true"] .turn-block-subtitle {
+  animation: turn-block-pulse 1600ms var(--ease) infinite;
+}
+
+/* Thinking → answered transition. The first visible child of a freshly
+   populated turn body settles in with a soft translate+fade, marking the
+   moment the agent's indeterminate "thinking" becomes determinate output. */
+.turn-block-body[data-just-revealed="true"] > *:first-child {
+  animation: turn-phase-land 280ms var(--ease) both;
+}
+
+@keyframes turn-phase-land {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes turn-block-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.9; }
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes msg-in-right {
+  from {
+    opacity: 0;
+    transform: translate(8px, 4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Thinking transcript — a single line of mono on paper.
+   The sage dot pulses as the only loading state; the command text types
+   itself in via React. No pill, no border, no scan effect — just typography. */
+.thinking-indicator {
+  width: auto;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted-strong);
+  border-radius: 0;
+  overflow: visible;
+  animation: thinking-fade-in 220ms var(--ease) both;
+}
+
+/* The conversation list has a 32px gap between bubbles. When the thinking
+   indicator follows a tool group / message, that's too much air — pull it
+   up so it visually anchors to the activity above. */
+.conversation-list .thinking-indicator:not(:first-child) {
+  margin-top: -16px;
+}
+
+.command-stream {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 0;
+  padding: 4px 0 2px;
+}
+
+.thinking-pulse {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  align-self: center;
+  border-radius: 999px;
+  background: var(--sage);
+  box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.18);
+  animation: thinking-pulse 0.9s var(--ease) infinite;
+}
+
+.thinking-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.2;
+  letter-spacing: 0.005em;
+}
+
+.thinking-prompt {
+  color: var(--sage-deep);
+  font-weight: 600;
+}
+
+.thinking-text {
+  color: var(--text-soft);
+  white-space: pre;
+}
+
+@keyframes thinking-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes thinking-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+    box-shadow: 0 0 0 3px rgba(90, 143, 114, 0.12);
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(90, 143, 114, 0.22);
+  }
+}
+
+/* Playful-verb variant — keyed remount per verb runs this swap animation. */
+.thinking-verb {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.2;
+  letter-spacing: 0.005em;
+  color: var(--sage-deep);
+  font-weight: 600;
+  animation: thinking-verb-swap 160ms var(--ease) both;
+}
+
+@keyframes thinking-verb-swap {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.conversation-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.tool-call-item {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  overflow: hidden;
+  animation: msg-in 200ms var(--ease) both;
+  position: relative;
+}
+
+.tool-call-item[data-status="running"]:not(.tool-call-item--nested) {
+  border-color: var(--line-soft);
+  background: var(--panel-soft);
+}
+
+/* Tool-type accent bar on running items */
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="bash"] {
+  background: rgba(176, 128, 57, 0.04);
+  border-color: rgba(176, 128, 57, 0.22);
+  box-shadow: inset 3px 0 0 rgba(176, 128, 57, 0.45);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="edit"] {
+  box-shadow: inset 3px 0 0 rgba(90, 143, 114, 0.5);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="read"] {
+  box-shadow: inset 3px 0 0 rgba(138, 133, 123, 0.4);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="search"] {
+  box-shadow: inset 3px 0 0 rgba(61, 106, 82, 0.45);
+}
+.tool-call-item:not(.tool-call-item--nested)[data-status="running"][data-tool-type="web"] {
+  box-shadow: inset 3px 0 0 rgba(90, 143, 114, 0.4);
+}
+
+.tool-call-item[data-status="error"]:not(.tool-call-item--nested) {
+  border-color: var(--line);
+  background: var(--panel-soft);
+  box-shadow: inset 3px 0 0 rgba(184, 87, 99, 0.45);
+}
+
+.tool-call-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--sage-soft);
+  opacity: 0.55;
+  animation: tool-call-flash 620ms var(--ease) forwards;
+}
+
+.tool-call-item[data-status="error"] .tool-call-flash {
+  background: var(--panel-sunken);
+}
+
+@keyframes tool-call-flash {
+  0%   { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 10px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.tool-call-header:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.tool-call-icon {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.tool-call-name {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  flex: 0 0 auto;
+}
+
+.tool-call-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+
+.tool-call-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 1px 7px 1px 5px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.tool-call-status-glyph {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tool-call-status-time {
+  white-space: nowrap;
+}
+
+.tool-call-item[data-status="done"] .tool-call-status-chip {
+  color: var(--sage);
+  background: var(--sage-soft);
+  border-color: rgba(90, 143, 114, 0.22);
+}
+
+.tool-call-item[data-status="running"] .tool-call-status-chip {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border-color: rgba(176, 128, 57, 0.22);
+}
+
+.tool-call-item[data-status="error"] .tool-call-status-chip {
+  color: var(--rose);
+  background: var(--rose-soft);
+  border-color: rgba(184, 87, 99, 0.28);
+}
+
+.tool-call-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tool-call-chevron {
+  flex: 0 0 auto;
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.tool-call-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.tool-call-detail {
+  display: grid;
+  gap: 8px;
+  padding: 6px 10px 10px;
+  border-top: 1px solid var(--line-soft);
+  animation: detail-expand 180ms var(--ease) both;
+}
+
+@keyframes detail-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-call-section-label {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tool-call-section-meta {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.tool-call-code {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel-sunken);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.tool-call-code--error {
+  background: var(--panel-sunken);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.tool-call-code--terminal {
+  position: relative;
+  padding-top: 22px;
+  background: var(--panel-sunken);
+  border-color: var(--line-strong);
+}
+
+.tool-call-code--terminal::before {
+  content: "● ● ●";
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  font-size: 7px;
+  letter-spacing: 4px;
+  color: var(--muted);
+}
+
+.tool-call-open-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+
+.tool-call-open-button:hover {
+  background: var(--sage-soft);
+  color: var(--sage-deep);
+  border-color: rgba(90, 143, 114, 0.32);
+}
+
+.tool-call-open-button svg {
+  flex: 0 0 auto;
+}
+
+/* Tool-call group — editorial margin note.
+   A single sage-deep rail runs down the left side; the header reads as a
+   small-caps eyebrow + slash-separated preview; child rows fade in with a
+   short stagger. No panel chrome, no icon stack — just typography and one
+   accent thread. */
+.tool-call-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-left: 16px;
+  background: transparent;
+  border-radius: 0;
+  animation: msg-in 200ms var(--ease) both;
+}
+
+.tool-call-group::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--sage-deep);
+  opacity: 0.55;
+  transition: opacity var(--duration-base) var(--ease);
+}
+
+.tool-call-group[data-expanded="true"]::before {
+  opacity: 0.85;
+}
+
+.tool-call-group[data-status="running"]::before {
+  background: var(--amber);
+  opacity: 0.7;
+  animation: rail-pulse 1.8s var(--ease) infinite;
+}
+
+.tool-call-group[data-status="error"]::before {
+  background: var(--rose);
+  opacity: 1;
+  width: 2px;
+}
+
+.tool-call-group[data-status="error"] .tool-call-group-eyebrow-label {
+  color: var(--rose);
+}
+
+@keyframes rail-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 0.85; }
+}
+
+.tool-call-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 4px 6px 0;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.tool-call-group-header:hover {
+  color: var(--text);
+}
+
+.tool-call-group-header:hover .tool-call-group-toggle {
+  color: var(--sage-deep);
+}
+
+.tool-call-group-eyebrow {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+}
+
+.tool-call-group-eyebrow-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sage-deep);
+}
+
+.tool-call-group-preview {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tool-call-group-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--muted);
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.tool-call-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 2px 0 8px;
+}
+
+.tool-call-group-row {
+  animation: tool-row-in 220ms var(--ease) both;
+}
+
+/* Codex-style compact rows: one line per tool ("Read foo.ts", "Ran git
+   status"). Click to expand into the same Error/Open/Input/Output panel a
+   ToolCallBubble would show. No icon, no chip, no chevron — just the verb
+   + target. Used both inside groups and as a standalone turn-level row. */
+.tool-call-row {
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  animation: msg-in 200ms var(--ease) both;
+}
+
+.tool-call-row-button {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  margin: 0;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.tool-call-row-button:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.tool-call-row-verb {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.tool-call-row-target {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.tool-call-row-dot {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  transform: translateY(-1px);
+}
+
+.tool-call-row-counts {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.tool-call-row-counts .adds {
+  color: #009f45;
+}
+
+.tool-call-row-counts .dels {
+  color: #e2222a;
+}
+
+.tool-call-row-counts .files {
+  color: var(--muted);
+}
+
+/* Agent (Task tool / sub-agent invocation) — distinct from regular tool calls
+   so the user can tell at a glance that a different agent is doing the work,
+   not the parent. Left-border accent + colored verb + Bot icon all reinforce
+   the "this is an agent" affordance. Uses the project's sage palette for
+   visual consistency with checks/status surfaces. */
+.tool-call-row[data-tool-type="agent"] {
+  border-left: 2px solid var(--sage);
+  background: var(--sage-soft);
+  padding-left: 2px;
+}
+.tool-call-row[data-tool-type="agent"] .tool-call-row-verb {
+  color: var(--sage-deep);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.tool-call-row-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--sage-deep);
+  flex: 0 0 auto;
+  transform: translateY(1px);
+}
+

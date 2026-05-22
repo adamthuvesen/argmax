@@ -1,16 +1,19 @@
 // @vitest-environment node
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { runGit, seedGitRepo } from "../../test/gitTestUtils.js";
 import { createDatabase } from "../persistence/database.js";
 import { ProjectService } from "../projects/projectRegistration.js";
 import { git, WorkspaceError, WorkspaceService } from "./workspaceOrchestration.js";
 
 describe("WorkspaceService", () => {
   it("creates an isolated git worktree on a task branch", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -29,7 +32,10 @@ describe("WorkspaceService", () => {
   });
 
   it("reports recoverable worktree creation errors without persisting a workspace", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -47,7 +53,10 @@ describe("WorkspaceService", () => {
   });
 
   it("creates explicitly labeled current-workspace sessions", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -65,7 +74,10 @@ describe("WorkspaceService", () => {
   });
 
   it("records branch-change timeline events against the latest session", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -84,7 +96,7 @@ describe("WorkspaceService", () => {
       attention: "normal"
     });
 
-    gitSync(workspace.path, ["checkout", "-b", "manual-change"]);
+    runGit(workspace.path, ["checkout", "-b", "manual-change"]);
 
     await service.refreshGitStatus(workspace.id);
 
@@ -105,7 +117,10 @@ describe("WorkspaceService", () => {
   });
 
   it("keeps dirty workspaces instead of removing them during archive", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -126,7 +141,10 @@ describe("WorkspaceService", () => {
 
   it("force-archives dirty worktrees when the caller opts in", async () => {
     const { existsSync } = await import("node:fs");
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -145,7 +163,10 @@ describe("WorkspaceService", () => {
   });
 
   it("archives clean worktrees and tracks lifecycle state changes", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -163,7 +184,10 @@ describe("WorkspaceService", () => {
   });
 
   it("rejects worktree locations outside the project repo", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
 
@@ -186,7 +210,10 @@ describe("WorkspaceService", () => {
   });
 
   it("fires the cancelChecks hook before tearing down the worktree (audit-2026-05-14 M5)", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -208,7 +235,10 @@ describe("WorkspaceService", () => {
 
   it("does not create the worktree directory when location is outside the repo (audit-2026-05-14 M4)", async () => {
     const { existsSync, rmSync } = await import("node:fs");
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
 
@@ -240,7 +270,10 @@ describe("WorkspaceService", () => {
   });
 
   it("keeps a workspace if untracked files appear between dirty-check and remove", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-worktree-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const database = createDatabase(":memory:", { seed: false });
     const project = await new ProjectService(database).registerProject({ repoPath });
     const service = new WorkspaceService(database);
@@ -277,8 +310,7 @@ describe("git() helper", () => {
     // would hang; instead we use `git --exec-path` only as a smoke that the
     // call returns under the cap. Real timeout enforcement is covered by
     // the execFile contract.
-    const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-git-helper-")));
-    execFileSync("git", ["-C", repoPath, "init", "--initial-branch=main"], { stdio: "ignore" });
+    const repoPath = seedGitRepo({ prefix: "argmax-git-helper-" });
     const start = Date.now();
     await git(repoPath, ["status", "--short"]);
     expect(Date.now() - start).toBeLessThan(30_000);
@@ -297,19 +329,3 @@ describe("git() helper", () => {
     }
   });
 });
-
-function createCommittedGitRepo(): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-worktree-")));
-  gitSync(repoPath, ["init", "--initial-branch=main"]);
-  gitSync(repoPath, ["config", "user.email", "argmax@example.test"]);
-  gitSync(repoPath, ["config", "user.name", "Argmax Test"]);
-  mkdirSync(join(repoPath, "src"));
-  writeFileSync(join(repoPath, "src", "index.ts"), "export const ok = true;\n");
-  gitSync(repoPath, ["add", "src/index.ts"]);
-  gitSync(repoPath, ["commit", "-m", "test: seed repo"]);
-  return repoPath;
-}
-
-function gitSync(cwd: string, args: string[]): string {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
-}

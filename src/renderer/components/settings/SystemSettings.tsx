@@ -2,14 +2,14 @@ import { ClipboardCopy, FolderOpen } from "lucide-react";
 import type { JSX } from "react";
 import type { DiagnosticsReport, ProjectSummary } from "../../../shared/types.js";
 import { formatBytes } from "../../lib/formatBytes.js";
+import { saveLogsFile } from "../../lib/logDownload.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
 import {
   COLD_START_BUDGET_MS,
   ColdStartSummary,
   KeyValueList,
   RendererPaintRow,
-  SectionHeader,
-  saveLogsFile
+  SectionHeader
 } from "./settingsPrimitives.js";
 
 export function SystemSettings({

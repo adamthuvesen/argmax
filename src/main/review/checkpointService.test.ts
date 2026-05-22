@@ -1,15 +1,18 @@
 // @vitest-environment node
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDatabase } from "../persistence/database.js";
+import { runGit, seedGitRepo } from "../../test/gitTestUtils.js";
 import { CheckpointService } from "./checkpointService.js";
 
 describe("CheckpointService", () => {
   it("creates a patch snapshot checkpoint for a workspace", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-checkpoint-repo-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const checkpointDir = realpathSync(mkdtempSync(join(tmpdir(), "argmax-checkpoints-")));
     writeFileSync(join(repoPath, "src/index.ts"), "export const ok = false;\n");
     writeFileSync(join(repoPath, "src/new.ts"), "export const added = true;\n");
@@ -61,25 +64,9 @@ describe("CheckpointService", () => {
     expect(patch).toContain("+export const added = true;");
     expect(patch).toContain("diff --git a/src/image.bin b/src/image.bin");
     expect(patch).toContain("GIT binary patch");
-    expect(git(repoPath, ["status", "--porcelain"])).toContain("?? src/new.ts");
-    expect(git(repoPath, ["status", "--porcelain"])).toContain("?? src/image.bin");
+    expect(runGit(repoPath, ["status", "--porcelain"])).toContain("?? src/new.ts");
+    expect(runGit(repoPath, ["status", "--porcelain"])).toContain("?? src/image.bin");
 
     database.connection.close();
   });
 });
-
-function createCommittedGitRepo(): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-checkpoint-repo-")));
-  git(repoPath, ["init", "--initial-branch=main"]);
-  git(repoPath, ["config", "user.email", "argmax@example.test"]);
-  git(repoPath, ["config", "user.name", "Argmax Test"]);
-  mkdirSync(join(repoPath, "src"));
-  writeFileSync(join(repoPath, "src/index.ts"), "export const ok = true;\n");
-  git(repoPath, ["add", "src/index.ts"]);
-  git(repoPath, ["commit", "-m", "test: seed repo"]);
-  return repoPath;
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
-}

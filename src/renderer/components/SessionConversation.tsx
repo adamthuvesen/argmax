@@ -23,8 +23,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   appendReferencesToPrompt,
   imageAttachmentReference
@@ -52,9 +50,7 @@ import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
-import { parsePlan } from "../lib/parsePlan.js";
 import { repoNameFromPath } from "../lib/projects.js";
-import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
 import {
@@ -65,7 +61,6 @@ import {
   writeStoredAgentMode
 } from "../lib/agentMode.js";
 import {
-  buildToolCallGroup,
   detectToolError,
   extractCompletionCorrelationId,
   extractToolError,
@@ -74,283 +69,34 @@ import {
   extractToolName,
   extractToolOutput,
   extractToolUseId,
-  isBashLikeTool,
-  type ToolCall,
-  type ToolCallGroup
+  type ToolCall
 } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
-import { ChatBubble } from "./ChatBubble.js";
-import { CodeBlock } from "./CodeBlock.js";
 import { CostPanel } from "./CostPanel.js";
-import { matchFileChip } from "../lib/fileChipPath.js";
 import { computeTurnModelHeaderMap } from "../lib/turnHeaderModel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
-import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
+import { parseQuestionsFromToolInput } from "../lib/questions.js";
+import { hasOutstandingCardAsk as sessionHasOutstandingCardAsk } from "../lib/turnInteractiveCards.js";
+import { foldTurnToolItems } from "../lib/turnToolItems.js";
+import type { FileChipOpenOptions } from "./FileChip.js";
 import { FilePopover } from "./FilePopover.js";
 import { Mascot } from "./Mascot.js";
 import { ModelSelector } from "./ModelSelector.js";
-import { PlanCard } from "./PlanCard.js";
-import { QuestionCard, type Question } from "./QuestionCard.js";
 import { SkillPopover } from "./SkillPopover.js";
 import { ThinkingTranscript } from "./ThinkingTranscript.js";
-
-/** Terminate a running probe (if needed) then send follow-up input; surfaces errors. */
-function sendAfterTerminate(
-  sessionId: string,
-  isRunning: boolean,
-  onTerminateSession: (id: string) => Promise<void>,
-  send: () => Promise<void>,
-  onError: (message: string) => void
-): void {
-  const runSend = (): void => {
-    void send().catch((error) => {
-      onError(error instanceof Error ? error.message : "Could not send input.");
-    });
-  };
-  if (isRunning) {
-    void onTerminateSession(sessionId)
-      .then(runSend)
-      .catch((error) => {
-        onError(error instanceof Error ? error.message : "Could not terminate session.");
-      });
-  } else {
-    runSend();
-  }
-}
 import { ThinkingVerbs } from "./ThinkingVerbs.js";
-import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
-import { ToolCallRow } from "./ToolCallRow.js";
-import { TurnBlock, type TurnBodyChild, type TurnToolItem } from "./TurnBlock.js";
+import {
+  isPayloadTruncationMarker,
+  isSubAgentProseEcho
+} from "./sessionConversationHelpers.js";
+import {
+  parseUserMessageAttachments,
+  SessionConversationTurn,
+  SessionConversationUserMessage
+} from "./SessionConversationTurn.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
-
-function cursorAssistantSnapshot(event: TimelineEvent): string | null {
-  if (event.type !== "message.delta" || event.payload.type !== "assistant") {
-    return null;
-  }
-  const message = objectValue(event.payload.message);
-  const content = arrayValue(message?.content);
-  if (!content) {
-    return null;
-  }
-  const text = content
-    .map((entry) => stringValue(objectValue(entry)?.text))
-    .filter((value): value is string => Boolean(value))
-    .join("");
-  return text || null;
-}
-
-function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
-  const snapshot = cursorAssistantSnapshot(event);
-  if (snapshot === null) {
-    return event.message;
-  }
-  if (snapshot.startsWith(currentText)) {
-    return snapshot.slice(currentText.length);
-  }
-  if (currentText.startsWith(snapshot)) {
-    return "";
-  }
-  return event.message;
-}
-
-function foldTurnToolItems(toolItems: TurnToolItem[]): TurnToolItem[] {
-  const folded: TurnToolItem[] = [];
-  let commandRun: ToolCall[] = [];
-
-  const flushCommandRun = (): void => {
-    if (commandRun.length === 0) return;
-    if (commandRun.length === 1) {
-      const [tool] = commandRun;
-      if (tool) folded.push({ kind: "tool", tool });
-    } else {
-      folded.push({ kind: "tool-group", group: buildToolCallGroup(commandRun) });
-    }
-    commandRun = [];
-  };
-
-  for (const item of toolItems) {
-    const tools = item.kind === "tool" ? [item.tool] : item.group.tools;
-    if (tools.every((tool) => isBashLikeTool(tool.name))) {
-      commandRun.push(...tools);
-      continue;
-    }
-    flushCommandRun();
-    folded.push(item);
-  }
-
-  flushCommandRun();
-  return folded;
-}
-
-function toolGroupWithoutHiddenTools(
-  group: ToolCallGroup,
-  hiddenToolIds: ReadonlySet<string>
-): ToolCallGroup | null {
-  const visibleTools = group.tools.filter((tool) => !hiddenToolIds.has(tool.id));
-  if (visibleTools.length === 0) return null;
-  if (visibleTools.length === group.tools.length) return group;
-  return { ...buildToolCallGroup(visibleTools), id: group.id };
-}
-
-function toolsNamed(toolItems: TurnToolItem[], name: string): ToolCall[] {
-  const matches: ToolCall[] = [];
-  for (const item of toolItems) {
-    if (item.kind === "tool") {
-      if (item.tool.name === name) matches.push(item.tool);
-      continue;
-    }
-    for (const tool of item.group.tools) {
-      if (tool.name === name) matches.push(tool);
-    }
-  }
-  return matches;
-}
-
-function questionsFromAskUserQuestionTool(tool: ToolCall): Question[] | null {
-  const raw = tool.inputFull?.questions;
-  if (!Array.isArray(raw)) return null;
-  const questions: Question[] = [];
-  for (const q of raw) {
-    if (!q || typeof q !== "object") continue;
-    const qq = q as Record<string, unknown>;
-    const questionText = typeof qq.question === "string" ? qq.question : "";
-    if (!questionText) continue;
-    const header = typeof qq.header === "string" ? qq.header : "";
-    const optionsRaw = Array.isArray(qq.options) ? qq.options : [];
-    if (optionsRaw.length > 4) return null;
-    const options = optionsRaw
-      .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>) : null))
-      .filter((o): o is Record<string, unknown> => o !== null)
-      .map((o) => ({
-        label: typeof o.label === "string" ? o.label : "",
-        ...(typeof o.description === "string" ? { description: o.description } : {})
-      }))
-      .filter((o) => o.label.length > 0);
-    if (options.length === 0) continue;
-    questions.push({
-      question: questionText,
-      header,
-      options,
-      multiSelect: qq.multiSelect === true
-    });
-  }
-  return questions.length > 0 ? questions : null;
-}
-
-function visibleTurnToolItem(item: TurnToolItem, hiddenToolIds: ReadonlySet<string>): TurnToolItem | null {
-  if (item.kind === "tool") {
-    return hiddenToolIds.has(item.tool.id) ? null : item;
-  }
-  const filteredGroup = toolGroupWithoutHiddenTools(item.group, hiddenToolIds);
-  if (!filteredGroup) return null;
-  if (filteredGroup.tools.length === 1) {
-    const [tool] = filteredGroup.tools;
-    return tool ? { kind: "tool", tool } : null;
-  }
-  return { kind: "tool-group", group: filteredGroup };
-}
-
-function isPayloadTruncationMarker(event: TimelineEvent): boolean {
-  return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
-}
-
-function isSubAgentProseEcho(event: TimelineEvent): boolean {
-  if (event.type !== "message.delta" && event.type !== "message.completed") return false;
-  const parentToolUseId = event.payload.parent_tool_use_id;
-  return typeof parentToolUseId === "string" && parentToolUseId.length > 0;
-}
-
-function StreamingMarkdown({
-  text,
-  streaming,
-  workspace,
-  onOpenFile
-}: {
-  text: string;
-  streaming: boolean;
-  workspace?: WorkspaceSummary | null;
-  onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
-}): JSX.Element {
-  return (
-    <div className={`markdown${streaming ? " markdown-streaming" : ""}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code: ({ className, children, ...rest }) => {
-            const hasLanguage = typeof className === "string" && className.includes("language-");
-            const codeText = Array.isArray(children)
-              ? children.map((c) => (typeof c === "string" ? c : "")).join("")
-              : typeof children === "string"
-                ? children
-                : "";
-            // Fenced blocks (language-tagged or bare ``` with newlines) route to
-            // CodeBlock so the <pre> wrapper survives the pre: <>{children}</> override.
-            if (hasLanguage || codeText.includes("\n")) {
-              return <CodeBlock className={className}>{children}</CodeBlock>;
-            }
-            const match = matchFileChip(codeText);
-            if (match) {
-              return (
-                <FileChip
-                  path={match.path}
-                  line={match.line}
-                  workspaceId={workspace?.id ?? null}
-                  workspaceCwd={workspace?.path ?? null}
-                  onOpen={onOpenFile}
-                />
-              );
-            }
-            return (
-              <code className={className} {...rest}>
-                {children}
-              </code>
-            );
-          },
-          a: ({ href, children, ...rest }) => {
-            if (!href || href.startsWith("#")) {
-              return (
-                <a href={href} {...rest}>
-                  {children}
-                </a>
-              );
-            }
-            // External links open in the user's default browser via
-            // main.ts setWindowOpenHandler -> shell.openExternal.
-            if (/^(?:https?:|mailto:)/.test(href)) {
-              return (
-                <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
-                  {children}
-                </a>
-              );
-            }
-            const match = matchFileChip(href);
-            if (!match) {
-              return (
-                <a href={href} {...rest}>
-                  {children}
-                </a>
-              );
-            }
-            return (
-              <FileChip
-                path={match.path}
-                line={match.line}
-                workspaceId={workspace?.id ?? null}
-                workspaceCwd={workspace?.path ?? null}
-                onOpen={onOpenFile}
-              />
-            );
-          },
-          pre: ({ children }) => <>{children}</>
-        }}
-      >
-        {text}
-      </ReactMarkdown>
-    </div>
-  );
-}
 
 export function SessionConversation({
   checks,
@@ -577,7 +323,7 @@ export function SessionConversation({
         (tool) =>
           tool.status === "running" &&
           tool.name !== "ExitPlanMode" &&
-          (tool.name !== "AskUserQuestion" || !questionsFromAskUserQuestionTool(tool))
+          (tool.name !== "AskUserQuestion" || !parseQuestionsFromToolInput(tool))
       ),
     [toolCalls]
   );
@@ -587,20 +333,10 @@ export function SessionConversation({
   // is *waiting*, not thinking. Suppress Thinking until the user submits
   // (which lands a new `user.message`, advancing `lastUserMessageTime` past
   // the tool's `createdAt`).
-  const hasOutstandingCardAsk = useMemo(() => {
-    let lastUserMessageTime = "";
-    for (const e of events) {
-      if (e.type === "user.message" && e.createdAt > lastUserMessageTime) {
-        lastUserMessageTime = e.createdAt;
-      }
-    }
-    return toolCalls.some(
-      (tool) =>
-        ((tool.name === "AskUserQuestion" && questionsFromAskUserQuestionTool(tool)) ||
-          tool.name === "ExitPlanMode") &&
-        tool.createdAt > lastUserMessageTime
-    );
-  }, [events, toolCalls]);
+  const hasOutstandingCardAsk = useMemo(
+    () => sessionHasOutstandingCardAsk(events, toolCalls),
+    [events, toolCalls]
+  );
   const isThinking =
     session?.state === "running" &&
     !anyVisibleToolRunning &&
@@ -915,413 +651,37 @@ export function SessionConversation({
           (() => {
             const turnShowsModelHeader = computeTurnModelHeaderMap(renderItems, selectedModel.label);
             return renderItems.map((item, index) => {
-            if (item.kind === "user-message") {
-              const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
-              const attachments = rawAttachments
-                .map((entry) => {
-                  const obj = objectValue(entry);
-                  const filePath = stringValue(obj?.filePath);
-                  const mimeType = stringValue(obj?.mimeType);
-                  if (!filePath || !mimeType) return null;
-                  return { filePath, mimeType };
-                })
-                .filter((value): value is { filePath: string; mimeType: string } => Boolean(value));
-              // Strip the `@/abs/path` refs we appended in submitInput so the
-              // bubble shows the user's prose, not the synthetic filesystem
-              // pointer that's only there for the provider's file tool.
-              let displayMessage = item.event.message;
-              for (const a of attachments) {
-                displayMessage = displayMessage.split(`@${a.filePath}`).join("");
-              }
-              displayMessage = displayMessage.replace(/[ \t]+(?=\n|$)/g, "").trim();
-              return (
-                <ChatBubble
-                  key={item.event.id}
-                  kind="user"
-                  rawMarkdown={displayMessage}
-                >
-                  {attachments.length > 0 ? (
-                    <div className="user-message-attachments" aria-label="Attached images">
-                      {attachments.map((a) => {
-                        const filename = a.filePath.split("/").pop() || a.filePath;
-                        return (
-                          <span
-                            key={a.filePath}
-                            className="user-message-attachment-chip"
-                            title={a.filePath}
-                          >
-                            {filename}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  {displayMessage ? <p>{displayMessage}</p> : null}
-                </ChatBubble>
-              );
-            }
-            // Coalesce consecutive `message.delta` events into a single
-            // running bubble. Without this, Cursor's --stream-partial-output
-            // would render a separate bubble per token. The buffer flushes on
-            // the next non-delta event (typically `message.completed`).
-            const assistantGroups: Array<{ id: string; createdAt: string; text: string; streaming: boolean }> = [];
-            let deltaBuffer: { id: string; createdAt: string; text: string } | null = null;
-            for (const event of item.assistantEvents) {
-              if (event.type === "message.delta") {
-                if (!deltaBuffer) deltaBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
-                deltaBuffer.text += deltaTextForBuffer(event, deltaBuffer.text);
-                continue;
-              }
-              if (deltaBuffer) {
-                assistantGroups.push({
-                  id: deltaBuffer.id,
-                  createdAt: deltaBuffer.createdAt,
-                  text: deltaBuffer.text,
-                  streaming: true
-                });
-                deltaBuffer = null;
-              }
-              assistantGroups.push({
-                id: event.id,
-                createdAt: event.createdAt,
-                text: event.message,
-                streaming: false
-              });
-            }
-            if (deltaBuffer) {
-              assistantGroups.push({
-                id: deltaBuffer.id,
-                createdAt: deltaBuffer.createdAt,
-                text: deltaBuffer.text,
-                streaming: true
-              });
-            }
-            // Plan-mode replies render as a structured PlanCard. The
-            // agentMode for *this* turn is the one captured on the preceding
-            // user.message at send time — not the live picker, which may have
-            // since toggled. Streaming groups fall through to ChatBubble until
-            // completion so the card never appears half-rendered.
-            const priorItem = index > 0 ? renderItems[index - 1] : null;
-            const turnAgentMode: string | null =
-              priorItem && priorItem.kind === "user-message"
-                ? stringValue(priorItem.event.payload.agentMode)
-                : null;
-            // Claude Code emits the plan through its ExitPlanMode tool, not
-            // assistant text. The structured plan markdown lives at
-            // payload.input.plan; the surrounding narrative bubbles are just
-            // commentary. When the tool fires, it's authoritative.
-            // Collect every ExitPlanMode tool id up front — regardless of
-            // status — so the raw tool row is hidden from the moment the tool
-            // fires, not after completion. Otherwise the row flashes visible
-            // for the ~20ms between `command.started` and `command.completed`.
-            const exitPlanToolIds = new Set<string>();
-            let exitPlanTool: { id: string; createdAt: string; markdown: string } | null = null;
-            for (const tool of toolsNamed(item.toolItems, "ExitPlanMode")) {
-              exitPlanToolIds.add(tool.id);
-              // Argmax's structured-json launch can deny ExitPlanMode the same
-              // way it denies AskUserQuestion ("Exit plan mode?" tool error).
-              // The plan markdown is in `inputFull.plan` regardless, so we
-              // render the card on any completed status — only skip while the
-              // tool is still in-flight so the card never appears half-baked.
-              if (tool.status === "running") continue;
-              const planArg = tool.inputFull?.plan;
-              if (typeof planArg !== "string" || planArg.trim().length === 0) continue;
-              if (!exitPlanTool) {
-                exitPlanTool = { id: tool.id, createdAt: tool.createdAt, markdown: planArg };
-              }
-            }
-            const handlePlanAccept = (): void => {
-              if (!session) return;
-              setAgentMode("auto");
-              writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
-              shouldRefocusInput.current = true;
-              // The probe may still be alive emitting fallback narration
-              // after a denied ExitPlanMode. The user has accepted the plan;
-              // anything the previous probe is still saying is stale. Kill
-              // it so the answer doesn't sit in the queue waiting for that
-              // narration to finish, then send. Main's sendInput relaunches
-              // the agent when no live handle exists.
-              const sessionId = session.id;
-              sendAfterTerminate(
-                sessionId,
-                session.state === "running",
-                onTerminateSession,
-                () => onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto"),
-                setStatus
-              );
-            };
-            const handlePlanReject = (): void => {
-              inputRef.current?.focus();
-            };
-            // Claude Code's AskUserQuestion tool can't be answered in
-            // structured-json mode (no interactive stdin) — the tool errors
-            // out, but its input still carries the structured question +
-            // options. Render that as an interactive card so the user can
-            // pick an answer; the chosen value is sent as a follow-up user
-            // message (the model already remembers what it asked).
-            // Walk every AskUserQuestion attempt in the turn. Render only the
-            // most recent (the model's final, refined ask), but hide the raw
-            // tool rows for every attempt so the UI shows one card, not a
-            // pile of denied-tool rows above it.
-            const askUserQuestionCandidateIds = new Set<string>();
-            let askUserQuestionTool: { id: string; createdAt: string; questions: Question[] } | null = null;
-            // Two retries inside the 75ms parallel-window fold into a
-            // `tool-group`; only checking `t.kind === "tool"` would miss
-            // those and the card would silently vanish. Flatten both kinds.
-            const askUserQuestionCandidates = toolsNamed(item.toolItems, "AskUserQuestion");
-            for (const tool of askUserQuestionCandidates) {
-              askUserQuestionCandidateIds.add(tool.id);
-              const questions = questionsFromAskUserQuestionTool(tool);
-              if (!questions) continue;
-              // First valid attempt wins, and stays put. Later retries are
-              // still added to `askUserQuestionToolIds` (so their raw rows
-              // stay hidden) but the card key is pinned to this tool's id —
-              // otherwise a model retry mid-interaction would remount the
-              // card and wipe the user's in-progress selections. (audit-2026-05-17)
-              if (!askUserQuestionTool) {
-                askUserQuestionTool = { id: tool.id, createdAt: tool.createdAt, questions };
-              }
-            }
-            const askUserQuestionToolIds = askUserQuestionTool ? askUserQuestionCandidateIds : new Set<string>();
-            const handleQuestionAnswer = (answerMarkdown: string): void => {
-              if (!session) return;
-              shouldRefocusInput.current = true;
-              // Same pattern as handlePlanAccept: terminate the probe first if
-              // it's still alive emitting fallback text after a denied
-              // AskUserQuestion. Otherwise the answer gets queued behind that
-              // narration and the user waits for the probe to die naturally.
-              const sessionId = session.id;
-              const nextAgentMode = turnAgentMode === "plan" ? "plan" : "auto";
-              sendAfterTerminate(
-                sessionId,
-                session.state === "running",
-                onTerminateSession,
-                () => onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode),
-                setStatus
-              );
-            };
-            const questionCard: JSX.Element | null = askUserQuestionTool
-              ? (
-                  <QuestionCard
-                    key={`question-${askUserQuestionTool.id}`}
-                    questions={askUserQuestionTool.questions}
-                    createdAt={askUserQuestionTool.createdAt}
-                    modelLabel={selectedModel.label}
-                    onAnswer={handleQuestionAnswer}
+              if (item.kind === "user-message") {
+                return (
+                  <SessionConversationUserMessage
+                    key={item.event.id}
+                    event={item.event}
+                    attachments={parseUserMessageAttachments(item)}
                   />
-                )
-              : null;
-            const exitPlanCard: JSX.Element | null = exitPlanTool
-              ? (() => {
-                  const plan = parsePlan(exitPlanTool.markdown);
-                  if (!plan) return null;
-                  return (
-                    <PlanCard
-                      key={`plan-${exitPlanTool.id}`}
-                      plan={plan}
-                      createdAt={exitPlanTool.createdAt}
-                      rawMarkdown={exitPlanTool.markdown}
-                      modelLabel={selectedModel.label}
-                      onAccept={handlePlanAccept}
-                      onReject={handlePlanReject}
-                    />
-                  );
-                })()
-              : null;
-            // Narrative-text plan path (Codex / Cursor). Skip when an
-            // ExitPlanMode card already rendered — Claude's narrative
-            // bubbles should remain as plain text alongside the card.
-            const tryRenderPlan = (
-              group: { id: string; createdAt: string; text: string; streaming: boolean }
-            ): JSX.Element | null => {
-              if (exitPlanCard) return null;
-              if (turnAgentMode !== "plan" || group.streaming) return null;
-              const plan = parsePlan(group.text);
-              if (!plan) return null;
+                );
+              }
               return (
-                <PlanCard
-                  key={group.id}
-                  plan={plan}
-                  createdAt={group.createdAt}
-                  rawMarkdown={group.text}
-                  modelLabel={selectedModel.label}
-                  onAccept={handlePlanAccept}
-                  onReject={handlePlanReject}
+                <SessionConversationTurn
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  renderItems={renderItems}
+                  turnShowsModelHeader={turnShowsModelHeader}
+                  session={session}
+                  selectedModel={selectedModel}
+                  workspace={workspace}
+                  onOpenFile={onOpenFile}
+                  onTerminateSession={onTerminateSession}
+                  onSendSessionInput={onSendSessionInput}
+                  inputRef={inputRef}
+                  shouldRefocusInput={shouldRefocusInput}
+                  setStatus={setStatus}
+                  setAgentMode={setAgentMode}
+                  defaultToolCallsExpanded={defaultToolCallsExpanded}
+                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                  isFreshTool={isFreshTool}
                 />
               );
-            };
-            // When a PlanCard or QuestionCard is the turn's authoritative
-            // artifact, hide assistant text that arrives AFTER the tool fired.
-            // In structured-json mode both tools error out and the model often
-            // confabulates a fallback: re-emitting the plan as a chat bubble
-            // (PlanCard) or hallucinating a "Thanks based on your input"
-            // message with fake answers BEFORE the user has touched the card
-            // (QuestionCard). Either way the card already conveys the ask;
-            // the fallback prose is noise at best, misleading at worst. The
-            // cutoff is per-turn — the user's submitted answer creates a new
-            // user.message and a new turn, so genuine follow-up scan results
-            // still come through unblocked.
-            const cardCutoffs = [
-              exitPlanCard && exitPlanTool ? exitPlanTool.createdAt : null,
-              questionCard && askUserQuestionTool ? askUserQuestionTool.createdAt : null
-            ].filter((t): t is string => t !== null);
-            const cardCutoff = cardCutoffs.length > 0 ? cardCutoffs.reduce((a, b) => (a < b ? a : b)) : null;
-            const visibleAssistantGroups = cardCutoff
-              ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
-              : assistantGroups;
-            type AnnotatedChild = TurnBodyChild & { createdAt: string };
-            const assistantChildren: AnnotatedChild[] = visibleAssistantGroups.map((group) => {
-              const planNode = tryRenderPlan(group);
-              if (planNode) {
-                return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt };
-              }
-              const node = (
-                <ChatBubble
-                  key={group.id}
-                  kind="assistant"
-                  rawMarkdown={group.text}
-                >
-                  <StreamingMarkdown
-                    text={group.text}
-                    streaming={group.streaming}
-                    workspace={workspace}
-                    onOpenFile={onOpenFile}
-                  />
-                </ChatBubble>
-              );
-              return { kind: "assistant", id: group.id, node, createdAt: group.createdAt };
-            });
-            // Insert the ExitPlanMode card alongside the narrative bubbles so
-            // it interleaves chronologically with everything else in the turn.
-            if (exitPlanCard && exitPlanTool) {
-              assistantChildren.push({
-                kind: "assistant",
-                id: `plan-${exitPlanTool.id}`,
-                node: exitPlanCard,
-                createdAt: exitPlanTool.createdAt
-              });
-            }
-            if (questionCard && askUserQuestionTool) {
-              assistantChildren.push({
-                kind: "assistant",
-                id: `question-${askUserQuestionTool.id}`,
-                node: questionCard,
-                createdAt: askUserQuestionTool.createdAt
-              });
-            }
-            const hiddenToolIds = new Set([...exitPlanToolIds, ...askUserQuestionToolIds]);
-            const visibleToolItems = item.toolItems
-              .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
-              .filter((tItem): tItem is TurnToolItem => tItem !== null);
-            // A turn's tool groups stay expanded only while that turn is
-            // "active": a tool is still running, or it's the last turn in the
-            // list and the session is still streaming. Past turns collapse
-            // regardless of the global "Show expanded" setting; the active
-            // turn falls back to the global setting.
-            const isLatestTurn = index === renderItems.length - 1;
-            const anyToolRunningInTurn = visibleToolItems.some((tItem) =>
-              tItem.kind === "tool"
-                ? tItem.tool.status === "running"
-                : tItem.group.tools.some((tool) => tool.status === "running")
-            );
-            const sessionIsLive = session?.state === "running";
-            const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
-            // The agent is "paused on user input" once a QuestionCard or
-            // PlanCard renders — those cards take over the UI and the model
-            // is blocked until the user acts. We stop the live ticker here so
-            // the chip doesn't keep counting wall-clock time the agent isn't
-            // actually spending.
-            const isPausedOnUserInput = askUserQuestionTool !== null || exitPlanTool !== null;
-            const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
-            // Prefer the preceding user.message timestamp as turn start — that's
-            // when the agent began working from the user's perspective, even
-            // before the first tool or assistant token lands. Fall back to the
-            // earliest in-turn signal if there's no prior user message.
-            let turnStartedAtMs = Number.NaN;
-            if (priorItem && priorItem.kind === "user-message") {
-              const parsed = Date.parse(priorItem.event.createdAt);
-              if (Number.isFinite(parsed)) turnStartedAtMs = parsed;
-            }
-            if (!Number.isFinite(turnStartedAtMs)) {
-              let earliest = Number.POSITIVE_INFINITY;
-              for (const ts of item.assistantTimestamps) {
-                if (Number.isFinite(ts)) earliest = Math.min(earliest, ts);
-              }
-              for (const tItem of item.toolItems) {
-                const tools = tItem.kind === "tool" ? [tItem.tool] : tItem.group.tools;
-                for (const t of tools) {
-                  const s = Date.parse(t.createdAt);
-                  if (Number.isFinite(s)) earliest = Math.min(earliest, s);
-                }
-              }
-              if (Number.isFinite(earliest)) turnStartedAtMs = earliest;
-            }
-            // The inner toggle controls whether each tool group bubble and
-            // standalone tool row reveals its detail body by default. While
-            // the turn is live the rows still auto-expand so the user can see
-            // streaming output regardless of this preference; after the turn
-            // completes the row's own user toggle takes over.
-            const groupDefaultExpanded = turnIsActive
-              ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded)
-              : false;
-            const toolChildren: AnnotatedChild[] = visibleToolItems
-              .map((tItem) => {
-              if (tItem.kind === "tool") {
-                return {
-                  kind: "tool",
-                  id: tItem.tool.id,
-                  createdAt: tItem.tool.createdAt,
-                  node: (
-                    <ToolCallRow
-                      tool={tItem.tool}
-                      defaultExpanded={groupDefaultExpanded}
-                      workspaceCwd={workspace?.path ?? null}
-                    />
-                  )
-                };
-              }
-              const firstCreatedAt = tItem.group.tools[0]?.createdAt ?? "";
-              return {
-                kind: "tool",
-                id: tItem.group.id,
-                createdAt: firstCreatedAt,
-                node: (
-                  <ToolCallGroupBubble
-                    group={tItem.group}
-                    isFreshTool={isFreshTool}
-                    defaultExpanded={groupDefaultExpanded}
-                    workspaceCwd={workspace?.path ?? null}
-                  />
-                )
-              };
-            });
-            // Interleave assistant text and tool runs by createdAt so the chat
-            // reads chronologically — without this, every tool call drifts to
-            // the bottom of the turn once the assistant text lands above it.
-            const bodyChildren: TurnBodyChild[] = [...assistantChildren, ...toolChildren]
-              .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-              .map(({ kind, id, node }) => ({ kind, id, node }));
-            // Earliest assistant or tool createdAt in the turn — used as the
-            // single canonical timestamp shown in the turn header. Per-paragraph
-            // timestamps inside this turn are visually suppressed.
-            const earliestCreatedAt = [...assistantChildren, ...toolChildren]
-              .map((c) => c.createdAt)
-              .filter((t): t is string => typeof t === "string" && t.length > 0)
-              .sort()[0];
-            const showModelHeader = turnShowsModelHeader.get(index) ?? false;
-            return (
-              <TurnBlock
-                key={item.id}
-                toolItems={visibleToolItems}
-                assistantTimestamps={item.assistantTimestamps}
-                {...(showModelHeader ? { modelLabel: selectedModel.label } : {})}
-                {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
-                {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
-                isTurnActive={isTurnLiveTicking}
-                body={bodyChildren}
-                {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
-              />
-            );
             });
           })()
         ) : terminalTranscript ? (

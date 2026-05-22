@@ -2,11 +2,9 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
-import type { ToolCall, ToolCallGroup } from "../lib/toolCalls.js";
+import type { TurnToolItem } from "../lib/toolCalls.js";
 
-export type TurnToolItem =
-  | { kind: "tool"; tool: ToolCall }
-  | { kind: "tool-group"; group: ToolCallGroup };
+export type { TurnToolItem };
 
 export type TurnBodyChild = {
   kind: "assistant" | "tool";

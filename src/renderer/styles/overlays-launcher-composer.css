@@ -1,0 +1,320 @@
+.mascot {
+  --mascot-body: #9b6dd4;
+  --mascot-eye: #1c1b18;
+  --mascot-rain: #c4b3e0;
+
+  display: inline-block;
+  overflow: visible;
+  vertical-align: middle;
+  animation: mascot-bob 2.4s var(--ease) infinite;
+  transform-origin: 50% 100%;
+}
+
+.mascot .mascot-fill rect {
+  fill: var(--mascot-body);
+}
+
+.mascot .mascot-eyes rect {
+  fill: var(--mascot-eye);
+}
+
+.mascot .mascot-eyes {
+  transform-origin: 8px 6px;
+  transform-box: view-box;
+  animation: mascot-blink 4.6s var(--ease) infinite;
+}
+
+.mascot .mascot-rain-dot {
+  fill: var(--mascot-rain);
+  opacity: 0;
+}
+
+.mascot[data-mood="happy"] {
+  animation: mascot-hop 0.7s var(--ease) 1, mascot-bob 2.4s var(--ease) 0.7s infinite;
+}
+
+.mascot[data-mood="sad"] {
+  animation: mascot-droop 2.6s var(--ease) infinite;
+  --mascot-body: #c8c7c2;
+  --mascot-rain: #8c8b86;
+}
+
+.mascot[data-mood="working"] {
+  animation: mascot-squish 1.4s var(--ease) infinite;
+}
+
+.mascot[data-pet="true"] {
+  animation: mascot-hop 0.7s var(--ease) 1;
+}
+
+.mascot-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  /* The mascot SVG reserves its bottom rows for thinking-mood rain dots, so
+     its visible body sits in the upper portion of the viewBox. A small
+     asymmetric top padding nudges the body down to share an optical center
+     with adjacent 16px lucide icons. */
+  padding: 3px 0 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  line-height: 0;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.mascot-button:hover:not(:disabled) {
+  background: var(--panel-sunken);
+}
+
+.mascot-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.mascot-button:disabled {
+  cursor: not-allowed;
+}
+
+.mascot-button .mascot {
+  width: 24px;
+  height: 24px;
+}
+
+.mascot-button.launcher-send-mascot {
+  width: 40px;
+  height: 40px;
+  padding: 4px 0 0;
+  border-radius: 10px;
+}
+
+.mascot-button.launcher-send-mascot .mascot {
+  width: 34px;
+  height: 34px;
+}
+
+/* Composer send-button variant — replaces the old dark-circle .session-send-button.
+   Sized to match the previous 36px footprint so the composer layout stays put. */
+.mascot-button.session-send-mascot {
+  width: 36px;
+  height: 36px;
+  /* Proportional top padding: 3/30 ≈ 4/36 to keep the body optically centered. */
+  padding: 4px 0 0;
+  border-radius: 999px;
+}
+
+.mascot-button.session-send-mascot .mascot {
+  width: 30px;
+  height: 30px;
+}
+
+/* Submit bob — keyboard-submitted sends miss the Mascot's built-in click
+   pet animation. This re-creates the same beat on the wrapper button so an
+   Enter submission still feels kinetic. */
+.mascot-button.session-send-mascot--bob {
+  animation: mascot-bob 320ms var(--ease);
+}
+
+@keyframes mascot-bob {
+  0%   { transform: translateY(0) scale(1); }
+  30%  { transform: translateY(-3px) scale(1.04); }
+  60%  { transform: translateY(1px) scale(0.98); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.mascot[data-mood="thinking"] .mascot-rain-dot-1 {
+  animation: mascot-rain 1.4s var(--ease) infinite;
+}
+
+.mascot[data-mood="thinking"] .mascot-rain-dot-2 {
+  animation: mascot-rain 1.4s var(--ease) 0.4s infinite;
+}
+
+.mascot[data-mood="thinking"] .mascot-rain-dot-3 {
+  animation: mascot-rain 1.4s var(--ease) 0.8s infinite;
+}
+
+@keyframes mascot-bob {
+  0%, 100% {
+    transform: translateY(2%);
+  }
+
+  50% {
+    transform: translateY(-2%);
+  }
+}
+
+@keyframes mascot-blink {
+  0%, 88%, 100% {
+    transform: scaleY(1);
+  }
+
+  92%, 96% {
+    transform: scaleY(0.1);
+  }
+}
+
+@keyframes mascot-hop {
+  0% {
+    transform: translateY(0) scaleY(1) scaleX(1);
+  }
+
+  18% {
+    transform: translateY(0) scaleY(0.82) scaleX(1.14);
+  }
+
+  48% {
+    transform: translateY(-26%) scaleY(1.06) scaleX(0.94);
+  }
+
+  78% {
+    transform: translateY(0) scaleY(0.9) scaleX(1.08);
+  }
+
+  100% {
+    transform: translateY(0) scaleY(1) scaleX(1);
+  }
+}
+
+@keyframes mascot-squish {
+  0%, 100% {
+    transform: scaleY(1) scaleX(1) translateY(0);
+  }
+
+  50% {
+    transform: scaleY(0.9) scaleX(1.06) translateY(3%);
+  }
+}
+
+@keyframes mascot-droop {
+  0%, 100% {
+    transform: translateY(2%) rotate(-1deg);
+  }
+
+  50% {
+    transform: translateY(4%) rotate(-1deg);
+  }
+}
+
+@keyframes mascot-rain {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(220%);
+  }
+}
+
+.empty-state {
+  display: grid;
+  max-width: 520px;
+  min-height: 240px;
+  margin: 48px auto;
+  place-items: center;
+  padding: 32px;
+  text-align: center;
+  gap: 8px;
+}
+
+.empty-state svg:not(.mascot) {
+  color: var(--amber);
+}
+
+.empty-state h2 {
+  margin: 0;
+  font-weight: 560;
+  letter-spacing: -0.005em;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--muted-strong);
+  line-height: 1.5;
+}
+
+.empty-state-retry {
+  min-height: 32px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel);
+  cursor: pointer;
+  font-weight: 500;
+  transition: background var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+
+.empty-state-retry:hover {
+  background: var(--panel-soft);
+  transform: translateY(-1px);
+}
+
+.bridge-banner {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 100;
+  padding: 8px 16px;
+  color: #6b4a12;
+  text-align: center;
+  background: var(--amber-soft);
+  border-bottom: 1px solid #e6cc8b;
+  font-size: 12.5px;
+  letter-spacing: 0.005em;
+}
+
+.toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 110;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  animation: msg-in 220ms var(--ease) both;
+}
+
+.toast-error {
+  color: #6f2a32;
+  background: var(--rose-soft);
+  border: 1px solid #e7b3b8;
+}
+
+.toast-info {
+  color: #2a4035;
+  background: var(--sage-soft);
+  border: 1px solid #bcd4c2;
+}
+
+.toast button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.toast button:hover {
+  opacity: 1;
+}
+

@@ -1,0 +1,609 @@
+/* Multi-pane session grid — outer flex-of-flex. Rows share vertical space,
+   cells within a row share horizontal space. Each cell hosts a full
+   SessionPane (which has its own internal .session-grid for review/log
+   docking). 1px gap + var(--line) backdrop draws hairline dividers without
+   needing per-cell borders. */
+.session-multigrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  height: 100%;
+  background: var(--line);
+}
+
+.session-multigrid-row {
+  display: grid;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 0;
+}
+
+.session-multigrid-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+  transition: opacity var(--duration-fast) var(--ease),
+    filter var(--duration-fast) var(--ease);
+}
+
+.session-multigrid:has(.session-multigrid-cell[data-focused="true"])
+  .session-multigrid-cell:not([data-focused="true"]) {
+  opacity: 0.88;
+  filter: saturate(0.94);
+}
+
+/* Nested SessionPane: the inner grid fills the multigrid cell rather than
+   measuring itself against the viewport. */
+.session-multigrid-cell .session-grid {
+  height: 100%;
+}
+
+.session-multigrid-cell .launcher-shell {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: clamp(22px, 4vw, 34px);
+  overflow: auto;
+}
+
+.session-multigrid-cell .launcher-surface {
+  width: min(100%, 920px);
+  gap: 18px;
+  transform: none;
+  animation: none;
+}
+
+.session-multigrid-cell .launcher-shell[data-review-open="true"] {
+  place-items: stretch;
+  padding: 0;
+}
+
+.session-multigrid-cell .launcher-hero {
+  gap: 8px;
+  padding: 0;
+}
+
+.session-multigrid-resizer {
+  position: relative;
+  z-index: 20;
+  width: 11px;
+  min-width: 11px;
+  margin-inline: -5px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.session-multigrid-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 1px;
+  background: var(--line);
+  transition: background var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.session-multigrid-resizer:hover::after,
+.session-multigrid[data-resizing="true"] .session-multigrid-resizer::after {
+  background: var(--sage);
+  box-shadow: 0 0 0 1px var(--sage-soft);
+}
+
+/* Drop-zone overlay — appears inside each cell while a sidebar drag is in
+   flight. A single hit target computes the nearest edge so the user can only
+   split above/right/below/left. Hovered zones tint with the accent color so
+   the user can preview where the drop will land. */
+.multigrid-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.multigrid-drop-zone {
+  position: absolute;
+  pointer-events: none;
+  background: var(--sage-soft);
+  outline: 2px dashed var(--sage);
+  outline-offset: -4px;
+  transition: background var(--duration-fast, 140ms) var(--ease, ease);
+}
+
+/* Edge-only previews. Above/below span the full pane width so row splits read
+   as full-width insertions rather than a centered partial drop target. */
+.multigrid-drop-zone[data-position="left"] {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 34%;
+}
+
+.multigrid-drop-zone[data-position="right"] {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 34%;
+}
+
+.multigrid-drop-zone[data-position="above"] {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 34%;
+}
+
+.multigrid-drop-zone[data-position="below"] {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 34%;
+}
+
+.session-grid {
+  --session-review-panel-width: clamp(320px, 34vw, 520px);
+  --session-log-panel-width: clamp(300px, 32vw, 480px);
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.session-grid.review-open {
+  grid-template-columns: minmax(0, 1fr) var(--session-review-panel-width);
+}
+
+.session-grid.log-open {
+  grid-template-columns: minmax(0, 1fr) var(--session-log-panel-width);
+}
+
+.session-grid.review-open.log-open {
+  grid-template-columns: minmax(0, 1fr) var(--session-review-panel-width) var(--session-log-panel-width);
+}
+
+.session-main-column {
+  --session-inline-padding: clamp(36px, calc((100% - 820px) / 2), 2000px);
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.session-main-column[data-terminal-open="true"] {
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+
+.session-grid.review-open .session-main-column,
+.session-grid.log-open .session-main-column {
+  --session-inline-padding: clamp(18px, calc((100% - 780px) / 2), 2000px);
+}
+
+.session-grid.review-open.log-open .session-main-column {
+  --session-inline-padding: clamp(10px, calc((100% - 720px) / 2), 2000px);
+}
+
+.conversation-surface {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, max-content) auto;
+  padding: 44px 0 24px;
+  background: transparent;
+  animation: fade-in 280ms var(--ease) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding-inline: var(--session-inline-padding);
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.section-heading > div {
+  min-width: 0;
+}
+
+.conversation-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.section-heading h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 19px;
+  font-weight: 560;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+  color: var(--text);
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.conversation-list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 32px;
+  overflow: auto;
+  padding: 8px var(--session-inline-padding) 28px;
+  scroll-behavior: smooth;
+}
+
+.chat-bubble {
+  position: relative;
+  max-width: min(78%, 920px);
+  padding: 12px 16px;
+  border-radius: 20px;
+  background: var(--panel-soft);
+  box-shadow: inset 0 0 0 1px var(--line-soft), var(--shadow-1);
+  animation: msg-in 240ms var(--ease) both;
+}
+
+.chat-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.terminal-transcript pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.markdown {
+  font-size: 14px;
+  line-height: 1.78;
+  color: var(--text);
+}
+
+.markdown > *:first-child {
+  margin-top: 0;
+}
+
+.markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 14px;
+  white-space: normal;
+}
+
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown strong {
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.markdown em {
+  font-style: italic;
+  color: var(--text-soft);
+}
+
+.markdown a {
+  color: var(--sage-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(61, 106, 82, 0.4);
+  transition: text-decoration-color var(--duration-fast) var(--ease);
+}
+
+.markdown a:hover {
+  text-decoration-color: var(--sage-deep);
+}
+
+.markdown code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--sage-soft);
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-ligatures: none;
+  color: var(--sage-deep);
+}
+
+.markdown pre {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--panel-sunken);
+  border: 1px solid var(--line);
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.markdown pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 14px 0 6px;
+  padding-left: 24px;
+}
+
+.markdown ol {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Single-item ordered list directly followed by bullets is the LLM's section-heading
+   pattern (`1. Heading` then `- bullet`). Style the heading as a heading, and pull
+   the bullets up so they read as its children — not as a parallel sibling list. */
+.markdown ol:has(> li:only-child) {
+  margin-bottom: 2px;
+}
+
+.markdown ol > li:only-child {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--text);
+  margin: 24px 0 4px;
+  line-height: 1.35;
+}
+
+.markdown ol > li:only-child::marker {
+  color: var(--sage);
+  font-weight: 600;
+}
+
+.markdown ol:has(> li:only-child) + ul {
+  margin-top: 2px;
+}
+
+.markdown ul:last-child,
+.markdown ol:last-child {
+  margin-bottom: 0;
+}
+
+.markdown li {
+  margin: 7px 0;
+  line-height: 1.86;
+}
+
+.markdown ul > li::marker {
+  color: var(--sage);
+}
+
+.markdown ol > li::marker {
+  color: var(--muted-strong);
+  font-weight: 600;
+}
+
+.markdown li > p {
+  margin: 0;
+}
+
+.markdown li > ul,
+.markdown li > ol {
+  margin: 4px 0;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 26px 0 10px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  line-height: 1.3;
+  color: var(--text-soft);
+}
+
+.markdown h1 {
+  font-size: 20px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.markdown h2 {
+  font-size: 17px;
+}
+
+.markdown h3 {
+  font-size: 15px;
+}
+
+.markdown h4 {
+  font-size: 14px;
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.markdown blockquote {
+  position: relative;
+  margin: 18px 0;
+  padding: 10px 14px 10px 18px;
+  background: var(--sage-soft);
+  border-left: 3px solid var(--sage);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-soft);
+  font-style: italic;
+}
+
+.markdown blockquote > *:first-child {
+  margin-top: 0;
+}
+
+.markdown blockquote > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown table {
+  width: 100%;
+  margin: 20px 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: 13px;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.markdown th,
+.markdown td {
+  padding: 8px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.markdown th {
+  background: var(--panel-soft);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.markdown tr:last-child td {
+  border-bottom: 0;
+}
+
+.markdown td {
+  color: var(--text-soft);
+}
+
+.markdown tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.012);
+}
+
+.markdown hr {
+  height: 1px;
+  margin: 22px 0;
+  background: linear-gradient(90deg, transparent, var(--line-strong) 30%, var(--line-strong) 70%, transparent);
+  border: 0;
+}
+
+.chat-bubble.assistant {
+  align-self: flex-start;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-bubble.assistant::before {
+  display: none;
+}
+
+.chat-bubble.user {
+  align-self: flex-end;
+  max-width: min(80%, 880px);
+  color: var(--user-bubble-fg);
+  background: var(--user-bubble-bg);
+  box-shadow: none;
+  animation-name: msg-in-right;
+}
+
+.chat-bubble.user p {
+  color: var(--user-bubble-fg);
+}
+
+/* Floating "scroll to latest" button. Anchors to the conversation list (which
+   is `position: relative`'d below) so it doesn't drift over the composer. */
+.conversation-list {
+  position: relative;
+}
+
+.scroll-to-bottom-fab {
+  position: sticky;
+  bottom: 12px;
+  /* Dock to the right edge instead of floating centered — a control on
+     the gutter reads as UI; a centered control reads as orphan content. */
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-top: -32px;
+  margin-right: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(31, 28, 24, 0.10), 0 1px 0 rgba(31, 28, 24, 0.04);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease), width var(--duration-base) var(--ease), padding var(--duration-base) var(--ease);
+  z-index: 2;
+}
+
+.scroll-to-bottom-fab[data-has-count="true"] {
+  width: auto;
+  padding: 0 12px 0 10px;
+  background: var(--sage-deep);
+  color: var(--bubble-on-ink);
+  border-color: var(--sage-deep);
+}
+
+.scroll-to-bottom-fab-count {
+  font-size: 11.5px;
+  font-weight: 540;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.scroll-to-bottom-fab:hover {
+  background: var(--panel-soft);
+  transform: translateY(-1px);
+}
+
+.scroll-to-bottom-fab[data-has-count="true"]:hover {
+  background: var(--sage);
+}
+

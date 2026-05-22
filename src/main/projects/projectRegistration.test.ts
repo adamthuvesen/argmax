@@ -1,9 +1,9 @@
 // @vitest-environment node
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { seedGitRepo } from "../../test/gitTestUtils.js";
 import { createDatabase } from "../persistence/database.js";
 import { ProjectRegistrationError, ProjectService } from "./projectRegistration.js";
 
@@ -115,22 +115,16 @@ describe("ProjectService", () => {
 });
 
 function createGitRepo(): string {
-  const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-"));
-  execFileSync("git", ["init", "--initial-branch=main", repoPath]);
-  return realpathSync(repoPath);
+  return seedGitRepo({ prefix: "argmax-git-" });
 }
 
 function createGitRepoWithBranches(branches: readonly string[], initialBranch: string): string {
-  const repoPath = mkdtempSync(join(tmpdir(), "argmax-git-multi-"));
-  execFileSync("git", ["init", `--initial-branch=${initialBranch}`, repoPath]);
-  execFileSync("git", ["-C", repoPath, "config", "user.email", "test@example.com"]);
-  execFileSync("git", ["-C", repoPath, "config", "user.name", "Test"]);
-  execFileSync("git", ["-C", repoPath, "commit", "--allow-empty", "-m", "init"]);
-  for (const branch of branches) {
-    if (branch === initialBranch) continue;
-    execFileSync("git", ["-C", repoPath, "branch", branch]);
-  }
-  // Re-checkout initial branch so `branch --show-current` is deterministic.
-  execFileSync("git", ["-C", repoPath, "checkout", initialBranch]);
-  return realpathSync(repoPath);
+  return seedGitRepo({
+    prefix: "argmax-git-multi-",
+    initialBranch,
+    emptyCommit: true,
+    commitMessage: "init",
+    branches,
+    user: { email: "test@example.com", name: "Test" }
+  });
 }

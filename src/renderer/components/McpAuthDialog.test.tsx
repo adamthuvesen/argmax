@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { McpAuthDialog } from "./McpAuthDialog.js";
 import type { ArgmaxApi, McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
@@ -129,7 +129,9 @@ describe("McpAuthDialog", () => {
 
     await waitFor(() => expect(stub.start).toHaveBeenCalled());
 
-    stub.emitExit({ sessionId: "auth-1", exitCode: 0, signal: null });
+    act(() => {
+      stub.emitExit({ sessionId: "auth-1", exitCode: 0, signal: null });
+    });
     await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
   });
 

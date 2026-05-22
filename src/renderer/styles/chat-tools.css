@@ -1,0 +1,463 @@
+/* ---- File change card (in-chat Write/Edit/Delete affordance) ---- */
+
+.file-change-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--panel);
+  margin-top: var(--space-2);
+  animation: surface-in var(--motion-base) var(--ease-out);
+}
+
+.file-change-card[data-kind="create"] {
+  border-left: 3px solid var(--sage-deep);
+}
+
+.file-change-card[data-kind="edit"] {
+  border-left: 3px solid var(--amber);
+}
+
+.file-change-card[data-kind="delete"] {
+  border-left: 3px solid var(--rose);
+}
+
+.file-change-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.file-change-card[data-kind="create"] .file-change-card-header {
+  background: var(--sage-soft);
+}
+
+.file-change-card[data-kind="edit"] .file-change-card-header {
+  background: var(--panel-soft);
+}
+
+.file-change-card[data-kind="delete"] .file-change-card-header {
+  background: var(--rose-soft);
+}
+
+.file-change-card-header svg {
+  flex: 0 0 auto;
+  color: var(--muted-strong);
+}
+
+.file-change-card[data-kind="create"] .file-change-card-header svg {
+  color: var(--sage-deep);
+}
+
+.file-change-card[data-kind="edit"] .file-change-card-header svg {
+  color: var(--amber);
+}
+
+.file-change-card[data-kind="delete"] .file-change-card-header svg {
+  color: var(--rose);
+}
+
+.file-change-card-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: transparent;
+  padding: 0;
+}
+
+.file-change-card-open {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-strong);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+
+.file-change-card-open:hover {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.file-change-card-open:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.file-change-card-body {
+  position: relative;
+  max-height: calc(16 * 1.5em);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.file-change-card-body .diff-blocks {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+.file-change-card-body .diff-hunk {
+  border: 0;
+}
+
+/* Hunk header ("@@ -0,0 +1,29 @@") is patch jargon — useless to a chat
+   reader. Hide inside cards. */
+.file-change-card .diff-hunk-header {
+  display: none;
+}
+
+/* Pure-create cards are 100% additions; the darker line-number gutter then
+   adds noise instead of contrast. Flatten to the body tint. */
+.file-change-card[data-kind="create"] .diff-line.addition .diff-line-number {
+  background: transparent;
+  color: var(--sage-deep);
+  opacity: 0.55;
+}
+
+.file-change-card[data-no-line-numbers] .diff-line .diff-line-number {
+  display: none;
+}
+
+.file-change-card[data-no-line-numbers] .diff-line {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.file-change-card-empty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.file-change-card-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-soft);
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+}
+
+.tool-call-row-dot[data-status="running"] {
+  background: var(--amber);
+  animation: rail-pulse 1.6s var(--ease) infinite;
+}
+
+.tool-call-row-dot[data-status="error"] {
+  background: var(--rose);
+}
+
+/* Expanded detail under a row reuses the same .tool-call-detail block as
+   the bubble; just add a left rail accent so the panel reads as a child
+   of the row above it. */
+.tool-call-row > .tool-call-detail {
+  margin: 2px 6px 6px;
+  padding: 8px 10px;
+  border-top: 0;
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--panel-soft);
+}
+
+.tool-call-row[data-status="error"] > .tool-call-detail {
+  border-left-color: var(--rose);
+}
+
+@keyframes tool-row-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Inside a group, the per-item status chip drops its colored pill —
+   the rail carries the group's state, and each row gets a tiny dot
+   + tabular-nums timing on the right margin. */
+.tool-call-group-body .tool-call-status-chip {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding: 0;
+  gap: 6px;
+  color: var(--muted-strong);
+  font-size: 11px;
+}
+
+.tool-call-group-body .tool-call-item[data-status="done"] .tool-call-status-glyph {
+  color: var(--sage);
+}
+
+.tool-call-group-body .tool-call-item[data-status="running"] .tool-call-status-glyph {
+  color: var(--amber);
+}
+
+.tool-call-group-body .tool-call-item[data-status="error"] .tool-call-status-glyph {
+  color: var(--rose);
+}
+
+.tool-call-item--nested {
+  border-radius: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.tool-call-item--nested:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.tool-call-item--nested .tool-call-header {
+  padding: 7px 8px;
+}
+
+.tool-call-item[data-parallel-position] {
+  margin-left: 14px;
+  position: relative;
+  overflow: visible;
+}
+
+.tool-call-item[data-parallel-position]::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  width: 2px;
+  top: 0;
+  bottom: 0;
+  background: var(--line-strong);
+  border-radius: 1px;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.tool-call-item[data-parallel-position="start"]::before {
+  top: 8px;
+}
+
+.tool-call-item[data-parallel-position="end"]::before {
+  bottom: 8px;
+}
+
+.tool-call-item[data-parallel-position]:hover::before {
+  background: var(--muted);
+}
+
+.session-meta-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  margin-top: 16px;
+  margin-inline: var(--session-inline-padding);
+  overflow: hidden;
+}
+
+.changed-files-card {
+  margin-top: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.checks-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+  padding: 6px 12px 8px;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.checks-list-title {
+  font-weight: 600;
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+.checks-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.checks-row:first-of-type {
+  border-top: 0;
+}
+
+.checks-row-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.checks-row-run,
+.checks-row-expand {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+  color: var(--text);
+  display: inline-grid;
+  place-items: center;
+}
+
+.checks-row-run[disabled],
+.checks-row-expand[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.checks-row-command {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checks-row-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-strong);
+}
+
+.checks-row[data-status="passed"] .checks-row-status {
+  color: #2f7a4f;
+}
+
+.checks-row[data-status="failed"] .checks-row-status {
+  color: #b3261e;
+}
+
+.checks-row[data-status="running"] .checks-row-status {
+  color: #b08300;
+}
+
+.checks-row-duration {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.checks-row-chevron {
+  transition: transform var(--duration-fast, 120ms) var(--ease, ease);
+}
+
+.checks-row-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.checks-row-log {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+  border-radius: 6px;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.changed-files-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.changed-files-header[aria-pressed="true"] {
+  background: var(--panel-soft);
+}
+
+.changed-files-title {
+  font-weight: 600;
+}
+
+.changed-files-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.change-count {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.additions {
+  color: #009f45;
+}
+
+.deletions {
+  color: #e2222a;
+}
+
+.session-input {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 28px;
+  margin-inline: var(--session-inline-padding);
+  padding: 14px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--panel);
+  box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04), 0 18px 48px rgba(31, 28, 24, 0.08);
+  transition: border-color var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);
+}
+
+.session-meta-cards[data-cost-visible="false"] + .session-input,
+.session-meta-cards[data-cost-visible="false"] + .composer-approvals-banner + .session-input {
+  margin-top: 10px;
+}
+
+.session-input:focus-within {
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04), 0 22px 56px rgba(31, 28, 24, 0.10);
+}
+
+.session-input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+

@@ -1,26 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
-
-// CodeMirror leans on browser APIs (focus, range selection) that jsdom only
-// partially supports. We exercise the React-side contract — dirty marker,
-// stale banner, callback wiring — rather than CodeMirror's own DOM.
-vi.mock("@uiw/react-codemirror", () => ({
-  default: ({ value, onChange, "aria-label": ariaLabel }: {
-    value: string;
-    onChange: (next: string) => void;
-    "aria-label"?: string;
-  }) => (
-    <textarea
-      aria-label={ariaLabel}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  )
-}));
 
 function makeState(overrides: Partial<WorkspaceFilesState> = {}): WorkspaceFilesState {
   return {

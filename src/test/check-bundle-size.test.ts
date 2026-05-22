@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // The test lives in src/test; the script under test lives in scripts/.
@@ -19,20 +19,15 @@ afterEach(() => {
 });
 
 function runWith(envOverrides = {}) {
-  try {
-    const stdout = execFileSync(process.execPath, [SCRIPT], {
-      env: { ...process.env, BUNDLE_ASSETS_DIR: dir, ...envOverrides },
-      encoding: "utf8"
-    });
-    return { code: 0, stdout, stderr: "" };
-  } catch (err) {
-    const e = err as { status?: number; stdout?: Buffer | string; stderr?: Buffer | string };
-    return {
-      code: e.status ?? 1,
-      stdout: e.stdout?.toString() ?? "",
-      stderr: e.stderr?.toString() ?? ""
-    };
-  }
+  const result = spawnSync(process.execPath, [SCRIPT], {
+    env: { ...process.env, BUNDLE_ASSETS_DIR: dir, ...envOverrides },
+    encoding: "utf8"
+  });
+  return {
+    code: result.status ?? 1,
+    stdout: result.stdout,
+    stderr: result.stderr
+  };
 }
 
 describe("check-bundle-size", () => {

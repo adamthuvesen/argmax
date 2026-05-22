@@ -22,13 +22,13 @@ The phase records survive across the app lifetime and are surfaced through `syst
 Run the perf suite from a clean checkout:
 
 ```bash
-npm run test:perf
+npm run test:perf   # vitest.perf.config.ts — not in the default vitest include list
 ```
 
 Documented budgets:
 
 - `mergeDashboardDelta` over a 200-session payload: p95 < 5 ms.
-- `buildFileTree` over 10 000 entries: < 50 ms.
+- `buildFileTree` over 10 000 entries: < 75 ms (75 ms slack under full-suite load; see comment in `perf.test.ts`).
 - `runMigrations` on an empty DB: < 200 ms.
 - `parseUnifiedDiff` over a 500-hunk synthetic diff (50 files × 10 hunks × 20 lines): p95 < 20 ms.
 

@@ -1,17 +1,19 @@
 # Testing
 
-Vitest + jsdom + colocated `*.test.ts(x)` files. Config: [vitest.config.ts](../../vitest.config.ts). Setup: [src/test/setup.ts](../../src/test/setup.ts) (loads `@testing-library/jest-dom`).
+Vitest + jsdom + colocated `*.test.ts(x)` files. Config: [vitest.config.ts](../../vitest.config.ts). Setup: [src/test/setup.ts](../../src/test/setup.ts) (loads `@testing-library/jest-dom` and the shared CodeMirror mock in [src/test/codemirrorMock.tsx](../../src/test/codemirrorMock.tsx)). Git fixture helpers live in [src/test/gitTestUtils.ts](../../src/test/gitTestUtils.ts) (`seedGitRepo`, `runGit`).
 
 ## Running
 
 ```bash
 npm test                                  # all tests, rebuild:node first
 npm run test:unit                         # normal suite, excludes perf microbenches
-npm run test:perf                         # isolated perf budgets
+npm run test:perf                         # isolated perf budgets (vitest.perf.config.ts)
 npx vitest run src/renderer/              # one folder
 npx vitest run src/renderer/App.test.tsx  # one file
 npx vitest                                # watch mode (no rebuild)
 ```
+
+`npx vitest` / `npm run test:watch` use [vitest.config.ts](../../vitest.config.ts), which **excludes** [src/test/perf.test.ts](../../src/test/perf.test.ts) from the default include list. Wall-clock perf benches can flake in watch mode; prefer `npm run test:unit -- --watch` when iterating on product code, or run `npm run test:perf` separately when touching budgets.
 
 If you skipped `rebuild:node`, main-process tests fail with `NODE_MODULE_VERSION` errors from `better-sqlite3`. **Renderer + shared tests don't touch native modules** — `npx vitest run src/renderer/ src/shared/` is the fast path when iterating on UI.
 

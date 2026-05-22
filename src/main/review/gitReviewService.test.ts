@@ -4,12 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDatabase } from "../persistence/database.js";
-import { runGit } from "../../test/gitTestUtils.js";
+import { runGit, seedGitRepo } from "../../test/gitTestUtils.js";
 import { GitReviewService } from "./gitReviewService.js";
 
 describe("GitReviewService", () => {
   it("loads changed files and diffs for a workspace", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-review-",
+      files: [
+        { path: "src/index.ts", contents: "export const ok = true;\n" },
+        { path: "src/delete-me.ts", contents: "export const remove = true;\n" }
+      ]
+    });
     writeFileSync(join(repoPath, "src/index.ts"), "export const ok = false;\n");
     writeFileSync(join(repoPath, "src/new.ts"), "export const added = true;\n");
     writeFileSync(join(repoPath, "src/staged.ts"), "export const staged = true;\n");
@@ -71,7 +77,13 @@ describe("GitReviewService", () => {
   });
 
   it("skips untracked directories without crashing on readFile", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-review-",
+      files: [
+        { path: "src/index.ts", contents: "export const ok = true;\n" },
+        { path: "src/delete-me.ts", contents: "export const remove = true;\n" }
+      ]
+    });
     mkdirSync(join(repoPath, "src/untracked-dir"));
     writeFileSync(join(repoPath, "src/untracked-dir/inside.txt"), "hi\n");
     const database = createDatabase(":memory:", { seed: false });
@@ -116,7 +128,13 @@ describe("GitReviewService", () => {
   });
 
   it("skips oversized untracked files before synthesizing diff text (audit-2026-05-14 H6)", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-review-",
+      files: [
+        { path: "src/index.ts", contents: "export const ok = true;\n" },
+        { path: "src/delete-me.ts", contents: "export const remove = true;\n" }
+      ]
+    });
     writeFileSync(join(repoPath, "src/huge.txt"), "x".repeat(1_048_577));
     const database = createDatabase(":memory:", { seed: false });
     database.persistProject({
@@ -157,7 +175,13 @@ describe("GitReviewService", () => {
   });
 
   it("shows untracked symlink targets without reading outside-workspace contents", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-review-",
+      files: [
+        { path: "src/index.ts", contents: "export const ok = true;\n" },
+        { path: "src/delete-me.ts", contents: "export const remove = true;\n" }
+      ]
+    });
     const outsidePath = join(tmpdir(), `argmax-secret-${Date.now()}.txt`);
     writeFileSync(outsidePath, "do not show me\n");
     symlinkSync(outsidePath, join(repoPath, "src/link.txt"));
@@ -199,16 +223,3 @@ describe("GitReviewService", () => {
     database.connection.close();
   });
 });
-
-function createCommittedGitRepo(): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-review-")));
-  runGit(repoPath, ["init", "--initial-branch=main"]);
-  runGit(repoPath, ["config", "user.email", "argmax@example.test"]);
-  runGit(repoPath, ["config", "user.name", "Argmax Test"]);
-  mkdirSync(join(repoPath, "src"));
-  writeFileSync(join(repoPath, "src/index.ts"), "export const ok = true;\n");
-  writeFileSync(join(repoPath, "src/delete-me.ts"), "export const remove = true;\n");
-  runGit(repoPath, ["add", "src/index.ts", "src/delete-me.ts"]);
-  runGit(repoPath, ["commit", "-m", "test: seed repo"]);
-  return repoPath;
-}

@@ -1,15 +1,18 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDatabase } from "../persistence/database.js";
-import { runGit } from "../../test/gitTestUtils.js";
+import { runGit, seedGitRepo } from "../../test/gitTestUtils.js";
 import { CheckpointService } from "./checkpointService.js";
 
 describe("CheckpointService", () => {
   it("creates a patch snapshot checkpoint for a workspace", async () => {
-    const repoPath = createCommittedGitRepo();
+    const repoPath = seedGitRepo({
+      prefix: "argmax-checkpoint-repo-",
+      files: [{ path: "src/index.ts", contents: "export const ok = true;\n" }]
+    });
     const checkpointDir = realpathSync(mkdtempSync(join(tmpdir(), "argmax-checkpoints-")));
     writeFileSync(join(repoPath, "src/index.ts"), "export const ok = false;\n");
     writeFileSync(join(repoPath, "src/new.ts"), "export const added = true;\n");
@@ -67,15 +70,3 @@ describe("CheckpointService", () => {
     database.connection.close();
   });
 });
-
-function createCommittedGitRepo(): string {
-  const repoPath = realpathSync(mkdtempSync(join(tmpdir(), "argmax-checkpoint-repo-")));
-  runGit(repoPath, ["init", "--initial-branch=main"]);
-  runGit(repoPath, ["config", "user.email", "argmax@example.test"]);
-  runGit(repoPath, ["config", "user.name", "Argmax Test"]);
-  mkdirSync(join(repoPath, "src"));
-  writeFileSync(join(repoPath, "src/index.ts"), "export const ok = true;\n");
-  runGit(repoPath, ["add", "src/index.ts"]);
-  runGit(repoPath, ["commit", "-m", "test: seed repo"]);
-  return repoPath;
-}

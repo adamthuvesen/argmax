@@ -75,6 +75,10 @@ Push events use `webContents.send` from main and `ipcRenderer.on` in preload. Th
 | `mcp:auth:exit` | `McpAuthExitEvent` | `McpAuthService` when the auth PTY exits |
 | `menu:command` | `MenuCommand` union | App menu accelerators |
 
+## Additional System Channels
+- `system:set-theme` – request/response channel used by the renderer to change the UI theme (light, dark, system). The main process persists the choice in `userData/theme.json` and updates the Electron window background to avoid flash.
+- `system:diagnostics` – request/response channel that returns runtime diagnostics (memory usage, IPC latency stats, SQLite pragma info). Used by Settings → Diagnostics pane.
+
 ## Adding a request/response channel
 
 Five steps. Skip any and you break the boot, the regression test, or the renderer:

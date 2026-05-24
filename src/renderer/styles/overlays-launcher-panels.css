@@ -338,12 +338,15 @@
   }
 
   .composer-context {
-    gap: 8px;
-    padding: 0 4px 6px;
+    gap: 4px;
+    padding: 0 6px 6px 10px;
+    flex-wrap: wrap;
   }
 
-  .composer-context > span {
-    display: none;
+  .composer-context .agent-mode-toggle {
+    /* On narrow widths the right-push would shove the mode pill onto its own
+       line; let it sit inline with the rest instead. */
+    margin-left: 0;
   }
 
   .provider-toggle {

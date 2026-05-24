@@ -138,8 +138,6 @@
 
 .session-row-action:focus-visible {
   opacity: 1;
-  outline: 2px solid var(--ink);
-  outline-offset: 1px;
 }
 
 .session-ide-btn {
@@ -211,8 +209,6 @@
 
 .session-archive-btn:focus-visible {
   opacity: 1;
-  outline: 2px solid var(--ink);
-  outline-offset: 1px;
 }
 
 .session-archive-btn:hover {
@@ -555,7 +551,7 @@
 }
 
 .launcher-shell {
-  width: min(100%, 920px);
+  width: min(100%, 820px);
 }
 
 .launcher-surface {
@@ -602,4 +598,3 @@
   z-index: 120;
   border-left: 0;
 }
-

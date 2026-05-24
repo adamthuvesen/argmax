@@ -381,8 +381,6 @@ export function Sidebar({
   }, []);
 
   const nameplateDate = useMemo(() => formatNameplateDate(), []);
-  const footerState =
-    loadState === "ready" ? "ready" : loadState === "loading" ? "loading" : "issue";
 
   return (
     <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
@@ -391,7 +389,6 @@ export function Sidebar({
         <div className="sidebar-nameplate-line">
           <span className="sidebar-nameplate-mark">argmax</span>
           <span className="sidebar-nameplate-slash">//</span>
-          <span className="sidebar-nameplate-dot" data-state={footerState} />
         </div>
         <div className="sidebar-nameplate-sub">{nameplateDate} · local</div>
       </div>
@@ -407,7 +404,6 @@ export function Sidebar({
             <Plus size={14} />
           </span>
           <span className="rail-nav-label">New session</span>
-          <kbd className="rail-nav-kbd" aria-hidden="true">⌘⏎</kbd>
         </button>
       </nav>
 

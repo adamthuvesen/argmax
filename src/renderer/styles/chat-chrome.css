@@ -212,7 +212,7 @@
 
 .composer {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .composer-input,
@@ -225,8 +225,8 @@
 .composer-input {
   position: relative;
   gap: 8px;
-  min-height: 76px;
-  padding: 14px 14px 14px 18px;
+  min-height: 56px;
+  padding: 8px 10px 8px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel);
@@ -246,16 +246,16 @@
 .composer-input textarea {
   min-width: 0;
   flex: 1;
-  min-height: 44px;
+  min-height: 34px;
   max-height: 140px;
-  padding: 11px 12px 11px 4px;
+  padding: 0 8px 0 2px;
   color: var(--text);
   border: 0;
   outline: 0;
   background: transparent;
   font-family: inherit;
-  font-size: 15px;
-  line-height: 1.45;
+  font-size: var(--text-base);
+  line-height: 34px;
   resize: none;
   overflow-y: hidden;
 }
@@ -324,40 +324,42 @@
 
 
 .composer-context {
-  gap: 8px;
+  gap: 4px;
   min-height: 32px;
-  padding: 0 8px;
+  /* Left padding matches the textarea's text inset above (.composer-input
+     padding-left 14px + textarea padding-left 2px) so the row reads as if it
+     extends from the prompt itself rather than from the input's outer edge. */
+  padding: 0 6px 0 14px;
   color: var(--muted);
   font-size: 12.5px;
 }
 
-.composer-context-tree {
+.composer-context-group {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  color: var(--line-strong);
-  user-select: none;
-  margin-right: 2px;
+  gap: 4px;
 }
 
-.composer-context span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* Mode toggle gets pushed to the right edge of the row, mirroring the mascot's
+   right-anchored position on the input above — creates a left/right rhythm
+   across the two stacked rows. */
+.composer-context .agent-mode-toggle {
+  margin-left: auto;
 }
 
 .composer-context-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 4px 9px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 7px;
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-strong);
   cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.2;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -368,21 +370,51 @@
 
 .composer-context-chip:hover {
   background: var(--panel-sunken);
-  color: var(--muted-strong);
+  color: var(--text);
+}
+
+.composer-context-caret {
+  margin-left: 1px;
+  opacity: 0.5;
+  transition: opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+
+.composer-context-chip:hover .composer-context-caret {
+  opacity: 0.85;
+}
+
+.composer-context-chip[aria-expanded="true"] .composer-context-caret {
+  opacity: 0.95;
+  transform: rotate(180deg);
 }
 
 .agent-mode-toggle {
-  min-width: 48px;
+  min-width: 56px;
   justify-content: center;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  font-size: 11.5px;
+  /* Same shape as the other chips so the row reads as one family; state is
+     conveyed by a subtle filled background, not a competing border. */
+  background: var(--panel-sunken);
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-mode-toggle:hover {
+  background: var(--line);
+  color: var(--text);
 }
 
 .agent-mode-toggle[aria-pressed="true"] {
-  color: var(--text);
-  border-color: var(--sage);
-  background: rgba(90, 143, 114, 0.12);
+  color: var(--sage-deep);
+  background: var(--sage-soft);
+}
+
+.agent-mode-toggle[aria-pressed="true"]:hover {
+  background: var(--sage-soft);
+  color: var(--sage-deep);
+  filter: brightness(0.97);
 }
 
 .agent-mode-toggle:disabled {
@@ -391,7 +423,12 @@
 }
 
 .composer-context svg {
-  color: var(--muted);
+  color: currentColor;
+  opacity: 0.7;
+}
+
+.composer-context-chip:hover svg {
+  opacity: 0.95;
 }
 
 .provider-toggle {
@@ -814,64 +851,9 @@
   flex: 0 0 auto;
 }
 
-.launcher-starters {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin: 2px 8px 0;
-  padding-top: 4px;
-}
-
-.launcher-starters-eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.launcher-starters ul {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.launcher-starter-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 11px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--muted-strong);
-  background: transparent;
-  border: 1px dashed var(--line);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease);
-}
-
-.launcher-starter-chip:hover {
-  color: var(--text);
-  border-color: var(--ink);
-  border-style: solid;
-  background: var(--panel);
-}
-
-.launcher-starter-chip:active {
-  transform: translateY(1px);
-}
-
 .session-scroll {
   display: grid;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
-

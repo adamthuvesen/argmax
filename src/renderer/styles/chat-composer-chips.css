@@ -165,9 +165,9 @@
 .session-input textarea {
   min-width: 0;
   flex: 1;
-  min-height: 48px;
-  max-height: 140px;
-  padding: 12px 10px;
+  min-height: 36px;
+  max-height: 100px;
+  padding: 8px 8px;
   color: var(--text);
   border: 0;
   border-radius: 10px;

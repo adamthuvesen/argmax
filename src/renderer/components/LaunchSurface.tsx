@@ -51,12 +51,6 @@ const WelcomePane = lazy(async () => ({
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
-const LAUNCH_STARTERS = [
-  "Add a test for…",
-  "Investigate why…",
-  "Refactor…"
-] as const;
-
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
 }
@@ -422,16 +416,6 @@ export function LaunchSurface({
     return `${month} ${day}`;
   }, []);
 
-  const applyStarter = useCallback((seed: string): void => {
-    setPrompt(seed);
-    requestAnimationFrame(() => {
-      const node = promptInputRef.current;
-      if (!node) return;
-      node.focus();
-      node.setSelectionRange(seed.length, seed.length);
-    });
-  }, []);
-
   if (!project) {
     // Fresh-install surface: setup checklist + provider discovery + the
     // disabled-until-a-provider-is-detected Add Project CTA. The component
@@ -550,7 +534,7 @@ export function LaunchSurface({
           />
         </div>
         <div className="composer-context">
-          <span className="composer-context-tree" aria-hidden="true">└─</span>
+          <div className="composer-context-group composer-context-group--workspace">
           <div className="project-picker-anchor" ref={projectPickerRef}>
             <button
               className="composer-context-chip"
@@ -561,7 +545,7 @@ export function LaunchSurface({
             >
               <Folder size={14} aria-hidden="true" />
               {project.name}
-              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {projectPickerOpen && (
               <ul
@@ -611,7 +595,7 @@ export function LaunchSurface({
             >
               <GitBranch size={14} aria-hidden="true" />
               {project.currentBranch}
-              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {branchPickerOpen && (
               <ul
@@ -640,13 +624,16 @@ export function LaunchSurface({
               </ul>
             )}
           </div>
-          <LaunchModelSelector
-            ariaLabel="Switch model"
-            open={modelPickerOpen}
-            onOpenChange={setModelPickerOpen}
-            value={model}
-            onChange={onModelChange}
-          />
+          </div>
+          <div className="composer-context-group composer-context-group--model">
+            <LaunchModelSelector
+              ariaLabel="Switch model"
+              open={modelPickerOpen}
+              onOpenChange={setModelPickerOpen}
+              value={model}
+              onChange={onModelChange}
+            />
+          </div>
           <button
             type="button"
             className="composer-context-chip agent-mode-toggle"
@@ -665,23 +652,6 @@ export function LaunchSurface({
           </p>
         ) : null}
       </form>
-      <aside className="launcher-starters" aria-label="Starter prompts">
-        <span className="launcher-starters-eyebrow">try</span>
-        <ul>
-          {LAUNCH_STARTERS.map((seed) => (
-            <li key={seed}>
-              <button
-                type="button"
-                className="launcher-starter-chip"
-                onClick={() => applyStarter(seed)}
-                title={`Use: ${seed}`}
-              >
-                {seed}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
       </div>
       {isReviewOpen ? (
         <Suspense fallback={null}>

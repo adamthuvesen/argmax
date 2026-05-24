@@ -52,7 +52,7 @@
 }
 
 .session-multigrid-cell .launcher-surface {
-  width: min(100%, 920px);
+  width: min(100%, 820px);
   gap: 18px;
   transform: none;
   animation: none;
@@ -606,4 +606,3 @@
 .scroll-to-bottom-fab[data-has-count="true"]:hover {
   background: var(--sage);
 }
-

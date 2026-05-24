@@ -30,7 +30,7 @@
   app-region: drag;
   -webkit-app-region: drag;
   height: 36px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 /* ---- Margin Notes: nameplate ---- */
@@ -38,7 +38,7 @@
 .sidebar-nameplate {
   display: grid;
   gap: 2px;
-  margin: 2px 12px 12px;
+  margin: 2px 12px 16px;
   user-select: none;
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -63,30 +63,6 @@
   font-size: 12px;
   color: var(--line-strong);
   letter-spacing: 0.02em;
-}
-
-.sidebar-nameplate-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--muted);
-  margin-left: auto;
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.sidebar-nameplate-dot[data-state="ready"] {
-  background: var(--sage);
-  box-shadow: 0 0 0 3px var(--sage-soft);
-  animation: status-pulse 2.6s var(--ease) infinite;
-}
-
-.sidebar-nameplate-dot[data-state="loading"] {
-  background: var(--amber);
-  animation: status-pulse 1.2s var(--ease) infinite;
-}
-
-.sidebar-nameplate-dot[data-state="issue"] {
-  background: var(--rose);
 }
 
 .sidebar-nameplate-sub {
@@ -148,28 +124,27 @@
 .rail-nav-cta {
   position: relative;
   align-items: center;
-  min-height: 36px;
-  padding: 0 8px 0 8px;
-  margin: 0 4px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-  color: var(--text);
+  min-height: 30px;
+  padding: 0 10px;
+  margin: 0 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
   -webkit-app-region: no-drag;
   app-region: no-drag;
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0;
-  box-shadow: var(--shadow-1);
-  transition: border-color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease),
-    box-shadow var(--duration-fast) var(--ease),
+  box-shadow: none;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
     transform var(--duration-fast) var(--ease);
 }
 
 .rail-nav-cta:hover {
-  border-color: var(--muted);
-  background: var(--panel);
+  color: var(--text);
+  background: var(--row-hover);
 }
 
 .rail-nav-cta:active {
@@ -180,21 +155,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--ink);
-  color: var(--bubble-on-ink);
+  width: 14px;
+  height: 14px;
+  color: var(--muted-strong);
   flex: 0 0 auto;
-  transition: background var(--duration-fast) var(--ease);
+  transition: color var(--duration-fast) var(--ease);
 }
 
 .rail-nav-cta:hover .rail-nav-glyph {
-  background: var(--ink-soft);
+  color: var(--text);
 }
 
 .rail-nav-cta .rail-nav-glyph svg {
-  color: var(--bubble-on-ink);
+  color: currentColor;
+  stroke-width: 1.8;
 }
 
 .rail-nav-cta .rail-nav-label {
@@ -203,37 +177,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text);
-}
-
-.rail-nav-kbd {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 5px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  background: var(--panel-sunken);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease);
-}
-
-.rail-nav-item:hover .rail-nav-kbd,
-.rail-nav-item:focus-visible .rail-nav-kbd,
-.rail-nav-cta .rail-nav-kbd {
-  opacity: 1;
-}
-
-.rail-nav-cta:hover .rail-nav-kbd {
-  color: var(--text);
-  border-color: var(--line-strong);
+  color: inherit;
 }
 
 .small-icon {
@@ -290,7 +234,7 @@
   align-items: center;
   justify-content: space-between;
   min-height: 24px;
-  margin: 20px 4px 6px 12px;
+  margin: 22px 0 8px 12px;
 }
 
 .rail-label {
@@ -467,7 +411,7 @@
   width: 100%;
   min-width: 0;
   min-height: 30px;
-  padding: 0 6px 0 8px;
+  padding: 0 6px 0 12px;
   color: var(--muted-strong);
   text-align: left;
   border: 0;
@@ -514,7 +458,7 @@
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
-  opacity: 0.45;
+  opacity: 0.25;
   transition: color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease),
     opacity var(--duration-fast) var(--ease);
@@ -536,4 +480,3 @@
 .project-visibility[aria-expanded="false"] svg {
   transform: rotate(0deg);
 }
-

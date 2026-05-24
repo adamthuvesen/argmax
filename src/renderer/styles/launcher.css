@@ -1,8 +1,7 @@
 /* ============================================================
    Launch surface — "First Light"
    A composed-print opening page: editorial meta line, one quiet
-   typographic moment, a hand-built composer slab, and three
-   click-to-paste starters tucked beneath.
+   typographic moment and a hand-built composer slab.
    ============================================================ */
 
 .launcher-hero {
@@ -41,4 +40,3 @@
   justify-items: center;
   gap: 22px;
 }
-

@@ -434,12 +434,12 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 28px;
+  gap: 4px;
+  margin-top: 16px;
   margin-inline: var(--session-inline-padding);
-  padding: 14px 14px 10px;
+  padding: 10px 10px 8px;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 16px;
   background: var(--panel);
   box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04), 0 18px 48px rgba(31, 28, 24, 0.08);
   transition: border-color var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);

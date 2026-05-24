@@ -16,6 +16,13 @@ import {
 
 app.setName("Argmax");
 
+// Electron 35's GPU helper can be killed by macOS during local dev startup on
+// some machines, which tears down `npm run dev` before the window appears.
+// Packaged builds keep hardware acceleration enabled.
+if (process.platform === "darwin" && !app.isPackaged) {
+  app.disableHardwareAcceleration();
+}
+
 // Single-instance lock — a second launch of Argmax (double-click,
 // Spotlight while already open, etc.) opens the same SQLite WAL and races
 // the migration runner / orphan reconciler against the running instance.

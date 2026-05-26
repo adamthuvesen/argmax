@@ -114,6 +114,16 @@ pub fn prune_old_raw_outputs(connection: &Connection) -> ArgmaxResult<usize> {
         .map_err(sqlite_error)
 }
 
+pub async fn vacuum_database(database: Arc<Database>) -> ArgmaxResult<()> {
+    tokio::task::spawn_blocking(move || {
+        let connection = database.connection();
+        connection.execute("VACUUM", []).map_err(sqlite_error)?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| ArgmaxError::service("VACUUM_JOIN", error.to_string()))?
+}
+
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     sqlite_error_with("SQLITE", error)
 }
@@ -187,6 +197,14 @@ mod tests {
         assert_eq!(task_count, 1);
         database.dispose();
         assert_eq!(database.prune_tasks.lock().expect("tasks").len(), 0);
+    }
+
+    #[tokio::test]
+    async fn vacuum_database_runs_on_blocking_pool() {
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        vacuum_database(Arc::clone(&database))
+            .await
+            .expect("vacuum");
     }
 
     fn seed_minimal_session(connection: &Connection) {

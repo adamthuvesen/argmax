@@ -4,7 +4,44 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 
 use super::prepared::prepared;
+use super::time::now_iso;
+use super::workspaces::find_workspace_by_id;
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistSessionInput {
+    pub id: String,
+    pub workspace_id: String,
+    pub provider: String,
+    pub model_label: String,
+    pub model_id: String,
+    pub reasoning_effort: Option<String>,
+    pub permission_mode: Option<String>,
+    pub agent_mode: Option<String>,
+    pub prompt: String,
+    pub state: String,
+    pub attention: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionModelInput {
+    pub model_label: String,
+    pub model_id: String,
+    pub reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionAgentModeInput {
+    pub agent_mode: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionStateInput {
+    pub state: String,
+    pub attention: String,
+    pub completed_at: Option<String>,
+    pub last_activity_at: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +142,250 @@ pub fn list_sessions_for_dashboard(
     }
 }
 
+pub fn persist_session(
+    connection: &Connection,
+    input: &PersistSessionInput,
+) -> ArgmaxResult<SessionSummary> {
+    let timestamp = now_iso();
+    let mut statement = prepared(
+        connection,
+        r#"
+        INSERT INTO sessions (
+          id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode,
+          provider_conversation_id, prompt, state, attention,
+          started_at, completed_at, last_activity_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?,
+          NULL, ?, ?, ?,
+          ?, NULL, ?
+        )
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.workspace_id.as_str(),
+            input.provider.as_str(),
+            input.model_label.as_str(),
+            input.model_id.as_str(),
+            input.reasoning_effort.as_deref(),
+            input.permission_mode.as_deref().unwrap_or("auto-approve"),
+            input.agent_mode.as_deref().unwrap_or("auto"),
+            input.prompt.as_str(),
+            input.state.as_str(),
+            input.attention.as_str(),
+            timestamp.as_str(),
+            timestamp.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    find_session_by_id_no_preferred(connection, &input.id)
+}
+
+pub fn update_session_agent_mode(
+    connection: &Connection,
+    session_id: &str,
+    input: &SessionAgentModeInput,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement = prepared(
+        connection,
+        "UPDATE sessions SET agent_mode = ?, last_activity_at = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((input.agent_mode.as_str(), now_iso(), session_id))
+        .map_err(sqlite_error)?;
+    find_session_by_id_no_preferred(connection, session_id)
+}
+
+pub fn update_session_model(
+    connection: &Connection,
+    session_id: &str,
+    input: &SessionModelInput,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement = prepared(
+        connection,
+        r#"
+        UPDATE sessions
+        SET model_label = ?, model_id = ?, reasoning_effort = ?,
+            last_model_id = ?, last_activity_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    let timestamp = now_iso();
+    statement
+        .execute((
+            input.model_label.as_str(),
+            input.model_id.as_str(),
+            input.reasoning_effort.as_deref(),
+            input.model_id.as_str(),
+            timestamp.as_str(),
+            session_id,
+        ))
+        .map_err(sqlite_error)?;
+    find_session_by_id_no_preferred(connection, session_id)
+}
+
+pub fn update_session_state(
+    connection: &Connection,
+    session_id: &str,
+    input: &SessionStateInput,
+) -> ArgmaxResult<SessionSummary> {
+    let timestamp = input.last_activity_at.clone().unwrap_or_else(now_iso);
+    let mut statement = prepared(
+        connection,
+        "UPDATE sessions SET state = ?, attention = ?, completed_at = ?, last_activity_at = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.state.as_str(),
+            input.attention.as_str(),
+            input.completed_at.as_deref(),
+            timestamp.as_str(),
+            session_id,
+        ))
+        .map_err(sqlite_error)?;
+    find_session_by_id_no_preferred(connection, session_id)
+}
+
+pub fn update_session_provider_conversation_id(
+    connection: &Connection,
+    session_id: &str,
+    provider_conversation_id: &str,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement = prepared(
+        connection,
+        "UPDATE sessions SET provider_conversation_id = ?, last_activity_at = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((provider_conversation_id, now_iso(), session_id))
+        .map_err(sqlite_error)?;
+    find_session_by_id_no_preferred(connection, session_id)
+}
+
+pub fn find_session_by_id(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement =
+        prepared(connection, "SELECT * FROM sessions WHERE id = ?").map_err(sqlite_error)?;
+    match statement.query_row([session_id], |row| {
+        session_row_to_summary(row, &HashSet::new())
+    }) {
+        Ok(session) => {
+            let preferred =
+                is_preferred_session(connection, session.id.clone(), session.workspace_id.clone())?;
+            Ok(SessionSummary {
+                preferred,
+                ..session
+            })
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(ArgmaxError::record_not_found("session", session_id))
+        }
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+fn find_session_by_id_no_preferred(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement =
+        prepared(connection, "SELECT * FROM sessions WHERE id = ?").map_err(sqlite_error)?;
+    match statement.query_row([session_id], |row| {
+        session_row_to_summary(row, &HashSet::new())
+    }) {
+        Ok(session) => Ok(session),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(ArgmaxError::record_not_found("session", session_id))
+        }
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+pub fn update_session_last_model_id(
+    connection: &Connection,
+    session_id: &str,
+    model_id: &str,
+) -> ArgmaxResult<()> {
+    if model_id.is_empty() {
+        return Ok(());
+    }
+    let mut statement = prepared(
+        connection,
+        "UPDATE sessions SET last_model_id = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((model_id, session_id))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+pub fn update_session_last_activity(
+    connection: &Connection,
+    session_id: &str,
+    last_activity_at: &str,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement = prepared(
+        connection,
+        "UPDATE sessions SET last_activity_at = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((last_activity_at, session_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("session", session_id));
+    }
+    find_session_by_id_no_preferred(connection, session_id)
+}
+
+pub fn select_preferred_attempt(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<SessionSummary> {
+    let tx = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let session = find_session_by_id_no_preferred(&tx, session_id)?;
+    let workspace = find_workspace_by_id(&tx, &session.workspace_id)?;
+    let key = preferred_attempt_key(&workspace.project_id, &workspace.task_label);
+    let value_json = serde_json::json!({ "sessionId": session_id }).to_string();
+    {
+        let mut statement = prepared(
+            &tx,
+            r#"
+            INSERT INTO ui_state (key, value_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
+            "#,
+        )
+        .map_err(sqlite_error)?;
+        statement
+            .execute((key.as_str(), value_json.as_str(), now_iso()))
+            .map_err(sqlite_error)?;
+    }
+    tx.commit().map_err(sqlite_error)?;
+    find_session_by_id(connection, session_id)
+}
+
+pub fn list_session_ids_for_workspace(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<Vec<String>> {
+    let mut statement = prepared(connection, "SELECT id FROM sessions WHERE workspace_id = ?")
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([workspace_id], |row| row.get::<_, String>("id"))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
 pub fn load_preferred_session_ids(connection: &Connection) -> ArgmaxResult<HashSet<String>> {
     let mut statement = prepared(
         connection,
@@ -162,6 +443,55 @@ fn session_row_to_summary(
             cache_write: row.get("cache_write_tokens")?,
         },
     })
+}
+
+fn is_preferred_session(
+    connection: &Connection,
+    session_id: String,
+    workspace_id: String,
+) -> ArgmaxResult<bool> {
+    let workspace = find_workspace_by_id(connection, &workspace_id)?;
+    let key = preferred_attempt_key(&workspace.project_id, &workspace.task_label);
+    let mut statement = prepared(connection, "SELECT value_json FROM ui_state WHERE key = ?")
+        .map_err(sqlite_error)?;
+    match statement.query_row([key], |row| row.get::<_, String>("value_json")) {
+        Ok(value) => {
+            let parsed = serde_json::from_str::<serde_json::Value>(&value).unwrap_or_default();
+            Ok(parsed.get("sessionId").and_then(|id| id.as_str()) == Some(session_id.as_str()))
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+fn preferred_attempt_key(project_id: &str, task_label: &str) -> String {
+    format!(
+        "preferred-attempt:{}:{}",
+        project_id,
+        encode_uri_component(task_label)
+    )
+}
+
+fn encode_uri_component(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'!'
+            | b'~'
+            | b'*'
+            | b'\''
+            | b'('
+            | b')' => out.push(byte as char),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {

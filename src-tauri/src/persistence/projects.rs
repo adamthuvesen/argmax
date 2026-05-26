@@ -1,8 +1,25 @@
-use rusqlite::{Connection, Row};
+use rusqlite::{named_params, Connection, Row};
 use serde::Serialize;
 
 use super::prepared::prepared;
+use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistProjectInput {
+    pub id: String,
+    pub name: String,
+    pub repo_path: String,
+    pub current_branch: String,
+    pub default_branch: Option<String>,
+    pub settings: ProjectSettings,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectRemote {
+    pub owner: String,
+    pub name: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,6 +108,190 @@ pub fn list_projects(connection: &Connection) -> ArgmaxResult<Vec<ProjectSummary
     Ok(rows)
 }
 
+pub fn persist_project(
+    connection: &Connection,
+    input: &PersistProjectInput,
+) -> ArgmaxResult<ProjectSummary> {
+    let timestamp = now_iso();
+    let check_commands_json =
+        serde_json::to_string(&input.settings.check_commands).map_err(json_error)?;
+    let mut statement = prepared(
+        connection,
+        r#"
+        INSERT INTO projects (
+          id, name, repo_path, current_branch, default_branch, default_provider,
+          default_model_label, worktree_location, setup_command, check_commands_json,
+          ui_preferences_json, created_at, updated_at
+        ) VALUES (
+          @id, @name, @repo_path, @current_branch, @default_branch, @default_provider,
+          @default_model_label, @worktree_location, @setup_command, @check_commands_json,
+          '{}', @created_at, @updated_at
+        )
+        ON CONFLICT(repo_path) DO UPDATE SET
+          name = excluded.name,
+          current_branch = excluded.current_branch,
+          default_branch = excluded.default_branch,
+          updated_at = excluded.updated_at
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute(named_params! {
+            "@id": input.id,
+            "@name": input.name,
+            "@repo_path": input.repo_path,
+            "@current_branch": input.current_branch,
+            "@default_branch": input.default_branch,
+            "@default_provider": input.settings.default_provider,
+            "@default_model_label": input.settings.default_model_label,
+            "@worktree_location": input.settings.worktree_location,
+            "@setup_command": input.settings.setup_command,
+            "@check_commands_json": check_commands_json,
+            "@created_at": timestamp,
+            "@updated_at": timestamp,
+        })
+        .map_err(sqlite_error)?;
+
+    require_project_by_repo_path(connection, &input.repo_path)
+}
+
+pub fn update_project_settings(
+    connection: &Connection,
+    project_id: &str,
+    settings: &ProjectSettings,
+) -> ArgmaxResult<ProjectSummary> {
+    let check_commands_json =
+        serde_json::to_string(&settings.check_commands).map_err(json_error)?;
+    let mut statement = prepared(
+        connection,
+        r#"
+        UPDATE projects
+        SET
+          default_provider = @default_provider,
+          default_model_label = @default_model_label,
+          worktree_location = @worktree_location,
+          setup_command = @setup_command,
+          check_commands_json = @check_commands_json,
+          updated_at = @updated_at
+        WHERE id = @project_id
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute(named_params! {
+            "@project_id": project_id,
+            "@default_provider": settings.default_provider,
+            "@default_model_label": settings.default_model_label,
+            "@worktree_location": settings.worktree_location,
+            "@setup_command": settings.setup_command,
+            "@check_commands_json": check_commands_json,
+            "@updated_at": now_iso(),
+        })
+        .map_err(sqlite_error)?;
+    require_project(connection, project_id)
+}
+
+pub fn update_project_branch(
+    connection: &Connection,
+    project_id: &str,
+    branch: &str,
+) -> ArgmaxResult<ProjectSummary> {
+    let mut statement = prepared(
+        connection,
+        "UPDATE projects SET current_branch = ?, updated_at = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((branch, now_iso(), project_id))
+        .map_err(sqlite_error)?;
+    require_project(connection, project_id)
+}
+
+pub fn find_project_by_repo_path(
+    connection: &Connection,
+    repo_path: &str,
+) -> ArgmaxResult<Option<ProjectSummary>> {
+    let mut statement =
+        prepared(connection, "SELECT * FROM projects WHERE repo_path = ?").map_err(sqlite_error)?;
+    match statement.query_row([repo_path], bare_project_row_to_summary) {
+        Ok(project) => Ok(Some(project)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+pub fn find_project_by_id(
+    connection: &Connection,
+    project_id: &str,
+) -> ArgmaxResult<Option<ProjectSummary>> {
+    let mut statement =
+        prepared(connection, "SELECT * FROM projects WHERE id = ?").map_err(sqlite_error)?;
+    match statement.query_row([project_id], bare_project_row_to_summary) {
+        Ok(project) => Ok(Some(project)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+pub fn require_project(connection: &Connection, project_id: &str) -> ArgmaxResult<ProjectSummary> {
+    find_project_by_id(connection, project_id)?
+        .ok_or_else(|| ArgmaxError::record_not_found("project", project_id))
+}
+
+pub fn delete_project(connection: &Connection, project_id: &str) -> ArgmaxResult<()> {
+    let mut statement =
+        prepared(connection, "DELETE FROM projects WHERE id = ?").map_err(sqlite_error)?;
+    statement.execute([project_id]).map_err(sqlite_error)?;
+    Ok(())
+}
+
+pub fn update_project_remote(
+    connection: &Connection,
+    project_id: &str,
+    remote: Option<&ProjectRemote>,
+) -> ArgmaxResult<()> {
+    let mut statement = prepared(
+        connection,
+        "UPDATE projects SET repo_remote_owner = ?, repo_remote_name = ?, updated_at = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((
+            remote.map(|value| value.owner.as_str()),
+            remote.map(|value| value.name.as_str()),
+            now_iso(),
+            project_id,
+        ))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("project", project_id));
+    }
+    Ok(())
+}
+
+pub fn get_project_remote(
+    connection: &Connection,
+    project_id: &str,
+) -> ArgmaxResult<Option<ProjectRemote>> {
+    let mut statement = prepared(
+        connection,
+        "SELECT repo_remote_owner, repo_remote_name FROM projects WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    match statement.query_row([project_id], |row| {
+        let owner: Option<String> = row.get("repo_remote_owner")?;
+        let name: Option<String> = row.get("repo_remote_name")?;
+        Ok((owner, name))
+    }) {
+        Ok((Some(owner), Some(name))) => Ok(Some(ProjectRemote { owner, name })),
+        Ok(_) => Ok(None),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(ArgmaxError::record_not_found("project", project_id))
+        }
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
 fn project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
     let workspace_blocked: i64 = row.get("workspace_blocked")?;
     let session_blocked: i64 = row.get("session_blocked")?;
@@ -125,6 +326,38 @@ fn project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
     })
 }
 
+fn require_project_by_repo_path(
+    connection: &Connection,
+    repo_path: &str,
+) -> ArgmaxResult<ProjectSummary> {
+    find_project_by_repo_path(connection, repo_path)?
+        .ok_or_else(|| ArgmaxError::service("PROJECT_NOT_PERSISTED", repo_path.to_owned()))
+}
+
+fn bare_project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
+    Ok(ProjectSummary {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        repo_path: row.get("repo_path")?,
+        current_branch: row.get("current_branch")?,
+        default_branch: row.get("default_branch")?,
+        settings: ProjectSettings {
+            default_provider: row.get("default_provider")?,
+            default_model_label: row.get("default_model_label")?,
+            worktree_location: row.get("worktree_location")?,
+            setup_command: row.get("setup_command")?,
+            check_commands: parse_string_array(row.get("check_commands_json")?),
+        },
+        counts: ProjectCounts {
+            active: 0,
+            blocked: 0,
+            failed: 0,
+            review_ready: 0,
+        },
+        latest_activity_at: row.get("updated_at")?,
+    })
+}
+
 fn parse_string_array(value: String) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(&value).unwrap_or_default()
 }
@@ -140,4 +373,8 @@ fn max_nullable_iso(left: Option<String>, right: Option<String>) -> Option<Strin
 
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())
+}
+
+fn json_error(error: serde_json::Error) -> ArgmaxError {
+    ArgmaxError::service("JSON", error.to_string())
 }

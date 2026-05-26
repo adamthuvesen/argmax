@@ -2,7 +2,36 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 
 use super::prepared::prepared;
+use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistCheckInput {
+    pub id: String,
+    pub workspace_id: String,
+    pub command: String,
+    pub status: String,
+    pub started_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpdateCheckInput {
+    pub status: String,
+    pub exit_code: Option<i64>,
+    pub summary: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistCheckpointInput {
+    pub id: String,
+    pub workspace_id: String,
+    pub label: String,
+    pub branch: String,
+    pub git_ref: Option<String>,
+    pub patch_path: Option<String>,
+    pub created_at: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,6 +92,112 @@ pub fn list_checks(
             Ok(rows)
         }
     }
+}
+
+pub fn find_check_by_id(connection: &Connection, check_id: &str) -> ArgmaxResult<CheckRun> {
+    let mut statement =
+        prepared(connection, "SELECT * FROM checks WHERE id = ?").map_err(sqlite_error)?;
+    match statement.query_row([check_id], check_row_to_run) {
+        Ok(check) => Ok(check),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(ArgmaxError::record_not_found("check", check_id))
+        }
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+pub fn find_checkpoint_by_id(
+    connection: &Connection,
+    checkpoint_id: &str,
+) -> ArgmaxResult<Checkpoint> {
+    let mut statement =
+        prepared(connection, "SELECT * FROM checkpoints WHERE id = ?").map_err(sqlite_error)?;
+    match statement.query_row([checkpoint_id], checkpoint_row_to_summary) {
+        Ok(checkpoint) => Ok(checkpoint),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(ArgmaxError::record_not_found("checkpoint", checkpoint_id))
+        }
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
+pub fn persist_check(connection: &Connection, input: &PersistCheckInput) -> ArgmaxResult<CheckRun> {
+    let started_at = input.started_at.clone().unwrap_or_else(now_iso);
+    let mut statement = prepared(
+        connection,
+        r#"
+        INSERT INTO checks (id, workspace_id, command, status, exit_code, summary, started_at, completed_at)
+        VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL)
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.workspace_id.as_str(),
+            input.command.as_str(),
+            input.status.as_str(),
+            started_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    find_check_by_id(connection, &input.id)
+}
+
+pub fn update_check(
+    connection: &Connection,
+    check_id: &str,
+    input: &UpdateCheckInput,
+) -> ArgmaxResult<CheckRun> {
+    let completed_at = input.completed_at.clone().unwrap_or_else(now_iso);
+    let mut statement = prepared(
+        connection,
+        r#"
+        UPDATE checks
+        SET status = ?, exit_code = ?, summary = ?, completed_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((
+            input.status.as_str(),
+            input.exit_code,
+            input.summary.as_deref(),
+            completed_at.as_str(),
+            check_id,
+        ))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("check", check_id));
+    }
+    find_check_by_id(connection, check_id)
+}
+
+pub fn persist_checkpoint(
+    connection: &Connection,
+    input: &PersistCheckpointInput,
+) -> ArgmaxResult<Checkpoint> {
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let mut statement = prepared(
+        connection,
+        r#"
+        INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.workspace_id.as_str(),
+            input.label.as_str(),
+            input.branch.as_str(),
+            input.git_ref.as_deref(),
+            input.patch_path.as_deref(),
+            created_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    find_checkpoint_by_id(connection, &input.id)
 }
 
 pub fn list_checkpoints(

@@ -2,7 +2,27 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 
 use super::prepared::prepared;
+use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistTimelineEventInput {
+    pub id: String,
+    pub session_id: String,
+    pub r#type: String,
+    pub message: String,
+    pub payload: serde_json::Value,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistRawOutputInput {
+    pub id: String,
+    pub session_id: String,
+    pub stream: String,
+    pub content: String,
+    pub created_at: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +76,73 @@ pub fn list_session_events_since(
         raw_outputs: raw_output_rows,
         event_cursor: next_event_cursor,
         raw_output_cursor: next_raw_output_cursor,
+    })
+}
+
+pub fn persist_timeline_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<TimelineEvent> {
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
+    let mut statement = prepared(
+        connection,
+        r#"
+        INSERT INTO events (id, session_id, type, message, payload_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.session_id.as_str(),
+            input.r#type.as_str(),
+            input.message.as_str(),
+            payload_json.as_str(),
+            created_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(TimelineEvent {
+        id: input.id.clone(),
+        session_id: input.session_id.clone(),
+        r#type: input.r#type.clone(),
+        message: input.message.clone(),
+        payload: input.payload.clone(),
+        created_at,
+        row_cursor: Some(connection.last_insert_rowid()),
+    })
+}
+
+pub fn persist_raw_output(
+    connection: &Connection,
+    input: &PersistRawOutputInput,
+) -> ArgmaxResult<RawProviderOutput> {
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let mut statement = prepared(
+        connection,
+        r#"
+        INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.session_id.as_str(),
+            input.stream.as_str(),
+            input.content.as_str(),
+            created_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(RawProviderOutput {
+        id: input.id.clone(),
+        session_id: input.session_id.clone(),
+        stream: input.stream.clone(),
+        content: input.content.clone(),
+        created_at,
+        row_cursor: Some(connection.last_insert_rowid()),
     })
 }
 
@@ -215,4 +302,8 @@ fn max_raw_row_cursor(rows: &[RawProviderOutput], fallback: i64) -> i64 {
 
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())
+}
+
+fn json_error(error: serde_json::Error) -> ArgmaxError {
+    ArgmaxError::service("JSON", error.to_string())
 }

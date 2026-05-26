@@ -16,6 +16,14 @@ pub const DASHBOARD_ROW_LIMIT: usize = 200;
 pub const DASHBOARD_EVENT_LIMIT: usize = 500;
 pub const DASHBOARD_RAW_OUTPUT_LIMIT: usize = 100;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttentionCounts {
+    pub pending_approvals: i64,
+    pub waiting_sessions: i64,
+    pub total: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardListSnapshot {
@@ -107,6 +115,43 @@ pub fn load_dashboard(connection: &Connection) -> ArgmaxResult<DashboardSnapshot
         checks: dashboard.checks,
         checkpoints: dashboard.checkpoints,
     })
+}
+
+pub fn list_running_session_ids(connection: &Connection) -> ArgmaxResult<Vec<String>> {
+    let mut statement = super::prepared::prepared(
+        connection,
+        "SELECT id FROM sessions WHERE state = 'running'",
+    )
+    .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>("id"))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+pub fn count_attention(connection: &Connection) -> ArgmaxResult<AttentionCounts> {
+    let pending_approvals = count_where(
+        connection,
+        "SELECT COUNT(*) AS count FROM approvals WHERE status = 'pending'",
+    )?;
+    let waiting_sessions = count_where(
+        connection,
+        "SELECT COUNT(*) AS count FROM sessions WHERE state = 'waiting'",
+    )?;
+    Ok(AttentionCounts {
+        pending_approvals,
+        waiting_sessions,
+        total: pending_approvals + waiting_sessions,
+    })
+}
+
+fn count_where(connection: &Connection, sql: &'static str) -> ArgmaxResult<i64> {
+    let mut statement = super::prepared::prepared(connection, sql).map_err(sqlite_error)?;
+    statement
+        .query_row([], |row| row.get::<_, i64>("count"))
+        .map_err(sqlite_error)
 }
 
 fn dedupe_workspace_ids(ids: &[String]) -> Vec<String> {
@@ -242,6 +287,41 @@ mod tests {
         assert_eq!(snapshot.raw_outputs.len(), 1);
         assert_eq!(snapshot.approvals.len(), 1);
         assert_eq!(snapshot.approvals[0].id, "a2");
+    }
+
+    #[test]
+    fn attention_counts_and_running_sessions_match_legacy_filters() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_dashboard(&connection);
+        seed_session(&connection, "s-waiting", "w1", "2026-05-24T10:01:00.000Z");
+        connection
+            .execute(
+                "UPDATE sessions SET state = 'waiting' WHERE id = 's-waiting'",
+                [],
+            )
+            .expect("mark waiting");
+        connection
+            .execute(
+                "INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at) VALUES
+                ('a1', 's1', 'git push', '/tmp', 'codex', 'medium', 'approved', '2026-05-24T10:00:00.000Z', '2026-05-24T10:01:00.000Z'),
+                ('a2', 's1', 'npm test', '/tmp', 'codex', 'medium', 'pending', '2026-05-24T10:02:00.000Z', NULL)",
+                [],
+            )
+            .expect("insert approvals");
+
+        let running = list_running_session_ids(&connection).expect("running session ids");
+        let counts = count_attention(&connection).expect("attention counts");
+
+        assert_eq!(running, vec!["s1"]);
+        assert_eq!(
+            counts,
+            AttentionCounts {
+                pending_approvals: 1,
+                waiting_sessions: 1,
+                total: 2,
+            }
+        );
     }
 
     #[test]

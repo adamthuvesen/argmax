@@ -20,6 +20,9 @@
     "test:unit": "vitest run",
     "test:perf": "vitest run --config vitest.perf.config.ts --no-file-parallelism",
     "test:watch": "vitest",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri": "tauri",
+    "check:bindings": "node scripts/check-bindings-fresh.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit"
   },
   "dependencies": {
@@ -66,6 +69,7 @@
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "@eslint/js": "^9.17.0",
+    "@tauri-apps/cli": "^2.1.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/better-sqlite3": "^7.6.12",

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        With Tauri there is no V8 in-process, so `cs.allow-jit`,
+        `cs.allow-unsigned-executable-memory`, and
+        `cs.disable-library-validation` are no longer required.
+        `inherit` lets PTY children (claude, codex, cursor, git, gh)
+        run under the parent's hardened-runtime context.
+    -->
+    <key>com.apple.security.inherit</key>
+    <true/>
+</dict>
+</plist>

@@ -10,3 +10,7 @@ release/
 maestro/
 openspec/
 COMPETITIVE_ANALYSIS.md
+
+# Tauri / Rust port
+src-tauri/target/
+src-tauri/gen/

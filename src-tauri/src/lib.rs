@@ -2,6 +2,7 @@
 // wired in later sections of the port (see openspec/changes/port-to-rust-tauri).
 
 pub mod error;
+pub mod persistence;
 pub mod state;
 pub mod util;
 

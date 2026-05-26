@@ -12,13 +12,14 @@
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
+use crate::persistence::Database;
+
 // ---------------------------------------------------------------------------
 // Placeholder service types. Each is replaced by the real implementation
 // as its subsystem lands (see openspec/changes/port-to-rust-tauri/tasks.md
 // sections 3, 5, 6, 8, 9, 10).
 // ---------------------------------------------------------------------------
 
-pub struct Database;
 pub struct ProviderSessionService;
 pub struct TerminalService;
 pub struct McpAuthService;

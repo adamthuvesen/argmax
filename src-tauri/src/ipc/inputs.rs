@@ -753,6 +753,39 @@ mod tests {
     }
 
     #[test]
+    fn every_explicit_input_struct_denies_unknown_fields() {
+        let source = include_str!("inputs.rs");
+        let lines = source.lines().collect::<Vec<_>>();
+        let mut missing = Vec::new();
+
+        for (index, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            let Some(rest) = trimmed.strip_prefix("pub struct ") else {
+                continue;
+            };
+            let name = rest
+                .split(|ch: char| ch.is_whitespace() || ch == '{' || ch == '(')
+                .next()
+                .unwrap_or_default();
+            if !name.ends_with("Input") {
+                continue;
+            }
+
+            let start = index.saturating_sub(4);
+            let attrs = lines[start..index].join("\n");
+            if !attrs.contains("deny_unknown_fields") {
+                missing.push(name.to_string());
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "input structs missing #[serde(deny_unknown_fields)]: {}",
+            missing.join(", ")
+        );
+    }
+
+    #[test]
     fn write_file_rejects_traversal_and_oversized_utf8() {
         let traversal = serde_json::json!({
             "workspaceId": "w1",

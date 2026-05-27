@@ -5,9 +5,8 @@
 // `tauri::Builder::run`), the prune sweeper, the GH poller. Each owner
 // installs its handle into the matching cell once initialized.
 //
-// The concrete service types are unit-struct placeholders until their
-// owning subsystems land later in the port. Replacing them with real
-// types is a single-line change here and a `use` swap at the use site.
+// Database is live; the remaining concrete service types are placeholders
+// until their owning subsystems land later in the port.
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;

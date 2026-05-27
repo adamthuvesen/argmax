@@ -287,6 +287,9 @@ mod tests {
             &mut context,
         );
         assert!(result.events.is_empty());
-        assert_eq!(result.provider_conversation_id.as_deref(), Some("thread-123"));
+        assert_eq!(
+            result.provider_conversation_id.as_deref(),
+            Some("thread-123")
+        );
     }
 }

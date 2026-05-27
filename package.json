@@ -23,6 +23,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
     "check:bindings": "node scripts/check-bindings-fresh.mjs",
+    "check:tauri-bridge": "node scripts/check-tauri-bridge.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit"
   },
   "dependencies": {
@@ -52,6 +53,7 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/ibm-plex-sans": "^5.2.8",
     "@leeoniya/ufuzzy": "^1.0.19",
+    "@tauri-apps/api": "^2.11.0",
     "@uiw/react-codemirror": "^4.25.9",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",

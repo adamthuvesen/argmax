@@ -5,8 +5,8 @@
 
 
 export const commands = {
-async healthPing(input: HealthPingInput) : Promise<void> {
-    await TAURI_INVOKE("health_ping", { input });
+async healthPing(input: HealthPingInput) : Promise<HealthPingOutput> {
+    return await TAURI_INVOKE("health_ping", { input });
 },
 async projectsList(input: ProjectsListInput) : Promise<void> {
     await TAURI_INVOKE("projects_list", { input });
@@ -273,6 +273,7 @@ export type GitPushInput = { workspaceId: WorkspaceId }
 export type GitViewOrCreatePrInput = { sessionId: SessionId }
 export type GrepTargetId = string
 export type HealthPingInput = Record<string, never>
+export type HealthPingOutput = { ok: boolean; timestamp: string }
 export type LearningsDeleteInput = { id: NonEmptyString }
 export type LearningsListInput = { projectId: ProjectId; limit: Limit200 | null }
 export type LearningsUpdateInput = { id: NonEmptyString; summary: NonEmptyString | null; verified: boolean | null }

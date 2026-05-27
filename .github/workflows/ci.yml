@@ -39,6 +39,12 @@ jobs:
 
       - run: npm run typecheck
 
+      - run: npm run check:bindings
+
+      - run: npm run check:tauri-bridge
+
+      - run: npm run test:rust
+
       # `npm test` runs `rebuild:node` first to rebuild better-sqlite3 and
       # node-pty against the host Node ABI before vitest starts.
       - run: npm test

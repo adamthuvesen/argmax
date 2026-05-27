@@ -7,18 +7,8 @@ pub mod persistence;
 pub mod state;
 pub mod util;
 
-use specta_typescript::Typescript;
-use tauri_specta::{collect_commands, Builder as SpectaBuilder};
+use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
-
-/// Canary command that lets `tauri-specta` emit at least one non-trivial
-/// type into the generated `bindings.d.ts` while the real command surface
-/// is still empty. Removed when section 4 lands its first real command.
-#[tauri::command]
-#[specta::specta]
-fn argmax_specta_canary() -> &'static str {
-    "ok"
-}
 
 /// Construct and run the Tauri app. Real service wiring lands in sections
 /// 3+ of the port. For now this is a window-only shell that proves the
@@ -27,8 +17,7 @@ pub fn run() {
     let timer = StartupTimer::new();
     timer.mark("boot");
 
-    let specta_builder =
-        SpectaBuilder::<tauri::Wry>::new().commands(collect_commands![argmax_specta_canary]);
+    let specta_builder = ipc::specta_builder::<tauri::Wry>();
 
     // Codegen: emit `src/shared/bindings.d.ts` on every debug startup so
     // the renderer's TS surface stays in lockstep with the Rust command
@@ -36,7 +25,7 @@ pub fn run() {
     // rest of the crate is even type-checked, so they can't import
     // command functions), so the export lives here instead.
     #[cfg(debug_assertions)]
-    if let Err(e) = specta_builder.export(Typescript::default(), "../src/shared/bindings.d.ts") {
+    if let Err(e) = specta_builder.export(specta_typescript(), "../src/shared/bindings.d.ts") {
         eprintln!("argmax: tauri-specta export failed: {e}");
     }
 
@@ -59,6 +48,10 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+fn specta_typescript() -> Typescript {
+    Typescript::default().bigint(BigIntExportBehavior::Number)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,20 +64,19 @@ mod tests {
     /// which guards "the committed bindings.d.ts is at least as new as
     /// every backend input".
     #[test]
-    fn specta_export_emits_canary_signature() {
+    fn specta_export_emits_command_surface() {
         let dir = tempdir().expect("tempdir");
         let out = dir.path().join("bindings.d.ts");
 
-        let builder =
-            SpectaBuilder::<tauri::Wry>::new().commands(collect_commands![argmax_specta_canary]);
+        let builder = ipc::specta_builder::<tauri::Wry>();
         builder
-            .export(Typescript::default(), &out)
+            .export(specta_typescript(), &out)
             .expect("specta export ok");
 
         let contents = fs::read_to_string(&out).expect("read generated bindings");
         assert!(
-            contents.contains("argmax_specta_canary") || contents.contains("argmaxSpectaCanary"),
-            "expected canary command in bindings:\n{contents}",
+            contents.contains("health_ping") || contents.contains("healthPing"),
+            "expected command surface in bindings:\n{contents}",
         );
     }
 }

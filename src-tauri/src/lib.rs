@@ -4,6 +4,7 @@
 pub mod error;
 pub mod ipc;
 pub mod persistence;
+pub mod providers;
 pub mod state;
 pub mod util;
 

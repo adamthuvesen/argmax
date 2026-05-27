@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod discovery;
 pub mod environment;
+pub mod normalizer;
 pub mod pricing;
 
 use std::path::PathBuf;

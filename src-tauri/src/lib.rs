@@ -4,9 +4,11 @@
 pub mod approvals;
 pub mod attachments;
 pub mod error;
+pub mod git;
 pub mod ipc;
 pub mod persistence;
 pub mod providers;
+pub mod review;
 pub mod skills;
 pub mod state;
 pub mod util;

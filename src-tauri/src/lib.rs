@@ -4,6 +4,7 @@
 pub mod approvals;
 pub mod attachments;
 pub mod checks;
+pub mod dock;
 pub mod error;
 pub mod files;
 pub mod gh;
@@ -50,6 +51,7 @@ pub fn run() {
         .manage(state::AppState::new())
         .invoke_handler(specta_builder.invoke_handler())
         .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))
+        .on_window_event(dock::clear_badge_on_focus)
         .setup(move |app| {
             // Tracing init is deferred to setup() because `app.path()` is
             // only valid here — that's how we resolve the user_data_dir

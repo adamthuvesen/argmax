@@ -1,5 +1,5 @@
-// Argmax library crate. Scaffolding only at this point — services are
-// wired in later sections of the port (see openspec/changes/port-to-rust-tauri).
+// Argmax library crate. The Rust/Tauri runtime is being filled in section by
+// section under openspec/changes/port-to-rust-tauri.
 
 pub mod approvals;
 pub mod attachments;
@@ -12,6 +12,7 @@ pub mod ide;
 pub mod ipc;
 pub mod mcp;
 pub mod memory;
+pub mod menu;
 pub mod persistence;
 pub mod providers;
 pub mod review;
@@ -25,9 +26,7 @@ pub mod workspaces;
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
 
-/// Construct and run the Tauri app. Real service wiring lands in sections
-/// 3+ of the port. For now this is a window-only shell that proves the
-/// scaffolding compiles, links, and launches.
+/// Construct and run the Tauri app.
 pub fn run() {
     let timer = StartupTimer::new();
     timer.mark("boot");
@@ -48,6 +47,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(state::AppState::new())
         .invoke_handler(specta_builder.invoke_handler())
+        .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))
         .setup(move |app| {
             // Tracing init is deferred to setup() because `app.path()` is
             // only valid here — that's how we resolve the user_data_dir
@@ -55,6 +55,9 @@ pub fn run() {
             let user_data = tauri::Manager::path(app).app_data_dir().ok();
             if let Err(e) = util::tracing_init::init(user_data.as_deref()) {
                 eprintln!("argmax: tracing init failed: {e}");
+            }
+            if let Err(e) = menu::install_app_menu(app.handle(), cfg!(debug_assertions)) {
+                tracing::warn!(error = ?e, "failed to install app menu");
             }
             tracing::info!(boot_ms = timer.boot_to_now_ms() as u64, "tracing online");
             Ok(())

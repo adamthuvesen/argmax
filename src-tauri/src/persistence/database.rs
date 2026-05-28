@@ -74,6 +74,13 @@ impl Database {
             tasks.detach_all();
         }
     }
+
+    pub fn prune_task_count(&self) -> usize {
+        self.prune_tasks
+            .lock()
+            .map(|tasks| tasks.len())
+            .unwrap_or(0)
+    }
 }
 
 impl Drop for Database {

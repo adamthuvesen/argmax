@@ -1,6 +1,10 @@
 // Argmax library crate. The Rust/Tauri runtime is being filled in section by
 // section under openspec/changes/port-to-rust-tauri.
 
+use std::sync::Arc;
+
+use tauri::Manager;
+
 pub mod approvals;
 pub mod attachments;
 pub mod checks;
@@ -31,10 +35,10 @@ use util::startup_timer::StartupTimer;
 
 /// Construct and run the Tauri app.
 pub fn run() {
-    let timer = StartupTimer::new();
+    let timer = Arc::new(StartupTimer::new());
     timer.mark("boot");
 
-    let specta_builder = ipc::specta_builder::<tauri::Wry>();
+    let specta_builder = ipc::specta_builder();
 
     // Codegen: emit `src/shared/bindings.d.ts` on every debug startup so
     // the renderer's TS surface stays in lockstep with the Rust command
@@ -51,7 +55,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(state::AppState::new())
+        .manage(state::AppState::with_startup_timer(timer.clone()))
         .invoke_handler(specta_builder.invoke_handler())
         .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))
         .on_window_event(dock::clear_badge_on_focus)
@@ -63,8 +67,30 @@ pub fn run() {
             if let Err(e) = util::tracing_init::init(user_data.as_deref()) {
                 eprintln!("argmax: tracing init failed: {e}");
             }
+            if let Some(user_data) = user_data.as_ref() {
+                let data_dir = user_data.join("local-state");
+                if let Err(e) = std::fs::create_dir_all(&data_dir) {
+                    tracing::warn!(error = ?e, path = %data_dir.display(), "failed to create data directory");
+                } else {
+                    match persistence::Database::open(data_dir.join("argmax.sqlite")) {
+                        Ok(database) => {
+                            let state = tauri::Manager::state::<state::AppState>(app);
+                            if state.db.set(Arc::new(database)).is_err() {
+                                tracing::warn!("database state was already initialized");
+                            }
+                            state.startup_timer.mark("db.open");
+                        }
+                        Err(e) => tracing::warn!(error = ?e, "failed to open database"),
+                    }
+                }
+            }
+            timer.mark("services.construct");
             if let Err(e) = menu::install_app_menu(app.handle(), cfg!(debug_assertions)) {
                 tracing::warn!(error = ?e, "failed to install app menu");
+            }
+            timer.mark("ipc.register");
+            if app.get_webview_window("main").is_some() {
+                timer.mark("window.create");
             }
             tracing::info!(boot_ms = timer.boot_to_now_ms() as u64, "tracing online");
             Ok(())
@@ -93,7 +119,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let out = dir.path().join("bindings.d.ts");
 
-        let builder = ipc::specta_builder::<tauri::Wry>();
+        let builder = ipc::specta_builder();
         builder
             .export(specta_typescript(), &out)
             .expect("specta export ok");

@@ -10,11 +10,12 @@
 // a new envelope.
 
 use serde::Serialize;
+use specta::Type;
 use thiserror::Error;
 
 pub type ArgmaxResult<T> = Result<T, ArgmaxError>;
 
-#[derive(Debug, Clone, Error, Serialize)]
+#[derive(Debug, Clone, Error, Serialize, Type)]
 #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ArgmaxError {
     #[error("invalid input ({})", .issues.len())]
@@ -61,7 +62,7 @@ impl ArgmaxError {
 
 /// A single boundary-validation failure. Mirrors today's Zod
 /// `InvalidInputIssue { path, code, message }` shape.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct InvalidInputIssue {
     pub path: Vec<String>,
     pub code: &'static str,

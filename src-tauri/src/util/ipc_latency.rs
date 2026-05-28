@@ -48,6 +48,7 @@ impl LatencyRing {
 #[derive(Debug, Default)]
 pub struct IpcLatencyRegistry {
     per_channel: Mutex<HashMap<String, LatencyRing>>,
+    total_recorded: Mutex<HashMap<String, usize>>,
 }
 
 impl IpcLatencyRegistry {
@@ -60,6 +61,8 @@ impl IpcLatencyRegistry {
         map.entry(channel.to_owned())
             .or_insert_with(LatencyRing::new)
             .record(latency);
+        let mut totals = self.total_recorded.lock().expect("ipc latency poisoned");
+        *totals.entry(channel.to_owned()).or_insert(0) += 1;
     }
 
     pub fn p50(&self, channel: &str) -> Option<Duration> {
@@ -84,6 +87,15 @@ impl IpcLatencyRegistry {
             .expect("ipc latency poisoned")
             .get(channel)
             .map(|ring| ring.len)
+            .unwrap_or(0)
+    }
+
+    pub fn total_recorded(&self, channel: &str) -> usize {
+        self.total_recorded
+            .lock()
+            .expect("ipc latency poisoned")
+            .get(channel)
+            .copied()
             .unwrap_or(0)
     }
 

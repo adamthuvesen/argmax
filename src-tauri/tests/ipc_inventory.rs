@@ -56,7 +56,7 @@ fn every_command_is_registered() {
         "source command renames drifted from fixture"
     );
 
-    let bindings = argmax_lib::ipc::specta_builder::<tauri::Wry>()
+    let bindings = argmax_lib::ipc::specta_builder()
         .export_str(Typescript::default().bigint(BigIntExportBehavior::Number))
         .expect("export bindings");
     let exported_commands = bindings.matches("TAURI_INVOKE(").count();

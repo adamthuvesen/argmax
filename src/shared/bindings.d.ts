@@ -146,20 +146,40 @@ async dashboardLoad(input: DashboardLoadInput) : Promise<void> {
 async skillsList(input: SkillsListInput) : Promise<void> {
     await TAURI_INVOKE("skills_list", { input });
 },
-async systemOpenPath(input: SystemOpenPathInput) : Promise<void> {
-    await TAURI_INVOKE("system_open_path", { input });
+async systemOpenPath(input: SystemOpenPathInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_open_path", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async systemListDetectedIdes(input: SystemListDetectedIdesInput) : Promise<void> {
-    await TAURI_INVOKE("system_list_detected_ides", { input });
+async systemListDetectedIdes(input: SystemListDetectedIdesInput) : Promise<DetectedIde[]> {
+    return await TAURI_INVOKE("system_list_detected_ides", { input });
 },
-async systemDiagnostics(input: SystemDiagnosticsInput) : Promise<void> {
-    await TAURI_INVOKE("system_diagnostics", { input });
+async systemDiagnostics(input: SystemDiagnosticsInput) : Promise<Result<DiagnosticsReport, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_diagnostics", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async systemVacuumDatabase(input: SystemVacuumDatabaseInput) : Promise<void> {
-    await TAURI_INVOKE("system_vacuum_database", { input });
+async systemVacuumDatabase(input: SystemVacuumDatabaseInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_vacuum_database", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async systemSetTheme(input: SystemSetThemeInput) : Promise<void> {
-    await TAURI_INVOKE("system_set_theme", { input });
+async systemSetTheme(input: SystemSetThemeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("system_set_theme", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
 async mcpList(input: McpListInput) : Promise<void> {
     await TAURI_INVOKE("mcp_list", { input });
@@ -229,6 +249,7 @@ export type ApprovalId = string
 export type ApprovalResolution = "approved" | "rejected"
 export type ApprovalsPendingInput = Record<string, never>
 export type ApprovalsResolveInput = { approvalId: ApprovalId; status: ApprovalResolution }
+export type ArgmaxError = { code: "INVALID_INPUT"; issues: InvalidInputIssue[] } | { code: "RECORD_NOT_FOUND"; kind: string; id: string } | { code: "MIGRATION_DRIFT"; detail: string } | { code: "SERVICE_ERROR"; sub_code: string; message: string }
 export type AttachmentMimeType = "image/png" | "image/jpeg" | "image/gif" | "image/webp"
 export type AttachmentPath = string
 export type AttachmentSizeBytes = number
@@ -242,6 +263,9 @@ export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
 export type DashboardListInput = Record<string, never>
 export type DashboardLoadInput = Record<string, never>
+export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
+export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
+export type DiagnosticsReport = { appVersion: string; electronVersion: string; nodeVersion: string; sqliteVersion: string; databasePath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
 export type FileContent = string
 export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
 export type GitCommitMessage = string
@@ -251,10 +275,18 @@ export type GitViewOrCreatePrInput = { sessionId: SessionId }
 export type GrepTargetId = string
 export type HealthPingInput = Record<string, never>
 export type HealthPingOutput = { ok: boolean; timestamp: string }
+export type IdeId = "vscode" | "cursor" | "windsurf" | "zed" | "iterm" | "terminal"
+/**
+ * A single boundary-validation failure. Mirrors today's Zod
+ * `InvalidInputIssue { path, code, message }` shape.
+ */
+export type InvalidInputIssue = { path: string[]; code: string; message: string }
+export type IpcChannelStats = { channel: string; count: number; totalRecorded: number; p50: number; p99: number }
 export type LearningsDeleteInput = { id: NonEmptyString }
 export type LearningsListInput = { projectId: ProjectId; limit: Limit200 | null }
 export type LearningsUpdateInput = { id: NonEmptyString; summary: NonEmptyString | null; verified: boolean | null }
 export type Limit200 = number
+export type LogEntry = { timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
 export type McpAuthResizeInput = { sessionId: McpAuthSessionId; cols: TerminalCols; rows: TerminalRows }
 export type McpAuthSessionId = string
 export type McpAuthStartInput = { cols: TerminalCols; rows: TerminalRows }
@@ -292,6 +324,8 @@ export type ReviewListChangedFilesForProjectInput = { projectId: ProjectId }
 export type ReviewListChangedFilesInput = { workspaceId: WorkspaceId }
 export type ReviewLoadDiffForProjectInput = { projectId: ProjectId; filePath: RelativePath | null }
 export type ReviewLoadDiffInput = { workspaceId: WorkspaceId; filePath: RelativePath | null }
+export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; checkpoints: number; learnings: number; usageEvents: number }
+export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SearchQuery = string
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }
@@ -299,9 +333,12 @@ export type SessionId = string
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
+export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
+export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
 export type SystemDiagnosticsInput = Record<string, never>
 export type SystemListDetectedIdesInput = Record<string, never>
+export type SystemOk = { ok: boolean }
 export type SystemOpenPathInput = { path: OpenPath; cwd: NonEmptyString | null }
 export type SystemSetThemeInput = { mode: ThemeMode }
 export type SystemVacuumDatabaseInput = Record<string, never>

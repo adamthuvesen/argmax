@@ -99,8 +99,8 @@ pub(crate) fn unported(channel: &str) -> ! {
     panic!("{channel} command is not ported yet")
 }
 
-pub fn specta_builder<R: tauri::Runtime>() -> SpectaBuilder<R> {
-    SpectaBuilder::<R>::new().commands(collect_commands![
+pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
+    SpectaBuilder::<tauri::Wry>::new().commands(collect_commands![
         health::health_ping,
         projects::projects_list,
         projects::projects_pick_folder,

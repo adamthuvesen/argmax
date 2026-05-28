@@ -193,11 +193,8 @@ fn extract_json_mcp_servers(
             .get("type")
             .and_then(|v| v.as_str())
             .map(|s| s.to_lowercase());
-        let transport = classify_transport(
-            explicit_type.as_deref(),
-            command.as_deref(),
-            url.as_deref(),
-        );
+        let transport =
+            classify_transport(explicit_type.as_deref(), command.as_deref(), url.as_deref());
         let env_keys = raw_obj
             .get("env")
             .and_then(|v| v.as_object())
@@ -489,10 +486,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn find<'a>(
-        listings: &'a [McpClientListing],
-        client: ProviderId,
-    ) -> &'a McpClientListing {
+    fn find(listings: &[McpClientListing], client: ProviderId) -> &McpClientListing {
         listings
             .iter()
             .find(|l| l.client == client)
@@ -510,7 +504,11 @@ mod tests {
             vec![ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor]
         );
         for listing in &listings {
-            assert!(!listing.config_exists, "{:?} should be missing", listing.client);
+            assert!(
+                !listing.config_exists,
+                "{:?} should be missing",
+                listing.client
+            );
             assert!(listing.servers.is_empty());
             assert!(listing.error.is_none());
         }
@@ -540,7 +538,10 @@ mod tests {
         let claude = find(&listings, ProviderId::Claude);
         assert!(claude.config_exists);
         let names: Vec<&str> = claude.servers.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, vec!["http-one", "infer-http", "infer-stdio", "stdio-one"]);
+        assert_eq!(
+            names,
+            vec!["http-one", "infer-http", "infer-stdio", "stdio-one"]
+        );
 
         let stdio_one = claude
             .servers
@@ -605,7 +606,11 @@ mod tests {
         let listings = list_mcp_servers(Some(dir.path())).await;
         let claude = find(&listings, ProviderId::Claude);
         assert!(claude.config_exists);
-        assert!(claude.error.as_deref().unwrap_or("").contains("Could not parse"));
+        assert!(claude
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Could not parse"));
         assert!(claude.servers.is_empty());
     }
 
@@ -651,11 +656,7 @@ default_tools_approval_mode = "approve"
         let names: Vec<&str> = codex.servers.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, vec!["context7", "linear", "trace"]);
 
-        let trace = codex
-            .servers
-            .iter()
-            .find(|s| s.name == "trace")
-            .unwrap();
+        let trace = codex.servers.iter().find(|s| s.name == "trace").unwrap();
         assert_eq!(trace.transport, McpTransport::Stdio);
         assert_eq!(trace.command.as_deref(), Some("uv"));
         assert!(trace.url.is_none());
@@ -666,11 +667,7 @@ default_tools_approval_mode = "approve"
             vec!["KB_COLLECTIONS".to_string(), "LOG_LEVEL".to_string()]
         );
 
-        let context7 = codex
-            .servers
-            .iter()
-            .find(|s| s.name == "context7")
-            .unwrap();
+        let context7 = codex.servers.iter().find(|s| s.name == "context7").unwrap();
         assert_eq!(context7.transport, McpTransport::Http);
         assert_eq!(
             context7.url.as_deref(),

@@ -437,10 +437,6 @@ export const createCheckpointInputSchema = z.object({
   label: z.string().min(1)
 });
 
-export const selectPreferredAttemptInputSchema = z.object({
-  sessionId: sessionIdSchema
-});
-
 export const learningsListInputSchema = z.object({
   projectId: projectIdSchema,
   limit: z.number().int().min(1).max(200).optional()
@@ -474,63 +470,6 @@ export const workspaceSetPinnedInputSchema = z.object({
  * Commit message rules: non-empty after trim, capped to 64 KB so a runaway
  * paste cannot blow past argv length limits.
  */
-// ---------------------------------------------------------------------------
-// Tournament mode (idea #1: parallel agents + auto-judge). See
-// openspec/changes/add-tournament-mode/.
-// ---------------------------------------------------------------------------
-
-// Cap the per-contestant free-form `config` blob. Without this a buggy or
-// runaway caller can ship megabytes of nested JSON that will be persisted in
-// tournament storage and ferried through the dashboard delta channel.
-const CONTESTANT_CONFIG_BYTE_CAP = 16 * 1024;
-const contestantConfigSchema = z.object({
-  provider: providerIdSchema,
-  modelId: z.string().min(1).max(256),
-  modelLabel: z.string().min(1).max(256),
-  reasoningEffort: reasoningEffortSchema.optional(),
-  // Restrict the contestant config blob to JSON-flat scalar values so it
-  // cannot smuggle arbitrary nested structures that would later be persisted
-  // and re-ferried through the dashboard delta channel. The byte cap stays
-  // as a backstop. (audit-2026-05-17 M1)
-  config: z
-    .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
-    .optional()
-    .superRefine((value, ctx) => {
-      if (!value) return;
-      const encoded = JSON.stringify(value);
-      if (encoded.length > CONTESTANT_CONFIG_BYTE_CAP) {
-        ctx.addIssue({
-          code: "custom",
-          message: `config exceeds ${CONTESTANT_CONFIG_BYTE_CAP} bytes when serialized`
-        });
-      }
-    })
-});
-
-export const tournamentLaunchInputSchema = z.object({
-  projectId: projectIdSchema,
-  taskLabel: z.string().min(1).max(200),
-  prompt: promptSchema,
-  policyId: z.string().min(1),
-  contestants: z.array(contestantConfigSchema).min(2).max(8),
-  cols: terminalCols,
-  rows: terminalRows
-});
-
-export const tournamentListInputSchema = z.object({
-  projectId: projectIdSchema
-});
-
-export const tournamentGetInputSchema = z.object({
-  tournamentId: z.string().min(1)
-});
-
-export const tournamentKeepInputSchema = z.object({
-  tournamentId: z.string().min(1),
-  contestantIndex: z.number().int().nonnegative(),
-  reason: z.string().max(500).optional()
-});
-
 export const gitCommitInputSchema = z.object({
   workspaceId: workspaceIdSchema,
   message: z
@@ -693,7 +632,6 @@ export const ipcSchemas = {
   "workspace:grep-content": workspaceGrepContentInputSchema,
   "checks:run": runCheckInputSchema,
   "checkpoints:create": createCheckpointInputSchema,
-  "attempts:select-preferred": selectPreferredAttemptInputSchema,
   "dashboard:load": dashboardLoadInputSchema,
   "skills:list": skillsListInputSchema,
   "system:open-path": systemOpenPathInputSchema,
@@ -717,12 +655,7 @@ export const ipcSchemas = {
   "git:commit": gitCommitInputSchema,
   "git:push": gitPushInputSchema,
   "git:create-branch": gitCreateBranchInputSchema,
-  "git:view-or-create-pr": gitViewOrCreatePrInputSchema,
-  "tournament:launch": tournamentLaunchInputSchema,
-  "tournament:list": tournamentListInputSchema,
-  "tournament:get": tournamentGetInputSchema,
-  "tournament:keep": tournamentKeepInputSchema,
-  "scoring:list-policies": z.void()
+  "git:view-or-create-pr": gitViewOrCreatePrInputSchema
 } as const;
 
 export type IpcChannel = keyof typeof ipcSchemas;
@@ -751,7 +684,6 @@ export type SessionEventsSinceInputParsed = z.infer<typeof sessionEventsSinceInp
 export type WorkspaceStatusInputParsed = z.infer<typeof workspaceStatusInputSchema>;
 export type RunCheckInputParsed = z.infer<typeof runCheckInputSchema>;
 export type CreateCheckpointInputParsed = z.infer<typeof createCheckpointInputSchema>;
-export type SelectPreferredAttemptInputParsed = z.infer<typeof selectPreferredAttemptInputSchema>;
 export type LoadDiffInputParsed = z.infer<typeof loadDiffInputSchema>;
 export type WorkspaceListFilesInputParsed = z.infer<typeof workspaceListFilesInputSchema>;
 export type WorkspaceReadFileInputParsed = z.infer<typeof workspaceReadFileInputSchema>;
@@ -779,7 +711,3 @@ export type GitCommitInputParsed = z.infer<typeof gitCommitInputSchema>;
 export type GitPushInputParsed = z.infer<typeof gitPushInputSchema>;
 export type GitCreateBranchInputParsed = z.infer<typeof gitCreateBranchInputSchema>;
 export type GitViewOrCreatePrInputParsed = z.infer<typeof gitViewOrCreatePrInputSchema>;
-export type TournamentLaunchInputParsed = z.infer<typeof tournamentLaunchInputSchema>;
-export type TournamentListInputParsed = z.infer<typeof tournamentListInputSchema>;
-export type TournamentGetInputParsed = z.infer<typeof tournamentGetInputSchema>;
-export type TournamentKeepInputParsed = z.infer<typeof tournamentKeepInputSchema>;

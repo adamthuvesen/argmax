@@ -66,7 +66,6 @@ describe("App sidebar", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     const secondEvent: DashboardSnapshot["events"][number] = {
       id: "event-2",

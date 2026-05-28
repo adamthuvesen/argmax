@@ -16,7 +16,7 @@ use crate::persistence::Database;
 // ---------------------------------------------------------------------------
 // Placeholder service types. Each is replaced by the real implementation
 // as its subsystem lands (see openspec/changes/port-to-rust-tauri/tasks.md
-// sections 3, 5, 6, 8, 9, 10).
+// sections 3, 5, 6, 8, 10).
 // ---------------------------------------------------------------------------
 
 pub struct ProviderSessionService;
@@ -24,7 +24,6 @@ pub struct TerminalService;
 pub struct McpAuthService;
 pub struct WorkspaceService;
 pub struct GhPoller;
-pub struct TournamentService;
 pub struct UpdateService;
 
 #[derive(Default)]
@@ -35,7 +34,6 @@ pub struct AppState {
     pub mcp_auth: OnceCell<Arc<McpAuthService>>,
     pub workspaces: OnceCell<Arc<WorkspaceService>>,
     pub gh_poller: OnceCell<Arc<GhPoller>>,
-    pub tournaments: OnceCell<Arc<TournamentService>>,
     pub update_service: OnceCell<Arc<UpdateService>>,
 }
 

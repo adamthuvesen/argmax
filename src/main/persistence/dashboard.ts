@@ -14,11 +14,7 @@ import {
   type RawOutputRow
 } from "./events.js";
 import { listProjects } from "./projects.js";
-import {
-  loadPreferredSessionIds,
-  sessionRowToSummary,
-  type SessionRow
-} from "./sessions.js";
+import { sessionRowToSummary, type SessionRow } from "./sessions.js";
 import { workspaceRowToSummary, type WorkspaceRow } from "./workspaces.js";
 import type { DashboardSnapshot } from "../../shared/types.js";
 
@@ -59,7 +55,6 @@ export function listWorkspaceStatus(
   // read snapshot consistent and amortizes the journaling overhead across
   // the slice queries.
   return connection.transaction((): WorkspaceStatusSnapshot => {
-    const preferredSessionIds = loadPreferredSessionIds(connection);
     const workspaceIds = input?.workspaceIds
       ? [...new Set(input.workspaceIds)].slice(0, DASHBOARD_ROW_LIMIT)
       : undefined;
@@ -122,7 +117,7 @@ export function listWorkspaceStatus(
           ORDER BY outer_s.last_activity_at DESC
         `
       ).all(...sessionFilter.params, ...workspaceFilter.params) as SessionRow[]
-    ).map((row) => sessionRowToSummary(row, preferredSessionIds.has(row.id)));
+    ).map((row) => sessionRowToSummary(row));
 
     const checks = (
       prepared(

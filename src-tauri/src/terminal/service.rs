@@ -306,7 +306,10 @@ fn spawn_exit_watcher(
         // Block waiting for the child. The child handle is owned exclusively
         // here — no shared mutex, so the wait can't deadlock against a
         // concurrent `terminate` / `write` / `resize`.
-        let exit_code = child.wait().map(|status| status.exit_code() as i32).unwrap_or(-1);
+        let exit_code = child
+            .wait()
+            .map(|status| status.exit_code() as i32)
+            .unwrap_or(-1);
         // portable_pty's ExitStatus doesn't expose POSIX signal numbers
         // cross-platform; emit `None` when unavailable to match the TS shape.
         let signal: Option<i32> = None;
@@ -364,7 +367,7 @@ mod tests {
     fn setup() -> (Arc<Database>, String, TempDir, TempDir) {
         let db_dir = TempDir::new().unwrap();
         let cwd_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&db_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(db_dir.path().join("argmax.sqlite")).unwrap());
         {
             let conn = database.connection();
             persist_project(
@@ -531,7 +534,10 @@ mod tests {
         // (15 for SIGTERM, 9 for SIGKILL) shifted, or the raw value
         // depending on portable_pty's mapping. We just want a non-zero
         // sentinel — the test's contract is "the child died".
-        assert!(info.exit_code != 0, "expected non-zero exit code after kill");
+        assert!(
+            info.exit_code != 0,
+            "expected non-zero exit code after kill"
+        );
     }
 
     #[tokio::test]

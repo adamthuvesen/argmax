@@ -5,7 +5,6 @@ pub mod validation;
 
 pub mod approvals;
 pub mod attachments;
-pub mod attempts;
 pub mod checkpoints;
 pub mod checks;
 pub mod dashboard;
@@ -17,12 +16,10 @@ pub mod projects;
 pub mod providers;
 pub mod prs;
 pub mod review;
-pub mod scoring;
 pub mod session;
 pub mod skills;
 pub mod system;
 pub mod terminal;
-pub mod tournaments;
 pub mod workspace_files;
 pub mod workspaces;
 
@@ -72,7 +69,6 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "workspace:grep-content",
     "checks:run",
     "checkpoints:create",
-    "attempts:select-preferred",
     "dashboard:load",
     "skills:list",
     "system:open-path",
@@ -97,11 +93,6 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "git:push",
     "git:create-branch",
     "git:view-or-create-pr",
-    "tournament:launch",
-    "tournament:list",
-    "tournament:get",
-    "tournament:keep",
-    "scoring:list-policies",
 ];
 
 pub(crate) fn unported(channel: &str) -> ! {
@@ -155,7 +146,6 @@ pub fn specta_builder<R: tauri::Runtime>() -> SpectaBuilder<R> {
         workspace_files::workspace_grep_content,
         checks::checks_run,
         checkpoints::checkpoints_create,
-        attempts::attempts_select_preferred,
         dashboard::dashboard_load,
         skills::skills_list,
         system::system_open_path,
@@ -179,11 +169,6 @@ pub fn specta_builder<R: tauri::Runtime>() -> SpectaBuilder<R> {
         git_ops::git_commit,
         git_ops::git_push,
         git_ops::git_create_branch,
-        git_ops::git_view_or_create_pr,
-        tournaments::tournament_launch,
-        tournaments::tournament_list,
-        tournaments::tournament_get,
-        tournaments::tournament_keep,
-        scoring::scoring_list_policies
+        git_ops::git_view_or_create_pr
     ])
 }

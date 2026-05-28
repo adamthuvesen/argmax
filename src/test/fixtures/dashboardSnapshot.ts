@@ -57,7 +57,6 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T15:54:00.000Z",
-      preferred: false
     }
   ],
   events: [

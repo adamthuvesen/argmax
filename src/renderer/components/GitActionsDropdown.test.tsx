@@ -17,7 +17,6 @@ const sessionStub: SessionSummary = {
   startedAt: "2026-05-14T00:00:00Z",
   completedAt: null,
   lastActivityAt: "2026-05-14T00:00:00Z",
-  preferred: true
 };
 
 const workspaceStub: WorkspaceSummary = {

@@ -65,7 +65,6 @@ Match the task to the doc(s):
 - **GitHub PR / CI feedback loop** → [gh.md](agents/docs/gh.md).
 - **Learnings extraction / project memory** → [memory.md](agents/docs/memory.md).
 - **Chat surface (cards, thinking gate, per-turn header, file preview popover)** → [chat-cards.md](agents/docs/chat-cards.md).
-- **Tournaments backend** → [tournaments.md](agents/docs/tournaments.md).
 - **Styles, tokens, light/dark theme** → [styling.md](agents/docs/styling.md).
 - **Native module rebuild, lifecycle, preload bridge, packaging** → [electron.md](agents/docs/electron.md) and [release.md](agents/docs/release.md).
 - **Test layout, jsdom traps, regression tests** → [testing.md](agents/docs/testing.md).
@@ -91,7 +90,6 @@ Start in **[architecture.md](agents/docs/architecture.md)** — it's the map. Fo
 - [terminal.md](agents/docs/terminal.md) — integrated terminal panel (separate from provider PTYs)
 - [gh.md](agents/docs/gh.md) — GitHub CI feedback loop (poller, follow-up sessions)
 - [memory.md](agents/docs/memory.md) — project-scoped learnings, extraction, injection
-- [tournaments.md](agents/docs/tournaments.md) — parallel agents in worktrees, deterministic judge, keep-winner flow
 - [chat-cards.md](agents/docs/chat-cards.md) — PlanCard / QuestionCard rendering, tool-deny handling, thinking-gate, submit-terminate flow
 
 ### Build & test

@@ -209,37 +209,3 @@ describe("listProjects aggregation (audit H9)", () => {
     database.connection.close();
   });
 });
-
-describe("selectPreferredAttempt atomicity (audit H12, task 10.3)", () => {
-  it("two concurrent calls do not interleave; the returned session reflects the just-written preferred state", () => {
-    // better-sqlite3 is synchronous, but the contract under test is that
-    // each `selectPreferredAttempt` call wraps its read+write+re-read in a
-    // single transaction so the returned summary reflects the row that
-    // *its* call wrote (no overlap with a sibling call's transaction).
-    const database = createDatabase(":memory:", { seed: false });
-    const projectId = seedProject(database, "atom");
-    seedWorkspace(database, "ws-atom", projectId, "running", "task-atom");
-    seedSession(database, "session-a", "ws-atom");
-    seedSession(database, "session-b", "ws-atom");
-
-    // Issue both calls back-to-back. With the transaction wrap, the second
-    // call's UPSERT takes effect for the same `(projectId, taskLabel)` key
-    // and the read inside its transaction sees the new row. Without the
-    // wrap, we previously returned a stale summary marked preferred=true
-    // even though the persisted row pointed at the *other* session.
-    const a = database.selectPreferredAttempt("session-a");
-    const b = database.selectPreferredAttempt("session-b");
-
-    expect(a.preferred).toBe(true);
-    expect(b.preferred).toBe(true);
-
-    // Final state: only session-b is the persisted preference.
-    const snapshot = database.loadDashboard();
-    const sessionA = snapshot.sessions.find((s) => s.id === "session-a");
-    const sessionB = snapshot.sessions.find((s) => s.id === "session-b");
-    expect(sessionA?.preferred).toBe(false);
-    expect(sessionB?.preferred).toBe(true);
-
-    database.connection.close();
-  });
-});

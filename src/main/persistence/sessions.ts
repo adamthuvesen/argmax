@@ -60,7 +60,7 @@ export interface SessionStateInput {
   lastActivityAt?: string;
 }
 
-export function sessionRowToSummary(row: SessionRow, preferred: boolean): SessionSummary {
+export function sessionRowToSummary(row: SessionRow): SessionSummary {
   // model_id is backfilled by migration v5 and required by `persistSession`'s
   // TypeScript input. A null here means a buggy write path or a corrupted
   // database — fail visibly rather than papering over with the human label.
@@ -83,7 +83,6 @@ export function sessionRowToSummary(row: SessionRow, preferred: boolean): Sessio
     startedAt: row.started_at,
     completedAt: row.completed_at,
     lastActivityAt: row.last_activity_at,
-    preferred,
     costUsd: row.cost_usd,
     tokens: {
       input: row.input_tokens,
@@ -223,7 +222,7 @@ export function findSessionById(connection: Database.Database, sessionId: string
   if (!row) {
     throw new RecordNotFoundError("session", sessionId);
   }
-  return sessionRowToSummary(row, isPreferredSession(connection, row.id, row.workspace_id));
+  return sessionRowToSummary(row);
 }
 
 /**
@@ -243,7 +242,7 @@ function findSessionByIdNoPreferred(
   if (!row) {
     throw new RecordNotFoundError("session", sessionId);
   }
-  return sessionRowToSummary(row, false);
+  return sessionRowToSummary(row);
 }
 
 export function updateSessionLastModelId(
@@ -327,23 +326,6 @@ export function listSessionIdsForWorkspace(connection: Database.Database, worksp
     .prepare("SELECT id FROM sessions WHERE workspace_id = ?")
     .all(workspaceId) as Array<{ id: string }>;
   return rows.map((row) => row.id);
-}
-
-function isPreferredSession(
-  connection: Database.Database,
-  sessionId: string,
-  workspaceId: string
-): boolean {
-  const workspace = findWorkspaceById(connection, workspaceId);
-  const key = preferredAttemptKey(workspace.projectId, workspace.taskLabel);
-  const row = connection.prepare("SELECT value_json FROM ui_state WHERE key = ?").get(key) as
-    | { value_json: string }
-    | undefined;
-  if (!row) {
-    return false;
-  }
-  const parsed = safeJsonParseRecord(row.value_json, "sessions.preferredAttempt");
-  return parsed.sessionId === sessionId;
 }
 
 function preferredAttemptKey(projectId: string, taskLabel: string): string {

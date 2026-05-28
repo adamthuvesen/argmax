@@ -25,9 +25,7 @@ use crate::persistence::approvals::{
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
-use crate::persistence::sessions::{
-    find_session_by_id, update_session_state, SessionStateInput,
-};
+use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 use crate::sessions::attention::{
     compute_session_attention, AttentionState, SessionAttentionInput,
 };
@@ -247,7 +245,7 @@ mod tests {
 
     fn setup() -> (Arc<Database>, String, TempDir) {
         let dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(dir.path().join("argmax.sqlite")).unwrap());
 
         {
             let conn = database.connection();

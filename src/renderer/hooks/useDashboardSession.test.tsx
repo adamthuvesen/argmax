@@ -44,7 +44,6 @@ function makeSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
     startedAt: "2026-05-12T15:00:01.000Z",
     completedAt: null,
     lastActivityAt: "2026-05-12T15:00:01.000Z",
-    preferred: false,
     ...overrides
   };
 }

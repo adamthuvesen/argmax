@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -8,7 +6,7 @@ use super::validation::{
     CommandText, FileContent, GitCommitMessage, McpAuthSessionId, NonEmptyString, OpenPath,
     PermissionMode, ProjectId, Prompt, ProviderId, ReasoningEffort, RelativePath, RepoPath,
     SearchQuery, SessionId, StreamChunk, TaskLabel, TerminalId, ThemeMode, WorkspaceId,
-    ATTACHMENT_BYTE_CAP, MAX_CONTESTANT_CONFIG_BYTES,
+    ATTACHMENT_BYTE_CAP,
 };
 
 macro_rules! empty_input {
@@ -30,7 +28,6 @@ empty_input!(SystemListDetectedIdesInput);
 empty_input!(SystemDiagnosticsInput);
 empty_input!(SystemVacuumDatabaseInput);
 empty_input!(McpListInput);
-empty_input!(ScoringListPoliciesInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -510,12 +507,6 @@ pub struct CheckpointsCreateInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AttemptsSelectPreferredInput {
-    pub session_id: SessionId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillsListInput {
     pub provider: ProviderId,
     pub workspace_id: Option<WorkspaceId>,
@@ -640,98 +631,6 @@ pub struct GitCreateBranchInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitViewOrCreatePrInput {
     pub session_id: SessionId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ContestantConfigInput {
-    pub provider: ProviderId,
-    pub model_id: NonEmptyString,
-    pub model_label: NonEmptyString,
-    pub reasoning_effort: Option<ReasoningEffort>,
-    pub config: Option<ContestantConfigMap>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(untagged)]
-pub enum ContestantConfigValue {
-    String(String),
-    Number(f64),
-    Bool(bool),
-    Null(()),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(transparent)]
-pub struct ContestantConfigMap(BTreeMap<String, ContestantConfigValue>);
-
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(transparent)]
-pub struct ContestantList(Vec<ContestantConfigInput>);
-
-impl<'de> Deserialize<'de> for ContestantConfigMap {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = BTreeMap::<String, ContestantConfigValue>::deserialize(deserializer)?;
-        let encoded = serde_json::to_vec(&value).map_err(serde::de::Error::custom)?;
-        if encoded.len() > MAX_CONTESTANT_CONFIG_BYTES {
-            Err(serde::de::Error::custom(format!(
-                "config exceeds {MAX_CONTESTANT_CONFIG_BYTES} bytes when serialized"
-            )))
-        } else {
-            Ok(Self(value))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ContestantList {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = Vec::<ContestantConfigInput>::deserialize(deserializer)?;
-        if !(2..=8).contains(&value.len()) {
-            Err(serde::de::Error::custom(
-                "contestants must contain between 2 and 8 entries",
-            ))
-        } else {
-            Ok(Self(value))
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TournamentLaunchInput {
-    pub project_id: ProjectId,
-    pub task_label: TaskLabel,
-    pub prompt: Prompt,
-    pub policy_id: NonEmptyString,
-    pub contestants: ContestantList,
-    pub cols: TerminalCols,
-    pub rows: TerminalRows,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TournamentListInput {
-    pub project_id: ProjectId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TournamentGetInput {
-    pub tournament_id: NonEmptyString,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TournamentKeepInput {
-    pub tournament_id: NonEmptyString,
-    pub contestant_index: u32,
-    pub reason: Option<String>,
 }
 
 #[cfg(test)]
@@ -868,46 +767,5 @@ mod tests {
             "expectedMtimeMs": -1
         });
         assert!(serde_json::from_value::<WorkspaceWriteFileInput>(stale_write).is_err());
-    }
-
-    #[test]
-    fn tournament_rejects_nested_or_too_few_contestants() {
-        let nested_config = serde_json::json!({
-            "projectId": "p1",
-            "taskLabel": "compare",
-            "prompt": "build",
-            "policyId": "default",
-            "contestants": [
-                {
-                    "provider": "codex",
-                    "modelId": "m1",
-                    "modelLabel": "M1",
-                    "config": { "nested": { "nope": true } }
-                },
-                {
-                    "provider": "claude",
-                    "modelId": "m2",
-                    "modelLabel": "M2"
-                }
-            ],
-            "cols": 80,
-            "rows": 24
-        });
-        assert!(serde_json::from_value::<TournamentLaunchInput>(nested_config).is_err());
-
-        let too_few = serde_json::json!({
-            "projectId": "p1",
-            "taskLabel": "compare",
-            "prompt": "build",
-            "policyId": "default",
-            "contestants": [{
-                "provider": "codex",
-                "modelId": "m1",
-                "modelLabel": "M1"
-            }],
-            "cols": 80,
-            "rows": 24
-        });
-        assert!(serde_json::from_value::<TournamentLaunchInput>(too_few).is_err());
     }
 }

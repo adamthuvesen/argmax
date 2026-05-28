@@ -82,7 +82,10 @@ impl CheckpointService {
         &self.checkpoint_dir
     }
 
-    pub async fn create_checkpoint(&self, input: CreateCheckpointInput) -> ArgmaxResult<Checkpoint> {
+    pub async fn create_checkpoint(
+        &self,
+        input: CreateCheckpointInput,
+    ) -> ArgmaxResult<Checkpoint> {
         let workspace = {
             let connection = self.database.connection();
             find_workspace_by_id(&connection, &input.workspace_id)?
@@ -136,12 +139,14 @@ impl CheckpointService {
                     format!("could not create checkpoint directory: {error}"),
                 )
             })?;
-        tokio::fs::write(&patch_path, &diff).await.map_err(|error| {
-            ArgmaxError::service(
-                "CHECKPOINT_WRITE_FAILED",
-                format!("could not write checkpoint patch: {error}"),
-            )
-        })?;
+        tokio::fs::write(&patch_path, &diff)
+            .await
+            .map_err(|error| {
+                ArgmaxError::service(
+                    "CHECKPOINT_WRITE_FAILED",
+                    format!("could not write checkpoint patch: {error}"),
+                )
+            })?;
 
         let connection = self.database.connection();
         persist_checkpoint(
@@ -168,10 +173,7 @@ async fn build_checkpoint_diff(workspace_path: &Path) -> ArgmaxResult<Vec<u8>> {
     })?;
     let temp_index = temp_dir.path().join("index");
 
-    let env_opts = || {
-        GitExecOptions::default()
-            .with_env("GIT_INDEX_FILE", temp_index.as_os_str())
-    };
+    let env_opts = || GitExecOptions::default().with_env("GIT_INDEX_FILE", temp_index.as_os_str());
 
     let mut text_opts = env_opts();
     text_opts.timeout = GIT_TIMEOUT;

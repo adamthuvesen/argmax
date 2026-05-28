@@ -58,23 +58,6 @@ describe("createDatabase", () => {
     database.connection.close();
   });
 
-  it("marks one attempt as preferred without deleting sibling sessions", () => {
-    const database = createDatabase(":memory:", { seed: true });
-    const session = database.loadDashboard().sessions[0];
-    if (!session) {
-      throw new Error("Seed data must include sessions");
-    }
-
-    const preferred = database.selectPreferredAttempt(session.id);
-    const snapshot = database.loadDashboard();
-
-    expect(preferred.preferred).toBe(true);
-    expect(snapshot.sessions).toHaveLength(4);
-    expect(snapshot.sessions.find((item) => item.id === session.id)?.preferred).toBe(true);
-
-    database.connection.close();
-  });
-
   it("sets wal_autocheckpoint pragma at boot (audit P1.15)", () => {
     // audit-2026-05-11 / SPEC P1.15 — without an explicit
     // `wal_autocheckpoint`, the WAL file can grow without bound on

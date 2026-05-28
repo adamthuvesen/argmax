@@ -19,7 +19,9 @@ use serde::Serialize;
 use specta::Type;
 use tokio::{fs as tokio_fs, io::AsyncReadExt};
 
-use super::git_grep_parser::{parse_git_grep_output, GrepParseOptions, WorkspaceContentSearchResult};
+use super::git_grep_parser::{
+    parse_git_grep_output, GrepParseOptions, WorkspaceContentSearchResult,
+};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, run_git_text_with_allowed_exit_codes};
 use crate::persistence::database::Database;
@@ -288,7 +290,9 @@ async fn read_file_at_path(repo_path: &str, file_path: &str) -> ArgmaxResult<Wor
         });
     }
 
-    let content = tokio_fs::read_to_string(&resolved).await.map_err(io_error)?;
+    let content = tokio_fs::read_to_string(&resolved)
+        .await
+        .map_err(io_error)?;
     Ok(WorkspaceFilePreview::Text {
         content,
         size: metadata.len(),
@@ -361,37 +365,38 @@ async fn write_file_at_path(
     let resolved_for_spawn = resolved.clone();
     let buf = content.as_bytes().to_vec();
     let expected_ino = metadata.ino();
-    let (after_mtime, after_size) = tokio::task::spawn_blocking(move || -> ArgmaxResult<(f64, u64)> {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        let mut options = OpenOptions::new();
-        options.read(true).write(true);
-        options.custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits());
-        let mut file = options.open(&resolved_for_spawn).map_err(io_error)?;
-        let opened_meta = file.metadata().map_err(io_error)?;
-        if opened_meta.ino() != expected_ino {
-            return Err(ArgmaxError::service(
-                "WORKSPACE_FILE_INODE_CHANGED",
-                "File changed while opening for write",
-            ));
-        }
-        file.set_len(0).map_err(io_error)?;
-        // Rewind to start before writing — set_len leaves the cursor where
-        // it was. With a fresh open it's at 0, but writing through Write
-        // after set_len doesn't move the cursor, so this is explicit.
-        use std::io::Seek;
-        file.seek(std::io::SeekFrom::Start(0)).map_err(io_error)?;
-        file.write_all(&buf).map_err(io_error)?;
-        let after = file.metadata().map_err(io_error)?;
-        Ok((mtime_ms(&after), after.len()))
-    })
-    .await
-    .map_err(|error| {
-        ArgmaxError::service(
-            "WORKSPACE_FILE_JOIN_FAILED",
-            format!("write task panicked: {error}"),
-        )
-    })??;
+    let (after_mtime, after_size) =
+        tokio::task::spawn_blocking(move || -> ArgmaxResult<(f64, u64)> {
+            use std::fs::OpenOptions;
+            use std::io::Write;
+            let mut options = OpenOptions::new();
+            options.read(true).write(true);
+            options.custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits());
+            let mut file = options.open(&resolved_for_spawn).map_err(io_error)?;
+            let opened_meta = file.metadata().map_err(io_error)?;
+            if opened_meta.ino() != expected_ino {
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_FILE_INODE_CHANGED",
+                    "File changed while opening for write",
+                ));
+            }
+            file.set_len(0).map_err(io_error)?;
+            // Rewind to start before writing — set_len leaves the cursor where
+            // it was. With a fresh open it's at 0, but writing through Write
+            // after set_len doesn't move the cursor, so this is explicit.
+            use std::io::Seek;
+            file.seek(std::io::SeekFrom::Start(0)).map_err(io_error)?;
+            file.write_all(&buf).map_err(io_error)?;
+            let after = file.metadata().map_err(io_error)?;
+            Ok((mtime_ms(&after), after.len()))
+        })
+        .await
+        .map_err(|error| {
+            ArgmaxError::service(
+                "WORKSPACE_FILE_JOIN_FAILED",
+                format!("write task panicked: {error}"),
+            )
+        })??;
 
     Ok(WorkspaceFileWriteResult::Ok {
         mtime_ms: after_mtime,
@@ -450,7 +455,7 @@ async fn looks_binary(path: &Path) -> ArgmaxResult<bool> {
     let mut file = tokio_fs::File::open(path).await.map_err(io_error)?;
     let mut buffer = vec![0_u8; BINARY_SNIFF_BYTES];
     let read = file.read(&mut buffer).await.map_err(io_error)?;
-    Ok(buffer[..read].iter().any(|&byte| byte == 0))
+    Ok(buffer[..read].contains(&0))
 }
 
 fn resolve_inside_or_err(root: &str, candidate: &str) -> ArgmaxResult<PathBuf> {
@@ -526,10 +531,7 @@ mod tests {
                 settings: ProjectSettings {
                     default_provider: "claude".to_string(),
                     default_model_label: "Claude Haiku 4.5".to_string(),
-                    worktree_location: repo_path
-                        .join(".worktrees")
-                        .to_string_lossy()
-                        .into_owned(),
+                    worktree_location: repo_path.join(".worktrees").to_string_lossy().into_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
                 },
@@ -560,14 +562,14 @@ mod tests {
         let repo = TempDir::new().unwrap();
         init_repo(repo.path());
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let entries = svc.list_files(&workspace_id).await.unwrap();
         let paths: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
         assert!(paths.contains(&"README.md"));
         assert!(paths.contains(&"src/lib.rs"));
-        assert!(!paths.iter().any(|p| *p == "ignored.txt"));
+        assert!(!paths.contains(&"ignored.txt"));
     }
 
     #[tokio::test]
@@ -575,7 +577,7 @@ mod tests {
         let repo = TempDir::new().unwrap();
         init_repo(repo.path());
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let preview = svc.read_file(&workspace_id, "README.md").await.unwrap();
@@ -589,12 +591,12 @@ mod tests {
     async fn read_file_skips_binary() {
         let repo = TempDir::new().unwrap();
         init_repo(repo.path());
-        std::fs::write(repo.path().join("blob.bin"), &[0u8, 1u8, 2u8, 0u8, 5u8]).unwrap();
+        std::fs::write(repo.path().join("blob.bin"), [0u8, 1u8, 2u8, 0u8, 5u8]).unwrap();
         run_git(repo.path(), &["add", "blob.bin"]);
         run_git(repo.path(), &["commit", "-q", "-m", "bin"]);
 
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let preview = svc.read_file(&workspace_id, "blob.bin").await.unwrap();
@@ -611,16 +613,11 @@ mod tests {
         let repo = TempDir::new().unwrap();
         init_repo(repo.path());
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let result = svc
-            .write_file(
-                &workspace_id,
-                "README.md",
-                "new content\n",
-                Some(0.0_f64),
-            )
+            .write_file(&workspace_id, "README.md", "new content\n", Some(0.0_f64))
             .await
             .unwrap();
         match result {
@@ -636,7 +633,7 @@ mod tests {
         let repo = TempDir::new().unwrap();
         init_repo(repo.path());
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let stat = svc.stat_file(&workspace_id, "README.md").await.unwrap();
@@ -662,7 +659,7 @@ mod tests {
         let repo = TempDir::new().unwrap();
         init_repo(repo.path());
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let hit = svc

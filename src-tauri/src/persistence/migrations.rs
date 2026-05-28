@@ -27,10 +27,6 @@ const ALL_TABLES: &[&str] = &[
     "usage_events",
     "learnings",
     "gh_pr",
-    "scoring_policies",
-    "tournaments",
-    "tournament_contestants",
-    "tournament_scores",
     "schema_migrations",
 ];
 
@@ -50,11 +46,11 @@ pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = p
     ] as &'static [&'static str],
     "sessions" => &[
         "agent_mode", "attention", "cache_read_tokens", "cache_write_tokens",
-        "completed_at", "contestant_index", "cost_usd", "id", "input_tokens",
+        "completed_at", "cost_usd", "id", "input_tokens",
         "last_activity_at", "last_model_id", "model_id", "model_label",
         "output_tokens", "permission_mode", "prompt", "provider",
         "provider_conversation_id", "reasoning_effort", "started_at", "state",
-        "tournament_id", "workspace_id",
+        "workspace_id",
     ] as &'static [&'static str],
     "raw_outputs" => &["content", "created_at", "id", "session_id", "stream"] as &'static [&'static str],
     "events" => &["created_at", "id", "message", "payload_json", "session_id", "type"] as &'static [&'static str],
@@ -82,23 +78,6 @@ pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = p
     "gh_pr" => &[
         "head_sha", "last_seen_check_state", "notified_at", "pr_number",
         "pr_state", "session_id", "updated_at",
-    ] as &'static [&'static str],
-    "scoring_policies" => &[
-        "auto_keep_rule_json", "created_at", "criteria_json", "id", "is_built_in",
-        "name", "project_id", "scope", "ties_threshold", "updated_at",
-    ] as &'static [&'static str],
-    "tournaments" => &[
-        "created_at", "decided_at", "decision_json", "id", "policy_id",
-        "policy_snapshot_json", "project_id", "prompt", "quorum", "state",
-        "task_label", "updated_at", "verdict_json",
-    ] as &'static [&'static str],
-    "tournament_contestants" => &[
-        "config_json", "contestant_index", "created_at", "model_id", "model_label",
-        "outcome", "provider", "reasoning_effort", "session_id", "tournament_id",
-    ] as &'static [&'static str],
-    "tournament_scores" => &[
-        "contestant_index", "criterion_id", "evidence_json", "normalized_value",
-        "raw_value", "scored_at", "status", "tournament_id",
     ] as &'static [&'static str],
     "schema_migrations" => &["applied_at", "checksum", "name", "version"] as &'static [&'static str],
 };
@@ -148,37 +127,6 @@ CREATE TABLE workspaces (
   pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1))
 );
 
-CREATE TABLE scoring_policies (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  scope TEXT NOT NULL CHECK (scope IN ('user', 'project')),
-  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-  is_built_in INTEGER NOT NULL DEFAULT 0 CHECK (is_built_in IN (0, 1)),
-  criteria_json TEXT NOT NULL,
-  auto_keep_rule_json TEXT NOT NULL DEFAULT '{}',
-  ties_threshold REAL NOT NULL DEFAULT 0.05,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE tournaments (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  task_label TEXT NOT NULL,
-  prompt TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN (
-    'pending', 'running', 'judging', 'awaiting-decision', 'decided', 'cancelled'
-  )),
-  quorum INTEGER NOT NULL,
-  policy_id TEXT,
-  policy_snapshot_json TEXT NOT NULL,
-  verdict_json TEXT,
-  decision_json TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  decided_at TEXT
-);
-
 CREATE TABLE sessions (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -202,9 +150,7 @@ CREATE TABLE sessions (
   permission_mode TEXT NOT NULL DEFAULT 'auto-approve'
     CHECK (permission_mode IN ('auto-approve', 'ask-each-time')),
   agent_mode TEXT NOT NULL DEFAULT 'auto'
-    CHECK (agent_mode IN ('auto', 'plan')),
-  tournament_id TEXT REFERENCES tournaments(id) ON DELETE SET NULL,
-  contestant_index INTEGER
+    CHECK (agent_mode IN ('auto', 'plan'))
 );
 
 CREATE TABLE raw_outputs (
@@ -300,34 +246,6 @@ CREATE TABLE gh_pr (
   PRIMARY KEY (session_id, pr_number)
 );
 
-CREATE TABLE tournament_contestants (
-  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-  contestant_index INTEGER NOT NULL,
-  session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
-  provider TEXT NOT NULL,
-  model_id TEXT NOT NULL,
-  model_label TEXT NOT NULL,
-  reasoning_effort TEXT,
-  config_json TEXT NOT NULL DEFAULT '{}',
-  outcome TEXT NOT NULL DEFAULT 'pending' CHECK (outcome IN (
-    'pending', 'in-quorum', 'outside-quorum', 'cancelled'
-  )),
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (tournament_id, contestant_index)
-);
-
-CREATE TABLE tournament_scores (
-  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-  contestant_index INTEGER NOT NULL,
-  criterion_id TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('ok', 'inconclusive', 'disqualified')),
-  raw_value REAL,
-  normalized_value REAL,
-  evidence_json TEXT NOT NULL DEFAULT '{}',
-  scored_at TEXT NOT NULL,
-  PRIMARY KEY (tournament_id, contestant_index, criterion_id)
-);
-
 CREATE INDEX idx_workspaces_project_id ON workspaces(project_id);
 CREATE INDEX idx_sessions_workspace_id ON sessions(workspace_id);
 CREATE INDEX idx_events_session_created ON events(session_id, created_at);
@@ -341,11 +259,6 @@ CREATE INDEX idx_checks_workspace_started ON checks(workspace_id, started_at);
 CREATE INDEX idx_usage_events_session ON usage_events(session_id);
 CREATE INDEX idx_learnings_project ON learnings(project_id, last_seen_at DESC);
 CREATE INDEX idx_gh_pr_session ON gh_pr(session_id);
-CREATE INDEX idx_scoring_policies_scope ON scoring_policies(scope, project_id);
-CREATE INDEX idx_tournaments_project ON tournaments(project_id, created_at DESC);
-CREATE INDEX idx_tournaments_state ON tournaments(state);
-CREATE INDEX idx_tournament_contestants_session ON tournament_contestants(session_id);
-CREATE INDEX idx_tournament_scores_tournament ON tournament_scores(tournament_id);
 
 CREATE VIRTUAL TABLE learnings_fts USING fts5(
   summary,
@@ -389,47 +302,6 @@ CREATE TRIGGER events_after_update AFTER UPDATE OF message ON events BEGIN
   INSERT INTO events_fts (rowid, message) VALUES (new.rowid, new.message);
 END;
 
-INSERT OR IGNORE INTO scoring_policies (
-  id, name, scope, project_id, is_built_in,
-  criteria_json, auto_keep_rule_json, ties_threshold,
-  created_at, updated_at
-) VALUES
-  (
-    'builtin:correctness-first',
-    'Correctness first',
-    'user',
-    NULL,
-    1,
-    '[{"id":"tests-pass","weight":3,"threshold":{"op":"==","value":1}},{"id":"lint-clean","weight":1,"threshold":{"op":"==","value":1}},{"id":"typecheck-clean","weight":1,"threshold":{"op":"==","value":1}},{"id":"diff-size-lines","weight":1},{"id":"wall-clock-seconds","weight":0.5}]',
-    '{"min_total":0.85,"min_margin":0.10}',
-    0.05,
-    strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-    strftime('%Y-%m-%dT%H:%M:%fZ','now')
-  ),
-  (
-    'builtin:smallest-diff',
-    'Smallest diff (correctness gated)',
-    'user',
-    NULL,
-    1,
-    '[{"id":"tests-pass","weight":1,"threshold":{"op":"==","value":1}},{"id":"lint-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"typecheck-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"diff-size-lines","weight":3},{"id":"files-touched","weight":1}]',
-    '{"min_total":0.80,"min_margin":0.10}',
-    0.05,
-    strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-    strftime('%Y-%m-%dT%H:%M:%fZ','now')
-  ),
-  (
-    'builtin:cheapest-green',
-    'Cheapest green (correctness gated)',
-    'user',
-    NULL,
-    1,
-    '[{"id":"tests-pass","weight":1,"threshold":{"op":"==","value":1}},{"id":"lint-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"typecheck-clean","weight":0.5,"threshold":{"op":"==","value":1}},{"id":"cost-usd","weight":3},{"id":"diff-size-lines","weight":1}]',
-    '{"min_total":0.80,"min_margin":0.10}',
-    0.05,
-    strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-    strftime('%Y-%m-%dT%H:%M:%fZ','now')
-  );
 "#;
 
 #[derive(Debug)]
@@ -691,7 +563,7 @@ mod tests {
         let mut connection = Connection::open_in_memory().expect("open db");
         run_migrations(&mut connection).expect("migrate");
 
-        for table in ["projects", "sessions", "events", "learnings", "tournaments"] {
+        for table in ["projects", "sessions", "events", "learnings"] {
             verify_table_columns(&connection, &EXPECTED_COLUMNS, table).expect(table);
         }
 

@@ -19,7 +19,6 @@ function mkSession(id: string, lastActivityAt = "2026-05-14T00:00:00.000Z"): Das
       startedAt: "2026-05-14T00:00:00.000Z",
       completedAt: null,
       lastActivityAt,
-      preferred: false
     }
   ];
 }

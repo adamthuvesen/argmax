@@ -29,11 +29,7 @@ The current head is **v20** (`events_session_rowid_index`) — a `CREATE INDEX I
 | `usage_events` | Per-event token + cost rows (one row per assistant turn that carries usage) |
 | `learnings` | Per-project distilled facts; see [memory.md](memory.md) |
 | `gh_pr` | Per-(session, PR) check-state cache for the CI feedback loop; see [gh.md](gh.md) |
-| `ui_state` | Generic key/value bag (e.g. `preferred-attempt:<sessionId>`) |
-| `scoring_policies` | Tournament judge policies (criteria + weights); see [tournaments.md](tournaments.md) |
-| `tournaments` | Tournament runs (status, judge verdict) |
-| `tournament_contestants` | Per-contestant config + session/workspace ids |
-| `tournament_scores` | Per-criterion score rows the judge writes |
+| `ui_state` | Generic key/value bag |
 | `schema_migrations` | Applied-migration ledger with checksum for drift detection |
 
 Two FTS5 virtual tables and their triggers keep search cheap:

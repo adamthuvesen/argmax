@@ -43,7 +43,6 @@ workspace:stat-file-for-project
 workspace:grep-content
 checks:run
 checkpoints:create
-attempts:select-preferred
 dashboard:load
 skills:list
 system:open-path
@@ -68,8 +67,3 @@ git:commit
 git:push
 git:create-branch
 git:view-or-create-pr
-tournament:launch
-tournament:list
-tournament:get
-tournament:keep
-scoring:list-policies

@@ -26,8 +26,8 @@ use uuid::Uuid;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::environment::build_provider_environment;
-use crate::util::process_control::signal_term_then_kill;
 use crate::providers::ProviderId;
+use crate::util::process_control::signal_term_then_kill;
 
 /// Callback the auth service uses to stream PTY output. Mirrors the
 /// `OutputSink` shape in `checks/service.rs` so call sites can adapt
@@ -169,15 +169,12 @@ impl McpAuthService {
                 format!("could not clone PTY reader: {error}"),
             )
         })?;
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|error| {
-                ArgmaxError::service(
-                    "MCP_AUTH_PTY_WRITER_FAILED",
-                    format!("could not take PTY writer: {error}"),
-                )
-            })?;
+        let writer = pair.master.take_writer().map_err(|error| {
+            ArgmaxError::service(
+                "MCP_AUTH_PTY_WRITER_FAILED",
+                format!("could not take PTY writer: {error}"),
+            )
+        })?;
 
         let session_id = Uuid::new_v4().to_string();
 
@@ -330,7 +327,10 @@ fn spawn_exit_watcher(session_id: String, service: Arc<McpAuthService>, on_exit:
                 .map(|entry| std::mem::replace(&mut entry.child, dummy_child()))
         };
         let exit_code = match child_opt.as_mut() {
-            Some(child) => child.wait().map(|status| status.exit_code() as i32).unwrap_or(-1),
+            Some(child) => child
+                .wait()
+                .map(|status| status.exit_code() as i32)
+                .unwrap_or(-1),
             None => -1,
         };
         // portable_pty's ExitStatus doesn't expose POSIX signal numbers

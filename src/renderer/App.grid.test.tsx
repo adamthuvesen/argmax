@@ -48,7 +48,6 @@ describe("App grid", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     mockDashboardSnapshot({
       ...snapshot,
@@ -112,7 +111,6 @@ describe("App grid", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     mockDashboardSnapshot({
       ...snapshot,
@@ -248,7 +246,6 @@ describe("App grid", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     const thirdSession: DashboardSnapshot["sessions"][number] = {
       id: "session-3",
@@ -264,7 +261,6 @@ describe("App grid", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:05:00.000Z",
       lastActivityAt: "2026-05-08T16:05:00.000Z",
-      preferred: false
     };
     mockDashboardSnapshot({
       ...snapshot,
@@ -320,7 +316,6 @@ describe("App grid", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     mockDashboardSnapshot({
       ...snapshot,
@@ -393,7 +388,6 @@ describe("App grid", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     mockDashboardSnapshot({
       ...snapshot,
@@ -455,7 +449,6 @@ describe("App grid", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     mockDashboardSnapshot({
       ...snapshot,

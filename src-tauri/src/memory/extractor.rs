@@ -55,7 +55,7 @@ pub fn extract_learning_candidates(events: &[TimelineEvent]) -> Vec<LearningCand
         .into_iter()
         .filter_map(|key| buckets.remove(&key).map(|bucket| (key, bucket)))
         .collect();
-    sorted.sort_by(|a, b| b.1.count.cmp(&a.1.count));
+    sorted.sort_by_key(|(_, bucket)| std::cmp::Reverse(bucket.count));
 
     let mut candidates = Vec::new();
     for (key, bucket) in sorted {
@@ -160,7 +160,12 @@ mod tests {
 
     #[test]
     fn returns_empty_when_no_recurring_failures() {
-        let events = vec![event("e1", "command.completed", "ls", json!({"is_error": false}))];
+        let events = vec![event(
+            "e1",
+            "command.completed",
+            "ls",
+            json!({"is_error": false}),
+        )];
         assert!(extract_learning_candidates(&events).is_empty());
     }
 
@@ -209,30 +214,10 @@ mod tests {
         let long = "x".repeat(300);
         let other = format!("{long}DIFFERENT");
         let events = vec![
-            event(
-                "e1",
-                "command.completed",
-                &long,
-                json!({"is_error": true}),
-            ),
-            event(
-                "e2",
-                "command.completed",
-                &long,
-                json!({"is_error": true}),
-            ),
-            event(
-                "e3",
-                "command.completed",
-                &other,
-                json!({"is_error": true}),
-            ),
-            event(
-                "e4",
-                "command.completed",
-                &other,
-                json!({"is_error": true}),
-            ),
+            event("e1", "command.completed", &long, json!({"is_error": true})),
+            event("e2", "command.completed", &long, json!({"is_error": true})),
+            event("e3", "command.completed", &other, json!({"is_error": true})),
+            event("e4", "command.completed", &other, json!({"is_error": true})),
         ];
         let candidates = extract_learning_candidates(&events);
         assert_eq!(candidates.len(), 2, "buckets should not collapse");

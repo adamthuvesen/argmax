@@ -318,9 +318,6 @@ export function setupAppTestMocks(): void {
     checkpoints: {
       create: createCheckpointStub
     },
-    attempts: {
-      selectPreferred: () => Promise.resolve(snapshot.sessions[0] ?? missingSession())
-    },
     health: {
       ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" })
     },
@@ -387,15 +384,6 @@ export function setupAppTestMocks(): void {
       terminate: () => Promise.resolve({ ok: true }),
       onData: () => () => undefined,
       onExit: () => () => undefined
-    },
-    tournaments: {
-      launch: () => Promise.reject(new Error("not mocked")),
-      list: () => Promise.resolve([]),
-      get: () => Promise.reject(new Error("not mocked")),
-      keep: () => Promise.reject(new Error("not mocked"))
-    },
-    scoring: {
-      listPolicies: () => Promise.resolve([])
     }
   };
 }

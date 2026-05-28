@@ -44,7 +44,10 @@ pub struct GrepParseOptions {
     pub max_matches_per_file: usize,
 }
 
-pub fn parse_git_grep_output(raw: &str, options: &GrepParseOptions) -> WorkspaceContentSearchResult {
+pub fn parse_git_grep_output(
+    raw: &str,
+    options: &GrepParseOptions,
+) -> WorkspaceContentSearchResult {
     if raw.is_empty() {
         return WorkspaceContentSearchResult {
             files: Vec::new(),

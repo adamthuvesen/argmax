@@ -8,9 +8,9 @@ The contract between renderer and main. Two surfaces: **request/response** (vali
 |---|---|
 | [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts) | Zod schema per channel + `IPC_CHANNELS` (`Object.keys(ipcSchemas)`) |
 | [src/shared/types.ts](../../src/shared/types.ts) | `ArgmaxApi` — the shape `window.argmax` exposes |
-| [src/main/ipc.ts](../../src/main/ipc.ts) | `withValidation()` + `registerIpcHandlers()`; composes per-module handler registrations and returns `{ channels, tournaments }` |
+| [src/main/ipc.ts](../../src/main/ipc.ts) | `withValidation()` + `registerIpcHandlers()`; composes per-module handler registrations and returns `{ channels }` |
 | [src/main/ipc/registry.ts](../../src/main/ipc/registry.ts) | `createIpcRegistrar()` — shared `ipcMain.handle` + latency-wrapper factory used by every IPC submodule |
-| [src/main/ipc/](../../src/main/ipc/) | Per-namespace handler modules (`approvals.ts`, `attachments.ts`, `git.ts`, `mcp.ts`, `projects.ts`, `providers.ts`, `review.ts`, `sessions.ts`, `system.ts`, `terminal.ts`, `tournaments.ts`, `workspaces.ts`) — each calls `createIpcRegistrar()` and returns the channels it registered |
+| [src/main/ipc/](../../src/main/ipc/) | Per-namespace handler modules (`approvals.ts`, `attachments.ts`, `git.ts`, `mcp.ts`, `projects.ts`, `providers.ts`, `review.ts`, `sessions.ts`, `system.ts`, `terminal.ts`, `workspaces.ts`) — each calls `createIpcRegistrar()` and returns the channels it registered |
 | [src/main/preload.ts](../../src/main/preload.ts) | The renderer-side bridge via `contextBridge.exposeInMainWorld("argmax", api)` |
 
 ## Request/response
@@ -49,7 +49,6 @@ The channel inventory is the keys of the `ipcSchemas` object in [src/shared/ipcS
 | `workspace` (singular) | `listFiles`, `readFile`, `writeFile`, `statFile` (+ `…ForProject` variants), `grepContent` | File-tree + inline file editor; writes are mtime-checked. `grepContent` powers ⌘⇧F. |
 | `checks` | `run` | |
 | `checkpoints` | `create` | Binary patches under `${dataDirectory}/checkpoints/` |
-| `attempts` | `selectPreferred` | Multi-attempt session preference |
 | `git` | `commit`, `push`, `createBranch`, `viewOrCreatePr` | Mutating branch/PR actions driven by the git dropdown |
 | `health` | `ping` | |
 | `skills` | `list` | User + workspace skill registry (Claude / Codex / Cursor + plugins) |
@@ -58,8 +57,6 @@ The channel inventory is the keys of the `ipcSchemas` object in [src/shared/ipcS
 | `learnings` | `list`, `update`, `delete` | See [memory.md](memory.md) |
 | `prs` | `listForSession`, `refresh` | See [gh.md](gh.md) |
 | `terminal` | `spawn`, `write`, `resize`, `terminate`, `onData`, `onExit` | See [terminal.md](terminal.md) |
-| `tournaments` | `launch`, `list`, `get`, `keep` | See [tournaments.md](tournaments.md) |
-| `scoring` | `listPolicies` | Tournament judge policies |
 | `menu` | `onCommand` | App-menu → renderer command bus |
 
 ## Push channels

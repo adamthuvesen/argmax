@@ -140,9 +140,6 @@ async checksRun(input: ChecksRunInput) : Promise<void> {
 async checkpointsCreate(input: CheckpointsCreateInput) : Promise<void> {
     await TAURI_INVOKE("checkpoints_create", { input });
 },
-async attemptsSelectPreferred(input: AttemptsSelectPreferredInput) : Promise<void> {
-    await TAURI_INVOKE("attempts_select_preferred", { input });
-},
 async dashboardLoad(input: DashboardLoadInput) : Promise<void> {
     await TAURI_INVOKE("dashboard_load", { input });
 },
@@ -214,21 +211,6 @@ async gitCreateBranch(input: GitCreateBranchInput) : Promise<void> {
 },
 async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<void> {
     await TAURI_INVOKE("git_view_or_create_pr", { input });
-},
-async tournamentLaunch(input: TournamentLaunchInput) : Promise<void> {
-    await TAURI_INVOKE("tournament_launch", { input });
-},
-async tournamentList(input: TournamentListInput) : Promise<void> {
-    await TAURI_INVOKE("tournament_list", { input });
-},
-async tournamentGet(input: TournamentGetInput) : Promise<void> {
-    await TAURI_INVOKE("tournament_get", { input });
-},
-async tournamentKeep(input: TournamentKeepInput) : Promise<void> {
-    await TAURI_INVOKE("tournament_keep", { input });
-},
-async scoringListPolicies(input: ScoringListPoliciesInput) : Promise<void> {
-    await TAURI_INVOKE("scoring_list_policies", { input });
 }
 }
 
@@ -251,7 +233,6 @@ export type AttachmentMimeType = "image/png" | "image/jpeg" | "image/gif" | "ima
 export type AttachmentPath = string
 export type AttachmentSizeBytes = number
 export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: AttachmentMimeType; dataBase64: Base64ImageData }
-export type AttemptsSelectPreferredInput = { sessionId: SessionId }
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
@@ -259,10 +240,6 @@ export type CheckpointsCreateInput = { workspaceId: WorkspaceId; label: NonEmpty
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
-export type ContestantConfigInput = { provider: ProviderId; modelId: NonEmptyString; modelLabel: NonEmptyString; reasoningEffort: ReasoningEffort | null; config: ContestantConfigMap | null }
-export type ContestantConfigMap = Partial<{ [key in string]: ContestantConfigValue }>
-export type ContestantConfigValue = string | number | boolean | null
-export type ContestantList = ContestantConfigInput[]
 export type DashboardListInput = Record<string, never>
 export type DashboardLoadInput = Record<string, never>
 export type FileContent = string
@@ -315,7 +292,6 @@ export type ReviewListChangedFilesForProjectInput = { projectId: ProjectId }
 export type ReviewListChangedFilesInput = { workspaceId: WorkspaceId }
 export type ReviewLoadDiffForProjectInput = { projectId: ProjectId; filePath: RelativePath | null }
 export type ReviewLoadDiffInput = { workspaceId: WorkspaceId; filePath: RelativePath | null }
-export type ScoringListPoliciesInput = Record<string, never>
 export type SearchQuery = string
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }
@@ -338,10 +314,6 @@ export type TerminalSpawnInput = { workspaceId: WorkspaceId; cols: TerminalCols;
 export type TerminalTerminateInput = { terminalId: TerminalId }
 export type TerminalWriteInput = { terminalId: TerminalId; data: StreamChunk }
 export type ThemeMode = "light" | "dark" | "system"
-export type TournamentGetInput = { tournamentId: NonEmptyString }
-export type TournamentKeepInput = { tournamentId: NonEmptyString; contestantIndex: number; reason: string | null }
-export type TournamentLaunchInput = { projectId: ProjectId; taskLabel: TaskLabel; prompt: Prompt; policyId: NonEmptyString; contestants: ContestantList; cols: TerminalCols; rows: TerminalRows }
-export type TournamentListInput = { projectId: ProjectId }
 export type WorkspaceGrepContentInput = { kind: WorkspaceGrepKind; id: GrepTargetId; query: SearchQuery }
 export type WorkspaceGrepKind = "workspace" | "project"
 export type WorkspaceId = string

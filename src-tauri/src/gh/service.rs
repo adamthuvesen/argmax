@@ -476,7 +476,10 @@ mod tests {
         let (_dir, database) = open_db();
         let stub = StubRunner::new(Vec::new());
         let service = GhService::with_runner(Arc::clone(&database), stub.runner());
-        let err = service.refresh("missing").await.expect_err("session lookup fails");
+        let err = service
+            .refresh("missing")
+            .await
+            .expect_err("session lookup fails");
         match err {
             ArgmaxError::RecordNotFound { kind, .. } => assert_eq!(kind, "session"),
             other => panic!("unexpected error: {other:?}"),
@@ -526,7 +529,10 @@ mod tests {
     #[test]
     fn normalize_pr_state_passes_canonical_values() {
         assert_eq!(normalize_pr_state(Some("open")).as_deref(), Some("OPEN"));
-        assert_eq!(normalize_pr_state(Some("MERGED")).as_deref(), Some("MERGED"));
+        assert_eq!(
+            normalize_pr_state(Some("MERGED")).as_deref(),
+            Some("MERGED")
+        );
         assert!(normalize_pr_state(Some("draft")).is_none());
         assert!(normalize_pr_state(None).is_none());
     }

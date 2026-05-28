@@ -43,8 +43,6 @@ import type {
   RemoveProjectInput,
   ResolveApprovalInput,
   RunCheckInput,
-  ScoringPolicy,
-  SelectPreferredAttemptInput,
   SessionCostSummary,
   SessionCostSummaryInput,
   SessionEventsSinceInput,
@@ -56,9 +54,6 @@ import type {
   TerminalResizeInput,
   TerminalSpawnInput,
   TerminalWriteInput,
-  Tournament,
-  TournamentLaunchInput,
-  TournamentLeaderboard,
   UpdateProjectSettingsInput,
   WorkspaceContentSearchResult,
   WorkspaceDiff,
@@ -218,10 +213,6 @@ function createTauriArgmaxApi(): ArgmaxApi {
     checkpoints: {
       create: (input) => invokeLegacy<Checkpoint>("checkpoints:create", input)
     },
-    attempts: {
-      selectPreferred: (input: SelectPreferredAttemptInput) =>
-        invokeLegacy<SessionSummary>("attempts:select-preferred", input)
-    },
     health: {
       ping: () => invokeLegacy<{ ok: true; timestamp: string }>("health:ping")
     },
@@ -277,15 +268,6 @@ function createTauriArgmaxApi(): ArgmaxApi {
         subscribe<TerminalDataEvent>("terminal:data", listener),
       onExit: (listener: (event: TerminalExitEvent) => void) =>
         subscribe<TerminalExitEvent>("terminal:exit", listener)
-    },
-    tournaments: {
-      launch: (input: TournamentLaunchInput) => invokeLegacy<Tournament>("tournament:launch", input),
-      list: (input) => invokeLegacy<Tournament[]>("tournament:list", input),
-      get: (input) => invokeLegacy<TournamentLeaderboard>("tournament:get", input),
-      keep: (input) => invokeLegacy<TournamentLeaderboard>("tournament:keep", input)
-    },
-    scoring: {
-      listPolicies: () => invokeLegacy<ScoringPolicy[]>("scoring:list-policies")
     }
   };
 }

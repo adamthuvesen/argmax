@@ -77,7 +77,6 @@ export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSum
     startedAt: "2026-05-12T15:30:00.000Z",
     completedAt: "2026-05-12T15:54:00.000Z",
     lastActivityAt: "2026-05-12T15:54:00.000Z",
-    preferred: false,
     ...overrides
   };
 }

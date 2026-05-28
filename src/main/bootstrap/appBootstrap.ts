@@ -2,7 +2,6 @@ import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { createDatabase, type ArgmaxDatabase } from "../persistence/database.js";
 import { registerIpcHandlers } from "../ipc.js";
-import type { TournamentService } from "../tournaments/tournamentService.js";
 import { ProviderSessionService } from "../providers/providerSessionService.js";
 import { TerminalService } from "../terminal/terminalService.js";
 import { McpAuthService } from "../mcp/mcpAuthService.js";
@@ -38,7 +37,6 @@ export interface ServiceContainer {
   dockBadge: DockBadgeService;
   ghPoller: GhPoller;
   updateService: UpdateService | null;
-  tournaments: TournamentService;
   registeredChannels: readonly string[];
   dashboardDeltaCoalescer: DeltaCoalescer;
   publishDashboardDelta: (delta: DashboardDelta) => void;
@@ -185,7 +183,6 @@ export async function bootstrapServices(deps: BootstrapDeps): Promise<ServiceCon
     dockBadge,
     ghPoller,
     updateService,
-    tournaments: registered.tournaments,
     registeredChannels: registered.channels,
     dashboardDeltaCoalescer,
     publishDashboardDelta,
@@ -268,9 +265,6 @@ export async function shutdownServices(services: Partial<ServiceContainer>): Pro
   }
   if (services.mcpAuth) {
     await safeDispose("mcpAuth.disposeAll", () => services.mcpAuth?.disposeAll());
-  }
-  if (services.tournaments) {
-    await safeDispose("tournaments.dispose", () => services.tournaments?.dispose());
   }
   if (services.registeredChannels) {
     for (const channel of services.registeredChannels) {

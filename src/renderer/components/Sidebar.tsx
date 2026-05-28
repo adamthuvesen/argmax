@@ -214,9 +214,8 @@ export function Sidebar({
   // (a grid pane needs a sessionId). The dashboard query's gap-filler
   // guarantees every workspace that has at least one session row in SQLite
   // also has its latest session in `snapshot.sessions`; anything still
-  // missing is a truly orphaned workspace (session insert failed mid-launch,
-  // leftover tournament worktree, etc.). Hide those rows so the click is
-  // never dead.
+  // missing is a truly orphaned workspace (session insert failed mid-launch).
+  // Hide those rows so the click is never dead.
   const workspaceIdsWithSessions = useMemo(() => {
     const ids = new Set<string>();
     for (const session of snapshot.sessions) {

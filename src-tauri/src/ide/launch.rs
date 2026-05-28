@@ -75,12 +75,10 @@ pub fn launch_ide(ide: IdeId, path: &str, detected: &[DetectedIde]) -> ArgmaxRes
                 )
             })?;
             let mapping = cli_for(gui).expect("gui ides have CLI mappings");
-            if entry.has_cli {
-                if spawn_detached(mapping.cli, &[path]).is_ok() {
-                    return Ok(());
-                }
-                // Fall through to `open -a` on spawn failure.
+            if entry.has_cli && spawn_detached(mapping.cli, &[path]).is_ok() {
+                return Ok(());
             }
+            // Fall through to `open -a` when the CLI is missing or fails to spawn.
             spawn_detached("open", &["-a", mapping.app_name, path])
         }
     }

@@ -39,7 +39,7 @@ no longer triggers a `node-gyp` rebuild.
   event normalizer (with the Cursor cumulative-delta state machine),
   flush queue.
 - `workspaces/`, `review/`, `git/`, `files/`, `gh/`, `mcp/`, `terminal/`,
-  `tournaments/`, `approvals/`, `checks/`, `memory/`, `attachments/`,
+  `approvals/`, `checks/`, `memory/`, `attachments/`,
   `ide/`, `skills/`, `updater/`, `menu/` — one folder per subsystem.
 - `ipc/` — `#[tauri::command]` handlers, one file per channel group.
 

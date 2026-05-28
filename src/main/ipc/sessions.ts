@@ -4,7 +4,6 @@ import {
   learningsListInputSchema,
   learningsUpdateInputSchema,
   runCheckInputSchema,
-  selectPreferredAttemptInputSchema,
   sessionCostSummaryInputSchema,
   sessionEventsSinceInputSchema,
   sessionSearchInputSchema,
@@ -66,10 +65,6 @@ export function registerSessionHandlers(
   register(
     "checkpoints:create",
     withValidation(createCheckpointInputSchema, (input) => checkpoints.createCheckpoint(input))
-  );
-  register(
-    "attempts:select-preferred",
-    withValidation(selectPreferredAttemptInputSchema, (input) => database.selectPreferredAttempt(input.sessionId))
   );
   register(
     "skills:list",

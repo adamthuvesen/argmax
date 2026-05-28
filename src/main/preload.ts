@@ -43,7 +43,6 @@ import type {
   RemoveProjectInput,
   ResolveApprovalInput,
   RunCheckInput,
-  SelectPreferredAttemptInput,
   SessionCostSummary,
   SessionCostSummaryInput,
   SessionEventsSinceInput,
@@ -63,11 +62,7 @@ import type {
   WorkspaceFileWriteResult,
   WorkspaceStatusInput,
   WorkspaceStatusSnapshot,
-  UpdateProjectSettingsInput,
-  Tournament,
-  TournamentLaunchInput,
-  TournamentLeaderboard,
-  ScoringPolicy
+  UpdateProjectSettingsInput
 } from "../shared/types.js";
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -219,10 +214,6 @@ const api: ArgmaxApi = {
     create: (input: CreateCheckpointInput) =>
       invoke("checkpoints:create", input) as Promise<DashboardSnapshot["checkpoints"][number]>
   },
-  attempts: {
-    selectPreferred: (input: SelectPreferredAttemptInput) =>
-      invoke("attempts:select-preferred", input) as Promise<DashboardSnapshot["sessions"][number]>
-  },
   health: {
     ping: () => invoke("health:ping") as Promise<{ ok: true; timestamp: string }>
   },
@@ -292,19 +283,6 @@ const api: ArgmaxApi = {
       subscribe<TerminalDataEvent>("terminal:data", listener),
     onExit: (listener: (event: TerminalExitEvent) => void) =>
       subscribe<TerminalExitEvent>("terminal:exit", listener)
-  },
-  tournaments: {
-    launch: (input: TournamentLaunchInput) =>
-      invoke("tournament:launch", input) as Promise<Tournament>,
-    list: (input: { projectId: string }) =>
-      invoke("tournament:list", input) as Promise<Tournament[]>,
-    get: (input: { tournamentId: string }) =>
-      invoke("tournament:get", input) as Promise<TournamentLeaderboard>,
-    keep: (input: { tournamentId: string; contestantIndex: number; reason?: string }) =>
-      invoke("tournament:keep", input) as Promise<TournamentLeaderboard>
-  },
-  scoring: {
-    listPolicies: () => invoke("scoring:list-policies") as Promise<ScoringPolicy[]>
   }
 };
 

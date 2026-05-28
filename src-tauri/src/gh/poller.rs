@@ -16,9 +16,9 @@ use std::{
 use tokio::task::JoinSet;
 
 use crate::error::ArgmaxResult;
+use crate::persistence::dashboard::list_running_session_ids;
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_open_gh_pr_session_ids, GhPrRecord};
-use crate::persistence::dashboard::list_running_session_ids;
 use crate::providers::flush_queue::DashboardDelta;
 
 use super::service::GhService;
@@ -343,12 +343,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ArgmaxError;
     use crate::persistence::gh::upsert_gh_pr;
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::time::now_iso;
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
-    use crate::error::ArgmaxError;
     use crate::util::gh_runner::GhRunner;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
@@ -540,8 +540,7 @@ mod tests {
         });
 
         let poller = GhPoller::new(
-            GhPollerConfig::new(Arc::clone(&database), service)
-                .with_check_failure_hook(hook),
+            GhPollerConfig::new(Arc::clone(&database), service).with_check_failure_hook(hook),
         );
 
         poller.tick_for_test().await.expect("first failure");

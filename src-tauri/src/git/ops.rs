@@ -18,10 +18,10 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::run_git_text;
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_gh_pr_for_session, GhPrRecord};
-use crate::util::gh_runner::{default_gh_runner, GhRunner};
 use crate::persistence::projects::get_project_remote;
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::workspaces::find_workspace_by_id;
+use crate::util::gh_runner::{default_gh_runner, GhRunner};
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -380,10 +380,7 @@ mod tests {
                 settings: ProjectSettings {
                     default_provider: "claude".to_string(),
                     default_model_label: "Claude Haiku 4.5".to_string(),
-                    worktree_location: repo_path
-                        .join(".worktrees")
-                        .to_string_lossy()
-                        .into_owned(),
+                    worktree_location: repo_path.join(".worktrees").to_string_lossy().into_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
                 },
@@ -416,7 +413,7 @@ mod tests {
         std::fs::write(repo.path().join("notes.txt"), "scratch\n").unwrap();
 
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
 
         let service = GitOpsService::new(database);
@@ -439,7 +436,7 @@ mod tests {
         std::fs::write(repo.path().join("notes.txt"), "scratch\n").unwrap();
 
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
 
         let service = GitOpsService::new(database);
@@ -460,7 +457,7 @@ mod tests {
         init_repo(repo.path());
 
         let data_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&data_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
 
         let service = GitOpsService::new(database);
@@ -499,18 +496,9 @@ mod tests {
 
     #[test]
     fn url_matches_pr_anchors_pr_number() {
-        assert!(url_matches_pr(
-            "https://github.com/o/r/pull/42",
-            42
-        ));
-        assert!(url_matches_pr(
-            "https://github.com/o/r/pull/42/files",
-            42
-        ));
-        assert!(!url_matches_pr(
-            "https://github.com/o/r/pull/420",
-            42
-        ));
+        assert!(url_matches_pr("https://github.com/o/r/pull/42", 42));
+        assert!(url_matches_pr("https://github.com/o/r/pull/42/files", 42));
+        assert!(!url_matches_pr("https://github.com/o/r/pull/420", 42));
     }
 
     #[test]

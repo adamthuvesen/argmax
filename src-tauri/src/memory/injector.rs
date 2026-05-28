@@ -22,10 +22,7 @@ pub struct InjectionResult {
     pub injected_ids: Vec<String>,
 }
 
-pub fn compose_learning_preamble(
-    learnings: &[Learning],
-    original_prompt: &str,
-) -> InjectionResult {
+pub fn compose_learning_preamble(learnings: &[Learning], original_prompt: &str) -> InjectionResult {
     if learnings.is_empty() {
         return InjectionResult {
             augmented_prompt: original_prompt.to_string(),
@@ -50,10 +47,7 @@ pub fn compose_learning_preamble(
             injected_ids: Vec::new(),
         };
     }
-    let augmented = format!(
-        "{PREAMBLE_HEADER}{}\n{original_prompt}",
-        lines.concat()
-    );
+    let augmented = format!("{PREAMBLE_HEADER}{}\n{original_prompt}", lines.concat());
     InjectionResult {
         augmented_prompt: augmented,
         injected_ids,
@@ -94,9 +88,7 @@ mod tests {
         ];
         let result = compose_learning_preamble(&learnings, "ship Z");
         assert!(result.augmented_prompt.contains("Project knowledge"));
-        assert!(result
-            .augmented_prompt
-            .contains("- (pitfall) avoid X"));
+        assert!(result.augmented_prompt.contains("- (pitfall) avoid X"));
         assert!(result
             .augmented_prompt
             .contains("- (convention) we prefer Y"));
@@ -120,10 +112,7 @@ mod tests {
     #[test]
     fn returns_original_when_first_bullet_already_exceeds_cap() {
         let way_too_big = "x".repeat(MAX_PREAMBLE_CHARS * 4);
-        let result = compose_learning_preamble(
-            &[fixture("l1", "pitfall", &way_too_big)],
-            "prompt",
-        );
+        let result = compose_learning_preamble(&[fixture("l1", "pitfall", &way_too_big)], "prompt");
         assert_eq!(result.augmented_prompt, "prompt");
         assert!(result.injected_ids.is_empty());
     }

@@ -109,7 +109,7 @@ fn extract_url_path(url: &str) -> Option<String> {
         // Drop the host segment (typically "localhost" on Tauri).
         let after_host = rest.split_once('/').map(|(_, path)| path).unwrap_or(rest);
         // Anything after `?` or `#` is metadata, drop it.
-        let path_only = after_host.split(|c| c == '?' || c == '#').next()?;
+        let path_only = after_host.split(['?', '#']).next()?;
         return Some(format!("/{path_only}"));
     }
     let prefix = format!("{ATTACHMENT_PROTOCOL_SCHEME}:");
@@ -215,9 +215,7 @@ mod tests {
         let canonical = std::fs::canonicalize(&file).unwrap();
         let url = format!(
             "{ATTACHMENT_PROTOCOL_SCHEME}://localhost{}",
-            canonical
-                .to_string_lossy()
-                .replace(' ', "%20")
+            canonical.to_string_lossy().replace(' ', "%20")
         );
         let response = serve_attachment(base.path(), &url).await;
         assert_eq!(response.status, AttachmentStatus::Ok);

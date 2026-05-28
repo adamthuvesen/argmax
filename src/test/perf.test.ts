@@ -35,7 +35,6 @@ function makeSession(i: number): SessionSummary {
     startedAt: new Date(2026, 0, 1, 0, 0, i).toISOString(),
     completedAt: null,
     lastActivityAt: new Date(2026, 0, 1, 0, 0, i).toISOString(),
-    preferred: false
   };
 }
 

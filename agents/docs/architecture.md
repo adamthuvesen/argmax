@@ -37,7 +37,6 @@ Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services,
 | `git/` | `runGitText` / `runGitBuffer` + `GitOpsService` for commit/push/branch/PR actions |
 | `ide/` | `mdfind`-based IDE detection (VS Code, Cursor, Windsurf, etc.) + launch |
 | `ipc/` | Per-namespace handler registrars (`registerProjectHandlers`, `registerWorkspaceHandlers`, …) consumed by [src/main/ipc.ts](../../src/main/ipc.ts) |
-| `judges/` | Tournament judge — criterion runners + score aggregator |
 | `mcp/` | User-scope MCP registry + `McpAuthService` (interactive PTY for OAuth-style MCP server enrollment) |
 | `memory/` | `learningExtractor` + `learningInjector` (project-scoped pitfalls) |
 | `notifications/` | OS notifications gated on window-focus state |
@@ -48,7 +47,6 @@ Entry: [src/main/main.ts](../../src/main/main.ts). Boots the database, services,
 | `sessions/` | `sessionAttention` (which sessions need a user nudge) |
 | `skills/` | Local skill registry — `~/.claude/skills`, `~/.codex/{skills,prompts}`, `~/.cursor/skills`, plugin caches, plus per-workspace `.claude` / `.codex` / `.cursor` directories. Precedence: workspace > user > codex-prompt > system > plugin |
 | `terminal/` | `TerminalService` — user-spawned PTYs for the integrated terminal panel |
-| `tournaments/` | `TournamentService` — parallel contestants in worktrees + deterministic judge pipeline |
 | `updater/` | `UpdateService` — `electron-updater` wrapper (packaged builds only) |
 | `util/` | Pure helpers: `workspacePaths`, `appNavigation`, `deltaCoalescer` (60 fps push throttle), `ipcLatency` (per-channel histogram), `startupTimer` (phase marks for diagnostics) |
 | `workspaces/` | `WorkspaceService` — git worktrees, fs.watch debouncing |

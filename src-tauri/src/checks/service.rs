@@ -314,7 +314,7 @@ fn summarize_output(output: &str) -> String {
         return "No output.".to_string();
     }
     let lines: Vec<&str> = trimmed
-        .split(|c| c == '\n' || c == '\r')
+        .split(['\n', '\r'])
         .filter(|line| !line.is_empty())
         .collect();
     let start = lines.len().saturating_sub(8);
@@ -350,7 +350,7 @@ mod tests {
     fn setup() -> (Arc<Database>, String, TempDir, TempDir) {
         let db_dir = TempDir::new().unwrap();
         let cwd_dir = TempDir::new().unwrap();
-        let database = Arc::new(Database::open(&db_dir.path().join("argmax.sqlite")).unwrap());
+        let database = Arc::new(Database::open(db_dir.path().join("argmax.sqlite")).unwrap());
         {
             let conn = database.connection();
             persist_project(
@@ -512,7 +512,10 @@ mod tests {
 
     #[test]
     fn summarize_output_keeps_last_eight_lines() {
-        let body = (1..=12).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let body = (1..=12)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let summary = summarize_output(&body);
         let lines: Vec<&str> = summary.split('\n').collect();
         assert_eq!(lines.len(), 8);
@@ -527,9 +530,9 @@ mod tests {
         std::env::set_var("PATH_PASSTHROUGH", "/usr/bin");
         let env = filtered_env();
         let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
-        assert!(!keys.iter().any(|k| *k == "ARGMAX_TEST_SECRET"));
-        assert!(!keys.iter().any(|k| *k == "ARGMAX_TEST_API_KEY"));
-        assert!(keys.iter().any(|k| *k == "PATH_PASSTHROUGH"));
+        assert!(!keys.contains(&"ARGMAX_TEST_SECRET"));
+        assert!(!keys.contains(&"ARGMAX_TEST_API_KEY"));
+        assert!(keys.contains(&"PATH_PASSTHROUGH"));
         std::env::remove_var("ARGMAX_TEST_SECRET");
         std::env::remove_var("ARGMAX_TEST_API_KEY");
         std::env::remove_var("PATH_PASSTHROUGH");

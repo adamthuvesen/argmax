@@ -447,7 +447,6 @@ describe("App", () => {
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
-      preferred: false
     };
     const newEvent: DashboardSnapshot["events"][number] = {
       id: "event-new",
@@ -519,7 +518,6 @@ describe("App", () => {
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
-      preferred: false
     };
     const userEvent: DashboardSnapshot["events"][number] = {
       id: "event-user-mention",

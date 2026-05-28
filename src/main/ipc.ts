@@ -19,7 +19,6 @@ import { registerReviewHandlers } from "./ipc/review.js";
 import { registerSessionHandlers } from "./ipc/sessions.js";
 import { registerSystemHandlers } from "./ipc/system.js";
 import { registerTerminalHandlers } from "./ipc/terminal.js";
-import { registerTournamentHandlers } from "./ipc/tournaments.js";
 import { registerWorkspaceHandlers } from "./ipc/workspaces.js";
 import type { ArgmaxDatabase } from "./persistence/database.js";
 import { ProjectService } from "./projects/projectRegistration.js";
@@ -33,7 +32,6 @@ import { CheckService } from "./checks/checkService.js";
 import { CheckpointService } from "./review/checkpointService.js";
 import { GitOpsService } from "./git/gitOpsService.js";
 import { GhService } from "./gh/ghService.js";
-import { TournamentService } from "./tournaments/tournamentService.js";
 import type { NotificationService } from "./notifications/notificationService.js";
 import { AttachmentStore } from "./attachments/attachmentStore.js";
 import { timed } from "./util/ipcLatency.js";
@@ -101,7 +99,6 @@ export function withTupleValidation<TTuple extends readonly unknown[], TOut>(
  */
 export interface RegisteredIpc {
   channels: readonly string[];
-  tournaments: TournamentService;
 }
 
 export function registerIpcHandlers(
@@ -120,17 +117,6 @@ export function registerIpcHandlers(
   const checkpoints = new CheckpointService(database);
   const ghService = new GhService(database);
   const gitOps = new GitOpsService(database, ghService);
-  const tournaments = new TournamentService(database, providerSessions, workspaces, checks);
-  // Same idea as providerSessions.recoverOrphanedSessions(): tournaments that
-  // entered 'judging' before a crash have partial scores and no verdict.
-  // Reset them to 'running' so the next refreshAndJudgeIfReady drives the
-  // judge pipeline idempotently. Best-effort so a partial database in tests
-  // (which pass stub objects) doesn't block IPC registration.
-  try {
-    tournaments.recoverStuckJudgingTournaments();
-  } catch {
-    /* boot-time reconciler is non-critical; first IPC call retries on demand. */
-  }
   const registeredChannels: IpcChannel[] = [];
   const register = (channel: IpcChannel, listener: Parameters<typeof ipcMain.handle>[1]): void => {
     // SPEC P4.02 / P7.02 — every channel funnels through `timed()` so the
@@ -212,14 +198,11 @@ export function registerIpcHandlers(
   for (const channel of registerReviewHandlers(review, workspaceFiles)) {
     registeredChannels.push(channel);
   }
-  for (const channel of registerTournamentHandlers(tournaments)) {
-    registeredChannels.push(channel);
-  }
   for (const channel of registerAttachmentHandlers(attachments)) {
     registeredChannels.push(channel);
   }
 
-  return { channels: registeredChannels, tournaments };
+  return { channels: registeredChannels };
 }
 
 /**

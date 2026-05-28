@@ -8,7 +8,6 @@ use crate::error::InvalidInputIssue;
 pub const MAX_STREAM_CHUNK_BYTES: usize = 64 * 1024;
 pub const MAX_FILE_CONTENT_BYTES: usize = 4 * 1024 * 1024;
 pub const ATTACHMENT_BYTE_CAP: usize = 10 * 1024 * 1024;
-pub const MAX_CONTESTANT_CONFIG_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]

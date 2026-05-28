@@ -24,22 +24,11 @@ use super::projects::{
     update_project_remote, update_project_settings, PersistProjectInput, ProjectRemote,
     ProjectSettings,
 };
-use super::scoring_policies::{
-    delete_scoring_policy, find_scoring_policy_by_id, list_scoring_policies, save_scoring_policy,
-    PolicyCriterion, SavePolicyInput,
-};
 use super::sessions::{
-    find_session_by_id, list_session_ids_for_workspace, persist_session, select_preferred_attempt,
-    update_session_agent_mode, update_session_last_activity, update_session_model,
-    update_session_provider_conversation_id, update_session_state, PersistSessionInput,
-    SessionAgentModeInput, SessionModelInput, SessionStateInput, UsageCounts,
-};
-use super::tournaments::{
-    create_contestant, create_tournament, list_contestants_by_tournament, list_tournaments,
-    load_policy_snapshot, persist_criterion_score, read_tournament_leaderboard,
-    set_tournament_decision, set_tournament_verdict, transition_tournament_state,
-    update_contestant_outcome, update_tournament_state, ContestantConfig, CreateContestantInput,
-    CreateTournamentInput, ListTournamentsOptions, PersistScoreInput,
+    list_session_ids_for_workspace, persist_session, update_session_agent_mode,
+    update_session_last_activity, update_session_model, update_session_provider_conversation_id,
+    update_session_state, PersistSessionInput, SessionAgentModeInput, SessionModelInput,
+    SessionStateInput, UsageCounts,
 };
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
@@ -123,7 +112,6 @@ fn project_workspace_and_session_repositories_round_trip() {
     let session = persist_session(&connection, &session_input()).expect("persist session");
     assert_eq!(session.permission_mode, "auto-approve");
     assert_eq!(session.agent_mode.as_deref(), Some("auto"));
-    assert!(!session.preferred);
 
     let modeled = update_session_model(
         &connection,
@@ -172,13 +160,6 @@ fn project_workspace_and_session_repositories_round_trip() {
         .expect("update last activity");
     assert_eq!(ticked.last_activity_at, "2026-05-24T10:03:00.000Z");
 
-    let preferred = select_preferred_attempt(&connection, "s1").expect("select preferred");
-    assert!(preferred.preferred);
-    assert!(
-        find_session_by_id(&connection, "s1")
-            .expect("find session")
-            .preferred
-    );
     assert_eq!(
         list_session_ids_for_workspace(&connection, "w1").expect("list sessions"),
         vec!["s1"]
@@ -334,7 +315,7 @@ fn event_approval_check_and_usage_repositories_round_trip() {
 }
 
 #[test]
-fn gh_learning_scoring_and_tournament_repositories_round_trip() {
+fn gh_and_learning_repositories_round_trip() {
     let database = Database::open_in_memory().expect("open db");
     let connection = database.connection();
     persist_project(&connection, &project_input()).expect("persist project");
@@ -412,137 +393,10 @@ fn gh_learning_scoring_and_tournament_repositories_round_trip() {
         "e-search"
     );
 
-    let policy = save_scoring_policy(
-        &connection,
-        &SavePolicyInput {
-            id: "policy-1".to_owned(),
-            name: "Correctness first".to_owned(),
-            scope: "user".to_owned(),
-            project_id: None,
-            criteria: vec![PolicyCriterion {
-                id: "tests-pass".to_owned(),
-                weight: 1.0,
-            }],
-            auto_keep_rule: serde_json::json!({ "mode": "never" }),
-            ties_threshold: 0.05,
-        },
-    )
-    .expect("save policy");
-    assert_eq!(
-        find_scoring_policy_by_id(&connection, "policy-1")
-            .expect("find policy")
-            .criteria[0]
-            .id,
-        "tests-pass"
-    );
-    assert!(list_scoring_policies(&connection, None)
-        .expect("list policies")
-        .iter()
-        .any(|policy| policy.id == "policy-1"));
-
-    let tournament = create_tournament(
-        &connection,
-        &CreateTournamentInput {
-            id: "t1".to_owned(),
-            project_id: "p1".to_owned(),
-            task_label: "port persistence".to_owned(),
-            prompt: "make it excellent".to_owned(),
-            quorum: 1,
-            policy_snapshot: policy,
-        },
-    )
-    .expect("create tournament");
-    assert_eq!(tournament.state, "pending");
-    assert!(
-        transition_tournament_state(&connection, "t1", "pending", "running")
-            .expect("transition")
-            .is_some()
-    );
-    assert!(
-        transition_tournament_state(&connection, "t1", "pending", "judging")
-            .expect("stale transition")
-            .is_none()
-    );
-    assert_eq!(
-        update_tournament_state(&connection, "t1", "judging")
-            .expect("update tournament")
-            .state,
-        "judging"
-    );
-
-    create_contestant(
-        &connection,
-        &CreateContestantInput {
-            tournament_id: "t1".to_owned(),
-            contestant_index: 0,
-            session_id: "s1".to_owned(),
-            config: ContestantConfig {
-                provider: "codex".to_owned(),
-                model_id: "codex-spark".to_owned(),
-                model_label: "Spark".to_owned(),
-                reasoning_effort: Some("medium".to_owned()),
-                config: serde_json::json!({ "launch": "structured" }),
-            },
-        },
-    )
-    .expect("create contestant");
-    update_contestant_outcome(&connection, "t1", 0, "in-quorum").expect("outcome");
-    assert_eq!(
-        list_contestants_by_tournament(&connection, "t1").expect("list contestants")[0].outcome,
-        "in-quorum"
-    );
-
-    persist_criterion_score(
-        &connection,
-        &PersistScoreInput {
-            tournament_id: "t1".to_owned(),
-            contestant_index: 0,
-            criterion_id: "tests-pass".to_owned(),
-            status: "ok".to_owned(),
-            raw_value: Some(1.0),
-            normalized_value: Some(1.0),
-            evidence: serde_json::json!({ "command": "npm test" }),
-        },
-    )
-    .expect("persist score");
-    set_tournament_verdict(
-        &connection,
-        "t1",
-        &serde_json::json!({ "totals": [{ "contestantIndex": 0, "total": 1.0 }] }),
-    )
-    .expect("set verdict");
-    let leaderboard = read_tournament_leaderboard(&connection, "t1").expect("leaderboard");
-    assert_eq!(leaderboard.rows[0].rank, Some(1));
-    assert_eq!(leaderboard.rows[0].scores[0].criterion_id, "tests-pass");
-    assert_eq!(
-        load_policy_snapshot(&connection, "t1").expect("policy snapshot")["id"],
-        "policy-1"
-    );
-    assert_eq!(
-        list_tournaments(
-            &connection,
-            &ListTournamentsOptions {
-                project_id: Some("p1".to_owned()),
-                state: Some("judging".to_owned()),
-                limit: 10,
-            },
-        )
-        .expect("list tournaments")
-        .len(),
-        1
-    );
-    assert_eq!(
-        set_tournament_decision(&connection, "t1", &serde_json::json!({ "winner": 0 }))
-            .expect("set decision")
-            .state,
-        "decided"
-    );
-
     delete_learning(&connection, "l1").expect("delete learning");
     assert!(list_learnings(&connection, "p1", 10)
         .expect("list after delete")
         .is_empty());
-    delete_scoring_policy(&connection, "policy-1").expect("delete policy");
 }
 
 fn project_input() -> PersistProjectInput {

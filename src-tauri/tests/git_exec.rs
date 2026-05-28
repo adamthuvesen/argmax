@@ -91,6 +91,7 @@ async fn stdout_cap_is_enforced() {
         GitExecOptions {
             timeout: Duration::from_secs(5),
             stdout_cap_bytes: 1,
+            env: Vec::new(),
         },
     )
     .await

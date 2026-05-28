@@ -11,6 +11,9 @@ use tokio::{sync::Semaphore, task::JoinSet};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     git::exec::run_git_text,
+    persistence::database::Database,
+    persistence::projects::require_project,
+    persistence::workspaces::find_workspace_by_id,
     util::workspace_paths::{resolve_inside, PathError},
 };
 
@@ -35,6 +38,56 @@ pub struct WorkspaceDiff {
     pub workspace_id: String,
     pub file_path: Option<String>,
     pub content: String,
+}
+
+pub async fn list_changed_files(
+    database: &Database,
+    workspace_id: &str,
+) -> ArgmaxResult<Vec<ChangedFileSummary>> {
+    let workspace = {
+        let connection = database.connection();
+        find_workspace_by_id(&connection, workspace_id)?
+    };
+    list_changed_files_at_path(workspace.path).await
+}
+
+pub async fn load_diff(
+    database: &Database,
+    workspace_id: &str,
+    file_path: Option<&str>,
+) -> ArgmaxResult<WorkspaceDiff> {
+    let workspace = {
+        let connection = database.connection();
+        find_workspace_by_id(&connection, workspace_id)?
+    };
+    load_diff_at_path(workspace.path, workspace_id.to_owned(), file_path).await
+}
+
+pub async fn list_changed_files_for_project(
+    database: &Database,
+    project_id: &str,
+) -> ArgmaxResult<Vec<ChangedFileSummary>> {
+    let project = {
+        let connection = database.connection();
+        require_project(&connection, project_id)?
+    };
+    list_changed_files_at_path(project.repo_path).await
+}
+
+pub async fn load_diff_for_project(
+    database: &Database,
+    project_id: &str,
+    file_path: Option<&str>,
+) -> ArgmaxResult<WorkspaceDiff> {
+    let project = {
+        let connection = database.connection();
+        require_project(&connection, project_id)?
+    };
+    // The WorkspaceDiff response shape still uses `workspaceId` as the key —
+    // we reuse it for the project's repoPath-rooted view; renderer never
+    // round-trips this id back, so keeping the type unchanged is safer than
+    // forking the shape.
+    load_diff_at_path(project.repo_path, project_id.to_owned(), file_path).await
 }
 
 pub async fn list_changed_files_at_path(

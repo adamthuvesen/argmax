@@ -3,14 +3,22 @@
 
 pub mod approvals;
 pub mod attachments;
+pub mod checks;
 pub mod error;
+pub mod files;
+pub mod gh;
 pub mod git;
+pub mod ide;
 pub mod ipc;
+pub mod mcp;
+pub mod memory;
 pub mod persistence;
 pub mod providers;
 pub mod review;
+pub mod sessions;
 pub mod skills;
 pub mod state;
+pub mod terminal;
 pub mod util;
 pub mod workspaces;
 

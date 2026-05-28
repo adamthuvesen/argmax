@@ -22,6 +22,9 @@ const ERROR_DETAIL_CAP_BYTES: usize = 4096;
 pub struct GitExecOptions {
     pub timeout: Duration,
     pub stdout_cap_bytes: usize,
+    /// Extra env vars layered onto git's environment. Used by the
+    /// checkpoint service to inject `GIT_INDEX_FILE` for a scratch index.
+    pub env: Vec<(OsString, OsString)>,
 }
 
 impl Default for GitExecOptions {
@@ -29,7 +32,15 @@ impl Default for GitExecOptions {
         Self {
             timeout: GIT_DEFAULT_TIMEOUT,
             stdout_cap_bytes: GIT_STDOUT_CAP_BYTES,
+            env: Vec::new(),
         }
+    }
+}
+
+impl GitExecOptions {
+    pub fn with_env<K: Into<OsString>, V: Into<OsString>>(mut self, key: K, value: V) -> Self {
+        self.env.push((key.into(), value.into()));
+        self
     }
 }
 
@@ -196,6 +207,9 @@ async fn run_git_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    for (key, value) in &options.env {
+        command.env(key, value);
+    }
 
     let mut child = command.spawn().map_err(|error| {
         ArgmaxError::service("GIT_SPAWN_FAILED", format!("failed to run git: {error}"))

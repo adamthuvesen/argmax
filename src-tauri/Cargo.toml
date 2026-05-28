@@ -82,6 +82,7 @@ once_cell = "1"
 [dev-dependencies]
 criterion = "0.5"
 pretty_assertions = "1"
+tauri = { version = "2.11", features = ["test"] }
 
 [features]
 # Required by Tauri 2 for production builds; do not remove.

@@ -12,6 +12,7 @@ pub mod review;
 pub mod skills;
 pub mod state;
 pub mod util;
+pub mod workspaces;
 
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;

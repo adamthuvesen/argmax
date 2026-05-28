@@ -22,6 +22,7 @@ pub mod sessions;
 pub mod skills;
 pub mod state;
 pub mod terminal;
+pub mod updater;
 pub mod util;
 pub mod workspaces;
 
@@ -46,8 +47,10 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state::AppState::new())
         .invoke_handler(specta_builder.invoke_handler())
         .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))

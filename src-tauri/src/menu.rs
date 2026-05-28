@@ -208,6 +208,11 @@ pub fn install_app_menu<R: Runtime>(app: &AppHandle<R>, is_dev: bool) -> tauri::
 }
 
 pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
+    if id == MenuCommand::CheckForUpdates.as_str() {
+        crate::updater::run_menu_update_check(app.clone());
+        return;
+    }
+
     if let Some(command) = MenuCommand::from_id(id) {
         if let Some(window) = app.get_webview_window("main") {
             if let Err(error) = window.emit(MENU_COMMAND_EVENT, command.as_str()) {

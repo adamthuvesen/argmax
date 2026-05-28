@@ -349,7 +349,7 @@ mod tests {
     use crate::persistence::time::now_iso;
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use crate::error::ArgmaxError;
-    use crate::gh::service::GhRunner;
+    use crate::util::gh_runner::GhRunner;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use tempfile::TempDir;

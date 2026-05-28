@@ -25,6 +25,43 @@ use nix::unistd::Pid;
 pub const GRACEFUL_TIMEOUT_MS: u64 = 1500;
 const POLL_INTERVAL_MS: u64 = 50;
 
+/// PID-based variant of `terminate_with_escalation`. Sends SIGTERM,
+/// sleeps `GRACEFUL_TIMEOUT_MS`, then SIGKILL — no `try_wait` polling,
+/// because callers that own the child handle behind a `wait()`-blocking
+/// thread (PTYs via `portable_pty`, see `mcp::auth` and
+/// `terminal::service`) can't safely share that handle with this
+/// function.
+///
+/// Best-effort: signal failures are not bubbled — the caller has
+/// already decided the process must die, and a separate exit watcher
+/// reaps the child when its own `wait()` returns.
+#[cfg(unix)]
+pub async fn signal_term_then_kill(pid: u32) {
+    let nix_pid = Pid::from_raw(pid as i32);
+    let _ = kill(nix_pid, Signal::SIGTERM);
+    sleep(Duration::from_millis(GRACEFUL_TIMEOUT_MS)).await;
+    let _ = kill(nix_pid, Signal::SIGKILL);
+}
+
+/// Synchronous best-effort variant. Use from `Drop` (where awaiting a
+/// sleep is unsafe) — sends SIGTERM and an immediate SIGKILL, no grace
+/// window. Mirrors the `ProviderSessionHandle::Drop` shape.
+#[cfg(unix)]
+pub fn signal_term_and_kill_blocking(pid: u32) {
+    let nix_pid = Pid::from_raw(pid as i32);
+    let _ = kill(nix_pid, Signal::SIGTERM);
+    let _ = kill(nix_pid, Signal::SIGKILL);
+}
+
+#[cfg(not(unix))]
+pub async fn signal_term_then_kill(_pid: u32) {
+    // Windows path is not supported in v1 — TerminalService/McpAuth will
+    // own platform-specific kill logic here when added.
+}
+
+#[cfg(not(unix))]
+pub fn signal_term_and_kill_blocking(_pid: u32) {}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TerminateError {
     #[error("io error during termination: {0}")]

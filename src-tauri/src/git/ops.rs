@@ -18,6 +18,7 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::run_git_text;
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_gh_pr_for_session, GhPrRecord};
+use crate::util::gh_runner::{default_gh_runner, GhRunner};
 use crate::persistence::projects::get_project_remote;
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::workspaces::find_workspace_by_id;
@@ -84,14 +85,6 @@ pub enum GitViewOrCreatePrResult {
     },
 }
 
-/// `gh` is invoked via this closure so tests can stub the binary the same
-/// way the TS code injects a fake `ghRunner`.
-pub type GhRunner = Arc<
-    dyn Fn(String, Vec<String>) -> Pin<Box<dyn Future<Output = ArgmaxResult<String>> + Send>>
-        + Send
-        + Sync,
->;
-
 /// Refresh hook: after `gh pr create` succeeds, the gh poller / service
 /// re-reads PR rows for the session so the next dropdown press hits the
 /// cache. Returns the refreshed rows so we can pick the matching PR.
@@ -100,37 +93,6 @@ pub type RefreshPrFn = Arc<
         + Send
         + Sync,
 >;
-
-pub fn default_gh_runner() -> GhRunner {
-    Arc::new(|cwd: String, args: Vec<String>| {
-        Box::pin(async move {
-            // gh stdout/stderr handling mirrors run_git_text: spawn under
-            // tokio, surface stderr on non-zero exit.
-            use tokio::process::Command;
-            let output = Command::new("gh")
-                .current_dir(cwd)
-                .args(&args)
-                .output()
-                .await
-                .map_err(|error| {
-                    ArgmaxError::service("GH_SPAWN_FAILED", format!("failed to run gh: {error}"))
-                })?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(ArgmaxError::service(
-                    "GH_NON_ZERO_EXIT",
-                    format!("gh failed: {}", stderr.trim()),
-                ));
-            }
-            String::from_utf8(output.stdout).map_err(|error| {
-                ArgmaxError::service(
-                    "GH_STDOUT_NOT_UTF8",
-                    format!("gh stdout was not valid UTF-8: {error}"),
-                )
-            })
-        })
-    })
-}
 
 pub struct GitOpsService {
     database: Arc<Database>,

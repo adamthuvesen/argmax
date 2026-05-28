@@ -23,7 +23,6 @@ use std::{
     io::{Read, Write},
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
 };
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
@@ -32,6 +31,7 @@ use uuid::Uuid;
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     persistence::{database::Database, workspaces::find_workspace_by_id},
+    util::process_control::{signal_term_and_kill_blocking, signal_term_then_kill},
 };
 
 /// Streams each PTY chunk to the renderer (the IPC layer turns these
@@ -249,22 +249,16 @@ impl TerminalService {
 impl Drop for TerminalService {
     fn drop(&mut self) {
         // Sync best-effort cleanup. Drop cannot await `tokio::time::sleep`
-        // so we just send SIGTERM (and an immediate SIGKILL) and let the
-        // exit watcher tear down. Mirrors `ProviderSessionHandle::Drop`.
+        // so we use the blocking signal helper (SIGTERM + immediate
+        // SIGKILL, no grace window) and let the exit watcher tear down.
+        // Mirrors `ProviderSessionHandle::Drop`.
         let pids: Vec<u32> = {
             let terminals = self.terminals.lock().expect("terminals poisoned");
             terminals.values().filter_map(|entry| entry.pid).collect()
         };
-        #[cfg(unix)]
         for pid in pids {
-            use nix::sys::signal::{kill, Signal};
-            use nix::unistd::Pid;
-            let nix_pid = Pid::from_raw(pid as i32);
-            let _ = kill(nix_pid, Signal::SIGTERM);
-            let _ = kill(nix_pid, Signal::SIGKILL);
+            signal_term_and_kill_blocking(pid);
         }
-        #[cfg(not(unix))]
-        let _ = pids;
     }
 }
 
@@ -323,21 +317,6 @@ fn spawn_exit_watcher(
             signal,
         });
     });
-}
-
-#[cfg(unix)]
-async fn signal_term_then_kill(pid: u32) {
-    use nix::sys::signal::{kill, Signal};
-    use nix::unistd::Pid;
-    let nix_pid = Pid::from_raw(pid as i32);
-    let _ = kill(nix_pid, Signal::SIGTERM);
-    tokio::time::sleep(Duration::from_millis(1500)).await;
-    let _ = kill(nix_pid, Signal::SIGKILL);
-}
-
-#[cfg(not(unix))]
-async fn signal_term_then_kill(_pid: u32) {
-    // Windows path is not supported in v1.
 }
 
 fn pick_shell() -> String {

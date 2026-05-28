@@ -26,6 +26,7 @@ use uuid::Uuid;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::environment::build_provider_environment;
+use crate::util::process_control::signal_term_then_kill;
 use crate::providers::ProviderId;
 
 /// Callback the auth service uses to stream PTY output. Mirrors the
@@ -373,23 +374,6 @@ impl portable_pty::ChildKiller for DummyChild {
     fn clone_killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
         Box::new(DummyChild)
     }
-}
-
-/// Mirrors `util::process_control::terminate_with_escalation` for raw
-/// PIDs. Sends SIGTERM, waits 1500 ms, then escalates to SIGKILL.
-#[cfg(unix)]
-async fn signal_term_then_kill(pid: u32) {
-    use nix::sys::signal::{kill, Signal};
-    use nix::unistd::Pid;
-    let nix_pid = Pid::from_raw(pid as i32);
-    let _ = kill(nix_pid, Signal::SIGTERM);
-    tokio::time::sleep(Duration::from_millis(1500)).await;
-    let _ = kill(nix_pid, Signal::SIGKILL);
-}
-
-#[cfg(not(unix))]
-async fn signal_term_then_kill(_pid: u32) {
-    // Windows path is not supported in v1 — TerminalService will own it.
 }
 
 #[cfg(test)]

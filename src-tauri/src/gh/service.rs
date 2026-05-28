@@ -2,11 +2,11 @@
 // against a session's workspace and persists the result so the renderer can
 // render PR status without re-running `gh` on every read.
 //
-// Mirrors `src/main/gh/ghService.ts`. The `GhRunner` shape matches
-// `src-tauri/src/git/ops.rs::GhRunner` so both subsystems can share a
-// fake binary in tests.
+// Mirrors `src/main/gh/ghService.ts`. The `GhRunner` closure type lives in
+// `util::gh_runner` so this service and `git::ops` share one fake-binary
+// surface in tests.
 
-use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::database::Database;
@@ -14,49 +14,7 @@ use crate::persistence::gh::{list_gh_pr_for_session, upsert_gh_pr, GhPrRecord};
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
-
-/// Mirrors the TS default of 15s — `gh` is the bottleneck, not us.
-const GH_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// `gh` is invoked via this closure so tests can stub the binary the same
-/// way the TS code injects a fake `ghRunner`.
-pub type GhRunner = Arc<
-    dyn Fn(String, Vec<String>) -> Pin<Box<dyn Future<Output = ArgmaxResult<String>> + Send>>
-        + Send
-        + Sync,
->;
-
-pub fn default_gh_runner() -> GhRunner {
-    Arc::new(|cwd: String, args: Vec<String>| {
-        Box::pin(async move {
-            use tokio::process::Command;
-            let output = tokio::time::timeout(
-                GH_TIMEOUT,
-                Command::new("gh").current_dir(cwd).args(&args).output(),
-            )
-            .await
-            .map_err(|_| {
-                ArgmaxError::service("GH_TIMEOUT", format!("gh timed out after {GH_TIMEOUT:?}"))
-            })?
-            .map_err(|error| {
-                ArgmaxError::service("GH_SPAWN_FAILED", format!("failed to run gh: {error}"))
-            })?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(ArgmaxError::service(
-                    "GH_NON_ZERO_EXIT",
-                    format!("gh failed: {}", stderr.trim()),
-                ));
-            }
-            String::from_utf8(output.stdout).map_err(|error| {
-                ArgmaxError::service(
-                    "GH_STDOUT_NOT_UTF8",
-                    format!("gh stdout was not valid UTF-8: {error}"),
-                )
-            })
-        })
-    })
-}
+use crate::util::gh_runner::{default_gh_runner, GhRunner};
 
 /// `GhService` keeps the renderer's PR rows fresh. Cheap reads (`list_for_session`)
 /// hit SQLite; `refresh` calls out to `gh` and upserts.

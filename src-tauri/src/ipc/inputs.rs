@@ -173,6 +173,18 @@ pub struct TerminalRows(u16);
 #[serde(transparent)]
 pub struct Limit200(u16);
 
+impl TerminalCols {
+    pub fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl TerminalRows {
+    pub fn get(self) -> u16 {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
 #[serde(transparent)]
 pub struct NullableExpectedMtimeMs(Option<f64>);

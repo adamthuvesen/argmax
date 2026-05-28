@@ -512,6 +512,7 @@ mod tests {
         };
 
         ProviderLaunchInput {
+            provider: provider_id,
             session_id: "session-1".to_string(),
             workspace_path: PathBuf::from("/repo/worktree"),
             prompt: "Implement the task".to_string(),

@@ -25,8 +25,10 @@ use crate::{
             persist_raw_output, persist_timeline_event, PersistRawOutputInput,
             PersistTimelineEventInput, RawProviderOutput, TimelineEvent,
         },
+        projects::ProjectSummary,
         sessions::{SessionSummary, UsageCounts as PersistedUsageCounts},
         usage::{insert_usage_event, InsertUsageEventInput},
+        workspaces::WorkspaceSummary,
     },
     util::delta_coalescer::{DeltaCoalescer, DEFAULT_CADENCE_MS},
 };
@@ -52,10 +54,30 @@ struct PendingTimelineEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardDelta {
+    pub projects: Vec<ProjectSummary>,
+    pub workspaces: Vec<WorkspaceSummary>,
     pub sessions: Vec<SessionSummary>,
     pub events: Vec<TimelineEvent>,
     pub raw_outputs: Vec<RawProviderOutput>,
     pub approvals: Vec<ApprovalRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_messages: Option<std::collections::BTreeMap<String, Vec<PendingMessage>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingMessage {
+    pub id: String,
+    pub session_id: String,
+    pub content: String,
+    pub agent_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    pub queued_at: String,
 }
 
 #[derive(Debug)]
@@ -264,10 +286,13 @@ impl Default for SessionFlushBuffer {
 
 impl DashboardDelta {
     pub fn is_empty(&self) -> bool {
-        self.sessions.is_empty()
+        self.projects.is_empty()
+            && self.workspaces.is_empty()
+            && self.sessions.is_empty()
             && self.events.is_empty()
             && self.raw_outputs.is_empty()
             && self.approvals.is_empty()
+            && self.pending_messages.is_none()
     }
 }
 

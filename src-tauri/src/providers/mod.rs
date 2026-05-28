@@ -4,6 +4,8 @@ pub mod environment;
 pub mod flush_queue;
 pub mod normalizer;
 pub mod pricing;
+pub mod runtime;
+pub mod session_service;
 
 use std::path::PathBuf;
 
@@ -22,6 +24,7 @@ pub enum ProviderMode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderLaunchInput {
+    pub provider: ProviderId,
     pub session_id: String,
     pub workspace_path: PathBuf,
     pub prompt: String,

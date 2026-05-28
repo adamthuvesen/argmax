@@ -343,10 +343,13 @@ fn extract_pr_url(stdout: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::gh::GhPrRecord;
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::path::Path;
     use std::process::Command as StdCommand;
+    use std::sync::Mutex;
     use tempfile::TempDir;
 
     fn run_git(repo: &Path, args: &[&str]) {
@@ -404,6 +407,28 @@ mod tests {
         )
         .expect("workspace");
         "w1".to_string()
+    }
+
+    fn fixture_session(database: &Arc<Database>, workspace_id: &str) -> String {
+        let conn = database.connection();
+        persist_session(
+            &conn,
+            &PersistSessionInput {
+                id: "s1".to_string(),
+                workspace_id: workspace_id.to_string(),
+                provider: "claude".to_string(),
+                model_label: "Claude Haiku 4.5".to_string(),
+                model_id: "claude-haiku-4-5".to_string(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_string()),
+                agent_mode: Some("auto".to_string()),
+                prompt: "open a pr".to_string(),
+                state: "complete".to_string(),
+                attention: "normal".to_string(),
+            },
+        )
+        .expect("session");
+        "s1".to_string()
     }
 
     #[tokio::test]
@@ -477,6 +502,92 @@ mod tests {
             String::from_utf8_lossy(&current.stdout).trim(),
             "feature/new"
         );
+    }
+
+    #[tokio::test]
+    async fn push_sends_current_branch_to_fixture_remote() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path());
+        let remote = TempDir::new().unwrap();
+        run_git(remote.path(), &["init", "-q", "--bare"]);
+        run_git(
+            repo.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        );
+        run_git(repo.path(), &["config", "push.default", "upstream"]);
+        run_git(repo.path(), &["config", "push.autoSetupRemote", "false"]);
+
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+
+        let service = GitOpsService::new(database);
+        let result = service
+            .push(GitPushInput { workspace_id })
+            .await
+            .expect("push succeeds");
+
+        assert_eq!(result.branch, "main");
+        let remote_head = StdCommand::new("git")
+            .args(["--git-dir", remote.path().to_str().unwrap()])
+            .args(["rev-parse", "refs/heads/main"])
+            .output()
+            .expect("rev-parse remote head");
+        assert!(remote_head.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&remote_head.stdout).trim().len(),
+            40
+        );
+    }
+
+    #[tokio::test]
+    async fn view_or_create_pr_shells_to_gh_and_uses_refresh_result() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path());
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let session_id = fixture_session(&database, &workspace_id);
+
+        let calls = Arc::new(Mutex::new(Vec::<(String, Vec<String>)>::new()));
+        let runner: GhRunner = Arc::new({
+            let calls = Arc::clone(&calls);
+            move |cwd, args| {
+                calls.lock().expect("calls").push((cwd, args));
+                Box::pin(async { Ok("https://github.com/example/repo/pull/42\n".to_string()) })
+            }
+        });
+        let refresh: RefreshPrFn = Arc::new(|session_id| {
+            Box::pin(async move {
+                Ok(vec![GhPrRecord {
+                    session_id,
+                    pr_number: 42,
+                    head_sha: "abc123".to_string(),
+                    last_seen_check_state: "pending".to_string(),
+                    updated_at: "2026-05-24T12:00:00.000Z".to_string(),
+                    pr_state: Some("OPEN".to_string()),
+                    notified_at: None,
+                }])
+            })
+        });
+
+        let service = GitOpsService::with_runners(database, runner, Some(refresh));
+        let result = service
+            .view_or_create_pr(GitViewOrCreatePrInput { session_id })
+            .await
+            .expect("pr created");
+
+        assert_eq!(
+            result,
+            GitViewOrCreatePrResult::Created {
+                url: "https://github.com/example/repo/pull/42".to_string(),
+                pr_number: Some(42),
+            }
+        );
+        let calls = calls.lock().expect("calls");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, repo.path().to_string_lossy());
+        assert_eq!(calls[0].1, vec!["pr", "create", "--fill"]);
     }
 
     #[test]

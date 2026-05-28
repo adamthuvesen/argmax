@@ -317,5 +317,12 @@ mod tests {
         assert!(!bytes.is_empty(), "patch should contain the dirty diff");
         let as_text = String::from_utf8_lossy(&bytes);
         assert!(as_text.contains("notes.txt"));
+
+        std::fs::remove_file(repo_dir.path().join("notes.txt")).expect("reset dirty file");
+        run_in_repo(repo_dir.path(), &["apply", "--check", patch_path]);
+        run_in_repo(repo_dir.path(), &["apply", patch_path]);
+        let restored = std::fs::read_to_string(repo_dir.path().join("notes.txt"))
+            .expect("patch restores file");
+        assert_eq!(restored, "scratch\n");
     }
 }

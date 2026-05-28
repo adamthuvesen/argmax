@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","method":"item/commandExecution/requestApproval","id":50,"params":{"itemId":"cmd_1","threadId":"thr_123","turnId":"turn_456","command":["rm","-rf","/tmp/build"],"cwd":"/Users/me/project","reason":"Clean build artifacts"}}

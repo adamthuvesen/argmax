@@ -161,11 +161,12 @@ fn classify_tool_risk(tool: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::*;
     use crate::providers::normalizer::{
-        normalize_provider_event, tests::output_event, NormalizerSessionContext,
+        normalize_provider_event, tests::output_event, Dispatcher, EventNormalizer,
+        NormalizerSessionContext,
     };
     use crate::providers::ProviderId;
 
@@ -239,5 +240,48 @@ mod tests {
         .expect("usage");
         assert_eq!(usage.cost_usd, 6.0);
         assert_eq!(usage.event_id.as_deref(), Some("msg_1"));
+    }
+
+    #[test]
+    fn claude_permission_fixture_replays() {
+        let fixture = include_str!("../../../tests/fixtures/claude/permission_denied.jsonl");
+        let snapshot =
+            include_str!("../../../tests/fixtures/claude/permission_denied.events.snapshot.json");
+        let mut dispatcher = Dispatcher::new();
+        let result =
+            dispatcher.normalize(ProviderId::Claude, output_event(&format!("{fixture}\n")));
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(
+            stable_event_snapshot(&result.events),
+            serde_json::from_str::<Value>(snapshot).expect("snapshot json")
+        );
+        let event = &result.events[0];
+        assert_eq!(event.r#type, "approval.requested");
+        assert_eq!(event.message, "rm -rf node_modules");
+        assert_eq!(event.payload["command"], "rm -rf node_modules");
+        assert_eq!(
+            event.payload["reason"],
+            "Ask mode requires user approval for Bash"
+        );
+        assert_eq!(event.payload["riskLevel"], "high");
+        assert_eq!(event.payload["toolName"], "Bash");
+        assert_eq!(event.payload["toolUseId"], "toolu_01ABC123");
+    }
+
+    fn stable_event_snapshot(events: &[PersistTimelineEventInput]) -> Value {
+        Value::Array(
+            events
+                .iter()
+                .map(|event| {
+                    json!({
+                        "sessionId": event.session_id,
+                        "type": event.r#type,
+                        "message": event.message,
+                        "payload": event.payload,
+                        "createdAt": event.created_at,
+                    })
+                })
+                .collect(),
+        )
     }
 }

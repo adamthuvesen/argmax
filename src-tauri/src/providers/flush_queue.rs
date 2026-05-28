@@ -1,9 +1,19 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use rusqlite::Connection;
 use serde::Serialize;
+use uuid::Uuid;
 
-use super::normalizer::NormalizedUsage;
+use super::{
+    normalizer::{
+        normalize_provider_event, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
+        ProviderOutputStream,
+    },
+    ProviderId,
+};
 use crate::{
     error::ArgmaxResult,
     persistence::{
@@ -46,6 +56,160 @@ pub struct DashboardDelta {
     pub events: Vec<TimelineEvent>,
     pub raw_outputs: Vec<RawProviderOutput>,
     pub approvals: Vec<ApprovalRequest>,
+}
+
+#[derive(Debug)]
+pub struct ProviderEventFlushQueue {
+    sessions: HashMap<String, ProviderFlushSession>,
+    gate: DashboardDeltaGate,
+}
+
+#[derive(Debug)]
+struct ProviderFlushSession {
+    provider: ProviderId,
+    normalizer_context: NormalizerSessionContext,
+    stream_buffers: HashMap<ProviderOutputStream, String>,
+    buffer: SessionFlushBuffer,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueueOutputResult {
+    pub delta: Option<DashboardDelta>,
+    pub provider_conversation_id: Option<String>,
+}
+
+impl ProviderEventFlushQueue {
+    pub fn new() -> Self {
+        Self {
+            sessions: HashMap::new(),
+            gate: DashboardDeltaGate::new(),
+        }
+    }
+
+    pub fn initialize_session(
+        &mut self,
+        session_id: impl Into<String>,
+        provider: ProviderId,
+        normalizer_context: NormalizerSessionContext,
+    ) {
+        self.sessions.insert(
+            session_id.into(),
+            ProviderFlushSession {
+                provider,
+                normalizer_context,
+                stream_buffers: HashMap::new(),
+                buffer: SessionFlushBuffer::new(),
+            },
+        );
+    }
+
+    pub fn delete_session(&mut self, session_id: &str) {
+        self.sessions.remove(session_id);
+    }
+
+    pub fn queue_output_event(
+        &mut self,
+        connection: &mut Connection,
+        event: ProviderOutputEvent,
+    ) -> ArgmaxResult<QueueOutputResult> {
+        let Some(session) = self.sessions.get_mut(&event.session_id) else {
+            return Ok(QueueOutputResult {
+                delta: None,
+                provider_conversation_id: None,
+            });
+        };
+
+        session.buffer.queue_raw_output(PersistRawOutputInput {
+            id: Uuid::new_v4().to_string(),
+            session_id: event.session_id.clone(),
+            stream: event.stream.as_str().to_string(),
+            content: event.message.clone(),
+            created_at: Some(event.created_at.clone()),
+        });
+
+        let pending = session
+            .stream_buffers
+            .entry(event.stream.clone())
+            .or_default();
+        pending.push_str(&event.message);
+
+        let mut provider_conversation_id = None;
+        let Some(complete_up_to) = pending.rfind(['\n', '\r']).map(|index| index + 1) else {
+            return Ok(QueueOutputResult {
+                delta: None,
+                provider_conversation_id,
+            });
+        };
+        let trailing = pending.split_off(complete_up_to);
+        let completed = std::mem::replace(pending, trailing);
+        let normalized_event = ProviderOutputEvent {
+            message: completed,
+            ..event
+        };
+        let normalized = normalize_provider_event(
+            session.provider,
+            &normalized_event,
+            &mut session.normalizer_context,
+        );
+        provider_conversation_id = normalized.provider_conversation_id.clone();
+        for event in normalized.events {
+            session.buffer.queue_timeline_event(event);
+        }
+        for usage in normalized.usages {
+            session.buffer.queue_usage(usage);
+        }
+
+        let delta = flush_session_buffer(
+            connection,
+            &normalized_event.session_id,
+            &mut session.buffer,
+        )?;
+        Ok(QueueOutputResult {
+            delta: (!delta.is_empty() && self.gate.should_publish_dashboard_delta())
+                .then_some(delta),
+            provider_conversation_id,
+        })
+    }
+
+    pub fn flush_trailing_fragments(
+        &mut self,
+        connection: &mut Connection,
+        session_id: &str,
+        created_at: &str,
+    ) -> ArgmaxResult<Option<DashboardDelta>> {
+        let Some(session) = self.sessions.get_mut(session_id) else {
+            return Ok(None);
+        };
+        let fragments = std::mem::take(&mut session.stream_buffers);
+        for (stream, fragment) in fragments {
+            if fragment.trim().is_empty() {
+                continue;
+            }
+            let event = ProviderOutputEvent {
+                session_id: session_id.to_string(),
+                stream,
+                message: format!("{fragment}\n"),
+                created_at: created_at.to_string(),
+            };
+            let normalized =
+                normalize_provider_event(session.provider, &event, &mut session.normalizer_context);
+            for event in normalized.events {
+                session.buffer.queue_timeline_event(event);
+            }
+            for usage in normalized.usages {
+                session.buffer.queue_usage(usage);
+            }
+        }
+        self.gate.force_next_dashboard_delta();
+        let delta = flush_session_buffer(connection, session_id, &mut session.buffer)?;
+        Ok((!delta.is_empty()).then_some(delta))
+    }
+}
+
+impl Default for ProviderEventFlushQueue {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SessionFlushBuffer {
@@ -95,6 +259,15 @@ impl SessionFlushBuffer {
 impl Default for SessionFlushBuffer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl DashboardDelta {
+    pub fn is_empty(&self) -> bool {
+        self.sessions.is_empty()
+            && self.events.is_empty()
+            && self.raw_outputs.is_empty()
+            && self.approvals.is_empty()
     }
 }
 
@@ -257,6 +430,75 @@ mod tests {
         assert!(gate.should_publish_dashboard_delta());
     }
 
+    #[test]
+    fn provider_flush_queue_owns_stream_buffers_until_newline() {
+        let database = Database::open_in_memory().expect("open db");
+        let mut connection = database.connection();
+        seed_session(&connection);
+
+        let mut queue = ProviderEventFlushQueue::new();
+        queue.initialize_session(
+            "s1",
+            ProviderId::Claude,
+            NormalizerSessionContext::default(),
+        );
+
+        let first = queue
+            .queue_output_event(
+                &mut connection,
+                output_event(
+                    ProviderOutputStream::Stdout,
+                    "{\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hel",
+                ),
+            )
+            .expect("queue first");
+        assert!(first.delta.is_none());
+
+        queue.gate.force_next_dashboard_delta();
+        let second = queue
+            .queue_output_event(
+                &mut connection,
+                output_event(ProviderOutputStream::Stdout, "lo\"}}\n"),
+            )
+            .expect("queue second")
+            .delta
+            .expect("delta");
+
+        assert_eq!(second.raw_outputs.len(), 2);
+        assert_eq!(second.events.len(), 1);
+        assert_eq!(second.events[0].message, "Hello");
+        let fetched =
+            list_session_events_since(&connection, "s1", None, None).expect("fetch events");
+        assert_eq!(fetched.events[0].message, "Hello");
+    }
+
+    #[test]
+    fn trailing_fragments_flush_before_session_buffer_is_dropped() {
+        let database = Database::open_in_memory().expect("open db");
+        let mut connection = database.connection();
+        seed_session(&connection);
+
+        let mut queue = ProviderEventFlushQueue::new();
+        queue.initialize_session(
+            "s1",
+            ProviderId::Claude,
+            NormalizerSessionContext::default(),
+        );
+        queue
+            .queue_output_event(
+                &mut connection,
+                output_event(ProviderOutputStream::Stdout, "plain trailing output"),
+            )
+            .expect("queue fragment");
+
+        let delta = queue
+            .flush_trailing_fragments(&mut connection, "s1", "2026-05-24T10:00:01.000Z")
+            .expect("flush trailing")
+            .expect("delta");
+        assert_eq!(delta.events.len(), 1);
+        assert_eq!(delta.events[0].message, "plain trailing output");
+    }
+
     fn event(message: &str) -> PersistTimelineEventInput {
         PersistTimelineEventInput {
             id: format!("event-{message}"),
@@ -265,6 +507,15 @@ mod tests {
             message: message.to_string(),
             payload: json!({}),
             created_at: Some("2026-05-24T10:00:00.000Z".to_string()),
+        }
+    }
+
+    fn output_event(stream: ProviderOutputStream, message: &str) -> ProviderOutputEvent {
+        ProviderOutputEvent {
+            session_id: "s1".to_string(),
+            stream,
+            message: message.to_string(),
+            created_at: "2026-05-24T10:00:00.000Z".to_string(),
         }
     }
 

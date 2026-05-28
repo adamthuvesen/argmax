@@ -214,10 +214,11 @@ fn extract_tool_input(item: &Map<String, Value>, action: Option<&Map<String, Val
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use crate::providers::normalizer::{
-        normalize_provider_event, tests::output_event, NormalizerSessionContext,
+        normalize_provider_event, tests::output_event, Dispatcher, EventNormalizer,
+        NormalizerSessionContext,
     };
     use crate::providers::ProviderId;
 
@@ -291,5 +292,68 @@ mod tests {
             result.provider_conversation_id.as_deref(),
             Some("thread-123")
         );
+    }
+
+    #[test]
+    fn codex_command_approval_fixture_replays() {
+        let fixture = include_str!("../../../tests/fixtures/codex/command_approval_request.jsonl");
+        let snapshot = include_str!(
+            "../../../tests/fixtures/codex/command_approval_request.events.snapshot.json"
+        );
+        let mut dispatcher = Dispatcher::new();
+        let result = dispatcher.normalize(ProviderId::Codex, output_event(&format!("{fixture}\n")));
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(
+            stable_event_snapshot(&result.events),
+            serde_json::from_str::<Value>(snapshot).expect("snapshot json")
+        );
+        let event = &result.events[0];
+        assert_eq!(event.r#type, "approval.requested");
+        assert_eq!(event.message, "rm -rf /tmp/build");
+        assert_eq!(event.payload["command"], "rm -rf /tmp/build");
+        assert_eq!(event.payload["reason"], "Clean build artifacts");
+        assert_eq!(event.payload["riskLevel"], "high");
+        assert_eq!(event.payload["cwd"], "/Users/me/project");
+    }
+
+    #[test]
+    fn codex_file_change_approval_fixture_replays() {
+        let fixture =
+            include_str!("../../../tests/fixtures/codex/file_change_approval_request.jsonl");
+        let snapshot = include_str!(
+            "../../../tests/fixtures/codex/file_change_approval_request.events.snapshot.json"
+        );
+        let mut dispatcher = Dispatcher::new();
+        let result = dispatcher.normalize(ProviderId::Codex, output_event(&format!("{fixture}\n")));
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(
+            stable_event_snapshot(&result.events),
+            serde_json::from_str::<Value>(snapshot).expect("snapshot json")
+        );
+        let event = &result.events[0];
+        assert_eq!(event.r#type, "approval.requested");
+        assert_eq!(event.message, "Apply file changes");
+        assert_eq!(event.payload["command"], "Apply file changes");
+        assert_eq!(event.payload["reason"], "Apply generated patch");
+        assert_eq!(event.payload["riskLevel"], "high");
+    }
+
+    fn stable_event_snapshot(
+        events: &[crate::persistence::events::PersistTimelineEventInput],
+    ) -> Value {
+        Value::Array(
+            events
+                .iter()
+                .map(|event| {
+                    json!({
+                        "sessionId": event.session_id,
+                        "type": event.r#type,
+                        "message": event.message,
+                        "payload": event.payload,
+                        "createdAt": event.created_at,
+                    })
+                })
+                .collect(),
+        )
     }
 }

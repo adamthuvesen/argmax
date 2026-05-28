@@ -36,7 +36,7 @@ use crate::persistence::events::PersistTimelineEventInput;
 
 pub const JSON_PARSE_LINE_CAP: usize = 1_048_576;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderOutputStream {
     Stdout,
@@ -53,6 +53,12 @@ impl ProviderOutputStream {
             Self::Pty => "pty",
             Self::System => "system",
         }
+    }
+}
+
+impl From<&ProviderOutputStream> for String {
+    fn from(value: &ProviderOutputStream) -> Self {
+        value.as_str().to_string()
     }
 }
 

@@ -1,0 +1,16 @@
+[
+  {
+    "sessionId": "session-1",
+    "type": "approval.requested",
+    "message": "rm -rf node_modules",
+    "payload": {
+      "command": "rm -rf node_modules",
+      "providerEventType": "system",
+      "reason": "Ask mode requires user approval for Bash",
+      "riskLevel": "high",
+      "toolName": "Bash",
+      "toolUseId": "toolu_01ABC123"
+    },
+    "createdAt": "2026-05-24T12:00:00.000Z"
+  }
+]

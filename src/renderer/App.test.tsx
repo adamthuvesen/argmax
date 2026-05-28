@@ -367,10 +367,12 @@ describe("App", () => {
       prompt: "Implement PTY launch",
       modelLabel: "Claude Haiku 4.5",
       modelId: "claude-haiku-4-5",
+      reasoningEffort: null,
       agentMode: "auto",
       permissionMode: "auto-approve",
       cols: 120,
-      rows: 32
+      rows: 32,
+      attachments: null
     });
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
   });
@@ -577,10 +579,12 @@ describe("App", () => {
         prompt: "Review this change",
         modelLabel: "Claude Sonnet 4.6",
         modelId: "claude-sonnet-4-6",
+        reasoningEffort: null,
         agentMode: "auto",
         permissionMode: "auto-approve",
         cols: 120,
-        rows: 32
+        rows: 32,
+        attachments: null
       })
     );
   });
@@ -820,6 +824,34 @@ describe("App without preload bridge", () => {
       expect(
         await screen.findByText(/Preload bridge unavailable; running on demo data/)
       ).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: originalLocation
+      });
+      window.argmax = previousArgmax;
+    }
+  });
+
+  it("uses demo data without the bridge-missing banner in browser preview", async () => {
+    const previousArgmax = window.argmax;
+    delete (window as { argmax?: ArgmaxApi }).argmax;
+
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, hostname: "127.0.0.1", host: "127.0.0.1:5173" }
+    });
+
+    try {
+      render(<App />);
+
+      expect(
+        screen.queryByText(/Preload bridge unavailable; running on demo data/)
+      ).not.toBeInTheDocument();
+      expect(await screen.findByText("Design parallel agent board")).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {
         configurable: true,

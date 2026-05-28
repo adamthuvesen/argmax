@@ -96,11 +96,11 @@ export function useDashboardSession(
     // Build the args once instead of two conditional spreads — the spread
     // form allocated a fresh empty object on every undefined branch
     // (ralph E1). Equivalent payload, fewer allocations on the hot path.
-    const args: { sessionId: string; eventCursor?: number; rawOutputCursor?: number } = {
-      sessionId
+    const args = {
+      sessionId,
+      eventCursor: cursor?.eventCursor ?? null,
+      rawOutputCursor: cursor?.rawOutputCursor ?? null
     };
-    if (cursor?.eventCursor !== undefined) args.eventCursor = cursor.eventCursor;
-    if (cursor?.rawOutputCursor !== undefined) args.rawOutputCursor = cursor.rawOutputCursor;
     const data = await window.argmax.session.eventsSince(args);
     sessionCursorsRef.current.set(sessionId, {
       eventCursor: data.eventCursor,

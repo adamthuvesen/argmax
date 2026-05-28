@@ -135,7 +135,7 @@ function createTauriArgmaxApi(): ArgmaxApi {
       createCurrent: (input) => invokeLegacy<WorkspaceSummary>("workspaces:create-current", input),
       refreshStatus: (workspaceId) =>
         invokeLegacy<WorkspaceSummary>("workspaces:refresh-status", { workspaceId }),
-      status: (input: WorkspaceStatusInput = {}) =>
+      status: (input: WorkspaceStatusInput = { workspaceIds: null }) =>
         invokeLegacy<WorkspaceStatusSnapshot>("workspace:status", input),
       keep: (workspaceId) => invokeLegacy<WorkspaceSummary>("workspaces:keep", { workspaceId }),
       archive: (input) => invokeLegacy<WorkspaceSummary>("workspaces:archive", input),

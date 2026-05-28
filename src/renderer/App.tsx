@@ -445,9 +445,9 @@ export function App(): JSX.Element {
         input: `${input}\r`,
         modelLabel: model.label,
         modelId: model.modelId,
-        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        reasoningEffort: model.reasoningEffort ?? null,
         agentMode,
-        ...(attachments?.length ? { attachments } : {})
+        attachments: attachments?.length ? attachments : null
       });
       // Queued messages don't write a user.message event yet — the chip in the
       // pending lane is the only renderer-visible artifact, and that arrives
@@ -624,12 +624,12 @@ export function App(): JSX.Element {
         prompt,
         modelLabel: model.label,
         modelId: model.modelId,
-        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        reasoningEffort: model.reasoningEffort ?? null,
         agentMode,
         permissionMode,
         cols: 120,
         rows: 32,
-        ...(attachments?.length ? { attachments } : {})
+        attachments: attachments?.length ? attachments : null
       });
 
       pendingSelectionRef.current = {

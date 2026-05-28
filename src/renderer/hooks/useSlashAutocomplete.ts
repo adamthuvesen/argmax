@@ -67,7 +67,7 @@ export function useSlashAutocomplete({
     fetchedFor.current = cacheKey;
     let cancelled = false;
     void api
-      .list(workspaceId ? { provider, workspaceId } : { provider })
+      .list({ provider, workspaceId })
       .then((result) => {
         if (cancelled) return;
         setSkills(result);

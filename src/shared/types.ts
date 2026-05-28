@@ -5,52 +5,35 @@
  * this boundary.
  */
 import type {
-  CreateCheckpointInputParsed,
-  CreateCurrentWorkspaceInputParsed,
-  CreateWorkspaceInputParsed,
-  GitCommitInputParsed,
-  GitCreateBranchInputParsed,
-  GitPushInputParsed,
-  GitViewOrCreatePrInputParsed,
-  IdeIdParsed,
-  LaunchProviderSessionInputParsed,
-  McpAuthResizeInputParsed,
-  McpAuthStartInputParsed,
-  McpAuthWriteInputParsed,
-  OpenInIdeInputParsed,
-  ProviderSessionInputParsed,
-  ProvidersCancelQueuedMessageInputParsed,
-  ProviderSessionResizeInputParsed,
-  ComposerAttachmentParsed,
-  AttachmentSaveImageInputParsed,
-  AttachmentSaveImageResultParsed,
-  AttachmentMimeTypeParsed,
-  RegisterProjectInputParsed,
-  RemoveProjectInputParsed,
-  ResolveApprovalInputParsed,
-  RunCheckInputParsed,
-  SessionCostSummaryInputParsed,
-  SessionEventsSinceInputParsed,
-  SkillsListInputParsed,
-  TerminalResizeInputParsed,
-  TerminalSpawnInputParsed,
-  TerminalWriteInputParsed,
-  UpdateProjectSettingsInputParsed,
-  WorkspaceStatusInputParsed,
-  agentModeSchema,
-  permissionModeSchema,
-  providerIdSchema
+  AttachmentSaveImageResultParsed
 } from "./ipcSchemas.js";
-import type { z } from "zod";
-import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
+import type * as Bindings from "./bindings.js";
+import type { UsageCounts } from "./providerModels.js";
 
-// Derived from the Zod source-of-truth in ipcSchemas so the literal union
-// and the runtime validator stay in lockstep. `import type { z }` keeps zod
-// out of the renderer runtime bundle (S-001..S-003).
-export type ProviderId = z.infer<typeof providerIdSchema>;
+// Backend-derived IPC and diagnostics types come from generated Rust bindings.
+// `ArgmaxApi` and renderer-only domain shapes remain hand-written below.
+export type AgentMode = Bindings.AgentMode;
+export type AttachmentMimeType = Bindings.AttachmentMimeType;
+export type DatabaseStats = Bindings.DatabaseStats;
+export type DetectedIde = Bindings.DetectedIde;
+export type DiagnosticsReport = Omit<Bindings.DiagnosticsReport, "recentLogs"> & {
+  recentLogs: LogEntry[];
+};
+export type IdeId = Bindings.IdeId;
+export type IpcChannelStats = Bindings.IpcChannelStats;
+export type LogLevel = "debug" | "info" | "warn" | "error";
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  scope: string;
+  message: string;
+  fields: Record<string, unknown>;
+}
+export type PermissionMode = Bindings.PermissionMode;
+export type ProviderId = Bindings.ProviderId;
+export type ReasoningEffort = Bindings.ReasoningEffort;
+export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
 export type ProviderMode = "interactive-pty" | "structured-json";
-export type PermissionMode = z.infer<typeof permissionModeSchema>;
-export type AgentMode = z.infer<typeof agentModeSchema>;
 
 export interface DiscoveredProvider {
   provider: ProviderId;
@@ -106,29 +89,41 @@ export interface ProjectSettings {
   checkCommands: string[];
 }
 
-export type RegisterProjectInput = RegisterProjectInputParsed;
-export type RemoveProjectInput = RemoveProjectInputParsed;
-export type UpdateProjectSettingsInput = UpdateProjectSettingsInputParsed;
-export type CreateWorkspaceInput = CreateWorkspaceInputParsed;
-export type CreateCurrentWorkspaceInput = CreateCurrentWorkspaceInputParsed;
-export type LaunchProviderSessionInput = LaunchProviderSessionInputParsed;
-export type ProviderSessionInput = ProviderSessionInputParsed;
-export type ProvidersCancelQueuedMessageInput = ProvidersCancelQueuedMessageInputParsed;
-export type ProviderSessionResizeInput = ProviderSessionResizeInputParsed;
-export type ComposerAttachment = ComposerAttachmentParsed;
-export type AttachmentSaveImageInput = AttachmentSaveImageInputParsed;
+export type RegisterProjectInput = Bindings.ProjectsRegisterInput;
+export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
+export type UpdateProjectSettingsInput = Bindings.ProjectsUpdateSettingsInput;
+export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
+export type CreateCurrentWorkspaceInput = Bindings.WorkspacesCreateCurrentInput;
+type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
+  [P in K]?: T[P];
+};
+
+export type LaunchProviderSessionInput = OptionalNullable<
+  Bindings.ProvidersLaunchInput,
+  "reasoningEffort" | "agentMode" | "permissionMode" | "attachments"
+>;
+export type ProviderSessionInput = OptionalNullable<
+  Bindings.ProvidersSendInput,
+  "modelLabel" | "modelId" | "reasoningEffort" | "agentMode" | "attachments"
+>;
+export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMessageInput;
+export type ProviderSessionResizeInput = Bindings.ProvidersResizeInput;
+export type ComposerAttachment = Bindings.ComposerAttachmentInput;
+export type AttachmentSaveImageInput = Bindings.AttachmentsSaveImageInput;
 export type AttachmentSaveImageResult = AttachmentSaveImageResultParsed;
-export type AttachmentMimeType = AttachmentMimeTypeParsed;
-export type ResolveApprovalInput = ResolveApprovalInputParsed;
-export type SessionEventsSinceInput = SessionEventsSinceInputParsed;
-export type SessionCostSummaryInput = SessionCostSummaryInputParsed;
-export type WorkspaceStatusInput = WorkspaceStatusInputParsed;
-export type TerminalSpawnInput = TerminalSpawnInputParsed;
-export type TerminalWriteInput = TerminalWriteInputParsed;
-export type TerminalResizeInput = TerminalResizeInputParsed;
-export type McpAuthStartInput = McpAuthStartInputParsed;
-export type McpAuthWriteInput = McpAuthWriteInputParsed;
-export type McpAuthResizeInput = McpAuthResizeInputParsed;
+export type ResolveApprovalInput = Bindings.ApprovalsResolveInput;
+export type SessionEventsSinceInput = OptionalNullable<
+  Bindings.SessionEventsSinceInput,
+  "eventCursor" | "rawOutputCursor"
+>;
+export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
+export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
+export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
+export type TerminalWriteInput = Bindings.TerminalWriteInput;
+export type TerminalResizeInput = Bindings.TerminalResizeInput;
+export type McpAuthStartInput = Bindings.McpAuthStartInput;
+export type McpAuthWriteInput = Bindings.McpAuthWriteInput;
+export type McpAuthResizeInput = Bindings.McpAuthResizeInput;
 
 export interface TerminalDataEvent {
   terminalId: string;
@@ -216,12 +211,12 @@ export type WorkspaceFileWriteResult =
   | { ok: true; mtimeMs: number; size: number }
   | { ok: false; reason: "stale"; currentMtimeMs: number; size: number };
 
-export type RunCheckInput = RunCheckInputParsed;
-export type CreateCheckpointInput = CreateCheckpointInputParsed;
-export type GitCommitInput = GitCommitInputParsed;
-export type GitPushInput = GitPushInputParsed;
-export type GitCreateBranchInput = GitCreateBranchInputParsed;
-export type GitViewOrCreatePrInput = GitViewOrCreatePrInputParsed;
+export type RunCheckInput = Bindings.ChecksRunInput;
+export type CreateCheckpointInput = Bindings.CheckpointsCreateInput;
+export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;
+export type GitPushInput = Bindings.GitPushInput;
+export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
+export type GitViewOrCreatePrInput = Bindings.GitViewOrCreatePrInput;
 
 export interface GitCommitResult {
   commitSha: string;
@@ -240,16 +235,8 @@ export interface GitCreateBranchResult {
 export type GitViewOrCreatePrResult =
   | { action: "opened"; url: string; prNumber: number }
   | { action: "created"; url: string; prNumber: number | null };
-export type SkillsListInput = SkillsListInputParsed;
-export type OpenInIdeInput = OpenInIdeInputParsed;
-export type IdeId = IdeIdParsed;
-
-export interface DetectedIde {
-  id: IdeId;
-  label: string;
-  appPath: string | null;
-  hasCli: boolean;
-}
+export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
+export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
 
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system";
 
@@ -633,90 +620,6 @@ export type StartupPhase =
   | "ipc.register"
   | "window.create"
   | "window.ready-to-show";
-
-export interface StartupPhaseRecord {
-  phase: StartupPhase;
-  /** Milliseconds since the main process started. */
-  elapsedMs: number;
-  /** Milliseconds since the previous phase mark (0 for the first). */
-  deltaMs: number;
-}
-
-export type LogLevel = "debug" | "info" | "warn" | "error";
-
-export interface LogEntry {
-  /** ISO-8601 timestamp. */
-  timestamp: string;
-  level: LogLevel;
-  scope: string;
-  message: string;
-  /** JSON-serializable structured fields. Always present (may be empty). */
-  fields: Record<string, unknown>;
-}
-
-export interface IpcChannelStats {
-  channel: string;
-  /** Samples in the rolling 100-call window. */
-  count: number;
-  /** Total samples ever recorded for the channel. */
-  totalRecorded: number;
-  /** p50 latency in milliseconds (rolling window). */
-  p50: number;
-  /** p99 latency in milliseconds (rolling window). */
-  p99: number;
-}
-
-export interface DatabaseStats {
-  /** Row counts per major table. */
-  rowCounts: {
-    projects: number;
-    workspaces: number;
-    sessions: number;
-    events: number;
-    rawOutputs: number;
-    approvals: number;
-    checks: number;
-    checkpoints: number;
-    learnings: number;
-    usageEvents: number;
-  };
-  /** Bytes — size of the WAL sidecar file. 0 when missing or unreadable. */
-  walBytes: number;
-  /** Value of `PRAGMA wal_autocheckpoint` (pages between auto-checkpoints). */
-  walAutocheckpoint: number;
-}
-
-export interface DiagnosticsReport {
-  appVersion: string;
-  electronVersion: string;
-  nodeVersion: string;
-  sqliteVersion: string;
-  databasePath: string;
-  platform: string;
-  arch: string;
-  generatedAt: string;
-  /**
-   * Per-phase timings for the current boot. Diagnostics → Startup panel
-   * (SPEC P7.04) renders these and flags any phase that exceeds the budget
-   * documented in `agents/docs/performance.md`.
-   */
-  startupPhases: StartupPhaseRecord[];
-  /**
-   * Live database health stats. Diagnostics → Database panel (SPEC P7.03)
-   * renders row counts + WAL size + autocheckpoint pragma.
-   */
-  databaseStats: DatabaseStats;
-  /**
-   * Per-channel IPC latency stats. Diagnostics → IPC panel (SPEC P7.02)
-   * renders this. Empty array when no channels have been sampled yet.
-   */
-  ipcStats: IpcChannelStats[];
-  /**
-   * Tail of the main-process log ring buffer (most recent 200 entries).
-   * Diagnostics → Logs panel (SPEC P7.01) renders this.
-   */
-  recentLogs: LogEntry[];
-}
 
 export type MenuCommand =
   | "new-session"

@@ -174,6 +174,18 @@ export function setupAppTestMocks(): void {
       walBytes: 1024 * 128,
       walAutocheckpoint: 1000
     },
+    sqlitePragmas: {
+      journalMode: "wal",
+      foreignKeys: 1,
+      synchronous: 1,
+      busyTimeout: 5000,
+      walAutocheckpoint: 1000
+    },
+    runtime: {
+      rssBytes: 0,
+      openFileDescriptors: 0,
+      tokioTrackedTasks: 0
+    },
     ipcStats: [
       { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
       { channel: "providers:launch", count: 3, totalRecorded: 3, p50: 18.5, p99: 32.1 }

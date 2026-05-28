@@ -205,7 +205,8 @@ describe("App sidebar", () => {
         modelLabel: "GPT-5.3 Codex",
         modelId: "gpt-5.3-codex",
         reasoningEffort: "medium",
-        agentMode: "auto"
+        agentMode: "auto",
+        attachments: null
       })
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
@@ -316,7 +317,8 @@ describe("App sidebar", () => {
         modelLabel: "GPT-5.5",
         modelId: "gpt-5.5",
         reasoningEffort: "medium",
-        agentMode: "auto"
+        agentMode: "auto",
+        attachments: null
       })
     );
   });
@@ -505,7 +507,7 @@ describe("App sidebar", () => {
     fireEvent.change(input, { target: { value: "/" } });
 
     expect(await screen.findByRole("listbox", { name: "Skill suggestions" })).toBeInTheDocument();
-    expect(skillsList).toHaveBeenCalledWith({ provider: "claude" });
+    expect(skillsList).toHaveBeenCalledWith({ provider: "claude", workspaceId: null });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("/plan ");
     expect(launchProvider).not.toHaveBeenCalled();

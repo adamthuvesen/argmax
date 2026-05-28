@@ -1,10 +1,13 @@
 // Argmax library crate. Scaffolding only at this point — services are
 // wired in later sections of the port (see openspec/changes/port-to-rust-tauri).
 
+pub mod approvals;
+pub mod attachments;
 pub mod error;
 pub mod ipc;
 pub mod persistence;
 pub mod providers;
+pub mod skills;
 pub mod state;
 pub mod util;
 

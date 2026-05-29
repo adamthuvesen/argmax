@@ -1,1 +1,0 @@
-{"jsonrpc":"2.0","method":"item/fileChange/requestApproval","id":51,"params":{"itemId":"patch_1","threadId":"thr_123","turnId":"turn_456","reason":"Apply generated patch"}}

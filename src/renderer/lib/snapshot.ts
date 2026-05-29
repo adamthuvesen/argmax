@@ -46,7 +46,12 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
     if (e.type === "message.delta") {
       // nextBoundary reflects the closest boundary at j > i because boundaries
       // at j > i were processed in earlier iterations of this loop.
-      if (nextBoundary.get(e.sessionId) === "completed") {
+      // Thinking blocks (Claude extended thinking surfaced as message.delta
+      // with payload.thinking === true) are kept even when a later
+      // message.completed exists — they are the only record of Claude's
+      // reasoning step and should remain visible after the final answer.
+      const isThinkingDelta = e.payload?.["thinking"] === true;
+      if (!isThinkingDelta && nextBoundary.get(e.sessionId) === "completed") {
         supersededIndices.add(i);
       }
       continue;

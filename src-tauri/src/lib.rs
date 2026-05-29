@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 pub mod approvals;
 pub mod attachments;
@@ -30,6 +30,7 @@ pub mod updater;
 pub mod util;
 pub mod workspaces;
 
+use serde_json::json;
 #[cfg(any(debug_assertions, test))]
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
@@ -68,6 +69,11 @@ pub fn run() {
             if let Err(e) = util::tracing_init::init(user_data.as_deref()) {
                 eprintln!("argmax: tracing init failed: {e}");
             }
+            // Keep macOS App Nap from suspending the webview while the window is
+            // backgrounded — otherwise emitted `dashboard:delta` events don't
+            // reach the renderer until the user refocuses, so finished turns
+            // look stuck on the thinking bubble.
+            util::app_nap::prevent_app_nap();
             if let Some(user_data) = user_data.as_ref() {
                 let data_dir = user_data.join("local-state");
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
@@ -75,9 +81,158 @@ pub fn run() {
                 } else {
                     match persistence::Database::open(data_dir.join("argmax.sqlite")) {
                         Ok(database) => {
+                            let database = Arc::new(database);
                             let state = tauri::Manager::state::<state::AppState>(app);
-                            if state.db.set(Arc::new(database)).is_err() {
+                            if state.db.set(Arc::clone(&database)).is_err() {
                                 tracing::warn!("database state was already initialized");
+                            }
+                            let notifications = Arc::new(notifications::NotificationService::new(
+                                notifications::main_window_focus_probe(app.handle().clone()),
+                                notifications::TauriNotificationSink::new(app.handle().clone()),
+                            ));
+                            // Single FIFO channel for every `dashboard:delta`
+                            // emit (providers + gh poller + workspaces). One
+                            // worker task pulls from it and emits in order.
+                            // Previously each publish spawned its own
+                            // tauri::async_runtime task — with tokio's
+                            // multi-worker scheduler that meant two deltas
+                            // emitted back-to-back could land at the renderer
+                            // in reverse order, occasionally letting a
+                            // `session.completed` arrive before its preceding
+                            // `message.completed`.
+                            let (delta_tx, mut delta_rx) =
+                                tokio::sync::mpsc::unbounded_channel::<providers::flush_queue::DashboardDelta>();
+                            let emit_handle = app.handle().clone();
+                            tauri::async_runtime::spawn(async move {
+                                while let Some(delta) = delta_rx.recv().await {
+                                    if let Err(error) = emit_handle.emit("dashboard:delta", delta) {
+                                        tracing::warn!(?error, "failed to emit dashboard delta");
+                                    }
+                                }
+                            });
+                            let notifications_for_delta = Arc::clone(&notifications);
+                            let provider_delta_tx = delta_tx.clone();
+                            let publish_delta = move |delta: providers::flush_queue::DashboardDelta| {
+                                for session in &delta.sessions {
+                                    if let Err(error) = notifications_for_delta.notify(session) {
+                                        tracing::warn!(
+                                            ?error,
+                                            session_id = %session.id,
+                                            "failed to fire terminal-state notification"
+                                        );
+                                    }
+                                }
+                                tracing::info!(
+                                    sessions = delta.sessions.len(),
+                                    events = delta.events.len(),
+                                    raw_outputs = delta.raw_outputs.len(),
+                                    workspaces = delta.workspaces.len(),
+                                    "queuing dashboard:delta"
+                                );
+                                if let Err(error) = provider_delta_tx.send(delta) {
+                                    tracing::warn!(?error, "dashboard delta channel closed");
+                                }
+                            };
+                            let providers = providers::session_service::ProviderSessionService::with_launcher(
+                                Arc::clone(&database),
+                                Arc::new(providers::runtime::RealProviderProcessLauncher::new()),
+                                publish_delta,
+                            );
+                            if let Err(error) = providers.recover_orphaned_sessions() {
+                                tracing::warn!(?error, "failed to recover orphaned sessions");
+                            }
+                            if state.providers.set(Arc::clone(&providers)).is_err() {
+                                tracing::warn!("provider service state was already initialized");
+                            }
+                            let app_handle = app.handle().clone();
+                            let on_terminal_data = Arc::new(move |chunk| {
+                                let app_handle = app_handle.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    if let Err(error) = app_handle.emit("terminal:data", chunk) {
+                                        tracing::warn!(?error, "failed to emit terminal data");
+                                    }
+                                });
+                            });
+                            let app_handle = app.handle().clone();
+                            let on_terminal_exit = Arc::new(move |info| {
+                                let app_handle = app_handle.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    if let Err(error) = app_handle.emit("terminal:exit", info) {
+                                        tracing::warn!(?error, "failed to emit terminal exit");
+                                    }
+                                });
+                            });
+                            let terminals = terminal::service::TerminalService::new(
+                                Arc::clone(&database),
+                                on_terminal_data,
+                                on_terminal_exit,
+                            );
+                            if state.terminals.set(terminals).is_err() {
+                                tracing::warn!("terminal service state was already initialized");
+                            }
+                            if state.mcp_auth.set(mcp::auth::McpAuthService::new()).is_err() {
+                                tracing::warn!("mcp auth service state was already initialized");
+                            }
+                            if state
+                                .checks
+                                .set(checks::service::CheckService::new(Arc::clone(&database)))
+                                .is_err()
+                            {
+                                tracing::warn!("check service state was already initialized");
+                            }
+                            let gh_service = gh::service::GhService::new(Arc::clone(&database));
+                            let poller_database = Arc::clone(&database);
+                            let poller_providers = Arc::clone(&providers);
+                            let poller_notifications = Arc::clone(&notifications);
+                            let failure_hook = Arc::new(move |context: gh::poller::CheckFailureContext| {
+                                let database = Arc::clone(&poller_database);
+                                let providers = Arc::clone(&poller_providers);
+                                let notifications = Arc::clone(&poller_notifications);
+                                tauri::async_runtime::spawn(async move {
+                                    if let Err(error) =
+                                        handle_gh_check_failure(database, providers, notifications, context).await
+                                    {
+                                        tracing::warn!(?error, "failed to handle gh check failure");
+                                    }
+                                });
+                            });
+                            let gh_delta_tx = delta_tx.clone();
+                            let publish_delta = move |delta| {
+                                if let Err(error) = gh_delta_tx.send(delta) {
+                                    tracing::warn!(?error, "dashboard delta channel closed");
+                                }
+                            };
+                            let gh_poller = gh::poller::GhPoller::new(
+                                gh::poller::GhPollerConfig::new(
+                                    Arc::clone(&database),
+                                    gh_service,
+                                )
+                                .with_delta_publisher(Arc::new(publish_delta))
+                                .with_check_failure_hook(failure_hook),
+                            );
+                            // Defer start() onto the Tauri runtime — calling it
+                            // synchronously here panics with "there is no
+                            // reactor running" because Tauri's Tokio runtime
+                            // is not yet alive during setup().
+                            let gh_poller_for_start = Arc::clone(&gh_poller);
+                            tauri::async_runtime::spawn(async move {
+                                gh_poller_for_start.start();
+                            });
+                            if state.gh_poller.set(gh_poller).is_err() {
+                                tracing::warn!("gh poller state was already initialized");
+                            }
+                            let workspace_delta_tx = delta_tx.clone();
+                            let publish_delta = move |delta| {
+                                if let Err(error) = workspace_delta_tx.send(delta) {
+                                    tracing::warn!(?error, "dashboard delta channel closed");
+                                }
+                            };
+                            let workspaces = workspaces::WorkspaceService::with_publisher(
+                                Arc::clone(&database),
+                                publish_delta,
+                            );
+                            if state.workspaces.set(workspaces).is_err() {
+                                tracing::warn!("workspace service state was already initialized");
                             }
                             state.startup_timer.mark("db.open");
                         }
@@ -98,6 +253,101 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+async fn handle_gh_check_failure(
+    database: Arc<persistence::Database>,
+    providers: Arc<providers::session_service::ProviderSessionService>,
+    notifications: Arc<
+        notifications::NotificationService<notifications::TauriNotificationSink<tauri::Wry>>,
+    >,
+    context: gh::poller::CheckFailureContext,
+) -> error::ArgmaxResult<()> {
+    let (session, pr, input) = {
+        let connection = database.connection();
+        let session = persistence::sessions::find_session_by_id(&connection, &context.session_id)?;
+        let workspace =
+            persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
+        let project = persistence::projects::require_project(&connection, &workspace.project_id)?;
+        let pr = persistence::gh::list_gh_pr_for_session(&connection, &context.session_id)?
+            .into_iter()
+            .find(|row| row.pr_number == context.pr_number && row.head_sha == context.head_sha)
+            .unwrap_or_else(|| persistence::gh::GhPrRecord {
+                session_id: context.session_id.clone(),
+                pr_number: context.pr_number,
+                head_sha: context.head_sha.clone(),
+                last_seen_check_state: "failure".to_string(),
+                updated_at: persistence::time::now_iso(),
+                pr_state: Some("OPEN".to_string()),
+                notified_at: None,
+            });
+        let input = build_check_failure_follow_up_input(&workspace.id, &project, &context)?;
+        (session, pr, input)
+    };
+
+    if let Err(error) = notifications.notify_check_failure(&session, &pr) {
+        tracing::warn!(?error, session_id = %session.id, "failed to fire check-failure notification");
+    }
+    providers.launch(input).await?;
+    let connection = database.connection();
+    persistence::gh::mark_gh_pr_notified(
+        &connection,
+        &context.session_id,
+        context.pr_number,
+        &context.head_sha,
+        &persistence::time::now_iso(),
+    )
+}
+
+fn build_check_failure_follow_up_input(
+    workspace_id: &str,
+    project: &persistence::projects::ProjectSummary,
+    context: &gh::poller::CheckFailureContext,
+) -> error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
+    let defaults = provider_defaults(&project.settings.default_provider);
+    serde_json::from_value(json!({
+        "workspaceId": workspace_id,
+        "provider": project.settings.default_provider,
+        "prompt": format!(
+            "Checks on PR #{} (commit {}) are failing. Run `gh pr checks {}` to see which checks failed, then investigate and fix.",
+            context.pr_number,
+            context.head_sha.chars().take(12).collect::<String>(),
+            context.pr_number
+        ),
+        "modelLabel": defaults.model_label,
+        "modelId": defaults.model_id,
+        "reasoningEffort": defaults.reasoning_effort,
+        "cols": 120,
+        "rows": 36
+    }))
+    .map_err(|error| error::ArgmaxError::service("GH_FOLLOW_UP_INPUT_INVALID", error.to_string()))
+}
+
+#[derive(Clone, Copy)]
+struct ProviderDefaults {
+    model_label: &'static str,
+    model_id: &'static str,
+    reasoning_effort: Option<&'static str>,
+}
+
+fn provider_defaults(provider: &str) -> ProviderDefaults {
+    match provider {
+        "codex" => ProviderDefaults {
+            model_label: "Codex Spark",
+            model_id: "gpt-5.3-codex-spark",
+            reasoning_effort: Some("medium"),
+        },
+        "cursor" => ProviderDefaults {
+            model_label: "Composer 2.5 (Cursor)",
+            model_id: "composer-2.5",
+            reasoning_effort: None,
+        },
+        _ => ProviderDefaults {
+            model_label: "Claude Haiku 4.5",
+            model_id: "claude-haiku-4-5",
+            reasoning_effort: None,
+        },
+    }
 }
 
 #[cfg(any(debug_assertions, test))]

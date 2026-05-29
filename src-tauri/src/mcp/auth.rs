@@ -21,6 +21,8 @@ use std::{
 };
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use serde::Serialize;
+use specta::Type;
 use uuid::Uuid;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -32,12 +34,27 @@ use crate::util::process_control::signal_term_then_kill;
 /// Callback the auth service uses to stream PTY output. Mirrors the
 /// `OutputSink` shape in `checks/service.rs` so call sites can adapt
 /// either subsystem.
-pub type OutputSink = Arc<dyn Fn(&str) + Send + Sync>;
+pub type OutputSink = Arc<dyn Fn(McpAuthChunk) + Send + Sync>;
 
 /// Fires once when the PTY exits. `exit_code` is the process exit code if
 /// known; `signal` is the POSIX signal number if the child was terminated
 /// by a signal (otherwise `None`).
-pub type ExitSink = Arc<dyn Fn(i32, Option<i32>) + Send + Sync>;
+pub type ExitSink = Arc<dyn Fn(McpAuthExitInfo) + Send + Sync>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct McpAuthChunk {
+    pub session_id: String,
+    pub data: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct McpAuthExitInfo {
+    pub session_id: String,
+    pub exit_code: i32,
+    pub signal: Option<i32>,
+}
 
 /// Input shape for `start()`. Cols/rows size the PTY so the CLI renders
 /// correctly inside the renderer's modal.
@@ -47,7 +64,8 @@ pub struct StartAuthInput {
     pub rows: u16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct StartAuthOutput {
     pub session_id: String,
 }
@@ -305,8 +323,11 @@ fn spawn_reader_thread(
                     if !still_live {
                         break;
                     }
-                    let chunk = String::from_utf8_lossy(&buffer[..n]).into_owned();
-                    on_output(&chunk);
+                    let data = String::from_utf8_lossy(&buffer[..n]).into_owned();
+                    on_output(McpAuthChunk {
+                        session_id: session_id.clone(),
+                        data,
+                    });
                 }
                 Err(_) => break,
             }
@@ -338,7 +359,11 @@ fn spawn_exit_watcher(session_id: String, service: Arc<McpAuthService>, on_exit:
         // value is unavailable.
         let signal: Option<i32> = None;
         let _ = service.remove_session(&session_id);
-        on_exit(exit_code, signal);
+        on_exit(McpAuthExitInfo {
+            session_id,
+            exit_code,
+            signal,
+        });
     });
 }
 
@@ -399,18 +424,18 @@ mod tests {
 
         let chunks: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
         let chunks_for_sink = Arc::clone(&chunks);
-        let on_output: OutputSink = Arc::new(move |chunk: &str| {
+        let on_output: OutputSink = Arc::new(move |chunk| {
             chunks_for_sink
                 .lock()
                 .expect("chunks lock")
-                .push(chunk.to_string());
+                .push(chunk.data);
         });
 
-        let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<(i32, Option<i32>)>();
+        let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<McpAuthExitInfo>();
         let exit_tx = StdMutex::new(Some(exit_tx));
-        let on_exit: ExitSink = Arc::new(move |code, signal| {
+        let on_exit: ExitSink = Arc::new(move |info| {
             if let Some(tx) = exit_tx.lock().expect("exit tx").take() {
-                let _ = tx.send((code, signal));
+                let _ = tx.send(info);
             }
         });
 
@@ -434,7 +459,7 @@ mod tests {
             .await
             .expect("did not exit in time")
             .expect("exit channel");
-        assert_eq!(exit.0, 0, "expected clean exit");
+        assert_eq!(exit.exit_code, 0, "expected clean exit");
 
         // The sink should have captured the "hi" output. The PTY also
         // echoes the input line itself, so look for "hi" substring.
@@ -451,7 +476,7 @@ mod tests {
     async fn missing_binary_returns_service_error() {
         let svc = McpAuthService::with_resolver(Arc::new(|| Box::pin(async { None })));
         let on_output: OutputSink = Arc::new(|_| {});
-        let on_exit: ExitSink = Arc::new(|_, _| {});
+        let on_exit: ExitSink = Arc::new(|_| {});
 
         let err = svc
             .start(StartAuthInput { cols: 80, rows: 24 }, on_output, on_exit)
@@ -470,11 +495,11 @@ mod tests {
         let svc = McpAuthService::with_resolver(fake_binary_resolver("/bin/sh"));
 
         let on_output: OutputSink = Arc::new(|_| {});
-        let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<(i32, Option<i32>)>();
+        let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<McpAuthExitInfo>();
         let exit_tx = StdMutex::new(Some(exit_tx));
-        let on_exit: ExitSink = Arc::new(move |code, signal| {
+        let on_exit: ExitSink = Arc::new(move |info| {
             if let Some(tx) = exit_tx.lock().expect("exit tx").take() {
-                let _ = tx.send((code, signal));
+                let _ = tx.send(info);
             }
         });
 

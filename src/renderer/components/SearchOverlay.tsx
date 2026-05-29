@@ -55,7 +55,7 @@ export function SearchOverlay({
       return;
     }
     if (!window.argmax) {
-      setError("Open the Electron app window to search sessions.");
+      setError("Open the Tauri app window to search sessions.");
       return;
     }
     const token = ++tokenRef.current;

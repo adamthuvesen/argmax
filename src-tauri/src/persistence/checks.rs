@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use specta::Type;
 
 use super::prepared::prepared;
 use super::time::now_iso;
@@ -33,7 +34,7 @@ pub struct PersistCheckpointInput {
     pub created_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckRun {
     pub id: String,
@@ -46,7 +47,7 @@ pub struct CheckRun {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Checkpoint {
     pub id: String,
@@ -148,7 +149,9 @@ pub fn update_check(
     check_id: &str,
     input: &UpdateCheckInput,
 ) -> ArgmaxResult<CheckRun> {
-    let completed_at = input.completed_at.clone().unwrap_or_else(now_iso);
+    // completed_at stays NULL while a check is in-flight. Defaulting to
+    // now_iso() here would mark every mid-run status/summary update as
+    // "completed", silently corrupting the row's lifecycle.
     let mut statement = prepared(
         connection,
         r#"
@@ -163,7 +166,7 @@ pub fn update_check(
             input.status.as_str(),
             input.exit_code,
             input.summary.as_deref(),
-            completed_at.as_str(),
+            input.completed_at.as_deref(),
             check_id,
         ))
         .map_err(sqlite_error)?;

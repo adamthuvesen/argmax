@@ -26,6 +26,8 @@ use std::{
 };
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use serde::Serialize;
+use specta::Type;
 use uuid::Uuid;
 
 use crate::{
@@ -42,13 +44,15 @@ pub type OutputSink = Arc<dyn Fn(TerminalChunk) + Send + Sync>;
 /// `terminal:exit` push event.
 pub type ExitSink = Arc<dyn Fn(TerminalExitInfo) + Send + Sync>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct TerminalChunk {
     pub terminal_id: String,
     pub data: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct TerminalExitInfo {
     pub terminal_id: String,
     pub exit_code: i32,
@@ -62,7 +66,8 @@ pub struct TerminalSpawnInput {
     pub rows: u16,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct TerminalSpawnResult {
     pub terminal_id: String,
 }

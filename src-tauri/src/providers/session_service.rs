@@ -10,13 +10,14 @@
 // reader thread directly.
 
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
 
-use serde_json::json;
+use serde_json::{json, Value};
+use specta::Type;
 use uuid::Uuid;
 
 use super::{
@@ -56,6 +57,18 @@ use crate::{
 const MAX_PENDING_QUEUE: usize = 64;
 const STRUCTURED_LAUNCH_COLS: u16 = 120;
 const STRUCTURED_LAUNCH_ROWS: u16 = 32;
+const FOLLOW_UP_CONTEXT_MAX_MESSAGES: usize = 12;
+const FOLLOW_UP_CONTEXT_MAX_CHARS: usize = 12_000;
+/// After the last stdout/stderr chunk, flush any provider line still sitting in
+/// the per-session stream buffer (no trailing `\n` yet). Interactive CLIs often
+/// keep the process alive after a completed answer, so `flush_trailing` on exit
+/// never runs until the user hits Stop — the chat would stay on "Thinking" even
+/// though the response is already in SQLite.
+///
+/// 16 ms ≈ one frame at 60 Hz. The debounce still rebounces on every new
+/// chunk, so this only fires when the provider pauses; the lower bound just
+/// makes that pause-driven flush feel real-time instead of laggy.
+const STREAM_IDLE_FLUSH_MS: u64 = 16;
 
 #[derive(Clone)]
 pub struct ProviderSessionService {
@@ -65,6 +78,15 @@ pub struct ProviderSessionService {
     handles: Arc<Mutex<HashMap<String, HandleEntry>>>,
     queues: Arc<Mutex<HashMap<String, VecDeque<PendingMessage>>>>,
     flush_queue: Arc<Mutex<ProviderEventFlushQueue>>,
+    /// Debounced `flush_trailing` for sessions with a partial provider line in
+    /// the stream buffer (no newline delimiter yet).
+    idle_flush_generation: Arc<Mutex<HashMap<String, u64>>>,
+    idle_flush_tasks: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    /// Sessions currently being torn down by `terminate`. The lifecycle
+    /// handler skips its own state update when a session is in here so
+    /// the user-initiated `cancelled` state isn't overwritten by the
+    /// wait-thread's `failed`/`complete` after the kill lands.
+    terminating: Arc<Mutex<HashSet<String>>>,
 }
 
 #[derive(Clone)]
@@ -99,6 +121,9 @@ impl ProviderSessionService {
             handles: Arc::new(Mutex::new(HashMap::new())),
             queues: Arc::new(Mutex::new(HashMap::new())),
             flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
+            idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
+            idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
+            terminating: Arc::new(Mutex::new(HashSet::new())),
         })
     }
 
@@ -317,6 +342,22 @@ impl ProviderSessionService {
                     },
                 )?;
             }
+            let provider = parse_provider(&session.provider)?;
+            let permission_mode = parse_permission_mode(&session.permission_mode)?;
+            let mut resume_conversation_id = session.provider_conversation_id.clone();
+            if provider == ProviderId::Cursor && resume_conversation_id.is_none() {
+                if let Some(provider_conversation_id) =
+                    infer_cursor_provider_conversation_id(&connection, &session_id)?
+                {
+                    session = update_session_provider_conversation_id(
+                        &connection,
+                        &session_id,
+                        &provider_conversation_id,
+                    )?;
+                    resume_conversation_id = session.provider_conversation_id.clone();
+                }
+            }
+            let launch_prompt = compose_follow_up_prompt(&connection, &session_id, &message)?;
             let user_message = self.persist_user_message_locked(
                 &connection,
                 &session_id,
@@ -342,20 +383,18 @@ impl ProviderSessionService {
                 events: vec![user_message],
                 ..DashboardDelta::default()
             });
-            let provider = parse_provider(&session.provider)?;
-            let permission_mode = parse_permission_mode(&session.permission_mode)?;
             let launch_input = ProviderLaunchInput {
                 provider,
                 session_id: session_id.clone(),
                 workspace_path: PathBuf::from(workspace.path),
-                prompt: message.clone(),
+                prompt: launch_prompt,
                 model_label: session.model_label.clone(),
                 model_id: session.model_id.clone(),
                 reasoning_effort: session
                     .reasoning_effort
                     .as_deref()
                     .and_then(parse_reasoning_effort),
-                resume_conversation_id: session.provider_conversation_id.clone(),
+                resume_conversation_id,
                 mode: ProviderMode::StructuredJson,
                 permission_mode,
                 agent_mode,
@@ -405,10 +444,22 @@ impl ProviderSessionService {
                 return Err(error);
             }
         };
-        self.handles
-            .lock()
-            .expect("handles poisoned")
-            .insert(session_id, HandleEntry::Resolved(handle));
+        // Drain ops the renderer queued while the launch future was in
+        // flight — most notably resize ops issued from the very first
+        // render of the resumed session. Mirrors the launch() path.
+        let pending_ops = {
+            let mut handles = self.handles.lock().expect("handles poisoned");
+            match handles.insert(
+                session_id.clone(),
+                HandleEntry::Resolved(Arc::clone(&handle)),
+            ) {
+                Some(HandleEntry::Pending(ops)) => ops,
+                _ => Vec::new(),
+            }
+        };
+        for op in pending_ops {
+            self.apply_op(&handle, op).await?;
+        }
         let _ = (workspace_id, permission_mode, agent_mode);
         Ok(SendInputResult {
             ok: true,
@@ -444,24 +495,40 @@ impl ProviderSessionService {
 
     pub async fn terminate(&self, input: ProvidersTerminateInput) -> ArgmaxResult<()> {
         let session_id = input.session_id.as_str().to_string();
+        self.cancel_idle_flush(&session_id);
         self.clear_queue(&session_id);
+        // Mark before pulling the handle so a wait-thread exit event that
+        // arrives mid-terminate sees the flag and skips its own state
+        // write. Cleared after cancel_session lands `cancelled`.
+        self.terminating
+            .lock()
+            .expect("terminating poisoned")
+            .insert(session_id.clone());
         let entry = self
             .handles
             .lock()
             .expect("handles poisoned")
             .remove(&session_id);
-        match entry {
-            Some(HandleEntry::Resolved(handle)) => {
-                self.flush_trailing(&session_id)?;
-                handle.terminate().await?;
-                self.cancel_session(&session_id)?;
+        let result = async {
+            match entry {
+                Some(HandleEntry::Resolved(handle)) => {
+                    self.flush_trailing(&session_id)?;
+                    handle.terminate().await?;
+                    self.cancel_session(&session_id)?;
+                }
+                Some(HandleEntry::Pending(_)) => {
+                    self.cancel_session(&session_id)?;
+                }
+                None => {}
             }
-            Some(HandleEntry::Pending(_)) => {
-                self.cancel_session(&session_id)?;
-            }
-            None => {}
+            Ok(())
         }
-        Ok(())
+        .await;
+        self.terminating
+            .lock()
+            .expect("terminating poisoned")
+            .remove(&session_id);
+        result
     }
 
     pub fn cancel_queued_message(&self, input: ProvidersCancelQueuedMessageInput) {
@@ -503,6 +570,10 @@ impl ProviderSessionService {
                     last_activity_at: None,
                 },
             )?;
+            // Mirror the session terminal-state onto the workspace so the
+            // dashboard doesn't keep showing a `running` workspace whose
+            // session was just marked `failed`.
+            let workspace = update_workspace_state(&connection, &session.workspace_id, "failed")?;
             let event = persist_timeline_event(
                 &connection,
                 &PersistTimelineEventInput {
@@ -516,6 +587,7 @@ impl ProviderSessionService {
             )?;
             self.publish(DashboardDelta {
                 projects: list_projects(&connection)?,
+                workspaces: vec![workspace],
                 sessions: vec![session],
                 events: vec![event],
                 ..DashboardDelta::default()
@@ -549,6 +621,7 @@ impl ProviderSessionService {
     fn handle_provider_event(self: Arc<Self>, event: ProviderRuntimeEvent) {
         let result = match event.r#type {
             ProviderRuntimeEventType::Output => self.handle_output_event(event),
+            ProviderRuntimeEventType::StreamStarted => self.handle_stream_started(event),
             ProviderRuntimeEventType::Exit | ProviderRuntimeEventType::Error => {
                 self.handle_lifecycle_event(event)
             }
@@ -558,9 +631,53 @@ impl ProviderSessionService {
         }
     }
 
-    fn handle_output_event(&self, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
+    fn handle_stream_started(&self, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
+        // Persist a one-shot `session.streaming` marker so the renderer can
+        // hide the "Thinking" bubble the moment the child writes its first
+        // byte. Originally Codex-only because Claude/Cursor "stream message
+        // deltas soon after" — but on the Tauri/PTY path "soon after" turned
+        // out to be several seconds while the provider emits system-init /
+        // tool-use prelude JSON that the normalizer produces zero timeline
+        // events for. Empty Thinking bubble for 4 s is the reported bug; the
+        // beacon clears it on first byte for every provider.
+        let connection = self.database.connection();
+        let timeline_event = persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: event.session_id.clone(),
+                r#type: "session.streaming".to_string(),
+                message: String::new(),
+                payload: json!({}),
+                created_at: Some(event.created_at),
+            },
+        )?;
+        drop(connection);
+        self.publish(DashboardDelta {
+            events: vec![timeline_event],
+            ..DashboardDelta::default()
+        });
+        Ok(())
+    }
+
+    fn handle_output_event(self: Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
+        let trace_bytes = event.message.len();
+        let trace_session = event.session_id.clone();
+        tracing::info!(
+            session_id = %trace_session,
+            bytes = trace_bytes,
+            "handle_output_event: acquiring DB connection",
+        );
         let mut connection = self.database.connection();
+        tracing::info!(
+            session_id = %trace_session,
+            "handle_output_event: acquired DB; acquiring flush queue",
+        );
         let mut flush_queue = self.flush_queue.lock().expect("flush queue poisoned");
+        tracing::info!(
+            session_id = %trace_session,
+            "handle_output_event: acquired flush queue; queuing event",
+        );
         let mut result = flush_queue.queue_output_event(
             &mut connection,
             ProviderOutputEvent {
@@ -570,6 +687,11 @@ impl ProviderSessionService {
                 created_at: event.created_at,
             },
         )?;
+        tracing::info!(
+            session_id = %trace_session,
+            has_delta = result.delta.is_some(),
+            "handle_output_event: queue_output_event returned",
+        );
         if let Some(provider_conversation_id) = result.provider_conversation_id.take() {
             let session = update_session_provider_conversation_id(
                 &connection,
@@ -587,11 +709,36 @@ impl ProviderSessionService {
         if let Some(delta) = result.delta {
             self.publish(delta);
         }
+        // A completed answer can sit in the stream buffer without a trailing
+        // newline while the provider process stays alive. Debounce-flush so the
+        // renderer sees timeline rows without waiting for Stop/exit.
+        self.schedule_idle_flush(&event.session_id);
         Ok(())
     }
 
     fn handle_lifecycle_event(self: &Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
+        self.cancel_idle_flush(&event.session_id);
         self.flush_trailing(&event.session_id)?;
+        // If the user already initiated terminate(), let cancel_session
+        // own the state transition. Writing `failed`/`complete` here
+        // would race against (and could clobber) the `cancelled` state
+        // the user just saw flash in the dashboard.
+        if self
+            .terminating
+            .lock()
+            .expect("terminating poisoned")
+            .contains(&event.session_id)
+        {
+            self.handles
+                .lock()
+                .expect("handles poisoned")
+                .remove(&event.session_id);
+            self.flush_queue
+                .lock()
+                .expect("flush queue poisoned")
+                .delete_session(&event.session_id);
+            return Ok(());
+        }
         let connection = self.database.connection();
         let succeeded =
             event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0);
@@ -617,18 +764,24 @@ impl ProviderSessionService {
             },
         )?;
         let workspace = update_workspace_state(&connection, &session.workspace_id, state)?;
+        // For successful exits, persist `session.completed` with an empty
+        // message — the wait-thread's raw text ("X structured probe exited
+        // with code 0") is debug noise that was leaking into the chat
+        // bubble next to the actual assistant response. The exit code
+        // stays in the payload for diagnostics, and the raw message is
+        // preserved in `raw_outputs` above.
+        let (timeline_type, timeline_message) = if succeeded {
+            ("session.completed".to_string(), String::new())
+        } else {
+            ("error".to_string(), event.message)
+        };
         let timeline_event = persist_timeline_event(
             &connection,
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
                 session_id: event.session_id.clone(),
-                r#type: if succeeded {
-                    "session.completed"
-                } else {
-                    "error"
-                }
-                .to_string(),
-                message: event.message,
+                r#type: timeline_type,
+                message: timeline_message,
                 payload: json!({ "exitCode": event.exit_code }),
                 created_at: Some(event.created_at),
             },
@@ -931,6 +1084,73 @@ impl ProviderSessionService {
         Ok(())
     }
 
+    fn cancel_idle_flush(&self, session_id: &str) {
+        if let Some(handle) = self
+            .idle_flush_tasks
+            .lock()
+            .expect("idle flush tasks poisoned")
+            .remove(session_id)
+        {
+            handle.abort();
+        }
+        self.idle_flush_generation
+            .lock()
+            .expect("idle flush generation poisoned")
+            .remove(session_id);
+    }
+
+    fn schedule_idle_flush(self: &Arc<Self>, session_id: &str) {
+        let generation = {
+            let mut generations = self
+                .idle_flush_generation
+                .lock()
+                .expect("idle flush generation poisoned");
+            let next = generations.get(session_id).copied().unwrap_or(0) + 1;
+            generations.insert(session_id.to_string(), next);
+            next
+        };
+        if let Some(handle) = self
+            .idle_flush_tasks
+            .lock()
+            .expect("idle flush tasks poisoned")
+            .remove(session_id)
+        {
+            handle.abort();
+        }
+        let service = Arc::clone(self);
+        let session_id_owned = session_id.to_string();
+        let session_id_for_map = session_id_owned.clone();
+        let handle = tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(STREAM_IDLE_FLUSH_MS)).await;
+            let current = service
+                .idle_flush_generation
+                .lock()
+                .expect("idle flush generation poisoned")
+                .get(&session_id_owned)
+                .copied();
+            if current != Some(generation) {
+                return;
+            }
+            let flush_result = service.flush_trailing(&session_id_owned);
+            service
+                .idle_flush_tasks
+                .lock()
+                .expect("idle flush tasks poisoned")
+                .remove(&session_id_owned);
+            if let Err(error) = flush_result {
+                tracing::warn!(
+                    ?error,
+                    session_id = %session_id_owned,
+                    "idle stream flush failed"
+                );
+            }
+        });
+        self.idle_flush_tasks
+            .lock()
+            .expect("idle flush tasks poisoned")
+            .insert(session_id_for_map, handle);
+    }
+
     fn publish(&self, delta: DashboardDelta) {
         if !delta.is_empty() {
             (self.publish_delta)(delta);
@@ -938,7 +1158,120 @@ impl ProviderSessionService {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+fn infer_cursor_provider_conversation_id(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let mut statement = connection
+        .prepare("SELECT content FROM raw_outputs WHERE session_id = ? ORDER BY rowid ASC")
+        .map_err(sqlite_error)?;
+    let mut rows = statement.query([session_id]).map_err(sqlite_error)?;
+    while let Some(row) = rows.next().map_err(sqlite_error)? {
+        let content: String = row.get(0).map_err(sqlite_error)?;
+        for line in content
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
+            let Ok(payload) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            let provider_type = payload.get("type").and_then(Value::as_str);
+            let subtype = payload.get("subtype").and_then(Value::as_str);
+            if matches!(
+                (provider_type, subtype),
+                (Some("system"), Some("init")) | (Some("result"), Some("success"))
+            ) {
+                if let Some(id) = payload
+                    .get("session_id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                {
+                    return Ok(Some(id.to_string()));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn compose_follow_up_prompt(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+    message: &str,
+) -> ArgmaxResult<String> {
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT type, message
+            FROM events
+            WHERE session_id = ?
+              AND type IN ('user.message', 'message.completed', 'error')
+              AND trim(message) <> ''
+            ORDER BY rowid ASC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(sqlite_error)?;
+    let mut transcript = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?
+        .into_iter()
+        .filter_map(|(event_type, text)| {
+            let speaker = match event_type.as_str() {
+                "user.message" => "User",
+                "message.completed" => "Assistant",
+                "error" => "System",
+                _ => return None,
+            };
+            let text = text.trim();
+            if text.is_empty() {
+                None
+            } else {
+                Some(format!("{speaker}: {}", clamp_context_text(text)))
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if transcript.is_empty() {
+        return Ok(message.to_string());
+    }
+    if transcript.len() > FOLLOW_UP_CONTEXT_MAX_MESSAGES {
+        transcript = transcript.split_off(transcript.len() - FOLLOW_UP_CONTEXT_MAX_MESSAGES);
+    }
+
+    while transcript.join("\n").len() > FOLLOW_UP_CONTEXT_MAX_CHARS && transcript.len() > 1 {
+        transcript.remove(0);
+    }
+
+    Ok(format!(
+        "The user is continuing this Argmax chat session. Use the visible conversation transcript below as context for the new message. Continue naturally.\n\nConversation so far:\n{}\n\nNew user message:\n{}",
+        transcript.join("\n"),
+        message
+    ))
+}
+
+fn clamp_context_text(text: &str) -> String {
+    const MAX_LINE_CHARS: usize = 4_000;
+    if text.len() <= MAX_LINE_CHARS {
+        return text.to_string();
+    }
+
+    let mut end = 0;
+    for (index, _) in text.char_indices() {
+        if index > MAX_LINE_CHARS {
+            break;
+        }
+        end = index;
+    }
+    format!("{}...", text[..end].trim_end())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SendInputResult {
     pub ok: bool,

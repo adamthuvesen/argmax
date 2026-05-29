@@ -67,7 +67,7 @@ function writeStorageJson(storageKey: string, value: unknown): void {
     window.localStorage.setItem(storageKey, JSON.stringify(value));
   } catch (error) {
     // QuotaExceededError (storage full) or SecurityError (private-mode in
-    // some browsers / Electron edge cases). Log and continue — losing a
+    // some browsers / Tauri webview edge cases). Log and continue — losing a
     // sidebar preference is preferable to an unhandled rejection burying
     // the click handler that triggered the write.
     logger.warn("renderer.projects", "writeStorageJson failed", {

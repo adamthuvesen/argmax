@@ -15,7 +15,7 @@ plus [PlanCard.tsx](../../src/renderer/components/PlanCard.tsx) and
 Claude Code's `ExitPlanMode` and `AskUserQuestion` tools are designed for
 interactive sessions. Argmax launches Claude in **structured-json** mode
 (`-p --output-format stream-json` — see
-[providerAdapters.ts](../../src/main/providers/providerAdapters.ts)), which
+[providerAdapters.ts](../../src-tauri/src/providers/adapters.rs)), which
 has no interactive stdin. The CLI handles this by returning a
 `tool_result { is_error: true, content: "Exit plan mode?" / "Answer questions?" }`
 and ending the turn.
@@ -45,10 +45,10 @@ consumes `buildTurnRenderState` and renders cards.
 The "Thinking" bubble is suppressed when any of these are true:
 
 - `session.state !== "running"`
-- the last significant event is `message.delta` (streaming caret is the indicator)
+- the last significant event is `message.delta` or `message.completed` (visible assistant text is the indicator)
 - a *visible* tool is running (`tool.name` is not `ExitPlanMode` / `AskUserQuestion`; the tool's own spinner is the indicator)
 - **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../../src/renderer/lib/turnInteractiveCards.ts) /
-[SessionConversation.tsx:497](../../src/renderer/components/SessionConversation.tsx:497))
+[SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx))
 
 The outstanding-card gate is the load-bearing one for cards: while a card is
 on screen waiting for the user, the agent is *waiting on the user*, not
@@ -75,9 +75,10 @@ if (session.state === "running") {
 ```
 
 Main's `sendInput` already relaunches the agent when no live handle exists
-(see [providerSessionService.ts](../../src/main/providers/providerSessionService.ts)),
-so the terminated session resumes cleanly via `--resume <conversationId>` with
-the answer as the next user message.
+(see [session_service.rs](../../src-tauri/src/providers/session_service.rs)),
+so the terminated session resumes via `--resume <conversationId>` and sends a
+capped visible transcript plus the answer as the next user message. The UI
+timeline still stores only the raw answer text.
 
 ## QuestionCard answer format
 
@@ -123,8 +124,9 @@ hints, so sighted keyboard users don't have to discover it.
 
 ## Tests
 
-All of the above are locked in by
-[src/renderer/components/SessionConversation.test.tsx](../../src/renderer/components/SessionConversation.test.tsx) — search the file for the
+All of the above is locked in by
+[src/renderer/components/SessionConversation.cards.test.tsx](../../src/renderer/components/SessionConversation.cards.test.tsx) and
+[src/renderer/components/SessionConversation.streaming.test.tsx](../../src/renderer/components/SessionConversation.streaming.test.tsx) — search for the
 relevant `it(...)` titles:
 
 - "renders an ExitPlanMode tool call as a PlanCard, hiding the raw tool row"
@@ -133,6 +135,7 @@ relevant `it(...)` titles:
 - "still renders the QuestionCard when AskUserQuestion retries fold into a tool-group"
 - "hides the ExitPlanMode tool row immediately, even while still running (no flicker)"
 - "renders an AskUserQuestion card immediately from command.started and hides the raw row"
+- "hides the Thinking indicator once a completed assistant answer is visible"
 - "suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)"
 - "restores Thinking once the user submits and a new user.message arrives"
 - "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"

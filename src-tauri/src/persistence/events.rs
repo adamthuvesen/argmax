@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use specta::Type;
 
 use super::prepared::prepared;
 use super::time::now_iso;
@@ -24,7 +25,7 @@ pub struct PersistRawOutputInput {
     pub created_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineEvent {
     pub id: String,
@@ -36,7 +37,7 @@ pub struct TimelineEvent {
     pub row_cursor: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RawProviderOutput {
     pub id: String,
@@ -47,7 +48,7 @@ pub struct RawProviderOutput {
     pub row_cursor: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionEventsSinceResult {
     pub events: Vec<TimelineEvent>,

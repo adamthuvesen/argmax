@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use specta::Type;
 
 use super::prepared::prepared;
 use super::time::now_iso;
@@ -27,7 +28,7 @@ pub struct WorkspaceStatusInput {
     pub last_activity_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
     pub id: String,

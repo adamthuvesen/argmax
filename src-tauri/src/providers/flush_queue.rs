@@ -129,6 +129,10 @@ impl ProviderEventFlushQueue {
         self.sessions.remove(session_id);
     }
 
+    pub fn session_provider(&self, session_id: &str) -> Option<ProviderId> {
+        self.sessions.get(session_id).map(|session| session.provider)
+    }
+
     pub fn queue_output_event(
         &mut self,
         connection: &mut Connection,
@@ -186,9 +190,16 @@ impl ProviderEventFlushQueue {
             &normalized_event.session_id,
             &mut session.buffer,
         )?;
+        // The events in `delta` are already persisted to SQLite. Dropping
+        // the delta because the 16ms throttle gate said "no" used to lose
+        // streaming chunks in flight — they sat in the DB invisible to
+        // the renderer until end-of-turn flushed a single bulk delta,
+        // which is what made Claude/Codex feel "super mega slow". Always
+        // publish non-empty deltas; the gate is retained but only used by
+        // flush_trailing_fragments() as a force-next signal.
+        let _ = &self.gate;
         Ok(QueueOutputResult {
-            delta: (!delta.is_empty() && self.gate.should_publish_dashboard_delta())
-                .then_some(delta),
+            delta: (!delta.is_empty()).then_some(delta),
             provider_conversation_id,
         })
     }
@@ -353,9 +364,14 @@ pub fn flush_session_buffer(
                 provider: approval.provider.clone(),
             },
         )?;
-        delta
-            .approvals
-            .push(existing.unwrap_or(persist_approval(&transaction, approval)?));
+        // unwrap_or eagerly evaluates its argument, so persist_approval
+        // would INSERT a duplicate every time the existing row was found.
+        // Match keeps the INSERT in the None branch only.
+        let row = match existing {
+            Some(row) => row,
+            None => persist_approval(&transaction, approval)?,
+        };
+        delta.approvals.push(row);
     }
     if let Some(session) = pending_session_update {
         delta.sessions.push(session);

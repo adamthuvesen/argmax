@@ -5,38 +5,30 @@
 // `tauri::Builder::run`), the prune sweeper, the GH poller. Each owner
 // installs its handle into the matching cell once initialized.
 //
-// Database and startup timing are live; the remaining concrete service types
-// are placeholders until their owning subsystems land later in the port.
-
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
+use crate::checks::service::CheckService;
+use crate::gh::poller::GhPoller;
+use crate::mcp::auth::McpAuthService;
 use crate::persistence::Database;
+use crate::providers::discovery::ProviderDiscovery;
+use crate::providers::session_service::ProviderSessionService;
+use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
-
-// ---------------------------------------------------------------------------
-// Placeholder service types. Each is replaced by the real implementation
-// as its subsystem lands (see openspec/changes/port-to-rust-tauri/tasks.md
-// sections 3, 5, 6, 8, 10).
-// ---------------------------------------------------------------------------
-
-pub struct ProviderSessionService;
-pub struct TerminalService;
-pub struct McpAuthService;
-pub struct WorkspaceService;
-pub struct GhPoller;
-pub struct UpdateService;
+use crate::workspaces::WorkspaceService;
 
 #[derive(Default)]
 pub struct AppState {
     pub startup_timer: Arc<StartupTimer>,
     pub db: OnceCell<Arc<Database>>,
     pub providers: OnceCell<Arc<ProviderSessionService>>,
+    pub provider_discovery: Arc<ProviderDiscovery>,
     pub terminals: OnceCell<Arc<TerminalService>>,
     pub mcp_auth: OnceCell<Arc<McpAuthService>>,
+    pub checks: OnceCell<Arc<CheckService>>,
     pub workspaces: OnceCell<Arc<WorkspaceService>>,
     pub gh_poller: OnceCell<Arc<GhPoller>>,
-    pub update_service: OnceCell<Arc<UpdateService>>,
 }
 
 impl AppState {

@@ -8,143 +8,373 @@ export const commands = {
 async healthPing(input: HealthPingInput) : Promise<HealthPingOutput> {
     return await TAURI_INVOKE("health_ping", { input });
 },
-async projectsList(input: ProjectsListInput) : Promise<void> {
-    await TAURI_INVOKE("projects_list", { input });
+async projectsList(input: ProjectsListInput) : Promise<Result<ProjectSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async projectsPickFolder(input: ProjectsPickFolderInput) : Promise<void> {
-    await TAURI_INVOKE("projects_pick_folder", { input });
+async projectsPickFolder(input: ProjectsPickFolderInput) : Promise<Result<ProjectFolderPickResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_pick_folder", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async dashboardList(input: DashboardListInput) : Promise<void> {
-    await TAURI_INVOKE("dashboard_list", { input });
+async dashboardList(input: DashboardListInput) : Promise<Result<DashboardListSnapshot, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dashboard_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async projectsRegister(input: ProjectsRegisterInput) : Promise<void> {
-    await TAURI_INVOKE("projects_register", { input });
+async projectsRegister(input: ProjectsRegisterInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_register", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async projectsRemove(input: ProjectsRemoveInput) : Promise<void> {
-    await TAURI_INVOKE("projects_remove", { input });
+async projectsRemove(input: ProjectsRemoveInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_remove", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async projectsUpdateSettings(input: ProjectsUpdateSettingsInput) : Promise<void> {
-    await TAURI_INVOKE("projects_update_settings", { input });
+async projectsUpdateSettings(input: ProjectsUpdateSettingsInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_update_settings", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async projectsListBranches(input: ProjectsListBranchesInput) : Promise<void> {
-    await TAURI_INVOKE("projects_list_branches", { input });
+async projectsListBranches(input: ProjectsListBranchesInput) : Promise<Result<string[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_list_branches", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async projectsSwitchBranch(input: ProjectsSwitchBranchInput) : Promise<void> {
-    await TAURI_INVOKE("projects_switch_branch", { input });
+async projectsSwitchBranch(input: ProjectsSwitchBranchInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_switch_branch", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspacesCreateIsolated(input: WorkspacesCreateIsolatedInput) : Promise<void> {
-    await TAURI_INVOKE("workspaces_create_isolated", { input });
+async workspacesCreateIsolated(input: WorkspacesCreateIsolatedInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_create_isolated", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspacesCreateCurrent(input: WorkspacesCreateCurrentInput) : Promise<void> {
-    await TAURI_INVOKE("workspaces_create_current", { input });
+async workspacesCreateCurrent(input: WorkspacesCreateCurrentInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_create_current", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspacesRefreshStatus(input: WorkspacesRefreshStatusInput) : Promise<void> {
-    await TAURI_INVOKE("workspaces_refresh_status", { input });
+async workspacesRefreshStatus(input: WorkspacesRefreshStatusInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_refresh_status", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspacesKeep(input: WorkspacesKeepInput) : Promise<void> {
-    await TAURI_INVOKE("workspaces_keep", { input });
+async workspacesKeep(input: WorkspacesKeepInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_keep", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspacesArchive(input: WorkspacesArchiveInput) : Promise<void> {
-    await TAURI_INVOKE("workspaces_archive", { input });
+async workspacesArchive(input: WorkspacesArchiveInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_archive", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspacesOpenInIde(input: WorkspacesOpenInIdeInput) : Promise<void> {
-    await TAURI_INVOKE("workspaces_open_in_ide", { input });
+async workspacesOpenInIde(input: WorkspacesOpenInIdeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_open_in_ide", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceStatus(input: WorkspaceStatusInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_status", { input });
+async workspaceStatus(input: WorkspaceStatusInput) : Promise<Result<WorkspaceStatusSnapshot, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_status", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async providersDiscover(input: ProvidersDiscoverInput) : Promise<void> {
-    await TAURI_INVOKE("providers_discover", { input });
+async providersDiscover(input: ProvidersDiscoverInput) : Promise<Result<ProviderCapabilityReport[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_discover", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async providersLaunch(input: ProvidersLaunchInput) : Promise<void> {
-    await TAURI_INVOKE("providers_launch", { input });
+async providersLaunch(input: ProvidersLaunchInput) : Promise<Result<SessionSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_launch", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async providersSendInput(input: ProvidersSendInput) : Promise<void> {
-    await TAURI_INVOKE("providers_send_input", { input });
+async providersSendInput(input: ProvidersSendInput) : Promise<Result<SendInputResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_send_input", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async providersResize(input: ProvidersResizeInput) : Promise<void> {
-    await TAURI_INVOKE("providers_resize", { input });
+async providersResize(input: ProvidersResizeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_resize", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async providersTerminate(input: ProvidersTerminateInput) : Promise<void> {
-    await TAURI_INVOKE("providers_terminate", { input });
+async providersTerminate(input: ProvidersTerminateInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_terminate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async providersCancelQueuedMessage(input: ProvidersCancelQueuedMessageInput) : Promise<void> {
-    await TAURI_INVOKE("providers_cancel_queued_message", { input });
+async providersCancelQueuedMessage(input: ProvidersCancelQueuedMessageInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_cancel_queued_message", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async attachmentsSaveImage(input: AttachmentsSaveImageInput) : Promise<void> {
-    await TAURI_INVOKE("attachments_save_image", { input });
+async attachmentsSaveImage(input: AttachmentsSaveImageInput) : Promise<Result<SaveImageResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("attachments_save_image", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async terminalSpawn(input: TerminalSpawnInput) : Promise<void> {
-    await TAURI_INVOKE("terminal_spawn", { input });
+async terminalSpawn(input: TerminalSpawnInput) : Promise<Result<TerminalSpawnResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("terminal_spawn", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async terminalWrite(input: TerminalWriteInput) : Promise<void> {
-    await TAURI_INVOKE("terminal_write", { input });
+async terminalWrite(input: TerminalWriteInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("terminal_write", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async terminalResize(input: TerminalResizeInput) : Promise<void> {
-    await TAURI_INVOKE("terminal_resize", { input });
+async terminalResize(input: TerminalResizeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("terminal_resize", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async terminalTerminate(input: TerminalTerminateInput) : Promise<void> {
-    await TAURI_INVOKE("terminal_terminate", { input });
+async terminalTerminate(input: TerminalTerminateInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("terminal_terminate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async approvalsResolve(input: ApprovalsResolveInput) : Promise<void> {
-    await TAURI_INVOKE("approvals_resolve", { input });
+async approvalsResolve(input: ApprovalsResolveInput) : Promise<Result<ApprovalRequest, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("approvals_resolve", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async approvalsPending(input: ApprovalsPendingInput) : Promise<void> {
-    await TAURI_INVOKE("approvals_pending", { input });
+async approvalsPending(input: ApprovalsPendingInput) : Promise<Result<ApprovalRequest[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("approvals_pending", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async sessionEventsSince(input: SessionEventsSinceInput) : Promise<void> {
-    await TAURI_INVOKE("session_events_since", { input });
+async sessionEventsSince(input: SessionEventsSinceInput) : Promise<Result<SessionEventsSinceResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_events_since", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async reviewListChangedFiles(input: ReviewListChangedFilesInput) : Promise<void> {
-    await TAURI_INVOKE("review_list_changed_files", { input });
+async reviewListChangedFiles(input: ReviewListChangedFilesInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async reviewLoadDiff(input: ReviewLoadDiffInput) : Promise<void> {
-    await TAURI_INVOKE("review_load_diff", { input });
+async reviewLoadDiff(input: ReviewLoadDiffInput) : Promise<Result<WorkspaceDiff, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_load_diff", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async reviewListChangedFilesForProject(input: ReviewListChangedFilesForProjectInput) : Promise<void> {
-    await TAURI_INVOKE("review_list_changed_files_for_project", { input });
+async reviewListChangedFilesForProject(input: ReviewListChangedFilesForProjectInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files_for_project", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async reviewLoadDiffForProject(input: ReviewLoadDiffForProjectInput) : Promise<void> {
-    await TAURI_INVOKE("review_load_diff_for_project", { input });
+async reviewLoadDiffForProject(input: ReviewLoadDiffForProjectInput) : Promise<Result<WorkspaceDiff, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("review_load_diff_for_project", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceListFiles(input: WorkspaceListFilesInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_list_files", { input });
+async workspaceListFiles(input: WorkspaceListFilesInput) : Promise<Result<WorkspaceFileEntry[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_list_files", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceReadFile(input: WorkspaceReadFileInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_read_file", { input });
+async workspaceReadFile(input: WorkspaceReadFileInput) : Promise<Result<WorkspaceFilePreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_read_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceListFilesForProject(input: WorkspaceListFilesForProjectInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_list_files_for_project", { input });
+async workspaceListFilesForProject(input: WorkspaceListFilesForProjectInput) : Promise<Result<WorkspaceFileEntry[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_list_files_for_project", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceReadFileForProject(input: WorkspaceReadFileForProjectInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_read_file_for_project", { input });
+async workspaceReadFileForProject(input: WorkspaceReadFileForProjectInput) : Promise<Result<WorkspaceFilePreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_read_file_for_project", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceWriteFile(input: WorkspaceWriteFileInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_write_file", { input });
+async workspaceWriteFile(input: WorkspaceWriteFileInput) : Promise<Result<WorkspaceFileWriteResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_write_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceStatFile(input: WorkspaceStatFileInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_stat_file", { input });
+async workspaceStatFile(input: WorkspaceStatFileInput) : Promise<Result<WorkspaceFileStat, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_stat_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceWriteFileForProject(input: WorkspaceWriteFileForProjectInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_write_file_for_project", { input });
+async workspaceWriteFileForProject(input: WorkspaceWriteFileForProjectInput) : Promise<Result<WorkspaceFileWriteResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_write_file_for_project", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceStatFileForProject(input: WorkspaceStatFileForProjectInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_stat_file_for_project", { input });
+async workspaceStatFileForProject(input: WorkspaceStatFileForProjectInput) : Promise<Result<WorkspaceFileStat, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_stat_file_for_project", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspaceGrepContent(input: WorkspaceGrepContentInput) : Promise<void> {
-    await TAURI_INVOKE("workspace_grep_content", { input });
+async workspaceGrepContent(input: WorkspaceGrepContentInput) : Promise<Result<WorkspaceContentSearchResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_grep_content", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async checksRun(input: ChecksRunInput) : Promise<void> {
-    await TAURI_INVOKE("checks_run", { input });
+async checksRun(input: ChecksRunInput) : Promise<Result<CheckRun, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("checks_run", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async checkpointsCreate(input: CheckpointsCreateInput) : Promise<void> {
-    await TAURI_INVOKE("checkpoints_create", { input });
+async checkpointsCreate(input: CheckpointsCreateInput) : Promise<Result<Checkpoint, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("checkpoints_create", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async dashboardLoad(input: DashboardLoadInput) : Promise<void> {
-    await TAURI_INVOKE("dashboard_load", { input });
+async dashboardLoad(input: DashboardLoadInput) : Promise<Result<DashboardSnapshot, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dashboard_load", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async skillsList(input: SkillsListInput) : Promise<void> {
-    await TAURI_INVOKE("skills_list", { input });
+async skillsList(input: SkillsListInput) : Promise<Result<SkillSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("skills_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
 async systemOpenPath(input: SystemOpenPathInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
@@ -181,56 +411,136 @@ async systemSetTheme(input: SystemSetThemeInput) : Promise<Result<SystemOk, Argm
     else return { status: "error", error: e  as any };
 }
 },
-async mcpList(input: McpListInput) : Promise<void> {
-    await TAURI_INVOKE("mcp_list", { input });
+async mcpList(input: McpListInput) : Promise<McpClientListing[]> {
+    return await TAURI_INVOKE("mcp_list", { input });
 },
-async mcpAuthStart(input: McpAuthStartInput) : Promise<void> {
-    await TAURI_INVOKE("mcp_auth_start", { input });
+async mcpAuthStart(input: McpAuthStartInput) : Promise<Result<StartAuthOutput, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_start", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async mcpAuthWrite(input: McpAuthWriteInput) : Promise<void> {
-    await TAURI_INVOKE("mcp_auth_write", { input });
+async mcpAuthWrite(input: McpAuthWriteInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_write", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async mcpAuthResize(input: McpAuthResizeInput) : Promise<void> {
-    await TAURI_INVOKE("mcp_auth_resize", { input });
+async mcpAuthResize(input: McpAuthResizeInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_resize", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async mcpAuthTerminate(input: McpAuthTerminateInput) : Promise<void> {
-    await TAURI_INVOKE("mcp_auth_terminate", { input });
+async mcpAuthTerminate(input: McpAuthTerminateInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_terminate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async sessionCostSummary(input: SessionCostSummaryInput) : Promise<void> {
-    await TAURI_INVOKE("session_cost_summary", { input });
+async sessionCostSummary(input: SessionCostSummaryInput) : Promise<Result<SessionCostSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_cost_summary", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async learningsList(input: LearningsListInput) : Promise<void> {
-    await TAURI_INVOKE("learnings_list", { input });
+async learningsList(input: LearningsListInput) : Promise<Result<Learning[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("learnings_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async learningsUpdate(input: LearningsUpdateInput) : Promise<void> {
-    await TAURI_INVOKE("learnings_update", { input });
+async learningsUpdate(input: LearningsUpdateInput) : Promise<Result<Learning, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("learnings_update", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async learningsDelete(input: LearningsDeleteInput) : Promise<void> {
-    await TAURI_INVOKE("learnings_delete", { input });
+async learningsDelete(input: LearningsDeleteInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("learnings_delete", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async sessionSearch(input: SessionSearchInput) : Promise<void> {
-    await TAURI_INVOKE("session_search", { input });
+async sessionSearch(input: SessionSearchInput) : Promise<Result<EventSearchResult[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_search", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async workspacesSetPinned(input: WorkspacesSetPinnedInput) : Promise<void> {
-    await TAURI_INVOKE("workspaces_set_pinned", { input });
+async workspacesSetPinned(input: WorkspacesSetPinnedInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_set_pinned", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async prsListForSession(input: PrsListForSessionInput) : Promise<void> {
-    await TAURI_INVOKE("prs_list_for_session", { input });
+async prsListForSession(input: PrsListForSessionInput) : Promise<Result<GhPrRecord[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prs_list_for_session", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async prsRefresh(input: PrsRefreshInput) : Promise<void> {
-    await TAURI_INVOKE("prs_refresh", { input });
+async prsRefresh(input: PrsRefreshInput) : Promise<Result<GhPrRecord[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prs_refresh", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async gitCommit(input: GitCommitInput) : Promise<void> {
-    await TAURI_INVOKE("git_commit", { input });
+async gitCommit(input: GitCommitInput) : Promise<Result<GitCommitResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("git_commit", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async gitPush(input: GitPushInput) : Promise<void> {
-    await TAURI_INVOKE("git_push", { input });
+async gitPush(input: GitPushInput) : Promise<Result<GitPushResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("git_push", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async gitCreateBranch(input: GitCreateBranchInput) : Promise<void> {
-    await TAURI_INVOKE("git_create_branch", { input });
+async gitCreateBranch(input: GitCreateBranchInput) : Promise<Result<GitCreateBranchResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("git_create_branch", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
-async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<void> {
-    await TAURI_INVOKE("git_view_or_create_pr", { input });
+async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<Result<GitViewOrCreatePrResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("git_view_or_create_pr", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -246,6 +556,7 @@ async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<void> {
 
 export type AgentMode = "auto" | "plan"
 export type ApprovalId = string
+export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
 export type ApprovalResolution = "approved" | "rejected"
 export type ApprovalsPendingInput = Record<string, never>
 export type ApprovalsResolveInput = { approvalId: ApprovalId; status: ApprovalResolution }
@@ -257,21 +568,32 @@ export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: Attach
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
+export type ChangedFileSummary = { path: string; status: string; additions: number; deletions: number; oldPath?: string | null }
+export type CheckRun = { id: string; workspaceId: string; command: string; status: string; exitCode: number | null; summary: string | null; startedAt: string; completedAt: string | null }
+export type Checkpoint = { id: string; workspaceId: string; label: string; branch: string; gitRef: string | null; patchPath: string | null; createdAt: string }
 export type CheckpointsCreateInput = { workspaceId: WorkspaceId; label: NonEmptyString }
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
 export type DashboardListInput = Record<string, never>
+export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
 export type DashboardLoadInput = Record<string, never>
+export type DashboardSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; approvals: ApprovalRequest[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
 export type DiagnosticsReport = { appVersion: string; electronVersion: string; nodeVersion: string; sqliteVersion: string; databasePath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
+export type EventSearchResult = { sessionId: string; eventId: string; snippet: string; rank: number }
 export type FileContent = string
+export type GhPrRecord = { sessionId: string; prNumber: number; headSha: string; lastSeenCheckState: string; updatedAt: string; prState: string | null; notifiedAt: string | null }
 export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
 export type GitCommitMessage = string
+export type GitCommitResult = { commitSha: string; branch: string }
 export type GitCreateBranchInput = { workspaceId: WorkspaceId; branch: BranchName }
+export type GitCreateBranchResult = { branch: string }
 export type GitPushInput = { workspaceId: WorkspaceId }
+export type GitPushResult = { branch: string; upstreamSet: boolean }
 export type GitViewOrCreatePrInput = { sessionId: SessionId }
+export type GitViewOrCreatePrResult = { action: "opened"; url: string; prNumber: number } | { action: "created"; url: string; prNumber: number | null }
 export type GrepTargetId = string
 export type HealthPingInput = Record<string, never>
 export type HealthPingOutput = { ok: boolean; timestamp: string }
@@ -282,6 +604,8 @@ export type IdeId = "vscode" | "cursor" | "windsurf" | "zed" | "iterm" | "termin
  */
 export type InvalidInputIssue = { path: string[]; code: string; message: string }
 export type IpcChannelStats = { channel: string; count: number; totalRecorded: number; p50: number; p99: number }
+export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
+export type Learning = { id: string; projectId: string; kind: string; summary: string; evidenceSessionId: string | null; evidenceEventId: string | null; verified: boolean; hits: number; createdAt: string; lastSeenAt: string }
 export type LearningsDeleteInput = { id: NonEmptyString }
 export type LearningsListInput = { projectId: ProjectId; limit: Limit200 | null }
 export type LearningsUpdateInput = { id: NonEmptyString; summary: NonEmptyString | null; verified: boolean | null }
@@ -292,14 +616,22 @@ export type McpAuthSessionId = string
 export type McpAuthStartInput = { cols: TerminalCols; rows: TerminalRows }
 export type McpAuthTerminateInput = { sessionId: McpAuthSessionId }
 export type McpAuthWriteInput = { sessionId: McpAuthSessionId; data: StreamChunk }
+export type McpClientListing = { client: ProviderId; displayName: string; configPath: string; configExists: boolean; servers: McpServerEntry[]; error: string | null }
 export type McpListInput = Record<string, never>
+export type McpScope = "user" | "project"
+export type McpServerEntry = { client: ProviderId; name: string; transport: McpTransport; scope: McpScope; source: string; command?: string | null; url?: string | null; envKeys: string[] }
+export type McpTransport = "stdio" | "http" | "sse" | "unknown"
 export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
 export type OpenPath = string
 export type PermissionMode = "auto-approve" | "ask-each-time"
+export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
+export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
+export type ProjectSettings = { defaultProvider: string; defaultModelLabel: string; worktreeLocation: string; setupCommand: string; checkCommands: string[] }
 export type ProjectSettingsInput = { defaultProvider: ProviderId; defaultModelLabel: NonEmptyString; worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[] }
+export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
 export type ProjectsPickFolderInput = Record<string, never>
@@ -308,7 +640,9 @@ export type ProjectsRemoveInput = { projectId: ProjectId }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
+export type ProviderCapabilityReport = { provider: ProviderId; displayName: string; binaryName: string; installed: boolean; binaryPath: string | null; version: string | null; modes: ProviderMode[]; setupGuidance: string | null }
 export type ProviderId = "claude" | "codex" | "cursor"
+export type ProviderMode = "interactive-pty" | "structured-json"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersDiscoverInput = Record<string, never>
 export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null }
@@ -317,6 +651,7 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt; modelLab
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
+export type RawProviderOutput = { id: string; sessionId: string; stream: string; content: string; createdAt: string; rowCursor: number | null }
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh"
 export type RelativePath = string
 export type RepoPath = string
@@ -326,14 +661,23 @@ export type ReviewLoadDiffForProjectInput = { projectId: ProjectId; filePath: Re
 export type ReviewLoadDiffInput = { workspaceId: WorkspaceId; filePath: RelativePath | null }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; checkpoints: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
+export type SaveImageResult = { filePath: string; sizeBytes: number }
 export type SearchQuery = string
+export type SendInputResult = { ok: boolean; queued: boolean }
+export type SessionCostSummary = { sessionId: string; modelId: string | null; tokens: UsageCounts; costUsd: number }
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }
+export type SessionEventsSinceResult = { events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; eventCursor: number; rawOutputCursor: number }
 export type SessionId = string
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
+export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string; startedAt: string; completedAt: string | null; lastActivityAt: string; costUsd: number; tokens: UsageCounts }
+export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
+export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
+export type SkippedReason = "not-a-file" | "too-large" | "binary"
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
+export type StartAuthOutput = { sessionId: string }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
 export type SystemDiagnosticsInput = Record<string, never>
@@ -348,9 +692,20 @@ export type TerminalId = string
 export type TerminalResizeInput = { terminalId: TerminalId; cols: TerminalCols; rows: TerminalRows }
 export type TerminalRows = number
 export type TerminalSpawnInput = { workspaceId: WorkspaceId; cols: TerminalCols; rows: TerminalRows }
+export type TerminalSpawnResult = { terminalId: string }
 export type TerminalTerminateInput = { terminalId: TerminalId }
 export type TerminalWriteInput = { terminalId: TerminalId; data: StreamChunk }
 export type ThemeMode = "light" | "dark" | "system"
+export type TimelineEvent = { id: string; sessionId: string; type: string; message: string; payload: JsonValue; createdAt: string; rowCursor: number | null }
+export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number }
+export type WorkspaceContentSearchFile = { path: string; matches: WorkspaceContentSearchMatch[] }
+export type WorkspaceContentSearchMatch = { line: number; preview: string }
+export type WorkspaceContentSearchResult = { files: WorkspaceContentSearchFile[]; truncated: boolean }
+export type WorkspaceDiff = { workspaceId: string; filePath: string | null; content: string }
+export type WorkspaceFileEntry = { path: string }
+export type WorkspaceFilePreview = { kind: "text"; content: string; size: number; mtimeMs: number } | { kind: "skipped"; reason: SkippedReason; size?: number | null }
+export type WorkspaceFileStat = { mtimeMs: number; size: number }
+export type WorkspaceFileWriteResult = { ok: "true"; mtimeMs: number; size: number } | { ok: "false"; reason: WriteStaleReason; currentMtimeMs: number; size: number }
 export type WorkspaceGrepContentInput = { kind: WorkspaceGrepKind; id: GrepTargetId; query: SearchQuery }
 export type WorkspaceGrepKind = "workspace" | "project"
 export type WorkspaceId = string
@@ -361,6 +716,8 @@ export type WorkspaceReadFileInput = { workspaceId: WorkspaceId; filePath: Relat
 export type WorkspaceStatFileForProjectInput = { projectId: ProjectId; filePath: RelativePath }
 export type WorkspaceStatFileInput = { workspaceId: WorkspaceId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
+export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
+export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean }
 export type WorkspaceWriteFileForProjectInput = { projectId: ProjectId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspaceWriteFileInput = { workspaceId: WorkspaceId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
@@ -370,6 +727,7 @@ export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
 export type WorkspacesOpenInIdeInput = { workspaceId: WorkspaceId; ide: OpenIdeChoice }
 export type WorkspacesRefreshStatusInput = { workspaceId: WorkspaceId }
 export type WorkspacesSetPinnedInput = { workspaceId: WorkspaceId; pinned: boolean }
+export type WriteStaleReason = "stale"
 
 /** tauri-specta globals **/
 

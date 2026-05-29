@@ -1,4 +1,10 @@
+use std::sync::Arc;
+
 use tauri_specta::{collect_commands, Builder as SpectaBuilder};
+
+use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::persistence::Database;
+use crate::state::AppState;
 
 pub mod inputs;
 pub mod validation;
@@ -95,8 +101,15 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "git:view-or-create-pr",
 ];
 
-pub(crate) fn unported(channel: &str) -> ! {
-    panic!("{channel} command is not ported yet")
+/// Resolve the live `Database` Arc from `AppState`. Shared across IPC
+/// handler modules so each ported command does not re-duplicate the
+/// `state.db.get()` boilerplate.
+pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
+    state
+        .db
+        .get()
+        .cloned()
+        .ok_or_else(|| ArgmaxError::service("DATABASE_NOT_READY", "database is not initialized"))
 }
 
 pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {

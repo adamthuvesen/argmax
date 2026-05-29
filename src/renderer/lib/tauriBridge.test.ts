@@ -48,14 +48,14 @@ describe("tauriBridge", () => {
 
     installTauriBridge();
     await window.argmax!.providers.terminate("session-1");
-    await window.argmax!.review.loadDiff("workspace-1", "src/main.rs");
+    await window.argmax!.review.loadDiff("workspace-1", "src-tauri/src.rs");
     await window.argmax!.terminal.terminate("terminal-1");
 
     expect(mocks.invoke).toHaveBeenCalledWith("providers:terminate", {
       input: { sessionId: "session-1" }
     });
     expect(mocks.invoke).toHaveBeenCalledWith("review:load-diff", {
-      input: { workspaceId: "workspace-1", filePath: "src/main.rs" }
+      input: { workspaceId: "workspace-1", filePath: "src-tauri/src.rs" }
     });
     expect(mocks.invoke).toHaveBeenCalledWith("terminal:terminate", {
       input: { terminalId: "terminal-1" }

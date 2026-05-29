@@ -75,11 +75,14 @@ pub fn launch_ide(ide: IdeId, path: &str, detected: &[DetectedIde]) -> ArgmaxRes
                 )
             })?;
             let mapping = cli_for(gui).expect("gui ides have CLI mappings");
-            if entry.has_cli && spawn_detached(mapping.cli, &[path]).is_ok() {
+            // `--` ends option processing so a worktree path that starts
+            // with `-` (legitimately-named directory) is parsed as a
+            // positional, not a flag.
+            if entry.has_cli && spawn_detached(mapping.cli, &["--", path]).is_ok() {
                 return Ok(());
             }
             // Fall through to `open -a` when the CLI is missing or fails to spawn.
-            spawn_detached("open", &["-a", mapping.app_name, path])
+            spawn_detached("open", &["-a", mapping.app_name, "--", path])
         }
     }
 }

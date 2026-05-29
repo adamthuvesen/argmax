@@ -1,10 +1,11 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use specta::Type;
 
 use super::prepared::prepared;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GhPrRecord {
     pub session_id: String,
@@ -17,6 +18,9 @@ pub struct GhPrRecord {
 }
 
 pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult<GhPrRecord> {
+    // Reset notified_at when head_sha rotates so a new commit is treated
+    // as a fresh notification target; preserve it on a same-sha update so
+    // unrelated metadata changes don't replay the notification.
     let mut statement = prepared(
         connection,
         r#"
@@ -26,7 +30,11 @@ pub fn upsert_gh_pr(connection: &Connection, input: &GhPrRecord) -> ArgmaxResult
           head_sha = excluded.head_sha,
           last_seen_check_state = excluded.last_seen_check_state,
           updated_at = excluded.updated_at,
-          pr_state = excluded.pr_state
+          pr_state = excluded.pr_state,
+          notified_at = CASE
+            WHEN excluded.head_sha = gh_pr.head_sha THEN gh_pr.notified_at
+            ELSE NULL
+          END
         "#,
     )
     .map_err(sqlite_error)?;
@@ -92,9 +100,20 @@ pub fn mark_gh_pr_notified(
         "#,
     )
     .map_err(sqlite_error)?;
-    statement
+    let changes = statement
         .execute((notified_at, session_id, pr_number, head_sha))
         .map_err(sqlite_error)?;
+    if changes == 0 {
+        // The head_sha rotated between read and mark — the notification
+        // belongs to a stale commit. Surface it so the caller can decide
+        // whether to retry against the new sha or drop the notification.
+        return Err(ArgmaxError::service(
+            "GH_PR_STALE_HEAD_SHA",
+            format!(
+                "gh_pr row for session {session_id} pr {pr_number} no longer at head_sha {head_sha}",
+            ),
+        ));
+    }
     Ok(())
 }
 

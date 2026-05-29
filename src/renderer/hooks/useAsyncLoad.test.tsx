@@ -112,10 +112,10 @@ describe("useAsyncLoad", () => {
     const fetcher = vi.fn();
 
     const { result } = renderHook(() =>
-      useAsyncLoad(fetcher, { missingApiMessage: "Open the Electron host." })
+      useAsyncLoad(fetcher, { missingApiMessage: "Open the Tauri host." })
     );
 
-    await waitFor(() => expect(result.current.error).toBe("Open the Electron host."));
+    await waitFor(() => expect(result.current.error).toBe("Open the Tauri host."));
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

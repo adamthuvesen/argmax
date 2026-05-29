@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use specta::Type;
 
 use super::prepared::prepared;
 use super::time::now_iso;
@@ -40,7 +41,7 @@ pub struct SessionStateInput {
     pub last_activity_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageCounts {
     pub input: i64,
@@ -49,7 +50,7 @@ pub struct UsageCounts {
     pub cache_write: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
     pub id: String,

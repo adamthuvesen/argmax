@@ -6,7 +6,7 @@
  *
  * Shape narrowing is the caller's responsibility: `safeJsonParse` does not
  * validate that the parsed value matches T. Use `safeJsonParseArray` /
- * `safeJsonParseRecord` (or pair with a zod schema) when the source data
+ * `safeJsonParseRecord`  when the source data
  * is untrusted in shape, not just in syntax.
  *
  * Warnings are rate-limited per `context` so a broken DB column does not

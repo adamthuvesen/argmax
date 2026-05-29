@@ -16,7 +16,9 @@ use self::{
         extract_delta_text as extract_claude_delta_text,
         extract_inline_tool_blocks as extract_claude_inline_tool_blocks,
         extract_message_content as extract_claude_message_content,
-        extract_usage as extract_claude_usage, should_drop_sub_agent_prose,
+        extract_usage as extract_claude_usage,
+        synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
+        should_drop_sub_agent_prose,
     },
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
@@ -112,6 +114,9 @@ pub struct NormalizerSessionContext {
     pub codex_current_model: Option<String>,
     pub cursor_current_model: Option<String>,
     pub cursor_assistant_text: Option<String>,
+    /// Set when Claude emits a `message.completed` for the current turn so a
+    /// trailing `result` line does not synthesize a duplicate bubble.
+    pub claude_turn_answer_emitted: bool,
 }
 
 impl NormalizerSessionContext {
@@ -297,6 +302,14 @@ fn normalize_json_payload(
     context: &mut NormalizerSessionContext,
 ) -> NormalizedProviderResult {
     let provider_type = string_value(payload.get("type")).map(str::to_string);
+
+    if provider == ProviderId::Claude && provider_type.as_deref() == Some("stream_event") {
+        if let Some(inner) = object_value(payload.get("event")).cloned() {
+            return normalize_json_payload(provider, event, inner, context);
+        }
+        return NormalizedProviderResult::default();
+    }
+
     let item = object_value(payload.get("item"));
     let item_type = item
         .and_then(|item| string_value(item.get("type")))
@@ -308,17 +321,28 @@ fn normalize_json_payload(
 
     let usage = extract_usage_from_payload(provider, &payload, provider_type.as_deref(), context);
     let usages = usage.into_iter().collect::<Vec<_>>();
-    let provider_conversation_id =
-        if provider == ProviderId::Codex && provider_type.as_deref() == Some("thread.started") {
+    let provider_conversation_id = match provider {
+        ProviderId::Codex if provider_type.as_deref() == Some("thread.started") => {
             string_value(payload.get("thread_id"))
                 .or_else(|| {
                     object_value(payload.get("thread"))
                         .and_then(|thread| string_value(thread.get("id")))
                 })
                 .map(str::to_string)
-        } else {
-            None
-        };
+        }
+        ProviderId::Cursor
+            if matches!(
+                (
+                    provider_type.as_deref(),
+                    string_value(payload.get("subtype"))
+                ),
+                (Some("system"), Some("init")) | (Some("result"), Some("success"))
+            ) =>
+        {
+            string_value(payload.get("session_id")).map(str::to_string)
+        }
+        _ => None,
+    };
 
     if is_lifecycle_event(provider_type.as_deref(), item_type.as_deref()) {
         return NormalizedProviderResult {
@@ -415,6 +439,26 @@ fn normalize_json_payload(
         events.extend(extract_claude_inline_tool_blocks(event, &payload));
     }
 
+    if provider == ProviderId::Claude && provider_type.as_deref() == Some("result") {
+        if context.claude_turn_answer_emitted {
+            return NormalizedProviderResult {
+                events: Vec::new(),
+                usages,
+                provider_conversation_id,
+            };
+        }
+        if let Some(completed) =
+            synthesize_claude_message_completed_from_result(event, &payload)
+        {
+            context.claude_turn_answer_emitted = true;
+            return NormalizedProviderResult {
+                events: vec![completed],
+                usages,
+                provider_conversation_id,
+            };
+        }
+    }
+
     let raw_text = extract_message_text(&payload, item);
     let text = if provider == ProviderId::Cursor {
         normalize_cursor_assistant_text(raw_text, &payload, provider_type.as_deref(), context)
@@ -462,9 +506,13 @@ fn normalize_json_payload(
         }
         Value::Object(payload)
     };
+    let timeline_type = mapped_type.unwrap_or("message.delta");
+    if provider == ProviderId::Claude && timeline_type == "message.completed" {
+        context.claude_turn_answer_emitted = true;
+    }
     events.push(timeline_event(
         event,
-        mapped_type.unwrap_or("message.delta"),
+        timeline_type,
         text.unwrap_or_else(|| provider_type.unwrap_or_else(|| "Provider event".to_string())),
         final_payload,
     ));
@@ -477,15 +525,16 @@ fn normalize_json_payload(
 }
 
 fn normalize_raw_line(event: &ProviderOutputEvent, line: &str) -> NormalizedProviderResult {
-    if event.stream == ProviderOutputStream::Pty {
-        return NormalizedProviderResult::default();
-    }
-
     let cleaned = strip_terminal_controls(line).trim().to_string();
     if cleaned.is_empty() {
         return NormalizedProviderResult::default();
     }
 
+    // Provider runtimes spawn the CLI under a PTY so stdout stays
+    // line-buffered (Stdio::piped causes block-buffering and the chat
+    // looks hung). PTY merges stdout/stderr into one stream, so any
+    // non-JSON line that survives ANSI stripping is real content —
+    // typically an auth/error message — that must surface to the user.
     let event_type = if event.stream == ProviderOutputStream::Stderr {
         "error"
     } else {
@@ -681,17 +730,26 @@ mod tests {
     }
 
     #[test]
-    fn pty_raw_output_is_not_chat_fallback() {
+    fn pty_raw_output_surfaces_as_message_delta() {
+        // Provider runtimes spawn CLIs under a PTY so stdout stays
+        // line-buffered. Non-JSON lines that survive ANSI stripping are
+        // visible content (auth/error messages, banners) — dropping them
+        // silently hid critical errors from the chat.
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
             ProviderId::Claude,
             &ProviderOutputEvent {
                 stream: ProviderOutputStream::Pty,
-                ..output_event("plain terminal output\n")
+                ..output_event("could not authenticate; run `claude login`\n")
             },
             &mut context,
         );
-        assert!(result.events.is_empty());
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(
+            result.events[0].message,
+            "could not authenticate; run `claude login`"
+        );
     }
 
     #[test]

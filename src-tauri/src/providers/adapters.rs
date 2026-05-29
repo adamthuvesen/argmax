@@ -308,7 +308,7 @@ mod tests {
     use crate::providers::ProviderMode;
 
     #[test]
-    fn claude_structured_args_match_electron_adapter() {
+    fn claude_structured_args_match_main_stream_json() {
         let input = launch_input(ProviderId::Claude);
         let definition = get_provider_definition(ProviderId::Claude);
 

@@ -9,7 +9,7 @@
  * - When mode is `"system"`, the resolved value follows
  *   `prefers-color-scheme`, and updates live when the OS preference flips.
  *
- * Electron main process keeps its own cached copy in `userData/theme.json` so
+ * Tauri runtime keeps its own cached copy in `userData/theme.json` so
  * `BrowserWindow.backgroundColor` matches at cold start (no white flash). The
  * renderer notifies main via `system:setTheme` IPC on every change.
  */

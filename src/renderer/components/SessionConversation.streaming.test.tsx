@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PendingMessage } from "../../shared/types.js";
+import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
 import {
   baseSession,
@@ -233,13 +233,13 @@ describe("SessionConversation — streaming & composer", () => {
           input: {
             subagent_type: "Explore",
             description: "Map documentation structure and identify gaps",
-            prompt: "Explore the documentation in this Electron/React Argmax project."
+            prompt: "Explore the documentation in this Tauri/React Argmax project."
           }
         }),
         event(
           "m-subagent-prompt",
           "message.delta",
-          "Explore the documentation in this Electron/React Argmax project.",
+          "Explore the documentation in this Tauri/React Argmax project.",
           "2026-05-12T15:00:02.000Z",
           {
             type: "user",
@@ -251,23 +251,47 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.getByLabelText("Agent Map documentation structure and identify gaps")).toBeInTheDocument();
-    expect(screen.queryByText("Explore the documentation in this Electron/React Argmax project.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Explore the documentation in this Tauri/React Argmax project.")).not.toBeInTheDocument();
   });
-  it("shows the Thinking indicator between events while the session is still running", () => {
-    // After `message.completed` (or `command.completed`) while the session
-    // is still running, the model is mid-turn — deciding what to do next.
-    // Before the next event arrives there's no streaming caret or tool
-    // spinner on screen, so the chat would otherwise sit silent. Thinking
-    // should fill the gap.
+  it("keeps Thinking for Claude when session.streaming fired before assistant text", () => {
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
-        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
-        event("m1", "message.completed", "Working on it.", "2026-05-12T15:00:01.000Z")
+        event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
+        event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
       ]
     );
 
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("hides Thinking for Codex once session.streaming fires for the current turn", () => {
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
+        event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("hides the Thinking indicator once a completed assistant answer is visible", () => {
+    // Provider answer events and runtime completion state arrive in separate
+    // dashboard deltas. If the answer has landed but the session row still
+    // says running, the answer should win; otherwise the appended Thinking
+    // bubble pins the scroll and makes the reply look missing until Stop.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {
@@ -433,6 +457,82 @@ describe("SessionConversation — streaming & composer", () => {
     secondChip.focus();
     fireEvent.keyDown(secondChip, { key: "Delete" });
     expect(onCancel).toHaveBeenCalledWith("session-a", "queued-2");
+  });
+
+  // Regression: until the first message.delta/message.completed/command.started
+  // landed, the chat fell back to rendering buildTerminalTranscript(rawOutputs)
+  // — a giant gray <pre> dump of the provider's stream-json (8 KB Claude
+  // `system`/`init` payload + rate_limit_event). The fix counts the
+  // `session.streaming` one-shot beacon as "renderable content" so the dump
+  // never reaches the user during the pre-answer thinking window.
+  it("suppresses the raw-stdout transcript once session.streaming fires", () => {
+    const sess = baseSession({ id: "session-a", state: "running" });
+    const userEvent: TimelineEvent = event(
+      "u1",
+      "user.message",
+      "explore",
+      "2026-05-12T15:00:00.000Z"
+    );
+    const streamingBeacon: TimelineEvent = {
+      id: "ss-1",
+      sessionId: sess.id,
+      type: "session.streaming",
+      message: "",
+      payload: {},
+      createdAt: "2026-05-12T15:00:00.500Z"
+    };
+    // Two raw chunks that together exceed an 8 KB stream-json line without
+    // ever forming a complete `{...}` parseable object. `buildTerminalTranscript`
+    // hides whole-line JSON via tryParseJsonObject; chunks that arrive
+    // mid-line (no trailing newline) survive the filter and end up dumped
+    // verbatim — that's the exact scenario the user hit when Claude's first
+    // 8 KB system-init blob streamed in across nine partial PTY reads.
+    const rawOutputs: RawProviderOutput[] = [
+      {
+        id: "r1",
+        sessionId: sess.id,
+        stream: "stdout",
+        content: '{"type":"system","subtype":"init","cwd":"/x","tools":["A"',
+        createdAt: "2026-05-12T15:00:00.700Z"
+      }
+    ];
+
+    const baseProps = {
+      isLogOpen: false,
+      onSendSessionInput: vi.fn().mockResolvedValue(undefined),
+      onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onCreateCheckpoint: vi.fn().mockResolvedValue(undefined),
+      onToggleLog: vi.fn(),
+      project,
+      review: reviewStub(),
+      session: sess,
+      workspace
+    } as const;
+
+    // Without the beacon: transcript fallback should appear so the existing
+    // behaviour for non-stream-json providers (where raw stdout IS the
+    // human-readable output) keeps working.
+    const without = render(
+      <SessionConversation
+        {...baseProps}
+        events={[userEvent]}
+        rawOutputs={rawOutputs}
+      />
+    );
+    expect(without.container.querySelector(".terminal-transcript")).not.toBeNull();
+    cleanup();
+
+    // With the beacon: transcript suppressed even though the user hasn't seen
+    // any normalized text yet. The chat shows an empty/Thinking state instead
+    // of the JSON wall.
+    const withBeacon = render(
+      <SessionConversation
+        {...baseProps}
+        events={[streamingBeacon, userEvent]}
+        rawOutputs={rawOutputs}
+      />
+    );
+    expect(withBeacon.container.querySelector(".terminal-transcript")).toBeNull();
   });
 
 });

@@ -391,17 +391,34 @@ impl WorkspaceService {
             }
         };
 
-        let porcelain = run_git_text(
+        // If `git status` fails (transient lock, partially-removed
+        // worktree, ENOENT during teardown), the prior dirty/changed
+        // values stay authoritative. Falling back to "" would mark a
+        // genuinely dirty workspace as clean and the dashboard delta
+        // would silently misrepresent reality.
+        let porcelain_result = run_git_text(
             Path::new(&workspace.path),
             &["status", "--porcelain"],
             Duration::from_millis(GIT_TIMEOUT_MS),
         )
-        .await
-        .unwrap_or_default();
-        let changed_files = porcelain
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .count() as i64;
+        .await;
+        let (changed_files, dirty) = match porcelain_result {
+            Ok(porcelain) => {
+                let count = porcelain
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .count() as i64;
+                (count, count > 0)
+            }
+            Err(error) => {
+                tracing::debug!(
+                    workspace_id,
+                    error = %error,
+                    "refresh_status: git status failed; preserving prior dirty/changed_files",
+                );
+                (workspace.changed_files, workspace.dirty)
+            }
+        };
 
         if branch != workspace.branch {
             if let Some(session_id) = self.latest_session_id_for_workspace(workspace_id)? {
@@ -432,7 +449,7 @@ impl WorkspaceService {
                 workspace_id,
                 &WorkspaceStatusInput {
                     branch,
-                    dirty: changed_files > 0,
+                    dirty,
                     changed_files,
                     last_activity_at: None,
                 },

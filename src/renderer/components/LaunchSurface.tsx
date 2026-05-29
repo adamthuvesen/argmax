@@ -278,7 +278,7 @@ export function LaunchSurface({
     if (blobs.length === 0) return;
     const api = window.argmax;
     if (!api) {
-      setStatus("Open the Electron app window to attach images.");
+      setStatus("Open the Tauri app window to attach images.");
       return;
     }
     try {

@@ -14,7 +14,7 @@ export const demoSnapshot: DashboardSnapshot = {
         defaultModelLabel: PROVIDER_MODEL_DEFAULTS.codex.label,
         worktreeLocation: "~/code/.argmax/worktrees",
         setupCommand: "npm install",
-        checkCommands: ["npm run lint", "npm test", "npm run build"]
+        checkCommands: ["npm run lint", "npm test", "npm run tauri:build"]
       },
       counts: {
         active: 2,
@@ -279,7 +279,7 @@ export const demoSnapshot: DashboardSnapshot = {
     {
       id: "check-review-build",
       workspaceId: "workspace-review-studio",
-      command: "npm run build",
+      command: "npm run tauri:build",
       status: "passed",
       exitCode: 0,
       summary: "Renderer and main process compiled successfully.",

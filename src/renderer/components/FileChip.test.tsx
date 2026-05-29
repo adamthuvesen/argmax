@@ -31,11 +31,11 @@ describe("matchFileChip", () => {
 
 describe("formatFileChipLabel", () => {
   it("returns the basename for an absolute path inside the workspace", () => {
-    expect(formatFileChipLabel("/repo/src/main/ipc.ts", "/repo", null)).toBe("ipc.ts");
+    expect(formatFileChipLabel("/repo/src-tauri/src/ipc.ts", "/repo", null)).toBe("ipc.ts");
   });
 
   it("preserves :line suffix", () => {
-    expect(formatFileChipLabel("/repo/src/main/ipc.ts", "/repo", 42)).toBe("ipc.ts:42");
+    expect(formatFileChipLabel("/repo/src-tauri/src/ipc.ts", "/repo", 42)).toBe("ipc.ts:42");
   });
 
   it("returns the basename when the absolute path is outside the workspace", () => {
@@ -48,8 +48,8 @@ describe("formatFileChipLabel", () => {
   });
 
   it("returns the basename for a relative path with directory segments", () => {
-    expect(formatFileChipLabel("src/main/ipc.ts", "/repo", null)).toBe("ipc.ts");
-    expect(formatFileChipLabel("src/main/ipc.ts", null, 3)).toBe("ipc.ts:3");
+    expect(formatFileChipLabel("src-tauri/src/ipc.ts", "/repo", null)).toBe("ipc.ts");
+    expect(formatFileChipLabel("src-tauri/src/ipc.ts", null, 3)).toBe("ipc.ts:3");
   });
 
   it("returns single-segment filenames unchanged", () => {
@@ -82,19 +82,19 @@ describe("FileChip", () => {
   });
 
   it("calls workspaces.openInIde when workspaceId is provided", () => {
-    render(<FileChip path="src/main.ts" line={10} workspaceId="ws-1" workspaceCwd="/repo" />);
-    screen.getByRole("button", { name: "Open src/main.ts at line 10" }).click();
+    render(<FileChip path="src-tauri/src.ts" line={10} workspaceId="ws-1" workspaceCwd="/repo" />);
+    screen.getByRole("button", { name: "Open src-tauri/src.ts at line 10" }).click();
     const ide = (window as unknown as { argmax: { workspaces: { openInIde: ReturnType<typeof vi.fn> } } }).argmax
       .workspaces.openInIde;
     expect(ide).toHaveBeenCalledWith({ workspaceId: "ws-1", ide: "default" });
   });
 
   it("falls back to system.openPath when workspaceId is missing", () => {
-    render(<FileChip path="src/main.ts" line={null} workspaceCwd="/repo" />);
-    screen.getByRole("button", { name: "Open src/main.ts" }).click();
+    render(<FileChip path="src-tauri/src.ts" line={null} workspaceCwd="/repo" />);
+    screen.getByRole("button", { name: "Open src-tauri/src.ts" }).click();
     const sys = (window as unknown as { argmax: { system: { openPath: ReturnType<typeof vi.fn> } } }).argmax.system
       .openPath;
-    expect(sys).toHaveBeenCalledWith({ path: "src/main.ts", cwd: "/repo" });
+    expect(sys).toHaveBeenCalledWith({ path: "src-tauri/src.ts", cwd: "/repo" });
   });
 
   it("renders the basename and the optional line suffix", () => {

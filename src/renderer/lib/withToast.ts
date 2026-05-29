@@ -27,7 +27,7 @@ export async function withToast(
     // Use the fallback only when there's no usable Error.message. Distinguish
     // the missing-error case from a legitimate empty message by checking the
     // error itself, not the stringified result — `new Error("")` is still an
-    // Error and its emptiness is informational (zod sometimes emits one).
+    // Error and its emptiness is informational (backend validation sometimes emits one).
     const fromError = error instanceof Error ? error.message : "";
     setToast({
       kind: "error",

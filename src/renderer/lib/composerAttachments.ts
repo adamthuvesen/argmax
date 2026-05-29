@@ -17,7 +17,7 @@ export function isSupportedImageMime(mime: string): mime is AttachmentMimeType {
  * parsing can resolve. When the file sits inside the active workspace, the
  * reference is workspace-relative for readability; otherwise it's absolute.
  *
- * `path` is an Electron-renderer-only field on File. In jsdom tests we set it
+ * `path` is a Tauri-renderer-only field on File. In jsdom tests we set it
  * via `Object.defineProperty(file, "path", { value: "/..." })`.
  */
 export function buildAttachmentReferences(

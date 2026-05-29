@@ -17,6 +17,7 @@
 // process/IO substrate, that one is the state machine).
 
 use std::{
+    fs::File,
     future::Future,
     io::{Read, Write},
     pin::Pin,
@@ -27,6 +28,16 @@ use std::{
     },
     thread,
     time::Duration,
+};
+
+#[cfg(unix)]
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+
+#[cfg(unix)]
+use nix::{
+    pty::{openpty, OpenptyResult},
+    sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg},
+    unistd::dup,
 };
 
 use serde_json::json;
@@ -72,6 +83,12 @@ pub enum ProviderRuntimeEventType {
     Output,
     Exit,
     Error,
+    /// Synthetic signal fired exactly once per session when the reader sees
+    /// its first non-empty byte from the child. Lets the renderer hide the
+    /// "Thinking" bubble the moment output starts flowing, even before a
+    /// complete JSON line has been buffered — important for Codex, which
+    /// only emits `message.completed` at end-of-turn.
+    StreamStarted,
 }
 
 // ---------------------------------------------------------------------------
@@ -146,105 +163,196 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 Some(resume_id) => (definition.structured_resume_args)(&input, resume_id),
                 None => (definition.structured_args)(&input),
             };
-            let mut child = Command::new(&binary_path)
-                .args(args)
-                .current_dir(&input.workspace_path)
-                .env_clear()
-                .envs(build_provider_environment([(
-                    "NO_COLOR".to_string(),
-                    "1".to_string(),
-                )]))
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|error| {
-                    ArgmaxError::service(
-                        "PROVIDER_SPAWN_FAILED",
-                        format!("could not launch {}: {error}", definition.display_name),
-                    )
-                })?;
 
-            if let Some(stdin) = (definition.structured_stdin)(&input) {
-                if let Some(mut child_stdin) = child.stdin.take() {
-                    child_stdin.write_all(stdin.as_bytes()).map_err(io_error)?;
-                }
-            }
-            drop(child.stdin.take());
-
-            let pid = child.id();
-            let disposed = Arc::new(AtomicBool::new(false));
-            let (exit_tx, exit_rx) = mpsc::channel();
-
-            if let Some(stdout) = child.stdout.take() {
-                spawn_reader(
-                    stdout,
-                    input.session_id.clone(),
-                    ProviderOutputStream::Stdout,
-                    Arc::clone(&disposed),
-                    Arc::clone(&on_event),
-                );
-            }
-            if let Some(stderr) = child.stderr.take() {
-                spawn_reader(
-                    stderr,
-                    input.session_id.clone(),
-                    ProviderOutputStream::Stderr,
-                    Arc::clone(&disposed),
-                    Arc::clone(&on_event),
-                );
-            }
-
-            let wait_session_id = input.session_id.clone();
-            let wait_provider = definition.display_name.to_string();
-            let wait_disposed = Arc::clone(&disposed);
-            thread::spawn(move || {
-                let status = child.wait();
-                let _ = exit_tx.send(());
-                let was_disposed = wait_disposed.swap(true, Ordering::SeqCst);
-                if was_disposed {
-                    return;
-                }
-                let (event_type, exit_code, message) = match status {
-                    Ok(status) => {
-                        let code = status.code().unwrap_or(1);
-                        (
-                            if code == 0 {
-                                ProviderRuntimeEventType::Exit
-                            } else {
-                                ProviderRuntimeEventType::Error
-                            },
-                            Some(code),
-                            format!("{wait_provider} structured probe exited with code {code}."),
-                        )
-                    }
-                    Err(error) => (
-                        ProviderRuntimeEventType::Error,
-                        Some(1),
-                        format!("{wait_provider} structured probe wait failed: {error}"),
-                    ),
-                };
-                on_event(ProviderRuntimeEvent {
-                    session_id: wait_session_id,
-                    r#type: event_type,
-                    stream: ProviderOutputStream::System,
-                    message,
-                    exit_code,
-                    created_at: now_iso(),
-                });
-            });
-
-            let handle: Arc<dyn ProviderRuntimeHandle> = Arc::new(ProviderSessionHandle {
-                session_id: input.session_id,
-                provider: input.provider,
-                accepts_input: false,
-                pid,
-                disposed,
-                exit_rx: Mutex::new(Some(exit_rx)),
-            });
-            Ok(handle)
+            launch_structured_via_pty(binary_path.as_str(), definition.display_name, args, &input, on_event)
         })
     }
+}
+
+#[cfg(unix)]
+fn launch_structured_via_pty(
+    binary_path: &str,
+    display_name: &'static str,
+    args: Vec<String>,
+    input: &ProviderLaunchInput,
+    on_event: EventCallback,
+) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
+    // Connect the child's stdio to a PTY instead of pipes. With pipes,
+    // `claude -p`, `codex exec --json`, and `cursor agent` all fall into
+    // libc's full-block buffering for non-TTY stdout (4–8KB) and the
+    // renderer sees nothing until the process exits or is signalled —
+    // i.e., the "no chat until Stop" symptom. A PTY makes `isatty(stdout)`
+    // true so each JSON line flushes as it is written.
+    //
+    // ECHO is disabled on the slave so the prompt payload we hand to
+    // Codex's stdin doesn't loop back into the output stream and confuse
+    // the JSON normalizer.
+    let definition = get_provider_definition(input.provider);
+
+    let OpenptyResult { master, slave } = openpty(None, None).map_err(|error| {
+        ArgmaxError::service(
+            "PROVIDER_PTY_OPEN_FAILED",
+            format!("could not open provider PTY: {error}"),
+        )
+    })?;
+
+    {
+        let mut termios = tcgetattr(slave.as_fd()).map_err(termios_error)?;
+        termios.local_flags.remove(
+            LocalFlags::ECHO
+                | LocalFlags::ECHOE
+                | LocalFlags::ECHOK
+                | LocalFlags::ECHONL
+                | LocalFlags::ECHOCTL,
+        );
+        tcsetattr(slave.as_fd(), SetArg::TCSANOW, &termios).map_err(termios_error)?;
+    }
+
+    // Each Stdio takes ownership of an fd; dup the slave three times so
+    // stdin/stdout/stderr each get their own.
+    let dup_slave = || -> ArgmaxResult<OwnedFd> {
+        let fd = dup(slave.as_raw_fd()).map_err(|error| {
+            ArgmaxError::service(
+                "PROVIDER_PTY_DUP_FAILED",
+                format!("could not dup PTY slave: {error}"),
+            )
+        })?;
+        // SAFETY: dup returned a fresh fd we exclusively own.
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    };
+    let stdin_fd = dup_slave()?;
+    let stdout_fd = dup_slave()?;
+    let stderr_fd = dup_slave()?;
+
+    let mut child = Command::new(binary_path)
+        .args(&args)
+        .current_dir(&input.workspace_path)
+        .env_clear()
+        .envs(build_provider_environment([
+            ("NO_COLOR".to_string(), "1".to_string()),
+            ("TERM".to_string(), "xterm-256color".to_string()),
+        ]))
+        .stdin(Stdio::from(stdin_fd))
+        .stdout(Stdio::from(stdout_fd))
+        .stderr(Stdio::from(stderr_fd))
+        .spawn()
+        .map_err(|error| {
+            ArgmaxError::service(
+                "PROVIDER_SPAWN_FAILED",
+                format!("could not launch {display_name}: {error}"),
+            )
+        })?;
+
+    // The child's stdio now owns the slave fds; drop the parent's
+    // reference so the master sees EOF when the child exits.
+    drop(slave);
+
+    let mut master_file = File::from(master);
+
+    // Write the prompt payload (Codex reads its prompt from stdin) then
+    // send Ctrl-D so the child sees EOF and starts work. Claude/Cursor
+    // pass their prompt via argv and don't read stdin, but the EOF is
+    // harmless for them and matches the previous pipes-closed semantics.
+    if let Some(payload) = (definition.structured_stdin)(input) {
+        if let Err(error) = master_file.write_all(payload.as_bytes()) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io_error(error));
+        }
+        if !payload.ends_with('\n') {
+            let _ = master_file.write_all(b"\n");
+        }
+    }
+    let _ = master_file.write_all(b"\x04");
+    let _ = master_file.flush();
+
+    let pid = child.id();
+    let disposed = Arc::new(AtomicBool::new(false));
+    let reaped = Arc::new(AtomicBool::new(false));
+    let (exit_tx, exit_rx) = mpsc::channel();
+
+    let reader_handle = spawn_reader(
+        master_file,
+        input.session_id.clone(),
+        ProviderOutputStream::Stdout,
+        Arc::clone(&disposed),
+        Arc::clone(&on_event),
+    );
+
+    let wait_session_id = input.session_id.clone();
+    let wait_provider = display_name.to_string();
+    let wait_disposed = Arc::clone(&disposed);
+    let wait_reaped = Arc::clone(&reaped);
+    thread::spawn(move || {
+        let status = child.wait();
+        wait_reaped.store(true, Ordering::SeqCst);
+        let _ = exit_tx.send(());
+        let _ = reader_handle.join();
+        let was_disposed = wait_disposed.swap(true, Ordering::SeqCst);
+        if was_disposed {
+            return;
+        }
+        let (event_type, exit_code, message) = match status {
+            Ok(status) => {
+                let code = status.code().unwrap_or(1);
+                (
+                    if code == 0 {
+                        ProviderRuntimeEventType::Exit
+                    } else {
+                        ProviderRuntimeEventType::Error
+                    },
+                    Some(code),
+                    format!("{wait_provider} structured probe exited with code {code}."),
+                )
+            }
+            Err(error) => (
+                ProviderRuntimeEventType::Error,
+                Some(1),
+                format!("{wait_provider} structured probe wait failed: {error}"),
+            ),
+        };
+        on_event(ProviderRuntimeEvent {
+            session_id: wait_session_id,
+            r#type: event_type,
+            stream: ProviderOutputStream::System,
+            message,
+            exit_code,
+            created_at: now_iso(),
+        });
+    });
+
+    let handle: Arc<dyn ProviderRuntimeHandle> = Arc::new(ProviderSessionHandle {
+        session_id: input.session_id.clone(),
+        provider: input.provider,
+        accepts_input: false,
+        pid,
+        disposed,
+        reaped,
+        exit_rx: Mutex::new(Some(exit_rx)),
+    });
+    Ok(handle)
+}
+
+#[cfg(not(unix))]
+fn launch_structured_via_pty(
+    _binary_path: &std::path::Path,
+    _display_name: &'static str,
+    _args: Vec<String>,
+    _input: &ProviderLaunchInput,
+    _on_event: EventCallback,
+) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
+    Err(ArgmaxError::service(
+        "PROVIDER_PTY_UNSUPPORTED",
+        "structured-json provider launch requires a Unix PTY",
+    ))
+}
+
+#[cfg(unix)]
+fn termios_error(error: nix::Error) -> ArgmaxError {
+    ArgmaxError::service(
+        "PROVIDER_PTY_TERMIOS",
+        format!("could not configure PTY termios: {error}"),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +365,10 @@ pub struct ProviderSessionHandle {
     accepts_input: bool,
     pid: u32,
     disposed: Arc<AtomicBool>,
+    /// Set by the wait thread once `child.wait()` returns; gates every
+    /// downstream signal so we don't send SIGTERM/SIGKILL into a PID the
+    /// kernel may have already recycled to an unrelated process.
+    reaped: Arc<AtomicBool>,
     exit_rx: Mutex<Option<mpsc::Receiver<()>>>,
 }
 
@@ -269,19 +381,33 @@ impl ProviderRuntimeHandle for ProviderSessionHandle {
         self.disposed.load(Ordering::SeqCst)
     }
 
-    fn send_input(&self, _input: &str) {}
+    fn send_input(&self, _input: &str) {
+        // Structured-json sessions are single-shot: the child reads its
+        // prompt from argv (and a payload via stdin at launch for Codex),
+        // then exits. Follow-up messages re-launch via `--resume` rather
+        // than streaming over the existing pipe. Mirrors TS behavior.
+    }
 
-    fn resize(&self, _cols: u16, _rows: u16) {}
+    fn resize(&self, _cols: u16, _rows: u16) {
+        // No-op for structured-json mode (no TTY to resize). The
+        // interactive-PTY launch mode (not yet wired) will own this.
+    }
 
     fn terminate<'a>(&'a self) -> BoxFuture<'a, ArgmaxResult<()>> {
         Box::pin(async move {
             self.disposed.store(true, Ordering::SeqCst);
+            if self.reaped.load(Ordering::SeqCst) {
+                return Ok(());
+            }
             signal_process(self.pid, SignalKind::Term);
             let receiver = self.exit_rx.lock().expect("exit receiver poisoned").take();
             if let Some(receiver) = receiver {
                 let pid = self.pid;
+                let reaped = Arc::clone(&self.reaped);
                 tokio::task::spawn_blocking(move || {
-                    if receiver.recv_timeout(Duration::from_millis(1500)).is_err() {
+                    if receiver.recv_timeout(Duration::from_millis(1500)).is_err()
+                        && !reaped.load(Ordering::SeqCst)
+                    {
                         signal_process(pid, SignalKind::Kill);
                     }
                 })
@@ -302,7 +428,12 @@ impl Drop for ProviderSessionHandle {
         }
         // Synchronous best-effort cleanup. The graceful timed escalation
         // lives on the async `terminate` path; Drop is the panic-and-leak
-        // safety net (see openspec port task 5.15).
+        // safety net (see openspec port task 5.15). Skip when the wait
+        // thread already reaped: signaling a recycled PID would hit an
+        // unrelated process.
+        if self.reaped.load(Ordering::SeqCst) {
+            return;
+        }
         signal_process(self.pid, SignalKind::Term);
         signal_process(self.pid, SignalKind::Kill);
     }
@@ -318,21 +449,79 @@ pub(super) fn spawn_reader<R: Read + Send + 'static>(
     stream: ProviderOutputStream,
     disposed: Arc<AtomicBool>,
     on_event: EventCallback,
-) {
+) -> thread::JoinHandle<()> {
+    let trace_stream = stream.as_str();
+    let trace_session = session_id.clone();
+    tracing::info!(
+        session_id = %trace_session,
+        stream = trace_stream,
+        "provider reader thread starting"
+    );
     thread::spawn(move || {
         let mut buffer = [0u8; 8192];
+        // Carry up to 3 bytes of a partial UTF-8 codepoint across reads so
+        // multi-byte characters (CJK, emoji, smart quotes) that straddle a
+        // chunk boundary are not turned into U+FFFD by from_utf8_lossy.
+        let mut pending: Vec<u8> = Vec::with_capacity(4);
+        // Fire StreamStarted exactly once per reader, on the first
+        // non-empty read. The session service forwards this to the
+        // renderer so the Thinking bubble can clear the instant bytes
+        // flow — important for Codex, which doesn't emit message.delta
+        // and would otherwise leave Thinking on screen for the full
+        // turn duration.
+        let mut announced_start = false;
         loop {
             match reader.read(&mut buffer) {
-                Ok(0) => break,
+                Ok(0) => {
+                    if !pending.is_empty() {
+                        let tail = String::from_utf8_lossy(&pending).into_owned();
+                        on_event(ProviderRuntimeEvent {
+                            session_id: session_id.clone(),
+                            r#type: ProviderRuntimeEventType::Output,
+                            stream: stream.clone(),
+                            message: tail,
+                            exit_code: None,
+                            created_at: now_iso(),
+                        });
+                    }
+                    break;
+                }
                 Ok(n) => {
+                    tracing::info!(
+                        session_id = %session_id,
+                        stream = stream.as_str(),
+                        bytes = n,
+                        "provider reader read"
+                    );
                     if disposed.load(Ordering::SeqCst) {
+                        tracing::info!(
+                            session_id = %session_id,
+                            "reader exiting because disposed",
+                        );
                         break;
+                    }
+                    if !announced_start {
+                        announced_start = true;
+                        on_event(ProviderRuntimeEvent {
+                            session_id: session_id.clone(),
+                            r#type: ProviderRuntimeEventType::StreamStarted,
+                            stream: stream.clone(),
+                            message: String::new(),
+                            exit_code: None,
+                            created_at: now_iso(),
+                        });
+                    }
+                    pending.extend_from_slice(&buffer[..n]);
+                    let split_at = utf8_safe_split(&pending);
+                    let to_emit = pending.drain(..split_at).collect::<Vec<u8>>();
+                    if to_emit.is_empty() {
+                        continue;
                     }
                     on_event(ProviderRuntimeEvent {
                         session_id: session_id.clone(),
                         r#type: ProviderRuntimeEventType::Output,
                         stream: stream.clone(),
-                        message: String::from_utf8_lossy(&buffer[..n]).into_owned(),
+                        message: String::from_utf8_lossy(&to_emit).into_owned(),
                         exit_code: None,
                         created_at: now_iso(),
                     });
@@ -340,7 +529,44 @@ pub(super) fn spawn_reader<R: Read + Send + 'static>(
                 Err(_) => break,
             }
         }
-    });
+    })
+}
+
+/// Largest prefix of `bytes` that ends on a UTF-8 codepoint boundary.
+/// Scans at most the last 3 bytes — UTF-8 codepoints are 1-4 bytes long,
+/// so an incomplete sequence is necessarily within the tail.
+fn utf8_safe_split(bytes: &[u8]) -> usize {
+    if bytes.is_empty() {
+        return 0;
+    }
+    let len = bytes.len();
+    let scan_from = len.saturating_sub(3);
+    for i in (scan_from..len).rev() {
+        let byte = bytes[i];
+        // Continuation bytes are 10xxxxxx — keep walking left.
+        if byte & 0b1100_0000 == 0b1000_0000 {
+            continue;
+        }
+        let expected_len = if byte & 0b1000_0000 == 0 {
+            1
+        } else if byte & 0b1110_0000 == 0b1100_0000 {
+            2
+        } else if byte & 0b1111_0000 == 0b1110_0000 {
+            3
+        } else if byte & 0b1111_1000 == 0b1111_0000 {
+            4
+        } else {
+            // Invalid leading byte — flush the whole buffer and let
+            // from_utf8_lossy emit a single replacement char for it.
+            return len;
+        };
+        if i + expected_len <= len {
+            return len;
+        }
+        return i;
+    }
+    // Whole tail is continuation bytes — emit nothing this round.
+    0
 }
 
 pub(super) fn composer_payload(
@@ -441,7 +667,14 @@ pub(super) fn signal_process(pid: u32, signal: SignalKind) {
         SignalKind::Term => Signal::SIGTERM,
         SignalKind::Kill => Signal::SIGKILL,
     };
-    let _ = kill(Pid::from_raw(pid as i32), signal);
+    // A negative `Pid::from_raw` value targets a process group (or, with
+    // -1, every process the caller can signal). Reject pids that would
+    // wrap into the i32 negative range so we never broadcast by accident.
+    let Ok(raw) = i32::try_from(pid) else { return };
+    if raw <= 0 {
+        return;
+    }
+    let _ = kill(Pid::from_raw(raw), signal);
 }
 
 #[cfg(not(unix))]

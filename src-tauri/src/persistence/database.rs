@@ -63,9 +63,14 @@ impl Database {
     }
 
     pub fn connection(&self) -> MutexGuard<'_, Connection> {
-        self.connection
-            .lock()
-            .expect("database connection poisoned")
+        // SQLite holds no in-memory invariants that survive panic, so a
+        // poisoned guard is recoverable. Panicking here would turn one
+        // bad row anywhere in the app into a permanent IPC outage that
+        // only restart can clear.
+        self.connection.lock().unwrap_or_else(|poison| {
+            tracing::warn!("database connection mutex was poisoned; recovering");
+            poison.into_inner()
+        })
     }
 
     pub fn dispose(&self) {

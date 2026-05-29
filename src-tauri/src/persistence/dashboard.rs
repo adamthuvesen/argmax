@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use serde::Serialize;
+use specta::Type;
 
 use super::approvals::{list_pending_approvals, ApprovalRequest};
 use super::checks::{list_checkpoints, list_checks, CheckRun, Checkpoint};
@@ -16,7 +17,7 @@ pub const DASHBOARD_ROW_LIMIT: usize = 200;
 pub const DASHBOARD_EVENT_LIMIT: usize = 500;
 pub const DASHBOARD_RAW_OUTPUT_LIMIT: usize = 100;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AttentionCounts {
     pub pending_approvals: i64,
@@ -24,7 +25,7 @@ pub struct AttentionCounts {
     pub total: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardListSnapshot {
     pub projects: Vec<ProjectSummary>,
@@ -34,7 +35,7 @@ pub struct DashboardListSnapshot {
     pub checkpoints: Vec<Checkpoint>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceStatusSnapshot {
     pub workspaces: Vec<WorkspaceSummary>,
@@ -43,7 +44,7 @@ pub struct WorkspaceStatusSnapshot {
     pub checkpoints: Vec<Checkpoint>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardSnapshot {
     pub projects: Vec<ProjectSummary>,

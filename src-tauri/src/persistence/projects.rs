@@ -1,5 +1,6 @@
 use rusqlite::{named_params, Connection, Row};
 use serde::Serialize;
+use specta::Type;
 
 use super::prepared::prepared;
 use super::time::now_iso;
@@ -21,7 +22,7 @@ pub struct ProjectRemote {
     pub name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSettings {
     pub default_provider: String,
@@ -31,7 +32,7 @@ pub struct ProjectSettings {
     pub check_commands: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectCounts {
     pub active: i64,
@@ -40,7 +41,7 @@ pub struct ProjectCounts {
     pub review_ready: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
     pub id: String,

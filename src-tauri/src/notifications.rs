@@ -54,18 +54,18 @@ impl<S: NotificationSink> NotificationService<S> {
             return Ok(false);
         }
 
+        // Check dedup WITHOUT stamping yet — stamping before the focus
+        // probe meant a terminal transition that landed while the window
+        // was focused would be permanently suppressed once the user
+        // looked away.
+        if self
+            .last_notified_state
+            .lock()
+            .expect("last notified state poisoned")
+            .get(&session.id)
+            .is_some_and(|state| state == &session.state)
         {
-            let mut states = self
-                .last_notified_state
-                .lock()
-                .expect("last notified state poisoned");
-            if states
-                .get(&session.id)
-                .is_some_and(|state| state == &session.state)
-            {
-                return Ok(false);
-            }
-            states.insert(session.id.clone(), session.state.clone());
+            return Ok(false);
         }
 
         if (self.is_window_focused)() || !self.sink.is_supported() {
@@ -73,6 +73,12 @@ impl<S: NotificationSink> NotificationService<S> {
         }
 
         self.sink.fire(build_session_options(session))?;
+        // Only stamp after a successful fire so a redelivery is possible
+        // until the user actually sees the toast.
+        self.last_notified_state
+            .lock()
+            .expect("last notified state poisoned")
+            .insert(session.id.clone(), session.state.clone());
         Ok(true)
     }
 
@@ -85,22 +91,23 @@ impl<S: NotificationSink> NotificationService<S> {
             return Ok(false);
         }
         let dedup_key = format!("{}:{}:{}", session.id, pr.pr_number, pr.head_sha);
-        if self
-            .notified_check_keys
-            .lock()
-            .expect("notified check keys poisoned")
-            .contains(&dedup_key)
+        // Atomic check-and-claim under one lock: prevents two concurrent
+        // poller ticks for the same PR from both passing the contains
+        // check and both firing the toast.
         {
-            return Ok(false);
-        }
-        if (self.is_window_focused)() || !self.sink.is_supported() {
-            return Ok(false);
+            let mut keys = self
+                .notified_check_keys
+                .lock()
+                .expect("notified check keys poisoned");
+            if keys.contains(&dedup_key) {
+                return Ok(false);
+            }
+            if (self.is_window_focused)() || !self.sink.is_supported() {
+                return Ok(false);
+            }
+            keys.insert(dedup_key);
         }
 
-        self.notified_check_keys
-            .lock()
-            .expect("notified check keys poisoned")
-            .insert(dedup_key);
         self.sink.fire(NotificationOptions {
             title: format!("PR #{} checks failed", pr.pr_number),
             body: format!(
@@ -369,6 +376,28 @@ mod tests {
 
         assert!(!service.notify(&session("complete")).expect("notify ok"));
         assert!(sink.fired().is_empty());
+    }
+
+    #[test]
+    fn notifies_after_user_looks_away_from_initially_focused_session() {
+        let sink = Arc::new(StubSink::supported());
+        let focused = Arc::new(AtomicBool::new(true));
+        let service = NotificationService::new(
+            {
+                let focused = focused.clone();
+                Arc::new(move || focused.load(Ordering::SeqCst))
+            },
+            sink.clone(),
+        );
+        let session = session("complete");
+
+        // First attempt while focused: suppressed, but state must not be
+        // stamped — otherwise the later unfocused call dedupes against
+        // a transition the user never saw.
+        assert!(!service.notify(&session).expect("focused notify"));
+        focused.store(false, Ordering::SeqCst);
+        assert!(service.notify(&session).expect("unfocused notify"));
+        assert_eq!(sink.fired().len(), 1);
     }
 
     #[test]

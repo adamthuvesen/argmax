@@ -64,6 +64,24 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result.map((e) => e.id)).toEqual(["e1", "e4"]);
   });
 
+  it("keeps thinking-flagged message.delta even when a message.completed follows", () => {
+    // Claude extended-thinking content is surfaced by the normalizer as
+    // a message.delta with payload.thinking === true. The pruner used to
+    // drop these the moment the final text answer arrived, leaving the
+    // user with no record of the reasoning step. Regression for
+    // adam/rust-port streaming-feedback fix.
+    const events: TimelineEvent[] = [
+      event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
+      {
+        ...event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
+        payload: { thinking: true }
+      },
+      event("e3", "message.completed", "2026-05-12T15:00:02.000Z")
+    ];
+    const result = pruneSupersededDeltas(events);
+    expect(result.map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
+  });
+
   // -------------------------------------------------------------------------
   // audit-2026-05-11 / SPEC P4.06 — mergeDashboardDelta reference stability
   // -------------------------------------------------------------------------

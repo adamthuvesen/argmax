@@ -94,7 +94,7 @@ export function SettingsPanel({
   } = useAsyncLoad<DiscoveredProvider[]>(
     () => window.argmax!.providers.discover(),
     {
-      missingApiMessage: "Open the Electron app window to detect providers.",
+      missingApiMessage: "Open the Tauri app window to detect providers.",
       fallbackMessage: "Provider discovery failed."
     }
   );
@@ -105,7 +105,7 @@ export function SettingsPanel({
     isLoading: refreshingMcp,
     retry: refreshMcp
   } = useAsyncLoad<McpClientListing[]>(() => window.argmax!.mcp.list(), {
-    missingApiMessage: "Open the Electron app window to read MCP configs.",
+    missingApiMessage: "Open the Tauri app window to read MCP configs.",
     fallbackMessage: "MCP discovery failed."
   });
 

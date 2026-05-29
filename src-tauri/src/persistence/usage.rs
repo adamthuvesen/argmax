@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use serde::Serialize;
+use specta::Type;
 
 use super::prepared::prepared;
 use super::sessions::UsageCounts;
@@ -16,7 +17,7 @@ pub struct InsertUsageEventInput {
     pub created_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionCostSummary {
     pub session_id: String,

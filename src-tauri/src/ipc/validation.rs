@@ -455,22 +455,36 @@ pub fn validate_relative_path(
 pub fn validate_git_ref(field: &'static str, value: String) -> Result<String, InvalidInputIssue> {
     non_empty(field, value).and_then(|value| {
         if value.starts_with('-') {
-            Err(InvalidInputIssue::git_ref_leading_dash(field))
-        } else if value.len() > 255
+            return Err(InvalidInputIssue::git_ref_leading_dash(field));
+        }
+        if value.len() > 255
             || !value.bytes().all(|byte| {
                 byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-')
             })
         {
-            Err(InvalidInputIssue::git_ref_invalid(field))
-        } else if value.contains('\0') {
-            Err(issue(
+            return Err(InvalidInputIssue::git_ref_invalid(field));
+        }
+        if value.contains('\0') {
+            return Err(issue(
                 field,
                 "STRING_NULL_BYTE",
                 "git ref must not contain null bytes",
-            ))
-        } else {
-            Ok(value)
+            ));
         }
+        // Pin git's own refname rules so a value that passes the byte
+        // allowlist can't be reinterpreted as a revision range (`a..b`)
+        // or rejected by git later in the pipeline (`topic.lock`,
+        // `feat/`, leading `.`). See `git check-ref-format`.
+        if value.contains("..")
+            || value.ends_with('/')
+            || value.ends_with(".lock")
+            || value.split('/').any(|segment| {
+                segment.is_empty() || segment.starts_with('.') || segment.ends_with(".lock")
+            })
+        {
+            return Err(InvalidInputIssue::git_ref_invalid(field));
+        }
+        Ok(value)
     })
 }
 
@@ -517,6 +531,15 @@ fn validate_open_path(value: String) -> Result<String, InvalidInputIssue> {
                 "path",
                 "PATH_NULL_BYTE",
                 "path must not contain null bytes",
+            ))
+        } else if value.split(['/', '\\']).any(|segment| segment == "..") {
+            // Defense in depth: `system:open-path` resolves canonically when
+            // the target exists, but missing targets fall through unchecked.
+            // Reject `..` syntactically so traversal can't reach the OS opener.
+            Err(issue(
+                "path",
+                "PATH_TRAVERSAL",
+                "path must not contain '..' segments",
             ))
         } else {
             Ok(value)
@@ -621,5 +644,45 @@ mod tests {
                 .code,
             "GIT_REF_INVALID"
         ));
+    }
+
+    #[test]
+    fn git_ref_rejects_git_illegal_sequences() {
+        for bad in [
+            "feat/..",
+            "..feat",
+            "a..b",
+            "topic.lock",
+            "feat/topic.lock",
+            "branch/",
+            ".hidden",
+            "feat/.hidden",
+            "feat//double",
+        ] {
+            let result = validate_git_ref("branch", bad.to_owned());
+            assert!(result.is_err(), "expected reject: {bad}");
+            assert_eq!(result.unwrap_err().code, "GIT_REF_INVALID", "case: {bad}");
+        }
+        // Valid refs still pass.
+        for good in ["feat/topic", "release-1.0", "v2.3.4", "user/feature-x"] {
+            assert!(
+                validate_git_ref("branch", good.to_owned()).is_ok(),
+                "expected accept: {good}"
+            );
+        }
+    }
+
+    #[test]
+    fn open_path_rejects_dotdot_traversal() {
+        assert_eq!(
+            validate_open_path("../etc/passwd".to_owned())
+                .unwrap_err()
+                .code,
+            "PATH_TRAVERSAL"
+        );
+        assert_eq!(
+            validate_open_path("a/b/../c".to_owned()).unwrap_err().code,
+            "PATH_TRAVERSAL"
+        );
     }
 }

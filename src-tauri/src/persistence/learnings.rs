@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use specta::Type;
 use uuid::Uuid;
 
 use super::prepared::prepared;
@@ -23,7 +24,7 @@ pub struct UpdateLearningInput {
     pub verified: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Learning {
     pub id: String,
@@ -38,7 +39,7 @@ pub struct Learning {
     pub last_seen_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct EventSearchResult {
     pub session_id: String,

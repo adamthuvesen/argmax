@@ -39,9 +39,18 @@ pub fn normalize_assistant_text(
         context.cursor_assistant_text = None;
         return Some(text);
     }
-    let prior = context.cursor_assistant_text.clone().unwrap_or_default();
+    let prior = context.cursor_assistant_text.take().unwrap_or_default();
     context.cursor_assistant_text = Some(text.clone());
-    text.strip_prefix(&prior).map(str::to_string)
+    // Cursor normally emits cumulative deltas, so the new text starts
+    // with the prior text and we emit only the suffix. When that
+    // invariant breaks (revised earlier output, swapped tool/message
+    // ordering, transient hiccup), fall back to emitting the full new
+    // text rather than silently dropping the delta — silent drops cascade
+    // because each subsequent prior is even longer.
+    match text.strip_prefix(prior.as_str()) {
+        Some(suffix) => Some(suffix.to_string()),
+        None => Some(text),
+    }
 }
 
 pub fn synthesize_message_completed_from_result(
@@ -183,6 +192,21 @@ mod tests {
     }
 
     #[test]
+    fn cursor_system_init_captures_provider_conversation_id() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"system","subtype":"init","session_id":"cursor-session-1"}"#),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
+        assert_eq!(
+            result.provider_conversation_id.as_deref(),
+            Some("cursor-session-1")
+        );
+    }
+
+    #[test]
     fn cursor_tool_calls_flatten_wrapper() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
@@ -200,6 +224,31 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
+    }
+
+    #[test]
+    fn cursor_partial_without_prior_prefix_emits_full_text_not_empty() {
+        let mut context = NormalizerSessionContext::default();
+        normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"assistant","message":"Hello","timestamp_ms":1}"#),
+            &mut context,
+        );
+        // Cursor revises earlier output — new text does NOT have prior as prefix.
+        let revised = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"assistant","message":"Goodbye","timestamp_ms":2}"#),
+            &mut context,
+        );
+        assert_eq!(revised.events.len(), 1);
+        assert_eq!(revised.events[0].message, "Goodbye");
+        // Subsequent cumulative deltas anchor against the revised text.
+        let extended = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"assistant","message":"Goodbye, world","timestamp_ms":3}"#),
+            &mut context,
+        );
+        assert_eq!(extended.events[0].message, ", world");
     }
 
     #[test]

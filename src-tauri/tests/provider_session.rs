@@ -14,7 +14,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use std::{path::PathBuf, process::Command};
+use std::{path::PathBuf, process::Command, time::Duration};
 
 use argmax_lib::error::ArgmaxResult;
 use argmax_lib::ipc::inputs::{
@@ -24,9 +24,15 @@ use argmax_lib::ipc::validation::{NonEmptyString, Prompt, SessionId, WorkspaceId
 use argmax_lib::persistence::time::now_iso;
 use argmax_lib::persistence::{
     database::Database,
-    events::list_session_events_since,
+    events::{
+        list_session_events_since, persist_raw_output, persist_timeline_event,
+        PersistRawOutputInput, PersistTimelineEventInput,
+    },
     projects::{persist_project, PersistProjectInput, ProjectSettings},
-    sessions::{find_session_by_id, persist_session, PersistSessionInput},
+    sessions::{
+        find_session_by_id, persist_session, update_session_provider_conversation_id,
+        PersistSessionInput,
+    },
     workspaces::{persist_workspace, PersistWorkspaceInput},
 };
 use argmax_lib::providers::runtime::{
@@ -221,6 +227,35 @@ impl ProviderProcessLauncher for FakeCliLauncher {
                     });
                 }
             }
+        });
+        let handle = Arc::new(FakeCliHandle { disposed }) as Arc<dyn ProviderRuntimeHandle>;
+        Box::pin(async move { Ok(handle) })
+    }
+}
+
+/// Emits one stdout chunk with no trailing newline and keeps the process
+/// alive until `terminate` — reproduces interactive CLIs that answer without
+/// closing the PTY.
+#[derive(Default)]
+struct StallLineLauncher;
+
+impl ProviderProcessLauncher for StallLineLauncher {
+    fn launch<'a>(
+        &'a self,
+        input: ProviderLaunchInput,
+        on_event: EventCallback,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        let session_id = input.session_id.clone();
+        let disposed = Arc::new(AtomicBool::new(false));
+        std::thread::spawn(move || {
+            on_event(ProviderRuntimeEvent {
+                session_id: session_id.clone(),
+                r#type: ProviderRuntimeEventType::Output,
+                stream: ProviderOutputStream::Stdout,
+                message: r#"{"type":"assistant","text":"Buffered without newline"}"#.to_string(),
+                exit_code: None,
+                created_at: now_iso(),
+            });
         });
         let handle = Arc::new(FakeCliHandle { disposed }) as Arc<dyn ProviderRuntimeHandle>;
         Box::pin(async move { Ok(handle) })
@@ -474,13 +509,184 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
         &database,
         &session.id,
         "message.delta",
-        "fake cli: follow up",
+        "New user message: follow up",
     )
     .await;
 
     let launches = launcher.launches();
     assert_eq!(launches[0].prompt, "hello world");
-    assert_eq!(launches[1].prompt, "follow up");
+    assert!(launches[1].prompt.contains("User: hello world"));
+    assert!(launches[1].prompt.contains("New user message:\nfollow up"));
+}
+
+#[tokio::test]
+async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(FakeCliLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = {
+        let connection = database.connection();
+        let session = persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "cursor-session".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "cursor".to_owned(),
+                model_label: "Composer 2.5 (Cursor)".to_owned(),
+                model_id: "composer-2.5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "first prompt".to_owned(),
+                state: "complete".to_owned(),
+                attention: "none".to_owned(),
+            },
+        )
+        .expect("persist cursor session");
+        persist_raw_output(
+            &connection,
+            &PersistRawOutputInput {
+                id: "cursor-raw-init".to_owned(),
+                session_id: session.id.clone(),
+                stream: "stdout".to_owned(),
+                content: "T\n{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"cursor-resume-1\"}\n"
+                    .to_owned(),
+                created_at: None,
+            },
+        )
+        .expect("persist cursor raw init");
+        session
+    };
+
+    let result = service
+        .send_input(ProvidersSendInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("follow up".to_owned()).expect("prompt valid"),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(result.ok);
+    assert!(!result.queued);
+
+    wait_for_launch_count(&launcher, 1).await;
+    let launches = launcher.launches();
+    assert_eq!(
+        launches[0].resume_conversation_id.as_deref(),
+        Some("cursor-resume-1")
+    );
+
+    let connection = database.connection();
+    let persisted = find_session_by_id(&connection, &session.id).expect("find session");
+    assert_eq!(
+        persisted.provider_conversation_id.as_deref(),
+        Some("cursor-resume-1")
+    );
+}
+
+#[tokio::test]
+async fn completed_session_follow_up_launch_includes_visible_transcript_context() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(FakeCliLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = {
+        let connection = database.connection();
+        let session = persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "claude-session".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Claude Haiku 4.5".to_owned(),
+                model_id: "claude-haiku-4-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "ok".to_owned(),
+                state: "complete".to_owned(),
+                attention: "none".to_owned(),
+            },
+        )
+        .expect("persist claude session");
+        let session =
+            update_session_provider_conversation_id(&connection, &session.id, "claude-session")
+                .expect("persist provider conversation id");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "user-ok".to_owned(),
+                session_id: session.id.clone(),
+                r#type: "user.message".to_owned(),
+                message: "ok".to_owned(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )
+        .expect("persist user event");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "assistant-ready".to_owned(),
+                session_id: session.id.clone(),
+                r#type: "message.completed".to_owned(),
+                message: "Ready. What's next?".to_owned(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )
+        .expect("persist assistant event");
+        session
+    };
+
+    let result = service
+        .send_input(ProvidersSendInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("hmm".to_owned()).expect("prompt valid"),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(result.ok);
+    assert!(!result.queued);
+
+    wait_for_launch_count(&launcher, 1).await;
+    let launches = launcher.launches();
+    assert_eq!(
+        launches[0].resume_conversation_id.as_deref(),
+        Some("claude-session")
+    );
+    assert!(launches[0]
+        .prompt
+        .contains("The user is continuing this Argmax chat session."));
+    assert!(launches[0].prompt.contains("User: ok"));
+    assert!(launches[0]
+        .prompt
+        .contains("Assistant: Ready. What's next?"));
+    assert!(launches[0].prompt.contains("New user message:\nhmm"));
+
+    let connection = database.connection();
+    let tail =
+        list_session_events_since(&connection, &session.id, None, None).expect("list events");
+    let follow_up = tail
+        .events
+        .iter()
+        .find(|event| event.r#type == "user.message" && event.message == "hmm");
+    assert!(
+        follow_up.is_some(),
+        "visible timeline keeps the raw user text"
+    );
 }
 
 #[tokio::test]
@@ -643,4 +849,46 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
         types.contains(&"process_did_not_survive_restart"),
         "missing recovery event: {types:?}",
     );
+}
+
+#[tokio::test]
+async fn idle_flush_publishes_buffered_line_before_terminate() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(StallLineLauncher),
+        {
+            let deltas = Arc::clone(&deltas);
+            move |delta| {
+                deltas.lock().expect("deltas poisoned").push(delta);
+            }
+        },
+    );
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+
+    tokio::time::sleep(Duration::from_millis(120)).await;
+
+    let flushed_before_stop = deltas
+        .lock()
+        .expect("deltas poisoned")
+        .iter()
+        .flat_map(|delta| delta.events.iter())
+        .any(|event| event.message.contains("Buffered without newline"));
+    assert!(
+        flushed_before_stop,
+        "idle stream flush should publish the buffered assistant line before terminate"
+    );
+
+    service
+        .terminate(ProvidersTerminateInput {
+            session_id: SessionId::try_from(session.id).expect("session id valid"),
+        })
+        .await
+        .expect("terminate ok");
 }

@@ -102,7 +102,7 @@ export function WorkspaceContentSearchOverlay({
         return;
       }
       if (!source || !window.argmax) {
-        setError(source ? "Open the Electron app window to search files." : "Open a project to search its files.");
+        setError(source ? "Open the Tauri app window to search files." : "Open a project to search its files.");
         return;
       }
       const token = ++tokenRef.current;

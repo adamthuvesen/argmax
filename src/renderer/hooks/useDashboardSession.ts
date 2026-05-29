@@ -221,6 +221,17 @@ export function useDashboardSession(
       return;
     }
     return window.argmax.dashboard.onDelta((delta) => {
+      // eslint-disable-next-line no-console
+      console.info(
+        "[dashboard:delta]",
+        {
+          sessions: delta.sessions?.length ?? 0,
+          events: delta.events?.length ?? 0,
+          rawOutputs: delta.rawOutputs?.length ?? 0,
+          workspaces: delta.workspaces?.length ?? 0,
+          eventTypes: delta.events?.map((event) => event.type)
+        }
+      );
       dashboardDeltaRevision.current += 1;
       setSnapshot((current) => mergeDashboardDelta(current, delta));
       setLoadState("ready");

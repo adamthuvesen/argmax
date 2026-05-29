@@ -228,9 +228,15 @@ export function SessionConversation({
   // a streamed message OR a tool call. Otherwise the agent's first beat (often
   // a tool_use before any text) flashes the raw provider JSONL through the
   // gray .chat-bubble.terminal-transcript pre while normalized events catch up.
+  // `session.streaming` is the one-shot beacon the runtime fires on the first
+  // byte from the child; counting it here suppresses the JSON dump that
+  // otherwise leaks the 8 KB system-init payload into the chat while Claude
+  // is still in its pre-answer thinking phase.
   const hasRenderableContent =
     conversationEvents.some((event) => event.type !== "user.message") ||
-    events.some((event) => event.type === "command.started");
+    events.some(
+      (event) => event.type === "command.started" || event.type === "session.streaming"
+    );
   const terminalTranscript = useMemo(
     () => (hasRenderableContent ? "" : buildTerminalTranscript(rawOutputs, session?.id ?? null)),
     [rawOutputs, session?.id, hasRenderableContent]
@@ -299,6 +305,9 @@ export function SessionConversation({
   const lastSignificantEvent = events.find(
     (event) =>
       event.payload.raw !== true &&
+      !isPayloadTruncationMarker(event) &&
+      !isSubAgentProseEcho(event) &&
+      event.message !== "turn.completed" &&
       (event.type === "user.message" ||
         event.type === "message.delta" ||
         event.type === "message.completed" ||
@@ -308,15 +317,18 @@ export function SessionConversation({
   // Show the "Thinking" bubble whenever the session is running and there is
   // no other live progress indicator on screen. The two indicators that
   // already convey "work is happening" are:
-  //   (a) the streaming caret on an actively-deltaing message bubble, and
+  //   (a) visible assistant text for the current latest event, and
   //   (b) the running spinner on a visible tool row.
-  // Between events — say, after a `message.completed` while the model is
-  // deciding the next tool — neither (a) nor (b) is on, and the chat would
-  // otherwise sit silent. Show Thinking there. Also: the `ExitPlanMode` /
+  // A completed answer can arrive before the runtime state flips out of
+  // `running`; in that window, the answer is the progress indicator. Keeping
+  // Thinking below it pins the scroll to the wrong thing and makes the answer
+  // look stuck until Stop clears the session state. Also: the `ExitPlanMode` /
   // `AskUserQuestion` tools are *hidden* (rendered as cards), so a running
   // instance of either gives no on-screen indicator either; treat them as
   // "no visible tool running" and let Thinking show.
-  const isStreamingMessage = lastSignificantEvent?.type === "message.delta";
+  const hasVisibleAssistantMessage =
+    lastSignificantEvent?.type === "message.delta" ||
+    lastSignificantEvent?.type === "message.completed";
   const anyVisibleToolRunning = useMemo(
     () =>
       toolCalls.some(
@@ -337,11 +349,24 @@ export function SessionConversation({
     () => sessionHasOutstandingCardAsk(events, toolCalls),
     [events, toolCalls]
   );
+  // `session.streaming` is a synthetic event the runtime fires the moment
+  // the child writes its first byte. We hide Thinking on it so Codex turns
+  // (which don't stream message deltas) don't leave Thinking on screen for
+  // the entire turn duration. `events` is sorted createdAt-desc, so the
+  // first match here is the most recent of each kind.
+  const hasStreamSignalForCurrentTurn = useMemo(() => {
+    if (session?.provider !== "codex") return false;
+    const latestStream = events.find((event) => event.type === "session.streaming");
+    if (!latestStream) return false;
+    const latestUserMessage = events.find((event) => event.type === "user.message");
+    return !latestUserMessage || latestStream.createdAt >= latestUserMessage.createdAt;
+  }, [events, session?.provider]);
   const isThinking =
     session?.state === "running" &&
     !anyVisibleToolRunning &&
-    !isStreamingMessage &&
-    !hasOutstandingCardAsk;
+    !hasVisibleAssistantMessage &&
+    !hasOutstandingCardAsk &&
+    !hasStreamSignalForCurrentTurn;
 
   const {
     conversationListRef,
@@ -600,7 +625,10 @@ export function SessionConversation({
                         role="menuitemcheckbox"
                         className="project-picker-item"
                         aria-checked={isLogOpen}
-                        onClick={onToggleLog}
+                        onClick={() => {
+                          closeActions();
+                          onToggleLog();
+                        }}
                       >
                         <Bug size={14} aria-hidden="true" />
                         Toggle debug log

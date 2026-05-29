@@ -1,5 +1,6 @@
 // Cross-cutting helpers that don't belong to any single subsystem.
 
+pub mod app_nap;
 pub mod delta_coalescer;
 pub mod gh_runner;
 pub mod ipc_latency;

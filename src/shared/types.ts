@@ -1,12 +1,3 @@
-/**
- * IPC-input types are inferred from the zod schemas in `./ipcSchemas.ts`
- * via `import type` so the renderer never pulls zod into its bundle. The
- * `import type` form erases at runtime; only the type signatures cross
- * this boundary.
- */
-import type {
-  AttachmentSaveImageResultParsed
-} from "./ipcSchemas.js";
 import type * as Bindings from "./bindings.js";
 import type { UsageCounts } from "./providerModels.js";
 
@@ -65,6 +56,7 @@ export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelle
 
 export type EventType =
   | "session.started"
+  | "session.streaming"
   | "user.message"
   | "message.delta"
   | "message.completed"
@@ -110,7 +102,7 @@ export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMe
 export type ProviderSessionResizeInput = Bindings.ProvidersResizeInput;
 export type ComposerAttachment = Bindings.ComposerAttachmentInput;
 export type AttachmentSaveImageInput = Bindings.AttachmentsSaveImageInput;
-export type AttachmentSaveImageResult = AttachmentSaveImageResultParsed;
+export type AttachmentSaveImageResult = Bindings.SaveImageResult;
 export type ResolveApprovalInput = Bindings.ApprovalsResolveInput;
 export type SessionEventsSinceInput = OptionalNullable<
   Bindings.SessionEventsSinceInput,

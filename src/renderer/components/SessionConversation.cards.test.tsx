@@ -239,21 +239,21 @@ describe("SessionConversation — cards", () => {
     expect(terminateOrder).toBeLessThan(sendOrder);
   });
 
-  it("shows the Thinking indicator between events while the session is still running", () => {
-    // After `message.completed` (or `command.completed`) while the session
-    // is still running, the model is mid-turn — deciding what to do next.
-    // Before the next event arrives there's no streaming caret or tool
-    // spinner on screen, so the chat would otherwise sit silent. Thinking
-    // should fill the gap.
+  it("hides the Thinking indicator once a completed assistant answer is visible", () => {
+    // Provider answer events and runtime completion state arrive in separate
+    // dashboard deltas. If the answer has landed but the session row still
+    // says running, the answer should win; otherwise the appended Thinking
+    // bubble pins the scroll and makes the reply look missing until Stop.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
-        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
-        event("m1", "message.completed", "Working on it.", "2026-05-12T15:00:01.000Z")
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
       ]
     );
 
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {

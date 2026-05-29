@@ -186,13 +186,37 @@ impl TerminalRows {
 #[serde(transparent)]
 pub struct NullableExpectedMtimeMs(Option<f64>);
 
+impl NullableExpectedMtimeMs {
+    pub fn into_inner(self) -> Option<f64> {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(transparent)]
 pub struct GrepTargetId(String);
 
+impl GrepTargetId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(transparent)]
 pub struct SessionSearchQuery(String);
+
+impl SessionSearchQuery {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Limit200 {
+    pub fn get(self) -> u16 {
+        self.0
+    }
+}
 
 impl<'de> Deserialize<'de> for TerminalCols {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

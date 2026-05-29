@@ -1,5 +1,5 @@
 use phf::phf_map;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 use super::{
     array_value, classify_command_risk, number_value, object_value, string_value, timeline_event,
@@ -89,6 +89,25 @@ pub fn extract_inline_tool_blocks(
                 "tool_result",
                 Value::Object(block.clone()),
             )),
+            // Extended-thinking blocks. The terminal Claude CLI shows
+            // these in a collapsed box; the Rust port used to drop them
+            // entirely, leaving the chat on "Polishing…" for the full
+            // thinking phase. Emit as a message.delta with a `thinking:
+            // true` payload flag so the renderer can style or hide them
+            // (default: render the text inline so the user sees activity).
+            Some("thinking") => {
+                let text = string_value(block.get("thinking")).unwrap_or("").to_string();
+                if !text.trim().is_empty() {
+                    let mut payload = block.clone();
+                    payload.insert("thinking".to_string(), Value::Bool(true));
+                    events.push(timeline_event(
+                        event,
+                        "message.delta",
+                        text,
+                        Value::Object(payload),
+                    ));
+                }
+            }
             _ => {}
         }
     }
@@ -109,8 +128,31 @@ pub fn extract_message_content(payload: &Map<String, Value>) -> Option<String> {
 
 pub fn extract_delta_text(payload: &Map<String, Value>) -> Option<String> {
     object_value(payload.get("delta"))
-        .and_then(|delta| string_value(delta.get("text")))
-        .map(str::to_string)
+        .and_then(|delta| {
+            if string_value(delta.get("type")) == Some("thinking_delta") {
+                return None;
+            }
+            string_value(delta.get("text")).map(str::to_string)
+        })
+}
+
+pub fn synthesize_message_completed_from_result(
+    event: &super::ProviderOutputEvent,
+    payload: &Map<String, Value>,
+) -> Option<PersistTimelineEventInput> {
+    if string_value(payload.get("subtype")) != Some("success") {
+        return None;
+    }
+    let text = string_value(payload.get("result"))?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(timeline_event(
+        event,
+        "message.completed",
+        text.to_string(),
+        json!({ "synthesizedFromResult": true, "text": text }),
+    ))
 }
 
 pub fn extract_usage(
@@ -171,6 +213,60 @@ mod tests {
     use crate::providers::ProviderId;
 
     #[test]
+    fn claude_stream_event_unwraps_inner_text_delta() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(result.events[0].message, "Hi");
+    }
+
+    #[test]
+    fn claude_success_result_synthesizes_message_completed() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"result","subtype":"success","result":"Fair call. What's up?"}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.completed");
+        assert_eq!(result.events[0].message, "Fair call. What's up?");
+    }
+
+    #[test]
+    fn claude_result_skipped_when_assistant_already_completed_turn() {
+        let mut context = NormalizerSessionContext::default();
+        let assistant = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"assistant","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4","content":[{"type":"text","text":"Hey!"}],"usage":{"input_tokens":1,"output_tokens":2}}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(assistant.events.len(), 1);
+        assert_eq!(assistant.events[0].r#type, "message.completed");
+        assert!(context.claude_turn_answer_emitted);
+
+        let trailing = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"result","subtype":"success","result":"Hey!"}"#,
+            ),
+            &mut context,
+        );
+        assert!(trailing.events.is_empty());
+    }
+
+    #[test]
     fn claude_delta_maps_to_message_delta() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
@@ -215,6 +311,42 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[1].r#type, "command.completed");
+    }
+
+    #[test]
+    fn claude_assistant_thinking_only_block_surfaces_message_delta() {
+        // Regression: claude-haiku-4-5 emits assistant messages whose
+        // content is a single `{"type":"thinking","thinking":"…"}` block
+        // with no text. Before this fix the normalizer produced zero
+        // timeline events for the whole thinking phase, leaving the UI
+        // on "Polishing…" for seconds. Should now emit a message.delta
+        // with the thinking text and a `thinking: true` payload flag.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "message": {
+                        "id": "msg_1",
+                        "model": "claude-haiku-4-5-20251001",
+                        "content": [
+                            { "type": "thinking", "thinking": "user said hello, will ask which files" }
+                        ],
+                        "usage": { "input_tokens": 10, "output_tokens": 5 }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(!result.events.is_empty(), "thinking blocks must surface events");
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(
+            result.events[0].message,
+            "user said hello, will ask which files"
+        );
+        assert_eq!(result.events[0].payload["thinking"], json!(true));
     }
 
     #[test]

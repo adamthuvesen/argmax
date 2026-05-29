@@ -40,18 +40,32 @@ pub fn default_gh_runner() -> GhRunner {
 pub fn default_gh_runner_with_timeout(timeout: Duration) -> GhRunner {
     Arc::new(move |cwd: String, args: Vec<String>| {
         Box::pin(async move {
+            use std::process::Stdio;
             use tokio::process::Command;
-            let output = tokio::time::timeout(
-                timeout,
-                Command::new("gh").current_dir(cwd).args(&args).output(),
-            )
-            .await
-            .map_err(|_| {
-                ArgmaxError::service("GH_TIMEOUT", format!("gh timed out after {timeout:?}"))
-            })?
-            .map_err(|error| {
-                ArgmaxError::service("GH_SPAWN_FAILED", format!("failed to run gh: {error}"))
-            })?;
+            // `kill_on_drop` ensures the child is reaped if the timeout
+            // fires (or the future is cancelled) — without it, a stuck
+            // `gh` (bad creds, network hang) leaks a process per tick.
+            // stdin is closed so a `gh` that prompts for input can't
+            // block indefinitely before the timeout even starts ticking.
+            let child = Command::new("gh")
+                .current_dir(cwd)
+                .args(&args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .map_err(|error| {
+                    ArgmaxError::service("GH_SPAWN_FAILED", format!("failed to run gh: {error}"))
+                })?;
+            let output = tokio::time::timeout(timeout, child.wait_with_output())
+                .await
+                .map_err(|_| {
+                    ArgmaxError::service("GH_TIMEOUT", format!("gh timed out after {timeout:?}"))
+                })?
+                .map_err(|error| {
+                    ArgmaxError::service("GH_WAIT_FAILED", format!("gh wait failed: {error}"))
+                })?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(ArgmaxError::service(

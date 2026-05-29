@@ -6,7 +6,7 @@ import type { ArgmaxApi, WorkspaceContentSearchResult } from "../../shared/types
 const sampleResult: WorkspaceContentSearchResult = {
   files: [
     {
-      path: "src/main/index.ts",
+      path: "src-tauri/src/index.ts",
       matches: [{ line: 3, preview: "var abc = 1;" }]
     },
     {
@@ -65,7 +65,7 @@ describe("WorkspaceContentSearchOverlay", () => {
       })
     );
 
-    expect(await screen.findByText("src/main/index.ts")).toBeInTheDocument();
+    expect(await screen.findByText("src-tauri/src/index.ts")).toBeInTheDocument();
     expect(screen.getByText("var abc = 1;")).toBeInTheDocument();
     expect(screen.getByText("src/renderer/App.tsx")).toBeInTheDocument();
     expect(screen.getByText("abc.toUpperCase();")).toBeInTheDocument();
@@ -85,8 +85,8 @@ describe("WorkspaceContentSearchOverlay", () => {
     const input = screen.getByRole("searchbox");
     fireEvent.change(input, { target: { value: "var abc" } });
 
-    fireEvent.mouseDown(await screen.findByText("src/main/index.ts"));
-    expect(onPick).toHaveBeenCalledWith("src/main/index.ts");
+    fireEvent.mouseDown(await screen.findByText("src-tauri/src/index.ts"));
+    expect(onPick).toHaveBeenCalledWith("src-tauri/src/index.ts");
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -129,13 +129,13 @@ describe("WorkspaceContentSearchOverlay", () => {
     );
     const input = screen.getByRole("searchbox");
     fireEvent.change(input, { target: { value: "var abc" } });
-    // First selectable row is the first file header (src/main/index.ts).
-    await screen.findByText("src/main/index.ts");
+    // First selectable row is the first file header (src-tauri/src/index.ts).
+    await screen.findByText("src-tauri/src/index.ts");
     // Press Enter while the dialog has focus context — the overlay handles
     // ArrowDown/Up/Enter on its own onKeyDown.
     const dialog = screen.getByRole("dialog");
     fireEvent.keyDown(dialog, { key: "Enter" });
-    expect(onPick).toHaveBeenCalledWith("src/main/index.ts");
+    expect(onPick).toHaveBeenCalledWith("src-tauri/src/index.ts");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

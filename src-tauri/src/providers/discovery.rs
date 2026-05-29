@@ -5,9 +5,8 @@ use specta::Type;
 use tokio::{process::Command, sync::Mutex};
 
 use super::{
-    adapters::{get_provider_definition, provider_definitions},
-    environment::build_provider_environment,
-    ProviderId, ProviderMode,
+    adapters::get_provider_definition, environment::build_provider_environment, ProviderId,
+    ProviderMode,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -34,12 +33,16 @@ impl ProviderDiscovery {
     }
 
     pub async fn discover_all(&self) -> Vec<ProviderCapabilityReport> {
-        self.cache.lock().await.clear();
-        let mut reports = Vec::with_capacity(provider_definitions().len());
-        for definition in provider_definitions() {
-            reports.push(self.discover(definition.id).await);
-        }
-        reports
+        // `cursor-agent --version` alone runs ~350ms on macOS, so sequential
+        // discovery serialized the settings open behind that floor. Fan the
+        // three providers out in parallel; the cache (held in AppState)
+        // persists across calls — a fresh boot pays the cold cost once.
+        let (claude, codex, cursor) = tokio::join!(
+            self.discover(ProviderId::Claude),
+            self.discover(ProviderId::Codex),
+            self.discover(ProviderId::Cursor),
+        );
+        vec![claude, codex, cursor]
     }
 
     pub async fn discover(&self, provider_id: ProviderId) -> ProviderCapabilityReport {

@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use chrono::Utc;
 use serde::Serialize;
@@ -9,11 +8,11 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_shell::ShellExt;
 
 use super::inputs::*;
+use super::live_database;
 use super::validation::ThemeMode;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::persistence::database::vacuum_database;
-use crate::persistence::Database;
 use crate::state::AppState;
 
 const LIGHT_BG: tauri::utils::config::Color = tauri::utils::config::Color(251, 251, 250, 255);
@@ -131,8 +130,8 @@ pub fn system_open_path(app: AppHandle, input: SystemOpenPathInput) -> ArgmaxRes
 
 #[tauri::command(rename = "system:list-detected-ides")]
 #[specta::specta]
-pub fn system_list_detected_ides(_input: SystemListDetectedIdesInput) -> Vec<DetectedIde> {
-    tauri::async_runtime::block_on(detect_installed_ides())
+pub async fn system_list_detected_ides(_input: SystemListDetectedIdesInput) -> Vec<DetectedIde> {
+    detect_installed_ides().await
 }
 
 #[tauri::command(rename = "system:diagnostics")]
@@ -176,11 +175,12 @@ pub fn system_diagnostics(
 
 #[tauri::command(rename = "system:vacuum-database")]
 #[specta::specta]
-pub fn system_vacuum_database(
+pub async fn system_vacuum_database(
     state: State<'_, AppState>,
     _input: SystemVacuumDatabaseInput,
 ) -> ArgmaxResult<SystemOk> {
-    tauri::async_runtime::block_on(vacuum_database(live_database(&state)?))?;
+    let database = live_database(&state)?;
+    vacuum_database(database).await?;
     Ok(SystemOk { ok: true })
 }
 
@@ -190,14 +190,6 @@ pub fn system_set_theme(app: AppHandle, input: SystemSetThemeInput) -> ArgmaxRes
     persist_theme(&app, input.mode)?;
     apply_theme(&app, input.mode)?;
     Ok(SystemOk { ok: true })
-}
-
-fn live_database(state: &State<'_, AppState>) -> ArgmaxResult<Arc<Database>> {
-    state
-        .db
-        .get()
-        .cloned()
-        .ok_or_else(|| ArgmaxError::service("DATABASE_NOT_READY", "database is not initialized"))
 }
 
 fn data_dir<R: Runtime>(app: &AppHandle<R>) -> ArgmaxResult<PathBuf> {
@@ -447,6 +439,7 @@ fn open_file_descriptor_count() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::Database;
     use tempfile::tempdir;
 
     #[test]

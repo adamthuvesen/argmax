@@ -31,7 +31,7 @@ const fuzzy = new uFuzzy({
 });
 
 // File-path matcher: same left-boundary strictness so "src" matches
-// "src/main" but not the "src" inside "rsrc", *but* `interRgt: 0` so a
+// "src-tauri/src" but not the "src" inside "rsrc", *but* `interRgt: 0` so a
 // prefix like "AG" still matches "AGENTS.md" — the right edge of a typed
 // prefix is almost never at a non-alphanumeric character.
 const filePathFuzzy = new uFuzzy({

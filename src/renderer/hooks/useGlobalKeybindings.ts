@@ -17,7 +17,7 @@ interface GlobalKeybindingArgs {
   onCloseSettings: () => void;
   /**
    * Cmd+W closes the focused session pane. Returns `true` if a pane was
-   * closed (suppresses the browser/Electron default of closing the window).
+   * closed (suppresses the browser/Tauri default of closing the window).
    * No-ops when the grid is empty.
    */
   onCloseFocusedPane?: () => boolean;
@@ -66,6 +66,14 @@ export function useGlobalKeybindings({
         }
         return;
       }
+      // Cmd+N fires even when focus is in the composer — "new" is an
+      // OS-level reflex and no native textarea action binds Cmd+N.
+      if (event.key.toLowerCase() === "n" && !event.shiftKey && !event.altKey) {
+        if (event.isComposing || event.repeat) return;
+        event.preventDefault();
+        onMenuCommand("new-session");
+        return;
+      }
       if (isTypingTarget(event.target)) return;
       const digit = parseInt(event.key, 10);
       if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
@@ -79,11 +87,6 @@ export function useGlobalKeybindings({
       if (event.key === ",") {
         event.preventDefault();
         onMenuCommand("open-settings");
-        return;
-      }
-      if (event.key.toLowerCase() === "n" && !event.shiftKey) {
-        event.preventDefault();
-        onMenuCommand("new-session");
         return;
       }
       if (event.key.toLowerCase() === "k") {

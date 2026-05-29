@@ -55,7 +55,7 @@ export function SystemSettings({
             <KeyValueList
               rows={[
                 { dt: "App version", dd: diagnostics.appVersion },
-                { dt: "Electron", dd: diagnostics.electronVersion || "unknown" },
+                { dt: "Tauri", dd: diagnostics.electronVersion || "unknown" },
                 { dt: "Node", dd: diagnostics.nodeVersion },
                 { dt: "SQLite", dd: diagnostics.sqliteVersion },
                 { dt: "Platform", dd: `${diagnostics.platform} · ${diagnostics.arch}` },
@@ -284,7 +284,7 @@ export function SystemSettings({
           <KeyValueList
             rows={[
               { dt: "App", dd: "Argmax" },
-              { dt: "Runtime", dd: "Electron · single-user local" },
+              { dt: "Runtime", dd: "Tauri · single-user local" },
               { dt: "Providers", dd: "Claude Code · Codex" }
             ]}
           />

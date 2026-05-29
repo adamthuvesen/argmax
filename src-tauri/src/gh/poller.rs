@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use tokio::task::JoinSet;
+use tauri::async_runtime::JoinHandle;
 
 use crate::error::ArgmaxResult;
 use crate::persistence::dashboard::list_running_session_ids;
@@ -132,7 +132,7 @@ impl PollerInner {
 pub struct GhPoller {
     inner: Arc<PollerInner>,
     interval: Duration,
-    tasks: Mutex<JoinSet<()>>,
+    tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl GhPoller {
@@ -147,7 +147,7 @@ impl GhPoller {
                 failure_ledger: Mutex::new(VecDeque::new()),
             }),
             interval: config.interval,
-            tasks: Mutex::new(JoinSet::new()),
+            tasks: Mutex::new(Vec::new()),
         })
     }
 
@@ -160,7 +160,7 @@ impl GhPoller {
         }
         let interval = self.interval;
         let inner = Arc::clone(&self.inner);
-        tasks.spawn(async move {
+        let handle = tauri::async_runtime::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
             // Skip the immediate tick the first interval fires — match TS
             // setInterval semantics where the first tick is one interval out.
@@ -172,6 +172,7 @@ impl GhPoller {
                 }
             }
         });
+        tasks.push(handle);
     }
 
     /// Runs one polling cycle synchronously. Exposed for tests so we don't
@@ -182,8 +183,9 @@ impl GhPoller {
 
     pub fn dispose(&self) {
         if let Ok(mut tasks) = self.tasks.lock() {
-            tasks.abort_all();
-            tasks.detach_all();
+            for task in tasks.drain(..) {
+                task.abort();
+            }
         }
     }
 }
@@ -191,8 +193,9 @@ impl GhPoller {
 impl Drop for GhPoller {
     fn drop(&mut self) {
         if let Ok(mut tasks) = self.tasks.lock() {
-            tasks.abort_all();
-            tasks.detach_all();
+            for task in tasks.drain(..) {
+                task.abort();
+            }
         }
     }
 }
@@ -207,12 +210,21 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     // remaining sessions hostage. (audit-2026-05-17 H10)
     let mut transitions: Vec<Transition> = Vec::new();
     for chunk in session_ids.chunks(TICK_CONCURRENCY) {
-        let owned: Vec<String> = chunk.to_vec();
-        let futures = owned.into_iter().map(|session_id| {
+        let mut join_set = tokio::task::JoinSet::new();
+        for session_id in chunk.iter().cloned() {
             let inner = Arc::clone(&inner);
-            async move { (session_id.clone(), inner.service.refresh(&session_id).await) }
-        });
-        let results = futures_join_all(futures).await;
+            join_set.spawn(async move {
+                let result = inner.service.refresh(&session_id).await;
+                (session_id, result)
+            });
+        }
+        let mut results: Vec<(String, ArgmaxResult<Vec<GhPrRecord>>)> = Vec::new();
+        while let Some(join_result) = join_set.join_next().await {
+            match join_result {
+                Ok(pair) => results.push(pair),
+                Err(error) => tracing::warn!(error = %error, "gh.poller: refresh task panicked"),
+            }
+        }
         for (session_id, refresh_result) in results {
             let rows = match refresh_result {
                 Ok(rows) => rows,
@@ -326,18 +338,6 @@ fn resolve_workspace_id(database: &Arc<Database>, session_id: &str) -> ArgmaxRes
     let conn = database.connection();
     let session = crate::persistence::sessions::find_session_by_id(&conn, session_id)?;
     Ok(session.workspace_id)
-}
-
-/// Tiny `join_all` substitute so we don't need to pull in `futures`.
-async fn futures_join_all<F, T>(futures: impl IntoIterator<Item = F>) -> Vec<T>
-where
-    F: std::future::Future<Output = T>,
-{
-    let mut results = Vec::new();
-    for fut in futures {
-        results.push(fut.await);
-    }
-    results
 }
 
 #[cfg(test)]

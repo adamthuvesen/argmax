@@ -19,7 +19,7 @@ import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { EMPTY_GRID, openWorkspaceInGrid } from "./lib/gridState.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
-// out of the production renderer bundle. Browser-preview mode (no Electron
+// out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
 import { useAppGridSelection } from "./hooks/useAppGridSelection.js";
 import { useDashboardSession } from "./hooks/useDashboardSession.js";
@@ -291,7 +291,7 @@ export function App(): JSX.Element {
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Electron app window to archive workspaces." });
+      setToast({ kind: "error", message: "Open the Tauri app window to archive workspaces." });
       return;
     }
     // A dirty workspace would otherwise come back as "kept" and the user
@@ -343,7 +343,7 @@ export function App(): JSX.Element {
   const handleOpenInIde = useCallback(
     async (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to launch an IDE." });
+        setToast({ kind: "error", message: "Open the Tauri app window to launch an IDE." });
         return;
       }
       try {
@@ -366,7 +366,7 @@ export function App(): JSX.Element {
 
   const addProject = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Electron app window to add a project." });
+      setToast({ kind: "error", message: "Open the Tauri app window to add a project." });
       return;
     }
 
@@ -390,7 +390,7 @@ export function App(): JSX.Element {
 
   const removeProject = useCallback(async (projectId: string): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Electron app window to remove a project." });
+      setToast({ kind: "error", message: "Open the Tauri app window to remove a project." });
       return;
     }
     const projectName = snapshot.projects.find((p) => p.id === projectId)?.name ?? "project";
@@ -437,12 +437,12 @@ export function App(): JSX.Element {
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Electron app window to send input to a live session.");
+        throw new Error("Open the Tauri app window to send input to a live session.");
       }
 
       const result = await window.argmax.providers.sendInput({
         sessionId,
-        input: `${input}\r`,
+        input,
         modelLabel: model.label,
         modelId: model.modelId,
         reasoningEffort: model.reasoningEffort ?? null,
@@ -473,7 +473,7 @@ export function App(): JSX.Element {
   const toggleWorkspacePinned = useCallback(
     async (workspaceId: string, pinned: boolean): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to pin a session." });
+        setToast({ kind: "error", message: "Open the Tauri app window to pin a session." });
         return;
       }
       const ok = await withToast(
@@ -546,7 +546,7 @@ export function App(): JSX.Element {
   const runCheck = useCallback(
     async (workspaceId: string, command: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to run a check." });
+        setToast({ kind: "error", message: "Open the Tauri app window to run a check." });
         return;
       }
       const ok = await withToast(
@@ -562,7 +562,7 @@ export function App(): JSX.Element {
   const createCheckpoint = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to save checkpoints." });
+        setToast({ kind: "error", message: "Open the Tauri app window to save checkpoints." });
         return;
       }
       const label = `Checkpoint ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
@@ -582,7 +582,7 @@ export function App(): JSX.Element {
   const terminateSession = useCallback(
     async (sessionId: string): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Electron app window to stop a live session.");
+        throw new Error("Open the Tauri app window to stop a live session.");
       }
       const ok = await withToast(
         () => window.argmax!.providers.terminate(sessionId),
@@ -605,7 +605,7 @@ export function App(): JSX.Element {
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Electron app window to launch local agents.");
+        throw new Error("Open the Tauri app window to launch local agents.");
       }
 
       const projectId = projectIdOverride ?? selectedProject?.id;

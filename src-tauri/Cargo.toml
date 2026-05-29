@@ -68,16 +68,24 @@ chrono = { version = "0.4", features = ["serde"] }
 sha2 = "0.10"
 regex = "1"
 walkdir = "2"
-nix = { version = "0.29", features = ["signal", "fs"] }
+nix = { version = "0.29", features = ["signal", "fs", "term", "process"] }
 phf = { version = "0.11", features = ["macros"] }
 
 # `tauri-specta` emits TypeScript bindings from the Rust command surface
 # so the renderer's `bindings.d.ts` stays in lockstep with the backend.
 tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript", "derive"] }
-specta = "=2.0.0-rc.22"
+specta = { version = "=2.0.0-rc.22", features = ["serde_json"] }
 specta-typescript = "=0.0.9"
 
 once_cell = "1"
+
+# macOS-only: hold an NSProcessInfo activity assertion so App Nap doesn't
+# suspend the WKWebView WebContent process while the window is backgrounded.
+# Without it, `dashboard:delta` events are emitted but the JS that delivers
+# them to the renderer doesn't run until the user refocuses/interacts, so a
+# finished turn looks stuck on the thinking bubble. See util/app_nap.rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3", features = ["NSProcessInfo", "NSString"] }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -87,3 +95,9 @@ tauri = { version = "2.11", features = ["test"] }
 [features]
 # Required by Tauri 2 for production builds; do not remove.
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true

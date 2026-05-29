@@ -66,6 +66,15 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
       });
       deltaBuffer = null;
     }
+    const last = assistantGroups[assistantGroups.length - 1];
+    if (
+      last &&
+      !last.streaming &&
+      last.text === event.message &&
+      event.type === "message.completed"
+    ) {
+      continue;
+    }
     assistantGroups.push({
       id: event.id,
       createdAt: event.createdAt,

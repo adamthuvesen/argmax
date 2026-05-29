@@ -164,6 +164,35 @@ describe("SessionConversation — tools & chrome", () => {
     );
   });
 
+  it("dismisses the session actions popover on a mousedown outside the popover", () => {
+    renderConversation(baseSession({ state: "complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+  });
+
+  it("dismisses the session actions popover when clicking inside the conversation area", () => {
+    renderConversation(baseSession({ state: "complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+
+    const repositoryHeading = screen.getByRole("heading", { level: 2 });
+    fireEvent.mouseDown(repositoryHeading);
+
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+  });
+
+  it("dismisses the session actions popover after toggling the debug log", () => {
+    renderConversation(baseSession({ state: "complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+  });
+
   it("swaps the picker contents in place when Git actions is selected", () => {
     renderConversation(baseSession({ state: "complete" }));
 

@@ -1,8 +1,6 @@
 // @vitest-environment node
-import Database from "better-sqlite3";
 import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
-import { runMigrations } from "../main/persistence/migrations.js";
 import { parseUnifiedDiff } from "../renderer/lib/diff.js";
 import { buildFileTree } from "../renderer/lib/fileTree.js";
 import { mergeDashboardDelta, emptySnapshot } from "../renderer/lib/snapshot.js";
@@ -79,15 +77,6 @@ describe("perf budgets", () => {
     expect(root.children).toHaveLength(100);
     // 75 ms slack under full-suite load (see parseUnifiedDiff note above).
     expect(elapsed).toBeLessThan(75);
-  });
-
-  it("runMigrations on an empty DB completes < 200 ms", () => {
-    const database = new Database(":memory:");
-    const start = performance.now();
-    runMigrations(database);
-    const elapsed = performance.now() - start;
-    database.close();
-    expect(elapsed).toBeLessThan(200);
   });
 
   it("parseUnifiedDiff over a 500-hunk synthetic diff completes p95 < 20 ms", () => {

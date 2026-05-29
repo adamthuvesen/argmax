@@ -33,7 +33,7 @@ import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
 // Marker stored in sessionStorage (cleared on app quit / window close in
-// Electron) so the "collapse every project on launch" seed fires exactly
+// Tauri) so the "collapse every project on launch" seed fires exactly
 // once per real app launch — not on every Sidebar mount. Tests that want
 // the old "respect persisted localStorage" behavior pre-set this marker
 // in their beforeEach.

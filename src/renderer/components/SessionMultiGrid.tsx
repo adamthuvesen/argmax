@@ -51,7 +51,7 @@ interface SessionMultiGridProps {
   renderLauncher: (project: ProjectSummary | null) => JSX.Element;
   /** Which workspace is currently being dragged from the sidebar. The drop
       handlers use this directly instead of round-tripping through
-      dataTransfer — Electron's synthetic-event path occasionally returns
+      dataTransfer — Tauri's synthetic-event path occasionally returns
       empty `getData()` even when the payload was set on `dragstart`. */
   dragSourceWorkspaceId: string | null;
   onFocusPane: (coord: GridCoord) => void;

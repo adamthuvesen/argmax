@@ -203,8 +203,8 @@ describe("describeToolAction", () => {
   });
 
   it("list_dir → 'Listed files in <basename>'", () => {
-    expect(describeToolAction(tool({ name: "list_dir", inputPreview: "src/main" }))).toBe(
-      "Listed files in main"
+    expect(describeToolAction(tool({ name: "list_dir", inputPreview: "src-tauri/src" }))).toBe(
+      "Listed files in src"
     );
   });
 

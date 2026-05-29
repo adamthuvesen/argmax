@@ -33,6 +33,7 @@ export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<
 
 export type AppTestMocks = {
   createCurrentWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createCurrent"]>;
+  archiveWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["archive"]>;
   dashboardLoad: AppTestMockFn<ArgmaxApi["dashboard"]["load"]>;
   dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
   dashboardDeltaUnsubscribe: AppTestMockFn<() => void>;
@@ -64,6 +65,7 @@ export type AppTestMocks = {
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
+export let archiveWorkspace: AppTestMocks["archiveWorkspace"];
 export let dashboardLoad: AppTestMocks["dashboardLoad"];
 export let dashboardList: AppTestMocks["dashboardList"];
 export let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null = null;
@@ -104,6 +106,12 @@ export function setupAppTestMocks(): void {
   window.sessionStorage.setItem("argmax.sidebar.bootCollapseSeeded", "1");
   createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
     snapshot.workspaces[0] ?? missingWorkspace()
+  );
+  archiveWorkspace = vi.fn<ArgmaxApi["workspaces"]["archive"]>().mockImplementation(({ workspaceId }) =>
+    Promise.resolve({
+      ...(snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()),
+      state: "archived"
+    })
   );
   dashboardLoad = vi.fn<ArgmaxApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
   dashboardList = vi.fn<ArgmaxApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
@@ -282,10 +290,7 @@ export function setupAppTestMocks(): void {
       refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
       status: workspaceStatus,
       keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
-      archive: ({ workspaceId }) =>
-        Promise.resolve(
-          snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()
-        ),
+      archive: archiveWorkspace,
       openInIde: openInIde,
       setPinned: ({ workspaceId, pinned }) =>
         Promise.resolve({

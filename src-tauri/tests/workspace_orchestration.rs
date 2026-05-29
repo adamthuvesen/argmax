@@ -295,7 +295,7 @@ async fn set_pinned_toggles_persisted_bit() {
 }
 
 #[tokio::test]
-async fn archive_kept_when_dirty_and_not_forced() {
+async fn archive_shared_workspace_when_dirty_and_not_forced() {
     let repo = seed_git_repo(&[("a.txt", "1")]);
     ensure_main_branch(repo.path());
     let database = Arc::new(Database::open_in_memory().expect("db"));
@@ -324,7 +324,8 @@ async fn archive_kept_when_dirty_and_not_forced() {
         .expect("persist workspace")
     };
 
-    // Make the workspace dirty so archive without `force` falls back to keep.
+    // Shared workspaces point at the main checkout, so archiving only hides the
+    // app row. Dirty files must not block that non-destructive archive.
     std::fs::write(repo.path().join("dirty.txt"), "x").expect("write dirty");
 
     let service = WorkspaceService::new(database.clone());
@@ -335,10 +336,46 @@ async fn archive_kept_when_dirty_and_not_forced() {
         })
         .await
         .expect("archive");
-    assert_eq!(result.state, "kept", "dirty + !force should be kept");
+    assert_eq!(result.state, "archived", "dirty shared workspace should archive");
 
     // Workspace still exists on disk (shared workspace points at repo root).
     assert!(repo.path().exists());
+}
+
+#[tokio::test]
+async fn archive_isolated_worktree_kept_when_dirty_and_not_forced() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+    );
+    let service = WorkspaceService::new(database.clone());
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("archive isolated".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create isolated");
+
+    std::fs::write(std::path::Path::new(&workspace.path).join("dirty.txt"), "x")
+        .expect("write dirty");
+
+    let result = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive");
+
+    assert_eq!(result.state, "kept", "dirty isolated worktree should be kept");
+    assert!(std::path::Path::new(&workspace.path).exists());
 }
 
 #[tokio::test]

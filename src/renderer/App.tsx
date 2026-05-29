@@ -227,7 +227,7 @@ export function App(): JSX.Element {
         case "open-settings":
           setIsPaletteOpen(false);
           setIsFullLauncherOpen(false);
-          setIsSettingsOpen(true);
+          setIsSettingsOpen(!isSettingsOpen);
           return;
         case "new-session":
           setIsPaletteOpen(false);
@@ -250,7 +250,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [openNewSessionPane, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
+    [isSettingsOpen, openNewSessionPane, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
   const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
@@ -310,21 +310,15 @@ export function App(): JSX.Element {
       setToast({ kind: "error", message: "Open the Tauri app window to archive workspaces." });
       return;
     }
-    // A dirty workspace would otherwise come back as "kept" and the user
-    // would have to commit/discard then click archive again. Ask once,
-    // then pass force so the backend skips the dirty-keep guard. For
-    // isolated worktrees git removes the directory (branch preserved);
-    // shared workspaces leave the filesystem alone — only the sidebar
-    // row goes away.
+    // Shared workspaces leave the filesystem alone — only the sidebar row
+    // goes away. Dirty isolated worktrees are destructive, so ask once and
+    // pass force only after confirmation.
     const workspace = workspacesById.get(workspaceId);
     let force = false;
-    if (workspace?.dirty) {
+    if (workspace?.dirty && !workspace.sharedWorkspace) {
       const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
-      const consequence = workspace.sharedWorkspace
-        ? "The files on disk stay; only the sidebar entry is removed."
-        : "Archiving will delete the worktree and discard these changes (the branch is preserved).";
       const confirmed = window.confirm(
-        `${workspace.taskLabel} has ${fileLabel}. ${consequence} Continue?`
+        `${workspace.taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`
       );
       if (!confirmed) return;
       force = true;

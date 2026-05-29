@@ -7,11 +7,12 @@
 //   - `create_current` records a workspace pointing at the project's
 //     existing checkout (sharedWorkspace = true).
 //   - `keep`, `archive`, `set_pinned` flip state bits.
-//   - `archive` is the one with real teeth: refreshes status, refuses
-//     to remove dirty worktrees without `force`, re-checks porcelain
-//     immediately before `worktree remove` to close the TOCTOU window,
-//     closes the fs watcher before remove so teardown doesn't
-//     ENOENT-spam.
+//   - `archive` is the one with real teeth for isolated worktrees:
+//     refreshes status, refuses to remove dirty worktrees without
+//     `force`, re-checks porcelain immediately before `worktree remove`
+//     to close the TOCTOU window, closes the fs watcher before remove so
+//     teardown doesn't ENOENT-spam. Shared workspaces only archive the app
+//     row and leave the checkout untouched.
 //   - `refresh_status` reads `git branch --show-current` and
 //     `git status --porcelain`, persists branch-change events.
 //   - `open_in_ide` invokes `open -a <app> <path>` for the picked IDE.
@@ -286,18 +287,6 @@ impl WorkspaceService {
         let force = input.force.unwrap_or(false);
 
         let workspace = self.refresh_status(&workspace_id).await?;
-        if workspace.dirty && !force {
-            self.close_watcher(&workspace_id);
-            let kept = {
-                let connection = self.database.connection();
-                update_workspace_state(&connection, &workspace_id, "kept")?
-            };
-            self.publish(DashboardDelta {
-                workspaces: vec![kept.clone()],
-                ..DashboardDelta::default()
-            });
-            return Ok(kept);
-        }
 
         let project = {
             let connection = self.database.connection();
@@ -305,6 +294,19 @@ impl WorkspaceService {
         };
 
         if !workspace.shared_workspace {
+            if workspace.dirty && !force {
+                self.close_watcher(&workspace_id);
+                let kept = {
+                    let connection = self.database.connection();
+                    update_workspace_state(&connection, &workspace_id, "kept")?
+                };
+                self.publish(DashboardDelta {
+                    workspaces: vec![kept.clone()],
+                    ..DashboardDelta::default()
+                });
+                return Ok(kept);
+            }
+
             // Cancel hook is the caller's responsibility (CheckService isn't
             // in scope for Lane A). After cancel, settle briefly so SIGTERM
             // has time to land before we recheck porcelain.

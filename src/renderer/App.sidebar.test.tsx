@@ -305,7 +305,8 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Session model" }));
     const modelPopover = await screen.findByRole("listbox", { name: "Session model" });
-    fireEvent.click(within(modelPopover).getByRole("button", { name: "GPT-5.5 · Medium" }));
+    // GPT-5.5 is effort-capable; selecting it seeds the default Medium effort.
+    fireEvent.click(within(modelPopover).getByText("GPT-5.5"));
     fireEvent.change(await screen.findByLabelText("Session prompt"), {
       target: { value: "use the stronger model" }
     });
@@ -533,7 +534,8 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Claude Sonnet 4.6" }));
+    const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
+    fireEvent.click(within(launchPopover).getByText("Claude Sonnet 4.6"));
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 

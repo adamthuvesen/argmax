@@ -38,9 +38,9 @@ interface GlobalKeybindingArgs {
  *   Cmd/Ctrl+F    → open global search (session messages)
  *   Cmd/Ctrl+Shift+F → open workspace content search (git grep)
  *
- * Typing-target guard: any keypress while focus is in
- * contenteditable / textarea / role=textbox is left alone. The Esc
- * dismissal lives in `useOverlays`; this hook is open-only.
+ * Typing-target guard: text-editing keys stay in contenteditable /
+ * textarea / role=textbox. App-level shortcuts that do not edit text
+ * (settings, command palette, new session, pane close) run first.
  */
 export function useGlobalKeybindings({
   sessions,
@@ -74,16 +74,6 @@ export function useGlobalKeybindings({
         onMenuCommand("new-session");
         return;
       }
-      if (isTypingTarget(event.target)) return;
-      const digit = parseInt(event.key, 10);
-      if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
-        const targetSession = sessions[digit - 1];
-        if (!targetSession) return;
-        event.preventDefault();
-        onCloseSettings();
-        onSelectSession(targetSession);
-        return;
-      }
       if (event.key === ",") {
         event.preventDefault();
         onMenuCommand("open-settings");
@@ -97,6 +87,16 @@ export function useGlobalKeybindings({
       if (event.key.toLowerCase() === "p" && !event.shiftKey) {
         event.preventDefault();
         onMenuCommand("open-command-palette");
+        return;
+      }
+      if (isTypingTarget(event.target)) return;
+      const digit = parseInt(event.key, 10);
+      if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
+        const targetSession = sessions[digit - 1];
+        if (!targetSession) return;
+        event.preventDefault();
+        onCloseSettings();
+        onSelectSession(targetSession);
         return;
       }
       if (event.key === "/") {

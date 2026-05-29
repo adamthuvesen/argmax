@@ -1,8 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
+  archiveWorkspace,
   createCurrentWorkspace,
   dashboardDeltaListener,
   dashboardDeltaUnsubscribe,
@@ -121,6 +122,39 @@ describe("App", () => {
 
     const after = await screen.findByRole("button", { name: "Session model" });
     expect(after.textContent ?? "").toBe(initialLabel);
+  });
+
+  it("archives dirty shared-workspace sessions without confirmation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const sharedSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) => ({
+        ...workspace,
+        state: "complete",
+        sharedWorkspace: true,
+        path: "/tmp/argmax",
+        dirty: true,
+        changedFiles: 3
+      })),
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+    };
+    mockDashboardSnapshot(sharedSnapshot);
+    archiveWorkspace.mockResolvedValue({
+      ...(sharedSnapshot.workspaces[0] ?? snapshot.workspaces[0]!),
+      state: "archived"
+    });
+
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "Archive session" }));
+
+      await waitFor(() =>
+        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
+      );
+      expect(confirmSpy).not.toHaveBeenCalled();
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 
   it("renders normalized tool calls in the conversation timeline", async () => {
@@ -566,7 +600,9 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Claude Sonnet 4.6" }));
+    const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
+    // Sonnet is effort-capable, so picking it seeds the default Medium effort.
+    fireEvent.click(within(launchPopover).getByText("Claude Sonnet 4.6"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
     });
@@ -579,7 +615,7 @@ describe("App", () => {
         prompt: "Review this change",
         modelLabel: "Claude Sonnet 4.6",
         modelId: "claude-sonnet-4-6",
-        reasoningEffort: null,
+        reasoningEffort: "medium",
         agentMode: "auto",
         permissionMode: "auto-approve",
         cols: 120,

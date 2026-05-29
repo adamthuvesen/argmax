@@ -14,6 +14,10 @@ export type ToolCall = {
   createdAt: string;
   completedAt: string | null;
   error: string | null;
+  // The `toolUseId` of the agent (Task) tool that spawned this call, when this
+  // is a sub-agent's tool call. Lets the group bubble nest children under their
+  // agent banner. Absent for top-level calls.
+  parentToolUseId?: string | null;
 };
 
 export type ParallelPosition = "start" | "middle" | "end";
@@ -84,6 +88,33 @@ export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
     parallelPositions,
     parallelGroupId
   };
+}
+
+export type GroupRow = { tool: ToolCall; children: ToolCall[] };
+
+// Split the flat tool list into a one-level tree: a sub-agent's calls (those
+// carrying the spawning Task's toolUseId as parentToolUseId) nest under that
+// Task. Everything else stays top-level. Order is preserved; children are
+// pulled to sit directly beneath their parent so the group renders the agent's
+// work as a nested thread, not an unattributed flat list.
+export function buildGroupRows(tools: ToolCall[]): GroupRow[] {
+  const byId = new Set(tools.map((t) => t.toolUseId));
+  const childrenByParent = new Map<string, ToolCall[]>();
+  const topLevel: ToolCall[] = [];
+  for (const tool of tools) {
+    const parent = tool.parentToolUseId;
+    if (parent && parent !== tool.toolUseId && byId.has(parent)) {
+      const arr = childrenByParent.get(parent) ?? [];
+      arr.push(tool);
+      childrenByParent.set(parent, arr);
+    } else {
+      topLevel.push(tool);
+    }
+  }
+  return topLevel.map((tool) => ({
+    tool,
+    children: childrenByParent.get(tool.toolUseId) ?? []
+  }));
 }
 
 type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bash" | "agent" | "other";
@@ -208,7 +239,9 @@ function previewTokenForTool(tool: ToolCall): string | null {
   const candidate = raw.includes("/") ? basenameOf(raw) : raw;
   const stripped = candidate.replace(/^['"`]|['"`]$/g, "").trim();
   if (!stripped) return null;
-  return stripped.slice(0, 28);
+  // trimEnd so a mid-word slice never leaves a trailing space that reads as
+  // "and , find" once the tokens are comma-joined.
+  return stripped.slice(0, 28).trimEnd();
 }
 
 function extractBashCommandName(input: string): string | null {
@@ -235,7 +268,8 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   headline: string;
   preview: string;
   currentAction: string | null;
-  worstStatus: ToolCall["status"];
+  status: ToolCall["status"];
+  hasErrors: boolean;
 } {
   const counts = new Map<FineBucket, number>();
   for (const tool of tools) {
@@ -257,11 +291,17 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   // `rg` three times shows "rg" once, not three slash-joined repetitions.
   // The prior shape joined raw shell text ("zsh -lc 'git status --short'…")
   // which was a wall, not a preview.
+  // Agent (Task) tools are excluded from the token preview: their full
+  // description already headlines the group as the "Agent …" banner row, and
+  // splicing a sentence fragment in among filenames produced run-ons like
+  // "Explore agent structure and , find, ls, …". The eyebrow stat line
+  // ("Spawned 1 agent") carries the count; the preview stays scannable tokens.
+  const previewable = tools.filter((tool) => getFineBucket(tool.name) !== "agent");
   const seen = new Set<string>();
   const previewParts: string[] = [];
   let truncated = false;
-  for (let i = 0; i < tools.length; i++) {
-    const tool = tools[i];
+  for (let i = 0; i < previewable.length; i++) {
+    const tool = previewable[i];
     if (!tool) continue;
     const token = previewTokenForTool(tool);
     if (!token) continue;
@@ -270,8 +310,8 @@ export function summarizeToolGroup(tools: ToolCall[]): {
     previewParts.push(token);
     if (previewParts.length === 3) {
       // Mark truncated if any later tool would have produced a new token.
-      for (let j = i + 1; j < tools.length; j++) {
-        const next = tools[j];
+      for (let j = i + 1; j < previewable.length; j++) {
+        const next = previewable[j];
         if (!next) continue;
         const t = previewTokenForTool(next);
         if (t && !seen.has(t)) {
@@ -285,18 +325,23 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   const preview = previewParts.join(", ") + (truncated ? ", …" : "");
 
   let hasError = false;
+  let allErrors = tools.length > 0;
   let latestRunning: ToolCall | null = null;
   for (const tool of tools) {
-    if (tool.status === "error") hasError = true;
-    else if (tool.status === "running") latestRunning = tool;
+    if (tool.status === "error") {
+      hasError = true;
+    } else {
+      allErrors = false;
+      if (tool.status === "running") latestRunning = tool;
+    }
   }
-  const worstStatus: ToolCall["status"] = hasError ? "error" : latestRunning ? "running" : "done";
+  const status: ToolCall["status"] = allErrors ? "error" : latestRunning ? "running" : "done";
 
   // While the group is still running, surface the most recent live tool's
   // action so the collapsed header shows what the agent is doing right now.
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
-  return { headline, preview, currentAction, worstStatus };
+  return { headline, preview, currentAction, status, hasErrors: hasError };
 }
 
 export function extractToolUseId(payload: Record<string, unknown>): string | null {

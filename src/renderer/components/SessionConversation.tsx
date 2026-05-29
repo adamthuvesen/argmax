@@ -288,6 +288,9 @@ export function SessionConversation({
         const input = Object.keys(startInput).length > 0 ? startInput : completionInput;
         const isError = completion ? detectToolError(completion.payload) : false;
         const status: ToolCall["status"] = !completion ? "running" : isError ? "error" : "done";
+        const rawParent = event.payload.parent_tool_use_id;
+        const parentToolUseId =
+          typeof rawParent === "string" && rawParent.length > 0 ? rawParent : null;
         return {
           id: event.id,
           toolUseId,
@@ -298,7 +301,8 @@ export function SessionConversation({
           status,
           createdAt: event.createdAt,
           completedAt: completion ? completion.createdAt : null,
-          error: completion && isError ? extractToolError(completion.payload) : null
+          error: completion && isError ? extractToolError(completion.payload) : null,
+          parentToolUseId
         };
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));

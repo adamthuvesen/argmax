@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildGroupRows,
   describeToolAction,
   extractCompletionCorrelationId,
   extractToolInputPreview,
@@ -20,7 +21,8 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     status: overrides.status ?? "done",
     createdAt: overrides.createdAt ?? "2026-05-12T15:00:00.000Z",
     completedAt: overrides.completedAt ?? "2026-05-12T15:00:01.000Z",
-    error: overrides.error ?? null
+    error: overrides.error ?? null,
+    parentToolUseId: overrides.parentToolUseId ?? null
   };
 }
 
@@ -184,7 +186,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
         completedAt: ""
       })
     ]);
-    expect(out.worstStatus).toBe("running");
+    expect(out.status).toBe("running");
     expect(out.currentAction).toBe("Read pyproject.toml");
   });
 
@@ -194,6 +196,24 @@ describe("summarizeToolGroup — currentAction while running", () => {
       tool({ name: "Bash", id: "2", status: "done" })
     ]);
     expect(out.currentAction).toBeNull();
+  });
+
+  it("does not mark a mixed-success group as error when one child failed", () => {
+    const out = summarizeToolGroup([
+      tool({ name: "Read", id: "1", status: "done" }),
+      tool({ name: "Read", id: "2", status: "error", error: "EISDIR" })
+    ]);
+    expect(out.status).toBe("done");
+    expect(out.hasErrors).toBe(true);
+  });
+
+  it("marks the group as error when every child failed", () => {
+    const out = summarizeToolGroup([
+      tool({ name: "Read", id: "1", status: "error", error: "ENOENT" }),
+      tool({ name: "Bash", id: "2", status: "error", error: "exit 1" })
+    ]);
+    expect(out.status).toBe("error");
+    expect(out.hasErrors).toBe(true);
   });
 });
 
@@ -236,5 +256,37 @@ describe("describeToolAction", () => {
     expect(describeToolAction(tool({ name: "custom_mcp_tool", inputPreview: "foo" }))).toBe(
       "custom_mcp_tool foo"
     );
+  });
+});
+
+describe("buildGroupRows — sub-agent nesting", () => {
+  it("keeps everything top-level when there are no parent links", () => {
+    const rows = buildGroupRows([
+      tool({ name: "Read", id: "a", toolUseId: "tu-a" }),
+      tool({ name: "Bash", id: "b", toolUseId: "tu-b" })
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.children.length === 0)).toBe(true);
+  });
+
+  it("nests a sub-agent's calls under the Task that spawned them", () => {
+    const rows = buildGroupRows([
+      tool({ name: "Task", id: "task", toolUseId: "tu-task" }),
+      tool({ name: "find", id: "c1", toolUseId: "tu-c1", parentToolUseId: "tu-task" }),
+      tool({ name: "Read", id: "c2", toolUseId: "tu-c2", parentToolUseId: "tu-task" }),
+      tool({ name: "Bash", id: "top", toolUseId: "tu-top" })
+    ]);
+    expect(rows.map((r) => r.tool.id)).toEqual(["task", "top"]);
+    expect(rows[0]?.children.map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(rows[1]?.children).toHaveLength(0);
+  });
+
+  it("treats a child as top-level when its parent is not in the group", () => {
+    const rows = buildGroupRows([
+      tool({ name: "Read", id: "orphan", toolUseId: "tu-orphan", parentToolUseId: "tu-missing" })
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.tool.id).toBe("orphan");
+    expect(rows[0]?.children).toHaveLength(0);
   });
 });

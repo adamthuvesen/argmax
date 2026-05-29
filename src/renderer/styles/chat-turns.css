@@ -517,8 +517,8 @@
 
 .tool-call-detail {
   display: grid;
-  gap: 8px;
-  padding: 6px 10px 10px;
+  gap: 10px;
+  padding: 8px 10px 10px;
   border-top: 1px solid var(--line-soft);
   animation: detail-expand 180ms var(--ease) both;
 }
@@ -552,8 +552,8 @@
 
 .tool-call-code {
   margin: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
   background: var(--panel-sunken);
   border: 1px solid var(--line);
   font-family: var(--font-mono);
@@ -592,15 +592,16 @@
 .tool-call-open-button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   align-self: flex-start;
-  padding: 4px 10px;
-  border-radius: 999px;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--muted-strong);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
 }
@@ -774,11 +775,14 @@
 }
 
 .tool-call-row-button:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--panel);
 }
 
 .tool-call-row-verb {
   flex: 0 0 auto;
+  /* Fixed column so the target/path after the verb left-aligns down the list
+     regardless of "Ran" (3) vs "Read" (4) etc. */
+  min-width: 4ch;
   color: var(--muted);
   font-weight: 500;
 }
@@ -804,6 +808,12 @@
   transform: translateY(-1px);
 }
 
+/* Done rows keep the gutter (for alignment) but hide the dot — a clean list
+   with dots only on the running/error rows that need a signal. */
+.tool-call-row-dot[data-status="done"] {
+  background: transparent;
+}
+
 .tool-call-row-counts {
   flex: 0 0 auto;
   display: inline-flex;
@@ -815,11 +825,11 @@
 }
 
 .tool-call-row-counts .adds {
-  color: #009f45;
+  color: var(--diff-add-gutter-fg);
 }
 
 .tool-call-row-counts .dels {
-  color: #e2222a;
+  color: var(--diff-del-gutter-fg);
 }
 
 .tool-call-row-counts .files {
@@ -827,25 +837,18 @@
 }
 
 /* Agent (Task tool / sub-agent invocation) — distinct from regular tool calls
-   so the user can tell at a glance that a different agent is doing the work,
-   not the parent. Left-border accent + colored verb + Bot icon all reinforce
-   the "this is an agent" affordance. Uses the project's sage palette for
-   visual consistency with checks/status surfaces. */
+   without adding icon noise. The left rail and colored verb say "subagent";
+   the row text stays as readable as the surrounding command rows. */
 .tool-call-row[data-tool-type="agent"] {
-  border-left: 2px solid var(--sage);
   background: var(--sage-soft);
-  padding-left: 2px;
 }
+
+.tool-call-row[data-tool-type="agent"] .tool-call-row-button:hover {
+  background: color-mix(in oklch, var(--sage-soft), var(--panel) 48%);
+}
+
 .tool-call-row[data-tool-type="agent"] .tool-call-row-verb {
   color: var(--sage-deep);
   font-weight: 600;
   letter-spacing: 0.01em;
 }
-.tool-call-row-icon {
-  display: inline-flex;
-  align-items: center;
-  color: var(--sage-deep);
-  flex: 0 0 auto;
-  transform: translateY(1px);
-}
-

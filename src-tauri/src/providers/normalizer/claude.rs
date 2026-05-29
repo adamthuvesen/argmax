@@ -77,12 +77,25 @@ pub fn extract_inline_tool_blocks(
             continue;
         };
         match string_value(block.get("type")) {
-            Some("tool_use") => events.push(timeline_event(
-                event,
-                "command.started",
-                string_value(block.get("name")).unwrap_or("tool_use"),
-                Value::Object(block.clone()),
-            )),
+            Some("tool_use") => {
+                // `parent_tool_use_id` lives on the outer assistant-message
+                // payload (a sibling of `message`), but flattening the content
+                // blocks into per-tool `command.started` events would drop it.
+                // Copy it onto the block so the renderer can nest a sub-agent's
+                // tool calls under the Task that spawned them.
+                let mut tool_block = block.clone();
+                if let Some(parent) = payload.get("parent_tool_use_id") {
+                    if parent.is_string() {
+                        tool_block.insert("parent_tool_use_id".to_string(), parent.clone());
+                    }
+                }
+                events.push(timeline_event(
+                    event,
+                    "command.started",
+                    string_value(block.get("name")).unwrap_or("tool_use"),
+                    Value::Object(tool_block),
+                ));
+            }
             Some("tool_result") => events.push(timeline_event(
                 event,
                 "command.completed",
@@ -324,6 +337,35 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[1].r#type, "command.completed");
+    }
+
+    #[test]
+    fn claude_tool_use_carries_parent_tool_use_id() {
+        // A sub-agent's tool calls arrive as assistant messages tagged with
+        // `parent_tool_use_id` (the spawning Task's id). That id must ride
+        // along onto the flattened command.started so the UI can nest them.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "parent_tool_use_id": "toolu_parent_task",
+                    "message": {
+                        "content": [
+                            { "type": "tool_use", "name": "Bash", "input": { "command": "ls" } }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(
+            result.events[0].payload["parent_tool_use_id"],
+            "toolu_parent_task"
+        );
     }
 
     #[test]

@@ -119,7 +119,11 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
   const dirtyMarker = state.isDirty ? "•" : "";
 
   return (
-    <div className="file-preview" aria-label={`Preview of ${state.selectedPath}`}>
+    <div
+      className="file-preview"
+      data-mode={showRendered ? "rendered" : "source"}
+      aria-label={`Preview of ${state.selectedPath}`}
+    >
       <div className="file-preview-heading">
         <strong>
           {state.selectedPath}

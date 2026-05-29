@@ -1,6 +1,6 @@
-import { Bot } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
+import { shortenPathsInText } from "../lib/pathDisplay.js";
 import { describeToolAction, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 
@@ -75,7 +75,6 @@ function ToolCallRowInner({
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.target;
   const toolTypeBucket = getToolTypeBucket(tool.name);
-  const isAgent = toolTypeBucket === "agent";
 
   return (
     <div className="tool-call-row" data-status={tool.status} data-tool-type={toolTypeBucket}>
@@ -86,20 +85,18 @@ function ToolCallRowInner({
         aria-label={action}
         onClick={() => setUserToggle(!expanded)}
       >
-        {isAgent ? (
-          <span className="tool-call-row-icon" aria-hidden="true">
-            <Bot size={13} />
-          </span>
-        ) : null}
-        {tool.status !== "done" ? (
-          <span
-            className="tool-call-row-dot"
-            data-status={tool.status}
-            aria-hidden="true"
-          />
-        ) : null}
+        {/* Always render the status dot — transparent when done — so every row
+            reserves the same left gutter and verbs/targets stay column-aligned
+            instead of the error/running rows jumping right. */}
+        <span
+          className="tool-call-row-dot"
+          data-status={tool.status}
+          aria-hidden="true"
+        />
         <span className="tool-call-row-verb">{verb}</span>
-        {target ? <span className="tool-call-row-target">{target}</span> : null}
+        {target ? (
+          <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
+        ) : null}
         {counts && (counts.adds > 0 || counts.dels > 0) ? (
           <span className="tool-call-row-counts" aria-hidden="true">
             {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}

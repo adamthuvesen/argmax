@@ -1,5 +1,10 @@
 import { memo, useMemo, useState, type JSX } from "react";
-import { summarizeToolGroup, type ToolCall, type ToolCallGroup } from "../lib/toolCalls.js";
+import {
+  buildGroupRows,
+  summarizeToolGroup,
+  type ToolCall,
+  type ToolCallGroup
+} from "../lib/toolCalls.js";
 import { LiveElapsedChip } from "./LiveElapsedChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 
@@ -17,6 +22,7 @@ function ToolCallGroupBubbleInner({
 }: ToolCallGroupBubbleProps): JSX.Element {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
+  const rows = useMemo(() => buildGroupRows(group.tools), [group.tools]);
   // Collapsed by default to match Codex — the user clicks the chevron to
   // reveal per-tool rows. defaultExpanded (from Settings) overrides. The
   // error case used to auto-expand; that made groups inconsistent (failed
@@ -36,12 +42,17 @@ function ToolCallGroupBubbleInner({
   // While collapsed and still running, show the current action ("Read foo.ts")
   // in place of the slash-joined input preview so the user has a live signal.
   const previewText =
-    !expanded && summary.worstStatus === "running" && summary.currentAction
+    !expanded && summary.status === "running" && summary.currentAction
       ? summary.currentAction
       : summary.preview;
 
   return (
-    <div className="tool-call-group" data-status={summary.worstStatus} data-expanded={expanded}>
+    <div
+      className="tool-call-group"
+      data-status={summary.status}
+      data-has-errors={summary.hasErrors ? "true" : undefined}
+      data-expanded={expanded}
+    >
       <button
         className="tool-call-group-header"
         type="button"
@@ -56,7 +67,7 @@ function ToolCallGroupBubbleInner({
           <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
         ) : null}
         <LiveElapsedChip
-          status={summary.worstStatus}
+          status={summary.status}
           startedAtMs={startedAtMs}
           completedAtMs={completedAtMs}
         />
@@ -66,13 +77,26 @@ function ToolCallGroupBubbleInner({
       </button>
       {expanded ? (
         <div className="tool-call-group-body">
-          {group.tools.map((tool, index) => (
+          {rows.map(({ tool, children }, index) => (
             <div
               className="tool-call-group-row"
               key={tool.id}
               style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
             >
               <ToolCallRow tool={tool} workspaceCwd={workspaceCwd ?? null} />
+              {children.length > 0 ? (
+                <div className="tool-call-agent-children">
+                  {children.map((child, childIndex) => (
+                    <div
+                      className="tool-call-group-row"
+                      key={child.id}
+                      style={{ animationDelay: `${Math.min(childIndex, 8) * 28}ms` }}
+                    >
+                      <ToolCallRow tool={child} workspaceCwd={workspaceCwd ?? null} />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

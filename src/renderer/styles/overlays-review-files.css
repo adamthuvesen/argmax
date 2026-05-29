@@ -188,7 +188,7 @@
   flex-direction: column;
   flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .file-preview-heading {
@@ -293,6 +293,11 @@
   padding: 6px 0 16px;
 }
 
+.file-preview-editor > div {
+  height: 100%;
+  min-height: 0;
+}
+
 .file-preview-editor [class*="cm-editor"] {
   height: 100%;
   min-height: 0;
@@ -313,6 +318,7 @@
 }
 
 .file-preview-editor .cm-scroller {
+  height: 100%;
   min-height: 0;
   overflow: auto;
 }
@@ -335,6 +341,9 @@
 }
 
 .file-preview-markdown {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
   padding: 18px 24px 32px;
   overflow-wrap: anywhere;
 }

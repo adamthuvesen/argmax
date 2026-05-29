@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BoundedMap } from "../../shared/boundedSet.js";
 
 export interface FilePreviewData {
   snippet: string;
@@ -8,10 +9,11 @@ export interface FilePreviewData {
   targetLine: number | null;
 }
 
-// Module-level cache keyed by workspaceId|path|line. Lives for the page
-// lifetime; the cost of a stale entry is one outdated tooltip — the user
-// clicks through to open the live file anyway.
-const previewCache = new Map<string, FilePreviewData>();
+// Module-level cache keyed by workspaceId|path|line. Bounded so a long session
+// browsing many files can't grow it without limit; the cost of an evicted (or
+// stale) entry is one tooltip re-fetch — the user clicks through to the live
+// file anyway.
+const previewCache = new BoundedMap<string, FilePreviewData>(500);
 
 interface FetchPreviewArgs {
   workspaceId: string;

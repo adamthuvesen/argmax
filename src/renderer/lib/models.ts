@@ -70,11 +70,18 @@ export function thinkingModelSlug(model: ProviderModelSelection): string {
   return id.replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
 }
 
+const EMPTY_USAGE_COUNTS: SessionCostSummary["tokens"] = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0
+};
+
 export function emptyCostSummary(sessionId: string): SessionCostSummary {
   return {
     sessionId,
     modelId: null,
-    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    tokens: { ...EMPTY_USAGE_COUNTS },
     costUsd: 0
   };
 }
@@ -85,6 +92,5 @@ export function costForBucket(
   modelId: string | null
 ): number {
   if (!modelId || tokens <= 0) return 0;
-  const empty = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  return rendererCostOf({ ...empty, [bucket]: tokens }, modelId);
+  return rendererCostOf({ ...EMPTY_USAGE_COUNTS, [bucket]: tokens }, modelId);
 }

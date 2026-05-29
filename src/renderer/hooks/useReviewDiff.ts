@@ -51,7 +51,7 @@ export function useReviewDiff(args: {
   useEffect(() => {
     const token = ++fileLoadToken.current;
 
-    if (!sourceId || !sourceKind || !window.argmax) {
+    if (!sourceId || !sourceKind || !dispatch || !window.argmax) {
       setFiles([]);
       setFilesState("idle");
       setFilesError(null);
@@ -60,7 +60,7 @@ export function useReviewDiff(args: {
 
     setFilesState("loading");
     setFilesError(null);
-    void dispatch!.listChangedFiles()
+    void dispatch.listChangedFiles()
       .then((result) => {
         if (token !== fileLoadToken.current) {
           return;
@@ -87,7 +87,7 @@ export function useReviewDiff(args: {
 
   useEffect(() => {
     const token = ++diffLoadToken.current;
-    if (!sourceId || !sourceKind || !selectedFilePath || !window.argmax) {
+    if (!sourceId || !sourceKind || !selectedFilePath || !dispatch || !window.argmax) {
       setDiff(null);
       setDiffState("idle");
       setDiffError(null);
@@ -96,7 +96,7 @@ export function useReviewDiff(args: {
 
     setDiffState("loading");
     setDiffError(null);
-    void dispatch!.loadDiff(selectedFilePath)
+    void dispatch.loadDiff(selectedFilePath)
       .then((result) => {
         if (token !== diffLoadToken.current) {
           return;

@@ -164,7 +164,13 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 None => (definition.structured_args)(&input),
             };
 
-            launch_structured_via_pty(binary_path.as_str(), definition.display_name, args, &input, on_event)
+            launch_structured_via_pty(
+                binary_path.as_str(),
+                definition.display_name,
+                args,
+                &input,
+                on_event,
+            )
         })
     }
 }
@@ -452,7 +458,7 @@ pub(super) fn spawn_reader<R: Read + Send + 'static>(
 ) -> thread::JoinHandle<()> {
     let trace_stream = stream.as_str();
     let trace_session = session_id.clone();
-    tracing::info!(
+    tracing::trace!(
         session_id = %trace_session,
         stream = trace_stream,
         "provider reader thread starting"
@@ -487,14 +493,14 @@ pub(super) fn spawn_reader<R: Read + Send + 'static>(
                     break;
                 }
                 Ok(n) => {
-                    tracing::info!(
+                    tracing::trace!(
                         session_id = %session_id,
                         stream = stream.as_str(),
                         bytes = n,
                         "provider reader read"
                     );
                     if disposed.load(Ordering::SeqCst) {
-                        tracing::info!(
+                        tracing::trace!(
                             session_id = %session_id,
                             "reader exiting because disposed",
                         );

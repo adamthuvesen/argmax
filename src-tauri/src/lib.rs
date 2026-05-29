@@ -155,7 +155,7 @@ pub fn run() {
                                         );
                                     }
                                 }
-                                tracing::info!(
+                                tracing::trace!(
                                     sessions = delta.sessions.len(),
                                     events = delta.events.len(),
                                     raw_outputs = delta.raw_outputs.len(),

@@ -98,6 +98,7 @@ struct ProviderFlushSession {
 pub struct QueueOutputResult {
     pub delta: Option<DashboardDelta>,
     pub provider_conversation_id: Option<String>,
+    pub has_trailing_fragment: bool,
 }
 
 impl ProviderEventFlushQueue {
@@ -130,7 +131,9 @@ impl ProviderEventFlushQueue {
     }
 
     pub fn session_provider(&self, session_id: &str) -> Option<ProviderId> {
-        self.sessions.get(session_id).map(|session| session.provider)
+        self.sessions
+            .get(session_id)
+            .map(|session| session.provider)
     }
 
     pub fn queue_output_event(
@@ -142,6 +145,7 @@ impl ProviderEventFlushQueue {
             return Ok(QueueOutputResult {
                 delta: None,
                 provider_conversation_id: None,
+                has_trailing_fragment: false,
             });
         };
 
@@ -164,9 +168,11 @@ impl ProviderEventFlushQueue {
             return Ok(QueueOutputResult {
                 delta: None,
                 provider_conversation_id,
+                has_trailing_fragment: !pending.trim().is_empty(),
             });
         };
         let trailing = pending.split_off(complete_up_to);
+        let has_trailing_fragment = !trailing.trim().is_empty();
         let completed = std::mem::replace(pending, trailing);
         let normalized_event = ProviderOutputEvent {
             message: completed,
@@ -201,6 +207,7 @@ impl ProviderEventFlushQueue {
         Ok(QueueOutputResult {
             delta: (!delta.is_empty()).then_some(delta),
             provider_conversation_id,
+            has_trailing_fragment,
         })
     }
 
@@ -316,76 +323,83 @@ pub fn flush_session_buffer(
         return Ok(DashboardDelta::default());
     }
 
-    let mut pending_events = buffer.pending_events.clone();
+    let mut pending_events = std::mem::take(&mut buffer.pending_events);
     pending_events.sort_by_key(|pending| pending.sequence);
-    let pending_raw_outputs = buffer.pending_raw_outputs.clone();
-    let pending_usages = buffer.pending_usages.clone();
-    let pending_approvals = buffer.pending_approvals.clone();
-    let pending_session_update = buffer.pending_session_update.clone();
+    let pending_raw_outputs = std::mem::take(&mut buffer.pending_raw_outputs);
+    let pending_usages = std::mem::take(&mut buffer.pending_usages);
+    let pending_approvals = std::mem::take(&mut buffer.pending_approvals);
+    let pending_session_update = buffer.pending_session_update.take();
 
-    let transaction = connection.transaction().map_err(sqlite_error)?;
-    let mut delta = DashboardDelta::default();
+    let result = (|| {
+        let transaction = connection.transaction().map_err(sqlite_error)?;
+        let mut delta = DashboardDelta::default();
 
-    for output in &pending_raw_outputs {
-        delta
-            .raw_outputs
-            .push(persist_raw_output(&transaction, output)?);
-    }
-    for pending in &pending_events {
-        delta
-            .events
-            .push(persist_timeline_event(&transaction, &pending.event)?);
-    }
-    for usage in &pending_usages {
-        insert_usage_event(
-            &transaction,
-            &InsertUsageEventInput {
-                session_id: session_id.to_string(),
-                event_id: usage.event_id.clone(),
-                model_id: usage.model_id.clone(),
-                tokens: PersistedUsageCounts {
-                    input: usage.tokens.input as i64,
-                    output: usage.tokens.output as i64,
-                    cache_read: usage.tokens.cache_read as i64,
-                    cache_write: usage.tokens.cache_write as i64,
+        for output in &pending_raw_outputs {
+            delta
+                .raw_outputs
+                .push(persist_raw_output(&transaction, output)?);
+        }
+        for pending in &pending_events {
+            delta
+                .events
+                .push(persist_timeline_event(&transaction, &pending.event)?);
+        }
+        for usage in &pending_usages {
+            insert_usage_event(
+                &transaction,
+                &InsertUsageEventInput {
+                    session_id: session_id.to_string(),
+                    event_id: usage.event_id.clone(),
+                    model_id: usage.model_id.clone(),
+                    tokens: PersistedUsageCounts {
+                        input: usage.tokens.input as i64,
+                        output: usage.tokens.output as i64,
+                        cache_read: usage.tokens.cache_read as i64,
+                        cache_write: usage.tokens.cache_write as i64,
+                    },
+                    cost_usd: usage.cost_usd,
+                    created_at: None,
                 },
-                cost_usd: usage.cost_usd,
-                created_at: None,
-            },
-        )?;
-    }
-    for approval in &pending_approvals {
-        let existing = find_pending_approval(
-            &transaction,
-            &FindPendingApprovalInput {
-                session_id: approval.session_id.clone(),
-                command: approval.command.clone(),
-                cwd: approval.cwd.clone(),
-                provider: approval.provider.clone(),
-            },
-        )?;
-        // unwrap_or eagerly evaluates its argument, so persist_approval
-        // would INSERT a duplicate every time the existing row was found.
-        // Match keeps the INSERT in the None branch only.
-        let row = match existing {
-            Some(row) => row,
-            None => persist_approval(&transaction, approval)?,
-        };
-        delta.approvals.push(row);
-    }
-    if let Some(session) = pending_session_update {
-        delta.sessions.push(session);
-    }
+            )?;
+        }
+        for approval in &pending_approvals {
+            let existing = find_pending_approval(
+                &transaction,
+                &FindPendingApprovalInput {
+                    session_id: approval.session_id.clone(),
+                    command: approval.command.clone(),
+                    cwd: approval.cwd.clone(),
+                    provider: approval.provider.clone(),
+                },
+            )?;
+            // unwrap_or eagerly evaluates its argument, so persist_approval
+            // would INSERT a duplicate every time the existing row was found.
+            // Match keeps the INSERT in the None branch only.
+            let row = match existing {
+                Some(row) => row,
+                None => persist_approval(&transaction, approval)?,
+            };
+            delta.approvals.push(row);
+        }
+        if let Some(session) = &pending_session_update {
+            delta.sessions.push(session.clone());
+        }
 
-    transaction.commit().map_err(sqlite_error)?;
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(delta)
+    })();
 
-    buffer.pending_events.clear();
-    buffer.pending_raw_outputs.clear();
-    buffer.pending_usages.clear();
-    buffer.pending_approvals.clear();
-    buffer.pending_session_update = None;
-
-    Ok(delta)
+    match result {
+        Ok(delta) => Ok(delta),
+        Err(error) => {
+            buffer.pending_events = pending_events;
+            buffer.pending_raw_outputs = pending_raw_outputs;
+            buffer.pending_usages = pending_usages;
+            buffer.pending_approvals = pending_approvals;
+            buffer.pending_session_update = pending_session_update;
+            Err(error)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -494,6 +508,7 @@ mod tests {
             )
             .expect("queue first");
         assert!(first.delta.is_none());
+        assert!(first.has_trailing_fragment);
 
         queue.gate.force_next_dashboard_delta();
         let second = queue
@@ -501,9 +516,9 @@ mod tests {
                 &mut connection,
                 output_event(ProviderOutputStream::Stdout, "lo\"}}\n"),
             )
-            .expect("queue second")
-            .delta
-            .expect("delta");
+            .expect("queue second");
+        assert!(!second.has_trailing_fragment);
+        let second = second.delta.expect("delta");
 
         assert_eq!(second.raw_outputs.len(), 2);
         assert_eq!(second.events.len(), 1);
@@ -525,12 +540,13 @@ mod tests {
             ProviderId::Claude,
             NormalizerSessionContext::default(),
         );
-        queue
+        let queued = queue
             .queue_output_event(
                 &mut connection,
                 output_event(ProviderOutputStream::Stdout, "plain trailing output"),
             )
             .expect("queue fragment");
+        assert!(queued.has_trailing_fragment);
 
         let delta = queue
             .flush_trailing_fragments(&mut connection, "s1", "2026-05-24T10:00:01.000Z")
@@ -538,6 +554,22 @@ mod tests {
             .expect("delta");
         assert_eq!(delta.events.len(), 1);
         assert_eq!(delta.events[0].message, "plain trailing output");
+    }
+
+    #[test]
+    fn flush_restores_buffer_when_transaction_fails() {
+        let database = Database::open_in_memory().expect("open db");
+        let mut connection = database.connection();
+        seed_session(&connection);
+        persist_timeline_event(&connection, &event("duplicate")).expect("seed duplicate");
+
+        let mut buffer = SessionFlushBuffer::new();
+        buffer.queue_timeline_event(event("duplicate"));
+
+        flush_session_buffer(&mut connection, "s1", &mut buffer).expect_err("duplicate id fails");
+
+        assert_eq!(buffer.pending_events.len(), 1);
+        assert_eq!(buffer.pending_events[0].event.id, "event-duplicate");
     }
 
     fn event(message: &str) -> PersistTimelineEventInput {

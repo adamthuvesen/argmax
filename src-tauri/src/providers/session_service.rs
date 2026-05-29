@@ -663,18 +663,18 @@ impl ProviderSessionService {
     fn handle_output_event(self: Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
         let trace_bytes = event.message.len();
         let trace_session = event.session_id.clone();
-        tracing::info!(
+        tracing::trace!(
             session_id = %trace_session,
             bytes = trace_bytes,
             "handle_output_event: acquiring DB connection",
         );
         let mut connection = self.database.connection();
-        tracing::info!(
+        tracing::trace!(
             session_id = %trace_session,
             "handle_output_event: acquired DB; acquiring flush queue",
         );
         let mut flush_queue = self.flush_queue.lock().expect("flush queue poisoned");
-        tracing::info!(
+        tracing::trace!(
             session_id = %trace_session,
             "handle_output_event: acquired flush queue; queuing event",
         );
@@ -687,7 +687,7 @@ impl ProviderSessionService {
                 created_at: event.created_at,
             },
         )?;
-        tracing::info!(
+        tracing::trace!(
             session_id = %trace_session,
             has_delta = result.delta.is_some(),
             "handle_output_event: queue_output_event returned",
@@ -710,9 +710,14 @@ impl ProviderSessionService {
             self.publish(delta);
         }
         // A completed answer can sit in the stream buffer without a trailing
-        // newline while the provider process stays alive. Debounce-flush so the
-        // renderer sees timeline rows without waiting for Stop/exit.
-        self.schedule_idle_flush(&event.session_id);
+        // newline while the provider process stays alive. Debounce-flush only
+        // when a real fragment exists; newline-delimited JSONL chunks already
+        // flushed above and should not spawn no-op idle tasks.
+        if result.has_trailing_fragment {
+            self.schedule_idle_flush(&event.session_id);
+        } else {
+            self.cancel_idle_flush(&event.session_id);
+        }
         Ok(())
     }
 
@@ -1208,12 +1213,13 @@ fn compose_follow_up_prompt(
             WHERE session_id = ?
               AND type IN ('user.message', 'message.completed', 'error')
               AND trim(message) <> ''
-            ORDER BY rowid ASC
+            ORDER BY rowid DESC
+            LIMIT ?
             "#,
         )
         .map_err(sqlite_error)?;
     let rows = statement
-        .query_map([session_id], |row| {
+        .query_map((session_id, FOLLOW_UP_CONTEXT_MAX_MESSAGES as i64), |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
         .map_err(sqlite_error)?;
@@ -1236,15 +1242,16 @@ fn compose_follow_up_prompt(
             }
         })
         .collect::<Vec<_>>();
+    transcript.reverse();
 
     if transcript.is_empty() {
         return Ok(message.to_string());
     }
-    if transcript.len() > FOLLOW_UP_CONTEXT_MAX_MESSAGES {
-        transcript = transcript.split_off(transcript.len() - FOLLOW_UP_CONTEXT_MAX_MESSAGES);
-    }
 
-    while transcript.join("\n").len() > FOLLOW_UP_CONTEXT_MAX_CHARS && transcript.len() > 1 {
+    let mut transcript_chars = transcript.iter().map(|line| line.len()).sum::<usize>()
+        + transcript.len().saturating_sub(1);
+    while transcript_chars > FOLLOW_UP_CONTEXT_MAX_CHARS && transcript.len() > 1 {
+        transcript_chars = transcript_chars.saturating_sub(transcript[0].len() + 1);
         transcript.remove(0);
     }
 
@@ -1276,4 +1283,88 @@ fn clamp_context_text(text: &str) -> String {
 pub struct SendInputResult {
     pub ok: bool,
     pub queued: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persistence::database::Database;
+    use serde_json::json;
+
+    #[test]
+    fn follow_up_prompt_reads_latest_messages_only() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        for index in 0..20 {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: format!("event-{index}"),
+                    session_id: "s1".to_string(),
+                    r#type: "user.message".to_string(),
+                    message: format!("message {index}"),
+                    payload: json!({}),
+                    created_at: Some(format!("2026-05-24T10:00:{index:02}.000Z")),
+                },
+            )
+            .expect("insert event");
+        }
+
+        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
+
+        assert!(!prompt.contains("message 7"));
+        assert!(prompt.contains("message 8"));
+        assert!(prompt.contains("message 19"));
+        assert!(prompt.contains("New user message:\nnext"));
+    }
+
+    #[test]
+    fn follow_up_prompt_keeps_newest_lines_under_char_budget() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        for index in 0..4 {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: format!("large-{index}"),
+                    session_id: "s1".to_string(),
+                    r#type: "message.completed".to_string(),
+                    message: format!("large {index} {}", "x".repeat(4_000)),
+                    payload: json!({}),
+                    created_at: Some(format!("2026-05-24T10:00:{index:02}.000Z")),
+                },
+            )
+            .expect("insert event");
+        }
+
+        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
+
+        assert!(!prompt.contains("large 0"));
+        assert!(!prompt.contains("large 1"));
+        assert!(prompt.contains("large 2"));
+        assert!(prompt.contains("large 3"));
+    }
+
+    fn seed_session(connection: &rusqlite::Connection) {
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+                [],
+            )
+            .expect("insert project");
+        connection
+            .execute(
+                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'task', 'branch', 'main', '/tmp/w1', 'running', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+                [],
+            )
+            .expect("insert workspace");
+        connection
+            .execute(
+                "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode, prompt, state, attention, started_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'claude-sonnet-4', NULL, 'auto-approve', 'auto', 'prompt', 'complete', 'none', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+                [],
+            )
+            .expect("insert session");
+    }
 }

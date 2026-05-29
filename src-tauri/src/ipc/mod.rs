@@ -105,11 +105,12 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
 /// handler modules so each ported command does not re-duplicate the
 /// `state.db.get()` boilerplate.
 pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
-    state
-        .db
-        .get()
-        .cloned()
-        .ok_or_else(|| ArgmaxError::service("DATABASE_NOT_READY", "database is not initialized"))
+    state.db.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "DATABASE_NOT_READY",
+            "database is not initialized (startup may still be in progress, or DB setup failed — see logs)",
+        )
+    })
 }
 
 pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {

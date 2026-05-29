@@ -1,10 +1,9 @@
 use super::inputs::*;
-use crate::error::{ArgmaxError, ArgmaxResult};
+use super::live_database;
+use crate::error::ArgmaxResult;
 use crate::persistence::approvals::{list_pending_approvals, resolve_approval, ApprovalRequest};
 use crate::persistence::dashboard::DASHBOARD_ROW_LIMIT;
-use crate::persistence::Database;
 use crate::state::AppState;
-use std::sync::Arc;
 use tauri::State;
 
 #[tauri::command(rename = "approvals:resolve")]
@@ -33,14 +32,6 @@ pub fn approvals_pending(
     list_pending_approvals(&connection, DASHBOARD_ROW_LIMIT)
 }
 
-fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
-    state
-        .db
-        .get()
-        .cloned()
-        .ok_or_else(|| ArgmaxError::service("DATABASE_NOT_READY", "database is not initialized"))
-}
-
 fn approval_resolution_as_str(status: ApprovalResolution) -> &'static str {
     match status {
         ApprovalResolution::Approved => "approved",
@@ -51,14 +42,14 @@ fn approval_resolution_as_str(status: ApprovalResolution) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ArgmaxError;
 
     #[test]
     fn pending_requires_initialized_database() {
-        let error = match live_database(&AppState::new()) {
-            Ok(_) => panic!("expected missing database error"),
-            Err(error) => error,
-        };
-
+        // `.map(|_| ())` drops the Arc<Database> (which isn't Debug) so expect_err compiles.
+        let error = live_database(&AppState::new())
+            .map(|_| ())
+            .expect_err("expected missing database error");
         assert!(
             matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "DATABASE_NOT_READY")
         );

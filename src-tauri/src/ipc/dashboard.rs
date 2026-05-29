@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
 use tauri::State;
 
 use super::inputs::*;
-use crate::error::{ArgmaxError, ArgmaxResult};
+use super::live_database;
+use crate::error::ArgmaxResult;
 use crate::persistence::dashboard::{
     list_dashboard, load_dashboard, DashboardListSnapshot, DashboardSnapshot,
 };
-use crate::persistence::Database;
 use crate::state::AppState;
 
 #[tauri::command(rename = "dashboard:list")]
@@ -40,17 +38,12 @@ fn read_dashboard(state: &AppState) -> ArgmaxResult<DashboardSnapshot> {
     load_dashboard(&connection)
 }
 
-fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
-    state
-        .db
-        .get()
-        .cloned()
-        .ok_or_else(|| ArgmaxError::service("DATABASE_NOT_READY", "database is not initialized"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ArgmaxError;
+    use crate::persistence::Database;
+    use std::sync::Arc;
 
     #[test]
     fn dashboard_list_reads_empty_live_database() {

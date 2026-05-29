@@ -304,27 +304,14 @@ fn project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
     let session_latest: Option<String> = row.get("session_latest")?;
     let updated_at: Option<String> = row.get("updated_at")?;
 
-    Ok(ProjectSummary {
-        id: row.get("id")?,
-        name: row.get("name")?,
-        repo_path: row.get("repo_path")?,
-        current_branch: row.get("current_branch")?,
-        default_branch: row.get("default_branch")?,
-        settings: ProjectSettings {
-            default_provider: row.get("default_provider")?,
-            default_model_label: row.get("default_model_label")?,
-            worktree_location: row.get("worktree_location")?,
-            setup_command: row.get("setup_command")?,
-            check_commands: parse_string_array(row.get("check_commands_json")?),
-        },
-        counts: ProjectCounts {
-            active: row.get("active_count")?,
-            blocked: workspace_blocked + session_blocked,
-            failed: workspace_failed + session_failed,
-            review_ready: workspace_complete + session_review_ready,
-        },
-        latest_activity_at: max_nullable_iso(workspace_latest, session_latest).or(updated_at),
-    })
+    let counts = ProjectCounts {
+        active: row.get("active_count")?,
+        blocked: workspace_blocked + session_blocked,
+        failed: workspace_failed + session_failed,
+        review_ready: workspace_complete + session_review_ready,
+    };
+    let latest_activity_at = max_nullable_iso(workspace_latest, session_latest).or(updated_at);
+    project_summary_from_row(row, counts, latest_activity_at)
 }
 
 fn require_project_by_repo_path(
@@ -336,6 +323,28 @@ fn require_project_by_repo_path(
 }
 
 fn bare_project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
+    // No JOINed aggregate columns in this query shape, so counts are zero.
+    let latest_activity_at = row.get("updated_at")?;
+    project_summary_from_row(
+        row,
+        ProjectCounts {
+            active: 0,
+            blocked: 0,
+            failed: 0,
+            review_ready: 0,
+        },
+        latest_activity_at,
+    )
+}
+
+/// Shared base mapper for the two project query shapes. The base columns
+/// (id/name/repo_path/branches/settings) are identical; counts and
+/// latest-activity differ per query, so they're computed by the caller.
+fn project_summary_from_row(
+    row: &Row<'_>,
+    counts: ProjectCounts,
+    latest_activity_at: Option<String>,
+) -> rusqlite::Result<ProjectSummary> {
     Ok(ProjectSummary {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -349,13 +358,8 @@ fn bare_project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary
             setup_command: row.get("setup_command")?,
             check_commands: parse_string_array(row.get("check_commands_json")?),
         },
-        counts: ProjectCounts {
-            active: 0,
-            blocked: 0,
-            failed: 0,
-            review_ready: 0,
-        },
-        latest_activity_at: row.get("updated_at")?,
+        counts,
+        latest_activity_at,
     })
 }
 

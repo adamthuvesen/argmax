@@ -156,8 +156,11 @@ fn count_where(connection: &Connection, sql: &'static str) -> ArgmaxResult<i64> 
 }
 
 fn dedupe_workspace_ids(ids: &[String]) -> Vec<String> {
+    // Don't pre-truncate the id set: the per-table queries already apply their
+    // own LIMIT, so capping here would silently drop the most-active workspaces
+    // when more than DASHBOARD_ROW_LIMIT ids are requested.
     let mut out = Vec::new();
-    for id in ids.iter().take(DASHBOARD_ROW_LIMIT) {
+    for id in ids {
         if !out.contains(id) {
             out.push(id.clone());
         }

@@ -167,7 +167,7 @@ pub fn search_events(
     query: &str,
     limit: usize,
 ) -> ArgmaxResult<Vec<EventSearchResult>> {
-    search_events_raw(connection, &escape_fts5(query), limit)
+    search_events_raw(connection, &build_fts_prefix_query(query), limit)
 }
 
 pub fn search_events_raw(
@@ -250,12 +250,32 @@ where
     Ok(())
 }
 
-fn escape_fts5(query: &str) -> String {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
+fn build_fts_prefix_query(query: &str) -> String {
+    let tokens = query
+        .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    if tokens.is_empty() {
         return String::new();
     }
-    format!("\"{}\"", trimmed.replace('"', "\"\""))
+    let phrase = tokens.join(" ");
+    let prefixed = tokens
+        .iter()
+        .filter(|token| !is_fts_operator_token(token))
+        .map(|token| format!("{token}*"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if prefixed.is_empty() {
+        return format!("\"{phrase}\"");
+    }
+    format!("\"{phrase}\" OR ({prefixed})")
+}
+
+fn is_fts_operator_token(token: &str) -> bool {
+    token.eq_ignore_ascii_case("AND")
+        || token.eq_ignore_ascii_case("OR")
+        || token.eq_ignore_ascii_case("NOT")
+        || token.eq_ignore_ascii_case("NEAR")
 }
 
 fn bool_to_i64(value: bool) -> i64 {

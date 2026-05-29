@@ -46,7 +46,6 @@ import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
-import { buildSafeFtsPrefixQuery } from "./lib/ftsQuery.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
   PERMISSION_MODE_KEY,
@@ -715,9 +714,7 @@ export function App(): JSX.Element {
       if (!window.argmax) return [];
       const trimmed = rawQuery.trim();
       if (!trimmed) return [];
-      const ftsQuery = buildSafeFtsPrefixQuery(trimmed);
-      if (!ftsQuery) return [];
-      const hits = await window.argmax.session.search({ query: ftsQuery, limit });
+      const hits = await window.argmax.session.search({ query: trimmed, limit });
       return hits.map((hit) => ({
         id: `${hit.sessionId}:${hit.eventId}`,
         sessionId: hit.sessionId,

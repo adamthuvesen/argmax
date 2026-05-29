@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   highlightSegments,
+  searchFilePaths,
   searchPaletteItems,
   type PaletteGroup,
   type PaletteHit,
@@ -16,7 +17,6 @@ export type PaletteCommand = PaletteItem;
 const MAX_PER_GROUP = 8;
 const MESSAGE_DEBOUNCE_MS = 150;
 const MIN_MESSAGE_QUERY_LENGTH = 3;
-const MAX_FILE_RESULTS = 200;
 
 const GROUP_ORDER: PaletteGroup[] = ["Actions", "Files", "Projects", "Messages", "Sessions"];
 
@@ -108,6 +108,8 @@ export function CommandPalette({
 
   useEffect(() => {
     if (!open) {
+      messageTokenRef.current += 1;
+      filesTokenRef.current += 1;
       setQuery("");
       setSelectedIndex(0);
       setMessageHits([]);
@@ -128,6 +130,7 @@ export function CommandPalette({
     }
     const trimmed = query.trim();
     if (trimmed.length < MIN_MESSAGE_QUERY_LENGTH) {
+      messageTokenRef.current += 1;
       setMessageHits([]);
       setMessagesRunning(false);
       return;
@@ -157,13 +160,20 @@ export function CommandPalette({
   // source is available. Cached for the palette session keyed by source.
   useEffect(() => {
     if (!open || !fileSource || !loadFiles) {
+      filesTokenRef.current += 1;
       setFilePaths([]);
       setFilesRunning(false);
       return;
     }
     const cacheKey = `${fileSource.kind}:${fileSource.id}`;
     if (filesCacheKeyRef.current === cacheKey) return;
-    if (query.trim().length === 0) return;
+    if (query.trim().length === 0) {
+      filesTokenRef.current += 1;
+      filesCacheKeyRef.current = null;
+      setFilePaths([]);
+      setFilesRunning(false);
+      return;
+    }
     const token = ++filesTokenRef.current;
     filesCacheKeyRef.current = cacheKey;
     setFilesRunning(true);
@@ -181,30 +191,29 @@ export function CommandPalette({
       });
   }, [open, fileSource, loadFiles, query]);
 
-  // Materialize Files PaletteItems from the cached path list. Cheap memo —
-  // only rebuilds when the path list changes (once per palette session).
-  const fileItems = useMemo<PaletteItem[]>(() => {
-    if (!onFilePick || filePaths.length === 0) return [];
-    return filePaths.slice(0, MAX_FILE_RESULTS).map((path) => ({
-      id: `file:${path}`,
-      label: basename(path),
-      subtitle: dirname(path) || undefined,
-      group: "Files" as const,
-      run: () => onFilePick(path)
+  const fileHits = useMemo<PaletteHit[]>(() => {
+    if (!open || !onFilePick || filePaths.length === 0) return [];
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    return searchFilePaths(filePaths, trimmed, MAX_PER_GROUP).map((path) => ({
+      item: {
+        id: `file:${path}`,
+        label: basename(path),
+        subtitle: dirname(path) || undefined,
+        group: "Files" as const,
+        run: () => onFilePick(path)
+      },
+      labelRanges: null,
+      subtitleRanges: null
     }));
-  }, [filePaths, onFilePick]);
+  }, [filePaths, onFilePick, open, query]);
 
-  const combinedCommands = useMemo<PaletteItem[]>(
-    () => (fileItems.length > 0 ? [...commands, ...fileItems] : commands),
-    [commands, fileItems]
-  );
-
-  // Run uFuzzy synchronously on each keystroke against the merged catalog
-  // (commands + lazy-loaded files). Cheap for the local catalog.
+  // Run uFuzzy synchronously on each keystroke against the local command catalog.
+  // Files are ranked separately by full path, then capped before row creation.
   const localHits = useMemo<PaletteHit[]>(() => {
     if (!open) return [];
-    return searchPaletteItems(combinedCommands, query);
-  }, [combinedCommands, query, open]);
+    return searchPaletteItems(commands, query);
+  }, [commands, query, open]);
 
   // Flatten hits in display order so keyboard nav has a single linear index.
   // Each row carries its group so we can insert headers without breaking the
@@ -225,6 +234,12 @@ export function CommandPalette({
 
     const rows: Row[] = [];
     for (const group of GROUP_ORDER) {
+      if (group === "Files") {
+        for (const hit of fileHits) {
+          rows.push({ kind: "hit", hit, group });
+        }
+        continue;
+      }
       if (group === "Messages") {
         for (const hit of messageHits.slice(0, MAX_PER_GROUP)) {
           rows.push({ kind: "message", hit, group: "Messages" });
@@ -238,7 +253,7 @@ export function CommandPalette({
       }
     }
     return rows;
-  }, [localHits, messageHits]);
+  }, [fileHits, localHits, messageHits]);
 
   useEffect(() => {
     if (selectedIndex >= flatRows.length) {

@@ -1,6 +1,5 @@
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { buildSafeFtsPrefixQuery } from "../lib/ftsQuery.js";
 import { parseFtsSnippet } from "../lib/paletteSearch.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
@@ -37,7 +36,11 @@ export function SearchOverlay({
   useRestoreFocus(open);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      tokenRef.current += 1;
+      return;
+    }
+    tokenRef.current += 1;
     setQuery("");
     setHits([]);
     setRunning(false);
@@ -49,6 +52,7 @@ export function SearchOverlay({
   const runSearch = useCallback(async (rawQuery: string): Promise<void> => {
     const trimmed = rawQuery.trim();
     if (!trimmed) {
+      tokenRef.current += 1;
       setHits([]);
       setRunning(false);
       setError(null);
@@ -62,12 +66,7 @@ export function SearchOverlay({
     setRunning(true);
     setError(null);
     try {
-      const ftsQuery = buildSafeFtsPrefixQuery(trimmed);
-      if (!ftsQuery) {
-        setHits([]);
-        return;
-      }
-      const result = await window.argmax.session.search({ query: ftsQuery, limit: 50 });
+      const result = await window.argmax.session.search({ query: trimmed, limit: 50 });
       if (token !== tokenRef.current) return;
       setHits(result);
       setSelectedIndex(0);

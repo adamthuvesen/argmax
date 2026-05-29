@@ -392,6 +392,13 @@ fn gh_and_learning_repositories_round_trip() {
         search_events(&connection, "peculiar phrase", 10).expect("search events")[0].event_id,
         "e-search"
     );
+    assert_eq!(
+        search_events(&connection, "pecu phr", 10).expect("search prefix events")[0].event_id,
+        "e-search"
+    );
+    assert!(search_events(&connection, "\"peculiar\" OR nope", 10)
+        .expect("search escapes query syntax")
+        .is_empty());
 
     delete_learning(&connection, "l1").expect("delete learning");
     assert!(list_learnings(&connection, "p1", 10)

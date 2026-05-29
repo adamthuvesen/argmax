@@ -18,6 +18,7 @@ Pinned budgets in [src/test/perf.test.ts](../../src/test/perf.test.ts):
 
 - `mergeDashboardDelta` over 200 sessions: p95 < 5 ms.
 - `buildFileTree` over 10,000 entries: < 75 ms.
+- `searchFilePaths` over 10,000 entries: p95 < 25 ms.
 - `parseUnifiedDiff` over a 500-hunk synthetic diff: p95 < 20 ms.
 
 ## IPC Latency

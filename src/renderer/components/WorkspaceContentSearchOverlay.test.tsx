@@ -71,6 +71,32 @@ describe("WorkspaceContentSearchOverlay", () => {
     expect(screen.getByText("abc.toUpperCase();")).toBeInTheDocument();
   });
 
+  it("drops stale grep results after the query becomes too short", async () => {
+    let resolveSearch!: (result: WorkspaceContentSearchResult) => void;
+    grepContent.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSearch = resolve;
+        })
+    );
+    render(
+      <WorkspaceContentSearchOverlay
+        open
+        onClose={() => {}}
+        source={{ kind: "workspace", id: "ws-1" }}
+        onPick={() => {}}
+      />
+    );
+    const input = screen.getByRole("searchbox");
+    fireEvent.change(input, { target: { value: "abc" } });
+    await waitFor(() => expect(grepContent).toHaveBeenCalled());
+
+    fireEvent.change(input, { target: { value: "a" } });
+    resolveSearch(sampleResult);
+
+    await waitFor(() => expect(screen.queryByText("src-tauri/src/index.ts")).toBeNull());
+  });
+
   it("commits via onPick + onClose when a result row is clicked", async () => {
     const onPick = vi.fn();
     const onClose = vi.fn();

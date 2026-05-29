@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "../renderer/lib/diff.js";
 import { buildFileTree } from "../renderer/lib/fileTree.js";
+import { searchFilePaths } from "../renderer/lib/paletteSearch.js";
 import { mergeDashboardDelta, emptySnapshot } from "../renderer/lib/snapshot.js";
 import type { DashboardSnapshot, SessionSummary, TimelineEvent } from "../shared/types.js";
 
@@ -109,6 +110,22 @@ describe("perf budgets", () => {
     expect(root.children).toHaveLength(100);
     // 75 ms slack under full-suite load (see parseUnifiedDiff note above).
     expect(elapsed).toBeLessThan(75);
+  });
+
+  it("searchFilePaths over 10 000 entries completes p95 < 25 ms", () => {
+    const paths = Array.from({ length: 10_000 }, (_, i) =>
+      i === 9_500 ? "src/renderer/components/NeedlePanel.tsx" : `packages/pkg-${i}/src/file-${i}.ts`
+    );
+
+    const durations: number[] = [];
+    for (let i = 0; i < 50; i++) {
+      const start = performance.now();
+      const hits = searchFilePaths(paths, "Needle", 8);
+      durations.push(performance.now() - start);
+      expect(hits[0]).toBe("src/renderer/components/NeedlePanel.tsx");
+    }
+    durations.sort((a, b) => a - b);
+    expect(percentile(durations, 0.95)).toBeLessThan(25);
   });
 
   it("parseUnifiedDiff over a 500-hunk synthetic diff completes p95 < 20 ms", () => {

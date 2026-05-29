@@ -116,6 +116,7 @@ export function LaunchSurface({
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
+  const reviewMode = reviewState.mode;
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
   // Register this surface's file source + pick handler with App so the
@@ -146,13 +147,24 @@ export function LaunchSurface({
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "b") return;
-      event.preventDefault();
-      toggleReviewPanel();
+      const key = event.key.toLowerCase();
+      if (key === "b") {
+        event.preventDefault();
+        toggleReviewPanel();
+        return;
+      }
+      if (key === "g") {
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewMode === "files") {
+          reviewClosePanel();
+        } else {
+          reviewOpenPanelInFilesMode();
+        }
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [project, toggleReviewPanel]);
+  }, [project, reviewClosePanel, reviewIsPanelOpen, reviewMode, reviewOpenPanelInFilesMode, toggleReviewPanel]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;

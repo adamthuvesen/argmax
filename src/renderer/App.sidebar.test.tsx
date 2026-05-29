@@ -443,6 +443,32 @@ describe("App sidebar", () => {
     );
   });
 
+  it("opens workspace files in the review panel with Cmd+G", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/renderer/App.tsx", status: "modified", additions: 2, deletions: 1 }
+    ]);
+    listWorkspaceFiles.mockResolvedValue([
+      { path: "src-tauri/src/index.ts" },
+      { path: "src/renderer/App.tsx" }
+    ]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+    fireEvent.keyDown(input, { key: "g", metaKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
+    expect(screen.queryByText("1 file")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "g", metaKey: true });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
+    );
+  });
+
   it("opens workspace files via the unified command palette on Cmd+P", async () => {
     listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([
@@ -560,8 +586,9 @@ describe("App sidebar", () => {
 
     render(<App />);
 
-    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
-    fireEvent.keyDown(document, { key: "p", metaKey: true });
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: "p", metaKey: true });
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
@@ -638,6 +665,28 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+  });
+
+  it("opens the launcher review panel in project files mode with Cmd+G", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src-tauri/src/main.ts" },
+      { path: "README.md" }
+    ]);
+
+    render(<App />);
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: "g", metaKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+
+    fireEvent.keyDown(prompt, { key: "g", metaKey: true });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
+    );
   });
 
   it("surfaces project files in the command palette after Cmd+B opens review", async () => {

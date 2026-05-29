@@ -98,6 +98,7 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   // palette; ⌘P signals to users they can jump to files (the palette's
   // Files group appears when a workspace or project is the active surface).
   { displayAccelerator: "⌘P", label: "Open command palette (with files)" },
+  { displayAccelerator: "⌘G", label: "Toggle file tree" },
   { displayAccelerator: "⌘F", label: "Global search" },
   { displayAccelerator: "⌘⇧F", label: "Search workspace file contents" },
   { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },

@@ -208,7 +208,9 @@ export function SessionPane({
   const reviewTogglePanel = reviewState.togglePanel;
   const reviewClosePanel = reviewState.closePanel;
   const reviewOpenInFilesView = reviewState.openInFilesView;
+  const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
+  const reviewMode = reviewState.mode;
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
   const workspaceId = workspace?.id ?? null;
@@ -294,11 +296,28 @@ export function SessionPane({
       if (key === "b") {
         event.preventDefault();
         reviewTogglePanel();
+        return;
+      }
+      if (key === "g") {
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewMode === "files") {
+          reviewClosePanel();
+        } else {
+          reviewOpenPanelInFilesMode();
+        }
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFocused, isLogOpen, reviewClosePanel, reviewIsPanelOpen, reviewTogglePanel]);
+  }, [
+    isFocused,
+    isLogOpen,
+    reviewClosePanel,
+    reviewIsPanelOpen,
+    reviewMode,
+    reviewOpenPanelInFilesMode,
+    reviewTogglePanel
+  ]);
 
   // Backfill timeline events for this pane on mount and whenever the session
   // changes. Each pane backfills independently of the focused-pane selection,

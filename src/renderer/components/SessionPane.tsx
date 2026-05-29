@@ -214,6 +214,14 @@ export function SessionPane({
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
   const workspaceId = workspace?.id ?? null;
+  // After a commit the staged/changed set has shifted; refresh the workspace
+  // status so the Changes panel updates immediately (the refresh publishes a
+  // dashboard delta that bumps changedFilesKey) rather than showing stale rows
+  // until the panel is reopened.
+  const handleCommitted = useCallback((): void => {
+    if (!workspaceId || !window.argmax) return;
+    void window.argmax.workspaces.refreshStatus(workspaceId).catch(() => undefined);
+  }, [workspaceId]);
   const handleOpenFile = useCallback(
     (path: string, opts?: { line?: number | null; preferIde?: boolean }): void => {
       if (opts?.preferIde && workspaceId && window.argmax) {
@@ -518,6 +526,7 @@ export function SessionPane({
         <CommitDialog
           open={isCommitDialogOpen}
           onClose={handleCloseCommitDialog}
+          onCommitted={handleCommitted}
           workspaceId={workspace.id}
           files={reviewState.files}
           defaultMessage={workspace.taskLabel}

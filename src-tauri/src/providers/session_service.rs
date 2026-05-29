@@ -1049,8 +1049,12 @@ impl ProviderSessionService {
         };
         self.publish_pending_messages(&session_id);
         let service = Arc::clone(self);
+        // Keep a copy so a launch failure can restore the message instead of
+        // silently dropping it after the UI already showed the queue drained.
+        let restore = next.clone();
+        let restore_session = session_id.clone();
         tokio::spawn(async move {
-            let _ = service
+            let result = service
                 .send_input(ProvidersSendInput {
                     session_id: crate::ipc::validation::SessionId::try_from(session_id)
                         .expect("existing session id valid"),
@@ -1072,6 +1076,21 @@ impl ProviderSessionService {
                     attachments: None,
                 })
                 .await;
+            if let Err(error) = result {
+                tracing::warn!(
+                    session_id = %restore_session,
+                    ?error,
+                    "failed to launch queued follow-up; restoring it to the queue"
+                );
+                {
+                    let mut queues = service.queues.lock().expect("queues poisoned");
+                    queues
+                        .entry(restore_session.clone())
+                        .or_default()
+                        .push_front(restore);
+                }
+                service.publish_pending_messages(&restore_session);
+            }
         });
     }
 

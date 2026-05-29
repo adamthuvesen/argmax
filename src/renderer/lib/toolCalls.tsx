@@ -126,10 +126,14 @@ type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bas
  * a different agent is doing the work.
  */
 function isAgentTool(lower: string): boolean {
-  // Claude's built-in tool is exactly "Task"; Codex/Cursor variants use
-  // "agent"/"subagent" or names ending with "_agent". Anchor the literal
-  // matches so we don't sweep up "TaskList" or "agent_id"-style names.
+  // Claude's built-in tool is exactly "Task". Cursor spawns sub-agents via
+  // `taskToolCall`; Codex coordinates them via `collab_tool_call`. Neither
+  // streams the sub-agent's internal steps, but surfacing the launch as an
+  // Agent (Bot icon + "Spawned N agents") still tells the user a different
+  // agent did the work. Anchor literal matches so we don't sweep up
+  // "TaskList" or "agent_id"-style names.
   return lower === "task" || lower === "agent" || lower === "subagent" ||
+    lower === "tasktoolcall" || lower === "collab_tool_call" ||
     /(^|[_-])(sub-?agent|agent)$/.test(lower);
 }
 
@@ -195,10 +199,10 @@ export function describeToolAction(tool: ToolCall): string {
   };
   switch (bucket) {
     case "agent":
-      // Agent verb is rendered with a Bot icon and accent color so the
-      // "Agent" label + sub-agent description make it obvious a different
-      // agent is running this work — not the parent.
-      return preview ? `Agent ${preview}` : "Agent task";
+      // Sage "Agent" verb + the sub-agent's description (when the provider
+      // gives one — Claude/Cursor do; Codex's collab call doesn't) make it
+      // obvious a different agent is doing this work. No bland "task" filler.
+      return preview ? `Agent ${preview}` : "Agent";
     case "bash":
       return preview ? `Ran ${preview}` : "Ran command";
     case "edit":

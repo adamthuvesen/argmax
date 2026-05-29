@@ -8,6 +8,10 @@
   --panel: #ffffff;
   --panel-soft: #fafafa;
   --panel-sunken: #eef0f1;
+  /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
+     mode so output blocks read airier; dark/purple reuse their dark sunken
+     surface (overridden in those theme blocks). */
+  --code-surface: #f4f6f7;
 
   --line: #e3e6e8;
   --line-soft: #eceeef;
@@ -132,6 +136,7 @@
   --panel: #1a1a17;
   --panel-soft: #1f1f1c;
   --panel-sunken: #0a0a09;
+  --code-surface: var(--panel-sunken);
 
   --line: #2a2a25;
   --line-soft: #1f1f1b;
@@ -215,6 +220,7 @@
   --panel: #6d509b;
   --panel-soft: #785aaa;
   --panel-sunken: #46306c;
+  --code-surface: var(--panel-sunken);
 
   --line: #7d62ac;
   --line-soft: #674c95;

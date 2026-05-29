@@ -174,7 +174,9 @@
   margin: 2px 6px 6px;
   padding: 8px 10px;
   border-top: 0;
-  border-left: 2px solid var(--line-strong);
+  /* 1px to match the group + thinking rails — every quiet left rail is the
+     same weight. */
+  border-left: 1px solid var(--line-strong);
   border-radius: 0;
   background: var(--panel-soft);
 }
@@ -221,61 +223,13 @@
   margin: 0;
   padding: var(--space-3);
   overflow: auto;
-  background: var(--panel-sunken);
+  background: var(--code-surface);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-/* Raw input is a sibling of the Output section — style its summary as the
-   same bare eyebrow label (no box), so the detail reads as one consistent
-   stack of label → code surface blocks. The default disclosure triangle is
-   swapped for a caret that rotates on open. */
-.tool-call-raw-details {
-  display: grid;
-  gap: 4px;
-}
-
-.tool-call-raw-details summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  width: fit-content;
-  cursor: pointer;
-  padding: 0;
-  list-style: none;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.tool-call-raw-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.tool-call-raw-details summary::before {
-  content: "›";
-  font-size: 12px;
-  line-height: 1;
-  color: var(--muted);
-  transition: transform var(--motion-fast) var(--ease);
-}
-
-.tool-call-raw-details[open] summary::before {
-  transform: rotate(90deg);
-}
-
-.tool-call-raw-details summary:hover {
-  color: var(--text);
-}
-
-.tool-call-raw-details .tool-call-code {
-  margin: 0;
 }
 
 @keyframes tool-row-in {

@@ -530,7 +530,9 @@
   align-self: flex-start;
   width: 100%;
   max-width: 100%;
-  padding: 0;
+  /* Reserve a right gutter so the hover copy button (absolutely positioned
+     top-right) sits beside the prose instead of overlapping the first line. */
+  padding: 0 28px 0 0;
   background: transparent;
   box-shadow: none;
 }

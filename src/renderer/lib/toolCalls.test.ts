@@ -73,6 +73,26 @@ describe("Task / sub-agent tools", () => {
     expect(getToolTypeBucket("agent_id")).not.toBe("agent");
   });
 
+  it("classifies Cursor `taskToolCall` and Codex `collab_tool_call` as agents", () => {
+    // Neither provider streams the sub-agent's internal steps, but the launch
+    // still reads as "an agent did this" (Bot icon + "Spawned N agents").
+    expect(getToolTypeBucket("taskToolCall")).toBe("agent");
+    expect(getToolTypeBucket("collab_tool_call")).toBe("agent");
+  });
+
+  it("renders Cursor `taskToolCall` as 'Agent <description>' from its args", () => {
+    const t = tool({
+      name: "taskToolCall",
+      inputPreview: "Map renderer surface",
+      inputFull: { description: "Map renderer surface", subagentType: { unspecified: {} } }
+    });
+    expect(describeToolAction(t)).toBe("Agent Map renderer surface");
+  });
+
+  it("renders Codex `collab_tool_call` as a clean 'Agent' when it carries no description", () => {
+    expect(describeToolAction(tool({ name: "collab_tool_call" }))).toBe("Agent");
+  });
+
   it("previews from the `description` field, not the long prompt body", () => {
     expect(
       extractToolInputPreview("Task", {

@@ -133,10 +133,10 @@ export function ToolCallDetail({
         </button>
       ) : null}
       {showRawInput ? (
-        <details className="tool-call-raw-details">
-          <summary>Raw input</summary>
+        <div className="tool-call-section">
+          <p className="tool-call-section-label">Raw input</p>
           <pre className="tool-call-code">{JSON.stringify(visibleInput, null, 2)}</pre>
-        </details>
+        </div>
       ) : null}
       {tool.output && !tool.error ? (
         <div className="tool-call-section">

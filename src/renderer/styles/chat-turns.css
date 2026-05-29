@@ -556,7 +556,7 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: var(--panel-sunken);
+  background: var(--code-surface);
   border: 1px solid var(--line);
   font-family: var(--font-mono);
   font-size: 11.5px;
@@ -569,7 +569,7 @@
 }
 
 .tool-call-code--error {
-  background: var(--panel-sunken);
+  background: var(--code-surface);
   border-color: var(--line);
   color: var(--text);
 }
@@ -577,7 +577,7 @@
 .tool-call-code--terminal {
   position: relative;
   padding-top: 22px;
-  background: var(--panel-sunken);
+  background: var(--code-surface);
   border-color: var(--line-strong);
 }
 
@@ -853,4 +853,13 @@
   color: var(--sage-deep);
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+/* A sub-agent's description ("Map renderer surface") is prose, not a path or
+   command — render it in the body font, not the monospace target style, so it
+   reads naturally beside the sage "Agent" verb. */
+.tool-call-row[data-tool-type="agent"] .tool-call-row-target {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--muted-strong);
 }

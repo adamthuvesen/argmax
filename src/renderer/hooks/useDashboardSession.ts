@@ -221,17 +221,6 @@ export function useDashboardSession(
       return;
     }
     return window.argmax.dashboard.onDelta((delta) => {
-      // eslint-disable-next-line no-console
-      console.info(
-        "[dashboard:delta]",
-        {
-          sessions: delta.sessions?.length ?? 0,
-          events: delta.events?.length ?? 0,
-          rawOutputs: delta.rawOutputs?.length ?? 0,
-          workspaces: delta.workspaces?.length ?? 0,
-          eventTypes: delta.events?.map((event) => event.type)
-        }
-      );
       dashboardDeltaRevision.current += 1;
       setSnapshot((current) => mergeDashboardDelta(current, delta));
       setLoadState("ready");
@@ -338,6 +327,61 @@ export function useDashboardSession(
 
     setSelectedProjectIdState(snapshot.projects[0]?.id ?? null);
   }, [snapshot.projects, selectedProjectId, selectedWorkspace]);
+
+  // Live-streaming safety net (macOS/Tauri). The `dashboard:delta` push is the
+  // primary live-update path and is now emitted on the main thread so the
+  // event loop delivers it promptly (see agents/docs/runtime.md "Event
+  // delivery"). But the macOS event-loop wake-up for background work is
+  // historically flaky (tao#625 / winit#219), so as a belt-and-suspenders we
+  // poll the selected session on a short interval *while it is actively
+  // running*. Pulls go through the IPC invoke path, which stays reliable
+  // mid-turn (a push can sit undelivered on an idle loop until something wakes
+  // it). This is intentionally scoped to running sessions: idle sessions never
+  // poll, so the steady state remains delta-driven (no dashboard-wide poll).
+  //
+  // We pull TWO things each tick:
+  //  - the event tail (`eventsSince`) so streamed text keeps flowing, deduped
+  //    by `mergeByCreatedAt` against pushed rows; and
+  //  - session/workspace STATE (`workspace:status`), because the turn-end
+  //    `state: running → complete` transition is the *last* emit of the turn —
+  //    with no further activity to pump the loop, that push is the one most
+  //    likely to lag, leaving the chat fully streamed but the turn header stuck
+  //    on "Working" until the loop happens to wake. Reconciling state via the
+  //    reliable pull makes completion deterministic; once state flips off
+  //    "running" this effect tears down and the poll stops.
+  useEffect(() => {
+    if (!window.argmax || selectedSession?.state !== "running" || !selectedSessionId) {
+      return;
+    }
+    const runningSessionId = selectedSessionId;
+    const workspaceIds = selectedWorkspaceId ? [selectedWorkspaceId] : null;
+    let cancelled = false;
+    const tick = async (): Promise<void> => {
+      await loadSessionEvents(runningSessionId);
+      if (cancelled || !window.argmax) {
+        return;
+      }
+      const status = await window.argmax.workspaces.status({ workspaceIds });
+      if (cancelled) {
+        return;
+      }
+      setSnapshot((current) =>
+        mergeDashboardDelta(current, {
+          workspaces: status.workspaces,
+          sessions: status.sessions,
+          checks: status.checks,
+          checkpoints: status.checkpoints
+        })
+      );
+    };
+    const interval = window.setInterval(() => {
+      void tick();
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedSession?.state, selectedSessionId, selectedWorkspaceId, loadSessionEvents]);
 
   // Per-session backfill is owned by SessionPane's mount-effect (one call
   // per visible pane). The hook used to also fire loadSessionEvents on

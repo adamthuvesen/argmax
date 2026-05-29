@@ -290,6 +290,47 @@ describe("useDashboardSession — refresh / delta race", () => {
     );
   });
 
+  it("recovers a running→complete transition via the running-only status poll", async () => {
+    // macOS push lag: the turn-end `state: running → complete` delta is the
+    // last emit and can sit undelivered on an idle event loop, leaving the
+    // chat fully streamed but the turn header stuck on "Working". The
+    // running-only poll must reconcile session STATE (not just the event tail)
+    // via the reliable IPC pull so completion is deterministic.
+    vi.useFakeTimers();
+    try {
+      const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+      const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      // Select the running session so the poll engages.
+      act(() => {
+        result.current.setSelectedWorkspaceId("ws-existing");
+        result.current.setSelectedSessionId("session-existing");
+      });
+      expect(result.current.selectedSession?.state).toBe("running");
+
+      // The DB already shows the session complete, but no completion delta was
+      // delivered. The status pull is the only path that sees it.
+      statusMock.mockResolvedValue({
+        workspaces: [makeWorkspace({ state: "complete" })],
+        sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:30.000Z" })],
+        checks: [],
+        checkpoints: []
+      });
+
+      // Advance one poll interval and flush the tick's awaited pulls.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(260);
+      });
+
+      expect(statusMock).toHaveBeenCalledWith({ workspaceIds: ["ws-existing"] });
+      expect(result.current.selectedSession?.state).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rolls back only the failed approval when approval resolves overlap", async () => {
     const approvalA: ApprovalRequest = {
       id: "approval-a",

@@ -105,8 +105,25 @@ pub fn run() {
                             let emit_handle = app.handle().clone();
                             tauri::async_runtime::spawn(async move {
                                 while let Some(delta) = delta_rx.recv().await {
-                                    if let Err(error) = emit_handle.emit("dashboard:delta", delta) {
-                                        tracing::warn!(?error, "failed to emit dashboard delta");
+                                    // Emit on the main thread. On macOS, an event emitted
+                                    // from a background thread does not reliably wake the
+                                    // NSApp event loop, so `dashboard:delta` pushes can sit
+                                    // undelivered until some unrelated UI event pumps the
+                                    // loop — mid-turn streaming then stalls and the chat
+                                    // only fills in when the turn ends (process exit pumps
+                                    // the loop). Hopping onto the main thread via
+                                    // `run_on_main_thread` dispatches the webview eval as a
+                                    // main-thread task the loop processes promptly, so the
+                                    // chat streams live. Electron's async `webContents.send`
+                                    // never had this problem. See tao#625 / winit#219 and
+                                    // agents/docs/runtime.md "Event delivery".
+                                    let handle = emit_handle.clone();
+                                    if let Err(error) = emit_handle.run_on_main_thread(move || {
+                                        if let Err(error) = handle.emit("dashboard:delta", delta) {
+                                            tracing::warn!(?error, "failed to emit dashboard delta");
+                                        }
+                                    }) {
+                                        tracing::warn!(?error, "failed to schedule dashboard delta emit");
                                     }
                                 }
                             });

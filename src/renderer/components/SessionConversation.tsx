@@ -98,6 +98,11 @@ import {
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
+// Module-scoped so its identity is stable: passing an inline `(tool) => tool.id`
+// to useFreshSet would rebuild the predicate (and re-run its effect) on every
+// render, which in turn breaks SessionConversationTurn's memoization.
+const toolCallId = (tool: ToolCall): string => tool.id;
+
 function isConversationEventType(type: string): boolean {
   return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
 }
@@ -313,11 +318,18 @@ export function SessionConversation({
     [conversationEvents, toolCalls]
   );
 
-  const isFreshTool = useFreshSet(toolCalls, (tool) => tool.id, session?.id ?? "");
+  const isFreshTool = useFreshSet(toolCalls, toolCallId, session?.id ?? "");
 
   const renderItems = useMemo(
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
     [conversationItems, session]
+  );
+  // Computed once per render-item change rather than inline in the render loop.
+  // An inline call rebuilt this Map on every render (every keystroke in the
+  // composer included), and a fresh Map prop would defeat the memoized turn.
+  const turnShowsModelHeader = useMemo(
+    () => computeTurnModelHeaderMap(renderItems, selectedModel.label),
+    [renderItems, selectedModel.label]
   );
 
   // Composer is enabled whenever the session is alive — `running` no longer
@@ -701,43 +713,40 @@ export function SessionConversation({
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         {renderItems.length > 0 ? (
-          (() => {
-            const turnShowsModelHeader = computeTurnModelHeaderMap(renderItems, selectedModel.label);
-            return renderItems.map((item, index) => {
-              if (item.kind === "user-message") {
-                return (
-                  <SessionConversationUserMessage
-                    key={item.event.id}
-                    event={item.event}
-                    attachments={parseUserMessageAttachments(item)}
-                  />
-                );
-              }
+          renderItems.map((item, index) => {
+            if (item.kind === "user-message") {
               return (
-                <SessionConversationTurn
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  renderItems={renderItems}
-                  turnShowsModelHeader={turnShowsModelHeader}
-                  session={session}
-                  selectedModel={selectedModel}
-                  workspace={workspace}
-                  onOpenFile={onOpenFile}
-                  onTerminateSession={onTerminateSession}
-                  onSendSessionInput={onSendSessionInput}
-                  inputRef={inputRef}
-                  shouldRefocusInput={shouldRefocusInput}
-                  setStatus={setStatus}
-                  setAgentMode={setAgentMode}
-                  defaultToolCallsExpanded={defaultToolCallsExpanded}
-                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                  defaultThinkingExpanded={defaultThinkingExpanded}
-                  isFreshTool={isFreshTool}
+                <SessionConversationUserMessage
+                  key={item.event.id}
+                  event={item.event}
+                  attachments={parseUserMessageAttachments(item)}
                 />
               );
-            });
-          })()
+            }
+            return (
+              <SessionConversationTurn
+                key={item.id}
+                item={item}
+                priorItem={index > 0 ? renderItems[index - 1] ?? null : null}
+                isLatestTurn={index === renderItems.length - 1}
+                showModelHeader={turnShowsModelHeader.get(index) ?? false}
+                session={session}
+                selectedModel={selectedModel}
+                workspace={workspace}
+                onOpenFile={onOpenFile}
+                onTerminateSession={onTerminateSession}
+                onSendSessionInput={onSendSessionInput}
+                inputRef={inputRef}
+                shouldRefocusInput={shouldRefocusInput}
+                setStatus={setStatus}
+                setAgentMode={setAgentMode}
+                defaultToolCallsExpanded={defaultToolCallsExpanded}
+                defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                defaultThinkingExpanded={defaultThinkingExpanded}
+                isFreshTool={isFreshTool}
+              />
+            );
+          })
         ) : terminalTranscript ? (
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>

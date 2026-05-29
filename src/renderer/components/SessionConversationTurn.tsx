@@ -1,4 +1,4 @@
-import { useState, type JSX, type MutableRefObject } from "react";
+import { memo, useState, type JSX, type MutableRefObject } from "react";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
@@ -25,11 +25,11 @@ import type { FileChipOpenOptions } from "./FileChip.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
 
-export function SessionConversationTurn({
+function SessionConversationTurnInner({
   item,
-  index,
-  renderItems,
-  turnShowsModelHeader,
+  priorItem,
+  isLatestTurn,
+  showModelHeader,
   session,
   selectedModel,
   workspace,
@@ -46,9 +46,9 @@ export function SessionConversationTurn({
   isFreshTool
 }: {
   item: TurnRenderItem;
-  index: number;
-  renderItems: RenderItem[];
-  turnShowsModelHeader: Map<number, boolean>;
+  priorItem: RenderItem | null;
+  isLatestTurn: boolean;
+  showModelHeader: boolean;
   session: SessionSummary | null;
   selectedModel: ProviderModelSelection;
   workspace: WorkspaceSummary | null;
@@ -64,7 +64,6 @@ export function SessionConversationTurn({
   defaultThinkingExpanded?: boolean;
   isFreshTool: (tool: ToolCall) => boolean;
 }): JSX.Element {
-  const priorItem = index > 0 ? renderItems[index - 1] : null;
   const turnView = buildTurnRenderState({
     assistantEvents: item.assistantEvents,
     toolItems: item.toolItems,
@@ -85,7 +84,6 @@ export function SessionConversationTurn({
   // Once any answer text lands — or the turn stops being the active one, or it
   // pauses for user input — it falls back to the saved expanded-by-default
   // setting for quiet, persistent "Thought" history.
-  const isLatestTurn = index === renderItems.length - 1;
   const sessionIsLive = session?.state === "running";
   const turnHasAnswerText = visibleAssistantGroups.some(
     (group) => !group.thinking && group.text.trim().length > 0
@@ -284,7 +282,6 @@ export function SessionConversationTurn({
     .map((c) => c.createdAt)
     .filter((t): t is string => typeof t === "string" && t.length > 0)
     .sort()[0];
-  const showModelHeader = turnShowsModelHeader.get(index) ?? false;
   return (
     <TurnBlock
       key={item.id}
@@ -300,6 +297,12 @@ export function SessionConversationTurn({
     />
   );
 }
+
+// Memoized so a render of the parent SessionConversation (e.g. a composer
+// keystroke, or a delta for a different turn) only re-renders turns whose props
+// actually changed. Default shallow comparison is sufficient because every prop
+// is referentially stable across a parent render that didn't touch this turn.
+export const SessionConversationTurn = memo(SessionConversationTurnInner);
 
 /** User-message row from a render item (not a turn). */
 export function SessionConversationUserMessage({

@@ -30,6 +30,7 @@ pub mod updater;
 pub mod util;
 pub mod workspaces;
 
+#[cfg(any(debug_assertions, test))]
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
 
@@ -99,6 +100,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+#[cfg(any(debug_assertions, test))]
 fn specta_typescript() -> Typescript {
     Typescript::default().bigint(BigIntExportBehavior::Number)
 }

@@ -85,17 +85,6 @@ const TERMINAL_PATH: &str = "/System/Applications/Utilities/Terminal.app";
 /// process; failure clears the cell so a retry is possible.
 static CACHE: OnceCell<Arc<Vec<DetectedIde>>> = OnceCell::const_new();
 
-/// Reset the detection cache. Test-only — production code should never
-/// need this because detection is keyed to the app boot.
-pub async fn reset_cache_for_tests() {
-    // OnceCell exposes no reset, so we work around by reaching for the
-    // internal state via a write under the same module. Easiest path:
-    // expose a function-scoped OnceCell via a thread_local instead. But
-    // because tests are serial here, we use a one-shot bool that
-    // `detect_installed_ides` checks below. For now this is a no-op;
-    // every test should pass `force=true` to bypass the cache.
-}
-
 pub async fn detect_installed_ides() -> Vec<DetectedIde> {
     let arc = CACHE
         .get_or_init(|| async { Arc::new(run_detection().await) })

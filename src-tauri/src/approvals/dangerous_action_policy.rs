@@ -107,10 +107,6 @@ static HIGH_RISK_PATTERNS: &[PatternDecision] = &[
         reason: "Hard git reset",
     },
     PatternDecision {
-        pattern: &GIT_RESET,
-        reason: "Git reset",
-    },
-    PatternDecision {
         pattern: &GIT_CLEAN_FORCE,
         reason: "Forced git clean",
     },
@@ -144,6 +140,12 @@ static MEDIUM_RISK_PATTERNS: &[PatternDecision] = &[
     PatternDecision {
         pattern: &GIT_MERGE_REBASE_CHECKOUT,
         reason: "History or checkout mutation",
+    },
+    // Only `git reset --hard` is destructive (HIGH, matched first); soft/mixed
+    // resets just move HEAD / unstage and are medium-risk index mutations.
+    PatternDecision {
+        pattern: &GIT_RESET,
+        reason: "Git reset",
     },
     PatternDecision {
         pattern: &GIT_PUSH,
@@ -286,6 +288,13 @@ mod tests {
     fn requires_high_risk_approval_for_canonical_destructive_forms() {
         assert_risk("rm -rf dist", CommandRiskLevel::High);
         assert_risk("git reset --hard HEAD~1", CommandRiskLevel::High);
+    }
+
+    #[test]
+    fn non_destructive_git_reset_is_medium_not_high() {
+        // Soft/mixed resets and `git reset HEAD` don't lose working-tree changes.
+        assert_risk("git reset --soft HEAD~1", CommandRiskLevel::Medium);
+        assert_risk("git reset HEAD file.txt", CommandRiskLevel::Medium);
     }
 
     #[test]

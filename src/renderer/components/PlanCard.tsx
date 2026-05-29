@@ -14,7 +14,7 @@ export type PlanCardProps = {
   createdAt: string;
   rawMarkdown: string;
   modelLabel?: string | null;
-  onAccept: () => void;
+  onAccept: () => void | Promise<boolean>;
   onReject: () => void;
 };
 
@@ -117,7 +117,14 @@ function PlanCardInner({
       setCollapsed(true);
       // First option is conventionally "Yes / implement"; everything else is reject.
       if (index === 0) {
-        onAccept();
+        // Optimistic: stay submitted on the happy path; if the launch fails,
+        // roll back so the user can retry (the error shows in the composer).
+        void Promise.resolve(onAccept()).then((ok) => {
+          if (ok === false) {
+            setSubmitted(false);
+            setCollapsed(false);
+          }
+        });
       } else {
         onReject();
       }

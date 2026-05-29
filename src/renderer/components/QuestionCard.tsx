@@ -7,7 +7,7 @@ export type QuestionCardProps = {
   questions: Question[];
   createdAt: string;
   modelLabel?: string | null;
-  onAnswer: (answerMarkdown: string) => void;
+  onAnswer: (answerMarkdown: string) => void | Promise<boolean>;
 };
 
 function formatAnswer(questions: Question[], selected: number[][]): string {
@@ -84,7 +84,13 @@ function QuestionCardInner({ questions, createdAt, modelLabel, onAnswer }: Quest
     if (submitted || !canSubmit) return;
     setSubmitted(true);
     setCollapsed(true);
-    onAnswer(formatAnswer(questions, selected));
+    // Optimistic: roll back if the launch fails so the user can retry.
+    void Promise.resolve(onAnswer(formatAnswer(questions, selected))).then((ok) => {
+      if (ok === false) {
+        setSubmitted(false);
+        setCollapsed(false);
+      }
+    });
   }, [canSubmit, onAnswer, questions, selected, submitted]);
 
   const handleKeyDown = useCallback(

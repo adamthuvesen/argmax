@@ -87,13 +87,13 @@ function SessionConversationTurnInner({
     (group) => !group.thinking && group.text.trim().length > 0
   );
   const thinkingLive = isLatestTurn && sessionIsLive && !isPausedOnUserInput && !turnHasAnswerText;
-  const handlePlanAccept = (): void => {
-    if (!session) return;
+  const handlePlanAccept = (): Promise<boolean> => {
+    if (!session) return Promise.resolve(false);
     setAgentMode("auto");
     writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
     shouldRefocusInput.current = true;
     const sessionId = session.id;
-    sendAfterTerminate(
+    return sendAfterTerminate(
       sessionId,
       session.state === "running",
       onTerminateSession,
@@ -104,12 +104,12 @@ function SessionConversationTurnInner({
   const handlePlanReject = (): void => {
     inputRef.current?.focus();
   };
-  const handleQuestionAnswer = (answerMarkdown: string): void => {
-    if (!session) return;
+  const handleQuestionAnswer = (answerMarkdown: string): Promise<boolean> => {
+    if (!session) return Promise.resolve(false);
     shouldRefocusInput.current = true;
     const sessionId = session.id;
     const nextAgentMode = turnAgentMode === "plan" ? "plan" : "auto";
-    sendAfterTerminate(
+    return sendAfterTerminate(
       sessionId,
       session.state === "running",
       onTerminateSession,

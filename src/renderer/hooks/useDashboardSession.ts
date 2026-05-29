@@ -360,11 +360,29 @@ export function useDashboardSession(
     let cancelled = false;
     let inFlight = false;
     let stateReconciled = false;
+    // A multi-turn session keeps the `session.completed`/`error` events from
+    // EARLIER turns in the snapshot. Without scoping, this turn's reconcile
+    // would latch on a prior turn's terminal event the moment the turn starts,
+    // fire once while state is still `running`, set `stateReconciled = true`,
+    // and then never re-fire for the real end of THIS turn — leaving the header
+    // stuck on "Working" (seen with Cursor, whose state transition relies most
+    // on this reconcile). Snapshot the terminal-event ids that already exist so
+    // only a NEW one — produced by the current turn — counts.
+    const priorTerminalEventIds = new Set(
+      snapshotRef.current.events
+        .filter(
+          (event) =>
+            event.sessionId === runningSessionId &&
+            (event.type === "session.completed" || event.type === "error")
+        )
+        .map((event) => event.id)
+    );
     const turnHasTerminalEvent = (): boolean =>
       snapshotRef.current.events.some(
         (event) =>
           event.sessionId === runningSessionId &&
-          (event.type === "session.completed" || event.type === "error")
+          (event.type === "session.completed" || event.type === "error") &&
+          !priorTerminalEventIds.has(event.id)
       );
     const tick = async (): Promise<void> => {
       if (inFlight) {

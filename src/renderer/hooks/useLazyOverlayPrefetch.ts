@@ -34,30 +34,49 @@ export const SettingsPanel = lazy(async () => ({
 export function useLazyOverlayPrefetch(): void {
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const prefetch = (): void => {
-      // Each .catch(() => {}) avoids an unhandled rejection on a transient
-      // chunk-fetch failure. The on-demand Suspense import retries
-      // independently so functionality isn't lost; this just keeps the
-      // unhandledrejection handler quiet (R-032).
-      const swallow = (): void => undefined;
-      importCommandPalette().catch(swallow);
-      importSearchOverlay().catch(swallow);
-      importSettingsPanel().catch(swallow);
-      importReviewPanel().catch(swallow);
-      importWorkspaceContentSearch().catch(swallow);
-    };
+    // Each .catch(() => {}) avoids an unhandled rejection on a transient
+    // chunk-fetch failure. The on-demand Suspense import retries
+    // independently so functionality isn't lost; this just keeps the
+    // unhandledrejection handler quiet (R-032).
+    const swallow = (): void => undefined;
     const ric = (window as Window & {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
     }).requestIdleCallback;
+    const cic = (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+    const timers: number[] = [];
+    const ricIds: number[] = [];
+    // Two passes, in priority order. The ⌘K / ⌘F overlays are small and on
+    // the hot path, so warm them first. The heavy chunks — ReviewPanel pulls
+    // CodeMirror + every @codemirror/lang-* (~680KB) and SettingsPanel is
+    // bulky too — warm on a *later* idle tick. In dev (unbundled modules) that
+    // keeps CodeMirror's large transform from queueing ahead of the search
+    // chunks and slowing the first ⌘K open; in prod it just orders the fetches.
+    const warmHeavy = (): void => {
+      importSettingsPanel().catch(swallow);
+      importReviewPanel().catch(swallow);
+    };
+    const scheduleHeavy = (): void => {
+      if (typeof ric === "function") {
+        ricIds.push(ric(warmHeavy, { timeout: 3000 }));
+      } else {
+        timers.push(window.setTimeout(warmHeavy, 600));
+      }
+    };
+    const warmSearch = (): void => {
+      importCommandPalette().catch(swallow);
+      importSearchOverlay().catch(swallow);
+      importWorkspaceContentSearch().catch(swallow);
+      scheduleHeavy();
+    };
     if (typeof ric === "function") {
-      const id = ric(prefetch, { timeout: 2000 });
-      return () => {
-        const cic = (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
-        if (typeof cic === "function") cic(id);
-      };
+      ricIds.push(ric(warmSearch, { timeout: 800 }));
+    } else {
+      timers.push(window.setTimeout(warmSearch, 400));
     }
-    const id = window.setTimeout(prefetch, 800);
-    return () => window.clearTimeout(id);
+    return () => {
+      if (typeof cic === "function") ricIds.forEach((id) => cic(id));
+      timers.forEach((id) => window.clearTimeout(id));
+    };
   }, []);
 }

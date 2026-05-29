@@ -86,6 +86,22 @@ pub fn run() {
                             if state.db.set(Arc::clone(&database)).is_err() {
                                 tracing::warn!("database state was already initialized");
                             }
+                            // Warm the FTS5 message index on the blocking pool so the
+                            // user's first ⌘K message search skips the cold-start cost:
+                            // FTS5 module init, compiling the `session:search` statement
+                            // (cached and reused for every search after), and paging in
+                            // the index structure. The throwaway term matches nothing, so
+                            // it reads few pages and won't contend with startup reads; a
+                            // failure (empty/fresh DB) is traced, never fatal.
+                            let warm_db = Arc::clone(&database);
+                            tauri::async_runtime::spawn_blocking(move || {
+                                let connection = warm_db.connection();
+                                if let Err(error) =
+                                    persistence::learnings::search_events(&connection, "warmup", 1)
+                                {
+                                    tracing::trace!(?error, "fts warm-up query failed");
+                                }
+                            });
                             let notifications = Arc::new(notifications::NotificationService::new(
                                 notifications::main_window_focus_probe(app.handle().clone()),
                                 notifications::TauriNotificationSink::new(app.handle().clone()),

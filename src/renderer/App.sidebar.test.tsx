@@ -378,7 +378,7 @@ describe("App sidebar", () => {
     listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([
       { path: "src-tauri/src/index.ts" },
-      { path: "src-tauri/src/preload.ts" },
+      { path: "src/renderer/lib/tauriBridge.ts" },
       { path: "src/renderer/App.tsx" },
       { path: "README.md" }
     ]);
@@ -386,8 +386,8 @@ describe("App sidebar", () => {
       Promise.resolve({
         kind: "text",
         content:
-          filePath === "src-tauri/src/preload.ts"
-            ? "export const preload = true;\n"
+          filePath === "src/renderer/lib/tauriBridge.ts"
+            ? "export const tauriBridge = true;\n"
             : "export const hello = 'world';\n",
         size: 30,
         mtimeMs: 0
@@ -422,10 +422,17 @@ describe("App sidebar", () => {
     const preview = await screen.findByLabelText("Preview of src-tauri/src/index.ts");
     expect(preview).toHaveTextContent("export const hello = 'world';");
 
-    fireEvent.click(screen.getByRole("treeitem", { name: /^preload\.ts$/ }));
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src-tauri/src/preload.ts"));
-    expect(await screen.findByLabelText("Preview of src-tauri/src/preload.ts")).toHaveTextContent(
-      "export const preload = true;"
+    const appSrc = (await screen.findAllByRole("treeitem", { name: /^src$/ })).find(
+      (node) => node.getAttribute("title") === "src"
+    );
+    expect(appSrc).toBeDefined();
+    fireEvent.click(appSrc!);
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^renderer$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^lib$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^tauriBridge\.ts$/ }));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/renderer/lib/tauriBridge.ts"));
+    expect(await screen.findByLabelText("Preview of src/renderer/lib/tauriBridge.ts")).toHaveTextContent(
+      "export const tauriBridge = true;"
     );
 
     const tablist = screen.getByRole("tablist", { name: "Open files" });
@@ -433,7 +440,7 @@ describe("App sidebar", () => {
       "aria-selected",
       "false"
     );
-    expect(within(tablist).getByRole("tab", { name: "preload.ts" })).toHaveAttribute(
+    expect(within(tablist).getByRole("tab", { name: "tauriBridge.ts" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
@@ -496,13 +503,9 @@ describe("App sidebar", () => {
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "index" } });
     await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1"));
-    // Wait for the Files group to populate and pick the matching row.
-    // uFuzzy wraps matched substrings in `<mark>`, so the basename's text
-    // is split across nodes — use a text-content matcher.
-    await within(palette).findByText((_content, node) =>
-      node?.classList.contains("command-palette-result-label") === true &&
-      node?.textContent === "index.ts"
-    );
+    // uFuzzy may split the basename across highlighted spans; the option's
+    // accessible name remains stable.
+    await within(palette).findByRole("option", { name: /index\.ts/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
@@ -596,10 +599,7 @@ describe("App sidebar", () => {
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
     await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith("project-1"));
-    await within(palette).findByText((_content, node) =>
-      node?.classList.contains("command-palette-result-label") === true &&
-      node?.textContent === "App.tsx"
-    );
+    await within(palette).findByRole("option", { name: /App\.tsx/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
@@ -709,10 +709,7 @@ describe("App sidebar", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
-    await within(palette).findByText((_content, node) =>
-      node?.classList.contains("command-palette-result-label") === true &&
-      node?.textContent === "App.tsx"
-    );
+    await within(palette).findByRole("option", { name: /App\.tsx/ });
   });
 
   it("opens a slash autocomplete with provider-filtered skills and inserts the selected name", async () => {

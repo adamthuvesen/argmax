@@ -1,8 +1,7 @@
-// WorkspaceFilesService — file-tree + file-content service backing the
+// File-tree + file-content service backing the
 // right-panel "Files" view.
-//
-// Mirrors `src/main/files/workspaceFilesService.ts`. Listing is git-aware
-// (tracked + untracked, respecting `.gitignore`) so the tree mirrors what
+
+// Listing is git-aware (tracked + untracked, respecting `.gitignore`) so the tree mirrors what
 // the user actually cares about — no `node_modules` noise. Reads are
 // size-capped and binary-aware so a stray click on a multi-MB asset
 // doesn't ship megabytes of garbage to the renderer.

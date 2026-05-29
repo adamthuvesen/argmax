@@ -1,9 +1,5 @@
-// Section 8 of the rust port — GhService + GhPoller subsystem.
-//
-// `service.rs` is Stage 1 (live `gh pr view` + persist).
-// `poller.rs` is Stage 2 (interval refresh + state-transition delta).
-// See `src/main/gh/ghService.ts` and `src/main/gh/ghPoller.ts` for the
-// TS originals that drive the design.
+// GitHub PR status subsystem: `service.rs` performs live `gh pr view` reads
+// and persistence; `poller.rs` refreshes open PR rows and publishes deltas.
 
 pub mod poller;
 pub mod service;

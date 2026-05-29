@@ -16,6 +16,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
     "check:bindings": "node scripts/check-bindings-fresh.mjs",
+    "generate:bindings": "cargo run --manifest-path src-tauri/Cargo.toml --bin export-bindings -- src/shared/bindings.d.ts",
     "check:tauri-bridge": "node scripts/check-tauri-bridge.mjs",
     "typecheck": "tsc --noEmit"
   },

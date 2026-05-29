@@ -38,7 +38,7 @@ fn every_command_is_registered() {
     assert_eq!(
         fixture.len(),
         69,
-        "fixture should list every legacy channel"
+        "fixture should list every stable channel"
     );
 
     assert_eq!(fixture, argmax_lib::ipc::REGISTERED_CHANNELS);

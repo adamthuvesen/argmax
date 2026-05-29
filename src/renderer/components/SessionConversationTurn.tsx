@@ -1,7 +1,6 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
@@ -16,11 +15,8 @@ import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
-import {
-  sendAfterTerminate,
-  StreamingMarkdown,
-  type SessionConversationSendInput
-} from "./sessionConversationHelpers.js";
+import { StreamingMarkdown } from "./StreamingMarkdown.js";
+import { sendAfterTerminate, type SessionConversationSendInput } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
@@ -341,19 +337,4 @@ export function SessionConversationUserMessage({
       {displayMessage ? <p>{displayMessage}</p> : null}
     </ChatBubble>
   );
-}
-
-export function parseUserMessageAttachments(
-  item: Extract<RenderItem, { kind: "user-message" }>
-): { filePath: string; mimeType: string }[] {
-  const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
-  return rawAttachments
-    .map((entry) => {
-      const obj = objectValue(entry);
-      const filePath = stringValue(obj?.filePath);
-      const mimeType = stringValue(obj?.mimeType);
-      if (!filePath || !mimeType) return null;
-      return { filePath, mimeType };
-    })
-    .filter((value): value is { filePath: string; mimeType: string } => Boolean(value));
 }

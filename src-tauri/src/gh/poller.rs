@@ -1,11 +1,7 @@
-// GhPoller — Stage 2 of the CI feedback loop. Periodically calls
+// GhPoller periodically calls
 // `GhService::refresh` against every session with an open PR, watches for
 // `check_state` / `head_sha` transitions, and publishes a `DashboardDelta`
 // so the renderer can re-render PR status without polling itself.
-//
-// Mirrors `src/main/gh/ghPoller.ts`. The notification + launchFollowUp
-// hooks aren't ported yet (no NotificationService on the Rust side); they
-// land in a follow-up section.
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},

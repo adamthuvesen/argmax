@@ -6,7 +6,7 @@ SQLite is owned by Rust under [src-tauri/src/persistence](../../src-tauri/src/pe
 
 [migrations.rs](../../src-tauri/src/persistence/migrations.rs) contains the consolidated schema and checksum runner. Migrations are append-only. Never edit an applied migration: the boot path recomputes stored SHA-256 checksums and refuses drift.
 
-FTS5 sidecars index timeline events and learnings. The initial Rust migration represents the current head schema from the pre-port schema. The squashed Electron `v1`–`v20` ledger it replaces is preserved for schema forensics in [legacy-migrations.md](../../src-tauri/docs/legacy-migrations.md).
+FTS5 sidecars index timeline events and learnings. The initial Rust migration is the baseline for the Rust/Tauri app id. This public release does not import Electron-era app data.
 
 ## Repositories
 
@@ -15,7 +15,7 @@ Table-family modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`
 Dashboard reads are intentionally split:
 
 - `dashboard:list` returns projects, workspaces, sessions, checks, checkpoints.
-- `dashboard:load` is the compatibility full snapshot.
+- `dashboard:load` returns the full snapshot used at boot and by browser-preview fixtures.
 - `session:events-since` pages selected-session events/raw output by SQLite `rowid`.
 - `approvals:pending` is a separate focused read.
 

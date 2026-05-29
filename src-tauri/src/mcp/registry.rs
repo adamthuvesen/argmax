@@ -1,7 +1,6 @@
 // MCP server registry — discovers user-scope MCP servers configured for each
-// CLI client Argmax launches (Claude Code, Codex, Cursor). Mirrors the TS
-// implementation in `src/main/mcp/mcpRegistry.ts`. Project-scoped overrides
-// are intentionally out of scope — only the top-level `mcpServers` map under
+// CLI client Argmax launches (Claude Code, Codex, Cursor). Project-scoped
+// overrides are intentionally out of scope — only the top-level `mcpServers` map under
 // each user-level config file is read.
 //
 // Config files:

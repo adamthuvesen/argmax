@@ -157,8 +157,6 @@ export function setupAppTestMocks(): void {
   providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
   diagnosticsStub = vi.fn<ArgmaxApi["system"]["diagnostics"]>().mockResolvedValue({
     appVersion: "0.1.0",
-    electronVersion: "35.0.0",
-    nodeVersion: "20.0.0",
     sqliteVersion: "3.45.0",
     databasePath: "/tmp/argmax.sqlite",
     platform: "darwin",

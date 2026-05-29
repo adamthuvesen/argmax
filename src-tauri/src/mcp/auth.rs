@@ -1,5 +1,5 @@
-// MCP auth service — owns the interactive PTY behind Settings → MCP servers
-// → "Authenticate via Claude (/mcp)". Mirrors `src/main/mcp/mcpAuthService.ts`.
+// MCP auth service owns the interactive PTY behind Settings → MCP servers
+// → "Authenticate via Claude (/mcp)".
 //
 // Claude Code has no standalone `claude mcp auth <name>` subcommand — its
 // OAuth flow lives inside the interactive `/mcp` slash command. So we spawn
@@ -15,7 +15,10 @@
 
 use std::{
     io::{Read, Write},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -29,7 +32,7 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::environment::build_provider_environment;
 use crate::providers::ProviderId;
-use crate::util::process_control::signal_term_then_kill;
+use crate::util::process_control::{signal_target_term_then_kill, SignalTarget};
 
 /// Callback the auth service uses to stream PTY output. Mirrors the
 /// `OutputSink` shape in `checks/service.rs` so call sites can adapt
@@ -85,6 +88,7 @@ struct AuthSession {
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
     pid: Option<u32>,
+    reaped: Arc<AtomicBool>,
 }
 
 /// `McpAuthService` — owns the per-session PTYs spawned for the Claude
@@ -195,6 +199,7 @@ impl McpAuthService {
         })?;
 
         let session_id = Uuid::new_v4().to_string();
+        let reaped = Arc::new(AtomicBool::new(false));
 
         {
             let mut sessions = self.sessions.lock().expect("mcp auth sessions poisoned");
@@ -205,6 +210,7 @@ impl McpAuthService {
                     writer,
                     child,
                     pid,
+                    reaped: Arc::clone(&reaped),
                 },
             );
         }
@@ -221,7 +227,7 @@ impl McpAuthService {
 
         // Spawn a small watcher thread for the child's exit. Cleans up the
         // session entry and fires the exit sink exactly once.
-        spawn_exit_watcher(session_id.clone(), Arc::clone(self), on_exit);
+        spawn_exit_watcher(session_id.clone(), Arc::clone(self), on_exit, reaped);
 
         // First chunk from Claude may be a banner / color setup written
         // BEFORE the prompt is ready for input. Wait ~200 ms then auto-type
@@ -266,22 +272,27 @@ impl McpAuthService {
     /// Terminate a live session: SIGTERM, wait up to GRACEFUL_TIMEOUT_MS,
     /// then SIGKILL. Returns immediately if the session id is unknown.
     pub async fn terminate(&self, session_id: &str) {
-        let pid = {
+        let target = {
             let sessions = self.sessions.lock().expect("mcp auth sessions poisoned");
-            sessions.get(session_id).and_then(|entry| entry.pid)
+            sessions
+                .get(session_id)
+                .and_then(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
         };
-        let Some(pid) = pid else { return };
-        signal_term_then_kill(pid).await;
+        let Some((pid, reaped)) = target else { return };
+        signal_target_term_then_kill(SignalTarget::Process(pid), Some(&reaped)).await;
     }
 
     /// Terminate every live session (used at app shutdown).
     pub async fn dispose_all(&self) {
-        let pids: Vec<u32> = {
+        let targets: Vec<(u32, Arc<AtomicBool>)> = {
             let sessions = self.sessions.lock().expect("mcp auth sessions poisoned");
-            sessions.values().filter_map(|entry| entry.pid).collect()
+            sessions
+                .values()
+                .filter_map(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
+                .collect()
         };
-        for pid in pids {
-            signal_term_then_kill(pid).await;
+        for (pid, reaped) in targets {
+            signal_target_term_then_kill(SignalTarget::Process(pid), Some(&reaped)).await;
         }
     }
 
@@ -335,7 +346,12 @@ fn spawn_reader_thread(
     });
 }
 
-fn spawn_exit_watcher(session_id: String, service: Arc<McpAuthService>, on_exit: ExitSink) {
+fn spawn_exit_watcher(
+    session_id: String,
+    service: Arc<McpAuthService>,
+    on_exit: ExitSink,
+    reaped: Arc<AtomicBool>,
+) {
     thread::spawn(move || {
         // Take the child out of the session entry so we can `wait()` on it
         // without holding the sessions lock for the duration. The PTY
@@ -354,6 +370,7 @@ fn spawn_exit_watcher(session_id: String, service: Arc<McpAuthService>, on_exit:
                 .unwrap_or(-1),
             None => -1,
         };
+        reaped.store(true, Ordering::Release);
         // portable_pty's ExitStatus doesn't expose POSIX signal numbers
         // cross-platform; we emit `None` to match the TS shape when the
         // value is unavailable.
@@ -469,6 +486,35 @@ mod tests {
         // Session entry removed by the watcher.
         // Give the watcher a tick to clean up after firing the callback.
         sleep(Duration::from_millis(50)).await;
+        assert_eq!(svc.live_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn terminate_after_natural_exit_is_noop() {
+        let svc = McpAuthService::with_resolver(fake_binary_resolver("/bin/sh"));
+
+        let on_output: OutputSink = Arc::new(|_| {});
+        let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<McpAuthExitInfo>();
+        let exit_tx = StdMutex::new(Some(exit_tx));
+        let on_exit: ExitSink = Arc::new(move |info| {
+            if let Some(tx) = exit_tx.lock().expect("exit tx").take() {
+                let _ = tx.send(info);
+            }
+        });
+
+        let out = svc
+            .start(StartAuthInput { cols: 80, rows: 24 }, on_output, on_exit)
+            .await
+            .expect("start");
+        svc.write(&out.session_id, b"exit 0\n");
+
+        let _ = timeout(Duration::from_secs(5), exit_rx)
+            .await
+            .expect("did not exit in time")
+            .expect("exit channel");
+        sleep(Duration::from_millis(50)).await;
+
+        svc.terminate(&out.session_id).await;
         assert_eq!(svc.live_count(), 0);
     }
 

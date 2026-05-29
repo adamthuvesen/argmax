@@ -706,7 +706,7 @@ async fn send_input_routes_to_handle_when_accepting() {
         .expect("launch ok");
     let send = ProvidersSendInput {
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
-        input: Prompt::try_from("follow-up".to_owned()).expect("prompt valid"),
+        input: Prompt::try_from("- follow-up\nwith context".to_owned()).expect("prompt valid"),
         model_label: None,
         model_id: None,
         reasoning_effort: None,
@@ -724,7 +724,7 @@ async fn send_input_routes_to_handle_when_accepting() {
         .sent_inputs
         .clone();
     assert_eq!(sent.len(), 1);
-    assert!(sent[0].contains("follow-up"));
+    assert!(sent[0].contains("- follow-up\nwith context"));
 }
 
 #[tokio::test]
@@ -856,16 +856,13 @@ async fn idle_flush_publishes_buffered_line_before_terminate() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(StallLineLauncher),
-        {
+    let service =
+        ProviderSessionService::with_launcher(database.clone(), Arc::new(StallLineLauncher), {
             let deltas = Arc::clone(&deltas);
             move |delta| {
                 deltas.lock().expect("deltas poisoned").push(delta);
             }
-        },
-    );
+        });
 
     let session = service
         .launch(build_launch_input())

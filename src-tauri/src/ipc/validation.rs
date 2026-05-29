@@ -412,11 +412,7 @@ impl<'de> Deserialize<'de> for NonEmptyString {
 
 pub fn validate_prompt(value: String) -> Result<String, InvalidInputIssue> {
     non_empty("prompt", value).and_then(|value| {
-        if value.starts_with('-') {
-            Err(InvalidInputIssue::prompt_leading_dash())
-        } else if value.contains('\n') || value.contains('\r') {
-            Err(InvalidInputIssue::prompt_contains_newline())
-        } else if value.contains('\0') {
+        if value.contains('\0') {
             Err(issue(
                 "prompt",
                 "STRING_NULL_BYTE",
@@ -598,14 +594,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prompt_rejects_leading_dash_and_newline() {
+    fn prompt_accepts_multiline_and_leading_dash_text() {
+        assert_eq!(
+            validate_prompt("-danger\nhello\r\nworld".to_owned()).unwrap(),
+            "-danger\nhello\r\nworld"
+        );
         assert!(matches!(
-            validate_prompt("-danger".to_owned()).unwrap_err().code,
-            "PROMPT_LEADING_DASH"
-        ));
-        assert!(matches!(
-            validate_prompt("hello\nworld".to_owned()).unwrap_err().code,
-            "PROMPT_CONTAINS_NEWLINE"
+            validate_prompt("hello\0world".to_owned()).unwrap_err().code,
+            "STRING_NULL_BYTE"
         ));
     }
 

@@ -1,6 +1,5 @@
 // ApprovalService — owns the request/resolve flow for command approvals.
 //
-// Mirrors `src/main/approvals/approvalService.ts`:
 //   - request_command_approval persists an approval, flips the session to
 //     `waiting`/`approval-needed`, and writes the `approval.requested`
 //     timeline event — all in a single transaction so a concurrent reader

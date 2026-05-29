@@ -1,16 +1,12 @@
-# Legacy Electron Migrations
+# Pre-Rust Migration Ledger
 
 The Tauri port intentionally starts a new app id (`com.argmax.rs`) and a fresh
-user data directory, so it squashes the Electron database history into
-`src-tauri/src/persistence/migrations.rs` migration `v1: initial_schema`.
+user data directory. The Rust schema starts with a squashed baseline in
+`src-tauri/src/persistence/migrations.rs` migration `v1: initial_schema`; this
+release does not import data from the old app id.
 
 This file preserves the archaeology needed to reason about that squash. The
-legacy source of truth at the time of the Rust baseline is:
-
-- `src/main/persistence/migrations.ts`
-- `src/main/persistence/migrations.test.ts`
-
-The squashed Rust migration covers Electron migrations `v1` through `v20`,
+squashed Rust migration covers pre-Rust migrations `v1` through `v20`,
 including:
 
 - the original project/workspace/session/event/checkpoint/check schema
@@ -21,7 +17,7 @@ including:
 - `learnings_fts` and `events_fts` sidecars and their insert/update/delete
   triggers
 
-## Legacy Ledger
+## Pre-Rust Ledger
 
 | Version | Name |
 | --- | --- |
@@ -47,7 +43,4 @@ including:
 | v20 | `events_session_rowid_index` |
 
 Future Rust migrations append after the squashed `v1`. Do not edit the squashed
-SQL after it has shipped; write a new migration instead. If the Electron source
-tree is removed during cutover, keep `src/main/persistence/migrations.ts` in git
-history and use that file as the detailed per-version reference for import-tool
-work or schema-forensics debugging.
+SQL after it has shipped; write a new migration instead.

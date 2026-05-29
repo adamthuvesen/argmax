@@ -1,6 +1,7 @@
 // Argmax library crate. The Rust/Tauri runtime is being filled in section by
 // section under openspec/changes/port-to-rust-tauri.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::{Emitter, Manager};
@@ -31,7 +32,6 @@ pub mod util;
 pub mod workspaces;
 
 use serde_json::json;
-#[cfg(any(debug_assertions, test))]
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
 
@@ -53,7 +53,7 @@ pub fn run() {
     // rest of the crate is even type-checked, so they can't import
     // command functions), so the export lives here instead.
     #[cfg(debug_assertions)]
-    if let Err(e) = specta_builder.export(specta_typescript(), "../src/shared/bindings.d.ts") {
+    if let Err(e) = export_bindings("../src/shared/bindings.d.ts") {
         eprintln!("argmax: tauri-specta export failed: {e}");
     }
 
@@ -192,8 +192,7 @@ pub fn run() {
                                     // the loop). Hopping onto the main thread via
                                     // `run_on_main_thread` dispatches the webview eval as a
                                     // main-thread task the loop processes promptly, so the
-                                    // chat streams live. Electron's async `webContents.send`
-                                    // never had this problem. See tao#625 / winit#219 and
+                                    // chat streams live. See tao#625 / winit#219 and
                                     // agents/docs/runtime.md "Event delivery".
                                     let handle = emit_handle.clone();
                                     if let Err(error) = emit_handle.run_on_main_thread(move || {
@@ -455,7 +454,12 @@ fn provider_defaults(provider: &str) -> ProviderDefaults {
     }
 }
 
-#[cfg(any(debug_assertions, test))]
+pub fn export_bindings(path: impl AsRef<Path>) -> Result<(), String> {
+    ipc::specta_builder()
+        .export(specta_typescript(), path)
+        .map_err(|error| error.to_string())
+}
+
 fn specta_typescript() -> Typescript {
     Typescript::default().bigint(BigIntExportBehavior::Number)
 }
@@ -476,10 +480,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let out = dir.path().join("bindings.d.ts");
 
-        let builder = ipc::specta_builder();
-        builder
-            .export(specta_typescript(), &out)
-            .expect("specta export ok");
+        export_bindings(&out).expect("specta export ok");
 
         let contents = fs::read_to_string(&out).expect("read generated bindings");
         assert!(

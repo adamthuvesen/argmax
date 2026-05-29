@@ -1,6 +1,4 @@
-// IDE detection. Mirrors `src/main/ide/ideDetection.ts`.
-//
-// Runs once at app boot via `OnceCell` and caches results for the
+// IDE detection runs once at app boot via `OnceCell` and caches results for the
 // process lifetime. macOS-only for v1; the renderer hides the
 // affordance if zero IDEs surface. If the user installs a new IDE
 // while Argmax is open they must restart — re-running `mdfind` on

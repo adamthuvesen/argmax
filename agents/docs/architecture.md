@@ -36,7 +36,7 @@ Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:e
 
 ### Dependency Notes
 
-- **tauri >= 2.11** required for `#[tauri::command(rename = "...")]` to preserve legacy IPC channel names across the bridge.
+- **tauri >= 2.11** required for `#[tauri::command(rename = "...")]` to keep stable IPC channel names across the bridge.
 - **rusqlite bundled-full** ships FTS5 for full-text search on `events_fts` and `learnings_fts` sidecars.
 - **portable-pty 0.8** for cross-platform PTY process management (provider launches and terminal emulation).
 

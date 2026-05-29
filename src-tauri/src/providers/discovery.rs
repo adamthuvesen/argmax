@@ -112,9 +112,7 @@ async fn command_output(command: &str, args: &[&str]) -> Option<String> {
 
 fn provider_modes(provider_id: ProviderId) -> Vec<ProviderMode> {
     match provider_id {
-        ProviderId::Claude | ProviderId::Codex => {
-            vec![ProviderMode::InteractivePty, ProviderMode::StructuredJson]
-        }
+        ProviderId::Claude | ProviderId::Codex => vec![ProviderMode::StructuredJson],
         ProviderId::Cursor => vec![ProviderMode::StructuredJson],
     }
 }
@@ -138,10 +136,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn provider_modes_match_electron_registry() {
+    fn provider_modes_match_runtime_support() {
         assert_eq!(
             provider_modes(ProviderId::Claude),
-            vec![ProviderMode::InteractivePty, ProviderMode::StructuredJson]
+            vec![ProviderMode::StructuredJson]
         );
         assert_eq!(
             provider_modes(ProviderId::Cursor),

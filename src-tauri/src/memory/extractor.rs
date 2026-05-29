@@ -1,5 +1,3 @@
-// Learning extractor. Mirrors `src/main/memory/learningExtractor.ts`.
-//
 // v1 heuristic: any tool / command that produced an error in
 // MIN_REPETITIONS+ events becomes a "pitfall" learning. The earliest
 // matching event is recorded as evidence so a future UI can deep-link.

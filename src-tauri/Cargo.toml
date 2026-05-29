@@ -19,9 +19,8 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# Tauri >= 2.11 is required for `#[tauri::command(rename = "...")]`, which is
-# the lever that preserves legacy IPC channel names (e.g. `providers:launch`)
-# without renaming the Rust functions to match.
+# Tauri >= 2.11 is required for `#[tauri::command(rename = "...")]`, which keeps
+# stable IPC channel names (e.g. `providers:launch`) without renaming Rust functions.
 # See https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.11.0.
 tauri = { version = "2.11", features = [] }
 

@@ -87,10 +87,10 @@ import { ThinkingTranscript } from "./ThinkingTranscript.js";
 import { ThinkingVerbs } from "./ThinkingVerbs.js";
 import {
   isPayloadTruncationMarker,
-  isSubAgentProseEcho
+  isSubAgentProseEcho,
+  parseUserMessageAttachments
 } from "./sessionConversationHelpers.js";
 import {
-  parseUserMessageAttachments,
   SessionConversationTurn,
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";

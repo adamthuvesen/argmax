@@ -554,7 +554,7 @@ export interface GhPrRecord {
   headSha: string;
   lastSeenCheckState: GhCheckState;
   updatedAt: string;
-  /** Upper-case state from `gh pr view --json state`. Null for legacy rows. */
+  /** Upper-case state from `gh pr view --json state`. Null when unknown. */
   prState?: GhPrState | null;
   /** ISO timestamp the failure follow-up notification last fired for this head_sha. */
   notifiedAt?: string | null;

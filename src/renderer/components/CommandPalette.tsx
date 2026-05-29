@@ -268,7 +268,7 @@ export function CommandPalette({
     if (!open) return;
     const list = resultsRef.current;
     if (!list) return;
-    const active = list.querySelector<HTMLElement>(".command-palette-result.selected");
+    const active = list.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
     // Guard scrollIntoView for environments without layout (jsdom) — production
     // browsers always have it, but the App test harness doesn't stub it.
     active?.scrollIntoView?.({ block: "nearest" });

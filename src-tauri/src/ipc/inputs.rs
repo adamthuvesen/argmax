@@ -662,7 +662,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn launch_provider_rejects_unknown_fields_and_bad_prompt() {
+    fn launch_provider_rejects_unknown_fields_and_accepts_multiline_prompt() {
         let unknown = serde_json::json!({
             "workspaceId": "w1",
             "provider": "codex",
@@ -675,16 +675,16 @@ mod tests {
         });
         assert!(serde_json::from_value::<ProvidersLaunchInput>(unknown).is_err());
 
-        let bad_prompt = serde_json::json!({
+        let multiline_prompt = serde_json::json!({
             "workspaceId": "w1",
             "provider": "codex",
-            "prompt": "hello\nthere",
+            "prompt": "- hello\nthere",
             "modelLabel": "Spark",
             "modelId": "codex-spark",
             "cols": 80,
             "rows": 24
         });
-        assert!(serde_json::from_value::<ProvidersLaunchInput>(bad_prompt).is_err());
+        assert!(serde_json::from_value::<ProvidersLaunchInput>(multiline_prompt).is_ok());
     }
 
     #[test]

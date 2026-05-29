@@ -1,6 +1,4 @@
-// IDE launch. Mirrors `src/main/ide/ideLaunch.ts`.
-//
-// Direct spawn — we never route through `Shell::open` because that hands
+// IDE launch uses direct spawn — we never route through `Shell::open` because that hands
 // folders to Finder. CLI helpers (`code`, `cursor`, ...) are preferred
 // when present so the worktree opens in the existing IDE window;
 // otherwise we fall back to `open -a "<App>"`. Terminal targets use

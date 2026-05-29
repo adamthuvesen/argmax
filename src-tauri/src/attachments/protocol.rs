@@ -1,12 +1,7 @@
 // Custom protocol handler for `argmax-attachment://`.
 //
-// Mirrors `src/main/attachments/attachmentProtocol.ts`. The TS code calls
-// Electron's `protocol.handle(scheme, ...)`; the Rust equivalent is
-// `tauri::Builder::register_uri_scheme_protocol(...)`. To keep this
-// module testable without Tauri, the path-validation + bytes-fetching
-// logic lives in `serve_attachment` as a pure function; the actual
-// builder hook is wired in `lib.rs::run` when the AppState exposes the
-// resolved attachment store dir.
+// The path-validation + bytes-fetching logic lives in `serve_attachment`
+// as a pure function; the Tauri protocol hook is wired in `lib.rs::run`.
 
 use std::path::{Path, PathBuf};
 

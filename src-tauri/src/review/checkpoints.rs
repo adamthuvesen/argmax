@@ -1,7 +1,6 @@
 // CheckpointService — snapshots the worktree's pending diff to disk so the
 // user can rewind to a known-good state without disturbing the git index.
 //
-// Mirrors `src/main/review/checkpointService.ts`:
 //   1. read-tree HEAD into a temporary index (`GIT_INDEX_FILE`)
 //   2. `add -A -- .` against that scratch index
 //   3. `diff --binary --cached HEAD` against that scratch index

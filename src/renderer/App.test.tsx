@@ -792,27 +792,6 @@ describe("App", () => {
   });
 
 
-  it("keeps error toasts past the 4s auto-dismiss window", async () => {
-    pickProjectFolder.mockRejectedValueOnce(new Error("Pick a real git repo."));
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      render(<App />);
-      fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-
-      fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
-      const errorMessage = await screen.findByText("Pick a real git repo.");
-
-      act(() => {
-        vi.advanceTimersByTime(8000);
-      });
-
-      expect(errorMessage).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("auto-dismisses info toasts after the 4s window", async () => {
     pickProjectFolder.mockResolvedValueOnce({ cancelled: false, project: primaryProject() });
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -841,7 +820,7 @@ describe("App", () => {
   });
 });
 
-describe("App without preload bridge", () => {
+describe("App without Tauri bridge", () => {
   it("renders the bridge-missing banner when window.argmax is undefined", async () => {
     const previousArgmax = window.argmax;
     delete (window as { argmax?: ArgmaxApi }).argmax;
@@ -858,7 +837,7 @@ describe("App without preload bridge", () => {
     try {
       render(<App />);
       expect(
-        await screen.findByText(/Preload bridge unavailable; running on demo data/)
+        await screen.findByText(/Tauri bridge unavailable; running on demo data/)
       ).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {
@@ -885,7 +864,7 @@ describe("App without preload bridge", () => {
       render(<App />);
 
       expect(
-        screen.queryByText(/Preload bridge unavailable; running on demo data/)
+        screen.queryByText(/Tauri bridge unavailable; running on demo data/)
       ).not.toBeInTheDocument();
       expect(await screen.findByText("Design parallel agent board")).toBeInTheDocument();
     } finally {

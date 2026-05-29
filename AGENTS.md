@@ -35,7 +35,7 @@ npm run tauri:build     # production Tauri bundle
 
 - **Imports inside `src/`** end in `.js`: `import { foo } from "./foo.js"` even though the file is `foo.ts`.
 - **All IPC** flows through `window.argmax.*`. Request/response channels are Rust `#[tauri::command]` handlers in [src-tauri/src/ipc](src-tauri/src/ipc), collected by `tauri-specta`, and exposed in [src/renderer/lib/tauriBridge.ts](src/renderer/lib/tauriBridge.ts). `src-tauri/tests/fixtures/channels.txt` and `npm run check:tauri-bridge` enforce channel parity.
-- **No native Node rebuild dance.** SQLite and PTYs live in Rust (`rusqlite`, `portable-pty`). Do not reintroduce `better-sqlite3`, `node-pty`, legacy preload code or builder scripts.
+- **No native Node rebuild dance.** SQLite and PTYs live in Rust (`rusqlite`, `portable-pty`). Do not reintroduce `better-sqlite3`, `node-pty`, or native builder scripts.
 - **Renderer tests** query by **role / aria-label / title**, never by `className`.
 - **Four themes: Light / Dark / System / Purple.** Tokens live in [src/renderer/styles.css](src/renderer/styles.css); see [agents/docs/styling.md](agents/docs/styling.md).
 - **Shared values, not duplicates.** Model labels/ids/reasoning/launch mode and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts).
@@ -51,7 +51,7 @@ npm run tauri:build     # production Tauri bundle
 Before editing a subsystem, read the matching `agents/docs/*.md`:
 
 - **Runtime / lifecycle / bridge** → [runtime.md](agents/docs/runtime.md)
-- **IPC / preload / `window.argmax`** → [ipc.md](agents/docs/ipc.md)
+- **IPC / `window.argmax`** → [ipc.md](agents/docs/ipc.md)
 - **Database / migrations** → [data.md](agents/docs/data.md)
 - **Providers** → [providers.md](agents/docs/providers.md)
 - **Worktrees, archive, review, checkpoints** → [workspaces.md](agents/docs/workspaces.md)

@@ -48,7 +48,7 @@ if (stale.length > 0) {
         `error: ${relative(ROOT, BINDINGS)} is older than ${stale.length} input file(s).`,
     );
     console.error(
-        "       Run `npm run tauri dev` (or `cargo run`) to regenerate the bindings before committing.",
+        "       Run `npm run generate:bindings` to regenerate the bindings before committing.",
     );
     for (const path of stale.slice(0, 10)) {
         console.error(`       - ${relative(ROOT, path)}`);

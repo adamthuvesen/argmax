@@ -1,10 +1,6 @@
-// GhService — Stage 1 of the CI feedback loop. Shells out to `gh pr view`
+// GhService shells out to `gh pr view`
 // against a session's workspace and persists the result so the renderer can
 // render PR status without re-running `gh` on every read.
-//
-// Mirrors `src/main/gh/ghService.ts`. The `GhRunner` closure type lives in
-// `util::gh_runner` so this service and `git::ops` share one fake-binary
-// surface in tests.
 
 use std::sync::Arc;
 

@@ -5,8 +5,6 @@ import { PERF_OVERLAY_KEY, PerfOverlay } from "./PerfOverlay.js";
 
 const baseDiagnostics: DiagnosticsReport = {
   appVersion: "0.0.0",
-  electronVersion: "0",
-  nodeVersion: "0",
   sqliteVersion: "0",
   databasePath: "/tmp/test.db",
   platform: "darwin",

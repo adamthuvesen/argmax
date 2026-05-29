@@ -14,7 +14,10 @@
 // later in providers/session_service.rs) does NOT call into this
 // function — Drop cannot await `tokio::time::sleep`.
 
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 use tokio::time::sleep;
 
 #[cfg(unix)]
@@ -35,22 +38,69 @@ const POLL_INTERVAL_MS: u64 = 50;
 /// Best-effort: signal failures are not bubbled — the caller has
 /// already decided the process must die, and a separate exit watcher
 /// reaps the child when its own `wait()` returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalTarget {
+    Process(u32),
+    ProcessGroup(u32),
+}
+
+#[cfg(unix)]
+impl SignalTarget {
+    fn nix_pid(self) -> Pid {
+        match self {
+            SignalTarget::Process(pid) => Pid::from_raw(pid as i32),
+            SignalTarget::ProcessGroup(pgid) => Pid::from_raw(-(pgid as i32)),
+        }
+    }
+}
+
+fn is_reaped(reaped: Option<&AtomicBool>) -> bool {
+    reaped
+        .map(|flag| flag.load(Ordering::Acquire))
+        .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn signal_target(target: SignalTarget, signal: Signal) {
+    let _ = kill(target.nix_pid(), signal);
+}
+
+#[cfg(unix)]
+pub async fn signal_target_term_then_kill(target: SignalTarget, reaped: Option<&AtomicBool>) {
+    if is_reaped(reaped) {
+        return;
+    }
+    signal_target(target, Signal::SIGTERM);
+    sleep(Duration::from_millis(GRACEFUL_TIMEOUT_MS)).await;
+    if is_reaped(reaped) {
+        return;
+    }
+    signal_target(target, Signal::SIGKILL);
+}
+
 #[cfg(unix)]
 pub async fn signal_term_then_kill(pid: u32) {
-    let nix_pid = Pid::from_raw(pid as i32);
-    let _ = kill(nix_pid, Signal::SIGTERM);
-    sleep(Duration::from_millis(GRACEFUL_TIMEOUT_MS)).await;
-    let _ = kill(nix_pid, Signal::SIGKILL);
+    signal_target_term_then_kill(SignalTarget::Process(pid), None).await;
 }
 
 /// Synchronous best-effort variant. Use from `Drop` (where awaiting a
 /// sleep is unsafe) — sends SIGTERM and an immediate SIGKILL, no grace
 /// window. Mirrors the `ProviderSessionHandle::Drop` shape.
 #[cfg(unix)]
+pub fn signal_target_term_and_kill_blocking(target: SignalTarget, reaped: Option<&AtomicBool>) {
+    if is_reaped(reaped) {
+        return;
+    }
+    signal_target(target, Signal::SIGTERM);
+    if is_reaped(reaped) {
+        return;
+    }
+    signal_target(target, Signal::SIGKILL);
+}
+
+#[cfg(unix)]
 pub fn signal_term_and_kill_blocking(pid: u32) {
-    let nix_pid = Pid::from_raw(pid as i32);
-    let _ = kill(nix_pid, Signal::SIGTERM);
-    let _ = kill(nix_pid, Signal::SIGKILL);
+    signal_target_term_and_kill_blocking(SignalTarget::Process(pid), None);
 }
 
 #[cfg(not(unix))]
@@ -60,7 +110,13 @@ pub async fn signal_term_then_kill(_pid: u32) {
 }
 
 #[cfg(not(unix))]
+pub async fn signal_target_term_then_kill(_target: SignalTarget, _reaped: Option<&AtomicBool>) {}
+
+#[cfg(not(unix))]
 pub fn signal_term_and_kill_blocking(_pid: u32) {}
+
+#[cfg(not(unix))]
+pub fn signal_target_term_and_kill_blocking(_target: SignalTarget, _reaped: Option<&AtomicBool>) {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum TerminateError {
@@ -139,6 +195,61 @@ pub async fn terminate_with_escalation<C: TermChild>(
     // Couldn't observe the reap — return Killed so the caller knows we
     // sent SIGKILL but the child handle may still be holding state.
     Ok(TerminateOutcome::KilledNotReaped)
+}
+
+#[cfg(unix)]
+pub async fn terminate_process_group_with_escalation<C: TermChild>(
+    child: &mut C,
+) -> Result<TerminateOutcome, TerminateError> {
+    let raw_pid = match child.pid() {
+        Some(p) => p,
+        None => return Ok(TerminateOutcome::AlreadyReaped),
+    };
+    let target = SignalTarget::ProcessGroup(raw_pid);
+
+    signal_target(target, Signal::SIGTERM);
+
+    let mut waited_ms = 0u64;
+    let mut leader_exited = false;
+    while waited_ms < GRACEFUL_TIMEOUT_MS {
+        sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
+        waited_ms += POLL_INTERVAL_MS;
+        if child.try_wait()?.is_some() {
+            leader_exited = true;
+            break;
+        }
+    }
+
+    // The group leader exiting does not prove the group is gone. Shell checks
+    // can leave background descendants alive with inherited stdout/stderr
+    // pipes, which keeps stream readers open and makes cancellation hang until
+    // those descendants naturally exit. The process group id remains occupied
+    // while any member survives; ESRCH is ignored when the group is already
+    // empty.
+    signal_target(target, Signal::SIGKILL);
+
+    if leader_exited {
+        return Ok(TerminateOutcome::ExitedGracefully);
+    }
+
+    for _ in 0..20 {
+        sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
+        if child.try_wait()?.is_some() {
+            return Ok(TerminateOutcome::KilledAndReaped);
+        }
+    }
+
+    Ok(TerminateOutcome::KilledNotReaped)
+}
+
+#[cfg(not(unix))]
+pub async fn terminate_process_group_with_escalation<C: TermChild>(
+    _child: &mut C,
+) -> Result<TerminateOutcome, TerminateError> {
+    Err(TerminateError::Io(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "process-group termination not implemented for this platform",
+    )))
 }
 
 #[cfg(not(unix))]

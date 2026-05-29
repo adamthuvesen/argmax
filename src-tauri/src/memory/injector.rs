@@ -1,5 +1,3 @@
-// Learning injector. Mirrors `src/main/memory/learningInjector.ts`.
-//
 // Prepends a project-knowledge preamble (top-K learnings) to a fresh
 // session prompt. Caps total preamble at ~2000 chars so the injection
 // doesn't dwarf the actual prompt.

@@ -45,8 +45,7 @@ describe("CommandPalette", () => {
 
     // The effect runs after the selectedIndex state update — assert that the
     // currently-selected DOM element was the scroll target.
-    const selected = document.querySelector(".command-palette-result.selected");
-    expect(selected).not.toBeNull();
+    expect(screen.getByRole("option", { selected: true })).toHaveTextContent("Command 1");
     expect(scrollSpy).toHaveBeenCalled();
   });
 

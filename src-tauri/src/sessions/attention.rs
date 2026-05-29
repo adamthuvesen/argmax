@@ -1,6 +1,3 @@
-// Session-attention computation. Mirrors
-// `src/main/sessions/sessionAttention.ts`.
-//
 // Attention is the renderer's "what does this session need from me right
 // now?" pill. The policy is:
 //   - any pending approval → approval-needed

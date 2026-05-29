@@ -112,7 +112,7 @@ pub async fn projects_switch_branch(
         require_project(&connection, input.project_id.as_str())?.repo_path
     };
     // `--` separator is defense-in-depth on top of the BranchName newtype's
-    // leading-dash rejection. Mirrors `src/main/ipc/projects.ts`.
+    // leading-dash rejection.
     run_git_text(
         &repo_path,
         ["checkout", input.branch.as_str(), "--"],

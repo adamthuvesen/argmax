@@ -1,21 +1,16 @@
-// GitOpsService — the four operations the renderer's git dropdown drives:
+// GitOpsService owns the operations the renderer's git dropdown drives:
 // stage+commit-all, push (with first-time `-u origin <branch>` upgrade),
 // create-and-checkout-branch, and the view-or-create PR flow.
-//
-// Mirrors `src/main/git/gitOpsService.ts`. `gh` is invoked via the same
-// `GhRunner` shape `GhService` uses so the test surface stays identical.
-// Branch-name validation lives in the IPC schema; we still pass `--` as a
-// defense-in-depth separator on every git invocation that accepts
-// user-controlled refs.
 
-use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
+use std::{future::Future, path::Path, pin::Pin, sync::Arc, time::Duration};
 
 use regex::Regex;
 use serde::Serialize;
 use specta::Type;
+use tempfile::tempdir;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::run_git_text;
+use crate::git::exec::{run_git_buffer_with_options, run_git_text, GitExecOptions};
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_gh_pr_for_session, GhPrRecord};
 use crate::persistence::projects::get_project_remote;
@@ -133,21 +128,12 @@ impl GitOpsService {
             ));
         }
         let message = input.message.trim();
-        // `--` separator keeps a filename starting with `-` from being
-        // parsed as a flag. Empty selection falls back to `git add -A`.
         let selected: Vec<&str> = input
             .selected_files
             .iter()
             .map(|path| path.as_str())
             .filter(|path| !path.trim().is_empty())
             .collect();
-        if !selected.is_empty() {
-            let mut args: Vec<&str> = vec!["add", "--"];
-            args.extend(selected);
-            run_git_text(&workspace.path, args, GIT_TIMEOUT).await?;
-        } else {
-            run_git_text(&workspace.path, ["add", "-A"], GIT_TIMEOUT).await?;
-        }
         // `git commit -m -- msg` is not valid syntax; reject leading `-`
         // so a message that looks like a flag never reaches git.
         // (audit-2026-05-17 M13)
@@ -157,7 +143,12 @@ impl GitOpsService {
                 "Commit message cannot start with '-'",
             ));
         }
-        run_git_text(&workspace.path, ["commit", "-m", message], GIT_TIMEOUT).await?;
+        if selected.is_empty() {
+            run_git_text(&workspace.path, ["add", "-A"], GIT_TIMEOUT).await?;
+            run_git_text(&workspace.path, ["commit", "-m", message], GIT_TIMEOUT).await?;
+        } else {
+            commit_selected_files(Path::new(&workspace.path), &selected, message).await?;
+        }
         let sha = run_git_text(&workspace.path, ["rev-parse", "HEAD"], GIT_TIMEOUT).await?;
         let branch = run_git_text(&workspace.path, ["branch", "--show-current"], GIT_TIMEOUT)
             .await?
@@ -311,6 +302,56 @@ impl GitOpsService {
             pr_number: created.map(|row| row.pr_number),
         })
     }
+}
+
+async fn commit_selected_files(
+    workspace_path: &Path,
+    selected: &[&str],
+    message: &str,
+) -> ArgmaxResult<()> {
+    let temp_dir = tempdir().map_err(|error| {
+        ArgmaxError::service(
+            "GIT_TEMP_INDEX_FAILED",
+            format!("could not create temp git index: {error}"),
+        )
+    })?;
+    let temp_index = temp_dir.path().join("index");
+    let opts = || {
+        let mut options =
+            GitExecOptions::default().with_env("GIT_INDEX_FILE", temp_index.as_os_str());
+        options.timeout = GIT_TIMEOUT;
+        options
+    };
+
+    run_git_text_with_options(workspace_path, ["read-tree", "HEAD"], opts()).await?;
+    let mut add_args: Vec<&str> = vec!["add", "--"];
+    add_args.extend_from_slice(selected);
+    run_git_text_with_options(workspace_path, add_args, opts()).await?;
+    run_git_text_with_options(workspace_path, ["commit", "-m", message], opts()).await?;
+
+    let mut reset_args: Vec<&str> = vec!["reset", "-q", "--"];
+    reset_args.extend_from_slice(selected);
+    run_git_text(workspace_path, reset_args, GIT_TIMEOUT)
+        .await
+        .map(|_| ())
+}
+
+async fn run_git_text_with_options<I, S>(
+    workspace_path: &Path,
+    args: I,
+    options: GitExecOptions,
+) -> ArgmaxResult<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let bytes = run_git_buffer_with_options(workspace_path, args, options).await?;
+    String::from_utf8(bytes).map_err(|error| {
+        ArgmaxError::service(
+            "GIT_STDOUT_NOT_UTF8",
+            format!("git stdout was not valid UTF-8: {error}"),
+        )
+    })
 }
 
 fn is_missing_upstream_error(error: &ArgmaxError) -> bool {
@@ -474,6 +515,45 @@ mod tests {
             .await
             .expect_err("leading-dash rejected");
         assert!(err.to_string().contains("'-'"));
+    }
+
+    #[tokio::test]
+    async fn selected_file_commit_leaves_unrelated_staged_changes_staged() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path());
+        std::fs::write(repo.path().join("README.md"), "staged edit\n").unwrap();
+        run_git(repo.path(), &["add", "README.md"]);
+        std::fs::write(repo.path().join("notes.txt"), "selected\n").unwrap();
+
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+
+        let service = GitOpsService::new(database);
+        service
+            .commit_all(GitCommitInput {
+                workspace_id,
+                message: "add selected notes".to_string(),
+                selected_files: vec!["notes.txt".to_string()],
+            })
+            .await
+            .expect("commit succeeds");
+
+        let committed = StdCommand::new("git")
+            .args(["-C", repo.path().to_str().unwrap()])
+            .args(["show", "--name-only", "--format=", "HEAD"])
+            .output()
+            .expect("git show");
+        let committed = String::from_utf8_lossy(&committed.stdout);
+        assert!(committed.lines().any(|line| line == "notes.txt"));
+        assert!(!committed.lines().any(|line| line == "README.md"));
+
+        let cached = StdCommand::new("git")
+            .args(["-C", repo.path().to_str().unwrap()])
+            .args(["diff", "--cached", "--name-only"])
+            .output()
+            .expect("git diff --cached");
+        assert_eq!(String::from_utf8_lossy(&cached.stdout).trim(), "README.md");
     }
 
     #[tokio::test]

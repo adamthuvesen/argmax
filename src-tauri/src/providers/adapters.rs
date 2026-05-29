@@ -93,6 +93,7 @@ fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
         // arrive token-by-token (content_block_delta) instead of as whole
         // assistant messages. See agents/docs/runtime.md "Event delivery".
         "--include-partial-messages".to_string(),
+        "--".to_string(),
         input.prompt.clone(),
     ]);
     args
@@ -118,6 +119,7 @@ fn claude_structured_resume_args(
         // Keep partial-message streaming on for resumed turns too — otherwise
         // follow-ups regress to whole-message (non-streaming) output.
         "--include-partial-messages".to_string(),
+        "--".to_string(),
         input.prompt.clone(),
     ]);
     args
@@ -185,6 +187,7 @@ fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     args.extend([
         "--model".to_string(),
         input.model_id.clone(),
+        "--".to_string(),
         input.prompt.clone(),
     ]);
     args
@@ -208,6 +211,7 @@ fn cursor_structured_resume_args(
     args.extend([
         "--model".to_string(),
         input.model_id.clone(),
+        "--".to_string(),
         input.prompt.clone(),
     ]);
     args
@@ -349,6 +353,7 @@ mod tests {
                 "stream-json",
                 "--verbose",
                 "--include-partial-messages",
+                "--",
                 "Implement the task",
             ]
         );
@@ -374,6 +379,7 @@ mod tests {
                 "stream-json",
                 "--verbose",
                 "--include-partial-messages",
+                "--",
                 "Implement the task",
             ]
         );
@@ -407,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_structured_args_match_electron_adapter() {
+    fn codex_structured_args_match_runtime_contract() {
         let input = launch_input(ProviderId::Codex);
         let definition = get_provider_definition(ProviderId::Codex);
 
@@ -455,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_resume_args_match_electron_adapter() {
+    fn codex_resume_args_match_runtime_contract() {
         let input = launch_input(ProviderId::Codex);
         let definition = get_provider_definition(ProviderId::Codex);
 
@@ -479,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_structured_args_match_electron_adapter() {
+    fn cursor_structured_args_match_runtime_contract() {
         let input = launch_input(ProviderId::Cursor);
         let definition = get_provider_definition(ProviderId::Cursor);
 
@@ -495,6 +501,7 @@ mod tests {
                 "--trust",
                 "--model",
                 "composer-2.5",
+                "--",
                 "Implement the task",
             ]
         );
@@ -509,6 +516,34 @@ mod tests {
         };
         let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
         assert!(args.iter().any(|arg| arg == "--plan"));
+    }
+
+    #[test]
+    fn multiline_and_dash_prefixed_prompts_are_kept_safe() {
+        for provider_id in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
+            let input = ProviderLaunchInput {
+                prompt: "- read this\nthen implement".to_string(),
+                ..launch_input(provider_id)
+            };
+            let definition = get_provider_definition(provider_id);
+            let args = (definition.structured_args)(&input);
+            match provider_id {
+                ProviderId::Codex => {
+                    assert!(!args.contains(&input.prompt));
+                    assert_eq!(
+                        (definition.structured_stdin)(&input),
+                        Some("- read this\nthen implement".to_string())
+                    );
+                }
+                ProviderId::Claude | ProviderId::Cursor => {
+                    let prompt_index = args
+                        .iter()
+                        .position(|arg| arg == &input.prompt)
+                        .expect("prompt carried as argv");
+                    assert_eq!(args[prompt_index - 1], "--");
+                }
+            }
+        }
     }
 
     #[test]

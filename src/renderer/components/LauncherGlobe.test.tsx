@@ -11,6 +11,13 @@ import { LauncherGlobe } from "./LauncherGlobe.js";
 describe("LauncherGlobe", () => {
   beforeEach(() => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const originalConsoleError = console.error;
+    vi.spyOn(console, "error").mockImplementation((message?: unknown, ...args: unknown[]) => {
+      if (typeof message === "string" && message.includes("THREE.WebGLRenderer: Error creating WebGL context")) {
+        return;
+      }
+      originalConsoleError(message, ...args);
+    });
     window.matchMedia = vi.fn().mockReturnValue({
       matches: false,
       addEventListener: vi.fn(),

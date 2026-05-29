@@ -101,8 +101,6 @@ pub struct LogEntry {
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticsReport {
     pub app_version: String,
-    pub electron_version: String,
-    pub node_version: String,
     pub sqlite_version: String,
     pub database_path: String,
     pub platform: String,
@@ -157,8 +155,6 @@ pub fn system_diagnostics(
 
     Ok(DiagnosticsReport {
         app_version: env!("CARGO_PKG_VERSION").to_string(),
-        electron_version: String::new(),
-        node_version: String::new(),
         sqlite_version,
         database_path: database_path.to_string_lossy().to_string(),
         platform: std::env::consts::OS.to_string(),
@@ -475,8 +471,11 @@ mod tests {
         // The escaping target does not exist, so canonicalize fails; logical
         // normalization must still reject it instead of returning it raw.
         let cwd = tempdir().expect("cwd");
-        let error = resolve_open_target("../../etc/does-not-exist-xyz", Some(cwd.path().to_str().unwrap()))
-            .expect_err("nonexistent escape rejected");
+        let error = resolve_open_target(
+            "../../etc/does-not-exist-xyz",
+            Some(cwd.path().to_str().unwrap()),
+        )
+        .expect_err("nonexistent escape rejected");
         assert!(error.to_string().contains("path escapes cwd"));
     }
 

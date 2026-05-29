@@ -415,7 +415,7 @@ export function App(): JSX.Element {
         });
       }
     },
-    [detectedIdes]
+    [detectedIdes, setDefaultIde]
   );
 
   const addProject = useCallback(async (): Promise<void> => {
@@ -440,7 +440,7 @@ export function App(): JSX.Element {
         message: error instanceof Error ? error.message : "Argmax requires a local git repository."
       });
     }
-  }, [setSelectedProjectId, setSnapshot]);
+  }, [setGrid, setSelectedProjectId, setSnapshot]);
 
   const removeProject = useCallback(async (projectId: string): Promise<void> => {
     if (!window.argmax) {
@@ -479,6 +479,7 @@ export function App(): JSX.Element {
     setSelectedProjectId,
     setSelectedSessionId,
     setSelectedWorkspaceId,
+    setGrid,
     setSnapshot
   ]);
 
@@ -707,7 +708,9 @@ export function App(): JSX.Element {
       refreshDashboardStatus,
       loadSessionEvents,
       pendingSelectionRef,
-      permissionMode
+      permissionMode,
+      setGrid,
+      setIsFullLauncherOpen
     ]
   );
 
@@ -733,6 +736,7 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       setIsSearchOpen,
       setIsSettingsOpen,
+      setGrid,
       setSelectedProjectId
     ]
   );
@@ -850,7 +854,7 @@ export function App(): JSX.Element {
     >
       {bridgeMissing && !isBrowserPreview() ? (
         <div className="bridge-banner" role="alert">
-          Preload bridge unavailable; running on demo data.
+          Tauri bridge unavailable; running on demo data.
         </div>
       ) : null}
       {/*

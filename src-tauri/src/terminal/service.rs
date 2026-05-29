@@ -1,28 +1,22 @@
-// TerminalService — owns the user-facing PTYs that back the integrated
-// terminal panel (⌘J in the renderer).
+// TerminalService owns the user-facing PTYs that back the integrated
+// terminal panel.
 //
 // Distinct from `ProviderSessionService`, which owns provider-launched
 // PTYs tied to a session's lifecycle; user terminals are just shells
 // scoped to a workspace cwd and live until the renderer closes them or
 // the app quits.
-//
-// Mirrors `src/main/terminal/terminalService.ts`. The service is
-// intentionally simple: spawn → reader thread streams bytes via a
-// sink → exit watcher emits a single exit event → renderer drives
-// write/resize/terminate by id.
-//
-// Implementation follows the same pattern as `mcp::auth`: the child
-// handle moves into a dedicated wait watcher thread (never behind a
-// shared mutex), and termination uses `signal_term_then_kill` against
-// the captured pid. This avoids the deadlock you get if a generic
-// `try_wait`-based escalation tries to lock a mutex the wait thread
-// already holds.
+// The child handle moves into a dedicated wait watcher thread, while
+// terminate paths signal the captured PID only while the watcher still
+// considers it live.
 
 use std::{
     collections::HashMap,
     io::{Read, Write},
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
 };
 
@@ -34,7 +28,9 @@ use uuid::Uuid;
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     persistence::{database::Database, workspaces::find_workspace_by_id},
-    util::process_control::{signal_term_and_kill_blocking, signal_term_then_kill},
+    util::process_control::{
+        signal_target_term_and_kill_blocking, signal_target_term_then_kill, SignalTarget,
+    },
 };
 
 /// Streams each PTY chunk to the renderer (the IPC layer turns these
@@ -83,6 +79,7 @@ struct TerminalEntry {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     pid: Option<u32>,
+    reaped: Arc<AtomicBool>,
 }
 
 pub struct TerminalService {
@@ -168,6 +165,7 @@ impl TerminalService {
         })?;
 
         let terminal_id = Uuid::new_v4().to_string();
+        let reaped = Arc::new(AtomicBool::new(false));
         {
             let mut terminals = self.terminals.lock().expect("terminals poisoned");
             terminals.insert(
@@ -176,6 +174,7 @@ impl TerminalService {
                     master: pair.master,
                     writer,
                     pid,
+                    reaped: Arc::clone(&reaped),
                 },
             );
         }
@@ -191,6 +190,7 @@ impl TerminalService {
             child,
             Arc::clone(self),
             Arc::clone(&self.on_exit),
+            reaped,
         );
 
         Ok(TerminalSpawnResult { terminal_id })
@@ -222,22 +222,27 @@ impl TerminalService {
     /// Terminate a live terminal: SIGTERM, wait up to 1500 ms, then
     /// SIGKILL. Returns immediately if the id is unknown.
     pub async fn terminate(&self, terminal_id: &str) {
-        let pid = {
+        let target = {
             let terminals = self.terminals.lock().expect("terminals poisoned");
-            terminals.get(terminal_id).and_then(|entry| entry.pid)
+            terminals
+                .get(terminal_id)
+                .and_then(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
         };
-        let Some(pid) = pid else { return };
-        signal_term_then_kill(pid).await;
+        let Some((pid, reaped)) = target else { return };
+        signal_target_term_then_kill(SignalTarget::Process(pid), Some(&reaped)).await;
     }
 
     /// Terminate every live terminal (used at app shutdown).
     pub async fn dispose_all(&self) {
-        let pids: Vec<u32> = {
+        let targets: Vec<(u32, Arc<AtomicBool>)> = {
             let terminals = self.terminals.lock().expect("terminals poisoned");
-            terminals.values().filter_map(|entry| entry.pid).collect()
+            terminals
+                .values()
+                .filter_map(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
+                .collect()
         };
-        for pid in pids {
-            signal_term_then_kill(pid).await;
+        for (pid, reaped) in targets {
+            signal_target_term_then_kill(SignalTarget::Process(pid), Some(&reaped)).await;
         }
     }
 
@@ -258,12 +263,15 @@ impl Drop for TerminalService {
         // so we use the blocking signal helper (SIGTERM + immediate
         // SIGKILL, no grace window) and let the exit watcher tear down.
         // Mirrors `ProviderSessionHandle::Drop`.
-        let pids: Vec<u32> = {
+        let targets: Vec<(u32, Arc<AtomicBool>)> = {
             let terminals = self.terminals.lock().expect("terminals poisoned");
-            terminals.values().filter_map(|entry| entry.pid).collect()
+            terminals
+                .values()
+                .filter_map(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
+                .collect()
         };
-        for pid in pids {
-            signal_term_and_kill_blocking(pid);
+        for (pid, reaped) in targets {
+            signal_target_term_and_kill_blocking(SignalTarget::Process(pid), Some(&reaped));
         }
     }
 }
@@ -310,6 +318,7 @@ fn spawn_exit_watcher(
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
     service: Arc<TerminalService>,
     on_exit: ExitSink,
+    reaped: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
         // Block waiting for the child. The child handle is owned exclusively
@@ -319,6 +328,7 @@ fn spawn_exit_watcher(
             .wait()
             .map(|status| status.exit_code() as i32)
             .unwrap_or(-1);
+        reaped.store(true, Ordering::Release);
         // portable_pty's ExitStatus doesn't expose POSIX signal numbers
         // cross-platform; emit `None` when unavailable to match the TS shape.
         let signal: Option<i32> = None;
@@ -504,6 +514,40 @@ mod tests {
             "expected hi in stdout, got: {combined:?}"
         );
         assert_eq!(svc.live_count(), 0, "terminal removed on exit");
+    }
+
+    #[tokio::test]
+    async fn terminate_after_natural_exit_is_noop() {
+        let (database, workspace_id, _db, _cwd) = setup();
+        let on_data: OutputSink = Arc::new(|_| {});
+        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
+        let exit_tx = StdMutex::new(Some(exit_tx));
+        let on_exit: ExitSink = Arc::new(move |info| {
+            if let Some(tx) = exit_tx.lock().unwrap().take() {
+                let _ = tx.send(info);
+            }
+        });
+        let svc = TerminalService::with_shell_factory(
+            database,
+            on_data,
+            on_exit,
+            script_factory("exit 0"),
+        );
+        let result = svc
+            .spawn(TerminalSpawnInput {
+                workspace_id,
+                cols: 80,
+                rows: 24,
+            })
+            .unwrap();
+        let _ = timeout(Duration::from_secs(5), exit_rx)
+            .await
+            .expect("exit watcher did not fire")
+            .expect("exit channel closed before sending");
+        sleep(Duration::from_millis(50)).await;
+
+        svc.terminate(&result.terminal_id).await;
+        assert_eq!(svc.live_count(), 0);
     }
 
     #[tokio::test]

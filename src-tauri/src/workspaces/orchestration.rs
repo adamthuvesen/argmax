@@ -1,6 +1,4 @@
-// Workspace lifecycle service.
-//
-// Mirrors the TS `WorkspaceService` in `src/main/workspaces/workspaceOrchestration.ts`:
+// Workspace lifecycle service:
 //   - `create_isolated` adds a fresh `git worktree` under the project's
 //     configured worktree location; partial-worktree cleanup runs on
 //     spawn failure so a half-registered worktree can't strand state.

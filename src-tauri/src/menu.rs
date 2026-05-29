@@ -464,7 +464,7 @@ fn apply_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
         // Clear the old CSS-zoom implementation if the app was hot-reloaded
         // from a build that had already touched body.style.zoom.
         if let Err(error) = window.eval("document.body.style.zoom = ''") {
-            tracing::warn!(?error, "failed to clear legacy body zoom");
+            tracing::warn!(?error, "failed to clear old CSS body zoom");
         }
     }
 }
@@ -489,7 +489,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn menu_spec_matches_legacy_top_level_order() {
+    fn menu_spec_matches_stable_top_level_order() {
         let labels: Vec<_> = app_menu_spec(false)
             .into_iter()
             .map(|menu| menu.label)
@@ -499,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn command_items_match_legacy_labels_and_accelerators() {
+    fn command_items_match_stable_labels_and_accelerators() {
         let commands = command_items(app_menu_spec(false));
 
         assert_eq!(

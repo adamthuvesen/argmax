@@ -1,16 +1,6 @@
-// CheckService — runs workspace check commands (`npm test`, `cargo
-// check`, etc.) under a wall-clock cap with output capture, sensitive-env
-// filtering, and SIGTERM → SIGKILL escalation.
-//
-// Mirrors `src/main/checks/checkService.ts`. Important deltas from the
-// TS code:
-//   - We use tokio::process::Command instead of node child_process; the
-//     `shell: true` semantics map to spawning `/bin/sh -c "<command>"`.
-//   - SIGTERM/SIGKILL escalation reuses `util::process_control` so we
-//     don't duplicate the escalation policy.
-//   - Cancellation is exposed via a per-workspace cancel-token registry;
-//     `cancel_workspace_checks(workspace_id)` aborts every in-flight
-//     check for that workspace (used during archive).
+// CheckService runs workspace check commands under a wall-clock cap with
+// output capture, sensitive-env filtering, per-workspace cancellation, and
+// process-group SIGTERM/SIGKILL escalation.
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -36,7 +26,7 @@ use crate::persistence::checks::{
 use crate::persistence::database::Database;
 use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
-use crate::util::process_control::terminate_with_escalation;
+use crate::util::process_control::terminate_process_group_with_escalation;
 
 /// Hard wall-clock cap. Matches `CHECK_DEFAULT_TIMEOUT_MS` in the TS.
 pub const DEFAULT_TIMEOUT_MS: u64 = 5 * 60 * 1000;
@@ -58,23 +48,46 @@ pub type OutputSink = Arc<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Default)]
 struct CancelRegistry {
-    workspaces: HashMap<String, Vec<oneshot::Sender<()>>>,
+    workspaces: HashMap<String, Vec<CancelEntry>>,
+}
+
+struct CancelEntry {
+    check_id: String,
+    sender: oneshot::Sender<()>,
 }
 
 impl CancelRegistry {
-    fn register(&mut self, workspace_id: &str, sender: oneshot::Sender<()>) {
+    fn register(&mut self, workspace_id: &str, check_id: &str, sender: oneshot::Sender<()>) {
         self.workspaces
             .entry(workspace_id.to_string())
             .or_default()
-            .push(sender);
+            .push(CancelEntry {
+                check_id: check_id.to_string(),
+                sender,
+            });
+    }
+
+    fn unregister(&mut self, workspace_id: &str, check_id: &str) {
+        let mut remove_bucket = false;
+        if let Some(bucket) = self.workspaces.get_mut(workspace_id) {
+            bucket.retain(|entry| entry.check_id != check_id);
+            remove_bucket = bucket.is_empty();
+        }
+        if remove_bucket {
+            self.workspaces.remove(workspace_id);
+        }
     }
 
     fn cancel_all(&mut self, workspace_id: &str) {
         if let Some(bucket) = self.workspaces.remove(workspace_id) {
-            for sender in bucket {
-                let _ = sender.send(());
+            for entry in bucket {
+                let _ = entry.sender.send(());
             }
         }
+    }
+
+    fn pending_count(&self) -> usize {
+        self.workspaces.values().map(Vec::len).sum()
     }
 }
 
@@ -97,6 +110,14 @@ impl CheckService {
             .lock()
             .expect("cancel registry poisoned");
         registry.cancel_all(workspace_id);
+    }
+
+    #[allow(dead_code)]
+    fn pending_cancel_count(&self) -> usize {
+        self.cancel_registry
+            .lock()
+            .expect("cancel registry poisoned")
+            .pending_count()
     }
 
     pub async fn run_workspace_check(
@@ -143,7 +164,7 @@ impl CheckService {
                 .cancel_registry
                 .lock()
                 .expect("cancel registry poisoned");
-            registry.register(&workspace.id, cancel_tx);
+            registry.register(&workspace.id, &check.id, cancel_tx);
         }
 
         let mut command = Command::new("/bin/sh");
@@ -205,14 +226,22 @@ impl CheckService {
             }
             _ = time::sleep(timeout) => {
                 timed_out = true;
-                let _ = terminate_with_escalation(&mut child).await;
+                let _ = terminate_process_group_with_escalation(&mut child).await;
                 exit_code = child.wait().await.ok().and_then(|status| status.code()).unwrap_or(1);
             }
             _ = cancel_rx => {
                 aborted = true;
-                let _ = terminate_with_escalation(&mut child).await;
+                let _ = terminate_process_group_with_escalation(&mut child).await;
                 exit_code = child.wait().await.ok().and_then(|status| status.code()).unwrap_or(1);
             }
+        }
+
+        {
+            let mut registry = self
+                .cancel_registry
+                .lock()
+                .expect("cancel registry poisoned");
+            registry.unregister(&workspace.id, &check.id);
         }
 
         if let Some(task) = stdout_task {
@@ -421,6 +450,7 @@ mod tests {
         assert_eq!(result.status, "passed");
         assert_eq!(result.exit_code, Some(0));
         assert!(result.completed_at.is_some());
+        assert_eq!(svc.pending_cancel_count(), 0);
     }
 
     #[tokio::test]
@@ -483,6 +513,42 @@ mod tests {
             .starts_with("[timed-out] "));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn timeout_kills_check_process_group_descendants() {
+        let (database, workspace_id, _db, cwd) = setup();
+        let pid_path = cwd.path().join("child.pid");
+        let command = format!(
+            "sh -c 'trap \"\" TERM; echo $$ > \"{}\"; sleep 60' & wait",
+            pid_path.display()
+        );
+        let svc = CheckService::new(database);
+        let result = svc
+            .run_workspace_check(
+                RunWorkspaceCheckInput {
+                    workspace_id,
+                    command,
+                    timeout_ms: Some(250),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.status, "cancelled");
+
+        let pid = std::fs::read_to_string(&pid_path)
+            .expect("child pid written")
+            .trim()
+            .to_string();
+        for _ in 0..20 {
+            if !pid_is_alive(&pid) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("check descendant process {pid} survived timeout cancellation");
+    }
+
     #[tokio::test]
     async fn cancel_workspace_checks_aborts_in_flight_run() {
         let (database, workspace_id, _db, _cwd) = setup();
@@ -511,6 +577,7 @@ mod tests {
             .as_deref()
             .unwrap_or("")
             .starts_with("[cancelled] "));
+        assert_eq!(svc.pending_cancel_count(), 0);
     }
 
     #[test]
@@ -558,5 +625,13 @@ mod tests {
         std::env::remove_var("ARGMAX_TEST_SECRET");
         std::env::remove_var("ARGMAX_TEST_API_KEY");
         std::env::remove_var("PATH_PASSTHROUGH");
+    }
+
+    #[cfg(unix)]
+    fn pid_is_alive(pid: &str) -> bool {
+        let Ok(raw_pid) = pid.parse::<i32>() else {
+            return false;
+        };
+        nix::sys::signal::kill(nix::unistd::Pid::from_raw(raw_pid), None).is_ok()
     }
 }

@@ -29,7 +29,7 @@ describe("tauriBridge", () => {
     expect(window.argmax).toBeUndefined();
   });
 
-  it("installs the legacy Argmax API and wraps command inputs for Tauri", async () => {
+  it("installs the stable Argmax renderer API and wraps command inputs for Tauri", async () => {
     window.__TAURI_INTERNALS__ = {};
     mocks.invoke.mockResolvedValue({ ok: true, timestamp: "2026-05-24T00:00:00Z" });
     const { installTauriBridge } = await import("./tauriBridge.js");
@@ -41,7 +41,7 @@ describe("tauriBridge", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("health:ping", { input: {} });
   });
 
-  it("adapts legacy positional methods into Rust input objects", async () => {
+  it("adapts positional renderer methods into Rust input objects", async () => {
     window.__TAURI_INTERNALS__ = {};
     mocks.invoke.mockResolvedValue({ ok: true });
     const { installTauriBridge } = await import("./tauriBridge.js");

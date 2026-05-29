@@ -1,6 +1,5 @@
 // Parse `git grep -n --null -z` output into the renderer's
-// `WorkspaceContentSearchResult` shape. Mirrors
-// `src/main/files/gitGrepParser.ts`.
+// `WorkspaceContentSearchResult` shape.
 //
 // With `-z --null`, git emits NUL between every output field AND between
 // match records. One match looks like:

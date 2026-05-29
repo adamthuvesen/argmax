@@ -1,6 +1,6 @@
 # IPC
 
-The renderer talks to Rust only through `window.argmax`. Tauri commands preserve the legacy channel names (`"providers:launch"`, `"session:events-since"`, etc.) so renderer code stays stable while the runtime is Rust.
+The renderer talks to Rust only through `window.argmax`. Tauri commands use stable channel names (`"providers:launch"`, `"session:events-since"`, etc.) so renderer code and the generated bridge stay in lockstep.
 
 ## Files
 
@@ -8,7 +8,7 @@ The renderer talks to Rust only through `window.argmax`. Tauri commands preserve
 |---|---|
 | [src-tauri/src/ipc](../../src-tauri/src/ipc) | `#[tauri::command(rename = "...")]` handlers, grouped by namespace |
 | [src-tauri/src/ipc/inputs.rs](../../src-tauri/src/ipc/inputs.rs) | Input structs and validated newtypes |
-| [src-tauri/tests/fixtures/channels.txt](../../src-tauri/tests/fixtures/channels.txt) | Preserved request/response channel inventory |
+| [src-tauri/tests/fixtures/channels.txt](../../src-tauri/tests/fixtures/channels.txt) | Stable request/response channel inventory |
 | [src/shared/bindings.d.ts](../../src/shared/bindings.d.ts) | Generated command/input/output types |
 | [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts) | TypeScript channel-name union for the bridge |
 | [src/renderer/lib/tauriBridge.ts](../../src/renderer/lib/tauriBridge.ts) | Installs `window.argmax` with `invoke`/`listen` calls |

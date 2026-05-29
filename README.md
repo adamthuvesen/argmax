@@ -24,7 +24,7 @@ Single-user, on-device, no cloud, no auth. Built for sessions that need real rep
 
 - **Node.js** 18+ and npm
 - **Rust** 1.95+ ([install rustup](https://rustup.rs))
-- **macOS** (currently development-targeted; Linux/Windows support available via Tauri CLI)
+- **macOS**. The first public Rust/Tauri release is macOS-only; Linux and Windows are not release targets yet.
 
 ## Setup & Run
 
@@ -68,7 +68,6 @@ src-tauri/        Rust runtime, services, persistence, IPC, packaging config
 agents/docs/      Subsystem docs
 scripts/          Lightweight CI/check scripts
 assets/           App icons
-build/            Legacy release support files
 ```
 
 Local/generated paths:
@@ -81,6 +80,6 @@ src-tauri/target/ Rust build output
 node_modules/     Installed dependencies
 ```
 
-Runtime state is stored under Tauri app data in `argmax.sqlite`. Checkpoint patches live alongside the database under `checkpoints/`. `raw_outputs` rows older than 7 days are pruned daily; everything else is retained indefinitely.
+Runtime state is stored under the Rust/Tauri app id's app-data directory in `argmax.sqlite`. This release does not import Electron-era app data. Checkpoint patches live alongside the database under `checkpoints/`. `raw_outputs` rows older than 7 days are pruned daily; everything else is retained indefinitely.
 
 Subsystem conventions live in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md).

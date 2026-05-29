@@ -1,9 +1,8 @@
 // Domain error model.
 //
 // `ArgmaxError` is the single error type that Tauri commands return. It
-// serializes with a stable top-level `code` string so the renderer's
-// `error.code === "INVALID_INPUT"` branches keep working unchanged from
-// the Electron build.
+// serializes with a stable top-level `code` string so renderer error
+// branches can stay simple.
 //
 // The Zod-era `InvalidInputIssue` shape (path / code / message per issue)
 // is preserved verbatim so renderer error renderers don't have to learn
@@ -78,22 +77,6 @@ impl InvalidInputIssue {
         }
     }
 
-    pub fn prompt_leading_dash() -> Self {
-        Self::at(
-            vec!["prompt".into()],
-            "PROMPT_LEADING_DASH",
-            "prompt must not start with '-' (looks like a CLI flag)",
-        )
-    }
-
-    pub fn prompt_contains_newline() -> Self {
-        Self::at(
-            vec!["prompt".into()],
-            "PROMPT_CONTAINS_NEWLINE",
-            "prompt must not contain newline characters",
-        )
-    }
-
     pub fn file_path_absolute(field: &'static str) -> Self {
         Self::at(
             vec![field.into()],
@@ -149,12 +132,12 @@ mod tests {
 
     #[test]
     fn invalid_input_serializes_with_top_level_code() {
-        let err = ArgmaxError::invalid(InvalidInputIssue::prompt_leading_dash());
+        let err = ArgmaxError::invalid(InvalidInputIssue::file_path_absolute("filePath"));
         let json = serde_json::to_value(&err).unwrap();
         assert_eq!(json["code"], "INVALID_INPUT");
         let issues = json["issues"].as_array().expect("issues array");
-        assert_eq!(issues[0]["code"], "PROMPT_LEADING_DASH");
-        assert_eq!(issues[0]["path"][0], "prompt");
+        assert_eq!(issues[0]["code"], "FILE_PATH_ABSOLUTE");
+        assert_eq!(issues[0]["path"][0], "filePath");
     }
 
     #[test]

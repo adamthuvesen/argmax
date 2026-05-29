@@ -2,7 +2,7 @@
 
 Tauri is the release pipeline. Tauri publishes `latest.json` for updates.
 
-> **Legacy (post-migration housekeeping):** Electron's `latest-mac.yml` feed is frozen after the final migration release. Existing Electron installs poll it for a one-time migration banner release; keep the old feed in GitHub releases indefinitely to avoid breaking those clients.
+The first public Rust/Tauri release is macOS-only and uses the new Tauri app id/data directory. It does not import Electron-era app data.
 
 ## Environment
 
@@ -45,5 +45,3 @@ spctl --assess --type execute /Applications/Argmax.app
 ```
 
 5. Confirm cold start, provider launch, chat send/resume, terminal spawn, review diff, and update check.
-
-Do not delete the old Electron `latest-mac.yml` from GitHub releases; existing Electron installs poll it for the one-time migration banner release.

@@ -37,9 +37,11 @@ const ReviewPanel = lazy(async () => ({
 import { SessionConversation } from "./SessionConversation.js";
 // TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and
 // only loaded when the user opens the integrated terminal. Lazy-mounted
-// (ralph B5) so xterm leaves the main chunk.
+// (ralph B5) so xterm leaves the main chunk. The importer is named so it can
+// also be prefetched on idle (see the warm-up effect below).
+const importTerminalPanel = () => import("./TerminalTabsPanel.js");
 const TerminalTabsPanel = lazy(async () => ({
-  default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel
+  default: (await importTerminalPanel()).TerminalTabsPanel
 }));
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
@@ -221,6 +223,21 @@ export function SessionPane({
   const handleCommitted = useCallback((): void => {
     if (!workspaceId || !window.argmax) return;
     void window.argmax.workspaces.refreshStatus(workspaceId).catch(() => undefined);
+  }, [workspaceId]);
+
+  // Warm the heavy xterm chunk on idle once a workspace is present, so the first
+  // Cmd+J paints the terminal immediately instead of showing blank panel space
+  // while the bundle downloads. Deferred to idle so it never competes with the
+  // session's own first paint; Vite caches the import, so the real open is instant.
+  useEffect(() => {
+    if (!workspaceId) return;
+    const idle = window.requestIdleCallback;
+    if (typeof idle === "function") {
+      const id = idle(() => void importTerminalPanel().catch(() => undefined));
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const timer = window.setTimeout(() => void importTerminalPanel().catch(() => undefined), 1500);
+    return () => window.clearTimeout(timer);
   }, [workspaceId]);
   const handleOpenFile = useCallback(
     (path: string, opts?: { line?: number | null; preferIde?: boolean }): void => {

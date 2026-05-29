@@ -2,6 +2,9 @@
 
 How to produce a signed, notarized macOS build of Argmax. For the build pipeline overview (targets, files, entitlements wiring) see [electron.md](electron.md#building-a-distributable); this doc covers credentials, the smoke procedure, and failure modes.
 
+> Runtime note: until the Rust port cutover lands, Electron and Tauri release
+> flows coexist. Electron uses `latest-mac.yml`; Tauri uses `latest.json`.
+
 ## Prerequisites
 
 - Apple Developer account with a valid `Developer ID Application` certificate installed in the build machine's login keychain.
@@ -10,17 +13,35 @@ How to produce a signed, notarized macOS build of Argmax. For the build pipeline
 
 ## Environment variables
 
-`electron-builder` (≥ v26) drives notarization via the modern `notarytool`. Set these before `npm run package`:
+Electron (`electron-builder` ≥ v26) and Tauri both use Apple Developer credentials from the environment. Set these before a signed release build:
 
 | Variable | What it is | Example |
 |---|---|---|
 | `APPLE_ID` | Apple ID email tied to the developer account | `you@example.com` |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password (NOT your Apple ID password) | `xxxx-xxxx-xxxx-xxxx` |
 | `APPLE_TEAM_ID` | 10-character Team ID | `ABCDE12345` |
+| `APPLE_SIGNING_IDENTITY` | Tauri signing identity from `security find-identity -v -p codesigning` | `Developer ID Application: …` |
+| `TAURI_SIGNING_PRIVATE_KEY` | Private updater-signing key content for Tauri `latest.json` artifacts | — |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` *(optional)* | Password for the Tauri updater private key, if one was set | — |
 | `CSC_LINK` *(optional)* | Path or base64 of a `.p12` if the cert is not in the keychain | `~/certs/argmax.p12` |
 | `CSC_KEY_PASSWORD` *(optional)* | Password for the `.p12` above | — |
 
 Store these in 1Password and load via `op read "op://..."` rather than `.env` files.
+
+Example Tauri release shell:
+
+```bash
+export APPLE_ID="$(op read 'op://<vault>/Apple ID/username')"
+export APPLE_APP_SPECIFIC_PASSWORD="$(op read 'op://<vault>/Argmax notarization/password')"
+export APPLE_TEAM_ID="$(op read 'op://<vault>/Argmax notarization/team id')"
+export APPLE_SIGNING_IDENTITY="$(op read 'op://<vault>/Argmax signing/signing identity')"
+export TAURI_SIGNING_PRIVATE_KEY="$(op read 'op://<vault>/Argmax Tauri updater/private key')"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(op read 'op://<vault>/Argmax Tauri updater/private key password')"
+
+npm run tauri build
+```
+
+Generate the Tauri updater keypair once with `npm run tauri signer generate -- -w <secure-path>`. Commit only the public key into `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Store the private key and optional password in 1Password. Losing the private key means existing Tauri installs cannot verify future updates.
 
 ## Entitlements
 
@@ -64,6 +85,8 @@ Watch for these failure modes:
 3. Create a GitHub release tagged `v<version>`, upload the DMG, ZIP, and `latest-mac.yml` from `release/`.
 
 The in-app `Check for Updates…` menu item (App menu) and the boot-time auto-check both reach the configured GitHub feed.
+
+For the Tauri build, `src-tauri/tauri.conf.json` points the updater plugin at `https://github.com/adamthuvesen/argmax/releases/latest/download/latest.json`. `latest.json` is not compatible with Electron's `latest-mac.yml`; keep both feeds during the cutover window.
 
 ## Verifying the bundle without credentials
 

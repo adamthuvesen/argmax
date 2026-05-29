@@ -35,6 +35,16 @@ function formatFolioTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// PlanInlineMarkdown renders inline-only, but remark still parses its input as
+// a block document. A label like "1. **README.md**" or "- **Foo**" would be
+// read as a list — swallowing the marker and breaking the inline layout — so
+// escape a leading list marker to keep it literal while emphasis/code parse.
+function escapeLeadingListMarker(text: string): string {
+  return text
+    .replace(/^(\s*\d{1,9})([.)])(\s)/, "$1\\$2$3")
+    .replace(/^(\s*)([-*+])(\s)/, "$1\\$2$3");
+}
+
 function PlanInlineMarkdown({ children }: { children: string }): JSX.Element {
   return (
     <ReactMarkdown
@@ -56,7 +66,7 @@ function PlanInlineMarkdown({ children }: { children: string }): JSX.Element {
         }
       }}
     >
-      {children}
+      {escapeLeadingListMarker(children)}
     </ReactMarkdown>
   );
 }
@@ -336,7 +346,9 @@ function PlanCardInner({
               <div className="plan-card-section-label">
                 <span className="plan-card-section-num">{sectionNum}</span>
                 <span className="plan-card-section-sep" aria-hidden="true">—</span>
-                <span className="plan-card-section-name">{section.label}</span>
+                <span className="plan-card-section-name">
+                  <PlanInlineMarkdown>{section.label}</PlanInlineMarkdown>
+                </span>
               </div>
               {section.note ? (
                 <p className="plan-card-section-note">
@@ -359,7 +371,9 @@ function PlanCardInner({
         })}
 
         <div className="plan-card-action-block">
-          <p className="plan-card-action-q">{plan.action.question}</p>
+          <p className="plan-card-action-q">
+            <PlanInlineMarkdown>{plan.action.question}</PlanInlineMarkdown>
+          </p>
           <ul
             ref={optionsRef}
             className="plan-card-options"
@@ -385,7 +399,9 @@ function PlanCardInner({
                   }}
                 >
                   <span className="plan-card-option-num">{idx + 1}</span>
-                  <span className="plan-card-option-label">{option.label}</span>
+                  <span className="plan-card-option-label">
+                    <PlanInlineMarkdown>{option.label}</PlanInlineMarkdown>
+                  </span>
                   <span className="plan-card-option-arrow" aria-hidden="true">→</span>
                 </li>
               );

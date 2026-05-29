@@ -289,4 +289,23 @@ describe("PlanCard", () => {
     });
     expect(button).toHaveAttribute("title", "Copied!");
   });
+
+  it("renders markdown in a section label without leaking ** or swallowing a leading number", () => {
+    const { container } = render(
+      <PlanCard
+        plan={samplePlan({
+          sections: [{ label: "1. **README.md** — Add prerequisites", items: [] }]
+        })}
+        createdAt="2026-05-16T14:30:00.000Z"
+        rawMarkdown="raw"
+        onAccept={() => {}}
+        onReject={() => {}}
+      />
+    );
+    // The bold rendered as <strong>, not literal asterisks…
+    expect(screen.getByText("README.md").tagName).toBe("STRONG");
+    expect(container.textContent).not.toContain("**");
+    // …and the leading "1." is kept as text (not consumed as an ordered-list marker).
+    expect(container.textContent).toContain("1.");
+  });
 });

@@ -5,6 +5,7 @@ import { tryFit } from "../lib/xtermFit.js";
 import { resolveMonoFontStack } from "../lib/fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { getXtermTheme, readActiveXtermTheme } from "../lib/xtermTheme.js";
+import { themeAppearance } from "../lib/theme.js";
 import "@xterm/xterm/css/xterm.css";
 
 /**
@@ -56,7 +57,7 @@ export function TerminalInstance({
     // "System"). MutationObserver is the smallest hammer here.
     const themeObserver = new MutationObserver(() => {
       const attr = document.documentElement.getAttribute("data-theme");
-      term.options.theme = getXtermTheme(attr === "dark" ? "dark" : "light");
+      term.options.theme = getXtermTheme(themeAppearance(attr));
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,

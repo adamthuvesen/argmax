@@ -503,7 +503,7 @@ export interface ArgmaxApi {
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     vacuumDatabase: () => Promise<{ ok: true }>;
-    setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
+    setTheme: (mode: "light" | "dark" | "system" | "purple") => Promise<{ ok: true }>;
   };
   mcp: {
     list: () => Promise<McpClientListing[]>;

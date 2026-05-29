@@ -219,6 +219,7 @@
 
 .theme-picker {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -323,6 +324,12 @@
   --swatch-bg: #0e0e0c;
   --swatch-text: #f4f2ec;
   --swatch-accent: #7fb494;
+}
+
+.theme-picker-chip[data-theme-mode="purple"] .theme-picker-swatch {
+  --swatch-bg: #5c4187;
+  --swatch-text: #f5f1fd;
+  --swatch-accent: #f0c84e;
 }
 
 .theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch {

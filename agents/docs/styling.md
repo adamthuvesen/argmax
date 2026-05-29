@@ -66,7 +66,7 @@ Keep each stylesheet module under **1000 lines** (OpenSpec maintainability sweep
 
 ## Hard constraints
 
-- **Three themes: Light / Dark / System.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Tokens live in `:root` (light) and `:root[data-theme="dark"]`. Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Tauri-side for no-flash startup). See [src/renderer/lib/theme.ts](../../src/renderer/lib/theme.ts).
+- **Four themes: Light / Dark / System / Purple.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Purple ("Nebula") is a dark-family theme — deep amethyst canvas, a gold-spark hero action, aurora glow. Tokens live in `:root` (light), `:root[data-theme="dark"]`, and `:root[data-theme="purple"]`. Purple resolves to the **dark** palettes for code/terminal via `themeAppearance()` in [theme.ts](../../src/renderer/lib/theme.ts). Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Tauri-side for no-flash startup). See [src/renderer/lib/theme.ts](../../src/renderer/lib/theme.ts).
 - **Monospace everywhere.** The UI and code use the same font family — both read from `--font-ui` / `--font-mono`. Don't introduce a separate sans for chrome.
 - **Lilex is the default**, kept Nerd-Font–patched so terminal-style glyphs still render. Mono alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) and proportional sans options (Inter, Geist Sans, IBM Plex Sans, Manrope) are lazy-loaded via `@fontsource` / `@fontsource-variable` only when picked, and selected from Settings → Appearance. System fonts (System Mono, Menlo, Monaco) need no JS asset load. New fonts live in [src/renderer/lib/fonts.ts](../../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
 
@@ -121,7 +121,19 @@ Same room with the lights off. Five rules:
 4. **Depth from edges, not shadows.** Dark elevation uses a 1px inset top-highlight + heavier drop in `--shadow-1/2/3`. The pixel of warm light at the top of an elevated card is the signature detail.
 5. **`color-scheme` follows.** `:root` declares `light`, `:root[data-theme="dark"]` declares `dark`, so native form controls + scrollbars track.
 
-Status colors keep semantic meaning across modes; values differ. Add new tokens to both `:root` blocks at the same time.
+Status colors keep semantic meaning across modes; values differ. Add new tokens to all three theme blocks (`:root`, `[data-theme="dark"]`, `[data-theme="purple"]`) at the same time.
+
+## Purple theme — Nebula
+
+Cosmic, premium, dark-family. Same room, lit by a violet nebula:
+
+1. **Warm royal-purple surfaces.** `--bg #5c4187` → `--panel #6d509b` (a clearly-visible true violet — red lifted so it reads purple, not indigo/blue; matched to the reference's lit canvas, not near-black); lines and overlays are violet-tinted, text is lavender-white.
+2. **Purple + gold, no green.** This theme has no green accent (matching the reference). The `--sage` slot — running / online / success / approve / selected-glow — is a luminous golden **yellow**; `--amber` (waiting) stays a warmer orange so the two hues stay distinct. The primary submit blooms gold on hover via a `:root[data-theme="purple"]` polish block. Diff add/delete keep conventional green/red (code-review signal), and the few hard-coded status reds (checks-failed, delete-hover) are re-pointed at `--rose` in a purple-scoped block so they stay legible on violet.
+3. **Aurora canvas.** `--grain-image` layers violet-tinted film grain over two radial blooms (it has one consumer, `body`), so the workspace glows at the top edge.
+4. **Bloom, not just drop.** `--shadow-2/3` keep dark's inset top-highlight + drop and add a soft violet outer glow so panels float in the nebula.
+5. **Dark-family for code.** `color-scheme: dark`; native window chrome maps to `tauri::Theme::Dark` with a `PURPLE_BG` (#5c4187) cold-start color; shiki/xterm use the dark palettes through `themeAppearance()`. The window uses an **Overlay** titlebar (`tauri.conf.json`) so the app's own chrome (and bg) fills the top — no native title bar — matching whatever theme is active.
+
+`--ink` stays light (lavender-white), like dark, so every `var(--ink)` fill/border/text usage keeps its contrast — the violet identity comes from rings/selection/glow/grain + retuned accents, not from repurposing `--ink`.
 
 ## Don't
 

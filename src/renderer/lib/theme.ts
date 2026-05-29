@@ -14,13 +14,22 @@
  * renderer notifies main via `system:setTheme` IPC on every change.
  */
 
-export type ThemeMode = "light" | "dark" | "system";
-export type ResolvedTheme = "light" | "dark";
+export type ThemeMode = "light" | "dark" | "system" | "purple";
+export type ResolvedTheme = "light" | "dark" | "purple";
 
 export const THEME_STORAGE_KEY = "argmax.theme.mode";
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 
-const THEME_MODES = new Set<string>(["light", "dark", "system"]);
+const THEME_MODES = new Set<string>(["light", "dark", "system", "purple"]);
+
+/**
+ * Map a `data-theme` attribute to a light/dark appearance for code + terminal
+ * palettes (shiki, xterm). Purple is a dark-family theme, so it uses the dark
+ * palettes; an unset attribute defaults to light (matches first-paint).
+ */
+export function themeAppearance(attr: string | null): "light" | "dark" {
+  return attr === "dark" || attr === "purple" ? "dark" : "light";
+}
 
 export type ThemeOption = {
   id: ThemeMode;
@@ -43,6 +52,11 @@ export const THEME_OPTIONS: readonly ThemeOption[] = [
     id: "dark",
     label: "Dark",
     hint: "Warm charcoal. Yellow-leaning grays, never midnight blue."
+  },
+  {
+    id: "purple",
+    label: "Purple",
+    hint: "Nebula. Deep amethyst canvas, a gold spark, and a faint aurora glow."
   }
 ] as const;
 
@@ -117,7 +131,7 @@ export function subscribeToThemeChange(cb: (resolved: ResolvedTheme) => void): (
   if (typeof document === "undefined") return () => {};
   const observer = new MutationObserver(() => {
     const attr = document.documentElement.getAttribute("data-theme");
-    cb(attr === "dark" ? "dark" : "light");
+    cb(themeAppearance(attr));
   });
   observer.observe(document.documentElement, {
     attributes: true,
@@ -126,8 +140,12 @@ export function subscribeToThemeChange(cb: (resolved: ResolvedTheme) => void): (
   return () => observer.disconnect();
 }
 
-/** Read the *resolved* theme from the document — never returns "system". */
-export function readResolvedTheme(): ResolvedTheme {
+/**
+ * Read the light/dark *appearance* from the document — never returns "system".
+ * Purple collapses to "dark" (it's a dark-family theme) so code/terminal
+ * consumers pick the dark palettes.
+ */
+export function readResolvedTheme(): "light" | "dark" {
   if (typeof document === "undefined") return "light";
-  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  return themeAppearance(document.documentElement.getAttribute("data-theme"));
 }

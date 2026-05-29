@@ -266,6 +266,13 @@ describe("describeToolAction", () => {
     );
   });
 
+  it("skill → 'Activated skill <name>'", () => {
+    expect(describeToolAction(tool({ name: "Skill", inputPreview: "brain-curate" }))).toBe(
+      "Activated skill brain-curate"
+    );
+    expect(extractToolInputPreview("Skill", { skill: "brain-curate" })).toBe("brain-curate");
+  });
+
   it("web → 'Fetched <url>'", () => {
     expect(
       describeToolAction(tool({ name: "WebFetch", inputPreview: "https://example.com" }))

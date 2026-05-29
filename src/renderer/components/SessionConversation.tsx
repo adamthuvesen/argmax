@@ -97,6 +97,14 @@ import {
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
+// How long a mid-turn pause (the agent finished a chunk and is silently working
+// on the next step) must persist before the Thinking indicator reappears. Short
+// enough to cover a real "few seconds" gap, long enough that the brief window
+// between the final answer completing and the runtime flipping out of `running`
+// — and quick tool-to-tool hand-offs — don't flash a spinner under finished
+// content.
+const THINKING_PAUSE_DELAY_MS = 600;
+
 function isConversationEventType(type: string): boolean {
   return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
 }
@@ -347,21 +355,18 @@ export function SessionConversation({
         event.type === "command.started" ||
         event.type === "command.completed")
   );
-  // Show the "Thinking" bubble whenever the session is running and there is
-  // no other live progress indicator on screen. The two indicators that
-  // already convey "work is happening" are:
-  //   (a) visible assistant text for the current latest event, and
+  // Show the "Thinking" indicator whenever the turn is running but nothing on
+  // screen conveys live progress *right now*. The two things that already say
+  // "work is happening" are:
+  //   (a) assistant text actively streaming (the latest event is a delta), and
   //   (b) the running spinner on a visible tool row.
-  // A completed answer can arrive before the runtime state flips out of
-  // `running`; in that window, the answer is the progress indicator. Keeping
-  // Thinking below it pins the scroll to the wrong thing and makes the answer
-  // look stuck until Stop clears the session state. Also: the `ExitPlanMode` /
-  // `AskUserQuestion` tools are *hidden* (rendered as cards), so a running
-  // instance of either gives no on-screen indicator either; treat them as
-  // "no visible tool running" and let Thinking show.
-  const hasVisibleAssistantMessage =
-    lastSignificantEvent?.type === "message.delta" ||
-    lastSignificantEvent?.type === "message.completed";
+  // Note we key on a *streaming* delta, not on any completed message: a
+  // finished chunk ("now I'll edit the file") followed by a few seconds of
+  // silent work used to suppress Thinking entirely, leaving the turn looking
+  // idle. The `ExitPlanMode` / `AskUserQuestion` tools are *hidden* (rendered
+  // as cards), so a running instance of either gives no on-screen indicator —
+  // treat them as "no visible tool running" and let Thinking show.
+  const isStreamingText = lastSignificantEvent?.type === "message.delta";
   const anyVisibleToolRunning = useMemo(
     () =>
       toolCalls.some(
@@ -382,20 +387,36 @@ export function SessionConversation({
     () => sessionHasOutstandingCardAsk(events, toolCalls),
     [events, toolCalls]
   );
-  // Thinking shows while the turn is running but nothing visible is on screen
-  // yet — the pre-content "the agent is working" beat, the same for every
-  // provider. It yields the moment real progress lands: visible assistant text
-  // (`hasVisibleAssistantMessage`), a running tool row (`anyVisibleToolRunning`),
-  // or an outstanding Plan/Question card (`hasOutstandingCardAsk`). We used to
-  // suppress it for Codex on the `session.streaming` first-byte beacon, but that
-  // blanked the whole initial wait — Codex spends seconds reasoning before any
-  // item lands, and the beacon (raw bytes) isn't user-visible progress. The
-  // beacon still suppresses the raw-stdout transcript via `hasRenderableContent`.
-  const isThinking =
+  // The turn is live and nothing visible is progressing this instant. True both
+  // for the pre-answer beat (nothing emitted yet) and for mid-turn pauses (the
+  // agent finished a chunk and is silently working on the next step). We used to
+  // suppress the Codex `session.streaming` first-byte beacon here, but that
+  // blanked the whole initial wait — Codex reasons for seconds before any item
+  // lands, and the beacon (raw bytes) isn't user-visible progress. The beacon
+  // still suppresses the raw-stdout transcript via `hasRenderableContent`.
+  const agentWorkingSilently =
     session?.state === "running" &&
     !anyVisibleToolRunning &&
-    !hasVisibleAssistantMessage &&
-    !hasOutstandingCardAsk;
+    !hasOutstandingCardAsk &&
+    !isStreamingText;
+  // The pre-answer beat shows immediately. A pause *after* completed content is
+  // debounced (THINKING_PAUSE_DELAY_MS): the brief gap between the final answer
+  // completing and the runtime flipping out of `running`, plus quick
+  // tool-to-tool hand-offs, would otherwise flash a spinner under finished
+  // content. Genuine multi-second pauses outlast the delay and surface Thinking.
+  const isPreAnswerBeat =
+    lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
+  const inDebouncedPause = agentWorkingSilently && !isPreAnswerBeat;
+  const [pauseSettled, setPauseSettled] = useState(false);
+  useEffect(() => {
+    if (!inDebouncedPause) {
+      setPauseSettled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setPauseSettled(true), THINKING_PAUSE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [inDebouncedPause]);
+  const isThinking = agentWorkingSilently && (isPreAnswerBeat || pauseSettled);
 
   const {
     conversationListRef,
@@ -1026,12 +1047,12 @@ export function SessionConversation({
             );
           })()}
         </div>
+        {status ? (
+          <p className="composer-status" role="status">
+            {status}
+          </p>
+        ) : null}
       </form>
-      {status ? (
-        <p className="composer-status" role="status">
-          {status}
-        </p>
-      ) : null}
     </section>
   );
 }

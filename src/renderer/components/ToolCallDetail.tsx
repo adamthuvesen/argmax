@@ -1,8 +1,9 @@
-import { ExternalLink, FileText } from "lucide-react";
+import { FileText, PanelRight } from "lucide-react";
 import { useMemo, type JSX } from "react";
 import { interpretFileChange } from "../lib/fileChange.js";
 import { extractOpenablePath, getToolTypeBucket, isBashLikeTool, type ToolCall } from "../lib/toolCalls.js";
 import { FileChangeCard } from "./FileChangeCard.js";
+import type { FileChipOpenOptions } from "./FileChip.js";
 
 const MAX_INLINE_CONTENT_CHARS = 2400;
 
@@ -30,20 +31,25 @@ function visibleInputForTool(tool: ToolCall): Record<string, unknown> {
   return Object.fromEntries(Object.entries(tool.inputFull).filter(([k]) => k !== "prompt"));
 }
 
-function openPath(path: string, workspaceCwd: string | null | undefined): void {
-  if (!window.argmax) return;
-  void window.argmax.system
-    .openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) })
-    .catch(() => undefined);
-}
-
 export function ToolCallDetail({
   tool,
-  workspaceCwd
+  workspaceCwd,
+  onOpenFile
 }: {
   tool: ToolCall;
   workspaceCwd?: string | null;
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element | null {
+  const openFile = (path: string): void => {
+    if (onOpenFile) {
+      onOpenFile(path);
+      return;
+    }
+    if (!window.argmax) return;
+    void window.argmax.system
+      .openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) })
+      .catch(() => undefined);
+  };
   const changes = useMemo(
     () => interpretFileChange(tool.name, tool.inputFull),
     [tool.name, tool.inputFull]
@@ -75,6 +81,7 @@ export function ToolCallDetail({
             change={change}
             key={`${change.path}-${index}`}
             workspaceCwd={workspaceCwd ?? null}
+            onOpenFile={onOpenFile}
           />
         ))}
       </div>
@@ -107,10 +114,10 @@ export function ToolCallDetail({
             <button
               className="tool-call-open-button"
               type="button"
-              onClick={() => openPath(filePath, workspaceCwd)}
+              onClick={() => openFile(filePath)}
               aria-label={`Open ${filePath}`}
             >
-              <ExternalLink size={11} aria-hidden="true" />
+              <PanelRight size={11} aria-hidden="true" />
               <span>Open</span>
             </button>
           </header>
@@ -124,11 +131,11 @@ export function ToolCallDetail({
         <button
           className="tool-call-open-button"
           type="button"
-          onClick={() => openPath(openable, workspaceCwd)}
+          onClick={() => openFile(openable)}
           aria-label={`Open ${openable}`}
           title={openable}
         >
-          <ExternalLink size={11} aria-hidden="true" />
+          <PanelRight size={11} aria-hidden="true" />
           <span>Open</span>
         </button>
       ) : null}

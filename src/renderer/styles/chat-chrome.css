@@ -257,7 +257,19 @@
   font-size: var(--text-base);
   line-height: 34px;
   resize: none;
+  overflow-x: hidden;
   overflow-y: hidden;
+}
+
+.composer-input textarea {
+  box-sizing: border-box;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 1.55;
+}
+
+.composer-input input {
+  line-height: 34px;
 }
 
 .composer-input input::placeholder,
@@ -947,7 +959,14 @@
 }
 
 .composer-status {
-  margin: 8px 8px 0;
+  /* Float above the composer instead of taking a layout row — otherwise
+     showing the status shoves the whole input box upward. Anchored to the
+     form (.session-input is position: relative). */
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 2;
+  margin: 0;
   padding: 6px 10px;
   display: inline-flex;
   align-items: center;
@@ -957,6 +976,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-soft);
+  box-shadow: 0 8px 24px rgba(31, 28, 24, 0.10);
   width: max-content;
   max-width: 100%;
 }

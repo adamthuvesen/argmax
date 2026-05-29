@@ -178,7 +178,6 @@
      same weight. */
   border-left: 1px solid var(--line-strong);
   border-radius: 0;
-  background: var(--panel-soft);
 }
 
 .tool-call-row[data-status="error"] > .tool-call-detail {

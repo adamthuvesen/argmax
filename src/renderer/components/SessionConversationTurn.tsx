@@ -253,6 +253,7 @@ function SessionConversationTurnInner({
               tool={tItem.tool}
               defaultExpanded={toolsExpanded}
               workspaceCwd={workspace?.path ?? null}
+              onOpenFile={onOpenFile}
             />
           )
         };
@@ -268,6 +269,7 @@ function SessionConversationTurnInner({
             group={tItem.group}
             defaultExpanded={toolsExpanded}
             workspaceCwd={workspace?.path ?? null}
+            onOpenFile={onOpenFile}
           />
         )
       };

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
@@ -454,7 +454,39 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.getByText("Done.")).toBeInTheDocument();
+    // Immediate window only: a completed answer at the very end of a turn flips
+    // the runtime to `complete` within ~a frame, so we never flash Thinking
+    // under the finished reply. The mid-turn-pause test below covers the
+    // debounced re-show for genuine multi-second gaps.
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("re-shows Thinking after a mid-turn pause once a completed chunk stops streaming", () => {
+    // The agent finishes a chunk ("now I'll edit the file") then spends a few
+    // seconds silently generating the next step. Thinking is debounced: hidden
+    // immediately (so end-of-turn races and quick tool hand-offs don't flash),
+    // then surfaced once the pause outlasts THINKING_PAUSE_DELAY_MS so the turn
+    // never looks idle while the agent is still working.
+    vi.useFakeTimers();
+    try {
+      renderConversation(
+        baseSession({ provider: "claude", state: "running" }),
+        [
+          event("m1", "message.completed", "Now I'll edit the file.", "2026-05-12T15:00:01.000Z"),
+          event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z")
+        ]
+      );
+
+      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {

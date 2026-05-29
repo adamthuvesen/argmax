@@ -12,12 +12,7 @@ export function foldTurnToolItems(toolItems: readonly TurnToolItem[]): TurnToolI
 
   const flushCommandRun = (): void => {
     if (commandRun.length === 0) return;
-    if (commandRun.length === 1) {
-      const [tool] = commandRun;
-      if (tool) folded.push({ kind: "tool", tool });
-    } else {
-      folded.push({ kind: "tool-group", group: buildToolCallGroup(commandRun) });
-    }
+    folded.push({ kind: "tool-group", group: buildToolCallGroup(commandRun) });
     commandRun = [];
   };
 
@@ -69,6 +64,7 @@ export function visibleTurnToolItem(
   const filteredGroup = toolGroupWithoutHiddenTools(item.group, hiddenToolIds);
   if (!filteredGroup) return null;
   if (filteredGroup.tools.length === 1) {
+    if (item.group.tools.length === 1) return { kind: "tool-group", group: filteredGroup };
     const [tool] = filteredGroup.tools;
     return tool ? { kind: "tool", tool } : null;
   }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/highlighter.js", () => ({
@@ -30,8 +30,8 @@ describe("FileChangeCard", () => {
     expect(card).not.toBeNull();
     expect(card?.getAttribute("data-kind")).toBe("create");
     expect(card?.getAttribute("aria-label")).toBe("Created /tmp/poem.md");
-    expect(screen.getByLabelText("Open /tmp/poem.md in editor")).toBeInTheDocument();
-    expect(screen.getByText("Open in editor")).toBeInTheDocument();
+    expect(screen.getByLabelText("Open /tmp/poem.md")).toBeInTheDocument();
+    expect(screen.getByText("Open")).toBeInTheDocument();
   });
 
   it("displays workspace-relative path when cwd matches", () => {
@@ -42,7 +42,21 @@ describe("FileChangeCard", () => {
     render(<FileChangeCard change={change} workspaceCwd="/Users/me/proj" />);
     expect(screen.getByText("src/foo.ts")).toBeInTheDocument();
     // Full path still in aria-label for screen readers.
-    expect(screen.getByLabelText("Open /Users/me/proj/src/foo.ts in editor")).toBeInTheDocument();
+    expect(screen.getByLabelText("Open /Users/me/proj/src/foo.ts")).toBeInTheDocument();
+  });
+
+  it("opens the workspace-relative path in the review panel, not the absolute file_path", () => {
+    // The review panel resolves/keys files by workspace-relative path; handing it
+    // the agent's absolute file_path fails containment and nothing opens.
+    const change = changeFor("Edit", {
+      file_path: "/Users/me/proj/src/foo.ts",
+      old_string: "a",
+      new_string: "b"
+    });
+    const onOpenFile = vi.fn();
+    render(<FileChangeCard change={change} workspaceCwd="/Users/me/proj" onOpenFile={onOpenFile} />);
+    fireEvent.click(screen.getByLabelText("Open /Users/me/proj/src/foo.ts"));
+    expect(onOpenFile).toHaveBeenCalledWith("src/foo.ts");
   });
 
   it("renders an edit card with data-kind=edit", () => {

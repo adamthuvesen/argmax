@@ -263,4 +263,31 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const merged = mergeDashboardDelta(base, { events: deltas });
     expect(merged.events.some((e) => e.id === "t1")).toBe(true);
   });
+
+  // Regression: a long extended-thinking run floods thinking deltas. These used
+  // to share the protected budget with tool rows, so they evicted the oldest
+  // tool calls — and because the count varied per delta, the eviction boundary
+  // oscillated and the tool list blinked. Thinking deltas now have their own
+  // bucket, so even a huge thinking flood leaves every tool row intact.
+  it("keeps tool rows when a long thinking phase floods thinking deltas", () => {
+    const toolRows: TimelineEvent[] = Array.from({ length: 400 }, (_, i) =>
+      event(`c${i}`, i % 2 === 0 ? "command.started" : "command.completed", "2026-05-12T15:00:00.000Z", i + 1)
+    );
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [event("u1", "user.message", "2026-05-12T14:59:59.000Z", 0), ...toolRows]
+    };
+    // 1200 in-flight thinking deltas — well past any single-bucket cap.
+    const thinking: TimelineEvent[] = Array.from({ length: 1200 }, (_, i) => ({
+      ...event(`t${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 10_000 + i),
+      payload: { thinking: true }
+    }));
+    const merged = mergeDashboardDelta(base, { events: thinking });
+    const ids = new Set(merged.events.map((e) => e.id));
+    // Every tool row and the user message survive the thinking flood.
+    expect(ids.has("u1")).toBe(true);
+    for (let i = 0; i < 400; i++) {
+      expect(ids.has(`c${i}`)).toBe(true);
+    }
+  });
 });

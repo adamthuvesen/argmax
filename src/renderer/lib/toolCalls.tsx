@@ -191,6 +191,13 @@ function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string 
 }
 
 export function describeToolAction(tool: ToolCall): string {
+  // Claude's Skill tool fires when the agent activates a skill. The skill's
+  // full body streams separately (and is dropped upstream as noise), so the
+  // row is the one durable marker — make it name the skill outright instead of
+  // a bare "Skill".
+  if (tool.name.toLowerCase() === "skill") {
+    return tool.inputPreview ? `Activated skill ${tool.inputPreview}` : "Activated skill";
+  }
   const bucket = getFineBucket(tool.name);
   const preview = tool.inputPreview;
   const basename = (path: string): string => {
@@ -388,6 +395,13 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
 
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
   const lower = name.toLowerCase();
+  if (lower === "skill") {
+    // Claude's Skill tool input is `{ skill: "<name>" }`; surface that name so
+    // the row reads "Activated skill <name>".
+    const skill = input.skill ?? input.name ?? input.command;
+    if (typeof skill === "string" && skill.trim().length > 0) return skill.slice(0, 72);
+    return "";
+  }
   if (isAgentTool(lower)) {
     // Claude's Task tool input is `{ description, prompt, subagent_type }`.
     // `description` is the human-friendly 3-5 word title; prefer it over the

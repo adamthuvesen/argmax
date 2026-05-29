@@ -24,7 +24,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "id" | "name">): Too
 }
 
 describe("turnToolItems", () => {
-  it("folds consecutive bash-like tools into one group without crossing non-bash tools", () => {
+  it("folds bash-like tools into groups without crossing non-bash tools", () => {
     const first = tool({ id: "t1", name: "Bash" });
     const second = tool({ id: "t2", name: "Shell", createdAt: "2026-05-21T10:00:00.050Z" });
     const read = tool({ id: "t3", name: "Read" });
@@ -41,7 +41,20 @@ describe("turnToolItems", () => {
     expect(folded[0]?.kind).toBe("tool-group");
     expect(folded[0]?.kind === "tool-group" ? folded[0].group.tools.map((t) => t.id) : []).toEqual(["t1", "t2"]);
     expect(folded[1]).toEqual({ kind: "tool", tool: read });
-    expect(folded[2]).toEqual({ kind: "tool", tool: third });
+    expect(folded[2]?.kind).toBe("tool-group");
+    expect(folded[2]?.kind === "tool-group" ? folded[2].group.tools.map((t) => t.id) : []).toEqual(["t4"]);
+  });
+
+  it("keeps single bash-like tools as groups so they render with the summary header", () => {
+    const command = tool({ id: "t1", name: "Bash", inputPreview: "ls -la" });
+
+    const [folded] = foldTurnToolItems([{ kind: "tool", tool: command }]);
+    expect(folded?.kind).toBe("tool-group");
+    expect(folded?.kind === "tool-group" ? folded.group.tools : []).toEqual([command]);
+
+    if (!folded) throw new Error("expected folded tool item");
+    const visible = visibleTurnToolItem(folded, new Set());
+    expect(visible?.kind).toBe("tool-group");
   });
 
   it("finds named tools inside individual tools and groups", () => {

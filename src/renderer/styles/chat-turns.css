@@ -190,10 +190,6 @@
   opacity: 1;
 }
 
-.thought-block-icon {
-  opacity: 0.7;
-}
-
 .thought-block-label {
   letter-spacing: 0.02em;
 }
@@ -204,7 +200,7 @@
   opacity: 1;
 }
 
-.thought-block[data-live="true"] .thought-block-icon {
+.thought-block[data-live="true"] .thought-block-label {
   opacity: 1;
   animation: thought-pulse 1600ms var(--ease) infinite;
 }
@@ -215,7 +211,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thought-block[data-live="true"] .thought-block-icon {
+  .thought-block[data-live="true"] .thought-block-label {
     animation: none;
   }
 }

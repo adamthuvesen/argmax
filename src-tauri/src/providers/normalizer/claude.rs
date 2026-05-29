@@ -109,7 +109,9 @@ pub fn extract_inline_tool_blocks(
             // true` payload flag so the renderer can style or hide them
             // (default: render the text inline so the user sees activity).
             Some("thinking") => {
-                let text = string_value(block.get("thinking")).unwrap_or("").to_string();
+                let text = string_value(block.get("thinking"))
+                    .unwrap_or("")
+                    .to_string();
                 if !text.trim().is_empty() {
                     let mut payload = block.clone();
                     payload.insert("thinking".to_string(), Value::Bool(true));
@@ -157,8 +159,7 @@ pub fn extract_delta_text(payload: &Map<String, Value>) -> Option<String> {
 /// True when this Claude payload is a `content_block_delta` carrying a
 /// `thinking_delta` — its surfaced text is extended reasoning, not answer text.
 pub fn is_thinking_delta_payload(payload: &Map<String, Value>) -> bool {
-    object_value(payload.get("delta"))
-        .and_then(|delta| string_value(delta.get("type")))
+    object_value(payload.get("delta")).and_then(|delta| string_value(delta.get("type")))
         == Some("thinking_delta")
 }
 
@@ -210,6 +211,28 @@ pub fn extract_usage(
 
 pub fn should_drop_sub_agent_prose(payload: &Map<String, Value>) -> bool {
     string_value(payload.get("parent_tool_use_id")).is_some()
+}
+
+/// When a skill is activated, Claude injects the skill's full `SKILL.md` body
+/// as a synthetic `user` message so the model can read its instructions. That
+/// body is meant for the model, not the user — surfacing it briefly flashes the
+/// entire skill markdown into the chat before the turn settles. Drop it; the
+/// `Skill` tool row already marks the activation with the skill's name.
+pub fn is_synthetic_skill_body(payload: &Map<String, Value>) -> bool {
+    if payload.get("isSynthetic") != Some(&Value::Bool(true)) {
+        return false;
+    }
+    let Some(content) = object_value(payload.get("message"))
+        .and_then(|message| array_value(message.get("content")))
+    else {
+        return false;
+    };
+    content.iter().any(|block| {
+        string_value(block.get("text")).is_some_and(|text| {
+            text.trim_start()
+                .starts_with("Base directory for this skill:")
+        })
+    })
 }
 
 fn command_from_permission_message(message: Option<&str>) -> Option<String> {
@@ -284,9 +307,7 @@ mod tests {
 
         let trailing = normalize_provider_event(
             ProviderId::Claude,
-            &output_event(
-                r#"{"type":"result","subtype":"success","result":"Hey!"}"#,
-            ),
+            &output_event(r#"{"type":"result","subtype":"success","result":"Hey!"}"#),
             &mut context,
         );
         assert!(trailing.events.is_empty());
@@ -302,6 +323,32 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "message.delta");
         assert_eq!(result.events[0].message, "done");
+    }
+
+    #[test]
+    fn claude_synthetic_skill_body_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(&json!({
+                "type": "user",
+                "isSynthetic": true,
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Base directory for this skill: /repo/.claude/skills/brain-curate\n\n# Brain Curate\n\nUse this skill when…"
+                        }
+                    ]
+                }
+            }).to_string()),
+            &mut context,
+        );
+        assert!(
+            result.events.is_empty(),
+            "synthetic skill body should not surface as a chat message"
+        );
     }
 
     #[test]
@@ -395,7 +442,10 @@ mod tests {
             ),
             &mut context,
         );
-        assert!(!result.events.is_empty(), "thinking blocks must surface events");
+        assert!(
+            !result.events.is_empty(),
+            "thinking blocks must surface events"
+        );
         assert_eq!(result.events[0].r#type, "message.delta");
         assert_eq!(
             result.events[0].message,

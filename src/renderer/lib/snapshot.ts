@@ -75,15 +75,33 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
 }
 
 // Token-by-token streaming produces hundreds of answer `message.delta` rows per
-// turn. Capping the merged event list naively (newest-N) would let that flood
+// turn, and Claude extended thinking adds hundreds more thinking `message.delta`
+// rows. Capping the merged event list naively (newest-N) would let either flood
 // evict the OLDEST rows — the user bubble and early tool calls — mid-stream,
-// making them flicker out until the final `message.completed` prunes the
-// deltas. So we cap the two kinds independently: only non-thinking answer
-// deltas are droppable; everything else (user message, tool rows, approvals,
-// errors, completions, and thinking deltas) is protected. The current turn's
-// rows are always the newest of their kind, so they survive the flood.
+// making them flicker out. We cap THREE kinds independently so a flood of one
+// can never evict another:
+//   - answer deltas (non-thinking message.delta): droppable, EVENT_DELTA_LIMIT
+//   - thinking deltas (message.delta with payload.thinking): their own bucket,
+//     EVENT_THINKING_LIMIT — kept generous so reasoning stays visible, but
+//     bounded so a long thinking phase can't crowd out tool rows
+//   - protected/durable rows (user/assistant messages, tool started/completed,
+//     approvals, errors, completions): EVENT_PROTECTED_LIMIT, sized to hold a
+//     large multi-agent turn (hundreds of tool calls) without eviction
+// The current turn's rows are always the newest of their kind, so they survive.
+//
+// Why three buckets and not two: thinking deltas used to be lumped with the
+// protected rows. A long extended-thinking run emitted enough thinking deltas
+// to blow past the protected cap, evicting the oldest tool calls; because each
+// delta added a varying number of thinking deltas, the eviction boundary
+// oscillated and tool rows blinked in and out. Isolating thinking deltas fixes
+// the blink.
 const EVENT_DELTA_LIMIT = 500;
-const EVENT_PROTECTED_LIMIT = 500;
+const EVENT_THINKING_LIMIT = 1000;
+const EVENT_PROTECTED_LIMIT = 2000;
+
+function isThinkingDelta(event: TimelineEvent): boolean {
+  return event.type === "message.delta" && event.payload?.["thinking"] === true;
+}
 
 function isEvictableDelta(event: TimelineEvent): boolean {
   return event.type === "message.delta" && event.payload?.["thinking"] !== true;
@@ -103,8 +121,13 @@ function mergeEventsBounded(
   // Newest-first, same ordering mergeSlice used.
   const sorted = sortByTimestamp(merged, (event) => event.createdAt, (event) => event.rowCursor);
   let deltaKept = 0;
+  let thinkingKept = 0;
   let protectedKept = 0;
   const capped = sorted.filter((event) => {
+    if (isThinkingDelta(event)) {
+      thinkingKept += 1;
+      return thinkingKept <= EVENT_THINKING_LIMIT;
+    }
     if (isEvictableDelta(event)) {
       deltaKept += 1;
       return deltaKept <= EVENT_DELTA_LIMIT;

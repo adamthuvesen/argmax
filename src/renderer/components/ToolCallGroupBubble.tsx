@@ -4,6 +4,7 @@ import {
   summarizeToolGroup,
   type ToolCallGroup
 } from "../lib/toolCalls.js";
+import type { FileChipOpenOptions } from "./FileChip.js";
 import { LiveElapsedChip } from "./LiveElapsedChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 
@@ -11,12 +12,14 @@ type ToolCallGroupBubbleProps = {
   group: ToolCallGroup;
   defaultExpanded?: boolean;
   workspaceCwd?: string | null;
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 };
 
 function ToolCallGroupBubbleInner({
   group,
   defaultExpanded,
-  workspaceCwd
+  workspaceCwd,
+  onOpenFile
 }: ToolCallGroupBubbleProps): JSX.Element {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
@@ -81,7 +84,7 @@ function ToolCallGroupBubbleInner({
               key={tool.id}
               style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
             >
-              <ToolCallRow tool={tool} workspaceCwd={workspaceCwd ?? null} />
+              <ToolCallRow tool={tool} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
               {children.length > 0 ? (
                 <div className="tool-call-agent-children">
                   {children.map((child, childIndex) => (
@@ -90,7 +93,7 @@ function ToolCallGroupBubbleInner({
                       key={child.id}
                       style={{ animationDelay: `${Math.min(childIndex, 8) * 28}ms` }}
                     >
-                      <ToolCallRow tool={child} workspaceCwd={workspaceCwd ?? null} />
+                      <ToolCallRow tool={child} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
                     </div>
                   ))}
                 </div>
@@ -106,6 +109,7 @@ function ToolCallGroupBubbleInner({
 export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) => {
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
+  if (prev.onOpenFile !== next.onOpenFile) return false;
   if (prev.group === next.group) return true;
   if (prev.group.id !== next.group.id) return false;
   const pt = prev.group.tools;

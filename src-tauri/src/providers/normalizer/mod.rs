@@ -17,9 +17,9 @@ use self::{
         extract_inline_tool_blocks as extract_claude_inline_tool_blocks,
         extract_message_content as extract_claude_message_content,
         extract_usage as extract_claude_usage,
-        is_thinking_delta_payload as is_claude_thinking_delta_payload,
+        is_synthetic_skill_body as is_claude_synthetic_skill_body,
+        is_thinking_delta_payload as is_claude_thinking_delta_payload, should_drop_sub_agent_prose,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
-        should_drop_sub_agent_prose,
     },
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
@@ -448,9 +448,7 @@ fn normalize_json_payload(
                 provider_conversation_id,
             };
         }
-        if let Some(completed) =
-            synthesize_claude_message_completed_from_result(event, &payload)
-        {
+        if let Some(completed) = synthesize_claude_message_completed_from_result(event, &payload) {
             context.claude_turn_answer_emitted = true;
             return NormalizedProviderResult {
                 events: vec![completed],
@@ -488,6 +486,13 @@ fn normalize_json_payload(
         };
     }
     if provider == ProviderId::Claude && should_drop_sub_agent_prose(&payload) {
+        return NormalizedProviderResult {
+            events,
+            usages,
+            provider_conversation_id,
+        };
+    }
+    if provider == ProviderId::Claude && is_claude_synthetic_skill_body(&payload) {
         return NormalizedProviderResult {
             events,
             usages,

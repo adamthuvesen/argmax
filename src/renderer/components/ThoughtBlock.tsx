@@ -1,4 +1,4 @@
-import { Brain, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 
 /**
@@ -35,7 +35,6 @@ export function ThoughtBlock({
         title={expanded ? "Hide reasoning" : "Show reasoning"}
         onClick={() => setUserToggle(!expanded)}
       >
-        <Brain size={12} className="thought-block-icon" aria-hidden="true" />
         <span className="thought-block-label">{live ? "Thinking" : "Thought"}</span>
         <ChevronRight
           size={12}

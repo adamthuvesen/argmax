@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
 import { describeToolAction, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
+import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 
 function splitVerbTarget(action: string): { verb: string; target: string } {
@@ -39,11 +40,13 @@ function verbForChanges(changes: FileChange[]): string | null {
 function ToolCallRowInner({
   tool,
   workspaceCwd,
-  defaultExpanded
+  defaultExpanded,
+  onOpenFile
 }: {
   tool: ToolCall;
   workspaceCwd?: string | null;
   defaultExpanded?: boolean;
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
   // Follow the parent turn's expanded state until the user manually toggles
   // this row. That keeps the turn chip authoritative for single-tool rows
@@ -105,7 +108,9 @@ function ToolCallRowInner({
           </span>
         ) : null}
       </button>
-      {expanded ? <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} /> : null}
+      {expanded ? (
+        <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
+      ) : null}
     </div>
   );
 }
@@ -113,6 +118,7 @@ function ToolCallRowInner({
 export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
+  if (prev.onOpenFile !== next.onOpenFile) return false;
   if (prev.tool === next.tool) return true;
   return (
     prev.tool.id === next.tool.id &&

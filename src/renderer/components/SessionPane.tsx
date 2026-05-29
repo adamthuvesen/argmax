@@ -24,6 +24,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import { useStableFilter } from "../hooks/useStableFilter.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
@@ -161,18 +162,13 @@ export function SessionPane({
     setIsTerminalOpen(false);
     setTerminalOnceOpened(false);
   }, []);
-  const visibleApprovals = useMemo(
-    () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
-    [approvals, sessionId]
-  );
-  const visibleEvents = useMemo(
-    () => (sessionId ? events.filter((event) => event.sessionId === sessionId) : events),
-    [events, sessionId]
-  );
-  const visibleRawOutputs = useMemo(
-    () => (sessionId ? rawOutputs.filter((output) => output.sessionId === sessionId) : rawOutputs),
-    [rawOutputs, sessionId]
-  );
+  // Stable per-session slices: a delta for another session leaves these
+  // identity-equal, so the conversation's derived memos and memoized turns skip
+  // work instead of re-deriving on every unrelated delta (matters most in the
+  // multi-pane grid).
+  const visibleApprovals = useStableFilter(approvals, sessionId, (approval) => approval.sessionId === sessionId);
+  const visibleEvents = useStableFilter(events, sessionId, (event) => event.sessionId === sessionId);
+  const visibleRawOutputs = useStableFilter(rawOutputs, sessionId, (output) => output.sessionId === sessionId);
   const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
     try {
       await onResolveApproval(approvalId, status);

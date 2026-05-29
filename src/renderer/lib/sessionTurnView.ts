@@ -221,28 +221,42 @@ export function buildTurnRenderState(params: {
   );
   const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionHiddenToolIds } =
     collectAskUserQuestionState(params.toolItems);
-  const hasExitPlanCard =
-    exitPlanTool !== null && parsePlan(exitPlanTool.markdown) !== null;
+  const exitPlanHasPlan = exitPlanTool !== null && parsePlan(exitPlanTool.markdown) !== null;
   const hasQuestionCard = askUserQuestionTool !== null;
   const cardCutoff = cardCutoffForTurn({
-    exitPlanCreatedAt: hasExitPlanCard && exitPlanTool ? exitPlanTool.createdAt : null,
+    exitPlanCreatedAt: exitPlanHasPlan && exitPlanTool ? exitPlanTool.createdAt : null,
     questionCreatedAt: hasQuestionCard && askUserQuestionTool ? askUserQuestionTool.createdAt : null
   });
   const visibleAssistantGroups = cardCutoff
     ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
     : assistantGroups;
   const hiddenToolIds = new Set([...exitPlanHiddenToolIds, ...askUserQuestionHiddenToolIds]);
+
+  // A plan produced in the same turn as a still-unanswered question was written
+  // before the user could answer (their answer starts the next turn) — so it's a
+  // premature plan the model emitted when its denied AskUserQuestion fell back to
+  // ExitPlanMode. Show only the question and drop the plan card; the agent re-plans
+  // with the answer next turn. The plan's tool row + raw text stay hidden anyway
+  // (via hiddenToolIds and the question-anchored cardCutoff).
+  const planPrecededByQuestion =
+    exitPlanHasPlan &&
+    hasQuestionCard &&
+    exitPlanTool !== null &&
+    askUserQuestionTool !== null &&
+    askUserQuestionTool.createdAt <= exitPlanTool.createdAt;
+  const renderedExitPlanTool = planPrecededByQuestion ? null : exitPlanTool;
+
   return {
     assistantGroups,
     visibleAssistantGroups,
     cardCutoff,
     turnAgentMode: turnAgentModeFromPrior(params.priorItem),
-    exitPlanTool,
+    exitPlanTool: renderedExitPlanTool,
     exitPlanHiddenToolIds,
     askUserQuestionTool,
     askUserQuestionHiddenToolIds,
     hiddenToolIds,
-    hasExitPlanCard,
+    hasExitPlanCard: renderedExitPlanTool !== null,
     hasQuestionCard,
     turnStartedAtMs: computeTurnStartedAtMs({
       priorItem: params.priorItem,

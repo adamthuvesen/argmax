@@ -118,6 +118,63 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByText("ExitPlanMode")).not.toBeInTheDocument();
   });
 
+  it("suppresses a premature plan card when an unanswered question precedes it in the same turn", () => {
+    // Plan-mode flow: the model asks a clarifying question (AskUserQuestion), but
+    // because Argmax denies that tool the model falls back to ExitPlanMode in the
+    // SAME turn — writing a plan before the user has answered. Show only the
+    // question; the premature plan card must NOT render (the agent re-plans with
+    // the answer in the next turn).
+    renderConversation(
+      baseSession({ provider: "claude", state: "complete" }),
+      [
+        event("u1", "user.message", "make a plan", "2026-05-12T15:00:00.000Z", {
+          agentMode: "plan"
+        }),
+        event("tu-q", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_q",
+          name: "AskUserQuestion",
+          input: {
+            questions: [
+              {
+                question: "What's the scope?",
+                header: "Scope",
+                multiSelect: false,
+                options: [
+                  { label: "Consolidate & clean", description: "Merge overlaps" },
+                  { label: "Fill gaps", description: "Add missing concepts" }
+                ]
+              }
+            ]
+          }
+        }),
+        event("tu-q-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "tu_q",
+          content: "Answer questions?",
+          is_error: true
+        }),
+        event("tu-plan", "command.started", "ExitPlanMode", "2026-05-12T15:00:03.000Z", {
+          type: "tool_use",
+          id: "tu_plan",
+          name: "ExitPlanMode",
+          input: { plan: "## Premature plan\n\n**Step:** Do it anyway\n\nApprove?" }
+        }),
+        event("tu-plan-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "tu_plan",
+          content: "Exit plan mode?",
+          is_error: true
+        })
+      ]
+    );
+
+    // The question is the authoritative ask…
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.getByText("What's the scope?")).toBeInTheDocument();
+    // …and the premature plan card is suppressed until it's answered.
+    expect(screen.queryByLabelText(/Plan: /)).not.toBeInTheDocument();
+    expect(screen.queryByText("Premature plan")).not.toBeInTheDocument();
+  });
+
   it("renders a failed AskUserQuestion tool call as a QuestionCard and submits the chosen answer", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(

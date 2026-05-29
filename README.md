@@ -20,6 +20,12 @@ Single-user, on-device, no cloud, no auth. Built for sessions that need real rep
 | Tests | Vitest + Testing Library + Cargo tests |
 | Packaging | Tauri bundler (`dmg`, `app`, updater `latest.json`) |
 
+## Prerequisites
+
+- **Node.js** 18+ and npm
+- **Rust** 1.95+ ([install rustup](https://rustup.rs))
+- **macOS** (currently development-targeted; Linux/Windows support available via Tauri CLI)
+
 ## Setup & Run
 
 ```bash

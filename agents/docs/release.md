@@ -1,6 +1,8 @@
 # Release & Signing
 
-Tauri is the release pipeline. Electron's `latest-mac.yml` feed is frozen after the final migration release; Tauri publishes `latest.json`.
+Tauri is the release pipeline. Tauri publishes `latest.json` for updates.
+
+> **Legacy (post-migration housekeeping):** Electron's `latest-mac.yml` feed is frozen after the final migration release. Existing Electron installs poll it for a one-time migration banner release; keep the old feed in GitHub releases indefinitely to avoid breaking those clients.
 
 ## Environment
 

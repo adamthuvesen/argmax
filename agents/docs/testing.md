@@ -27,3 +27,24 @@ Perf microbenches are isolated through [vitest.perf.config.ts](../../vitest.perf
 ## Rust Tests
 
 Rust tests live next to the code and under [src-tauri/tests](../../src-tauri/tests). They cover IPC inventory, git/review/workspace services, provider sessions, persistence, and command validation. Use focused Cargo filters while iterating, then `npm run test:rust` before calling runtime work done.
+
+### Rust Test Iteration
+
+Run a single test by name:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml my_test_name
+```
+
+Watch mode (requires `cargo-watch`):
+
+```bash
+cargo install cargo-watch
+cargo watch -x "test --manifest-path src-tauri/Cargo.toml" -c
+```
+
+Test a specific module or package:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml -p argmax_lib
+```

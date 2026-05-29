@@ -34,6 +34,12 @@ Key folders:
 
 Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspaces:status`) plus post-commit `dashboard:delta` pushes.
 
+### Dependency Notes
+
+- **tauri >= 2.11** required for `#[tauri::command(rename = "...")]` to preserve legacy IPC channel names across the bridge.
+- **rusqlite bundled-full** ships FTS5 for full-text search on `events_fts` and `learnings_fts` sidecars.
+- **portable-pty 0.8** for cross-platform PTY process management (provider launches and terminal emulation).
+
 ## Renderer — `src/renderer`
 
 React 19 + Vite. [App.tsx](../../src/renderer/App.tsx) composes the shell; [tauriBridge.ts](../../src/renderer/lib/tauriBridge.ts) is the only renderer file that imports `@tauri-apps/api`. Browser-preview mode detects missing Tauri internals and falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts).

@@ -351,6 +351,84 @@ describe("useDashboardSession — refresh / delta race", () => {
     }
   });
 
+  it("ignores terminal events from earlier turns when deciding to reconcile", async () => {
+    // A multi-turn session keeps prior turns' `session.completed` events in the
+    // snapshot. Keying the reconcile on *any* terminal event latched on a stale
+    // one: the reconcile fired once at the start of the next turn (while state
+    // was still running), then never again — leaving the header stuck on
+    // "Working" for the second turn onward (seen with Cursor).
+    vi.useFakeTimers();
+    try {
+      const seeded: DashboardSnapshot = {
+        ...baseSnapshot,
+        events: [
+          {
+            id: "ev-prior-turn",
+            sessionId: "session-existing",
+            type: "session.completed",
+            message: "",
+            payload: {},
+            createdAt: "2026-05-12T15:00:10.000Z"
+          }
+        ]
+      };
+      const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(seeded);
+      const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        result.current.setSelectedWorkspaceId("ws-existing");
+        result.current.setSelectedSessionId("session-existing");
+      });
+      expect(result.current.selectedSession?.state).toBe("running");
+      statusMock.mockClear();
+
+      // Several ticks while THIS turn is still running. The only terminal event
+      // in the snapshot belongs to the prior turn, so no reconcile may fire.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+      expect(statusMock).not.toHaveBeenCalled();
+
+      // The current turn ends: a NEW terminal event lands; the DB shows complete.
+      (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        events: [
+          {
+            id: "ev-this-turn",
+            sessionId: "session-existing",
+            type: "session.completed",
+            message: "",
+            payload: {},
+            createdAt: "2026-05-12T15:00:40.000Z",
+            rowCursor: 20
+          }
+        ],
+        rawOutputs: [],
+        eventCursor: 20,
+        rawOutputCursor: 0
+      });
+      statusMock.mockResolvedValue({
+        workspaces: [makeWorkspace({ state: "complete" })],
+        sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:40.000Z" })],
+        checks: [],
+        checkpoints: []
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(statusMock).toHaveBeenCalledWith({ workspaceIds: ["ws-existing"] });
+      expect(result.current.selectedSession?.state).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not pull workspace:status while a turn is still running", async () => {
     // Regression: pulling the heavy status command every tick (and overlapping
     // ticks) starved a busy turn. With no terminal event, only the cheap event

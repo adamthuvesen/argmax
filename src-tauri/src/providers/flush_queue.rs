@@ -312,6 +312,24 @@ impl DashboardDelta {
             && self.approvals.is_empty()
             && self.pending_messages.is_none()
     }
+
+    /// Conflate `other` into `self`. Entity/event vectors are concatenated in
+    /// arrival order (the renderer dedupes by id, keeping the later — i.e. newer
+    /// — row), and `pending_messages` is a per-session snapshot, so `other`'s
+    /// entries overwrite `self`'s for any session it touches. Used by the delta
+    /// emit worker to merge a burst of streamed deltas into a single push.
+    pub fn merge_from(&mut self, other: DashboardDelta) {
+        self.projects.extend(other.projects);
+        self.workspaces.extend(other.workspaces);
+        self.sessions.extend(other.sessions);
+        self.events.extend(other.events);
+        self.raw_outputs.extend(other.raw_outputs);
+        self.approvals.extend(other.approvals);
+        if let Some(incoming) = other.pending_messages {
+            let merged = self.pending_messages.get_or_insert_with(Default::default);
+            merged.extend(incoming);
+        }
+    }
 }
 
 pub fn flush_session_buffer(
@@ -483,6 +501,55 @@ mod tests {
         assert!(!gate.should_publish_dashboard_delta());
         gate.force_next_dashboard_delta();
         assert!(gate.should_publish_dashboard_delta());
+    }
+
+    #[test]
+    fn merge_from_concatenates_events_and_overrides_pending_messages() {
+        use crate::persistence::events::TimelineEvent;
+        use std::collections::BTreeMap;
+
+        let event = |id: &str| TimelineEvent {
+            id: id.to_string(),
+            session_id: "s1".to_string(),
+            r#type: "message.delta".to_string(),
+            message: String::new(),
+            payload: serde_json::json!({}),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            row_cursor: None,
+        };
+        let pending = |id: &str| PendingMessage {
+            id: id.to_string(),
+            session_id: "s1".to_string(),
+            content: "hi".to_string(),
+            agent_mode: "auto".to_string(),
+            model_label: None,
+            model_id: None,
+            reasoning_effort: None,
+            queued_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+
+        let mut a = DashboardDelta {
+            events: vec![event("e1")],
+            pending_messages: Some(BTreeMap::from([
+                ("s1".to_string(), vec![pending("m1")]),
+                ("s2".to_string(), vec![pending("m2")]),
+            ])),
+            ..DashboardDelta::default()
+        };
+        a.merge_from(DashboardDelta {
+            events: vec![event("e2")],
+            // s1's queue is now empty — newer snapshot must override a's.
+            pending_messages: Some(BTreeMap::from([("s1".to_string(), vec![])])),
+            ..DashboardDelta::default()
+        });
+
+        assert_eq!(
+            a.events.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            vec!["e1", "e2"]
+        );
+        let pending = a.pending_messages.expect("pending merged");
+        assert!(pending.get("s1").expect("s1 present").is_empty());
+        assert_eq!(pending.get("s2").expect("s2 preserved").len(), 1);
     }
 
     #[test]

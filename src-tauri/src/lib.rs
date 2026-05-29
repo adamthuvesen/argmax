@@ -35,6 +35,11 @@ use serde_json::json;
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
 
+/// If one emit cycle has to conflate at least this many queued `dashboard:delta`
+/// messages, the main-thread event loop is lagging behind producers — log it so
+/// the backpressure is visible rather than silently growing the channel.
+const DELTA_CONFLATE_WARN: usize = 256;
+
 /// Construct and run the Tauri app.
 pub fn run() {
     let timer = Arc::new(StartupTimer::new());
@@ -158,7 +163,26 @@ pub fn run() {
                                 tokio::sync::mpsc::unbounded_channel::<providers::flush_queue::DashboardDelta>();
                             let emit_handle = app.handle().clone();
                             tauri::async_runtime::spawn(async move {
-                                while let Some(delta) = delta_rx.recv().await {
+                                while let Some(mut delta) = delta_rx.recv().await {
+                                    // Conflate any deltas that piled up while the previous emit
+                                    // ran: drain everything currently queued and merge it into one
+                                    // push. A fast token-stream produces a `dashboard:delta` per
+                                    // chunk (the 16ms throttle is intentionally disabled so chunks
+                                    // render live), so without this the channel could grow unbounded
+                                    // behind a busy main thread. Merging into a single atomic delta
+                                    // also removes any inter-emit ordering risk. No added latency in
+                                    // the common case (try_recv returns empty → emit the one delta).
+                                    let mut conflated = 1usize;
+                                    while let Ok(next) = delta_rx.try_recv() {
+                                        delta.merge_from(next);
+                                        conflated += 1;
+                                    }
+                                    if conflated >= DELTA_CONFLATE_WARN {
+                                        tracing::warn!(
+                                            conflated,
+                                            "coalesced a large dashboard:delta burst; main-thread emit may be lagging"
+                                        );
+                                    }
                                     // Emit on the main thread. On macOS, an event emitted
                                     // from a background thread does not reliably wake the
                                     // NSApp event loop, so `dashboard:delta` pushes can sit

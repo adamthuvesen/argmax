@@ -564,6 +564,25 @@
    the centered .launcher-shell but positioned against the full .launcher-scroll
    area so the globe fills the launcher rather than the content-sized shell. Both
    sit below .launcher-surface (z-index 26) and never take pointer events. */
+/* Deep-space pocket behind the canvas: a dark radial centered on the globe that
+   fades to the page before reaching the UI, so the additive atmosphere/dots glow
+   reads against darkness while the rest of the launcher stays light. */
+.launcher-globe-space {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 30% 47% at 61% 33%,
+      #000 0%,
+      #000 56%,
+      rgba(4, 4, 4, 0.82) 74%,
+      rgba(8, 8, 8, 0.26) 88%,
+      transparent 100%
+    );
+}
+
 .launcher-globe {
   position: absolute;
   inset: 0;
@@ -579,21 +598,12 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  /* A softer vignette keeps the globe readable without leaving a hard white halo. */
-  background:
-    radial-gradient(ellipse 44% 36% at 60% 42%, rgba(0, 0, 0, 0.16), transparent 74%),
-    radial-gradient(ellipse 72% 60% at 50% 50%, rgba(22, 13, 44, 0.12), transparent 78%);
-}
-
-:root[data-theme="light"] .launcher-globe-scrim {
-  background:
-    radial-gradient(ellipse 44% 36% at 60% 42%, rgba(0, 0, 0, 0.18), transparent 74%),
-    radial-gradient(ellipse 72% 60% at 50% 50%, rgba(0, 0, 0, 0.08), transparent 78%);
+  /* Just a whisper of edge falloff now — the space pocket provides the contrast,
+     so the scrim must not mute the glow it sits above. */
+  background: radial-gradient(ellipse 70% 64% at 61% 34%, transparent 64%, rgba(0, 0, 0, 0.05) 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* The globe still renders a static frame; keep the scrim but drop its presence
-     a touch since there's no motion drawing the eye. */
   .launcher-globe-scrim {
     opacity: 0.8;
   }

@@ -140,7 +140,7 @@ describe("App", () => {
     };
     mockDashboardSnapshot(sharedSnapshot);
     archiveWorkspace.mockResolvedValue({
-      ...(sharedSnapshot.workspaces[0] ?? snapshot.workspaces[0]!),
+      ...(sharedSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
       state: "archived"
     });
 

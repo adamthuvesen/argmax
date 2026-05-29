@@ -18,7 +18,8 @@
         "minWidth": 1024,
         "minHeight": 640,
         "backgroundColor": "#1a1a1a",
-        "backgroundThrottling": "disabled"
+        "backgroundThrottling": "disabled",
+        "dragDropEnabled": false
       }
     ],
     "security": {

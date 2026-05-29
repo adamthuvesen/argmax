@@ -45,19 +45,23 @@ function ToolCallRowInner({
   workspaceCwd?: string | null;
   defaultExpanded?: boolean;
 }): JSX.Element {
+  // Follow the parent turn's expanded state until the user manually toggles
+  // this row. That keeps the turn chip authoritative for single-tool rows
+  // (including MCP calls) while preserving per-row overrides.
+  const [userToggle, setUserToggle] = useState<boolean | null>(null);
   // Auto-expand on error so the failure is visible without a click. We only
   // run this once per row — if the user manually collapses, we don't reopen.
-  const [expanded, setExpanded] = useState<boolean>(
-    tool.status === "error" || (defaultExpanded ?? false)
-  );
+  const [autoExpandedOnError, setAutoExpandedOnError] = useState<boolean>(tool.status === "error");
   const autoExpandedOnErrorRef = useRef<boolean>(tool.status === "error");
 
   useEffect(() => {
-    if (tool.status === "error" && !autoExpandedOnErrorRef.current) {
+    if (tool.status === "error" && !autoExpandedOnErrorRef.current && userToggle === null) {
       autoExpandedOnErrorRef.current = true;
-      setExpanded(true);
+      setAutoExpandedOnError(true);
     }
-  }, [tool.status]);
+  }, [tool.status, userToggle]);
+
+  const expanded = userToggle ?? (autoExpandedOnError || (defaultExpanded ?? false));
 
   const action = describeToolAction(tool);
   const baseSplit = splitVerbTarget(action);
@@ -80,7 +84,7 @@ function ToolCallRowInner({
         type="button"
         aria-expanded={expanded}
         aria-label={action}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setUserToggle(!expanded)}
       >
         {isAgent ? (
           <span className="tool-call-row-icon" aria-hidden="true">

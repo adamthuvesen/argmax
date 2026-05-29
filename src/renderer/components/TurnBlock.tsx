@@ -101,13 +101,14 @@ function renderPhaseChildren(children: TurnBodyChild[]): ReactNode {
   return fragments;
 }
 
-// Render the turn body as a plain stream of children. We previously split
-// into Plan / Work / Result phases with a left rail, but the rail read as
-// noisy chrome rather than helpful navigation — and consistency across
-// single-phase and multi-phase turns mattered more than the timeline visual.
-function renderBody(children: TurnBodyChild[], expanded: boolean): ReactNode {
-  const visible = expanded ? children : children.filter((c) => c.kind === "assistant");
-  return renderPhaseChildren(visible);
+// Render the turn body as a plain stream of children. Every child always
+// renders — tool calls are NEVER removed when "collapsed". Collapsing a turn
+// folds each tool group to its header (the group's own `defaultExpanded`,
+// driven by the parent), so the work the agent did stays in the chat. We
+// previously split into Plan / Work / Result phases with a left rail, but the
+// rail read as noisy chrome rather than helpful navigation.
+function renderBody(children: TurnBodyChild[]): ReactNode {
+  return renderPhaseChildren(children);
 }
 
 export function TurnBlock({
@@ -115,17 +116,16 @@ export function TurnBlock({
   assistantTimestamps,
   body,
   modelLabel,
-  defaultExpanded,
   turnStartedAtMs,
   isTurnActive,
-  isCurrentTurn,
+  toolsExpanded,
+  onToggleTools,
   headerTimestampIso
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
   body: TurnBodyChild[];
   modelLabel?: string;
-  defaultExpanded?: boolean;
   // When provided, the live ticker anchors here instead of the earliest
   // tool/assistant timestamp. The parent passes the preceding user.message
   // timestamp so the chip starts ticking from the moment the turn began —
@@ -136,11 +136,12 @@ export function TurnBlock({
   // QuestionCard); we used to infer this purely from tool status, which
   // missed the thinking-only phase.
   isTurnActive?: boolean;
-  // True for the turn the user is currently looking at (the latest one),
-  // running or just-finished. Keeps its tools expanded after completion so the
-  // block doesn't collapse out from under the answer the moment it lands — it
-  // collapses silently when the next turn supersedes it (off-screen).
-  isCurrentTurn?: boolean;
+  // Whether this turn's tool groups are expanded. Owned by the parent (which
+  // builds the tool nodes) so the chip and the per-group toggles share one
+  // source of truth; the chip reflects it and flips it via `onToggleTools`.
+  // Collapsing only folds groups to their headers — tools are never removed.
+  toolsExpanded?: boolean;
+  onToggleTools?: () => void;
   // The canonical timestamp shown in the turn header (typically the earliest
   // assistant event in the turn). Per-paragraph timestamps inside the body
   // are visually suppressed once a turn-level one is available.
@@ -161,15 +162,10 @@ export function TurnBlock({
   const elapsedMs =
     bounds.endedAt !== null && startedAtMs > 0 ? Math.max(0, bounds.endedAt - startedAtMs) : 0;
 
-  // Body auto-expansion: tools stay open while any tool runs AND for the whole
-  // current turn (running or just-finished). Collapsing the moment the last
-  // tool finishes — while the answer is still streaming — yanked the tool block
-  // out from under the response and read as janky. Keeping the current turn
-  // expanded means the only collapse happens when the next turn supersedes it,
-  // off-screen. A manual toggle still wins both directions.
-  const [userToggle, setUserToggle] = useState<boolean | null>(null);
-  const autoExpanded = toolRunning || (isCurrentTurn ?? false) || (defaultExpanded ?? false);
-  const expanded = userToggle ?? autoExpanded;
+  // Tool-group expansion is owned by the parent (it builds the tool nodes), so
+  // the chip and the per-group chevrons stay in sync. The chip just reflects it
+  // and flips it; collapsing folds groups to their headers — never removes them.
+  const toolsAreExpanded = toolsExpanded ?? true;
 
   const subtitle = modelLabel ?? "";
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
@@ -235,10 +231,10 @@ export function TurnBlock({
           <button
             type="button"
             className="turn-block-chip"
-            aria-expanded={expanded}
             aria-label={staticChipLabel}
             title={staticChipLabel}
-            onClick={() => setUserToggle(!expanded)}
+            {...(hasTools ? { "aria-expanded": toolsAreExpanded } : {})}
+            {...(hasTools && onToggleTools ? { onClick: onToggleTools } : {})}
           >
             {running ? (
               <Loader2 size={11} className="turn-block-spinner" aria-hidden="true" />
@@ -250,11 +246,13 @@ export function TurnBlock({
             ) : (
               <span>{staticChipLabel}</span>
             )}
-            <ChevronRight
-              size={11}
-              className={`turn-block-chevron${expanded ? " expanded" : ""}`}
-              aria-hidden="true"
-            />
+            {hasTools ? (
+              <ChevronRight
+                size={11}
+                className={`turn-block-chevron${toolsAreExpanded ? " expanded" : ""}`}
+                aria-hidden="true"
+              />
+            ) : null}
           </button>
         ) : null}
       </div>
@@ -262,7 +260,7 @@ export function TurnBlock({
         className="turn-block-body"
         data-just-revealed={justRevealed ? "true" : undefined}
       >
-        {renderBody(body, expanded)}
+        {renderBody(body)}
       </div>
     </div>
   );

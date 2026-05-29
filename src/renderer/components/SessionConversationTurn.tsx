@@ -1,4 +1,4 @@
-import type { JSX, MutableRefObject } from "react";
+import { useState, type JSX, type MutableRefObject } from "react";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
@@ -233,12 +233,17 @@ export function SessionConversationTurn({
     .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
     .filter((tItem): tItem is TurnToolItem => tItem !== null);
   const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
-  // Keep the current turn's tool groups expanded after completion (not just
-  // while active) so they don't collapse the instant the answer lands; they
-  // fold once the next turn supersedes this one. Older turns stay collapsed.
-  const groupDefaultExpanded = isLatestTurn
-    ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded)
+  // Tool groups expand by default for the current turn (you're watching it
+  // work, and it stays open through completion so nothing collapses out from
+  // under the answer) and collapse to headers for older turns. The turn chip
+  // toggles this for the whole turn; collapsing only folds the groups to their
+  // headers — tool calls are NEVER removed from the chat. A per-group chevron
+  // still overrides an individual group.
+  const toolsExpandedDefault = isLatestTurn
+    ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded ?? false)
     : false;
+  const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
+  const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
       if (tItem.kind === "tool") {
@@ -250,7 +255,7 @@ export function SessionConversationTurn({
           node: (
             <ToolCallRow
               tool={tItem.tool}
-              defaultExpanded={groupDefaultExpanded}
+              defaultExpanded={toolsExpanded}
               workspaceCwd={workspace?.path ?? null}
             />
           )
@@ -266,7 +271,7 @@ export function SessionConversationTurn({
           <ToolCallGroupBubble
             group={tItem.group}
             isFreshTool={isFreshTool}
-            defaultExpanded={groupDefaultExpanded}
+            defaultExpanded={toolsExpanded}
             workspaceCwd={workspace?.path ?? null}
           />
         )
@@ -286,10 +291,10 @@ export function SessionConversationTurn({
       toolItems={visibleToolItems}
       assistantTimestamps={item.assistantTimestamps}
       {...(showModelHeader ? { modelLabel: selectedModel.label } : {})}
-      {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
       {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
       isTurnActive={isTurnLiveTicking}
-      isCurrentTurn={isLatestTurn}
+      toolsExpanded={toolsExpanded}
+      onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
     />

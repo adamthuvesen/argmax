@@ -144,6 +144,8 @@ export function renderConversation(
   events: TimelineEvent[] = [],
   options: {
     defaultThinkingExpanded?: boolean;
+    defaultToolCallsExpanded?: boolean;
+    defaultToolCallGroupsExpanded?: boolean;
     pendingMessages?: PendingMessage[];
     onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
@@ -160,6 +162,8 @@ export function renderConversation(
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
       {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}
+      {...(options.defaultToolCallsExpanded !== undefined ? { defaultToolCallsExpanded: options.defaultToolCallsExpanded } : {})}
+      {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       project={project}
       rawOutputs={[]}

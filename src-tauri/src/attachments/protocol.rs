@@ -55,6 +55,16 @@ impl AttachmentResponse {
             bytes: Vec::new(),
         }
     }
+
+    /// HTTP status code Tauri's protocol handler should return for this result.
+    pub fn http_status(&self) -> u16 {
+        match self.status {
+            AttachmentStatus::Ok => 200,
+            AttachmentStatus::BadRequest => 400,
+            AttachmentStatus::Forbidden => 403,
+            AttachmentStatus::NotFound => 404,
+        }
+    }
 }
 
 /// Serve a request URL like `argmax-attachment://localhost/<absolute-path>`
@@ -226,5 +236,18 @@ mod tests {
         let base = TempDir::new().unwrap();
         let response = serve_attachment(base.path(), "https://example.com/foo").await;
         assert_eq!(response.status, AttachmentStatus::BadRequest);
+    }
+
+    #[test]
+    fn http_status_maps_each_variant() {
+        assert_eq!(AttachmentResponse::not_found().http_status(), 404);
+        assert_eq!(AttachmentResponse::forbidden().http_status(), 403);
+        assert_eq!(AttachmentResponse::bad_request().http_status(), 400);
+        let ok = AttachmentResponse {
+            status: AttachmentStatus::Ok,
+            content_type: Some("image/png"),
+            bytes: Vec::new(),
+        };
+        assert_eq!(ok.http_status(), 200);
     }
 }

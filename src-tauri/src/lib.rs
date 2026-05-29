@@ -57,6 +57,44 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Serve `argmax-attachment://file/<abs-path>` image URLs from the
+        // on-disk attachment store. Without this, pasted-image previews in the
+        // composer/chat 404. The store dir depends on `app_data_dir` (only
+        // known after setup), so it's resolved per request; serving happens
+        // off-thread so the webview's IO isn't blocked.
+        .register_asynchronous_uri_scheme_protocol(
+            attachments::protocol::ATTACHMENT_PROTOCOL_SCHEME,
+            |ctx, request, responder| {
+                let app = ctx.app_handle().clone();
+                let uri = request.uri().to_string();
+                tauri::async_runtime::spawn(async move {
+                    let built = match tauri::Manager::path(&app).app_data_dir() {
+                        Ok(app_data) => {
+                            let base_dir = app_data.join("local-state").join("attachments");
+                            let response =
+                                attachments::protocol::serve_attachment(&base_dir, &uri).await;
+                            let mut builder =
+                                tauri::http::Response::builder().status(response.http_status());
+                            if let Some(content_type) = response.content_type {
+                                builder = builder
+                                    .header(tauri::http::header::CONTENT_TYPE, content_type);
+                            }
+                            builder.body(response.bytes)
+                        }
+                        Err(error) => {
+                            tracing::warn!(?error, "attachment protocol: app_data_dir unavailable");
+                            tauri::http::Response::builder().status(500).body(Vec::new())
+                        }
+                    };
+                    match built {
+                        Ok(response) => responder.respond(response),
+                        Err(error) => {
+                            tracing::warn!(?error, "attachment protocol: failed to build response")
+                        }
+                    }
+                });
+            },
+        )
         .manage(state::AppState::with_startup_timer(timer.clone()))
         .invoke_handler(specta_builder.invoke_handler())
         .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))
@@ -268,12 +306,16 @@ pub fn run() {
                                 tracing::warn!("workspace service state was already initialized");
                             }
                             state.startup_timer.mark("db.open");
+                            // Mark services as constructed only on the success
+                            // path — otherwise a failed DB open still reported a
+                            // healthy boot while every handler returned
+                            // SERVICE_ERROR.
+                            timer.mark("services.construct");
                         }
                         Err(e) => tracing::warn!(error = ?e, "failed to open database"),
                     }
                 }
             }
-            timer.mark("services.construct");
             if let Err(e) = menu::install_app_menu(app.handle(), cfg!(debug_assertions)) {
                 tracing::warn!(error = ?e, "failed to install app menu");
             }

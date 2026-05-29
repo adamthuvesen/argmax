@@ -127,13 +127,26 @@ pub fn extract_message_content(payload: &Map<String, Value>) -> Option<String> {
 }
 
 pub fn extract_delta_text(payload: &Map<String, Value>) -> Option<String> {
+    let delta = object_value(payload.get("delta"))?;
+    match string_value(delta.get("type")) {
+        // Extended-thinking streams as `thinking_delta` fragments — the text is
+        // in `delta.thinking`, not `delta.text`. Surface it so reasoning streams
+        // token-by-token; the dispatcher flags the timeline payload
+        // `thinking: true` (see normalizer/mod.rs) so the renderer routes it to
+        // the Thought block and keeps it past completion.
+        Some("thinking_delta") => string_value(delta.get("thinking")).map(str::to_string),
+        // `signature_delta` carries a base64 integrity blob, never user text.
+        Some("signature_delta") => None,
+        _ => string_value(delta.get("text")).map(str::to_string),
+    }
+}
+
+/// True when this Claude payload is a `content_block_delta` carrying a
+/// `thinking_delta` — its surfaced text is extended reasoning, not answer text.
+pub fn is_thinking_delta_payload(payload: &Map<String, Value>) -> bool {
     object_value(payload.get("delta"))
-        .and_then(|delta| {
-            if string_value(delta.get("type")) == Some("thinking_delta") {
-                return None;
-            }
-            string_value(delta.get("text")).map(str::to_string)
-        })
+        .and_then(|delta| string_value(delta.get("type")))
+        == Some("thinking_delta")
 }
 
 pub fn synthesize_message_completed_from_result(
@@ -347,6 +360,62 @@ mod tests {
             "user said hello, will ask which files"
         );
         assert_eq!(result.events[0].payload["thinking"], json!(true));
+    }
+
+    #[test]
+    fn extract_delta_text_surfaces_thinking_delta() {
+        let payload = json!({ "delta": { "type": "thinking_delta", "thinking": "step one" } });
+        assert_eq!(
+            extract_delta_text(payload.as_object().unwrap()),
+            Some("step one".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_delta_text_drops_signature_delta() {
+        // The base64 integrity blob is not user-visible reasoning.
+        let payload = json!({ "delta": { "type": "signature_delta", "signature": "abc123" } });
+        assert_eq!(extract_delta_text(payload.as_object().unwrap()), None);
+    }
+
+    #[test]
+    fn claude_streamed_thinking_delta_flags_message_delta() {
+        // With --include-partial-messages, reasoning streams as thinking_delta
+        // fragments. Each must surface a message.delta carrying the fragment
+        // text and the thinking:true flag so the renderer folds it into the
+        // Thought block and keeps it past completion.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm let me think"}}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(result.events[0].message, "hmm let me think");
+        assert_eq!(result.events[0].payload["thinking"], json!(true));
+    }
+
+    #[test]
+    fn claude_partial_tool_use_blocks_emit_no_events() {
+        // content_block_start / input_json_delta / content_block_stop for a
+        // streamed tool_use carry no human text → no spurious message.delta.
+        // The real command.started comes only from the final assistant message.
+        let mut context = NormalizerSessionContext::default();
+        for line in [
+            r#"{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"Bash","input":{}}}}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":"}}}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_stop","index":0}}"#,
+        ] {
+            let result =
+                normalize_provider_event(ProviderId::Claude, &output_event(line), &mut context);
+            assert!(
+                result.events.is_empty(),
+                "partial tool_use line should emit no events: {line}"
+            );
+        }
     }
 
     #[test]

@@ -89,6 +89,10 @@ fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
+        // Stream partial content blocks so the answer and extended-thinking
+        // arrive token-by-token (content_block_delta) instead of as whole
+        // assistant messages. See agents/docs/runtime.md "Event delivery".
+        "--include-partial-messages".to_string(),
         input.prompt.clone(),
     ]);
     args
@@ -111,6 +115,9 @@ fn claude_structured_resume_args(
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
+        // Keep partial-message streaming on for resumed turns too — otherwise
+        // follow-ups regress to whole-message (non-streaming) output.
+        "--include-partial-messages".to_string(),
         input.prompt.clone(),
     ]);
     args
@@ -325,10 +332,35 @@ mod tests {
                 "--output-format",
                 "stream-json",
                 "--verbose",
+                "--include-partial-messages",
                 "Implement the task",
             ]
         );
         assert_eq!((definition.structured_stdin)(&input), None);
+    }
+
+    #[test]
+    fn claude_resume_args_keep_partial_message_streaming() {
+        let input = launch_input(ProviderId::Claude);
+        let definition = get_provider_definition(ProviderId::Claude);
+
+        assert_eq!(
+            (definition.structured_resume_args)(&input, "conv-7"),
+            vec![
+                "-p",
+                "--resume",
+                "conv-7",
+                "--permission-mode",
+                "bypassPermissions",
+                "--model",
+                "haiku",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--include-partial-messages",
+                "Implement the task",
+            ]
+        );
     }
 
     #[test]

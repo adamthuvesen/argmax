@@ -17,6 +17,7 @@ use self::{
         extract_inline_tool_blocks as extract_claude_inline_tool_blocks,
         extract_message_content as extract_claude_message_content,
         extract_usage as extract_claude_usage,
+        is_thinking_delta_payload as is_claude_thinking_delta_payload,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
         should_drop_sub_agent_prose,
     },
@@ -494,7 +495,10 @@ fn normalize_json_payload(
         };
     }
 
-    let final_payload = if mapped_type.is_some() {
+    // Compute before `payload` is moved into `final_payload` below.
+    let is_claude_thinking_delta =
+        provider == ProviderId::Claude && is_claude_thinking_delta_payload(&payload);
+    let mut final_payload = if mapped_type.is_some() {
         Value::Object(payload)
     } else {
         let mut payload = payload;
@@ -509,6 +513,15 @@ fn normalize_json_payload(
     let timeline_type = mapped_type.unwrap_or("message.delta");
     if provider == ProviderId::Claude && timeline_type == "message.completed" {
         context.claude_turn_answer_emitted = true;
+    }
+    // Flag streamed extended-thinking deltas so the renderer routes them to the
+    // Thought block and keeps them past completion — same `thinking: true`
+    // contract the complete-block path stamps in
+    // claude.rs::extract_inline_tool_blocks.
+    if is_claude_thinking_delta && timeline_type == "message.delta" {
+        if let Value::Object(map) = &mut final_payload {
+            map.insert("thinking".to_string(), Value::Bool(true));
+        }
     }
     events.push(timeline_event(
         event,

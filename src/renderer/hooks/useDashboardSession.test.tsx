@@ -383,6 +383,60 @@ describe("useDashboardSession — refresh / delta race", () => {
     }
   });
 
+  it("keeps session event cursors monotonic when overlapping tail reads resolve out of order", async () => {
+    let resolveSlow!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
+    let resolveFast!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
+    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSlow = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFast = resolve;
+          })
+      )
+      .mockResolvedValue({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0
+      });
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    let slow!: Promise<void>;
+    let fast!: Promise<void>;
+    act(() => {
+      slow = result.current.loadSessionEvents("session-existing");
+      fast = result.current.loadSessionEvents("session-existing");
+    });
+
+    await act(async () => {
+      resolveFast({ events: [], rawOutputs: [], eventCursor: 20, rawOutputCursor: 10 });
+      await fast;
+    });
+    await act(async () => {
+      resolveSlow({ events: [], rawOutputs: [], eventCursor: 5, rawOutputCursor: 4 });
+      await slow;
+    });
+
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    expect(window.argmax!.session.eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: 20,
+      rawOutputCursor: 10
+    });
+  });
+
   it("rolls back only the failed approval when approval resolves overlap", async () => {
     const approvalA: ApprovalRequest = {
       id: "approval-a",

@@ -102,9 +102,10 @@ export function useDashboardSession(
       rawOutputCursor: cursor?.rawOutputCursor ?? null
     };
     const data = await window.argmax.session.eventsSince(args);
+    const latest = sessionCursorsRef.current.get(sessionId);
     sessionCursorsRef.current.set(sessionId, {
-      eventCursor: data.eventCursor,
-      rawOutputCursor: data.rawOutputCursor
+      eventCursor: Math.max(latest?.eventCursor ?? 0, data.eventCursor),
+      rawOutputCursor: Math.max(latest?.rawOutputCursor ?? 0, data.rawOutputCursor)
     });
     setSnapshot((current) => ({
       ...current,

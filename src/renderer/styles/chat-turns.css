@@ -233,7 +233,9 @@
    text so it reads as a quieter, secondary stream. */
 .thought-block-body {
   padding-left: 12px;
-  border-left: 2px solid var(--line-strong);
+  /* 1px to match the tool-group rail — the two quiet left rails should read as
+     the same weight, not two different thicknesses stacked down the turn. */
+  border-left: 1px solid var(--line-strong);
   color: var(--muted-strong);
   font-size: 13px;
 }

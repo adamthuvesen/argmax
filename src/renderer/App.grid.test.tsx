@@ -9,6 +9,12 @@ import {
   snapshot
 } from "../test/appTestHarness.js";
 
+vi.mock("./components/TerminalTabsPanel.js", () => ({
+  TerminalTabsPanel: ({ visible }: { visible: boolean }) => (
+    <div data-testid="terminal-tabs-panel" data-visible={String(visible)} />
+  )
+}));
+
 describe("App grid", () => {
   afterEach(() => {
     cleanup();
@@ -498,6 +504,39 @@ describe("App grid", () => {
 
     await waitFor(() => {
       expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
+    });
+  });
+
+  it("toggles the focused session terminal from outside the chat view with Cmd+J", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    fireEvent.keyDown(document, { key: "j", metaKey: true });
+
+    expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
+    });
+
+    fireEvent.keyDown(document, { key: "j", metaKey: true });
+
+    await waitFor(() => {
+      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "true");
+    });
+  });
+
+  it("returns from Settings and opens the active session terminal on Cmd+J", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    await openSettings();
+
+    fireEvent.keyDown(document, { key: "j", metaKey: true });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Settings" })).not.toBeInTheDocument();
+      expect(document.querySelector(".terminal-panel")).toHaveAttribute("data-collapsed", "false");
     });
   });
 });

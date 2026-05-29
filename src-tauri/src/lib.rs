@@ -240,22 +240,28 @@ pub fn run() {
                                 tracing::warn!("provider service state was already initialized");
                             }
                             let app_handle = app.handle().clone();
-                            let on_terminal_data = Arc::new(move |chunk| {
-                                let app_handle = app_handle.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    if let Err(error) = app_handle.emit("terminal:data", chunk) {
+                            let on_terminal_data = Arc::new(move |chunk: terminal::service::TerminalChunk| {
+                                let emit_handle = app_handle.clone();
+                                let handle = emit_handle.clone();
+                                if let Err(error) = emit_handle.run_on_main_thread(move || {
+                                    if let Err(error) = handle.emit("terminal:data", chunk) {
                                         tracing::warn!(?error, "failed to emit terminal data");
                                     }
-                                });
+                                }) {
+                                    tracing::warn!(?error, "failed to schedule terminal data emit");
+                                }
                             });
                             let app_handle = app.handle().clone();
-                            let on_terminal_exit = Arc::new(move |info| {
-                                let app_handle = app_handle.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    if let Err(error) = app_handle.emit("terminal:exit", info) {
+                            let on_terminal_exit = Arc::new(move |info: terminal::service::TerminalExitInfo| {
+                                let emit_handle = app_handle.clone();
+                                let handle = emit_handle.clone();
+                                if let Err(error) = emit_handle.run_on_main_thread(move || {
+                                    if let Err(error) = handle.emit("terminal:exit", info) {
                                         tracing::warn!(?error, "failed to emit terminal exit");
                                     }
-                                });
+                                }) {
+                                    tracing::warn!(?error, "failed to schedule terminal exit emit");
+                                }
                             });
                             let terminals = terminal::service::TerminalService::new(
                                 Arc::clone(&database),

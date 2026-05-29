@@ -76,4 +76,18 @@ describe("tauriBridge", () => {
     expect(mocks.listen).toHaveBeenCalledWith("dashboard:delta", expect.any(Function));
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
+
+  it("exposes listener registration failures through the ready promise", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    const error = new Error("event.listen not allowed");
+    mocks.listen.mockRejectedValue(error);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    const off = window.argmax!.terminal.onData(vi.fn());
+
+    await expect(off.ready).rejects.toThrow("event.listen not allowed");
+    off();
+  });
 });

@@ -3,19 +3,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { TerminalTabsPanel } from "./TerminalTabsPanel.js";
 
+const terminalMockState = vi.hoisted(() => ({
+  instances: [] as Array<{
+    cols: number;
+    rows: number;
+    write: ReturnType<typeof vi.fn>;
+  }>,
+  nextSize: null as { cols: number; rows: number } | null
+}));
+
 // xterm.js is too DOM-heavy for jsdom to be useful here — the value of these
 // tests is the tab-state contract, not the xterm internals. Stub Terminal +
 // FitAddon so each TerminalInstance can mount cleanly.
 vi.mock("@xterm/xterm", () => ({
   Terminal: class FakeTerminal {
-    cols = 80;
-    rows = 24;
+    cols = terminalMockState.nextSize?.cols ?? 80;
+    rows = terminalMockState.nextSize?.rows ?? 24;
     loadAddon = vi.fn();
     open = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));
     write = vi.fn();
     focus = vi.fn();
     dispose = vi.fn();
+
+    constructor() {
+      terminalMockState.instances.push(this);
+      terminalMockState.nextSize = null;
+    }
   }
 }));
 
@@ -90,6 +104,8 @@ describe("TerminalTabsPanel", () => {
   let stub: ArgmaxStub;
 
   beforeEach(() => {
+    terminalMockState.instances = [];
+    terminalMockState.nextSize = null;
     class StubResizeObserver implements ResizeObserver {
       observe(): void {}
       unobserve(): void {}
@@ -119,6 +135,72 @@ describe("TerminalTabsPanel", () => {
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
     expect(stub.spawn).toHaveBeenCalledWith(
       expect.objectContaining({ workspaceId: "ws-1" })
+    );
+  });
+
+  it("bounds the initial PTY size before spawning", async () => {
+    terminalMockState.nextSize = { cols: 4, rows: Number.NaN };
+
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+
+    await waitFor(() =>
+      expect(stub.spawn).toHaveBeenCalledWith({
+        workspaceId: "ws-1",
+        cols: 20,
+        rows: 24
+      })
+    );
+  });
+
+  it("surfaces serialized Tauri command errors in the terminal", async () => {
+    stub.spawn.mockRejectedValueOnce({
+      code: "SERVICE_ERROR",
+      subCode: "TERMINAL_PTY_SPAWN_FAILED",
+      message: "could not spawn terminal shell: No such file or directory"
+    });
+
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+
+    await waitFor(() =>
+      expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
+        expect.stringContaining("could not spawn terminal shell")
+      )
+    );
+  });
+
+  it("buffers prompt output emitted before spawn resolves", async () => {
+    stub.spawn.mockImplementationOnce(() => {
+      stub.emitData({ terminalId: "pty-early", data: "adam@argmax % " });
+      return Promise.resolve({ terminalId: "pty-early" });
+    });
+
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+
+    await waitFor(() =>
+      expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
+        "adam@argmax % "
+      )
     );
   });
 

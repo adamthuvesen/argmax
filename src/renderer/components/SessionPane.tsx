@@ -76,6 +76,7 @@ export function SessionPane({
   registerPaletteFileContext,
   rightPanelToggleSignal,
   debugLogToggleSignal,
+  terminalToggleSignal,
   session,
   showCostPanel = true,
   thinkingStyle,
@@ -104,6 +105,7 @@ export function SessionPane({
   rawOutputs: RawProviderOutput[];
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
+  terminalToggleSignal?: number;
   session: SessionSummary | null;
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
@@ -256,6 +258,7 @@ export function SessionPane({
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
+  const lastTerminalToggleSignal = useRef(0);
 
   // Register this pane's file source + pick handler with the command
   // palette when focused. Only the focused pane registers so multiple
@@ -288,6 +291,13 @@ export function SessionPane({
   }, [debugLogToggleSignal, isFocused, toggleLog]);
 
   useEffect(() => {
+    if (!terminalToggleSignal || terminalToggleSignal === lastTerminalToggleSignal.current) return;
+    lastTerminalToggleSignal.current = terminalToggleSignal;
+    if (!isFocused || !workspace) return;
+    setIsTerminalOpen((open) => !open);
+  }, [isFocused, terminalToggleSignal, workspace]);
+
+  useEffect(() => {
     if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
@@ -306,14 +316,6 @@ export function SessionPane({
       }
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === "j") {
-        const target = event.target as HTMLElement | null;
-        const insideTerminal = target?.closest('[data-argmax-terminal="true"]') !== null;
-        if (!insideTerminal && isTypingTarget(event.target)) return;
-        event.preventDefault();
-        setIsTerminalOpen((open) => !open);
-        return;
-      }
       if (key === "b") {
         event.preventDefault();
         reviewTogglePanel();

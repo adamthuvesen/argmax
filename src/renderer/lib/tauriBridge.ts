@@ -49,6 +49,7 @@ import type {
   SessionEventsSinceResult,
   SessionSummary,
   SkillSummary,
+  EventSubscription,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalResizeInput,
@@ -87,27 +88,30 @@ function invokeLegacy<T>(channel: IpcChannel, input: unknown = {}): Promise<T> {
   return tauriInvoke<T>(channel, { input });
 }
 
-function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
+function subscribe<T>(channel: string, listener: (payload: T) => void): EventSubscription {
   let unlisten: UnlistenFn | null = null;
   let disposed = false;
 
-  void tauriListen<T>(channel, (event) => listener(event.payload))
-    .then((nextUnlisten) => {
-      if (disposed) {
-        nextUnlisten();
-        return;
-      }
-      unlisten = nextUnlisten;
-    })
-    .catch((error: unknown) => {
-      console.error(`failed to subscribe to ${channel}`, error);
+  const ready = tauriListen<T>(channel, (event) => listener(event.payload)).then((nextUnlisten) => {
+    if (disposed) {
+      nextUnlisten();
+      return;
+    }
+    unlisten = nextUnlisten;
     });
+  ready.catch((error: unknown) => {
+    console.error(`failed to subscribe to ${channel}`, error);
+  });
 
-  return () => {
+  const off = (): void => {
     disposed = true;
     unlisten?.();
     unlisten = null;
   };
+  const readyForConsumers = ready.then(() => undefined);
+  readyForConsumers.catch(() => undefined);
+  off.ready = readyForConsumers;
+  return off;
 }
 
 function createTauriArgmaxApi(): ArgmaxApi {

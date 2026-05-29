@@ -26,7 +26,7 @@ import { PerfOverlay } from "./components/PerfOverlay.js";
 import { SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { EMPTY_GRID, openWorkspaceInGrid } from "./lib/gridState.js";
+import { EMPTY_GRID, focusedCell, isSessionCell, openWorkspaceInGrid } from "./lib/gridState.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -120,6 +120,7 @@ export function App(): JSX.Element {
   const [isWorkspaceDropPreviewVisible, setIsWorkspaceDropPreviewVisible] = useState(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
+  const [terminalToggleSignal, setTerminalToggleSignal] = useState(0);
   // The active surface (focused SessionPane, or the LaunchSurface when no
   // session is open) registers its file source + pick handler here so the
   // command palette can surface Files for that surface's scope.
@@ -260,6 +261,46 @@ export function App(): JSX.Element {
     (): void => setIsContentSearchOpen(true),
     [setIsContentSearchOpen]
   );
+  const toggleIntegratedTerminal = useCallback((): void => {
+    const focused = focusedCell(grid);
+    let workspaceId = focused && isSessionCell(focused) ? focused.workspaceId : null;
+
+    if (!workspaceId) {
+      for (const row of grid.rows) {
+        const sessionCell = row.find(isSessionCell);
+        if (sessionCell) {
+          workspaceId = sessionCell.workspaceId;
+          break;
+        }
+      }
+    }
+
+    workspaceId ??= selectedWorkspace?.id ?? selectedSession?.workspaceId ?? snapshot.sessions[0]?.workspaceId ?? null;
+    if (!workspaceId) {
+      setToast({ kind: "error", message: "Open a session before toggling the terminal." });
+      return;
+    }
+
+    setIsPaletteOpen(false);
+    setIsCheatSheetOpen(false);
+    setIsSearchOpen(false);
+    setIsContentSearchOpen(false);
+    setIsSettingsOpen(false);
+    setIsFullLauncherOpen(false);
+    openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
+    setTerminalToggleSignal((signal) => signal + 1);
+  }, [
+    grid,
+    openWorkspaceChat,
+    selectedSession?.workspaceId,
+    selectedWorkspace?.id,
+    setIsCheatSheetOpen,
+    setIsContentSearchOpen,
+    setIsPaletteOpen,
+    setIsSearchOpen,
+    setIsSettingsOpen,
+    snapshot.sessions
+  ]);
   const selectSessionFromKeybinding = useCallback(
     (session: { id: string; workspaceId: string }): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
@@ -278,6 +319,7 @@ export function App(): JSX.Element {
     onCloseFocusedPane: closeFocusedPane,
     onOpenSearch: openSearchOverlay,
     onOpenContentSearch: openContentSearchOverlay,
+    onToggleTerminal: toggleIntegratedTerminal,
     onSelectSession: selectSessionFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
   });
@@ -958,6 +1000,7 @@ export function App(): JSX.Element {
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
+              terminalToggleSignal={terminalToggleSignal}
               renderLauncher={renderLaunchSurface}
               dragSourceWorkspaceId={draggingWorkspaceId}
               onFocusPane={focusPane}

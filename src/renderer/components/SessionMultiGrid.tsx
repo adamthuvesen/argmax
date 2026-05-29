@@ -49,6 +49,7 @@ interface SessionMultiGridProps {
   thinkingStyle?: ThinkingStyle;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
+  terminalToggleSignal?: number;
   renderLauncher: (project: ProjectSummary | null) => JSX.Element;
   /** Which workspace is currently being dragged from the sidebar. The drop
       handlers use this directly instead of round-tripping through
@@ -90,6 +91,7 @@ export function SessionMultiGrid({
   thinkingStyle,
   rightPanelToggleSignal,
   debugLogToggleSignal,
+  terminalToggleSignal,
   renderLauncher,
   dragSourceWorkspaceId,
   onFocusPane,
@@ -259,6 +261,7 @@ export function SessionMultiGrid({
                         rawOutputs={rawOutputs}
                         rightPanelToggleSignal={rightPanelToggleSignal}
                         debugLogToggleSignal={debugLogToggleSignal}
+                        terminalToggleSignal={terminalToggleSignal}
                         session={session}
                         thinkingStyle={thinkingStyle}
                         workspace={workspace}

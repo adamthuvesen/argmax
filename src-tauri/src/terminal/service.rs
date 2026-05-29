@@ -21,6 +21,7 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
+    path::Path,
     sync::{Arc, Mutex},
     thread,
 };
@@ -332,9 +333,10 @@ fn spawn_exit_watcher(
 
 fn pick_shell() -> String {
     if let Ok(shell) = std::env::var("SHELL") {
-        if !shell.is_empty() {
+        if is_usable_shell(&shell) {
             return shell;
         }
+        tracing::warn!(shell = %shell, "ignoring unusable SHELL for terminal spawn");
     }
     if std::path::Path::new("/bin/zsh").exists() {
         "/bin/zsh".to_string()
@@ -343,10 +345,20 @@ fn pick_shell() -> String {
     }
 }
 
+fn is_usable_shell(shell: &str) -> bool {
+    if shell.is_empty() {
+        return false;
+    }
+    let path = Path::new(shell);
+    !path.is_absolute() || path.exists()
+}
+
 fn default_shell_factory() -> ShellFactory {
     Arc::new(|_cwd: &str| {
         let mut cmd = CommandBuilder::new(pick_shell());
         cmd.env("TERM", "xterm-256color");
+        cmd.env("TERM_PROGRAM", "Argmax");
+        cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
         cmd.env(
             "COLORTERM",
             std::env::var("COLORTERM").unwrap_or_else(|_| "truecolor".to_string()),
@@ -430,8 +442,17 @@ mod tests {
             if let Ok(path) = std::env::var("PATH") {
                 cmd.env("PATH", path);
             }
+            cmd.env("TERM_PROGRAM", "Argmax");
             cmd
         })
+    }
+
+    #[test]
+    fn usable_shell_rejects_missing_absolute_path() {
+        assert!(!is_usable_shell(""));
+        assert!(!is_usable_shell("/definitely/not/argmax-shell"));
+        assert!(is_usable_shell("/bin/sh"));
+        assert!(is_usable_shell("zsh"));
     }
 
     #[tokio::test]

@@ -11,6 +11,8 @@ interface GlobalKeybindingArgs {
   onOpenSearch: () => void;
   /** Cmd+Shift+F opens the workspace content search overlay (git grep). */
   onOpenContentSearch: () => void;
+  /** Cmd+J toggles the integrated terminal for the active session pane. */
+  onToggleTerminal?: () => void;
   /** Cmd+1..9 selects the nth session and closes the settings panel. */
   onSelectSession: (session: SessionSummary) => void;
   /** Cmd+1..9 also closes the settings panel. */
@@ -37,6 +39,7 @@ interface GlobalKeybindingArgs {
  *   Cmd/Ctrl+/    → open-cheat-sheet (menu command)
  *   Cmd/Ctrl+F    → open global search (session messages)
  *   Cmd/Ctrl+Shift+F → open workspace content search (git grep)
+ *   Cmd/Ctrl+J    → toggle integrated terminal
  *
  * Typing-target guard: text-editing keys stay in contenteditable /
  * textarea / role=textbox. App-level shortcuts that do not edit text
@@ -47,6 +50,7 @@ export function useGlobalKeybindings({
   onMenuCommand,
   onOpenSearch,
   onOpenContentSearch,
+  onToggleTerminal,
   onSelectSession,
   onCloseSettings,
   onCloseFocusedPane
@@ -72,6 +76,12 @@ export function useGlobalKeybindings({
         if (event.isComposing || event.repeat) return;
         event.preventDefault();
         onMenuCommand("new-session");
+        return;
+      }
+      if (event.key.toLowerCase() === "j" && !event.shiftKey && !event.altKey) {
+        if (event.isComposing || event.repeat) return;
+        event.preventDefault();
+        onToggleTerminal?.();
         return;
       }
       if (event.key === ",") {
@@ -121,6 +131,7 @@ export function useGlobalKeybindings({
     onMenuCommand,
     onOpenSearch,
     onOpenContentSearch,
+    onToggleTerminal,
     onSelectSession,
     onCloseSettings,
     onCloseFocusedPane

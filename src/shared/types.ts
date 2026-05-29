@@ -128,6 +128,10 @@ export interface TerminalExitEvent {
   signal: number | null;
 }
 
+export type EventSubscription = (() => void) & {
+  ready?: Promise<void>;
+};
+
 export interface McpAuthDataEvent {
   sessionId: string;
   data: string;
@@ -539,8 +543,8 @@ export interface ArgmaxApi {
     write: (input: TerminalWriteInput) => Promise<{ ok: true }>;
     resize: (input: TerminalResizeInput) => Promise<{ ok: true }>;
     terminate: (terminalId: string) => Promise<{ ok: true }>;
-    onData: (listener: (event: TerminalDataEvent) => void) => () => void;
-    onExit: (listener: (event: TerminalExitEvent) => void) => () => void;
+    onData: (listener: (event: TerminalDataEvent) => void) => EventSubscription;
+    onExit: (listener: (event: TerminalExitEvent) => void) => EventSubscription;
   };
 }
 

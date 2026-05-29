@@ -168,6 +168,10 @@ fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
     Some(prompt_for_agent_mode(&input.prompt, input.agent_mode))
 }
 
+// Cursor's CLI has no reasoning-effort flag, so `input.reasoning_effort` is
+// intentionally ignored here. The picker still lets users set an effort for
+// Cursor models — that choice is persisted for UI parity but does not change
+// the invocation. Do not wire it into `--model` or a flag.
 fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
@@ -262,8 +266,11 @@ fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
         ReasoningEffort::Medium => {
             "Reason carefully through this task. Consider edge cases and trade-offs before acting."
         }
-        ReasoningEffort::High | ReasoningEffort::Xhigh => {
+        ReasoningEffort::High => {
             "Reason deeply through this task. Explore alternatives, consider edge cases, and weigh trade-offs comprehensively before acting."
+        }
+        ReasoningEffort::Xhigh => {
+            "Reason exhaustively through this task. Enumerate every alternative, edge case, and trade-off, and verify your conclusions before acting. Take as much thinking as the problem demands."
         }
     };
     vec!["--append-system-prompt".to_string(), prompt.to_string()]

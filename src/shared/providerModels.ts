@@ -9,7 +9,12 @@ export type ProviderLaunchMode = "interactive-pty" | "structured-json";
 export interface ProviderModelOption {
   label: string;
   modelId: string;
-  reasoningEffort?: ReasoningEffort;
+  /**
+   * When true, the model exposes an editable reasoning effort (Low → Extra
+   * High). Omit for fast / non-reasoning models (Haiku, Cursor Composer 2.5)
+   * which render without an effort control.
+   */
+  supportsReasoningEffort?: boolean;
   /** When true, explicitly disables model_reasoning_summary so global config can't inject it. */
   disableReasoningSummary?: boolean;
   description?: string;
@@ -18,37 +23,43 @@ export interface ProviderModelOption {
 
 export interface ProviderModelDefault extends ProviderModelOption {
   launchMode: ProviderLaunchMode;
+  reasoningEffort?: ReasoningEffort;
 }
 
-export type ProviderModelSelection = Pick<ProviderModelOption, "label" | "modelId" | "reasoningEffort">;
+export interface ProviderModelSelection {
+  label: string;
+  modelId: string;
+  reasoningEffort?: ReasoningEffort;
+}
 
+/** Effort levels offered in the picker, low → high. There is no "max". */
+export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
+
+/** Effort an effort-capable model gets when first picked (before Edit). */
+export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
+
+// One entry per model. Effort is chosen separately via the picker's Edit
+// submenu, not by selecting a different row. Models without
+// `supportsReasoningEffort` are fast/no-effort and hide the effort control.
+//
+// NOTE: Cursor's `modelId`s keep their `-medium` alias because that is the
+// identifier the Cursor CLI actually accepts — its CLI has no reasoning-effort
+// flag, so effort for Cursor is UI-only (persisted, not sent). Do not rewrite
+// these ids from the chosen effort.
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
-    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7" },
-    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7", reasoningEffort: "low" },
-    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7", reasoningEffort: "medium" },
-    { label: "Claude Opus 4.7", modelId: "claude-opus-4-7", reasoningEffort: "high" },
-    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6" },
-    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", reasoningEffort: "low" },
-    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", reasoningEffort: "medium" },
-    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", reasoningEffort: "high" },
-    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" },
-    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", reasoningEffort: "low" },
-    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", reasoningEffort: "medium" },
-    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5", reasoningEffort: "high" }
+    { label: "Claude Opus 4.8", modelId: "claude-opus-4-8", supportsReasoningEffort: true },
+    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", supportsReasoningEffort: true },
+    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" }
   ],
   codex: [
-    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", reasoningEffort: "low", disableReasoningSummary: true },
-    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", reasoningEffort: "medium", disableReasoningSummary: true },
-    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", reasoningEffort: "high", disableReasoningSummary: true },
-    { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "low" },
-    { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "medium" },
-    { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "high" }
+    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", supportsReasoningEffort: true, disableReasoningSummary: true },
+    { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true }
   ],
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" },
-    { label: "GPT-5.5 (Cursor)", modelId: "gpt-5.5-medium" },
-    { label: "Claude Opus 4.7 (Cursor)", modelId: "claude-opus-4-7-medium" }
+    { label: "GPT-5.5 (Cursor)", modelId: "gpt-5.5-medium", supportsReasoningEffort: true },
+    { label: "Claude Opus 4.8 (Cursor)", modelId: "claude-opus-4-8-medium", supportsReasoningEffort: true }
   ]
 };
 
@@ -84,6 +95,7 @@ export interface ModelPricing {
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
+  "claude-opus-4-8":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-7":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-6":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-5":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
@@ -125,6 +137,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // layer. (audit-2026-05-17 H2 — the `-medium` aliased ids previously
   // mirrored base pricing, contradicting this rule.)
   "composer-2.5":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "claude-opus-4-8-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-7-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.5-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };

@@ -553,6 +553,124 @@
   white-space: nowrap;
 }
 
+.model-picker-popover {
+  min-width: 248px;
+  /* Taller than the generic picker so the full model list fits with little or
+     no scrolling. Opens upward in-session, so there's room above the composer. */
+  max-height: 440px;
+}
+
+/* Launcher opens downward — keep the same taller cap but stay inside the viewport. */
+.composer-context .model-picker-popover {
+  max-height: min(440px, calc(100dvh - 96px));
+}
+
+/* Two-panel model picker: a flat model list plus a right-side effort submenu
+   opened by a row's "Edit" button (replaces the old one-row-per-effort list). */
+.model-picker-flyout {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* Launcher composer opens its menus downward (mirrors the .composer-context rule above). */
+.composer-context .model-picker-flyout {
+  top: calc(100% + 6px);
+  bottom: auto;
+  align-items: flex-start;
+}
+
+/* Inside the flyout the two cards are laid out by flex, not absolutely stacked. */
+.model-picker-flyout .project-picker-popover {
+  position: static;
+  top: auto;
+  bottom: auto;
+}
+
+.model-effort-popover {
+  min-width: 160px;
+}
+
+.model-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.model-picker-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.model-picker-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-picker-effort {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+/* Fixed-width check column, always present (empty when unselected) so the
+   effort label keeps the same position whether or not the row is selected. */
+.model-picker-check {
+  flex: none;
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.model-picker-edit {
+  flex: none;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.model-picker-row:hover .model-picker-edit,
+.model-picker-row[aria-selected="true"] .model-picker-edit,
+.model-picker-edit[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.model-picker-edit:hover,
+.model-picker-edit[aria-expanded="true"] {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+/* Effort is editable only on the selected model; other rows show a grayed,
+   non-interactive Edit so it's clear you must pick the model first. */
+.model-picker-edit:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.model-picker-edit:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
+.model-effort-item {
+  justify-content: space-between;
+}
+
 .project-picker-item {
   display: flex;
   align-items: center;

@@ -524,7 +524,7 @@ impl WorkspaceService {
         let connection = self.database.connection();
         let mut stmt = connection
             .prepare(
-                "SELECT id FROM sessions WHERE workspace_id = ? ORDER BY last_activity_at DESC LIMIT 1",
+                "SELECT id FROM sessions WHERE workspace_id = ? ORDER BY last_activity_at DESC, id DESC LIMIT 1",
             )
             .map_err(|e| ArgmaxError::service("SQLITE", e.to_string()))?;
         let mut rows = stmt

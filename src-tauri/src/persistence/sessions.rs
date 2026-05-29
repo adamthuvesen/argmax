@@ -84,7 +84,7 @@ pub fn list_sessions_for_dashboard(
             let json = serde_json::to_string(ids).map_err(json_error)?;
             let mut statement = prepared(
                 connection,
-                "SELECT * FROM sessions WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC LIMIT ?",
+                "SELECT * FROM sessions WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -102,13 +102,13 @@ pub fn list_sessions_for_dashboard(
                 FROM sessions outer_s
                 WHERE outer_s.id IN (
                     SELECT id FROM sessions
-                    ORDER BY last_activity_at DESC
+                    ORDER BY last_activity_at DESC, id DESC
                     LIMIT ?
                   )
                   OR (
                     outer_s.workspace_id IN (
                       SELECT id FROM workspaces
-                      ORDER BY last_activity_at DESC
+                      ORDER BY last_activity_at DESC, id DESC
                       LIMIT ?
                     )
                     AND NOT EXISTS (
@@ -120,7 +120,7 @@ pub fn list_sessions_for_dashboard(
                         )
                     )
                   )
-                ORDER BY outer_s.last_activity_at DESC
+                ORDER BY outer_s.last_activity_at DESC, outer_s.id DESC
                 "#,
             )
             .map_err(sqlite_error)?;

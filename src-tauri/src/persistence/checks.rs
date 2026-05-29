@@ -69,7 +69,7 @@ pub fn list_checks(
             let json = serde_json::to_string(ids).map_err(json_error)?;
             let mut statement = prepared(
                 connection,
-                "SELECT * FROM checks WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY started_at DESC LIMIT ?",
+                "SELECT * FROM checks WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY started_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -82,7 +82,7 @@ pub fn list_checks(
         _ => {
             let mut statement = prepared(
                 connection,
-                "SELECT * FROM checks ORDER BY started_at DESC LIMIT ?",
+                "SELECT * FROM checks ORDER BY started_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -213,7 +213,7 @@ pub fn list_checkpoints(
             let json = serde_json::to_string(ids).map_err(json_error)?;
             let mut statement = prepared(
                 connection,
-                "SELECT * FROM checkpoints WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT ?",
+                "SELECT * FROM checkpoints WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -226,7 +226,7 @@ pub fn list_checkpoints(
         _ => {
             let mut statement = prepared(
                 connection,
-                "SELECT * FROM checkpoints ORDER BY created_at DESC LIMIT ?",
+                "SELECT * FROM checkpoints ORDER BY created_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement

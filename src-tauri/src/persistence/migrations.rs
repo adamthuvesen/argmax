@@ -82,14 +82,56 @@ pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = p
     "schema_migrations" => &["applied_at", "checksum", "name", "version"] as &'static [&'static str],
 };
 
-pub static MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial_schema",
-    up: INITIAL_SCHEMA,
-    affected_tables: ALL_TABLES,
-    expected_columns: &EXPECTED_COLUMNS,
-    requires_foreign_keys_off: false,
-}];
+pub static MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        up: INITIAL_SCHEMA,
+        affected_tables: ALL_TABLES,
+        expected_columns: &EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 2,
+        name: "dashboard_read_indexes",
+        up: DASHBOARD_READ_INDEXES,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 3,
+        name: "dashboard_extra_read_indexes",
+        up: DASHBOARD_EXTRA_READ_INDEXES,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+];
+
+const DASHBOARD_READ_INDEXES: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_sessions_last_activity_id
+  ON sessions(last_activity_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_workspace_last_activity_id
+  ON sessions(workspace_id, last_activity_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_state
+  ON sessions(state);
+CREATE INDEX IF NOT EXISTS idx_workspaces_last_activity_id
+  ON workspaces(last_activity_at DESC, id DESC);
+"#;
+
+const DASHBOARD_EXTRA_READ_INDEXES: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_raw_outputs_session_id
+  ON raw_outputs(session_id);
+CREATE INDEX IF NOT EXISTS idx_checks_started_id
+  ON checks(started_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_created_id
+  ON checkpoints(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_approvals_created_id
+  ON approvals(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_approvals_status_created_id
+  ON approvals(status, created_at DESC, id DESC);
+"#;
 
 const INITIAL_SCHEMA: &str = r#"
 CREATE TABLE projects (
@@ -578,12 +620,57 @@ mod tests {
             .expect("collect fts");
         assert_eq!(fts_tables, vec!["events_fts", "learnings_fts"]);
 
-        let row = connection
-            .prepare("SELECT checksum FROM schema_migrations WHERE version = 1")
+        let rows = connection
+            .prepare("SELECT version, checksum FROM schema_migrations ORDER BY version")
             .expect("prepare checksum")
-            .query_row([], |row| row.get::<_, String>(0))
-            .expect("checksum row");
-        assert_eq!(row, compute_migration_checksum(INITIAL_SCHEMA));
+            .query_map([], |row| {
+                Ok((row.get::<_, u32>(0)?, row.get::<_, String>(1)?))
+            })
+            .expect("query checksums")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("checksum rows");
+        assert_eq!(
+            rows,
+            vec![
+                (1, compute_migration_checksum(INITIAL_SCHEMA)),
+                (2, compute_migration_checksum(DASHBOARD_READ_INDEXES)),
+                (3, compute_migration_checksum(DASHBOARD_EXTRA_READ_INDEXES))
+            ]
+        );
+
+        let indexes: Vec<String> = connection
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (
+                  'idx_sessions_last_activity_id',
+                  'idx_sessions_workspace_last_activity_id',
+                  'idx_sessions_state',
+                  'idx_workspaces_last_activity_id',
+                  'idx_raw_outputs_session_id',
+                  'idx_checks_started_id',
+                  'idx_checkpoints_created_id',
+                  'idx_approvals_created_id',
+                  'idx_approvals_status_created_id'
+                ) ORDER BY name",
+            )
+            .expect("prepare index query")
+            .query_map([], |row| row.get(0))
+            .expect("query indexes")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect indexes");
+        assert_eq!(
+            indexes,
+            vec![
+                "idx_approvals_created_id",
+                "idx_approvals_status_created_id",
+                "idx_checkpoints_created_id",
+                "idx_checks_started_id",
+                "idx_raw_outputs_session_id",
+                "idx_sessions_last_activity_id",
+                "idx_sessions_state",
+                "idx_sessions_workspace_last_activity_id",
+                "idx_workspaces_last_activity_id"
+            ]
+        );
     }
 
     #[test]

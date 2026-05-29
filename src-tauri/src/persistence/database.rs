@@ -147,6 +147,7 @@ fn sqlite_error_with(code: &str, error: rusqlite::Error) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::migrations::MIGRATIONS;
 
     #[test]
     fn open_in_memory_configures_and_migrates() {
@@ -167,7 +168,7 @@ mod tests {
 
         assert_eq!(foreign_keys, 1);
         assert_eq!(synchronous, 1);
-        assert_eq!(migration_count, 1);
+        assert_eq!(migration_count, MIGRATIONS.len() as i64);
     }
 
     #[test]

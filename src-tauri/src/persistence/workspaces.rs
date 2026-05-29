@@ -55,7 +55,7 @@ pub fn list_workspaces(
             let json = serde_json::to_string(ids).map_err(json_error)?;
             let mut statement = prepared(
                 connection,
-                "SELECT * FROM workspaces WHERE id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC LIMIT ?",
+                "SELECT * FROM workspaces WHERE id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -66,7 +66,7 @@ pub fn list_workspaces(
         _ => {
             let mut statement = prepared(
                 connection,
-                "SELECT * FROM workspaces ORDER BY last_activity_at DESC LIMIT ?",
+                "SELECT * FROM workspaces ORDER BY last_activity_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement

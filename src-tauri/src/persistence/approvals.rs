@@ -43,7 +43,7 @@ pub struct ApprovalRequest {
 pub fn list_approvals(connection: &Connection, limit: usize) -> ArgmaxResult<Vec<ApprovalRequest>> {
     let mut statement = prepared(
         connection,
-        "SELECT * FROM approvals ORDER BY created_at DESC LIMIT ?",
+        "SELECT * FROM approvals ORDER BY created_at DESC, id DESC LIMIT ?",
     )
     .map_err(sqlite_error)?;
     let rows = statement
@@ -132,7 +132,7 @@ pub fn list_pending_approvals(
 ) -> ArgmaxResult<Vec<ApprovalRequest>> {
     let mut statement = prepared(
         connection,
-        "SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?",
+        "SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC, id DESC LIMIT ?",
     )
     .map_err(sqlite_error)?;
     let rows = statement

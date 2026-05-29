@@ -13,7 +13,7 @@
 //     check for that workspace (used during archive).
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     process::Stdio,
     sync::{Arc, Mutex},
     time::Duration,
@@ -34,6 +34,7 @@ use crate::persistence::checks::{
     persist_check, update_check, CheckRun, PersistCheckInput, UpdateCheckInput,
 };
 use crate::persistence::database::Database;
+use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::process_control::terminate_with_escalation;
 
@@ -242,7 +243,7 @@ impl CheckService {
                 status: status.to_string(),
                 exit_code: Some(exit_code as i64),
                 summary: Some(summary),
-                completed_at: None,
+                completed_at: Some(now_iso()),
             },
         )
     }
@@ -250,20 +251,20 @@ impl CheckService {
 
 #[derive(Default)]
 struct OutputTail {
-    chunks: Vec<String>,
+    chunks: VecDeque<String>,
     bytes: usize,
 }
 
 impl OutputTail {
     fn push(&mut self, chunk: String) {
         self.bytes += chunk.len();
-        self.chunks.push(chunk);
+        self.chunks.push_back(chunk);
         while self.bytes > OUTPUT_TAIL_BYTES && self.chunks.len() > 1 {
-            let dropped = self.chunks.remove(0);
+            let dropped = self.chunks.pop_front().expect("tail chunk exists");
             self.bytes -= dropped.len();
         }
         if self.bytes > OUTPUT_TAIL_BYTES && self.chunks.len() == 1 {
-            let only = self.chunks.remove(0);
+            let only = self.chunks.pop_front().expect("tail chunk exists");
             let start = only.len().saturating_sub(OUTPUT_TAIL_BYTES);
             // Slice on a char boundary so we never split a multibyte
             // sequence. Walk forward until we land on one.
@@ -273,12 +274,14 @@ impl OutputTail {
             }
             let tail = only[byte_idx..].to_string();
             self.bytes = tail.len();
-            self.chunks.push(tail);
+            self.chunks.push_back(tail);
         }
     }
 
     fn take(&mut self) -> String {
-        let combined = std::mem::take(&mut self.chunks).concat();
+        let combined = std::mem::take(&mut self.chunks)
+            .into_iter()
+            .collect::<String>();
         self.bytes = 0;
         combined
     }
@@ -412,6 +415,7 @@ mod tests {
             .unwrap();
         assert_eq!(result.status, "passed");
         assert_eq!(result.exit_code, Some(0));
+        assert!(result.completed_at.is_some());
     }
 
     #[tokio::test]
@@ -521,6 +525,19 @@ mod tests {
         assert_eq!(lines.len(), 8);
         assert_eq!(lines.first().unwrap(), &"line 5");
         assert_eq!(lines.last().unwrap(), &"line 12");
+    }
+
+    #[test]
+    fn output_tail_keeps_recent_chunks_under_byte_cap() {
+        let mut tail = OutputTail::default();
+        tail.push("old".repeat(40_000));
+        tail.push("new".repeat(24_000));
+
+        let output = tail.take();
+
+        assert!(!output.contains("oldoldold"));
+        assert!(output.contains("newnewnew"));
+        assert!(output.len() <= OUTPUT_TAIL_BYTES);
     }
 
     #[test]

@@ -119,6 +119,31 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(mergeDashboardDelta(base, { events: [ev] })).toBe(base);
   });
 
+  it("does not rescan the event tail for deltas that do not include events", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("e1", "message.delta", "2026-05-12T15:00:01.000Z"),
+        event("e2", "message.completed", "2026-05-12T15:00:02.000Z")
+      ]
+    };
+    const next = mergeDashboardDelta(base, {
+      pendingMessages: {
+        "session-1": [
+          {
+            id: "pending-1",
+            sessionId: "session-1",
+            content: "queued",
+            agentMode: "auto",
+            queuedAt: "2026-05-12T15:00:03.000Z"
+          }
+        ]
+      }
+    });
+    expect(next).not.toBe(base);
+    expect(next.events).toBe(base.events);
+  });
+
   it("mergeDashboardDelta returns a new reference when any slice actually changes", () => {
     const base: DashboardSnapshot = { ...emptySnapshot };
     const next = mergeDashboardDelta(base, {

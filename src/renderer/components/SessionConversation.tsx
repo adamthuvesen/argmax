@@ -98,6 +98,10 @@ import {
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
+function isConversationEventType(type: string): boolean {
+  return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
+}
+
 export function SessionConversation({
   checks,
   defaultToolCallsExpanded,
@@ -206,28 +210,42 @@ export function SessionConversation({
             event.payload.raw !== true &&
             !isPayloadTruncationMarker(event) &&
             !isSubAgentProseEcho(event) &&
-            ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
+            isConversationEventType(event.type) &&
             event.message !== "turn.completed"
         )
         .reverse();
       // Providers stream message.delta fragments and then a final message.completed
       // with the accumulated text. Once a turn has a completed event, the deltas
       // are stale duplicates — keep them only while streaming (before completion).
-      return ascending.filter((event, index) => {
-        if (event.type !== "message.delta") return true;
+      let hasCompletedBeforeNextUser = false;
+      const visible: TimelineEvent[] = [];
+      for (let index = ascending.length - 1; index >= 0; index -= 1) {
+        const event = ascending[index];
+        if (!event) continue;
+        if (event.type === "user.message") {
+          hasCompletedBeforeNextUser = false;
+          visible.push(event);
+          continue;
+        }
+        if (event.type === "message.completed") {
+          hasCompletedBeforeNextUser = true;
+          visible.push(event);
+          continue;
+        }
+        if (event.type !== "message.delta") {
+          visible.push(event);
+          continue;
+        }
         // Extended-thinking deltas (payload.thinking === true) are the only
         // record of Claude's reasoning step — message.completed carries the
         // answer text only. Keep them past completion so the persistent Thought
         // block survives the turn, matching pruneSupersededDeltas in snapshot.ts.
-        if (event.payload?.["thinking"] === true) return true;
-        for (let next = index + 1; next < ascending.length; next++) {
-          const nextEvent = ascending[next];
-          if (!nextEvent) break;
-          if (nextEvent.type === "user.message") return true;
-          if (nextEvent.type === "message.completed") return false;
+        if (event.payload?.["thinking"] === true || !hasCompletedBeforeNextUser) {
+          visible.push(event);
         }
-        return true;
-      });
+      }
+      visible.reverse();
+      return visible;
     },
     [events]
   );

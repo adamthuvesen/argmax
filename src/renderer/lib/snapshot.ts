@@ -94,7 +94,7 @@ function mergeEventsBounded(
   updates: TimelineEvent[] | undefined
 ): TimelineEvent[] {
   if (!updates) {
-    return pruneSupersededDeltas(current);
+    return current;
   }
   const merged = upsertById(current, updates);
   if (merged === current) {

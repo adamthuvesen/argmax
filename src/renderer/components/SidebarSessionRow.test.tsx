@@ -29,7 +29,7 @@ const detectedIdes = [
 describe("SidebarSessionRow", () => {
   afterEach(() => cleanup());
 
-  it("exposes IDE, chooser, and archive actions as keyboard-reachable buttons", () => {
+  it("exposes IDE chooser and archive actions as keyboard-reachable buttons", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
@@ -46,7 +46,7 @@ describe("SidebarSessionRow", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Open in IDE" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open in IDE" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose IDE" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Archive session" })).toBeInTheDocument();
   });

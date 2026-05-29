@@ -142,21 +142,12 @@ function SidebarSessionRowInner({
         : null;
 
   const buttonDisabled = !hasPath || !hasIdes;
-  const ideButtonTitle = !hasPath
+  // Surfaced on the (disabled) chooser so the user learns why it's inert.
+  const disabledReason = !hasPath
     ? "Worktree not ready yet"
     : !hasIdes
       ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
-      : effectiveDefault
-        ? `Open in ${detectedIdes.find((e) => e.id === effectiveDefault)?.label ?? effectiveDefault}`
-        : "Open in IDE";
-
-  const handlePrimaryClick = (event: ReactMouseEvent): void => {
-    event.stopPropagation();
-    if (buttonDisabled || !effectiveDefault) return;
-    onOpenInIde(workspace.id, effectiveDefault, {
-      pinAsDefault: defaultIde === null
-    });
-  };
+      : null;
 
   const handleChevronClick = (event: ReactMouseEvent): void => {
     event.stopPropagation();
@@ -264,21 +255,11 @@ function SidebarSessionRowInner({
       })() : null}
       <div className="session-ide-cluster" ref={pickerRef}>
         <button
-          className="session-row-action session-ide-btn"
-          aria-label="Open in IDE"
-          title={ideButtonTitle}
-          type="button"
-          disabled={buttonDisabled || !effectiveDefault}
-          onClick={handlePrimaryClick}
-        >
-          <ExternalLink size={11} />
-        </button>
-        <button
           className="session-row-action session-ide-chevron"
           aria-label="Choose IDE"
           aria-haspopup="menu"
           aria-expanded={pickerOpen}
-          title="Choose IDE"
+          title={disabledReason ?? "Choose IDE"}
           type="button"
           disabled={buttonDisabled}
           onClick={handleChevronClick}

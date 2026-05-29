@@ -162,7 +162,9 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, AttachmentStoreError> {
         if padding > 2 || (!is_last && padding > 0) || chunk[0] == b'=' || chunk[1] == b'=' {
             return Err(AttachmentStoreError::InvalidBase64);
         }
-        if padding == 1 && chunk[2] == b'=' {
+        // A `=` in the third slot is only valid as part of trailing `==` padding;
+        // `XX=Y` (pad byte followed by data) is malformed and must be rejected.
+        if chunk[2] == b'=' && chunk[3] != b'=' {
             return Err(AttachmentStoreError::InvalidBase64);
         }
 
@@ -295,6 +297,19 @@ mod tests {
             decode_base64("not@@base64"),
             Err(AttachmentStoreError::InvalidBase64)
         ));
+        // A `=` in the third slot followed by a data byte is malformed padding.
+        for malformed in ["AB=D", "A=CD", "AB=DEFGH"] {
+            assert!(
+                matches!(
+                    decode_base64(malformed),
+                    Err(AttachmentStoreError::InvalidBase64)
+                ),
+                "expected {malformed:?} to be rejected"
+            );
+        }
+        // Valid padding still decodes.
+        assert!(decode_base64("TWE=").is_ok());
+        assert!(decode_base64("TQ==").is_ok());
     }
 
     #[test]

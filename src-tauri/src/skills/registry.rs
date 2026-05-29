@@ -358,10 +358,10 @@ pub fn parse_frontmatter(content: &str) -> Frontmatter {
         }
     }
 
-    Frontmatter {
-        name: None,
-        description: None,
-    }
+    // Frontmatter with no closing `---` is technically malformed, but the
+    // name/description we accumulated are still usable — return them rather than
+    // silently dropping the skill's metadata.
+    Frontmatter { name, description }
 }
 
 fn unquote(value: &str) -> String {
@@ -458,6 +458,18 @@ mod tests {
             Frontmatter {
                 name: None,
                 description: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_frontmatter_keeps_values_without_closing_delimiter() {
+        // No trailing `---`: still surface what we parsed rather than dropping it.
+        assert_eq!(
+            parse_frontmatter("---\nname: impl\ndescription: Implement code"),
+            Frontmatter {
+                name: Some("impl".to_owned()),
+                description: Some("Implement code".to_owned()),
             }
         );
     }

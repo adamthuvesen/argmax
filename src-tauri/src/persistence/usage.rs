@@ -146,7 +146,7 @@ pub fn get_session_cost_summary(
 
     let mut latest_statement = prepared(
         connection,
-        "SELECT model_id FROM usage_events WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        "SELECT model_id FROM usage_events WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
     )
     .map_err(sqlite_error)?;
     let latest_model_id =

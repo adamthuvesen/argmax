@@ -396,11 +396,17 @@ fn cap_diff(content: String) -> String {
     if content.len() <= PER_FILE_DIFF_CAP_BYTES {
         return content;
     }
-    let dropped_bytes = content.len() - PER_FILE_DIFF_CAP_BYTES;
+    // Walk back to a UTF-8 char boundary: a raw byte slice at the cap can land
+    // in the middle of a multi-byte codepoint (emoji, CJK) and panic.
+    let mut cap = PER_FILE_DIFF_CAP_BYTES;
+    while cap > 0 && !content.is_char_boundary(cap) {
+        cap -= 1;
+    }
+    let dropped_bytes = content.len() - cap;
     format!(
         "{}\n[diff truncated at {} bytes; dropped {} bytes]\n",
-        &content[..PER_FILE_DIFF_CAP_BYTES],
-        PER_FILE_DIFF_CAP_BYTES,
+        &content[..cap],
+        cap,
         dropped_bytes
     )
 }

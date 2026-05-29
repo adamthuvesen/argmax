@@ -89,7 +89,7 @@ pub fn list_learnings(
         connection,
         r#"
         SELECT * FROM learnings WHERE project_id = ?
-        ORDER BY verified DESC, hits DESC, last_seen_at DESC
+        ORDER BY verified DESC, hits DESC, last_seen_at DESC, id DESC
         LIMIT ?
         "#,
     )

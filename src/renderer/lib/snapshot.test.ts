@@ -170,4 +170,72 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result).not.toBe(events);
     expect(result.map((e) => e.id)).toEqual(["e4", "e1"]);
   });
+
+  // -------------------------------------------------------------------------
+  // Token-streaming: a flood of answer deltas must not evict tool/user rows
+  // -------------------------------------------------------------------------
+
+  it("keeps user.message and tool rows when a long in-flight answer floods deltas", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("u1", "user.message", "2026-05-12T15:00:00.000Z", 1),
+        event("c1", "command.started", "2026-05-12T15:00:01.000Z", 2),
+        event("c2", "command.completed", "2026-05-12T15:00:02.000Z", 3)
+      ]
+    };
+    // 600 in-flight answer deltas (no completion yet → not prunable). Naive
+    // newest-500 capping would push u1/c1/c2 (oldest) out and flicker them.
+    const deltas: TimelineEvent[] = Array.from({ length: 600 }, (_, i) =>
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+    );
+    const merged = mergeDashboardDelta(base, { events: deltas });
+    const ids = new Set(merged.events.map((e) => e.id));
+    expect(ids.has("u1")).toBe(true);
+    expect(ids.has("c1")).toBe(true);
+    expect(ids.has("c2")).toBe(true);
+    // The newest 500 answer deltas survive; the oldest 100 are evicted.
+    expect(ids.has("d599")).toBe(true);
+    expect(ids.has("d0")).toBe(false);
+  });
+
+  it("prunes the answer deltas once the turn completes, keeping tool rows", () => {
+    const deltas: TimelineEvent[] = Array.from({ length: 500 }, (_, i) =>
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+    );
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("u1", "user.message", "2026-05-12T15:00:00.000Z", 1),
+        event("c1", "command.started", "2026-05-12T15:00:01.000Z", 2),
+        ...deltas
+      ]
+    };
+    const merged = mergeDashboardDelta(base, {
+      events: [event("done", "message.completed", "2026-05-12T15:02:00.000Z", 9999)]
+    });
+    const ids = merged.events.map((e) => e.id);
+    expect(ids).toContain("u1");
+    expect(ids).toContain("c1");
+    expect(ids).toContain("done");
+    // The 500 answer deltas (ids d0..d499) are superseded by the completion.
+    expect(ids.filter((id) => /^d\d/.test(id))).toHaveLength(0);
+  });
+
+  it("keeps thinking deltas protected from eviction by a long answer", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        {
+          ...event("t1", "message.delta", "2026-05-12T15:00:00.000Z", 5),
+          payload: { thinking: true }
+        }
+      ]
+    };
+    const deltas: TimelineEvent[] = Array.from({ length: 600 }, (_, i) =>
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+    );
+    const merged = mergeDashboardDelta(base, { events: deltas });
+    expect(merged.events.some((e) => e.id === "t1")).toBe(true);
+  });
 });

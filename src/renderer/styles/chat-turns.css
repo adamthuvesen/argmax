@@ -152,6 +152,92 @@
   }
 }
 
+/* ThoughtBlock — Claude extended-thinking (reasoning) rendered as a distinct,
+   collapsible disclosure inside the turn body. Collapsed by default; the chip
+   reads quieter than the answer so reasoning stays available without competing
+   with the actual response. */
+.thought-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thought-block-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  /* Offset the left padding with a matching negative margin so the brain icon
+     sits flush-left with the answer text below, while the hover pill keeps its
+     padded rounded shape. */
+  padding: 2px 8px;
+  margin-left: -8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: 999px;
+  opacity: 0.75;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease);
+}
+
+.thought-block-toggle:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+  opacity: 1;
+}
+
+.thought-block-icon {
+  opacity: 0.7;
+}
+
+.thought-block-label {
+  letter-spacing: 0.02em;
+}
+
+/* While the agent is actively thinking, the chip is fully present and softly
+   pulses to read as live, in place of the generic thinking-verb animation. */
+.thought-block[data-live="true"] .thought-block-toggle {
+  opacity: 1;
+}
+
+.thought-block[data-live="true"] .thought-block-icon {
+  opacity: 1;
+  animation: thought-pulse 1600ms var(--ease) infinite;
+}
+
+@keyframes thought-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thought-block[data-live="true"] .thought-block-icon {
+    animation: none;
+  }
+}
+
+.thought-block-chevron {
+  transition: transform var(--duration-fast) var(--ease);
+  opacity: 0.6;
+}
+
+.thought-block-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+/* Expanded reasoning — set off from the answer with a left rail and muted
+   text so it reads as a quieter, secondary stream. */
+.thought-block-body {
+  padding-left: 12px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
 /* Thinking transcript — a single line of mono on paper.
    The sage dot pulses as the only loading state; the command text types
    itself in via React. No pill, no border, no scan effect — just typography. */

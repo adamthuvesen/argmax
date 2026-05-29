@@ -150,6 +150,104 @@ describe("SessionConversation — streaming & composer", () => {
     expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
+  it("renders extended-thinking as a collapsed Thought block that persists after the answer", () => {
+    const thinking = "The user is asking me to read files. Let me start with the README.";
+    const answer = "Here's the repo overview.";
+
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "what is this repo", "2026-05-12T15:00:00.000Z"),
+        // Extended-thinking is surfaced by the normalizer as a message.delta
+        // with payload.thinking === true.
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
+      ]
+    );
+
+    // The Thought disclosure survives the turn's completion (not pruned), and
+    // the answer renders normally alongside it. Done → collapsed, "Thought".
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle.textContent).toContain("Thought");
+    expect(screen.getByText(answer)).toBeTruthy();
+    // Collapsed by default — the reasoning text is not shown until expanded.
+    expect(screen.queryByText(thinking)).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(thinking)).toBeTruthy();
+  });
+
+  it("shows extended-thinking expanded and labelled 'Thinking' while the turn is live", () => {
+    const thinking = "Let me figure out which files matter here.";
+
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+        // Thinking has landed but no answer text yet → the turn is live, so the
+        // reasoning shows expanded in place of the thinking-verb animation.
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
+      ]
+    );
+
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle.textContent).toContain("Thinking");
+    expect(screen.getByText(thinking)).toBeTruthy();
+  });
+
+  it("collapses the Thought block to 'Thought' once the first answer token arrives", () => {
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", "Reasoning about it.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+        // First streamed answer token → thinking is no longer live → collapses.
+        event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z")
+      ]
+    );
+
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle.textContent).toContain("Thought");
+    expect(screen.getByText("Here we go")).toBeTruthy();
+  });
+
+  it("accumulates streamed text_delta fragments into a single bubble", () => {
+    // Token streaming: many small message.delta fragments fold into one bubble.
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
+        event("d1", "message.delta", "Hel", "2026-05-12T15:00:01.000Z"),
+        event("d2", "message.delta", "lo ", "2026-05-12T15:00:02.000Z"),
+        event("d3", "message.delta", "world", "2026-05-12T15:00:03.000Z")
+      ]
+    );
+
+    expect(screen.getAllByText("Hello world")).toHaveLength(1);
+  });
+
+  it("does not duplicate the answer when message.completed lands after streamed fragments", () => {
+    // `events` arrives newest-first (as mergeDashboardDelta sorts it); the
+    // supersede filter drops the streamed deltas once the completion lands.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("m1", "message.completed", "Hello world", "2026-05-12T15:00:04.000Z"),
+        event("d3", "message.delta", "world", "2026-05-12T15:00:03.000Z"),
+        event("d2", "message.delta", "lo ", "2026-05-12T15:00:02.000Z"),
+        event("d1", "message.delta", "Hel", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    // The streamed deltas are superseded by the completion → exactly one bubble.
+    expect(screen.getAllByText("Hello world")).toHaveLength(1);
+  });
+
   it("folds Codex command_execution singletons into the turn command group", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),

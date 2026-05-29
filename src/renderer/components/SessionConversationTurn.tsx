@@ -12,6 +12,7 @@ import type { AgentMode } from "../../shared/types.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { PlanCard } from "./PlanCard.js";
 import { QuestionCard } from "./QuestionCard.js";
+import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
@@ -77,6 +78,16 @@ export function SessionConversationTurn({
     turnStartedAtMs,
     isPausedOnUserInput
   } = turnView;
+  // A Thought block is "live" (shown expanded, in place of the thinking verbs)
+  // while this turn is actively working and hasn't produced its answer yet.
+  // Once any answer text lands — or the turn stops being the active one, or it
+  // pauses for user input — it auto-collapses to a quiet, persistent chip.
+  const isLatestTurn = index === renderItems.length - 1;
+  const sessionIsLive = session?.state === "running";
+  const turnHasAnswerText = visibleAssistantGroups.some(
+    (group) => !group.thinking && group.text.trim().length > 0
+  );
+  const thinkingLive = isLatestTurn && sessionIsLive && !isPausedOnUserInput && !turnHasAnswerText;
   const handlePlanAccept = (): void => {
     if (!session) return;
     setAgentMode("auto");
@@ -156,6 +167,19 @@ export function SessionConversationTurn({
   };
   type AnnotatedChild = TurnBodyChild & { createdAt: string };
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups.map((group) => {
+    if (group.thinking) {
+      const node = (
+        <ThoughtBlock key={group.id} live={thinkingLive}>
+          <StreamingMarkdown
+            text={group.text}
+            streaming={false}
+            workspace={workspace}
+            onOpenFile={onOpenFile}
+          />
+        </ThoughtBlock>
+      );
+      return { kind: "assistant", id: group.id, node, createdAt: group.createdAt };
+    }
     const planNode = tryRenderPlan(group);
     if (planNode) {
       return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt };
@@ -195,13 +219,11 @@ export function SessionConversationTurn({
   const visibleToolItems = item.toolItems
     .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
     .filter((tItem): tItem is TurnToolItem => tItem !== null);
-  const isLatestTurn = index === renderItems.length - 1;
   const anyToolRunningInTurn = visibleToolItems.some((tItem) =>
     tItem.kind === "tool"
       ? tItem.tool.status === "running"
       : tItem.group.tools.some((tool) => tool.status === "running")
   );
-  const sessionIsLive = session?.state === "running";
   const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
   const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
   const groupDefaultExpanded = turnIsActive

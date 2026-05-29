@@ -74,6 +74,47 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   return isDescending ? kept.reverse() : kept;
 }
 
+// Token-by-token streaming produces hundreds of answer `message.delta` rows per
+// turn. Capping the merged event list naively (newest-N) would let that flood
+// evict the OLDEST rows — the user bubble and early tool calls — mid-stream,
+// making them flicker out until the final `message.completed` prunes the
+// deltas. So we cap the two kinds independently: only non-thinking answer
+// deltas are droppable; everything else (user message, tool rows, approvals,
+// errors, completions, and thinking deltas) is protected. The current turn's
+// rows are always the newest of their kind, so they survive the flood.
+const EVENT_DELTA_LIMIT = 500;
+const EVENT_PROTECTED_LIMIT = 500;
+
+function isEvictableDelta(event: TimelineEvent): boolean {
+  return event.type === "message.delta" && event.payload?.["thinking"] !== true;
+}
+
+function mergeEventsBounded(
+  current: TimelineEvent[],
+  updates: TimelineEvent[] | undefined
+): TimelineEvent[] {
+  if (!updates) {
+    return pruneSupersededDeltas(current);
+  }
+  const merged = upsertById(current, updates);
+  if (merged === current) {
+    return pruneSupersededDeltas(current);
+  }
+  // Newest-first, same ordering mergeSlice used.
+  const sorted = sortByTimestamp(merged, (event) => event.createdAt, (event) => event.rowCursor);
+  let deltaKept = 0;
+  let protectedKept = 0;
+  const capped = sorted.filter((event) => {
+    if (isEvictableDelta(event)) {
+      deltaKept += 1;
+      return deltaKept <= EVENT_DELTA_LIMIT;
+    }
+    protectedKept += 1;
+    return protectedKept <= EVENT_PROTECTED_LIMIT;
+  });
+  return pruneSupersededDeltas(capped.length === sorted.length ? sorted : capped);
+}
+
 export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
   const projects = delta.projects
     ? (() => {
@@ -83,9 +124,7 @@ export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: Dashboar
     : snapshot.projects;
   const workspaces = mergeSlice(snapshot.workspaces, delta.workspaces, (workspace) => workspace.lastActivityAt);
   const sessions = mergeSlice(snapshot.sessions, delta.sessions, (session) => session.lastActivityAt);
-  const events = pruneSupersededDeltas(
-    mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 500, (event) => event.rowCursor)
-  );
+  const events = mergeEventsBounded(snapshot.events, delta.events);
   const rawOutputs = mergeSlice(
     snapshot.rawOutputs,
     delta.rawOutputs,

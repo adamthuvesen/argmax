@@ -213,6 +213,11 @@ export function SessionConversation({
       // are stale duplicates — keep them only while streaming (before completion).
       return ascending.filter((event, index) => {
         if (event.type !== "message.delta") return true;
+        // Extended-thinking deltas (payload.thinking === true) are the only
+        // record of Claude's reasoning step — message.completed carries the
+        // answer text only. Keep them past completion so the persistent Thought
+        // block survives the turn, matching pruneSupersededDeltas in snapshot.ts.
+        if (event.payload?.["thinking"] === true) return true;
         for (let next = index + 1; next < ascending.length; next++) {
           const nextEvent = ascending[next];
           if (!nextEvent) break;

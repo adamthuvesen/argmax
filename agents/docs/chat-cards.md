@@ -56,6 +56,49 @@ on screen waiting for the user, the agent is *waiting on the user*, not
 `user.message` lands → `lastUserMessageTime` advances past the tool's
 `createdAt` → Thinking resumes for the new turn.
 
+## Extended-thinking (Thought block)
+
+Distinct from the pre-answer "Thinking" indicator above: Claude's
+extended-thinking *content* (the reasoning monologue) is surfaced by the
+normalizer ([claude.rs](../../src-tauri/src/providers/normalizer/claude.rs))
+as `message.delta` events with `payload.thinking === true`. Claude is launched
+with `--include-partial-messages` (adapters.rs), so reasoning streams
+token-by-token as `thinking_delta` fragments (text in `delta.thinking`); the
+dispatcher in [mod.rs](../../src-tauri/src/providers/normalizer/mod.rs) stamps
+the `thinking: true` flag onto each. `message.completed` carries the answer text
+only, so these deltas are the sole record of the reasoning.
+
+Two layers cooperate to keep it visible and out of the way:
+
+- **Survival.** `pruneSupersededDeltas` ([snapshot.ts](../../src/renderer/lib/snapshot.ts))
+  and the `conversationEvents` supersede filter in
+  [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+  both make an exception for thinking deltas, so they are *not* dropped when the
+  turn's `message.completed` lands. (These must stay in sync — a thinking delta
+  kept by one and dropped by the other produces a flash-then-vanish.)
+- **Fold + dedup + rendering.** `coalesceAssistantGroups`
+  ([sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts)) folds the
+  streamed thinking fragments into ONE growing `AssistantGroup` (`thinking:
+  true`), kept in a buffer separate from the answer (flushed whenever the kind
+  flips). The whole assistant message later re-sends the *full* reasoning as one
+  block; a cumulative-aware append (`appendThinking`) dedups it to a no-op
+  instead of doubling the text.
+  [SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx)
+  routes thinking groups to [ThoughtBlock.tsx](../../src/renderer/components/ThoughtBlock.tsx)
+  instead of an inline answer bubble, keeping their chronological position in the
+  turn body (before the tools and answer they preceded).
+
+**Expand-while-live, collapse-when-done.** The Thought block takes a `live`
+prop, computed per turn in `SessionConversationTurn` as *latest turn + session
+running + not paused on a card + no answer text yet*. While `live`, the block is
+**expanded** and labelled "Thinking" — the reasoning streams in token-by-token,
+in place of the generic thinking-verb animation (the verbs still cover the gap
+before any assistant content arrives). The instant the first answer token lands
+(or the turn stops being the active one, or it pauses for input), `live` flips
+off and the block auto-collapses to a quiet, persistent "Thought" chip. A manual
+toggle overrides the auto behavior (same `userToggle ?? auto` pattern as the turn
+chip).
+
 ## Submission flow
 
 When the user clicks Submit on a PlanCard or QuestionCard, the handler must

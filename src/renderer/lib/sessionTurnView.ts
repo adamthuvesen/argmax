@@ -15,7 +15,15 @@ export type AssistantGroup = {
   createdAt: string;
   text: string;
   streaming: boolean;
+  // Claude extended-thinking content, surfaced by the normalizer as a
+  // message.delta with payload.thinking === true. Rendered as a separate
+  // collapsible "Thought" block rather than inline answer text.
+  thinking?: boolean;
 };
+
+function isThinkingDelta(event: TimelineEvent): boolean {
+  return event.type === "message.delta" && event.payload?.["thinking"] === true;
+}
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
   if (event.type !== "message.delta" || event.payload.type !== "assistant") {
@@ -47,25 +55,66 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
   return event.message;
 }
 
-/** Fold consecutive `message.delta` events into one streaming assistant group. */
+/**
+ * Append a streamed thinking fragment. `thinking_delta` fragments are disjoint,
+ * so they append normally. The final complete thinking block (from the whole
+ * assistant message) re-sends the FULL reasoning (= sum of the fragments);
+ * `startsWith` is then true and the slice is empty, so it dedups to a no-op
+ * instead of doubling the text. If increments never arrived (no partial
+ * streaming) the buffer is empty and the complete block appends in full.
+ */
+function appendThinking(current: string, incoming: string): string {
+  return incoming.startsWith(current)
+    ? current + incoming.slice(current.length)
+    : current + incoming;
+}
+
+/**
+ * Fold streamed `message.delta` events into assistant groups. Answer fragments
+ * and extended-thinking fragments are accumulated into SEPARATE growing groups
+ * (thinking renders in the collapsible Thought block); the open buffer is
+ * flushed whenever the kind flips so they never concatenate.
+ */
 export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[]): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
-  let deltaBuffer: { id: string; createdAt: string; text: string } | null = null;
+  let answerBuffer: { id: string; createdAt: string; text: string } | null = null;
+  let thinkingBuffer: { id: string; createdAt: string; text: string } | null = null;
+  const flushAnswer = (): void => {
+    if (!answerBuffer) return;
+    assistantGroups.push({
+      id: answerBuffer.id,
+      createdAt: answerBuffer.createdAt,
+      text: answerBuffer.text,
+      streaming: true
+    });
+    answerBuffer = null;
+  };
+  const flushThinking = (): void => {
+    if (!thinkingBuffer) return;
+    assistantGroups.push({
+      id: thinkingBuffer.id,
+      createdAt: thinkingBuffer.createdAt,
+      text: thinkingBuffer.text,
+      streaming: false,
+      thinking: true
+    });
+    thinkingBuffer = null;
+  };
   for (const event of assistantEvents) {
-    if (event.type === "message.delta") {
-      if (!deltaBuffer) deltaBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
-      deltaBuffer.text += deltaTextForBuffer(event, deltaBuffer.text);
+    if (isThinkingDelta(event)) {
+      flushAnswer();
+      if (!thinkingBuffer) thinkingBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
+      thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
       continue;
     }
-    if (deltaBuffer) {
-      assistantGroups.push({
-        id: deltaBuffer.id,
-        createdAt: deltaBuffer.createdAt,
-        text: deltaBuffer.text,
-        streaming: true
-      });
-      deltaBuffer = null;
+    if (event.type === "message.delta") {
+      flushThinking();
+      if (!answerBuffer) answerBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
+      answerBuffer.text += deltaTextForBuffer(event, answerBuffer.text);
+      continue;
     }
+    flushThinking();
+    flushAnswer();
     const last = assistantGroups[assistantGroups.length - 1];
     if (
       last &&
@@ -82,14 +131,8 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
       streaming: false
     });
   }
-  if (deltaBuffer) {
-    assistantGroups.push({
-      id: deltaBuffer.id,
-      createdAt: deltaBuffer.createdAt,
-      text: deltaBuffer.text,
-      streaming: true
-    });
-  }
+  flushThinking();
+  flushAnswer();
   return assistantGroups;
 }
 

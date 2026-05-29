@@ -265,13 +265,13 @@ export function mergeByCreatedAt<T extends { id: string; createdAt: string; rowC
   limit: number,
   direction: "asc" | "desc"
 ): T[] {
-  const sorted = sortByTimestamp(
+  // sortByTimestamp is newest-first; take the newest `limit`, then orient.
+  const newestFirst = sortByTimestamp(
     upsertById(current, updates),
     (item) => item.createdAt,
     (item) => item.rowCursor
-  ).reverse();
-  const limited = sorted.slice(-limit);
-  return direction === "asc" ? limited : limited.reverse();
+  ).slice(0, limit);
+  return direction === "asc" ? newestFirst.reverse() : newestFirst;
 }
 
 function isAfter(left: TimelineEvent, right: TimelineEvent): boolean {

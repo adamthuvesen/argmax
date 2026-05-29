@@ -141,15 +141,15 @@ export function useDashboardSession(
           ...merged,
           events: pruneSupersededDeltas(
             mergeByCreatedAt(
-              data.events,
               current.events.filter((event) => liveSessionIds.has(event.sessionId)),
+              data.events,
               500,
               "desc"
             )
           ),
           rawOutputs: mergeByCreatedAt(
-            data.rawOutputs,
             current.rawOutputs.filter((output) => liveSessionIds.has(output.sessionId)),
+            data.rawOutputs,
             100,
             "desc"
           )
@@ -483,10 +483,15 @@ export function useDashboardSession(
         }
         resolveApprovalTokens.current.delete(approvalId);
         if (previousApproval) {
+          // Roll back only the optimistically-changed fields against the CURRENT
+          // row, so a concurrent delta that touched other fields mid-resolution
+          // isn't clobbered by the pre-optimistic snapshot.
           setSnapshot((current) => ({
             ...current,
             approvals: current.approvals.map((approval) =>
-              approval.id === approvalId ? previousApproval : approval
+              approval.id === approvalId
+                ? { ...approval, status: previousApproval.status, resolvedAt: previousApproval.resolvedAt }
+                : approval
             )
           }));
         }

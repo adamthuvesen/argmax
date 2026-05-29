@@ -552,11 +552,51 @@
 }
 
 .launcher-scroll {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 48px 36px;
   -webkit-app-region: drag;
   app-region: drag;
+}
+
+/* Animated globe backdrop (LauncherGlobe). The canvas + scrim are rendered inside
+   the centered .launcher-shell but positioned against the full .launcher-scroll
+   area so the globe fills the launcher rather than the content-sized shell. Both
+   sit below .launcher-surface (z-index 26) and never take pointer events. */
+.launcher-globe {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.launcher-globe-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* A softer vignette keeps the globe readable without leaving a hard white halo. */
+  background:
+    radial-gradient(ellipse 44% 36% at 60% 42%, rgba(0, 0, 0, 0.16), transparent 74%),
+    radial-gradient(ellipse 72% 60% at 50% 50%, rgba(22, 13, 44, 0.12), transparent 78%);
+}
+
+:root[data-theme="light"] .launcher-globe-scrim {
+  background:
+    radial-gradient(ellipse 44% 36% at 60% 42%, rgba(0, 0, 0, 0.18), transparent 74%),
+    radial-gradient(ellipse 72% 60% at 50% 50%, rgba(0, 0, 0, 0.08), transparent 78%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The globe still renders a static frame; keep the scrim but drop its presence
+     a touch since there's no motion drawing the eye. */
+  .launcher-globe-scrim {
+    opacity: 0.8;
+  }
 }
 
 .launcher-scroll:has(.launcher-shell[data-review-open="true"]) {

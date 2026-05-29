@@ -5,6 +5,7 @@ export const CHAT_COST_KEY = "argmax.chat.cost.visible";
 export const THINKING_EXPANDED_KEY = "argmax.thinking.expanded";
 export const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
+export const LAUNCHER_GLOBE_KEY = "argmax.launcher.globe.visible";
 
 function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -39,6 +40,10 @@ export function readStoredToolCallsExpanded(): boolean {
 
 export function readStoredToolCallGroupsExpanded(): boolean {
   return readBooleanPreference(TOOL_CALL_GROUPS_EXPANDED_KEY, true);
+}
+
+export function readStoredLauncherGlobeVisible(): boolean {
+  return readBooleanPreference(LAUNCHER_GLOBE_KEY, true);
 }
 
 /** Boolean UI preference with mirrored localStorage persistence. */

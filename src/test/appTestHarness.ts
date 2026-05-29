@@ -100,6 +100,10 @@ export let menuCommandListener: ((command: Parameters<Parameters<ArgmaxApi["menu
 
 export function setupAppTestMocks(): void {
   window.localStorage.clear();
+  // The launcher globe defaults on in production but pulls in three.js/WebGL,
+  // which jsdom can't render. Keep it off for the broad App suite so the lazy
+  // chunk never loads; the settings + LauncherGlobe tests opt in explicitly.
+  window.localStorage.setItem("argmax.launcher.globe.visible", "false");
   // Pre-seed the boot-collapse marker so existing App tests render the
   // sidebar with projects expanded (the pre-fix behavior). Sidebar tests
   // that exercise the boot-collapse seed clear this marker themselves.

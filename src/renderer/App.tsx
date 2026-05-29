@@ -64,6 +64,7 @@ import {
 } from "./lib/thinkingStyle.js";
 import {
   CHAT_COST_KEY,
+  LAUNCHER_GLOBE_KEY,
   SIDEBAR_TOKENS_KEY,
   THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
@@ -105,6 +106,7 @@ export function App(): JSX.Element {
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, true);
+  const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, true);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const { themeMode, setThemeMode, fontFamily, setFontFamily, defaultIde, setDefaultIde, detectedIdes } =
     useLauncherAppearance();
@@ -759,6 +761,7 @@ export function App(): JSX.Element {
         projects={snapshot.projects}
         rightPanelToggleSignal={rightPanelToggleSignal}
         registerPaletteFileContext={registerPaletteFileContext}
+        globeEnabled={launcherGlobeVisible}
       />
     ),
     [
@@ -766,6 +769,7 @@ export function App(): JSX.Element {
       handleBranchSwitch,
       launchModel,
       launchTask,
+      launcherGlobeVisible,
       openProjectLauncher,
       registerPaletteFileContext,
       rightPanelToggleSignal,
@@ -911,6 +915,8 @@ export function App(): JSX.Element {
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
+                launcherGlobeVisible={launcherGlobeVisible}
+                onLauncherGlobeVisibleChange={setLauncherGlobeVisible}
                 thinkingExpanded={thinkingExpanded}
                 onThinkingExpandedChange={setThinkingExpanded}
                 fontFamily={fontFamily}

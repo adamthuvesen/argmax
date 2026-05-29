@@ -118,6 +118,22 @@ describe("App settings", () => {
     expect(cell.getAttribute("title")).toContain("50k cached");
   });
 
+  it("toggles the launcher globe preference and persists it to localStorage", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Animated globe on the launcher" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.launcher.globe.visible")).toBe("true")
+    );
+  });
+
   it("renders the CostPanel rows and totals on session detail", async () => {
     const costed: DashboardSnapshot = {
       ...snapshot,

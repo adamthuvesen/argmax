@@ -44,6 +44,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  launcherGlobeVisible,
+  onLauncherGlobeVisibleChange,
   thinkingExpanded,
   onThinkingExpandedChange,
   fontFamily,
@@ -72,6 +74,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  launcherGlobeVisible: boolean;
+  onLauncherGlobeVisibleChange: (v: boolean) => void;
   thinkingExpanded: boolean;
   onThinkingExpandedChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
@@ -247,6 +251,8 @@ export function SettingsPanel({
               onSidebarTokensVisibleChange={onSidebarTokensVisibleChange}
               chatCostVisible={chatCostVisible}
               onChatCostVisibleChange={onChatCostVisibleChange}
+              launcherGlobeVisible={launcherGlobeVisible}
+              onLauncherGlobeVisibleChange={onLauncherGlobeVisibleChange}
               newSessionMode={newSessionMode}
               onNewSessionModeChange={onNewSessionModeChange}
             />

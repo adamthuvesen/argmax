@@ -48,6 +48,12 @@ import { SkillPopover } from "./SkillPopover.js";
 const WelcomePane = lazy(async () => ({
   default: (await import("./WelcomePane.js")).WelcomePane
 }));
+// LauncherGlobe pulls in three.js — only needed when the animated backdrop is
+// enabled. Lazy-mounted so the WebGL globe never ships in the launcher's first
+// paint for users who keep it off.
+const LauncherGlobe = lazy(async () => ({
+  default: (await import("./LauncherGlobe.js")).LauncherGlobe
+}));
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
@@ -65,7 +71,8 @@ export function LaunchSurface({
   project,
   projects,
   rightPanelToggleSignal,
-  registerPaletteFileContext
+  registerPaletteFileContext,
+  globeEnabled = false
 }: {
   model: ModelPickerSelection;
   onAddProject: () => void;
@@ -84,6 +91,7 @@ export function LaunchSurface({
   registerPaletteFileContext?: (
     context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
   ) => void;
+  globeEnabled?: boolean;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -447,6 +455,11 @@ export function LaunchSurface({
       className="launcher-shell"
       data-review-open={isReviewOpen ? "true" : undefined}
     >
+      {globeEnabled && !isReviewOpen ? (
+        <Suspense fallback={null}>
+          <LauncherGlobe enabled={globeEnabled} />
+        </Suspense>
+      ) : null}
       <div className="launcher-surface">
       {anyContextPickerOpen && createPortal(
         <div

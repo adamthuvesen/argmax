@@ -15,16 +15,21 @@ Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [s
 
 Provider protocol output is persisted for debugging but must not render as chat. Visible chat is normalized timeline events.
 
+On startup, orphan recovery marks sessions left in `running` as failed and
+terminates any detached provider CLI whose argv still references the Argmax
+session id or stored provider conversation id. Without that cleanup, an
+unobserved old Claude/Codex/Cursor process can keep working on the same resume
+id while the user tries to continue the session again.
+
 Follow-up launches still use the provider resume id when available, but the
 prompt also includes a capped transcript of visible `user.message`,
 `message.completed`, and `error` events from the same Argmax session. The
 timeline row remains the raw user follow-up; only the provider launch prompt is
 contextualized.
 
-Claude structured launches use `--output-format stream-json` (same argv as
-pre-port main — no `--include-partial-messages`, which wraps deltas in
-`stream_event` rows the chat normalizer does not consume). The normalizer still
-unwraps `stream_event` when present and maps a successful `result` row's
+Claude structured launches use `--output-format stream-json`, `--verbose`, and
+`--include-partial-messages` so answer and thinking deltas stream live. The
+normalizer unwraps `stream_event` rows and maps a successful `result` row's
 `result` field to `message.completed`.
 
 Cursor's provider conversation id is the `session_id` from its `system/init`

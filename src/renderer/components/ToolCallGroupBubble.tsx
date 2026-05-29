@@ -2,7 +2,6 @@ import { memo, useMemo, useState, type JSX } from "react";
 import {
   buildGroupRows,
   summarizeToolGroup,
-  type ToolCall,
   type ToolCallGroup
 } from "../lib/toolCalls.js";
 import { LiveElapsedChip } from "./LiveElapsedChip.js";
@@ -10,7 +9,6 @@ import { ToolCallRow } from "./ToolCallRow.js";
 
 type ToolCallGroupBubbleProps = {
   group: ToolCallGroup;
-  isFreshTool: (tool: ToolCall) => boolean;
   defaultExpanded?: boolean;
   workspaceCwd?: string | null;
 };
@@ -108,7 +106,6 @@ function ToolCallGroupBubbleInner({
 export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) => {
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
-  if (prev.isFreshTool !== next.isFreshTool) return false;
   if (prev.group === next.group) return true;
   if (prev.group.id !== next.group.id) return false;
   const pt = prev.group.tools;
@@ -118,7 +115,15 @@ export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) =
   for (let i = 0; i < pt.length; i++) {
     const a = pt[i];
     const b = nt[i];
-    if (a.id !== b.id || a.status !== b.status || a.completedAt !== b.completedAt) {
+    // inputPreview drives the live "current action" header while running;
+    // parentToolUseId drives sub-agent row grouping — both must be compared.
+    if (
+      a.id !== b.id ||
+      a.status !== b.status ||
+      a.completedAt !== b.completedAt ||
+      a.inputPreview !== b.inputPreview ||
+      a.parentToolUseId !== b.parentToolUseId
+    ) {
       return false;
     }
   }

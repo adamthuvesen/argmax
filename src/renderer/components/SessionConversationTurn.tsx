@@ -5,7 +5,7 @@ import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
-import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
+import type { TurnToolItem } from "../lib/toolCalls.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import type { AgentMode } from "../../shared/types.js";
@@ -42,8 +42,7 @@ function SessionConversationTurnInner({
   setAgentMode,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
-  defaultThinkingExpanded,
-  isFreshTool
+  defaultThinkingExpanded
 }: {
   item: TurnRenderItem;
   priorItem: RenderItem | null;
@@ -62,7 +61,6 @@ function SessionConversationTurnInner({
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
-  isFreshTool: (tool: ToolCall) => boolean;
 }): JSX.Element {
   const turnView = buildTurnRenderState({
     assistantEvents: item.assistantEvents,
@@ -268,7 +266,6 @@ function SessionConversationTurnInner({
         node: (
           <ToolCallGroupBubble
             group={tItem.group}
-            isFreshTool={isFreshTool}
             defaultExpanded={toolsExpanded}
             workspaceCwd={workspace?.path ?? null}
           />

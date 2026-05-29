@@ -43,7 +43,6 @@ import type {
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
-import { useFreshSet } from "../hooks/useFreshSet.js";
 import { MASCOT_BOB_MS, useMascotFlash } from "../hooks/useMascotFlash.js";
 import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
@@ -97,11 +96,6 @@ import {
 } from "./SessionConversationTurn.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
-
-// Module-scoped so its identity is stable: passing an inline `(tool) => tool.id`
-// to useFreshSet would rebuild the predicate (and re-run its effect) on every
-// render, which in turn breaks SessionConversationTurn's memoization.
-const toolCallId = (tool: ToolCall): string => tool.id;
 
 function isConversationEventType(type: string): boolean {
   return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
@@ -317,8 +311,6 @@ export function SessionConversation({
     () => foldConversationItems(conversationEvents, toolCalls),
     [conversationEvents, toolCalls]
   );
-
-  const isFreshTool = useFreshSet(toolCalls, toolCallId, session?.id ?? "");
 
   const renderItems = useMemo(
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
@@ -743,7 +735,6 @@ export function SessionConversation({
                 defaultToolCallsExpanded={defaultToolCallsExpanded}
                 defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                 defaultThinkingExpanded={defaultThinkingExpanded}
-                isFreshTool={isFreshTool}
               />
             );
           })

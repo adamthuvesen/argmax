@@ -306,7 +306,12 @@ async fn read_stream<R>(
                 let mut guard = tail.lock().expect("output mutex poisoned");
                 guard.push(buffer.clone());
             }
-            Err(_) => return,
+            Err(error) => {
+                // A read error is not EOF: log it so a broken pipe / unreadable
+                // stream isn't mistaken for clean check completion.
+                tracing::warn!(?error, "check output stream read error; stopping capture");
+                return;
+            }
         }
     }
 }

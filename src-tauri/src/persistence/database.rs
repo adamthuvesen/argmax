@@ -41,16 +41,16 @@ impl Database {
                 let mut interval = tokio::time::interval(PRUNE_INTERVAL);
                 loop {
                     interval.tick().await;
-                    match prune_connection.lock() {
-                        Ok(connection) => {
-                            if let Err(error) = prune_old_raw_outputs(&connection) {
-                                tracing::warn!(error = ?error, "raw output prune failed");
-                            }
-                        }
-                        Err(error) => {
-                            tracing::warn!(error = %error, "raw output prune lock poisoned");
-                            break;
-                        }
+                    // Recover from a poisoned lock the same way `connection()`
+                    // does instead of breaking the loop — otherwise a single
+                    // panic elsewhere would permanently stop pruning and let
+                    // raw_outputs grow without bound.
+                    let connection = prune_connection.lock().unwrap_or_else(|poison| {
+                        tracing::warn!("raw output prune lock poisoned; recovering");
+                        poison.into_inner()
+                    });
+                    if let Err(error) = prune_old_raw_outputs(&connection) {
+                        tracing::warn!(error = ?error, "raw output prune failed");
                     }
                 }
             });

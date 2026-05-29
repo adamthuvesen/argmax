@@ -334,8 +334,6 @@ impl WorkspaceService {
                 }
             }
 
-            self.close_watcher(&workspace_id);
-
             let remove_args: Vec<&str> = if force {
                 vec!["worktree", "remove", "--force", workspace.path.as_str()]
             } else {
@@ -353,14 +351,16 @@ impl WorkspaceService {
                     "Review the worktree and retry archive.",
                 )
             })?;
-        } else {
-            self.close_watcher(&workspace_id);
         }
 
         let archived = {
             let connection = self.database.connection();
             update_workspace_state(&connection, &workspace_id, "archived")?
         };
+        // Tear the watcher down only after git + DB have committed the archive,
+        // so a failed worktree removal leaves a still-watched, recoverable
+        // workspace rather than a limbo one with no watcher and no archived row.
+        self.close_watcher(&workspace_id);
         self.publish(DashboardDelta {
             workspaces: vec![archived.clone()],
             ..DashboardDelta::default()
@@ -377,19 +377,26 @@ impl WorkspaceService {
             find_workspace_by_id(&connection, workspace_id)?
         };
 
-        let branch_output = run_git_text(
+        let branch = match run_git_text(
             Path::new(&workspace.path),
             &["branch", "--show-current"],
             Duration::from_millis(GIT_TIMEOUT_MS),
         )
         .await
-        .unwrap_or_default();
-        let branch = {
-            let trimmed = branch_output.trim();
-            if trimmed.is_empty() {
+        {
+            // Empty output is a valid detached-HEAD state, not a failure —
+            // keep the cached branch in that case.
+            Ok(output) if output.trim().is_empty() => workspace.branch.clone(),
+            Ok(output) => output.trim().to_string(),
+            Err(error) => {
+                // Don't silently fall back to "": surface the failure and keep
+                // the cached branch (mirrors the porcelain handling below).
+                tracing::debug!(
+                    workspace_id = %workspace_id,
+                    ?error,
+                    "branch detection failed; keeping cached branch"
+                );
                 workspace.branch.clone()
-            } else {
-                trimmed.to_string()
             }
         };
 

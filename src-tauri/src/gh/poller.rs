@@ -321,12 +321,24 @@ fn detect_transition(
     if next.check_state == "failure" {
         let ledger_key = format!("{}:{}:{}", session_id, latest.pr_number, latest.head_sha);
         if !inner.ledger_has(&ledger_key) && latest.notified_at.is_none() {
-            inner.ledger_add(ledger_key);
-            // Resolve workspace_id at fire time so the hook gets the live
-            // value rather than whatever was on disk at startup.
-            if let Ok(workspace_id) = resolve_workspace_id(&inner.database, session_id) {
-                transition.context.workspace_id = workspace_id;
-                transition.is_failure = true;
+            // Resolve workspace_id at fire time so the hook gets the live value
+            // rather than whatever was on disk at startup. Only record the
+            // ledger entry once resolution succeeds — otherwise a transient
+            // lookup failure would dedupe the failure forever and the hook
+            // would never fire on a later tick.
+            match resolve_workspace_id(&inner.database, session_id) {
+                Ok(workspace_id) => {
+                    inner.ledger_add(ledger_key);
+                    transition.context.workspace_id = workspace_id;
+                    transition.is_failure = true;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %session_id,
+                        ?error,
+                        "gh poller: could not resolve workspace for failed check; will retry next tick"
+                    );
+                }
             }
         }
     }

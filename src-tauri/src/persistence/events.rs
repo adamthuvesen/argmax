@@ -272,7 +272,7 @@ fn event_row_to_timeline_event(row: &Row<'_>) -> rusqlite::Result<TimelineEvent>
         message: row.get("message")?,
         payload: serde_json::from_str(&payload_json).unwrap_or_else(|_| serde_json::json!({})),
         created_at: row.get("created_at")?,
-        row_cursor: row.get("row_cursor").ok(),
+        row_cursor: Some(row.get("row_cursor")?),
     })
 }
 
@@ -283,7 +283,7 @@ fn raw_output_row_to_provider_output(row: &Row<'_>) -> rusqlite::Result<RawProvi
         stream: row.get("stream")?,
         content: row.get("content")?,
         created_at: row.get("created_at")?,
-        row_cursor: row.get("row_cursor").ok(),
+        row_cursor: Some(row.get("row_cursor")?),
     })
 }
 

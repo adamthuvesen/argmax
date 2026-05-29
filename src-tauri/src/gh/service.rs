@@ -54,6 +54,9 @@ impl GhService {
             workspace.path
         };
         if workspace_path.is_empty() {
+            // A persisted workspace always has a path; an empty one signals
+            // data corruption. Surface it rather than silently no-op'ing.
+            tracing::warn!(%session_id, "gh.refresh: workspace path is empty; returning cached PR rows");
             return self.list_for_session(session_id);
         }
 

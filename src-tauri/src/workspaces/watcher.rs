@@ -102,7 +102,12 @@ fn spawn_refresh_loop(
     workspace_id: String,
     mut rx: mpsc::UnboundedReceiver<()>,
 ) -> JoinHandle<()> {
+    // If the workspace row is gone, this watcher has no subject left; bail out
+    // after a few consecutive not-found refreshes so an orphaned worktree can't
+    // keep the loop alive forever.
+    const MAX_NOT_FOUND_BEFORE_EXIT: u32 = 3;
     tokio::spawn(async move {
+        let mut not_found_streak: u32 = 0;
         loop {
             // Wait for the first event. `None` means the sender was
             // dropped (watcher closed) — exit the loop.
@@ -128,9 +133,26 @@ fn spawn_refresh_loop(
                 }
             }
             // refresh_status is best-effort — ENOENT during teardown,
-            // transient git lock contention, or removed-worktree races
-            // are expected. Swallow the error.
-            let _ = service.refresh_status(&workspace_id).await;
+            // transient git lock contention, or removed-worktree races are
+            // expected. Distinguish "workspace row gone" (terminal) from
+            // transient failures (keep going) instead of swallowing everything.
+            match service.refresh_status(&workspace_id).await {
+                Ok(_) => not_found_streak = 0,
+                Err(ArgmaxError::RecordNotFound { .. }) => {
+                    not_found_streak += 1;
+                    if not_found_streak >= MAX_NOT_FOUND_BEFORE_EXIT {
+                        tracing::debug!(
+                            %workspace_id,
+                            "watcher: workspace row gone; stopping refresh loop"
+                        );
+                        return;
+                    }
+                }
+                Err(error) => {
+                    not_found_streak = 0;
+                    tracing::debug!(%workspace_id, ?error, "watcher: refresh_status failed");
+                }
+            }
         }
     })
 }

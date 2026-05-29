@@ -3,6 +3,10 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 const APP_NAME: &str = "Argmax";
 const MENU_COMMAND_EVENT: &str = "menu:command";
+const ZOOM_MIN: f64 = 0.5;
+const ZOOM_MAX: f64 = 2.0;
+const ZOOM_STEP: f64 = 0.1;
+static WEBVIEW_ZOOM: std::sync::Mutex<f64> = std::sync::Mutex::new(1.0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MenuCommand {
@@ -234,19 +238,10 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
                 }
             }
         }
-        "argmax:dev-toggle-devtools" => {
-            #[cfg(debug_assertions)]
-            if let Some(window) = app.get_webview_window("main") {
-                if window.is_devtools_open() {
-                    window.close_devtools();
-                } else {
-                    window.open_devtools();
-                }
-            }
-        }
-        "argmax:reset-zoom" => eval_main_window(app, "document.body.style.zoom = '1'"),
-        "argmax:zoom-in" => eval_main_window(app, "document.body.style.zoom = String((Number.parseFloat(document.body.style.zoom || '1') || 1) + 0.1)"),
-        "argmax:zoom-out" => eval_main_window(app, "document.body.style.zoom = String(Math.max(0.2, (Number.parseFloat(document.body.style.zoom || '1') || 1) - 0.1))"),
+        "argmax:dev-toggle-devtools" => toggle_devtools(app),
+        "argmax:reset-zoom" => set_main_window_zoom(app, 1.0),
+        "argmax:zoom-in" => step_main_window_zoom(app, ZOOM_STEP),
+        "argmax:zoom-out" => step_main_window_zoom(app, -ZOOM_STEP),
         _ => {}
     }
 }
@@ -410,8 +405,13 @@ fn append_item<R: Runtime>(
                 submenu.append(&item)?;
             }
             NativeItem::ZoomIn => {
-                let item =
-                    MenuItem::with_id(app, "argmax:zoom-in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+                let item = MenuItem::with_id(
+                    app,
+                    "argmax:zoom-in",
+                    "Zoom In",
+                    true,
+                    Some("CmdOrCtrl+Shift+="),
+                )?;
                 submenu.append(&item)?;
             }
             NativeItem::ZoomOut => {
@@ -437,13 +437,51 @@ fn append_item<R: Runtime>(
     Ok(())
 }
 
-fn eval_main_window<R: Runtime>(app: &AppHandle<R>, js: &str) {
+fn step_main_window_zoom<R: Runtime>(app: &AppHandle<R>, delta: f64) {
+    let next_zoom = {
+        let mut zoom = WEBVIEW_ZOOM.lock().expect("webview zoom poisoned");
+        let next = (*zoom + delta).clamp(ZOOM_MIN, ZOOM_MAX);
+        *zoom = (next * 10.0).round() / 10.0;
+        *zoom
+    };
+    apply_main_window_zoom(app, next_zoom);
+}
+
+fn set_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
+    let next_zoom = zoom.clamp(ZOOM_MIN, ZOOM_MAX);
+    {
+        let mut current = WEBVIEW_ZOOM.lock().expect("webview zoom poisoned");
+        *current = next_zoom;
+    }
+    apply_main_window_zoom(app, next_zoom);
+}
+
+fn apply_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
     if let Some(window) = app.get_webview_window("main") {
-        if let Err(error) = window.eval(js) {
-            tracing::warn!(?error, "failed to evaluate menu action");
+        if let Err(error) = window.set_zoom(zoom) {
+            tracing::warn!(?error, zoom, "failed to set webview zoom");
+        }
+        // Clear the old CSS-zoom implementation if the app was hot-reloaded
+        // from a build that had already touched body.style.zoom.
+        if let Err(error) = window.eval("document.body.style.zoom = ''") {
+            tracing::warn!(?error, "failed to clear legacy body zoom");
         }
     }
 }
+
+#[cfg(debug_assertions)]
+fn toggle_devtools<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_devtools_open() {
+            window.close_devtools();
+        } else {
+            window.open_devtools();
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn toggle_devtools<R: Runtime>(_app: &AppHandle<R>) {}
 
 #[cfg(test)]
 mod tests {

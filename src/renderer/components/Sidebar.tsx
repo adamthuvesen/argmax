@@ -393,7 +393,7 @@ export function Sidebar({
           <span className="sidebar-nameplate-mark">argmax</span>
           <span className="sidebar-nameplate-slash">//</span>
         </div>
-        <div className="sidebar-nameplate-sub">{nameplateDate} · local</div>
+        <div className="sidebar-nameplate-sub">{nameplateDate} · alpha</div>
       </div>
       <nav className="rail-nav" aria-label="Primary">
         <button

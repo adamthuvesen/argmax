@@ -234,6 +234,11 @@ fn claude_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 fn codex_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
+    // Plan mode is read-only planning (conveyed to Codex via the prompt prefix);
+    // never hand it the approvals/sandbox bypass, the same way Claude doesn't.
+    if input.agent_mode == AgentMode::Plan {
+        return Vec::new();
+    }
     if input.permission_mode == PermissionMode::AutoApprove {
         owned(CODEX_BYPASS_PERMISSION_ARGS)
     } else {
@@ -242,6 +247,10 @@ fn codex_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 fn cursor_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
+    // Plan mode (the `--plan` flag) is read-only; don't also pass --force/--trust.
+    if input.agent_mode == AgentMode::Plan {
+        return Vec::new();
+    }
     if input.permission_mode == PermissionMode::AutoApprove {
         owned(CURSOR_BYPASS_PERMISSION_ARGS)
     } else {
@@ -519,6 +528,32 @@ mod tests {
                         | "--trust"
                 )
             }));
+        }
+    }
+
+    #[test]
+    fn plan_mode_never_bypasses_for_any_provider() {
+        // Plan mode is read-only; no provider should receive an approvals/sandbox
+        // bypass flag even when permission mode is AutoApprove.
+        for provider_id in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
+            let input = ProviderLaunchInput {
+                permission_mode: PermissionMode::AutoApprove,
+                agent_mode: AgentMode::Plan,
+                ..launch_input(provider_id)
+            };
+            let args = (get_provider_definition(provider_id).structured_args)(&input);
+            assert!(
+                !args.iter().any(|arg| {
+                    matches!(
+                        arg.as_str(),
+                        "bypassPermissions"
+                            | "--dangerously-bypass-approvals-and-sandbox"
+                            | "--force"
+                            | "--trust"
+                    )
+                }),
+                "{provider_id:?} leaked a bypass flag in plan mode: {args:?}"
+            );
         }
     }
 

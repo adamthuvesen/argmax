@@ -289,11 +289,29 @@ fn launch_structured_via_pty(
     let wait_provider = display_name.to_string();
     let wait_disposed = Arc::clone(&disposed);
     let wait_reaped = Arc::clone(&reaped);
+    // The reader normally hits EOF the instant the child exits, but a PTY fd
+    // leaked to a grandchild can keep its blocking read alive indefinitely.
+    // Join it off-thread and bound the wait, so a stuck reader can't wedge the
+    // session on "running" forever (the Exit event would never fire).
+    let (reader_drained_tx, reader_drained_rx) = mpsc::channel::<()>();
+    thread::spawn(move || {
+        let _ = reader_handle.join();
+        let _ = reader_drained_tx.send(());
+    });
+    let drain_session_id = input.session_id.clone();
     thread::spawn(move || {
         let status = child.wait();
         wait_reaped.store(true, Ordering::SeqCst);
         let _ = exit_tx.send(());
-        let _ = reader_handle.join();
+        if reader_drained_rx
+            .recv_timeout(Duration::from_secs(5))
+            .is_err()
+        {
+            tracing::warn!(
+                session_id = %drain_session_id,
+                "provider reader did not drain within 5s; emitting exit without it"
+            );
+        }
         let was_disposed = wait_disposed.swap(true, Ordering::SeqCst);
         if was_disposed {
             return;
@@ -450,7 +468,7 @@ impl Drop for ProviderSessionHandle {
 // ---------------------------------------------------------------------------
 
 pub(super) fn spawn_reader<R: Read + Send + 'static>(
-    mut reader: R,
+    reader: R,
     session_id: String,
     stream: ProviderOutputStream,
     disposed: Arc<AtomicBool>,
@@ -464,115 +482,52 @@ pub(super) fn spawn_reader<R: Read + Send + 'static>(
         "provider reader thread starting"
     );
     thread::spawn(move || {
-        let mut buffer = [0u8; 8192];
-        // Carry up to 3 bytes of a partial UTF-8 codepoint across reads so
-        // multi-byte characters (CJK, emoji, smart quotes) that straddle a
-        // chunk boundary are not turned into U+FFFD by from_utf8_lossy.
-        let mut pending: Vec<u8> = Vec::with_capacity(4);
-        // Fire StreamStarted exactly once per reader, on the first
-        // non-empty read. The session service forwards this to the
-        // renderer so the Thinking bubble can clear the instant bytes
-        // flow — important for Codex, which doesn't emit message.delta
-        // and would otherwise leave Thinking on screen for the full
-        // turn duration.
+        // Fire StreamStarted exactly once per reader, on the first non-empty
+        // read. The session service forwards this to the renderer so the
+        // Thinking bubble can clear the instant bytes flow — important for
+        // Codex, which doesn't emit message.delta and would otherwise leave
+        // Thinking on screen for the full turn duration.
         let mut announced_start = false;
-        loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => {
-                    if !pending.is_empty() {
-                        let tail = String::from_utf8_lossy(&pending).into_owned();
-                        on_event(ProviderRuntimeEvent {
-                            session_id: session_id.clone(),
-                            r#type: ProviderRuntimeEventType::Output,
-                            stream: stream.clone(),
-                            message: tail,
-                            exit_code: None,
-                            created_at: now_iso(),
-                        });
-                    }
-                    break;
-                }
-                Ok(n) => {
-                    tracing::trace!(
-                        session_id = %session_id,
-                        stream = stream.as_str(),
-                        bytes = n,
-                        "provider reader read"
-                    );
-                    if disposed.load(Ordering::SeqCst) {
-                        tracing::trace!(
-                            session_id = %session_id,
-                            "reader exiting because disposed",
-                        );
-                        break;
-                    }
-                    if !announced_start {
-                        announced_start = true;
-                        on_event(ProviderRuntimeEvent {
-                            session_id: session_id.clone(),
-                            r#type: ProviderRuntimeEventType::StreamStarted,
-                            stream: stream.clone(),
-                            message: String::new(),
-                            exit_code: None,
-                            created_at: now_iso(),
-                        });
-                    }
-                    pending.extend_from_slice(&buffer[..n]);
-                    let split_at = utf8_safe_split(&pending);
-                    let to_emit = pending.drain(..split_at).collect::<Vec<u8>>();
-                    if to_emit.is_empty() {
-                        continue;
-                    }
-                    on_event(ProviderRuntimeEvent {
-                        session_id: session_id.clone(),
-                        r#type: ProviderRuntimeEventType::Output,
-                        stream: stream.clone(),
-                        message: String::from_utf8_lossy(&to_emit).into_owned(),
-                        exit_code: None,
-                        created_at: now_iso(),
-                    });
-                }
-                Err(_) => break,
-            }
-        }
-    })
-}
-
-/// Largest prefix of `bytes` that ends on a UTF-8 codepoint boundary.
-/// Scans at most the last 3 bytes — UTF-8 codepoints are 1-4 bytes long,
-/// so an incomplete sequence is necessarily within the tail.
-fn utf8_safe_split(bytes: &[u8]) -> usize {
-    if bytes.is_empty() {
-        return 0;
-    }
-    let len = bytes.len();
-    let scan_from = len.saturating_sub(3);
-    for i in (scan_from..len).rev() {
-        let byte = bytes[i];
-        // Continuation bytes are 10xxxxxx — keep walking left.
-        if byte & 0b1100_0000 == 0b1000_0000 {
-            continue;
-        }
-        let expected_len = if byte & 0b1000_0000 == 0 {
-            1
-        } else if byte & 0b1110_0000 == 0b1100_0000 {
-            2
-        } else if byte & 0b1111_0000 == 0b1110_0000 {
-            3
-        } else if byte & 0b1111_1000 == 0b1111_0000 {
-            4
-        } else {
-            // Invalid leading byte — flush the whole buffer and let
-            // from_utf8_lossy emit a single replacement char for it.
-            return len;
+        let emit = |r#type, message| {
+            on_event(ProviderRuntimeEvent {
+                session_id: session_id.clone(),
+                r#type,
+                stream: stream.clone(),
+                message,
+                exit_code: None,
+                created_at: now_iso(),
+            })
         };
-        if i + expected_len <= len {
-            return len;
-        }
-        return i;
-    }
-    // Whole tail is continuation bytes — emit nothing this round.
-    0
+        crate::util::stream_reader::pump_utf8_stream(
+            reader,
+            |n| {
+                tracing::trace!(
+                    session_id = %session_id,
+                    stream = stream.as_str(),
+                    bytes = n,
+                    "provider reader read"
+                );
+                if disposed.load(Ordering::SeqCst) {
+                    tracing::trace!(session_id = %session_id, "reader exiting because disposed");
+                    return false;
+                }
+                if !announced_start {
+                    announced_start = true;
+                    emit(ProviderRuntimeEventType::StreamStarted, String::new());
+                }
+                true
+            },
+            |chunk| emit(ProviderRuntimeEventType::Output, chunk),
+            |error| {
+                tracing::warn!(
+                    session_id = %session_id,
+                    stream = stream.as_str(),
+                    error = %error,
+                    "provider reader read error"
+                );
+            },
+        );
+    })
 }
 
 pub(super) fn composer_payload(

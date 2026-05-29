@@ -269,35 +269,38 @@ impl Drop for TerminalService {
 
 fn spawn_reader_thread(
     terminal_id: String,
-    mut reader: Box<dyn Read + Send>,
+    reader: Box<dyn Read + Send>,
     on_data: OutputSink,
     service: Arc<TerminalService>,
 ) {
     thread::spawn(move || {
-        let mut buffer = [0u8; 8192];
-        loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(n) => {
-                    // If the exit watcher has already removed the entry,
-                    // stop streaming — the renderer has moved on.
-                    let still_live = service
-                        .terminals
-                        .lock()
-                        .expect("terminals poisoned")
-                        .contains_key(&terminal_id);
-                    if !still_live {
-                        break;
-                    }
-                    let data = String::from_utf8_lossy(&buffer[..n]).into_owned();
-                    on_data(TerminalChunk {
-                        terminal_id: terminal_id.clone(),
-                        data,
-                    });
-                }
-                Err(_) => break,
-            }
-        }
+        let chunk_terminal_id = terminal_id.clone();
+        let error_terminal_id = terminal_id.clone();
+        crate::util::stream_reader::pump_utf8_stream(
+            reader,
+            |_n| {
+                // If the exit watcher has already removed the entry, stop
+                // streaming — the renderer has moved on.
+                service
+                    .terminals
+                    .lock()
+                    .expect("terminals poisoned")
+                    .contains_key(&terminal_id)
+            },
+            |data| {
+                on_data(TerminalChunk {
+                    terminal_id: chunk_terminal_id.clone(),
+                    data,
+                });
+            },
+            |error| {
+                tracing::warn!(
+                    terminal_id = %error_terminal_id,
+                    error = %error,
+                    "terminal reader read error; stopping stream"
+                );
+            },
+        );
     });
 }
 

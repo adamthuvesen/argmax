@@ -28,8 +28,9 @@ Key folders:
 - `ipc/` — request/response commands grouped by namespace.
 - `persistence/` — SQLite connection, migrations, and table-family repositories.
 - `providers/` — Claude/Codex/Cursor adapters, PTY process runtime, normalizers, and event flush queue.
+- `sessions/` — session orchestration that sits between `ipc/` and `providers/`.
 - `workspaces/`, `review/`, `files/`, `git/` — worktree lifecycle, diffs, file previews/writes, and branch/PR actions.
-- `approvals/`, `checks/`, `gh/`, `memory/`, `mcp/`, `terminal/`, `notifications/`, `ide/`, `skills/`, `updater/` — subsystem services.
+- `approvals/`, `checks/`, `gh/`, `memory/`, `mcp/`, `terminal/`, `attachments/`, `ide/`, `skills/` — subsystem services. `notifications.rs` and `updater.rs` are top-level modules.
 
 Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspaces:status`) plus post-commit `dashboard:delta` pushes.
 

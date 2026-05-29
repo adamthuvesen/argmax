@@ -6,7 +6,7 @@ SQLite is owned by Rust under [src-tauri/src/persistence](../../src-tauri/src/pe
 
 [migrations.rs](../../src-tauri/src/persistence/migrations.rs) contains the consolidated schema and checksum runner. Migrations are append-only. Never edit an applied migration: the boot path recomputes stored SHA-256 checksums and refuses drift.
 
-FTS5 sidecars index timeline events and learnings. The initial Rust migration represents the current head schema from the pre-port schema.
+FTS5 sidecars index timeline events and learnings. The initial Rust migration represents the current head schema from the pre-port schema. The squashed Electron `v1`–`v20` ledger it replaces is preserved for schema forensics in [legacy-migrations.md](../../src-tauri/docs/legacy-migrations.md).
 
 ## Repositories
 

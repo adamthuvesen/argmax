@@ -102,6 +102,7 @@ export function SessionConversation({
   checks,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   events,
   isLogOpen,
   onClose,
@@ -126,6 +127,7 @@ export function SessionConversation({
   checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
   isLogOpen: boolean;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
@@ -354,24 +356,20 @@ export function SessionConversation({
     () => sessionHasOutstandingCardAsk(events, toolCalls),
     [events, toolCalls]
   );
-  // `session.streaming` is a synthetic event the runtime fires the moment
-  // the child writes its first byte. We hide Thinking on it so Codex turns
-  // (which don't stream message deltas) don't leave Thinking on screen for
-  // the entire turn duration. `events` is sorted createdAt-desc, so the
-  // first match here is the most recent of each kind.
-  const hasStreamSignalForCurrentTurn = useMemo(() => {
-    if (session?.provider !== "codex") return false;
-    const latestStream = events.find((event) => event.type === "session.streaming");
-    if (!latestStream) return false;
-    const latestUserMessage = events.find((event) => event.type === "user.message");
-    return !latestUserMessage || latestStream.createdAt >= latestUserMessage.createdAt;
-  }, [events, session?.provider]);
+  // Thinking shows while the turn is running but nothing visible is on screen
+  // yet — the pre-content "the agent is working" beat, the same for every
+  // provider. It yields the moment real progress lands: visible assistant text
+  // (`hasVisibleAssistantMessage`), a running tool row (`anyVisibleToolRunning`),
+  // or an outstanding Plan/Question card (`hasOutstandingCardAsk`). We used to
+  // suppress it for Codex on the `session.streaming` first-byte beacon, but that
+  // blanked the whole initial wait — Codex spends seconds reasoning before any
+  // item lands, and the beacon (raw bytes) isn't user-visible progress. The
+  // beacon still suppresses the raw-stdout transcript via `hasRenderableContent`.
   const isThinking =
     session?.state === "running" &&
     !anyVisibleToolRunning &&
     !hasVisibleAssistantMessage &&
-    !hasOutstandingCardAsk &&
-    !hasStreamSignalForCurrentTurn;
+    !hasOutstandingCardAsk;
 
   const {
     conversationListRef,
@@ -712,6 +710,7 @@ export function SessionConversation({
                   setAgentMode={setAgentMode}
                   defaultToolCallsExpanded={defaultToolCallsExpanded}
                   defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                  defaultThinkingExpanded={defaultThinkingExpanded}
                   isFreshTool={isFreshTool}
                 />
               );

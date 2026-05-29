@@ -52,6 +52,20 @@ describe("App settings", () => {
     const select = screen.getByLabelText("Default model");
     expect(select.tagName).toBe("SELECT");
   });
+
+  it("settings Thinking blocks default persists to localStorage", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Agents");
+
+    const group = await screen.findByRole("radiogroup", { name: "Thinking blocks" });
+    fireEvent.click(within(group).getByRole("radio", { name: "Show expanded" }));
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.thinking.expanded")).toBe("true")
+    );
+  });
+
   it("hides sidebar session tokens by default and shows them when enabled in Settings", async () => {
     sessionCostSummary.mockResolvedValue({
       sessionId: "session-1",

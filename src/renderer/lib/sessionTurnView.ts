@@ -13,6 +13,13 @@ import type { TurnToolItem } from "./toolCalls.js";
 export type AssistantGroup = {
   id: string;
   createdAt: string;
+  // Timestamp of the group's LAST delta. A streamed answer's first delta can
+  // predate the turn's tool calls (Cursor streams the assistant message
+  // cumulatively from the turn's start), so ordering by `createdAt` would float
+  // the answer above the tools it actually follows. Sort the turn body by
+  // `lastActivityAt` instead, so a streaming group settles below earlier tools —
+  // matching how a completed message (anchored at its end) already sorts.
+  lastActivityAt: string;
   text: string;
   streaming: boolean;
   // Claude extended-thinking content, surfaced by the normalizer as a
@@ -77,13 +84,15 @@ function appendThinking(current: string, incoming: string): string {
  */
 export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[]): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
-  let answerBuffer: { id: string; createdAt: string; text: string } | null = null;
-  let thinkingBuffer: { id: string; createdAt: string; text: string } | null = null;
+  type Buffer = { id: string; createdAt: string; lastCreatedAt: string; text: string };
+  let answerBuffer: Buffer | null = null;
+  let thinkingBuffer: Buffer | null = null;
   const flushAnswer = (): void => {
     if (!answerBuffer) return;
     assistantGroups.push({
       id: answerBuffer.id,
       createdAt: answerBuffer.createdAt,
+      lastActivityAt: answerBuffer.lastCreatedAt,
       text: answerBuffer.text,
       streaming: true
     });
@@ -94,6 +103,7 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
     assistantGroups.push({
       id: thinkingBuffer.id,
       createdAt: thinkingBuffer.createdAt,
+      lastActivityAt: thinkingBuffer.lastCreatedAt,
       text: thinkingBuffer.text,
       streaming: false,
       thinking: true
@@ -103,13 +113,19 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
   for (const event of assistantEvents) {
     if (isThinkingDelta(event)) {
       flushAnswer();
-      if (!thinkingBuffer) thinkingBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
+      if (!thinkingBuffer) {
+        thinkingBuffer = { id: event.id, createdAt: event.createdAt, lastCreatedAt: event.createdAt, text: "" };
+      }
+      thinkingBuffer.lastCreatedAt = event.createdAt;
       thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
       continue;
     }
     if (event.type === "message.delta") {
       flushThinking();
-      if (!answerBuffer) answerBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
+      if (!answerBuffer) {
+        answerBuffer = { id: event.id, createdAt: event.createdAt, lastCreatedAt: event.createdAt, text: "" };
+      }
+      answerBuffer.lastCreatedAt = event.createdAt;
       answerBuffer.text += deltaTextForBuffer(event, answerBuffer.text);
       continue;
     }
@@ -127,6 +143,7 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
     assistantGroups.push({
       id: event.id,
       createdAt: event.createdAt,
+      lastActivityAt: event.createdAt,
       text: event.message,
       streaming: false
     });

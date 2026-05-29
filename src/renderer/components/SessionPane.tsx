@@ -56,6 +56,7 @@ export function SessionPane({
   checks,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   events,
   isFocused = true,
   onClose,
@@ -81,6 +82,7 @@ export function SessionPane({
   checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
   isFocused?: boolean;
@@ -390,6 +392,7 @@ export function SessionPane({
           checks={checks}
           defaultToolCallsExpanded={defaultToolCallsExpanded}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+          defaultThinkingExpanded={defaultThinkingExpanded}
           events={visibleEvents}
           isLogOpen={isLogOpen}
           onClose={onClose}

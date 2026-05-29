@@ -118,6 +118,7 @@ export function TurnBlock({
   defaultExpanded,
   turnStartedAtMs,
   isTurnActive,
+  isCurrentTurn,
   headerTimestampIso
 }: {
   toolItems: TurnToolItem[];
@@ -135,6 +136,11 @@ export function TurnBlock({
   // QuestionCard); we used to infer this purely from tool status, which
   // missed the thinking-only phase.
   isTurnActive?: boolean;
+  // True for the turn the user is currently looking at (the latest one),
+  // running or just-finished. Keeps its tools expanded after completion so the
+  // block doesn't collapse out from under the answer the moment it lands — it
+  // collapses silently when the next turn supersedes it (off-screen).
+  isCurrentTurn?: boolean;
   // The canonical timestamp shown in the turn header (typically the earliest
   // assistant event in the turn). Per-paragraph timestamps inside the body
   // are visually suppressed once a turn-level one is available.
@@ -155,12 +161,14 @@ export function TurnBlock({
   const elapsedMs =
     bounds.endedAt !== null && startedAtMs > 0 ? Math.max(0, bounds.endedAt - startedAtMs) : 0;
 
-  // Body auto-expansion is driven by tool status, NOT by the parent's
-  // isTurnActive. If the agent is paused on a QuestionCard while parallel
-  // tools are still running, the user still needs to see those tools'
-  // progress — collapsing them when "Working" turns off would hide live work.
+  // Body auto-expansion: tools stay open while any tool runs AND for the whole
+  // current turn (running or just-finished). Collapsing the moment the last
+  // tool finishes — while the answer is still streaming — yanked the tool block
+  // out from under the response and read as janky. Keeping the current turn
+  // expanded means the only collapse happens when the next turn supersedes it,
+  // off-screen. A manual toggle still wins both directions.
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
-  const autoExpanded = toolRunning || (defaultExpanded ?? false);
+  const autoExpanded = toolRunning || (isCurrentTurn ?? false) || (defaultExpanded ?? false);
   const expanded = userToggle ?? autoExpanded;
 
   const subtitle = modelLabel ?? "";

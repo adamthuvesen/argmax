@@ -73,7 +73,7 @@ export function useAppGridSelection({
     () => new Set(grid.rows.flatMap((row) => row.filter(isSessionCell).map((cell) => cell.workspaceId))),
     [grid.rows]
   );
-  const canDragWorkspaceToGrid = openWorkspaceIds.size > 0;
+  const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
 
   // Mirror the focused grid cell into the dashboard hook's single-selection
   // state so palette/search/IDE-open code paths (which still look at

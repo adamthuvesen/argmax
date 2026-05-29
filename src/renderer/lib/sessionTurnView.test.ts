@@ -94,6 +94,23 @@ describe("coalesceAssistantGroups", () => {
     expect(groups[0]?.text).toBe("I need to read.");
   });
 
+  it("anchors a streamed answer group's lastActivityAt to its FINAL delta", () => {
+    // The first delta can predate the turn's tool calls (Cursor streams from
+    // the turn start). Ordering keys off lastActivityAt so the answer settles
+    // below the tools rather than floating above them.
+    const groups = coalesceAssistantGroups([
+      assistantEvent("a1", "message.delta", "Hello ", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("a2", "message.delta", "world", "2026-05-12T15:00:05.000Z")
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      createdAt: "2026-05-12T15:00:01.000Z",
+      lastActivityAt: "2026-05-12T15:00:05.000Z",
+      text: "Hello world"
+    });
+  });
+
   it("flushes the open buffer whenever the kind flips", () => {
     // thinking → answer → thinking yields three groups in order, never merged.
     const groups = coalesceAssistantGroups([

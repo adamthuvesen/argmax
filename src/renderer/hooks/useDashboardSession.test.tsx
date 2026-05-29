@@ -290,12 +290,12 @@ describe("useDashboardSession — refresh / delta race", () => {
     );
   });
 
-  it("recovers a running→complete transition via the running-only status poll", async () => {
+  it("reconciles a running→complete transition once the terminal event lands", async () => {
     // macOS push lag: the turn-end `state: running → complete` delta is the
     // last emit and can sit undelivered on an idle event loop, leaving the
-    // chat fully streamed but the turn header stuck on "Working". The
-    // running-only poll must reconcile session STATE (not just the event tail)
-    // via the reliable IPC pull so completion is deterministic.
+    // header stuck on "Working". The poll pulls the cheap event tail every
+    // tick; once it sees the turn's terminal event it reconciles session STATE
+    // ONCE via workspace:status (the heavy pull stays off the hot path).
     vi.useFakeTimers();
     try {
       const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -303,15 +303,31 @@ describe("useDashboardSession — refresh / delta race", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      // Select the running session so the poll engages.
       act(() => {
         result.current.setSelectedWorkspaceId("ws-existing");
         result.current.setSelectedSessionId("session-existing");
       });
       expect(result.current.selectedSession?.state).toBe("running");
 
-      // The DB already shows the session complete, but no completion delta was
-      // delivered. The status pull is the only path that sees it.
+      // The event poll pulls the turn's terminal `session.completed`.
+      (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        events: [
+          {
+            id: "ev-done",
+            sessionId: "session-existing",
+            type: "session.completed",
+            message: "",
+            payload: {},
+            createdAt: "2026-05-12T15:00:30.000Z",
+            rowCursor: 10
+          }
+        ],
+        rawOutputs: [],
+        eventCursor: 10,
+        rawOutputCursor: 0
+      });
+      // The DB already shows the session complete; status is the only path that
+      // flips renderer state.
       statusMock.mockResolvedValue({
         workspaces: [makeWorkspace({ state: "complete" })],
         sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:30.000Z" })],
@@ -319,13 +335,49 @@ describe("useDashboardSession — refresh / delta race", () => {
         checkpoints: []
       });
 
-      // Advance one poll interval and flush the tick's awaited pulls.
+      // Tick 1 pulls the terminal event (snapshot ref commits at the act
+      // boundary); the next tick detects it and reconciles state once.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(260);
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
       });
 
       expect(statusMock).toHaveBeenCalledWith({ workspaceIds: ["ws-existing"] });
       expect(result.current.selectedSession?.state).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not pull workspace:status while a turn is still running", async () => {
+    // Regression: pulling the heavy status command every tick (and overlapping
+    // ticks) starved a busy turn. With no terminal event, only the cheap event
+    // tail is pulled — status stays off the hot path.
+    vi.useFakeTimers();
+    try {
+      const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+      const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        result.current.setSelectedWorkspaceId("ws-existing");
+        result.current.setSelectedSessionId("session-existing");
+      });
+      expect(result.current.selectedSession?.state).toBe("running");
+      statusMock.mockClear();
+
+      // Several ticks while the turn keeps running (no terminal event).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1200);
+      });
+
+      expect(statusMock).not.toHaveBeenCalled();
+      expect(
+        (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mock.calls.length
+      ).toBeGreaterThan(0);
     } finally {
       vi.useRealTimers();
     }

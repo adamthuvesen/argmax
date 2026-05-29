@@ -21,7 +21,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import type { GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
-import { MAX_CELLS, MAX_COLS, MAX_ROWS, WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
+import { MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { SessionPane } from "./SessionPane.js";
 
@@ -44,6 +44,7 @@ interface SessionMultiGridProps {
   sessionsById: Map<string, SessionSummary>;
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
   rightPanelToggleSignal?: number;
@@ -84,6 +85,7 @@ export function SessionMultiGrid({
   sessionsById,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   showCostPanel = true,
   thinkingStyle,
   rightPanelToggleSignal,
@@ -240,6 +242,7 @@ export function SessionMultiGrid({
                         checks={checks}
                         defaultToolCallsExpanded={defaultToolCallsExpanded}
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                        defaultThinkingExpanded={defaultThinkingExpanded}
                         events={events}
                         showCostPanel={showCostPanel}
                         isFocused={focused}
@@ -328,9 +331,6 @@ function DropZones({
       className="multigrid-drop-overlay"
       aria-hidden="true"
       onDragOver={(event) => {
-        const types = Array.from(event.dataTransfer.types);
-        // Only react to our own workspace drag, not OS file drags etc.
-        if (!types.includes(WORKSPACE_DRAG_MIME)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
         const position = edgeDropPosition(event, allowedPositions);
@@ -343,8 +343,6 @@ function DropZones({
         setHovered(null);
       }}
       onDrop={(event) => {
-        const types = Array.from(event.dataTransfer.types);
-        if (!types.includes(WORKSPACE_DRAG_MIME)) return;
         event.preventDefault();
         const position = edgeDropPosition(event, allowedPositions);
         if (!position) return;

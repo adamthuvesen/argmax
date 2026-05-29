@@ -71,6 +71,23 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 
+  it("keeps tool children expanded after completion while it is the current turn", () => {
+    // The latest turn stays expanded through completion so the tool block
+    // doesn't collapse out from under the answer the moment it lands.
+    const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
+        body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
+        isCurrentTurn
+      />
+    );
+    expect(screen.getByRole("button", { name: /Worked for/ })).toBeInTheDocument();
+    expect(screen.getByTestId("tools")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant")).toBeInTheDocument();
+  });
+
   it("re-expands tool children when the chip is clicked after completion", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
     render(

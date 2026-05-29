@@ -339,16 +339,17 @@ export function useDashboardSession(
   // it). This is intentionally scoped to running sessions: idle sessions never
   // poll, so the steady state remains delta-driven (no dashboard-wide poll).
   //
-  // We pull TWO things each tick:
-  //  - the event tail (`eventsSince`) so streamed text keeps flowing, deduped
-  //    by `mergeByCreatedAt` against pushed rows; and
-  //  - session/workspace STATE (`workspace:status`), because the turn-end
-  //    `state: running → complete` transition is the *last* emit of the turn —
-  //    with no further activity to pump the loop, that push is the one most
-  //    likely to lag, leaving the chat fully streamed but the turn header stuck
-  //    on "Working" until the loop happens to wake. Reconciling state via the
-  //    reliable pull makes completion deterministic; once state flips off
-  //    "running" this effect tears down and the poll stops.
+  // Each tick pulls only the cheap event tail (`eventsSince`) so streamed text
+  // keeps flowing, deduped by `mergeByCreatedAt`. The heavier session/workspace
+  // STATE pull (`workspace:status`) reconciles the turn-end
+  // `state: running → complete` transition — the *last* emit of the turn, the
+  // push most likely to lag and leave the header stuck on "Working". It fires
+  // ONCE, when the turn's terminal event (`session.completed`/`error`) has
+  // landed via the event poll but the state-change push hasn't. Both IPC calls
+  // are synchronous Rust commands sharing one DB mutex with the provider's
+  // event ingestion, so doing the status pull every tick (and letting ticks
+  // overlap) starved a busy turn — hence: cheap tail every tick, one status
+  // reconcile at the end, and an in-flight guard so ticks never pile up.
   useEffect(() => {
     if (!window.argmax || selectedSession?.state !== "running" || !selectedSessionId) {
       return;
@@ -356,23 +357,42 @@ export function useDashboardSession(
     const runningSessionId = selectedSessionId;
     const workspaceIds = selectedWorkspaceId ? [selectedWorkspaceId] : null;
     let cancelled = false;
-    const tick = async (): Promise<void> => {
-      await loadSessionEvents(runningSessionId);
-      if (cancelled || !window.argmax) {
-        return;
-      }
-      const status = await window.argmax.workspaces.status({ workspaceIds });
-      if (cancelled) {
-        return;
-      }
-      setSnapshot((current) =>
-        mergeDashboardDelta(current, {
-          workspaces: status.workspaces,
-          sessions: status.sessions,
-          checks: status.checks,
-          checkpoints: status.checkpoints
-        })
+    let inFlight = false;
+    let stateReconciled = false;
+    const turnHasTerminalEvent = (): boolean =>
+      snapshotRef.current.events.some(
+        (event) =>
+          event.sessionId === runningSessionId &&
+          (event.type === "session.completed" || event.type === "error")
       );
+    const tick = async (): Promise<void> => {
+      if (inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        await loadSessionEvents(runningSessionId);
+        if (cancelled || !window.argmax || stateReconciled || !turnHasTerminalEvent()) {
+          return;
+        }
+        // The turn finished (terminal event pulled) but the state push may have
+        // lagged — reconcile session/workspace state once via the reliable pull.
+        stateReconciled = true;
+        const status = await window.argmax.workspaces.status({ workspaceIds });
+        if (cancelled) {
+          return;
+        }
+        setSnapshot((current) =>
+          mergeDashboardDelta(current, {
+            workspaces: status.workspaces,
+            sessions: status.sessions,
+            checks: status.checks,
+            checkpoints: status.checkpoints
+          })
+        );
+      } finally {
+        inFlight = false;
+      }
     };
     const interval = window.setInterval(() => {
       void tick();

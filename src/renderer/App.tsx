@@ -1,4 +1,13 @@
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState, type JSX } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type JSX
+} from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
   AgentMode,
@@ -57,6 +66,7 @@ import {
 import {
   CHAT_COST_KEY,
   SIDEBAR_TOKENS_KEY,
+  THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
   TOOL_CALLS_EXPANDED_KEY,
   useBooleanUiPreference
@@ -96,6 +106,7 @@ export function App(): JSX.Element {
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, true);
+  const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const { themeMode, setThemeMode, fontFamily, setFontFamily, defaultIde, setDefaultIde, detectedIdes } =
     useLauncherAppearance();
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
@@ -105,6 +116,7 @@ export function App(): JSX.Element {
   // place when ⌘N fires from inside an active grid. The flag is purely local
   // — it never persists; only the user's choice in Settings persists.
   const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
+  const [isWorkspaceDropPreviewVisible, setIsWorkspaceDropPreviewVisible] = useState(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
   // The active surface (focused SessionPane, or the LaunchSurface when no
@@ -180,6 +192,11 @@ export function App(): JSX.Element {
     setSelectedProjectId,
     showErrorToast
   });
+  const showWorkspaceDropTarget = draggingWorkspaceId !== null && !isSettingsOpen && (grid.rows.length === 0 || isFullLauncherOpen);
+
+  useEffect(() => {
+    if (!showWorkspaceDropTarget) setIsWorkspaceDropPreviewVisible(false);
+  }, [showWorkspaceDropTarget]);
 
   useEffect(() => {
     // First non-loading render is the renderer's "first content" mark.
@@ -766,6 +783,27 @@ export function App(): JSX.Element {
     ]
   );
 
+  const handleWorkspaceSurfaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!showWorkspaceDropTarget) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setIsWorkspaceDropPreviewVisible(true);
+  }, [showWorkspaceDropTarget]);
+
+  const handleWorkspaceSurfaceDragLeave = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    const related = event.relatedTarget;
+    if (related instanceof Node && event.currentTarget.contains(related)) return;
+    setIsWorkspaceDropPreviewVisible(false);
+  }, []);
+
+  const handleWorkspaceSurfaceDrop = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!draggingWorkspaceId || !showWorkspaceDropTarget) return;
+    event.preventDefault();
+    setIsWorkspaceDropPreviewVisible(false);
+    setIsFullLauncherOpen(false);
+    handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
+  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
+
   return (
     <main
       className="app-shell"
@@ -882,6 +920,8 @@ export function App(): JSX.Element {
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
+                thinkingExpanded={thinkingExpanded}
+                onThinkingExpandedChange={setThinkingExpanded}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
                 themeMode={themeMode}
@@ -916,6 +956,7 @@ export function App(): JSX.Element {
               sessionsById={sessionsById}
               defaultToolCallsExpanded={toolCallsExpanded}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
+              defaultThinkingExpanded={thinkingExpanded}
               showCostPanel={chatCostVisible}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
@@ -939,6 +980,19 @@ export function App(): JSX.Element {
             renderLaunchSurface(selectedProject)
           )}
         </div>
+        {showWorkspaceDropTarget ? (
+          <div
+            className="workspace-drop-overlay"
+            aria-hidden="true"
+            onDragOver={handleWorkspaceSurfaceDragOver}
+            onDragLeave={handleWorkspaceSurfaceDragLeave}
+            onDrop={handleWorkspaceSurfaceDrop}
+          >
+            {isWorkspaceDropPreviewVisible ? (
+              <div className="workspace-drop-zone" data-hovered="true" />
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </main>
   );

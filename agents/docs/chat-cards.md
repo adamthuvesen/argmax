@@ -56,6 +56,13 @@ on screen waiting for the user, the agent is *waiting on the user*, not
 `user.message` lands → `lastUserMessageTime` advances past the tool's
 `createdAt` → Thinking resumes for the new turn.
 
+These conditions are provider-agnostic. Do **not** suppress Thinking on the
+`session.streaming` first-byte beacon for Codex (an earlier heuristic did): the
+beacon fires on raw child bytes, but Codex then reasons for seconds before any
+visible item lands, so suppressing on it blanked the entire initial wait. The
+beacon's only job is suppressing the raw-stdout transcript fallback (via
+`hasRenderableContent`), not the Thinking indicator.
+
 ## Extended-thinking (Thought block)
 
 Distinct from the pre-answer "Thinking" indicator above: Claude's
@@ -88,16 +95,16 @@ Two layers cooperate to keep it visible and out of the way:
   instead of an inline answer bubble, keeping their chronological position in the
   turn body (before the tools and answer they preceded).
 
-**Expand-while-live, collapse-when-done.** The Thought block takes a `live`
+**Expand-while-live, setting-when-done.** The Thought block takes a `live`
 prop, computed per turn in `SessionConversationTurn` as *latest turn + session
 running + not paused on a card + no answer text yet*. While `live`, the block is
 **expanded** and labelled "Thinking" — the reasoning streams in token-by-token,
 in place of the generic thinking-verb animation (the verbs still cover the gap
 before any assistant content arrives). The instant the first answer token lands
 (or the turn stops being the active one, or it pauses for input), `live` flips
-off and the block auto-collapses to a quiet, persistent "Thought" chip. A manual
-toggle overrides the auto behavior (same `userToggle ?? auto` pattern as the turn
-chip).
+off and the block follows the saved `argmax.thinking.expanded` default from
+Settings → Agents → Thinking blocks. A manual toggle overrides the auto behavior
+(same `userToggle ?? auto` pattern as the turn chip and tool groups).
 
 ## Submission flow
 

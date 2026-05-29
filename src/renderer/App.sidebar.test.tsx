@@ -24,6 +24,7 @@ import {
   setupAppTestMocks,
   snapshot,
   terminateProvider,
+  writeProjectFile,
   workspaceStatus,
   workspaceStatusSnapshot
 } from "../test/appTestHarness.js";
@@ -579,8 +580,15 @@ describe("App sidebar", () => {
   it("opens the launcher review panel in project files mode with Cmd+B", async () => {
     listProjectFiles.mockResolvedValue([
       { path: "src-tauri/src/main.ts" },
+      { path: "index.ts" },
       { path: "README.md" }
     ]);
+    readProjectFile.mockResolvedValue({
+      kind: "text",
+      content: "export const ok = true;\n",
+      size: 24,
+      mtimeMs: 123
+    });
 
     render(<App />);
 
@@ -592,6 +600,20 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+
+    fireEvent.click(screen.getByRole("treeitem", { name: "index.ts" }));
+    const editor = await screen.findByLabelText("Editor for index.ts");
+    fireEvent.change(editor, { target: { value: "export const ok = false;\n" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save file" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
+    await waitFor(() =>
+      expect(writeProjectFile).toHaveBeenCalledWith(
+        "project-1",
+        "index.ts",
+        "export const ok = false;\n",
+        123
+      )
+    );
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() =>

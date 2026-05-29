@@ -10,19 +10,21 @@ import { useState, type JSX, type ReactNode } from "react";
  * While the turn is actively working and hasn't produced its answer yet the
  * parent passes `live`, and the block shows the reasoning expanded (labelled
  * "Thinking") in place of the generic thinking-verb animation. Once the answer
- * lands (or the turn ends) `live` flips off and the block auto-collapses to a
- * quiet "Thought" chip that persists. A manual toggle overrides the auto
- * behavior (same pattern as the turn chip).
+ * lands (or the turn ends) `live` flips off and the block follows the saved
+ * expanded-by-default setting. A manual toggle overrides the auto behavior
+ * (same pattern as the turn chip).
  */
 export function ThoughtBlock({
   children,
+  defaultExpanded = false,
   live = false
 }: {
   children: ReactNode;
+  defaultExpanded?: boolean;
   live?: boolean;
 }): JSX.Element {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
-  const expanded = userToggle ?? live;
+  const expanded = userToggle ?? (live || defaultExpanded);
   return (
     <div className="thought-block" data-live={live ? "true" : undefined}>
       <button

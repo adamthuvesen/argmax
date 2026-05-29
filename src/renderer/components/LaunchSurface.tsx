@@ -103,10 +103,10 @@ export function LaunchSurface({
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
-  // Read-only Changes + Files review against the selected project's main
-  // checkout. Lets the user inspect what's already in the repo before
-  // starting a session. Cmd/Ctrl+B toggles it (same shortcut as inside
-  // a session); no menu icon today, just the keyboard shortcut.
+  // Changes + Files panel against the selected project's main checkout. Lets
+  // the user inspect and edit files before starting a session. Cmd/Ctrl+B
+  // toggles it (same shortcut as inside a session); no menu icon today, just
+  // the keyboard shortcut.
   const reviewSource = useMemo<ReviewSource | null>(
     () => (project ? { kind: "project", project } : null),
     [project]

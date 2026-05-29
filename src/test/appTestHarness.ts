@@ -48,6 +48,7 @@ export type AppTestMocks = {
   readWorkspaceFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
   listProjectFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFilesForProject"]>;
   readProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["readFileForProject"]>;
+  writeProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["writeFileForProject"]>;
   sessionEventsSince: AppTestMockFn<ArgmaxApi["session"]["eventsSince"]>;
   sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
   sendProviderInput: AppTestMockFn<ArgmaxApi["providers"]["sendInput"]>;
@@ -79,6 +80,7 @@ export let listWorkspaceFiles: AppTestMocks["listWorkspaceFiles"];
 export let readWorkspaceFile: AppTestMocks["readWorkspaceFile"];
 export let listProjectFiles: AppTestMocks["listProjectFiles"];
 export let readProjectFile: AppTestMocks["readProjectFile"];
+export let writeProjectFile: AppTestMocks["writeProjectFile"];
 export let sessionEventsSince: AppTestMocks["sessionEventsSince"];
 export let sessionCostSummary: AppTestMocks["sessionCostSummary"];
 export let sendProviderInput: AppTestMocks["sendProviderInput"];
@@ -243,6 +245,11 @@ export function setupAppTestMocks(): void {
     kind: "skipped",
     reason: "not-a-file"
   } as const);
+  writeProjectFile = vi.fn<ArgmaxApi["workspace"]["writeFileForProject"]>().mockResolvedValue({
+    ok: true,
+    mtimeMs: 0,
+    size: 0
+  });
   skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
   openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
   listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
@@ -320,7 +327,7 @@ export function setupAppTestMocks(): void {
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       listFilesForProject: listProjectFiles,
       readFileForProject: readProjectFile,
-      writeFileForProject: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
+      writeFileForProject: writeProjectFile,
       statFileForProject: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       grepContent: () => Promise.resolve({ files: [], truncated: false })
     },

@@ -44,6 +44,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  thinkingExpanded,
+  onThinkingExpandedChange,
   fontFamily,
   onFontFamilyChange,
   themeMode,
@@ -70,6 +72,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  thinkingExpanded: boolean;
+  onThinkingExpandedChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
   themeMode: ThemeMode;
@@ -256,6 +260,8 @@ export function SettingsPanel({
               onToolCallsExpandedChange={onToolCallsExpandedChange}
               toolCallGroupsExpanded={toolCallGroupsExpanded}
               onToolCallGroupsExpandedChange={onToolCallGroupsExpandedChange}
+              thinkingExpanded={thinkingExpanded}
+              onThinkingExpandedChange={onThinkingExpandedChange}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}
               providers={providers}

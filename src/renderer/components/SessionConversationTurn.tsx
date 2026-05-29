@@ -42,6 +42,7 @@ export function SessionConversationTurn({
   setAgentMode,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   isFreshTool
 }: {
   item: TurnRenderItem;
@@ -60,6 +61,7 @@ export function SessionConversationTurn({
   setAgentMode: (mode: AgentMode) => void;
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   isFreshTool: (tool: ToolCall) => boolean;
 }): JSX.Element {
   const priorItem = index > 0 ? renderItems[index - 1] : null;
@@ -81,7 +83,8 @@ export function SessionConversationTurn({
   // A Thought block is "live" (shown expanded, in place of the thinking verbs)
   // while this turn is actively working and hasn't produced its answer yet.
   // Once any answer text lands — or the turn stops being the active one, or it
-  // pauses for user input — it auto-collapses to a quiet, persistent chip.
+  // pauses for user input — it falls back to the saved expanded-by-default
+  // setting for quiet, persistent "Thought" history.
   const isLatestTurn = index === renderItems.length - 1;
   const sessionIsLive = session?.state === "running";
   const turnHasAnswerText = visibleAssistantGroups.some(
@@ -165,11 +168,19 @@ export function SessionConversationTurn({
       />
     );
   };
-  type AnnotatedChild = TurnBodyChild & { createdAt: string };
+  // `createdAt` anchors the turn-start header timestamp; `sortAt` orders the
+  // body. Assistant groups order by their LAST activity (see AssistantGroup.
+  // lastActivityAt) so a streamed answer settles below the tools it follows
+  // instead of floating above them.
+  type AnnotatedChild = TurnBodyChild & { createdAt: string; sortAt: string };
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups.map((group) => {
     if (group.thinking) {
       const node = (
-        <ThoughtBlock key={group.id} live={thinkingLive}>
+        <ThoughtBlock
+          key={group.id}
+          defaultExpanded={defaultThinkingExpanded}
+          live={thinkingLive}
+        >
           <StreamingMarkdown
             text={group.text}
             streaming={false}
@@ -178,11 +189,11 @@ export function SessionConversationTurn({
           />
         </ThoughtBlock>
       );
-      return { kind: "assistant", id: group.id, node, createdAt: group.createdAt };
+      return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
     }
     const planNode = tryRenderPlan(group);
     if (planNode) {
-      return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt };
+      return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt, sortAt: group.lastActivityAt };
     }
     const node = (
       <ChatBubble
@@ -198,14 +209,15 @@ export function SessionConversationTurn({
         />
       </ChatBubble>
     );
-    return { kind: "assistant", id: group.id, node, createdAt: group.createdAt };
+    return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
   });
   if (exitPlanCard && exitPlanTool) {
     assistantChildren.push({
       kind: "assistant",
       id: `plan-${exitPlanTool.id}`,
       node: exitPlanCard,
-      createdAt: exitPlanTool.createdAt
+      createdAt: exitPlanTool.createdAt,
+      sortAt: exitPlanTool.createdAt
     });
   }
   if (questionCard && askUserQuestionTool) {
@@ -213,20 +225,18 @@ export function SessionConversationTurn({
       kind: "assistant",
       id: `question-${askUserQuestionTool.id}`,
       node: questionCard,
-      createdAt: askUserQuestionTool.createdAt
+      createdAt: askUserQuestionTool.createdAt,
+      sortAt: askUserQuestionTool.createdAt
     });
   }
   const visibleToolItems = item.toolItems
     .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
     .filter((tItem): tItem is TurnToolItem => tItem !== null);
-  const anyToolRunningInTurn = visibleToolItems.some((tItem) =>
-    tItem.kind === "tool"
-      ? tItem.tool.status === "running"
-      : tItem.group.tools.some((tool) => tool.status === "running")
-  );
-  const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
   const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
-  const groupDefaultExpanded = turnIsActive
+  // Keep the current turn's tool groups expanded after completion (not just
+  // while active) so they don't collapse the instant the answer lands; they
+  // fold once the next turn supersedes this one. Older turns stay collapsed.
+  const groupDefaultExpanded = isLatestTurn
     ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded)
     : false;
   const toolChildren: AnnotatedChild[] = visibleToolItems
@@ -236,6 +246,7 @@ export function SessionConversationTurn({
           kind: "tool",
           id: tItem.tool.id,
           createdAt: tItem.tool.createdAt,
+          sortAt: tItem.tool.createdAt,
           node: (
             <ToolCallRow
               tool={tItem.tool}
@@ -250,6 +261,7 @@ export function SessionConversationTurn({
         kind: "tool",
         id: tItem.group.id,
         createdAt: firstCreatedAt,
+        sortAt: firstCreatedAt,
         node: (
           <ToolCallGroupBubble
             group={tItem.group}
@@ -261,7 +273,7 @@ export function SessionConversationTurn({
       };
     });
   const bodyChildren: TurnBodyChild[] = [...assistantChildren, ...toolChildren]
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .sort((a, b) => a.sortAt.localeCompare(b.sortAt))
     .map(({ kind, id, node }) => ({ kind, id, node }));
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
@@ -277,6 +289,7 @@ export function SessionConversationTurn({
       {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
       {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
       isTurnActive={isTurnLiveTicking}
+      isCurrentTurn={isLatestTurn}
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
     />

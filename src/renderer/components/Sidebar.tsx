@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import {
   loadCollapsedProjectIds,
   loadExpandedProjectIds,
@@ -334,9 +335,11 @@ export function Sidebar({
 
   const handleWorkspaceDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, workspaceId: string): void => {
     event.stopPropagation();
-    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspaceId);
+    event.dataTransfer.effectAllowed = "copyMove";
     setDraggingWorkspaceId(workspaceId);
-  }, []);
+    onWorkspaceDragStart?.(workspaceId);
+  }, [onWorkspaceDragStart]);
 
   const handleWorkspaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     if (draggingWorkspaceId) {
@@ -377,7 +380,8 @@ export function Sidebar({
 
   const handleWorkspaceDragEnd = useCallback((): void => {
     setDraggingWorkspaceId(null);
-  }, []);
+    onWorkspaceDragEnd?.();
+  }, [onWorkspaceDragEnd]);
 
   const nameplateDate = useMemo(() => formatNameplateDate(), []);
 

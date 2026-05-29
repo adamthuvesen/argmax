@@ -14,6 +14,8 @@ export function AgentsSettings({
   onToolCallsExpandedChange,
   toolCallGroupsExpanded,
   onToolCallGroupsExpandedChange,
+  thinkingExpanded,
+  onThinkingExpandedChange,
   permissionMode,
   onPermissionModeChange,
   providers,
@@ -27,6 +29,8 @@ export function AgentsSettings({
   onToolCallsExpandedChange: (v: boolean) => void;
   toolCallGroupsExpanded: boolean;
   onToolCallGroupsExpandedChange: (v: boolean) => void;
+  thinkingExpanded: boolean;
+  onThinkingExpandedChange: (v: boolean) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   providers: DiscoveredProvider[] | null;
@@ -42,7 +46,7 @@ export function AgentsSettings({
           id="settings-agent-defaults-h"
           eyebrow="Session defaults"
           title="Model defaults"
-          description="Pick the model that pre-fills the launcher when you start a new session, and choose how much tool-call detail is visible by default. The two tool-call toggles are independent — keep the chat-level chip expanded while collapsing inner group bubbles, or any other combination."
+          description="Pick the model that pre-fills the launcher when you start a new session, and choose how much tool-call and thinking detail is visible by default."
         />
         <div className="settings-card">
           <div className="settings-row">
@@ -81,6 +85,20 @@ export function AgentsSettings({
           <p className="settings-hint">
             Controls the inner bubbles like “Explored 6 files” — when collapsed,
             you see the summary instead of every individual tool row.
+          </p>
+          <Segmented
+            legend="Thinking blocks"
+            name="thinking-expand"
+            value={thinkingExpanded ? "show" : "hide"}
+            onChange={(v) => onThinkingExpandedChange(v === "show")}
+            options={[
+              { value: "show", label: "Show expanded" },
+              { value: "hide", label: "Show collapsed" }
+            ]}
+          />
+          <p className="settings-hint">
+            Controls saved “Thought” reasoning blocks after a turn has answered.
+            Live thinking still expands while the agent is actively reasoning.
           </p>
         </div>
       </section>

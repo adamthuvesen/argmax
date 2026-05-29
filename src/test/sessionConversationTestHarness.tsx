@@ -143,6 +143,7 @@ export function renderConversation(
   session: SessionSummary,
   events: TimelineEvent[] = [],
   options: {
+    defaultThinkingExpanded?: boolean;
     pendingMessages?: PendingMessage[];
     onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
@@ -158,6 +159,7 @@ export function renderConversation(
       onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn().mockResolvedValue(undefined)}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
+      {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       project={project}
       rawOutputs={[]}

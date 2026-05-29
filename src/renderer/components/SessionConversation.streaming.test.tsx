@@ -179,6 +179,27 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 
+  it("renders completed extended-thinking expanded when the default says to show it", () => {
+    const thinking = "I should inspect the settings plumbing before touching the UI.";
+    const answer = "Settings are wired.";
+
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "wire thinking settings", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
+      ],
+      { defaultThinkingExpanded: true }
+    );
+
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle.textContent).toContain("Thought");
+    expect(screen.getByText(thinking)).toBeTruthy();
+    expect(screen.getByText(answer)).toBeTruthy();
+  });
+
   it("shows extended-thinking expanded and labelled 'Thinking' while the turn is live", () => {
     const thinking = "Let me figure out which files matter here.";
 
@@ -248,6 +269,31 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getAllByText("Hello world")).toHaveLength(1);
   });
 
+  it("keeps tool calls above a streamed answer whose first token predates them", () => {
+    // Cursor streams the assistant message cumulatively from the turn start, so
+    // the answer's first delta (15:00:02) predates the tool call (15:00:03).
+    // Ordering by the group's last activity keeps the tool above the answer.
+    const { container } = renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event("a2", "message.delta", "world", "2026-05-12T15:00:05.000Z", cursorAssistantPayload("Hello world")),
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" }
+        }),
+        event("a1", "message.delta", "Hello ", "2026-05-12T15:00:02.000Z", cursorAssistantPayload("Hello ")),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    // The running tool auto-expands the turn, so the row renders alongside the
+    // streamed answer. Tool must come BEFORE the answer in the DOM.
+    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    expect(text).toContain("architecture.md");
+    expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Hello world"));
+  });
+
   it("folds Codex command_execution singletons into the turn command group", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
@@ -284,10 +330,8 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    // Session is still "running", so the chip now says "Working" — the live
-    // ticker covers the post-tool thinking window the old behavior left blank.
-    fireEvent.click(screen.getByRole("button", { name: /Working|Worked for/ }));
-
+    // The current turn's body is expanded by default (it stays open through
+    // completion), so the command group is visible without toggling the chip.
     expect(screen.getByRole("button", { name: /Ran 3 commands/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();
   });
@@ -363,12 +407,33 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
-  it("hides Thinking for Codex once session.streaming fires for the current turn", () => {
+  it("keeps Thinking for Codex during the pre-content wait after session.streaming", () => {
+    // Codex fires session.streaming on the child's first raw byte, then spends
+    // seconds reasoning before any visible item lands. The beacon is not
+    // user-visible progress, so Thinking must stay up to show the agent is
+    // working — it yields once a real message/tool arrives.
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
       [
         event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
         event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("hides Thinking for Codex once a visible tool starts running", () => {
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+        event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
+        event("cmd-start", "command.started", "command_execution", "2026-05-12T15:00:01.000Z", {
+          id: "cmd1",
+          name: "command_execution",
+          input: { command: "/bin/zsh -lc 'ls'" }
+        })
       ]
     );
 

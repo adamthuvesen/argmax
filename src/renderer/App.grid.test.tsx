@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
-import { WORKSPACE_DRAG_MIME } from "./lib/gridState.js";
 import {
   mockDashboardSnapshot,
   openSettings,
@@ -132,11 +131,11 @@ describe("App grid", () => {
     });
   });
 
-  it("does not start a sidebar workspace drag while the launcher is showing", async () => {
+  it("previews and opens the first grid pane when a sidebar session is dropped onto the launcher", async () => {
     render(<App />);
 
     const row = await screen.findByRole("button", { name: "Build dashboard" });
-    expect(row).toHaveAttribute("draggable", "false");
+    expect(row).toHaveAttribute("draggable", "true");
 
     const setData = vi.fn();
     fireEvent.dragStart(row, {
@@ -147,8 +146,30 @@ describe("App grid", () => {
       }
     });
 
-    expect(setData).not.toHaveBeenCalled();
-    expect(document.querySelector(".multigrid-drop-overlay")).toBeNull();
+    expect(setData).toHaveBeenCalled();
+    const dropOverlay = await waitFor(() => {
+      const overlay = document.querySelector<HTMLElement>(".workspace-drop-overlay");
+      if (!overlay) throw new Error("Expected workspace drop overlay to render");
+      return overlay;
+    });
+
+    fireEvent.dragOver(dropOverlay, {
+      dataTransfer: {
+        dropEffect: "move"
+      }
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.workspace-drop-zone[data-hovered="true"]')).toBeInTheDocument();
+    });
+
+    fireEvent.drop(dropOverlay, {
+      dataTransfer: {
+        dropEffect: "move"
+      }
+    });
+
+    expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
   it("keeps the current session and opens a launcher pane to the right from New session", async () => {
@@ -287,7 +308,7 @@ describe("App grid", () => {
     expect(rows[1]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(1);
   });
 
-  it("drops a sidebar session onto a grid zone even when dataTransfer getData is empty", async () => {
+  it("highlights and drops a sidebar session even when dataTransfer payloads are empty", async () => {
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",
       projectId: "project-1",
@@ -328,7 +349,10 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
 
-    fireEvent.dragStart(screen.getByRole("button", { name: "Drop target" }), {
+    const dropTargetRow = screen.getByRole("button", { name: "Drop target" }).closest(".session-row-wrap");
+    if (!(dropTargetRow instanceof HTMLElement)) throw new Error("Expected sidebar session row wrapper");
+
+    fireEvent.dragStart(dropTargetRow, {
       dataTransfer: {
         setData: vi.fn(),
         setDragImage: vi.fn(),
@@ -347,11 +371,16 @@ describe("App grid", () => {
     });
 
     const dataTransfer = {
-      types: [WORKSPACE_DRAG_MIME],
+      types: [],
       getData: vi.fn(() => ""),
       dropEffect: "move"
     };
     expect(document.querySelector('.multigrid-drop-zone[data-position="replace"]')).toBeNull();
+    fireEvent.dragOver(dropOverlay, { clientX: 790, clientY: 300, dataTransfer });
+    await waitFor(() => {
+      expect(document.querySelector('.multigrid-drop-zone[data-hovered="true"]')).toBeInTheDocument();
+    });
+
     fireEvent.drop(dropOverlay, { clientX: 790, clientY: 300, dataTransfer });
 
     await waitFor(() => {

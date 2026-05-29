@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::util::workspace_paths::normalize;
+
 use chrono::Utc;
 use serde::Serialize;
 use specta::Type;
@@ -208,29 +210,33 @@ fn database_path<R: Runtime>(app: &AppHandle<R>) -> ArgmaxResult<PathBuf> {
 
 fn resolve_open_target(path: &str, cwd: Option<&str>) -> ArgmaxResult<PathBuf> {
     let raw = PathBuf::from(path);
-    let target = if raw.is_absolute() {
-        raw
-    } else if let Some(cwd) = cwd {
-        PathBuf::from(cwd).join(raw)
-    } else {
-        raw
+
+    let Some(cwd) = cwd else {
+        // No cwd to contain against — nothing to validate.
+        return Ok(raw);
     };
 
-    if let Some(cwd) = cwd {
-        let cwd_real = fs::canonicalize(cwd)
-            .map_err(|error| ArgmaxError::service("OPEN_CWD_FAILED", error.to_string()))?;
-        if let Ok(target_real) = fs::canonicalize(&target) {
-            if !target_real.starts_with(&cwd_real) {
-                return Err(ArgmaxError::service(
-                    "OPEN_PATH_ESCAPES_CWD",
-                    "path escapes cwd",
-                ));
-            }
-            return Ok(target_real);
-        }
-    }
+    let cwd_real = fs::canonicalize(cwd)
+        .map_err(|error| ArgmaxError::service("OPEN_CWD_FAILED", error.to_string()))?;
+    let candidate = if raw.is_absolute() {
+        raw
+    } else {
+        cwd_real.join(&raw)
+    };
 
-    Ok(target)
+    // Prefer realpath containment when the target exists (catches symlink
+    // escapes). When it doesn't exist yet, fall back to *logical* normalization
+    // so a non-existent escaping path (e.g. `../../etc/passwd`) is rejected
+    // rather than returned unvalidated — closing the TOCTOU gap where the file
+    // is created between this check and the open.
+    let resolved = fs::canonicalize(&candidate).unwrap_or_else(|_| normalize(&candidate));
+    if !resolved.starts_with(&cwd_real) {
+        return Err(ArgmaxError::service(
+            "OPEN_PATH_ESCAPES_CWD",
+            "path escapes cwd",
+        ));
+    }
+    Ok(resolved)
 }
 
 fn persist_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<()> {
@@ -461,6 +467,16 @@ mod tests {
         )
         .expect_err("escape rejected");
 
+        assert!(error.to_string().contains("path escapes cwd"));
+    }
+
+    #[test]
+    fn resolve_open_target_rejects_nonexistent_escape() {
+        // The escaping target does not exist, so canonicalize fails; logical
+        // normalization must still reject it instead of returning it raw.
+        let cwd = tempdir().expect("cwd");
+        let error = resolve_open_target("../../etc/does-not-exist-xyz", Some(cwd.path().to_str().unwrap()))
+            .expect_err("nonexistent escape rejected");
         assert!(error.to_string().contains("path escapes cwd"));
     }
 

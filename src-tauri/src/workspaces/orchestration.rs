@@ -22,7 +22,7 @@
 // `close_watchers_for_workspaces` are this module's public surface.
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,6 +46,7 @@ use crate::persistence::workspaces::{
     update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
 };
 use crate::providers::flush_queue::DashboardDelta;
+use crate::util::workspace_paths::normalize;
 
 /// Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`).
 pub(super) const WATCH_DEBOUNCE_MS: u64 = 200;
@@ -664,20 +665,6 @@ fn assert_worktree_location_contained(
             "Choose a worktree location inside the project's repo and retry.",
         ))
     }
-}
-
-fn normalize(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
 }
 
 fn slugify(value: &str) -> String {

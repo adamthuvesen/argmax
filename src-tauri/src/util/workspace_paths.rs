@@ -6,7 +6,7 @@
 // containment check after resolution rather than before.
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PathError {
@@ -45,6 +45,24 @@ pub fn resolve_inside(root: &Path, candidate: &Path) -> Result<PathBuf, PathErro
     }
 
     Ok(resolved)
+}
+
+/// Logically reduces `.` and `..` components without touching the filesystem.
+/// Unlike `canonicalize`, this works for paths that don't exist yet — use it for
+/// containment checks on not-yet-created or possibly-missing targets (it does
+/// NOT resolve symlinks, so pair it with a canonicalized base).
+pub fn normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

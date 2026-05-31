@@ -21,17 +21,14 @@ jobs:
           node-version: "22"
           cache: npm
 
-      # Cache the electron headers + electron-rebuild prebuilds so `rebuild:node`
-      # (invoked by `npm test`) doesn't recompile better-sqlite3 / node-pty
-      # from source on every run. Key on the native-module versions so a bump
-      # of either package invalidates the cache automatically.
-      - uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Cache the Cargo registry + `src-tauri/target` so `cargo test` doesn't
+      # recompile the whole crate and its dependencies from scratch every run —
+      # the single biggest cost in this job (~2m cold). Keyed on Cargo.lock.
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.electron
-            ~/.electron-gyp
-            ~/.npm/_prebuilds
-          key: ${{ runner.os }}-native-${{ hashFiles('package-lock.json') }}
+          workspaces: src-tauri
 
       - run: npm ci
 
@@ -45,8 +42,8 @@ jobs:
 
       - run: npm run test:rust
 
-      # `npm test` runs `rebuild:node` first to rebuild better-sqlite3 and
-      # node-pty against the host Node ABI before vitest starts.
-      - run: npm test
-        env:
-          CI: "true"
+      # Run the JS suites directly instead of `npm test`, which would re-run
+      # `test:rust` a second time. The Rust tests already ran above.
+      - run: npm run test:unit
+
+      - run: npm run test:perf

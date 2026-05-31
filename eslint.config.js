@@ -11,7 +11,6 @@ export default tseslint.config(
       "src-tauri/target/**",
       "src/shared/bindings.d.ts",
       ".claude/**",
-      "design/**",
       "eslint.config.js",
       "scripts/*.cjs",
       "scripts/*.mjs",
@@ -23,7 +22,7 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        project: ["./tsconfig.json", "./tsconfig.main.json"],
+        project: ["./tsconfig.json"],
         tsconfigRootDir: import.meta.dirname
       }
     },

@@ -1,8 +1,7 @@
 /* ---------- Plan Card ---------------------------------------------------
    Rendered in place of ChatBubble for assistant replies produced in plan
    mode. Uses only existing tokens: monochrome, sage-soft chip color, no
-   new fonts, no warm-paper palette. The structural moves come from
-   design/plan-card/plan-card.html. */
+   new fonts, no warm-paper palette. */
 .plan-card {
   width: 100%;
   max-width: 940px;

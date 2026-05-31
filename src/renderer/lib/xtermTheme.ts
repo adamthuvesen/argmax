@@ -6,6 +6,8 @@
  * tokens (yellow-leaning warm grays, sage/amber/rose accents).
  */
 
+import { themeAppearance } from "./theme.js";
+
 export const LIGHT_XTERM_THEME = {
   background: "#fbfbfa",
   foreground: "#1c1b18",
@@ -95,5 +97,5 @@ export function getXtermTheme(resolved: "light" | "dark"): XtermThemeObject {
 export function readActiveXtermTheme(): XtermThemeObject {
   if (typeof document === "undefined") return LIGHT_XTERM_THEME;
   const attr = document.documentElement.getAttribute("data-theme");
-  return getXtermTheme(attr === "dark" ? "dark" : "light");
+  return getXtermTheme(themeAppearance(attr));
 }

@@ -48,14 +48,14 @@ import { SkillPopover } from "./SkillPopover.js";
 const WelcomePane = lazy(async () => ({
   default: (await import("./WelcomePane.js")).WelcomePane
 }));
+// LauncherGlobe pulls in three.js — only needed when the animated backdrop is
+// enabled. Lazy-mounted so the WebGL globe never ships in the launcher's first
+// paint for users who keep it off.
+const LauncherGlobe = lazy(async () => ({
+  default: (await import("./LauncherGlobe.js")).LauncherGlobe
+}));
 
 const PROMPT_MAX_HEIGHT_PX = 140;
-
-const LAUNCH_STARTERS = [
-  "Add a test for…",
-  "Investigate why…",
-  "Refactor…"
-] as const;
 
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
@@ -71,7 +71,8 @@ export function LaunchSurface({
   project,
   projects,
   rightPanelToggleSignal,
-  registerPaletteFileContext
+  registerPaletteFileContext,
+  globeEnabled = false
 }: {
   model: ModelPickerSelection;
   onAddProject: () => void;
@@ -90,6 +91,7 @@ export function LaunchSurface({
   registerPaletteFileContext?: (
     context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
   ) => void;
+  globeEnabled?: boolean;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -109,10 +111,10 @@ export function LaunchSurface({
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
-  // Read-only Changes + Files review against the selected project's main
-  // checkout. Lets the user inspect what's already in the repo before
-  // starting a session. Cmd/Ctrl+B toggles it (same shortcut as inside
-  // a session); no menu icon today, just the keyboard shortcut.
+  // Changes + Files panel against the selected project's main checkout. Lets
+  // the user inspect and edit files before starting a session. Cmd/Ctrl+B
+  // toggles it (same shortcut as inside a session); no menu icon today, just
+  // the keyboard shortcut.
   const reviewSource = useMemo<ReviewSource | null>(
     () => (project ? { kind: "project", project } : null),
     [project]
@@ -122,6 +124,7 @@ export function LaunchSurface({
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
+  const reviewMode = reviewState.mode;
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
   // Register this surface's file source + pick handler with App so the
@@ -152,13 +155,24 @@ export function LaunchSurface({
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "b") return;
-      event.preventDefault();
-      toggleReviewPanel();
+      const key = event.key.toLowerCase();
+      if (key === "b") {
+        event.preventDefault();
+        toggleReviewPanel();
+        return;
+      }
+      if (key === "g") {
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewMode === "files") {
+          reviewClosePanel();
+        } else {
+          reviewOpenPanelInFilesMode();
+        }
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [project, toggleReviewPanel]);
+  }, [project, reviewClosePanel, reviewIsPanelOpen, reviewMode, reviewOpenPanelInFilesMode, toggleReviewPanel]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
@@ -284,7 +298,7 @@ export function LaunchSurface({
     if (blobs.length === 0) return;
     const api = window.argmax;
     if (!api) {
-      setStatus("Open the Electron app window to attach images.");
+      setStatus("Open the Tauri app window to attach images.");
       return;
     }
     try {
@@ -422,16 +436,6 @@ export function LaunchSurface({
     return `${month} ${day}`;
   }, []);
 
-  const applyStarter = useCallback((seed: string): void => {
-    setPrompt(seed);
-    requestAnimationFrame(() => {
-      const node = promptInputRef.current;
-      if (!node) return;
-      node.focus();
-      node.setSelectionRange(seed.length, seed.length);
-    });
-  }, []);
-
   if (!project) {
     // Fresh-install surface: setup checklist + provider discovery + the
     // disabled-until-a-provider-is-detected Add Project CTA. The component
@@ -451,6 +455,11 @@ export function LaunchSurface({
       className="launcher-shell"
       data-review-open={isReviewOpen ? "true" : undefined}
     >
+      {globeEnabled && !isReviewOpen ? (
+        <Suspense fallback={null}>
+          <LauncherGlobe enabled={globeEnabled} />
+        </Suspense>
+      ) : null}
       <div className="launcher-surface">
       {anyContextPickerOpen && createPortal(
         <div
@@ -550,7 +559,7 @@ export function LaunchSurface({
           />
         </div>
         <div className="composer-context">
-          <span className="composer-context-tree" aria-hidden="true">└─</span>
+          <div className="composer-context-group composer-context-group--workspace">
           <div className="project-picker-anchor" ref={projectPickerRef}>
             <button
               className="composer-context-chip"
@@ -561,7 +570,7 @@ export function LaunchSurface({
             >
               <Folder size={14} aria-hidden="true" />
               {project.name}
-              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {projectPickerOpen && (
               <ul
@@ -611,7 +620,7 @@ export function LaunchSurface({
             >
               <GitBranch size={14} aria-hidden="true" />
               {project.currentBranch}
-              <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
+              <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {branchPickerOpen && (
               <ul
@@ -640,13 +649,16 @@ export function LaunchSurface({
               </ul>
             )}
           </div>
-          <LaunchModelSelector
-            ariaLabel="Switch model"
-            open={modelPickerOpen}
-            onOpenChange={setModelPickerOpen}
-            value={model}
-            onChange={onModelChange}
-          />
+          </div>
+          <div className="composer-context-group composer-context-group--model">
+            <LaunchModelSelector
+              ariaLabel="Switch model"
+              open={modelPickerOpen}
+              onOpenChange={setModelPickerOpen}
+              value={model}
+              onChange={onModelChange}
+            />
+          </div>
           <button
             type="button"
             className="composer-context-chip agent-mode-toggle"
@@ -665,23 +677,6 @@ export function LaunchSurface({
           </p>
         ) : null}
       </form>
-      <aside className="launcher-starters" aria-label="Starter prompts">
-        <span className="launcher-starters-eyebrow">try</span>
-        <ul>
-          {LAUNCH_STARTERS.map((seed) => (
-            <li key={seed}>
-              <button
-                type="button"
-                className="launcher-starter-chip"
-                onClick={() => applyStarter(seed)}
-                title={`Use: ${seed}`}
-              >
-                {seed}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
       </div>
       {isReviewOpen ? (
         <Suspense fallback={null}>

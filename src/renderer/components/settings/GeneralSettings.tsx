@@ -23,6 +23,8 @@ export function GeneralSettings({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  launcherGlobeVisible,
+  onLauncherGlobeVisibleChange,
   newSessionMode,
   onNewSessionModeChange
 }: {
@@ -36,6 +38,8 @@ export function GeneralSettings({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  launcherGlobeVisible: boolean;
+  onLauncherGlobeVisibleChange: (v: boolean) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
 }): JSX.Element {
@@ -147,6 +151,13 @@ export function GeneralSettings({
             description="Display the session cost card beside the active conversation."
             checked={chatCostVisible}
             onChange={onChatCostVisibleChange}
+          />
+
+          <ToggleRow
+            label="Animated globe on the launcher"
+            description="Show a rotating dot-globe behind the new-session screen. Pauses when reduced-motion is on."
+            checked={launcherGlobeVisible}
+            onChange={onLauncherGlobeVisibleChange}
           />
 
           <KeyValueList

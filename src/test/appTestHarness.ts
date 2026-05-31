@@ -33,6 +33,7 @@ export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<
 
 export type AppTestMocks = {
   createCurrentWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createCurrent"]>;
+  archiveWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["archive"]>;
   dashboardLoad: AppTestMockFn<ArgmaxApi["dashboard"]["load"]>;
   dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
   dashboardDeltaUnsubscribe: AppTestMockFn<() => void>;
@@ -48,6 +49,7 @@ export type AppTestMocks = {
   readWorkspaceFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
   listProjectFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFilesForProject"]>;
   readProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["readFileForProject"]>;
+  writeProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["writeFileForProject"]>;
   sessionEventsSince: AppTestMockFn<ArgmaxApi["session"]["eventsSince"]>;
   sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
   sendProviderInput: AppTestMockFn<ArgmaxApi["providers"]["sendInput"]>;
@@ -63,6 +65,7 @@ export type AppTestMocks = {
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
+export let archiveWorkspace: AppTestMocks["archiveWorkspace"];
 export let dashboardLoad: AppTestMocks["dashboardLoad"];
 export let dashboardList: AppTestMocks["dashboardList"];
 export let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null = null;
@@ -79,6 +82,7 @@ export let listWorkspaceFiles: AppTestMocks["listWorkspaceFiles"];
 export let readWorkspaceFile: AppTestMocks["readWorkspaceFile"];
 export let listProjectFiles: AppTestMocks["listProjectFiles"];
 export let readProjectFile: AppTestMocks["readProjectFile"];
+export let writeProjectFile: AppTestMocks["writeProjectFile"];
 export let sessionEventsSince: AppTestMocks["sessionEventsSince"];
 export let sessionCostSummary: AppTestMocks["sessionCostSummary"];
 export let sendProviderInput: AppTestMocks["sendProviderInput"];
@@ -96,12 +100,22 @@ export let menuCommandListener: ((command: Parameters<Parameters<ArgmaxApi["menu
 
 export function setupAppTestMocks(): void {
   window.localStorage.clear();
+  // The launcher globe defaults on in production but pulls in three.js/WebGL,
+  // which jsdom can't render. Keep it off for the broad App suite so the lazy
+  // chunk never loads; the settings + LauncherGlobe tests opt in explicitly.
+  window.localStorage.setItem("argmax.launcher.globe.visible", "false");
   // Pre-seed the boot-collapse marker so existing App tests render the
   // sidebar with projects expanded (the pre-fix behavior). Sidebar tests
   // that exercise the boot-collapse seed clear this marker themselves.
   window.sessionStorage.setItem("argmax.sidebar.bootCollapseSeeded", "1");
   createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
     snapshot.workspaces[0] ?? missingWorkspace()
+  );
+  archiveWorkspace = vi.fn<ArgmaxApi["workspaces"]["archive"]>().mockImplementation(({ workspaceId }) =>
+    Promise.resolve({
+      ...(snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()),
+      state: "archived"
+    })
   );
   dashboardLoad = vi.fn<ArgmaxApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
   dashboardList = vi.fn<ArgmaxApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
@@ -143,8 +157,6 @@ export function setupAppTestMocks(): void {
   providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
   diagnosticsStub = vi.fn<ArgmaxApi["system"]["diagnostics"]>().mockResolvedValue({
     appVersion: "0.1.0",
-    electronVersion: "35.0.0",
-    nodeVersion: "20.0.0",
     sqliteVersion: "3.45.0",
     databasePath: "/tmp/argmax.sqlite",
     platform: "darwin",
@@ -173,6 +185,18 @@ export function setupAppTestMocks(): void {
       },
       walBytes: 1024 * 128,
       walAutocheckpoint: 1000
+    },
+    sqlitePragmas: {
+      journalMode: "wal",
+      foreignKeys: 1,
+      synchronous: 1,
+      busyTimeout: 5000,
+      walAutocheckpoint: 1000
+    },
+    runtime: {
+      rssBytes: 0,
+      openFileDescriptors: 0,
+      tokioTrackedTasks: 0
     },
     ipcStats: [
       { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
@@ -231,6 +255,11 @@ export function setupAppTestMocks(): void {
     kind: "skipped",
     reason: "not-a-file"
   } as const);
+  writeProjectFile = vi.fn<ArgmaxApi["workspace"]["writeFileForProject"]>().mockResolvedValue({
+    ok: true,
+    mtimeMs: 0,
+    size: 0
+  });
   skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
   openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
   listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
@@ -263,10 +292,7 @@ export function setupAppTestMocks(): void {
       refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
       status: workspaceStatus,
       keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
-      archive: ({ workspaceId }) =>
-        Promise.resolve(
-          snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()
-        ),
+      archive: archiveWorkspace,
       openInIde: openInIde,
       setPinned: ({ workspaceId, pinned }) =>
         Promise.resolve({
@@ -308,7 +334,7 @@ export function setupAppTestMocks(): void {
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       listFilesForProject: listProjectFiles,
       readFileForProject: readProjectFile,
-      writeFileForProject: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
+      writeFileForProject: writeProjectFile,
       statFileForProject: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       grepContent: () => Promise.resolve({ files: [], truncated: false })
     },
@@ -317,9 +343,6 @@ export function setupAppTestMocks(): void {
     },
     checkpoints: {
       create: createCheckpointStub
-    },
-    attempts: {
-      selectPreferred: () => Promise.resolve(snapshot.sessions[0] ?? missingSession())
     },
     health: {
       ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" })
@@ -387,15 +410,6 @@ export function setupAppTestMocks(): void {
       terminate: () => Promise.resolve({ ok: true }),
       onData: () => () => undefined,
       onExit: () => () => undefined
-    },
-    tournaments: {
-      launch: () => Promise.reject(new Error("not mocked")),
-      list: () => Promise.resolve([]),
-      get: () => Promise.reject(new Error("not mocked")),
-      keep: () => Promise.reject(new Error("not mocked"))
-    },
-    scoring: {
-      listPolicies: () => Promise.resolve([])
     }
   };
 }

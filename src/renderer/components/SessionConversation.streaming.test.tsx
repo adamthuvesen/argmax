@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PendingMessage } from "../../shared/types.js";
+import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
 import {
   baseSession,
@@ -150,6 +150,150 @@ describe("SessionConversation — streaming & composer", () => {
     expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
+  it("renders extended-thinking as a collapsed Thought block that persists after the answer", () => {
+    const thinking = "The user is asking me to read files. Let me start with the README.";
+    const answer = "Here's the repo overview.";
+
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "what is this repo", "2026-05-12T15:00:00.000Z"),
+        // Extended-thinking is surfaced by the normalizer as a message.delta
+        // with payload.thinking === true.
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
+      ]
+    );
+
+    // The Thought disclosure survives the turn's completion (not pruned), and
+    // the answer renders normally alongside it. Done → collapsed, "Thought".
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle.textContent).toContain("Thought");
+    expect(screen.getByText(answer)).toBeTruthy();
+    // Collapsed by default — the reasoning text is not shown until expanded.
+    expect(screen.queryByText(thinking)).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(thinking)).toBeTruthy();
+  });
+
+  it("renders completed extended-thinking expanded when the default says to show it", () => {
+    const thinking = "I should inspect the settings plumbing before touching the UI.";
+    const answer = "Settings are wired.";
+
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "wire thinking settings", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
+      ],
+      { defaultThinkingExpanded: true }
+    );
+
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle.textContent).toContain("Thought");
+    expect(screen.getByText(thinking)).toBeTruthy();
+    expect(screen.getByText(answer)).toBeTruthy();
+  });
+
+  it("shows extended-thinking expanded and labelled 'Thinking' while the turn is live", () => {
+    const thinking = "Let me figure out which files matter here.";
+
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+        // Thinking has landed but no answer text yet → the turn is live, so the
+        // reasoning shows expanded in place of the thinking-verb animation.
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
+      ]
+    );
+
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle.textContent).toContain("Thinking");
+    expect(screen.getByText(thinking)).toBeTruthy();
+  });
+
+  it("collapses the Thought block to 'Thought' once the first answer token arrives", () => {
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", "Reasoning about it.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+        // First streamed answer token → thinking is no longer live → collapses.
+        event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z")
+      ]
+    );
+
+    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle.textContent).toContain("Thought");
+    expect(screen.getByText("Here we go")).toBeTruthy();
+  });
+
+  it("accumulates streamed text_delta fragments into a single bubble", () => {
+    // Token streaming: many small message.delta fragments fold into one bubble.
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
+        event("d1", "message.delta", "Hel", "2026-05-12T15:00:01.000Z"),
+        event("d2", "message.delta", "lo ", "2026-05-12T15:00:02.000Z"),
+        event("d3", "message.delta", "world", "2026-05-12T15:00:03.000Z")
+      ]
+    );
+
+    expect(screen.getAllByText("Hello world")).toHaveLength(1);
+  });
+
+  it("does not duplicate the answer when message.completed lands after streamed fragments", () => {
+    // `events` arrives newest-first (as mergeDashboardDelta sorts it); the
+    // supersede filter drops the streamed deltas once the completion lands.
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("m1", "message.completed", "Hello world", "2026-05-12T15:00:04.000Z"),
+        event("d3", "message.delta", "world", "2026-05-12T15:00:03.000Z"),
+        event("d2", "message.delta", "lo ", "2026-05-12T15:00:02.000Z"),
+        event("d1", "message.delta", "Hel", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    // The streamed deltas are superseded by the completion → exactly one bubble.
+    expect(screen.getAllByText("Hello world")).toHaveLength(1);
+  });
+
+  it("keeps tool calls above a streamed answer whose first token predates them", () => {
+    // Cursor streams the assistant message cumulatively from the turn start, so
+    // the answer's first delta (15:00:02) predates the tool call (15:00:03).
+    // Ordering by the group's last activity keeps the tool above the answer.
+    const { container } = renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event("a2", "message.delta", "world", "2026-05-12T15:00:05.000Z", cursorAssistantPayload("Hello world")),
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" }
+        }),
+        event("a1", "message.delta", "Hello ", "2026-05-12T15:00:02.000Z", cursorAssistantPayload("Hello ")),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    // The running tool auto-expands the turn, so the row renders alongside the
+    // streamed answer. Tool must come BEFORE the answer in the DOM.
+    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    expect(text).toContain("architecture.md");
+    expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Hello world"));
+  });
+
   it("folds Codex command_execution singletons into the turn command group", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
@@ -186,10 +330,8 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    // Session is still "running", so the chip now says "Working" — the live
-    // ticker covers the post-tool thinking window the old behavior left blank.
-    fireEvent.click(screen.getByRole("button", { name: /Working|Worked for/ }));
-
+    // The current turn's body is expanded by default (it stays open through
+    // completion), so the command group is visible without toggling the chip.
     expect(screen.getByRole("button", { name: /Ran 3 commands/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();
   });
@@ -233,13 +375,13 @@ describe("SessionConversation — streaming & composer", () => {
           input: {
             subagent_type: "Explore",
             description: "Map documentation structure and identify gaps",
-            prompt: "Explore the documentation in this Electron/React Argmax project."
+            prompt: "Explore the documentation in this Tauri/React Argmax project."
           }
         }),
         event(
           "m-subagent-prompt",
           "message.delta",
-          "Explore the documentation in this Electron/React Argmax project.",
+          "Explore the documentation in this Tauri/React Argmax project.",
           "2026-05-12T15:00:02.000Z",
           {
             type: "user",
@@ -251,23 +393,100 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.getByLabelText("Agent Map documentation structure and identify gaps")).toBeInTheDocument();
-    expect(screen.queryByText("Explore the documentation in this Electron/React Argmax project.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Explore the documentation in this Tauri/React Argmax project.")).not.toBeInTheDocument();
   });
-  it("shows the Thinking indicator between events while the session is still running", () => {
-    // After `message.completed` (or `command.completed`) while the session
-    // is still running, the model is mid-turn — deciding what to do next.
-    // Before the next event arrives there's no streaming caret or tool
-    // spinner on screen, so the chat would otherwise sit silent. Thinking
-    // should fill the gap.
+  it("keeps Thinking for Claude when session.streaming fired before assistant text", () => {
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
-        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
-        event("m1", "message.completed", "Working on it.", "2026-05-12T15:00:01.000Z")
+        event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
+        event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
       ]
     );
 
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("keeps Thinking for Codex during the pre-content wait after session.streaming", () => {
+    // Codex fires session.streaming on the child's first raw byte, then spends
+    // seconds reasoning before any visible item lands. The beacon is not
+    // user-visible progress, so Thinking must stay up to show the agent is
+    // working — it yields once a real message/tool arrives.
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
+        event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("hides Thinking for Codex once a visible tool starts running", () => {
+    renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [
+        event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
+        event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
+        event("cmd-start", "command.started", "command_execution", "2026-05-12T15:00:01.000Z", {
+          id: "cmd1",
+          name: "command_execution",
+          input: { command: "/bin/zsh -lc 'ls'" }
+        })
+      ]
+    );
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("hides the Thinking indicator once a completed assistant answer is visible", () => {
+    // Provider answer events and runtime completion state arrive in separate
+    // dashboard deltas. If the answer has landed but the session row still
+    // says running, the answer should win; otherwise the appended Thinking
+    // bubble pins the scroll and makes the reply look missing until Stop.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+    // Immediate window only: a completed answer at the very end of a turn flips
+    // the runtime to `complete` within ~a frame, so we never flash Thinking
+    // under the finished reply. The mid-turn-pause test below covers the
+    // debounced re-show for genuine multi-second gaps.
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("re-shows Thinking after a mid-turn pause once a completed chunk stops streaming", () => {
+    // The agent finishes a chunk ("now I'll edit the file") then spends a few
+    // seconds silently generating the next step. Thinking is debounced: hidden
+    // immediately (so end-of-turn races and quick tool hand-offs don't flash),
+    // then surfaced once the pause outlasts THINKING_PAUSE_DELAY_MS so the turn
+    // never looks idle while the agent is still working.
+    vi.useFakeTimers();
+    try {
+      renderConversation(
+        baseSession({ provider: "claude", state: "running" }),
+        [
+          event("m1", "message.completed", "Now I'll edit the file.", "2026-05-12T15:00:01.000Z"),
+          event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z")
+        ]
+      );
+
+      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {
@@ -433,6 +652,82 @@ describe("SessionConversation — streaming & composer", () => {
     secondChip.focus();
     fireEvent.keyDown(secondChip, { key: "Delete" });
     expect(onCancel).toHaveBeenCalledWith("session-a", "queued-2");
+  });
+
+  // Regression: until the first message.delta/message.completed/command.started
+  // landed, the chat fell back to rendering buildTerminalTranscript(rawOutputs)
+  // — a giant gray <pre> dump of the provider's stream-json (8 KB Claude
+  // `system`/`init` payload + rate_limit_event). The fix counts the
+  // `session.streaming` one-shot beacon as "renderable content" so the dump
+  // never reaches the user during the pre-answer thinking window.
+  it("suppresses the raw-stdout transcript once session.streaming fires", () => {
+    const sess = baseSession({ id: "session-a", state: "running" });
+    const userEvent: TimelineEvent = event(
+      "u1",
+      "user.message",
+      "explore",
+      "2026-05-12T15:00:00.000Z"
+    );
+    const streamingBeacon: TimelineEvent = {
+      id: "ss-1",
+      sessionId: sess.id,
+      type: "session.streaming",
+      message: "",
+      payload: {},
+      createdAt: "2026-05-12T15:00:00.500Z"
+    };
+    // Two raw chunks that together exceed an 8 KB stream-json line without
+    // ever forming a complete `{...}` parseable object. `buildTerminalTranscript`
+    // hides whole-line JSON via tryParseJsonObject; chunks that arrive
+    // mid-line (no trailing newline) survive the filter and end up dumped
+    // verbatim — that's the exact scenario the user hit when Claude's first
+    // 8 KB system-init blob streamed in across nine partial PTY reads.
+    const rawOutputs: RawProviderOutput[] = [
+      {
+        id: "r1",
+        sessionId: sess.id,
+        stream: "stdout",
+        content: '{"type":"system","subtype":"init","cwd":"/x","tools":["A"',
+        createdAt: "2026-05-12T15:00:00.700Z"
+      }
+    ];
+
+    const baseProps = {
+      isLogOpen: false,
+      onSendSessionInput: vi.fn().mockResolvedValue(undefined),
+      onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onCreateCheckpoint: vi.fn().mockResolvedValue(undefined),
+      onToggleLog: vi.fn(),
+      project,
+      review: reviewStub(),
+      session: sess,
+      workspace
+    } as const;
+
+    // Without the beacon: transcript fallback should appear so the existing
+    // behaviour for non-stream-json providers (where raw stdout IS the
+    // human-readable output) keeps working.
+    const without = render(
+      <SessionConversation
+        {...baseProps}
+        events={[userEvent]}
+        rawOutputs={rawOutputs}
+      />
+    );
+    expect(without.container.querySelector(".terminal-transcript")).not.toBeNull();
+    cleanup();
+
+    // With the beacon: transcript suppressed even though the user hasn't seen
+    // any normalized text yet. The chat shows an empty/Thinking state instead
+    // of the JSON wall.
+    const withBeacon = render(
+      <SessionConversation
+        {...baseProps}
+        events={[streamingBeacon, userEvent]}
+        rawOutputs={rawOutputs}
+      />
+    );
+    expect(withBeacon.container.querySelector(".terminal-transcript")).toBeNull();
   });
 
 });

@@ -2,8 +2,10 @@ import { useCallback, useState } from "react";
 
 export const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
 export const CHAT_COST_KEY = "argmax.chat.cost.visible";
+export const THINKING_EXPANDED_KEY = "argmax.thinking.expanded";
 export const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
+export const LAUNCHER_GLOBE_KEY = "argmax.launcher.globe.visible";
 
 function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -28,12 +30,20 @@ export function readStoredChatCostVisible(): boolean {
   return readBooleanPreference(CHAT_COST_KEY, true);
 }
 
+export function readStoredThinkingExpanded(): boolean {
+  return readBooleanPreference(THINKING_EXPANDED_KEY, false);
+}
+
 export function readStoredToolCallsExpanded(): boolean {
   return readBooleanPreference(TOOL_CALLS_EXPANDED_KEY, true);
 }
 
 export function readStoredToolCallGroupsExpanded(): boolean {
   return readBooleanPreference(TOOL_CALL_GROUPS_EXPANDED_KEY, true);
+}
+
+export function readStoredLauncherGlobeVisible(): boolean {
+  return readBooleanPreference(LAUNCHER_GLOBE_KEY, true);
 }
 
 /** Boolean UI preference with mirrored localStorage persistence. */

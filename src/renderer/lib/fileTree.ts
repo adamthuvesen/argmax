@@ -21,9 +21,7 @@ export function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
   for (const entry of entries) {
     const segments = entry.path.split("/").filter(Boolean);
     let cursor = root;
-    for (let i = 0; i < segments.length; i += 1) {
-      const segment = segments[i];
-      if (!segment) continue;
+    for (const [i, segment] of segments.entries()) {
       const isLast = i === segments.length - 1;
       const childPath = cursor.path ? `${cursor.path}/${segment}` : segment;
       const cursorIndex = indexes.get(cursor);

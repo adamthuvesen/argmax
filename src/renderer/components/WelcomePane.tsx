@@ -19,7 +19,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      setLoadError("Open the Electron app window to detect providers.");
+      setLoadError("Open the Tauri app window to detect providers.");
       return;
     }
     setRefreshing(true);

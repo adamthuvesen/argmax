@@ -1,26 +1,24 @@
 {
   "name": "argmax",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Local desktop command center for Claude Code and Codex sessions.",
   "author": "Adam Thuvesen <a.thuvesen@gmail.com>",
   "type": "module",
-  "main": "dist/main/main.js",
   "scripts": {
-    "dev": "npm run rebuild:electron && npm run build:preload && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"node scripts/build-preload.mjs --watch\" \"wait-on dist/main/main.js dist/main/preload.cjs tcp:5173 && electron .\"",
-    "build": "tsc -p tsconfig.main.json && npm run build:preload && vite build && npm run check:bundle",
-    "check:bundle": "node scripts/check-bundle-size.mjs",
-    "build:preload": "NODE_ENV=production node scripts/build-preload.mjs",
-    "package": "npm run build && electron-builder --mac",
-    "install:mac": "bash scripts/install-mac.sh",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "lint": "eslint .",
-    "rebuild:electron": "electron-rebuild -o better-sqlite3,node-pty && node scripts/ensure-node-pty-helper.cjs",
-    "rebuild:node": "npm rebuild better-sqlite3 node-pty && node scripts/ensure-node-pty-helper.cjs",
-    "test": "npm run rebuild:node && npm run test:unit && npm run test:perf",
+    "test": "npm run test:unit && npm run test:perf && npm run test:rust",
     "test:unit": "vitest run",
     "test:perf": "vitest run --config vitest.perf.config.ts --no-file-parallelism",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit"
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri": "tauri",
+    "check:bindings": "node scripts/check-bindings-fresh.mjs",
+    "generate:bindings": "cargo run --manifest-path src-tauri/Cargo.toml --bin export-bindings -- src/shared/bindings.d.ts",
+    "check:tauri-bridge": "node scripts/check-tauri-bridge.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
@@ -39,7 +37,6 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.42.1",
-    "@electron-toolkit/utils": "^3.0.0",
     "@fontsource-variable/fira-code": "^5.2.7",
     "@fontsource-variable/geist-mono": "^5.2.7",
     "@fontsource-variable/inter": "^5.2.8",
@@ -49,33 +46,29 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/ibm-plex-sans": "^5.2.8",
     "@leeoniya/ufuzzy": "^1.0.19",
+    "@tauri-apps/api": "^2.11.0",
     "@uiw/react-codemirror": "^4.25.9",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "better-sqlite3": "11.10.0",
-    "electron-updater": "^6.8.3",
     "lucide-react": "^0.468.0",
-    "node-pty": "1.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "shiki": "^4.0.2",
-    "zod": "^3.24.1"
+    "three": "^0.184.0",
+    "three-globe": "^2.45.2"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
     "@eslint/js": "^9.17.0",
+    "@tauri-apps/cli": "^2.1.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.0",
-    "electron": "^35.0.0",
-    "electron-builder": "^26.8.1",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
@@ -83,57 +76,6 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",
     "vite": "^6.0.5",
-    "vitest": "^2.1.8",
-    "wait-on": "^8.0.1"
-  },
-  "build": {
-    "appId": "com.argmax.app",
-    "productName": "Argmax",
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "assets/**/*"
-    ],
-    "mac": {
-      "icon": "assets/icon.icns",
-      "category": "public.app-category.developer-tools",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "notarize": true,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ]
-    },
-    "dmg": {
-      "title": "Argmax",
-      "background": null,
-      "window": {
-        "width": 540,
-        "height": 380
-      }
-    },
-    "npmRebuild": true,
-    "asar": true,
-    "publish": {
-      "provider": "github"
-    }
+    "vitest": "^2.1.8"
   }
 }

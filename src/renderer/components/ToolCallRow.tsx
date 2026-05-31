@@ -1,7 +1,8 @@
-import { Bot } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
+import { shortenPathsInText } from "../lib/pathDisplay.js";
 import { describeToolAction, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
+import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 
 function splitVerbTarget(action: string): { verb: string; target: string } {
@@ -39,25 +40,31 @@ function verbForChanges(changes: FileChange[]): string | null {
 function ToolCallRowInner({
   tool,
   workspaceCwd,
-  defaultExpanded
+  defaultExpanded,
+  onOpenFile
 }: {
   tool: ToolCall;
   workspaceCwd?: string | null;
   defaultExpanded?: boolean;
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
+  // Follow the parent turn's expanded state until the user manually toggles
+  // this row. That keeps the turn chip authoritative for single-tool rows
+  // (including MCP calls) while preserving per-row overrides.
+  const [userToggle, setUserToggle] = useState<boolean | null>(null);
   // Auto-expand on error so the failure is visible without a click. We only
   // run this once per row — if the user manually collapses, we don't reopen.
-  const [expanded, setExpanded] = useState<boolean>(
-    tool.status === "error" || (defaultExpanded ?? false)
-  );
+  const [autoExpandedOnError, setAutoExpandedOnError] = useState<boolean>(tool.status === "error");
   const autoExpandedOnErrorRef = useRef<boolean>(tool.status === "error");
 
   useEffect(() => {
-    if (tool.status === "error" && !autoExpandedOnErrorRef.current) {
+    if (tool.status === "error" && !autoExpandedOnErrorRef.current && userToggle === null) {
       autoExpandedOnErrorRef.current = true;
-      setExpanded(true);
+      setAutoExpandedOnError(true);
     }
-  }, [tool.status]);
+  }, [tool.status, userToggle]);
+
+  const expanded = userToggle ?? (autoExpandedOnError || (defaultExpanded ?? false));
 
   const action = describeToolAction(tool);
   const baseSplit = splitVerbTarget(action);
@@ -71,7 +78,6 @@ function ToolCallRowInner({
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.target;
   const toolTypeBucket = getToolTypeBucket(tool.name);
-  const isAgent = toolTypeBucket === "agent";
 
   return (
     <div className="tool-call-row" data-status={tool.status} data-tool-type={toolTypeBucket}>
@@ -80,22 +86,20 @@ function ToolCallRowInner({
         type="button"
         aria-expanded={expanded}
         aria-label={action}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setUserToggle(!expanded)}
       >
-        {isAgent ? (
-          <span className="tool-call-row-icon" aria-hidden="true">
-            <Bot size={13} />
-          </span>
-        ) : null}
-        {tool.status !== "done" ? (
-          <span
-            className="tool-call-row-dot"
-            data-status={tool.status}
-            aria-hidden="true"
-          />
-        ) : null}
+        {/* Always render the status dot — transparent when done — so every row
+            reserves the same left gutter and verbs/targets stay column-aligned
+            instead of the error/running rows jumping right. */}
+        <span
+          className="tool-call-row-dot"
+          data-status={tool.status}
+          aria-hidden="true"
+        />
         <span className="tool-call-row-verb">{verb}</span>
-        {target ? <span className="tool-call-row-target">{target}</span> : null}
+        {target ? (
+          <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
+        ) : null}
         {counts && (counts.adds > 0 || counts.dels > 0) ? (
           <span className="tool-call-row-counts" aria-hidden="true">
             {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}
@@ -104,7 +108,9 @@ function ToolCallRowInner({
           </span>
         ) : null}
       </button>
-      {expanded ? <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} /> : null}
+      {expanded ? (
+        <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
+      ) : null}
     </div>
   );
 }
@@ -112,6 +118,7 @@ function ToolCallRowInner({
 export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
+  if (prev.onOpenFile !== next.onOpenFile) return false;
   if (prev.tool === next.tool) return true;
   return (
     prev.tool.id === next.tool.id &&

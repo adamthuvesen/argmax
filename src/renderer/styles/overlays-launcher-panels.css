@@ -338,12 +338,15 @@
   }
 
   .composer-context {
-    gap: 8px;
-    padding: 0 4px 6px;
+    gap: 4px;
+    padding: 0 6px 6px 10px;
+    flex-wrap: wrap;
   }
 
-  .composer-context > span {
-    display: none;
+  .composer-context .agent-mode-toggle {
+    /* On narrow widths the right-push would shove the mode pill onto its own
+       line; let it sit inline with the rest instead. */
+    margin-left: 0;
   }
 
   .provider-toggle {
@@ -431,14 +434,12 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   background: var(--panel);
-  border-top: 1px solid var(--line);
-  box-shadow: var(--shadow-1);
+  border-top: 0;
   overflow: hidden;
 }
 
 .terminal-panel[data-collapsed="true"] {
   border-top-width: 0;
-  box-shadow: none;
   overflow: hidden;
 }
 
@@ -461,7 +462,7 @@
 
 .terminal-panel-resize:hover,
 .session-grid[data-panel-resizing="true"] .terminal-panel-resize {
-  background: linear-gradient(to bottom, var(--line-strong), transparent);
+  background: linear-gradient(to bottom, var(--line-strong) 0 1px, transparent 1px);
 }
 
 .terminal-panel-header {
@@ -647,4 +648,3 @@
 .terminal-panel-surface .xterm-viewport {
   background-color: transparent !important;
 }
-

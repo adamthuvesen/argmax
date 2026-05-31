@@ -24,6 +24,7 @@ import {
   setupAppTestMocks,
   snapshot,
   terminateProvider,
+  writeProjectFile,
   workspaceStatus,
   workspaceStatusSnapshot
 } from "../test/appTestHarness.js";
@@ -66,7 +67,6 @@ describe("App sidebar", () => {
       startedAt: "2026-05-08T16:00:00.000Z",
       completedAt: "2026-05-08T16:04:00.000Z",
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      preferred: false
     };
     const secondEvent: DashboardSnapshot["events"][number] = {
       id: "event-2",
@@ -123,14 +123,14 @@ describe("App sidebar", () => {
     expect(screen.queryByPlaceholderText("Send a follow-up")).not.toBeInTheDocument();
   });
 
-  it("keeps the thinking indicator after assistant output when the session is still running", async () => {
+  it("hides the thinking indicator once assistant output is visible", async () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     expect(await screen.findByText("Dashboard ready.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-    expect(screen.getByTestId("command-stream")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-stream")).not.toBeInTheDocument();
   });
 
   it("shows a thinking indicator for a follow-up turn after earlier assistant output", async () => {
@@ -202,11 +202,12 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(sendProviderInput).toHaveBeenCalledWith({
         sessionId: "session-1",
-        input: "continue with tests\r",
+        input: "continue with tests",
         modelLabel: "GPT-5.3 Codex",
         modelId: "gpt-5.3-codex",
         reasoningEffort: "medium",
-        agentMode: "auto"
+        agentMode: "auto",
+        attachments: null
       })
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
@@ -226,7 +227,7 @@ describe("App sidebar", () => {
     const form = input.closest("form");
     expect(form).not.toBeNull();
 
-    // Synthesize an Electron-shaped drop: File objects with a `path` field.
+    // Synthesize a Tauri-shaped drop: File objects with a `path` field.
     const insideWorkspace = new File([], "app.ts");
     Object.defineProperty(insideWorkspace, "path", {
       value: "/tmp/worktrees/dashboard/src/app.ts"
@@ -304,7 +305,8 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Session model" }));
     const modelPopover = await screen.findByRole("listbox", { name: "Session model" });
-    fireEvent.click(within(modelPopover).getByRole("button", { name: "GPT-5.5 · Medium" }));
+    // GPT-5.5 is effort-capable; selecting it seeds the default Medium effort.
+    fireEvent.click(within(modelPopover).getByText("GPT-5.5"));
     fireEvent.change(await screen.findByLabelText("Session prompt"), {
       target: { value: "use the stronger model" }
     });
@@ -313,11 +315,12 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(sendProviderInput).toHaveBeenCalledWith({
         sessionId: "session-1",
-        input: "use the stronger model\r",
+        input: "use the stronger model",
         modelLabel: "GPT-5.5",
         modelId: "gpt-5.5",
         reasoningEffort: "medium",
-        agentMode: "auto"
+        agentMode: "auto",
+        attachments: null
       })
     );
   });
@@ -374,8 +377,8 @@ describe("App sidebar", () => {
   it("browses workspace files via the Files tab and previews a selection", async () => {
     listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([
-      { path: "src/main/index.ts" },
-      { path: "src/main/preload.ts" },
+      { path: "src-tauri/src/index.ts" },
+      { path: "src/renderer/lib/tauriBridge.ts" },
       { path: "src/renderer/App.tsx" },
       { path: "README.md" }
     ]);
@@ -383,8 +386,8 @@ describe("App sidebar", () => {
       Promise.resolve({
         kind: "text",
         content:
-          filePath === "src/main/preload.ts"
-            ? "export const preload = true;\n"
+          filePath === "src/renderer/lib/tauriBridge.ts"
+            ? "export const tauriBridge = true;\n"
             : "export const hello = 'world';\n",
         size: 30,
         mtimeMs: 0
@@ -402,23 +405,34 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
 
-    // Expand src/ then src/main to reach the file
-    fireEvent.click(await screen.findByRole("treeitem", { name: /^src$/ }));
-    fireEvent.click(await screen.findByRole("treeitem", { name: /^main$/ }));
+    // Expand src-tauri/ then src/ to reach the file
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^src-tauri$/ }));
+    const nestedSrc = (await screen.findAllByRole("treeitem", { name: /^src$/ })).find(
+      (node) => node.getAttribute("title") === "src-tauri/src"
+    );
+    expect(nestedSrc).toBeDefined();
+    fireEvent.click(nestedSrc!);
     fireEvent.click(await screen.findByRole("treeitem", { name: /^index\.ts$/ }));
 
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/index.ts"));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src-tauri/src/index.ts"));
     // The shiki highlighter tokenizes lines into per-token spans, so the line
     // text spans multiple DOM nodes. Query the preview wrapper by aria-label
     // and assert against its concatenated textContent — matches the real
     // production rendering regardless of how the line is carved into tokens.
-    const preview = await screen.findByLabelText("Preview of src/main/index.ts");
+    const preview = await screen.findByLabelText("Preview of src-tauri/src/index.ts");
     expect(preview).toHaveTextContent("export const hello = 'world';");
 
-    fireEvent.click(screen.getByRole("treeitem", { name: /^preload\.ts$/ }));
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/preload.ts"));
-    expect(await screen.findByLabelText("Preview of src/main/preload.ts")).toHaveTextContent(
-      "export const preload = true;"
+    const appSrc = (await screen.findAllByRole("treeitem", { name: /^src$/ })).find(
+      (node) => node.getAttribute("title") === "src"
+    );
+    expect(appSrc).toBeDefined();
+    fireEvent.click(appSrc!);
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^renderer$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^lib$/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /^tauriBridge\.ts$/ }));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/renderer/lib/tauriBridge.ts"));
+    expect(await screen.findByLabelText("Preview of src/renderer/lib/tauriBridge.ts")).toHaveTextContent(
+      "export const tauriBridge = true;"
     );
 
     const tablist = screen.getByRole("tablist", { name: "Open files" });
@@ -426,21 +440,47 @@ describe("App sidebar", () => {
       "aria-selected",
       "false"
     );
-    expect(within(tablist).getByRole("tab", { name: "preload.ts" })).toHaveAttribute(
+    expect(within(tablist).getByRole("tab", { name: "tauriBridge.ts" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
 
     fireEvent.click(within(tablist).getByRole("tab", { name: "index.ts" }));
-    expect(await screen.findByLabelText("Preview of src/main/index.ts")).toHaveTextContent(
+    expect(await screen.findByLabelText("Preview of src-tauri/src/index.ts")).toHaveTextContent(
       "export const hello = 'world';"
+    );
+  });
+
+  it("opens workspace files in the review panel with Cmd+G", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/renderer/App.tsx", status: "modified", additions: 2, deletions: 1 }
+    ]);
+    listWorkspaceFiles.mockResolvedValue([
+      { path: "src-tauri/src/index.ts" },
+      { path: "src/renderer/App.tsx" }
+    ]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+    fireEvent.keyDown(input, { key: "g", metaKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
+    expect(screen.queryByText("1 file")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "g", metaKey: true });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
     );
   });
 
   it("opens workspace files via the unified command palette on Cmd+P", async () => {
     listChangedFiles.mockResolvedValue([]);
     listWorkspaceFiles.mockResolvedValue([
-      { path: "src/main/index.ts" },
+      { path: "src-tauri/src/index.ts" },
       { path: "src/renderer/App.tsx" }
     ]);
     readWorkspaceFile.mockResolvedValue({
@@ -463,17 +503,13 @@ describe("App sidebar", () => {
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "index" } });
     await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1"));
-    // Wait for the Files group to populate and pick the matching row.
-    // uFuzzy wraps matched substrings in `<mark>`, so the basename's text
-    // is split across nodes — use a text-content matcher.
-    await within(palette).findByText((_content, node) =>
-      node?.classList.contains("command-palette-result-label") === true &&
-      node?.textContent === "index.ts"
-    );
+    // uFuzzy may split the basename across highlighted spans; the option's
+    // accessible name remains stable.
+    await within(palette).findByRole("option", { name: /index\.ts/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/main/index.ts"));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src-tauri/src/index.ts"));
   });
 
   it("shows a placeholder when a previewed file is binary or too large", async () => {
@@ -501,12 +537,13 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Claude Sonnet 4.6" }));
+    const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
+    fireEvent.click(within(launchPopover).getByText("Claude Sonnet 4.6"));
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 
     expect(await screen.findByRole("listbox", { name: "Skill suggestions" })).toBeInTheDocument();
-    expect(skillsList).toHaveBeenCalledWith({ provider: "claude" });
+    expect(skillsList).toHaveBeenCalledWith({ provider: "claude", workspaceId: null });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("/plan ");
     expect(launchProvider).not.toHaveBeenCalled();
@@ -532,7 +569,7 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(sendProviderInput).toHaveBeenCalledWith(
         expect.objectContaining({
-          input: "Plan the follow-up\r",
+          input: "Plan the follow-up",
           agentMode: "plan"
         })
       )
@@ -554,17 +591,15 @@ describe("App sidebar", () => {
 
     render(<App />);
 
-    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
-    fireEvent.keyDown(document, { key: "p", metaKey: true });
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: "p", metaKey: true });
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
     await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith("project-1"));
-    await within(palette).findByText((_content, node) =>
-      node?.classList.contains("command-palette-result-label") === true &&
-      node?.textContent === "App.tsx"
-    );
+    await within(palette).findByRole("option", { name: /App\.tsx/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
@@ -573,9 +608,16 @@ describe("App sidebar", () => {
 
   it("opens the launcher review panel in project files mode with Cmd+B", async () => {
     listProjectFiles.mockResolvedValue([
-      { path: "src/main/main.ts" },
+      { path: "src-tauri/src/main.ts" },
+      { path: "index.ts" },
       { path: "README.md" }
     ]);
+    readProjectFile.mockResolvedValue({
+      kind: "text",
+      content: "export const ok = true;\n",
+      size: 24,
+      mtimeMs: 123
+    });
 
     render(<App />);
 
@@ -588,15 +630,29 @@ describe("App sidebar", () => {
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith("project-1");
 
+    fireEvent.click(screen.getByRole("treeitem", { name: "index.ts" }));
+    const editor = await screen.findByLabelText("Editor for index.ts");
+    fireEvent.change(editor, { target: { value: "export const ok = false;\n" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save file" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
+    await waitFor(() =>
+      expect(writeProjectFile).toHaveBeenCalledWith(
+        "project-1",
+        "index.ts",
+        "export const ok = false;\n",
+        123
+      )
+    );
+
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
     );
   });
 
-  it("opens the launcher review panel when Electron sends the Cmd+B menu command", async () => {
+  it("opens the launcher review panel when Tauri sends the Cmd+B menu command", async () => {
     listProjectFiles.mockResolvedValue([
-      { path: "src/main/main.ts" },
+      { path: "src-tauri/src/main.ts" },
       { path: "README.md" }
     ]);
 
@@ -611,6 +667,28 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+  });
+
+  it("opens the launcher review panel in project files mode with Cmd+G", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src-tauri/src/main.ts" },
+      { path: "README.md" }
+    ]);
+
+    render(<App />);
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: "g", metaKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+
+    fireEvent.keyDown(prompt, { key: "g", metaKey: true });
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
+    );
   });
 
   it("surfaces project files in the command palette after Cmd+B opens review", async () => {
@@ -631,10 +709,7 @@ describe("App sidebar", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
-    await within(palette).findByText((_content, node) =>
-      node?.classList.contains("command-palette-result-label") === true &&
-      node?.textContent === "App.tsx"
-    );
+    await within(palette).findByRole("option", { name: /App\.tsx/ });
   });
 
   it("opens a slash autocomplete with provider-filtered skills and inserts the selected name", async () => {

@@ -44,7 +44,6 @@ function makeSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
     startedAt: "2026-05-12T15:00:01.000Z",
     completedAt: null,
     lastActivityAt: "2026-05-12T15:00:01.000Z",
-    preferred: false,
     ...overrides
   };
 }
@@ -289,6 +288,231 @@ describe("useDashboardSession — refresh / delta race", () => {
     expect(result.current.snapshot.sessions.map((session) => session.id).sort()).toEqual(
       ["session-delta", "session-existing"]
     );
+  });
+
+  it("reconciles a running→complete transition once the terminal event lands", async () => {
+    // macOS push lag: the turn-end `state: running → complete` delta is the
+    // last emit and can sit undelivered on an idle event loop, leaving the
+    // header stuck on "Working". The poll pulls the cheap event tail every
+    // tick; once it sees the turn's terminal event it reconciles session STATE
+    // ONCE via workspace:status (the heavy pull stays off the hot path).
+    vi.useFakeTimers();
+    try {
+      const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+      const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        result.current.setSelectedWorkspaceId("ws-existing");
+        result.current.setSelectedSessionId("session-existing");
+      });
+      expect(result.current.selectedSession?.state).toBe("running");
+
+      // The event poll pulls the turn's terminal `session.completed`.
+      (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        events: [
+          {
+            id: "ev-done",
+            sessionId: "session-existing",
+            type: "session.completed",
+            message: "",
+            payload: {},
+            createdAt: "2026-05-12T15:00:30.000Z",
+            rowCursor: 10
+          }
+        ],
+        rawOutputs: [],
+        eventCursor: 10,
+        rawOutputCursor: 0
+      });
+      // The DB already shows the session complete; status is the only path that
+      // flips renderer state.
+      statusMock.mockResolvedValue({
+        workspaces: [makeWorkspace({ state: "complete" })],
+        sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:30.000Z" })],
+        checks: [],
+        checkpoints: []
+      });
+
+      // Tick 1 pulls the terminal event (snapshot ref commits at the act
+      // boundary); the next tick detects it and reconciles state once.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(statusMock).toHaveBeenCalledWith({ workspaceIds: ["ws-existing"] });
+      expect(result.current.selectedSession?.state).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores terminal events from earlier turns when deciding to reconcile", async () => {
+    // A multi-turn session keeps prior turns' `session.completed` events in the
+    // snapshot. Keying the reconcile on *any* terminal event latched on a stale
+    // one: the reconcile fired once at the start of the next turn (while state
+    // was still running), then never again — leaving the header stuck on
+    // "Working" for the second turn onward (seen with Cursor).
+    vi.useFakeTimers();
+    try {
+      const seeded: DashboardSnapshot = {
+        ...baseSnapshot,
+        events: [
+          {
+            id: "ev-prior-turn",
+            sessionId: "session-existing",
+            type: "session.completed",
+            message: "",
+            payload: {},
+            createdAt: "2026-05-12T15:00:10.000Z"
+          }
+        ]
+      };
+      const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(seeded);
+      const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        result.current.setSelectedWorkspaceId("ws-existing");
+        result.current.setSelectedSessionId("session-existing");
+      });
+      expect(result.current.selectedSession?.state).toBe("running");
+      statusMock.mockClear();
+
+      // Several ticks while THIS turn is still running. The only terminal event
+      // in the snapshot belongs to the prior turn, so no reconcile may fire.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+      expect(statusMock).not.toHaveBeenCalled();
+
+      // The current turn ends: a NEW terminal event lands; the DB shows complete.
+      (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        events: [
+          {
+            id: "ev-this-turn",
+            sessionId: "session-existing",
+            type: "session.completed",
+            message: "",
+            payload: {},
+            createdAt: "2026-05-12T15:00:40.000Z",
+            rowCursor: 20
+          }
+        ],
+        rawOutputs: [],
+        eventCursor: 20,
+        rawOutputCursor: 0
+      });
+      statusMock.mockResolvedValue({
+        workspaces: [makeWorkspace({ state: "complete" })],
+        sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:40.000Z" })],
+        checks: [],
+        checkpoints: []
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(statusMock).toHaveBeenCalledWith({ workspaceIds: ["ws-existing"] });
+      expect(result.current.selectedSession?.state).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not pull workspace:status while a turn is still running", async () => {
+    // Regression: pulling the heavy status command every tick (and overlapping
+    // ticks) starved a busy turn. With no terminal event, only the cheap event
+    // tail is pulled — status stays off the hot path.
+    vi.useFakeTimers();
+    try {
+      const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+      const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        result.current.setSelectedWorkspaceId("ws-existing");
+        result.current.setSelectedSessionId("session-existing");
+      });
+      expect(result.current.selectedSession?.state).toBe("running");
+      statusMock.mockClear();
+
+      // Several ticks while the turn keeps running (no terminal event).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1200);
+      });
+
+      expect(statusMock).not.toHaveBeenCalled();
+      expect(
+        (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mock.calls.length
+      ).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps session event cursors monotonic when overlapping tail reads resolve out of order", async () => {
+    let resolveSlow!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
+    let resolveFast!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
+    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSlow = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFast = resolve;
+          })
+      )
+      .mockResolvedValue({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0
+      });
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    let slow!: Promise<void>;
+    let fast!: Promise<void>;
+    act(() => {
+      slow = result.current.loadSessionEvents("session-existing");
+      fast = result.current.loadSessionEvents("session-existing");
+    });
+
+    await act(async () => {
+      resolveFast({ events: [], rawOutputs: [], eventCursor: 20, rawOutputCursor: 10 });
+      await fast;
+    });
+    await act(async () => {
+      resolveSlow({ events: [], rawOutputs: [], eventCursor: 5, rawOutputCursor: 4 });
+      await slow;
+    });
+
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    expect(window.argmax!.session.eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: 20,
+      rawOutputCursor: 10
+    });
   });
 
   it("rolls back only the failed approval when approval resolves overlap", async () => {

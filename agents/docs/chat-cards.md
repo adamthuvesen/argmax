@@ -15,7 +15,7 @@ plus [PlanCard.tsx](../../src/renderer/components/PlanCard.tsx) and
 Claude Code's `ExitPlanMode` and `AskUserQuestion` tools are designed for
 interactive sessions. Argmax launches Claude in **structured-json** mode
 (`-p --output-format stream-json` — see
-[providerAdapters.ts](../../src/main/providers/providerAdapters.ts)), which
+[providerAdapters.ts](../../src-tauri/src/providers/adapters.rs)), which
 has no interactive stdin. The CLI handles this by returning a
 `tool_result { is_error: true, content: "Exit plan mode?" / "Answer questions?" }`
 and ending the turn.
@@ -45,16 +45,66 @@ consumes `buildTurnRenderState` and renders cards.
 The "Thinking" bubble is suppressed when any of these are true:
 
 - `session.state !== "running"`
-- the last significant event is `message.delta` (streaming caret is the indicator)
+- the last significant event is `message.delta` or `message.completed` (visible assistant text is the indicator)
 - a *visible* tool is running (`tool.name` is not `ExitPlanMode` / `AskUserQuestion`; the tool's own spinner is the indicator)
 - **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../../src/renderer/lib/turnInteractiveCards.ts) /
-[SessionConversation.tsx:497](../../src/renderer/components/SessionConversation.tsx:497))
+[SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx))
 
 The outstanding-card gate is the load-bearing one for cards: while a card is
 on screen waiting for the user, the agent is *waiting on the user*, not
 "thinking". Showing Thinking would mislead. When the user submits, a new
 `user.message` lands → `lastUserMessageTime` advances past the tool's
 `createdAt` → Thinking resumes for the new turn.
+
+These conditions are provider-agnostic. Do **not** suppress Thinking on the
+`session.streaming` first-byte beacon for Codex (an earlier heuristic did): the
+beacon fires on raw child bytes, but Codex then reasons for seconds before any
+visible item lands, so suppressing on it blanked the entire initial wait. The
+beacon's only job is suppressing the raw-stdout transcript fallback (via
+`hasRenderableContent`), not the Thinking indicator.
+
+## Extended-thinking (Thought block)
+
+Distinct from the pre-answer "Thinking" indicator above: Claude's
+extended-thinking *content* (the reasoning monologue) is surfaced by the
+normalizer ([claude.rs](../../src-tauri/src/providers/normalizer/claude.rs))
+as `message.delta` events with `payload.thinking === true`. Claude is launched
+with `--include-partial-messages` (adapters.rs), so reasoning streams
+token-by-token as `thinking_delta` fragments (text in `delta.thinking`); the
+dispatcher in [mod.rs](../../src-tauri/src/providers/normalizer/mod.rs) stamps
+the `thinking: true` flag onto each. `message.completed` carries the answer text
+only, so these deltas are the sole record of the reasoning.
+
+Two layers cooperate to keep it visible and out of the way:
+
+- **Survival.** `pruneSupersededDeltas` ([snapshot.ts](../../src/renderer/lib/snapshot.ts))
+  and the `conversationEvents` supersede filter in
+  [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+  both make an exception for thinking deltas, so they are *not* dropped when the
+  turn's `message.completed` lands. (These must stay in sync — a thinking delta
+  kept by one and dropped by the other produces a flash-then-vanish.)
+- **Fold + dedup + rendering.** `coalesceAssistantGroups`
+  ([sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts)) folds the
+  streamed thinking fragments into ONE growing `AssistantGroup` (`thinking:
+  true`), kept in a buffer separate from the answer (flushed whenever the kind
+  flips). The whole assistant message later re-sends the *full* reasoning as one
+  block; a cumulative-aware append (`appendThinking`) dedups it to a no-op
+  instead of doubling the text.
+  [SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx)
+  routes thinking groups to [ThoughtBlock.tsx](../../src/renderer/components/ThoughtBlock.tsx)
+  instead of an inline answer bubble, keeping their chronological position in the
+  turn body (before the tools and answer they preceded).
+
+**Expand-while-live, setting-when-done.** The Thought block takes a `live`
+prop, computed per turn in `SessionConversationTurn` as *latest turn + session
+running + not paused on a card + no answer text yet*. While `live`, the block is
+**expanded** and labelled "Thinking" — the reasoning streams in token-by-token,
+in place of the generic thinking-verb animation (the verbs still cover the gap
+before any assistant content arrives). The instant the first answer token lands
+(or the turn stops being the active one, or it pauses for input), `live` flips
+off and the block follows the saved `argmax.thinking.expanded` default from
+Settings → Agents → Thinking blocks. A manual toggle overrides the auto behavior
+(same `userToggle ?? auto` pattern as the turn chip and tool groups).
 
 ## Submission flow
 
@@ -75,9 +125,10 @@ if (session.state === "running") {
 ```
 
 Main's `sendInput` already relaunches the agent when no live handle exists
-(see [providerSessionService.ts](../../src/main/providers/providerSessionService.ts)),
-so the terminated session resumes cleanly via `--resume <conversationId>` with
-the answer as the next user message.
+(see [session_service.rs](../../src-tauri/src/providers/session_service.rs)),
+so the terminated session resumes via `--resume <conversationId>` and sends a
+capped visible transcript plus the answer as the next user message. The UI
+timeline still stores only the raw answer text.
 
 ## QuestionCard answer format
 
@@ -123,8 +174,9 @@ hints, so sighted keyboard users don't have to discover it.
 
 ## Tests
 
-All of the above are locked in by
-[src/renderer/components/SessionConversation.test.tsx](../../src/renderer/components/SessionConversation.test.tsx) — search the file for the
+All of the above is locked in by
+[src/renderer/components/SessionConversation.cards.test.tsx](../../src/renderer/components/SessionConversation.cards.test.tsx) and
+[src/renderer/components/SessionConversation.streaming.test.tsx](../../src/renderer/components/SessionConversation.streaming.test.tsx) — search for the
 relevant `it(...)` titles:
 
 - "renders an ExitPlanMode tool call as a PlanCard, hiding the raw tool row"
@@ -133,6 +185,7 @@ relevant `it(...)` titles:
 - "still renders the QuestionCard when AskUserQuestion retries fold into a tool-group"
 - "hides the ExitPlanMode tool row immediately, even while still running (no flicker)"
 - "renders an AskUserQuestion card immediately from command.started and hides the raw row"
+- "hides the Thinking indicator once a completed assistant answer is visible"
 - "suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)"
 - "restores Thinking once the user submits and a new user.message arrives"
 - "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"

@@ -18,7 +18,13 @@ describe("errorMessage", () => {
     expect(errorMessage(null)).toBe("null");
   });
 
-  it("stringifies objects that lack Error pedigree", () => {
-    expect(errorMessage({ message: "object literal" })).toBe("[object Object]");
+  it("returns message fields from serialized command errors", () => {
+    expect(errorMessage({ code: "SERVICE_ERROR", message: "object literal" })).toBe(
+      "object literal"
+    );
+  });
+
+  it("stringifies objects without a usable message", () => {
+    expect(errorMessage({ code: "SERVICE_ERROR" })).toBe("[object Object]");
   });
 });

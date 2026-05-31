@@ -5,7 +5,28 @@ import { tryFit } from "../lib/xtermFit.js";
 import { resolveMonoFontStack } from "../lib/fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { getXtermTheme, readActiveXtermTheme } from "../lib/xtermTheme.js";
+import { themeAppearance } from "../lib/theme.js";
+import { errorMessage } from "../../shared/error.js";
 import "@xterm/xterm/css/xterm.css";
+
+const DEFAULT_TERMINAL_COLS = 80;
+const DEFAULT_TERMINAL_ROWS = 24;
+const MIN_TERMINAL_COLS = 20;
+const MAX_TERMINAL_COLS = 400;
+const MIN_TERMINAL_ROWS = 5;
+const MAX_TERMINAL_ROWS = 200;
+
+function boundedTerminalSize(term: Terminal): { cols: number; rows: number } {
+  return {
+    cols: boundedDimension(term.cols, MIN_TERMINAL_COLS, MAX_TERMINAL_COLS, DEFAULT_TERMINAL_COLS),
+    rows: boundedDimension(term.rows, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS, DEFAULT_TERMINAL_ROWS)
+  };
+}
+
+function boundedDimension(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
 
 /**
  * One xterm instance bound to one PTY. Keyed by `instanceKey` (not workspaceId)
@@ -56,7 +77,7 @@ export function TerminalInstance({
     // "System"). MutationObserver is the smallest hammer here.
     const themeObserver = new MutationObserver(() => {
       const attr = document.documentElement.getAttribute("data-theme");
-      term.options.theme = getXtermTheme(attr === "dark" ? "dark" : "light");
+      term.options.theme = getXtermTheme(themeAppearance(attr));
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
@@ -66,17 +87,48 @@ export function TerminalInstance({
     // Initial fit before spawn so cols/rows match what the user will see.
     // ResizeObserver below retries once the container has dimensions.
     tryFit(fit);
-    const { cols, rows } = term;
+    const { cols, rows } = boundedTerminalSize(term);
 
     let disposed = false;
     let localTerminalId: string | null = null;
     let unsubscribeData: (() => void) | null = null;
     let unsubscribeExit: (() => void) | null = null;
     let inputSub: { dispose: () => void } | null = null;
+    const pendingData = new Map<string, string[]>();
+    const pendingExits = new Map<string, TerminalExitEvent>();
 
-    void window.argmax.terminal
-      .spawn({ workspaceId, cols, rows })
-      .then(({ terminalId }) => {
+    const dataSub = window.argmax.terminal.onData((event: TerminalDataEvent) => {
+      const terminalId = terminalIdRef.current;
+      if (!terminalId) {
+        const chunks = pendingData.get(event.terminalId) ?? [];
+        chunks.push(event.data);
+        pendingData.set(event.terminalId, chunks);
+        return;
+      }
+      if (event.terminalId !== terminalId) return;
+      term.write(event.data);
+    });
+    unsubscribeData = dataSub;
+
+    const exitSub = window.argmax.terminal.onExit((event: TerminalExitEvent) => {
+      const terminalId = terminalIdRef.current;
+      if (!terminalId) {
+        pendingExits.set(event.terminalId, event);
+        return;
+      }
+      if (event.terminalId !== terminalId) return;
+      writeExitLine(term, event);
+    });
+    unsubscribeExit = exitSub;
+
+    void Promise.all([dataSub.ready ?? Promise.resolve(), exitSub.ready ?? Promise.resolve()])
+      .then(() => {
+        if (disposed) return;
+        return window.argmax!.terminal.spawn({ workspaceId, cols, rows });
+      })
+      .then((result) => {
+        if (!result) return;
+        const { terminalId } = result;
         if (disposed) {
           void window.argmax?.terminal.terminate(terminalId);
           return;
@@ -84,23 +136,21 @@ export function TerminalInstance({
         localTerminalId = terminalId;
         terminalIdRef.current = terminalId;
 
-        unsubscribeData = window.argmax!.terminal.onData((event: TerminalDataEvent) => {
-          if (event.terminalId !== terminalId) return;
-          term.write(event.data);
-        });
+        for (const chunk of pendingData.get(terminalId) ?? []) {
+          term.write(chunk);
+        }
+        pendingData.clear();
 
-        unsubscribeExit = window.argmax!.terminal.onExit((event: TerminalExitEvent) => {
-          if (event.terminalId !== terminalId) return;
-          const exitLine = `\r\n\x1b[2m[process exited with code ${event.exitCode}]\x1b[0m\r\n`;
-          term.write(exitLine);
-        });
+        const pendingExit = pendingExits.get(terminalId);
+        pendingExits.clear();
+        if (pendingExit) writeExitLine(term, pendingExit);
 
         inputSub = term.onData((data) => {
           void window.argmax?.terminal.write({ terminalId, data });
         });
       })
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : "Unknown error";
+        const message = errorMessage(error) || "Unknown error";
         term.write(`\r\n\x1b[31m[failed to start terminal: ${message}]\x1b[0m\r\n`);
       });
 
@@ -111,7 +161,7 @@ export function TerminalInstance({
       if (!fitAddon || !xterm) return;
       if (!tryFit(fitAddon)) return;
       if (tid) {
-        void window.argmax?.terminal.resize({ terminalId: tid, cols: xterm.cols, rows: xterm.rows });
+        void window.argmax?.terminal.resize({ terminalId: tid, ...boundedTerminalSize(xterm) });
       }
     });
     ro.observe(container);
@@ -144,7 +194,7 @@ export function TerminalInstance({
     if (!tryFit(fit)) return;
     const tid = terminalIdRef.current;
     if (tid) {
-      void window.argmax?.terminal.resize({ terminalId: tid, cols: term.cols, rows: term.rows });
+      void window.argmax?.terminal.resize({ terminalId: tid, ...boundedTerminalSize(term) });
     }
     term.focus();
   }, [visible]);
@@ -157,4 +207,9 @@ export function TerminalInstance({
       aria-label="Integrated terminal"
     />
   );
+}
+
+function writeExitLine(term: Terminal, event: TerminalExitEvent): void {
+  const exitLine = `\r\n\x1b[2m[process exited with code ${event.exitCode}]\x1b[0m\r\n`;
+  term.write(exitLine);
 }

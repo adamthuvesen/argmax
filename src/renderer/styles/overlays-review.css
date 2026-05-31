@@ -425,11 +425,11 @@
 }
 
 .commit-dialog-additions {
-  color: #2f7a4f;
+  color: var(--diff-add-gutter-fg);
 }
 
 .commit-dialog-deletions {
-  color: #b3261e;
+  color: var(--diff-del-gutter-fg);
 }
 
 .commit-dialog-message-label {
@@ -541,8 +541,4 @@
   color: var(--text);
 }
 
-.review-mode-tabs button:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
 

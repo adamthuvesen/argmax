@@ -65,7 +65,10 @@ export function SettingsGroupIntro({ group }: { group: SettingsGroupMeta }): JSX
   return (
     <section className="settings-group-intro" aria-labelledby="settings-group-heading">
       <div>
-        <p className="settings-section-eyebrow">{group.eyebrow}</p>
+        <p className="settings-group-eyebrow">
+          <span className="settings-group-eyebrow-mark" aria-hidden="true" />
+          {group.eyebrow}
+        </p>
         <h2 id="settings-group-heading">{group.title}</h2>
         <p>{group.description}</p>
       </div>

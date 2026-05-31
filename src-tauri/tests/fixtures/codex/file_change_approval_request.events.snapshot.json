@@ -1,0 +1,13 @@
+[
+  {
+    "sessionId": "session-1",
+    "type": "approval.requested",
+    "message": "Apply file changes",
+    "payload": {
+      "command": "Apply file changes",
+      "reason": "Apply generated patch",
+      "riskLevel": "high"
+    },
+    "createdAt": "2026-05-24T12:00:00.000Z"
+  }
+]

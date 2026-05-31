@@ -68,6 +68,36 @@ describe("SessionConversation — tools & chrome", () => {
     expect(onOpenFile).toHaveBeenCalledWith("src/foo.ts", { line: null, preferIde: true });
   });
 
+  it("collapses a single MCP tool row when the turn chip is toggled", () => {
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Claude Haiku 4.5", state: "complete" }),
+      [
+        event("u1", "user.message", "check memory", "2026-05-12T15:00:00.000Z"),
+        event("mcp-start", "command.started", "mcp__engram__recall", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "toolu_mcp_recall",
+          name: "mcp__engram__recall",
+          input: { query: "Argmax project state" }
+        }),
+        event("mcp-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "toolu_mcp_recall",
+          content: "{\"status\":\"ok\",\"data\":{\"answer\":\"stored fact\"}}"
+        })
+      ],
+      { defaultToolCallsExpanded: true }
+    );
+
+    expect(screen.getByRole("button", { name: /mcp__engram__recall/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Raw input")).toBeInTheDocument();
+    expect(screen.getByText("Output")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
+    expect(screen.getByRole("button", { name: /mcp__engram__recall/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Raw input")).toBeNull();
+    expect(screen.queryByText("Output")).toBeNull();
+  });
+
   it("leaves external markdown links as anchors (does not call onOpenFile)", () => {
     const onOpenFile = vi.fn();
     renderConversation(
@@ -162,6 +192,35 @@ describe("SessionConversation — tools & chrome", () => {
       "aria-checked",
       "false"
     );
+  });
+
+  it("dismisses the session actions popover on a mousedown outside the popover", () => {
+    renderConversation(baseSession({ state: "complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+  });
+
+  it("dismisses the session actions popover when clicking inside the conversation area", () => {
+    renderConversation(baseSession({ state: "complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+
+    const repositoryHeading = screen.getByRole("heading", { level: 2 });
+    fireEvent.mouseDown(repositoryHeading);
+
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+  });
+
+  it("dismisses the session actions popover after toggling the debug log", () => {
+    renderConversation(baseSession({ state: "complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
   });
 
   it("swaps the picker contents in place when Git actions is selected", () => {

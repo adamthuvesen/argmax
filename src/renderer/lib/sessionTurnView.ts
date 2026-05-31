@@ -13,9 +13,24 @@ import type { TurnToolItem } from "./toolCalls.js";
 export type AssistantGroup = {
   id: string;
   createdAt: string;
+  // Timestamp of the group's LAST delta. A streamed answer's first delta can
+  // predate the turn's tool calls (Cursor streams the assistant message
+  // cumulatively from the turn's start), so ordering by `createdAt` would float
+  // the answer above the tools it actually follows. Sort the turn body by
+  // `lastActivityAt` instead, so a streaming group settles below earlier tools —
+  // matching how a completed message (anchored at its end) already sorts.
+  lastActivityAt: string;
   text: string;
   streaming: boolean;
+  // Claude extended-thinking content, surfaced by the normalizer as a
+  // message.delta with payload.thinking === true. Rendered as a separate
+  // collapsible "Thought" block rather than inline answer text.
+  thinking?: boolean;
 };
+
+function isThinkingDelta(event: TimelineEvent): boolean {
+  return event.type === "message.delta" && event.payload?.["thinking"] === true;
+}
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
   if (event.type !== "message.delta" || event.payload.type !== "assistant") {
@@ -47,40 +62,94 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
   return event.message;
 }
 
-/** Fold consecutive `message.delta` events into one streaming assistant group. */
+/**
+ * Append a streamed thinking fragment. `thinking_delta` fragments are disjoint,
+ * so they append normally. The final complete thinking block (from the whole
+ * assistant message) re-sends the FULL reasoning (= sum of the fragments);
+ * `startsWith` is then true and the slice is empty, so it dedups to a no-op
+ * instead of doubling the text. If increments never arrived (no partial
+ * streaming) the buffer is empty and the complete block appends in full.
+ */
+function appendThinking(current: string, incoming: string): string {
+  return incoming.startsWith(current)
+    ? current + incoming.slice(current.length)
+    : current + incoming;
+}
+
+/**
+ * Fold streamed `message.delta` events into assistant groups. Answer fragments
+ * and extended-thinking fragments are accumulated into SEPARATE growing groups
+ * (thinking renders in the collapsible Thought block); the open buffer is
+ * flushed whenever the kind flips so they never concatenate.
+ */
 export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[]): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
-  let deltaBuffer: { id: string; createdAt: string; text: string } | null = null;
+  type Buffer = { id: string; createdAt: string; lastCreatedAt: string; text: string };
+  let answerBuffer: Buffer | null = null;
+  let thinkingBuffer: Buffer | null = null;
+  const flushAnswer = (): void => {
+    if (!answerBuffer) return;
+    assistantGroups.push({
+      id: answerBuffer.id,
+      createdAt: answerBuffer.createdAt,
+      lastActivityAt: answerBuffer.lastCreatedAt,
+      text: answerBuffer.text,
+      streaming: true
+    });
+    answerBuffer = null;
+  };
+  const flushThinking = (): void => {
+    if (!thinkingBuffer) return;
+    assistantGroups.push({
+      id: thinkingBuffer.id,
+      createdAt: thinkingBuffer.createdAt,
+      lastActivityAt: thinkingBuffer.lastCreatedAt,
+      text: thinkingBuffer.text,
+      streaming: false,
+      thinking: true
+    });
+    thinkingBuffer = null;
+  };
   for (const event of assistantEvents) {
-    if (event.type === "message.delta") {
-      if (!deltaBuffer) deltaBuffer = { id: event.id, createdAt: event.createdAt, text: "" };
-      deltaBuffer.text += deltaTextForBuffer(event, deltaBuffer.text);
+    if (isThinkingDelta(event)) {
+      flushAnswer();
+      if (!thinkingBuffer) {
+        thinkingBuffer = { id: event.id, createdAt: event.createdAt, lastCreatedAt: event.createdAt, text: "" };
+      }
+      thinkingBuffer.lastCreatedAt = event.createdAt;
+      thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
       continue;
     }
-    if (deltaBuffer) {
-      assistantGroups.push({
-        id: deltaBuffer.id,
-        createdAt: deltaBuffer.createdAt,
-        text: deltaBuffer.text,
-        streaming: true
-      });
-      deltaBuffer = null;
+    if (event.type === "message.delta") {
+      flushThinking();
+      if (!answerBuffer) {
+        answerBuffer = { id: event.id, createdAt: event.createdAt, lastCreatedAt: event.createdAt, text: "" };
+      }
+      answerBuffer.lastCreatedAt = event.createdAt;
+      answerBuffer.text += deltaTextForBuffer(event, answerBuffer.text);
+      continue;
+    }
+    flushThinking();
+    flushAnswer();
+    const last = assistantGroups[assistantGroups.length - 1];
+    if (
+      last &&
+      !last.streaming &&
+      last.text === event.message &&
+      event.type === "message.completed"
+    ) {
+      continue;
     }
     assistantGroups.push({
       id: event.id,
       createdAt: event.createdAt,
+      lastActivityAt: event.createdAt,
       text: event.message,
       streaming: false
     });
   }
-  if (deltaBuffer) {
-    assistantGroups.push({
-      id: deltaBuffer.id,
-      createdAt: deltaBuffer.createdAt,
-      text: deltaBuffer.text,
-      streaming: true
-    });
-  }
+  flushThinking();
+  flushAnswer();
   return assistantGroups;
 }
 
@@ -152,28 +221,42 @@ export function buildTurnRenderState(params: {
   );
   const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionHiddenToolIds } =
     collectAskUserQuestionState(params.toolItems);
-  const hasExitPlanCard =
-    exitPlanTool !== null && parsePlan(exitPlanTool.markdown) !== null;
+  const exitPlanHasPlan = exitPlanTool !== null && parsePlan(exitPlanTool.markdown) !== null;
   const hasQuestionCard = askUserQuestionTool !== null;
   const cardCutoff = cardCutoffForTurn({
-    exitPlanCreatedAt: hasExitPlanCard && exitPlanTool ? exitPlanTool.createdAt : null,
+    exitPlanCreatedAt: exitPlanHasPlan && exitPlanTool ? exitPlanTool.createdAt : null,
     questionCreatedAt: hasQuestionCard && askUserQuestionTool ? askUserQuestionTool.createdAt : null
   });
   const visibleAssistantGroups = cardCutoff
     ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
     : assistantGroups;
   const hiddenToolIds = new Set([...exitPlanHiddenToolIds, ...askUserQuestionHiddenToolIds]);
+
+  // A plan produced in the same turn as a still-unanswered question was written
+  // before the user could answer (their answer starts the next turn) — so it's a
+  // premature plan the model emitted when its denied AskUserQuestion fell back to
+  // ExitPlanMode. Show only the question and drop the plan card; the agent re-plans
+  // with the answer next turn. The plan's tool row + raw text stay hidden anyway
+  // (via hiddenToolIds and the question-anchored cardCutoff).
+  const planPrecededByQuestion =
+    exitPlanHasPlan &&
+    hasQuestionCard &&
+    exitPlanTool !== null &&
+    askUserQuestionTool !== null &&
+    askUserQuestionTool.createdAt <= exitPlanTool.createdAt;
+  const renderedExitPlanTool = planPrecededByQuestion ? null : exitPlanTool;
+
   return {
     assistantGroups,
     visibleAssistantGroups,
     cardCutoff,
     turnAgentMode: turnAgentModeFromPrior(params.priorItem),
-    exitPlanTool,
+    exitPlanTool: renderedExitPlanTool,
     exitPlanHiddenToolIds,
     askUserQuestionTool,
     askUserQuestionHiddenToolIds,
     hiddenToolIds,
-    hasExitPlanCard,
+    hasExitPlanCard: renderedExitPlanTool !== null,
     hasQuestionCard,
     turnStartedAtMs: computeTurnStartedAtMs({
       priorItem: params.priorItem,

@@ -17,11 +17,9 @@ export type ReviewPanelMode = "changes" | "files";
 export type WorkspaceFileSaveState = "idle" | "saving" | "error";
 
 /**
- * Either a workspace (worktree-backed, full read/write) or the project's
- * main checkout (read-only, surfaced on the LaunchSurface before a session
- * exists). Both render the same Changes + Files panel; the project variant
- * disables write/stat polling because the main repo shouldn't be edited from
- * the landing page.
+ * Either a workspace (worktree-backed) or the project's main checkout
+ * (surfaced on the LaunchSurface before a session exists). Both render the
+ * same Changes + Files panel and use the same read/write editor flow.
  */
 export type ReviewSource =
   | { kind: "workspace"; workspace: WorkspaceSummary }
@@ -71,7 +69,7 @@ export interface WorkspaceFilesState {
   /** Save lifecycle (writeFile in flight / errored). */
   saveState: WorkspaceFileSaveState;
   saveError: string | null;
-  /** False when the panel is rendered for a project (main checkout, read-only). */
+  /** True when the panel is backed by a project or workspace file source. */
   canEdit: boolean;
   editFile: (content: string) => void;
   saveFile: () => Promise<void>;
@@ -108,7 +106,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     : null;
   const changedFilesKey: string | null =
     source?.kind === "workspace" ? `${source.workspace.changedFiles}:${source.workspace.state}` : null;
-  const canEdit = sourceKind === "workspace";
+  const canEdit = sourceKind !== null;
 
   const dispatch = useMemo(
     () => (sourceKind && sourceId ? reviewIpcDispatch({ kind: sourceKind, id: sourceId }) : null),

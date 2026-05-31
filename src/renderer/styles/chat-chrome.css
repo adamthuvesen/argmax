@@ -212,7 +212,7 @@
 
 .composer {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .composer-input,
@@ -225,8 +225,8 @@
 .composer-input {
   position: relative;
   gap: 8px;
-  min-height: 76px;
-  padding: 14px 14px 14px 18px;
+  min-height: 56px;
+  padding: 8px 10px 8px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel);
@@ -246,18 +246,30 @@
 .composer-input textarea {
   min-width: 0;
   flex: 1;
-  min-height: 44px;
+  min-height: 34px;
   max-height: 140px;
-  padding: 11px 12px 11px 4px;
+  padding: 0 8px 0 2px;
   color: var(--text);
   border: 0;
   outline: 0;
   background: transparent;
   font-family: inherit;
-  font-size: 15px;
-  line-height: 1.45;
+  font-size: var(--text-base);
+  line-height: 34px;
   resize: none;
+  overflow-x: hidden;
   overflow-y: hidden;
+}
+
+.composer-input textarea {
+  box-sizing: border-box;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 1.55;
+}
+
+.composer-input input {
+  line-height: 34px;
 }
 
 .composer-input input::placeholder,
@@ -324,40 +336,42 @@
 
 
 .composer-context {
-  gap: 8px;
+  gap: 4px;
   min-height: 32px;
-  padding: 0 8px;
+  /* Left padding matches the textarea's text inset above (.composer-input
+     padding-left 14px + textarea padding-left 2px) so the row reads as if it
+     extends from the prompt itself rather than from the input's outer edge. */
+  padding: 0 6px 0 14px;
   color: var(--muted);
   font-size: 12.5px;
 }
 
-.composer-context-tree {
+.composer-context-group {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  color: var(--line-strong);
-  user-select: none;
-  margin-right: 2px;
+  gap: 4px;
 }
 
-.composer-context span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* Mode toggle gets pushed to the right edge of the row, mirroring the mascot's
+   right-anchored position on the input above — creates a left/right rhythm
+   across the two stacked rows. */
+.composer-context .agent-mode-toggle {
+  margin-left: auto;
 }
 
 .composer-context-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 4px 9px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 7px;
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-strong);
   cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.2;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -368,21 +382,51 @@
 
 .composer-context-chip:hover {
   background: var(--panel-sunken);
-  color: var(--muted-strong);
+  color: var(--text);
+}
+
+.composer-context-caret {
+  margin-left: 1px;
+  opacity: 0.5;
+  transition: opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+
+.composer-context-chip:hover .composer-context-caret {
+  opacity: 0.85;
+}
+
+.composer-context-chip[aria-expanded="true"] .composer-context-caret {
+  opacity: 0.95;
+  transform: rotate(180deg);
 }
 
 .agent-mode-toggle {
-  min-width: 48px;
+  min-width: 56px;
   justify-content: center;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  font-size: 11.5px;
+  /* Same shape as the other chips so the row reads as one family; state is
+     conveyed by a subtle filled background, not a competing border. */
+  background: var(--panel-sunken);
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-mode-toggle:hover {
+  background: var(--line);
+  color: var(--text);
 }
 
 .agent-mode-toggle[aria-pressed="true"] {
-  color: var(--text);
-  border-color: var(--sage);
-  background: rgba(90, 143, 114, 0.12);
+  color: var(--sage-deep);
+  background: var(--sage-soft);
+}
+
+.agent-mode-toggle[aria-pressed="true"]:hover {
+  background: var(--sage-soft);
+  color: var(--sage-deep);
+  filter: brightness(0.97);
 }
 
 .agent-mode-toggle:disabled {
@@ -391,7 +435,12 @@
 }
 
 .composer-context svg {
-  color: var(--muted);
+  color: currentColor;
+  opacity: 0.7;
+}
+
+.composer-context-chip:hover svg {
+  opacity: 0.95;
 }
 
 .provider-toggle {
@@ -514,6 +563,124 @@
 
 .model-picker-popover .project-picker-item {
   white-space: nowrap;
+}
+
+.model-picker-popover {
+  min-width: 248px;
+  /* Taller than the generic picker so the full model list fits with little or
+     no scrolling. Opens upward in-session, so there's room above the composer. */
+  max-height: 440px;
+}
+
+/* Launcher opens downward — keep the same taller cap but stay inside the viewport. */
+.composer-context .model-picker-popover {
+  max-height: min(440px, calc(100dvh - 96px));
+}
+
+/* Two-panel model picker: a flat model list plus a right-side effort submenu
+   opened by a row's "Edit" button (replaces the old one-row-per-effort list). */
+.model-picker-flyout {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* Launcher composer opens its menus downward (mirrors the .composer-context rule above). */
+.composer-context .model-picker-flyout {
+  top: calc(100% + 6px);
+  bottom: auto;
+  align-items: flex-start;
+}
+
+/* Inside the flyout the two cards are laid out by flex, not absolutely stacked. */
+.model-picker-flyout .project-picker-popover {
+  position: static;
+  top: auto;
+  bottom: auto;
+}
+
+.model-effort-popover {
+  min-width: 160px;
+}
+
+.model-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.model-picker-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.model-picker-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-picker-effort {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+/* Fixed-width check column, always present (empty when unselected) so the
+   effort label keeps the same position whether or not the row is selected. */
+.model-picker-check {
+  flex: none;
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.model-picker-edit {
+  flex: none;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.model-picker-row:hover .model-picker-edit,
+.model-picker-row[aria-selected="true"] .model-picker-edit,
+.model-picker-edit[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.model-picker-edit:hover,
+.model-picker-edit[aria-expanded="true"] {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+/* Effort is editable only on the selected model; other rows show a grayed,
+   non-interactive Edit so it's clear you must pick the model first. */
+.model-picker-edit:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.model-picker-edit:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
+.model-effort-item {
+  justify-content: space-between;
 }
 
 .project-picker-item {
@@ -792,7 +959,14 @@
 }
 
 .composer-status {
-  margin: 8px 8px 0;
+  /* Float above the composer instead of taking a layout row — otherwise
+     showing the status shoves the whole input box upward. Anchored to the
+     form (.session-input is position: relative). */
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 2;
+  margin: 0;
   padding: 6px 10px;
   display: inline-flex;
   align-items: center;
@@ -802,6 +976,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-soft);
+  box-shadow: 0 8px 24px rgba(31, 28, 24, 0.10);
   width: max-content;
   max-width: 100%;
 }
@@ -814,64 +989,9 @@
   flex: 0 0 auto;
 }
 
-.launcher-starters {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin: 2px 8px 0;
-  padding-top: 4px;
-}
-
-.launcher-starters-eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.launcher-starters ul {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.launcher-starter-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 11px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--muted-strong);
-  background: transparent;
-  border: 1px dashed var(--line);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease);
-}
-
-.launcher-starter-chip:hover {
-  color: var(--text);
-  border-color: var(--ink);
-  border-style: solid;
-  background: var(--panel);
-}
-
-.launcher-starter-chip:active {
-  transform: translateY(1px);
-}
-
 .session-scroll {
   display: grid;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
-

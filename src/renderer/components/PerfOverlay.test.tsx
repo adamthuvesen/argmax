@@ -5,8 +5,6 @@ import { PERF_OVERLAY_KEY, PerfOverlay } from "./PerfOverlay.js";
 
 const baseDiagnostics: DiagnosticsReport = {
   appVersion: "0.0.0",
-  electronVersion: "0",
-  nodeVersion: "0",
   sqliteVersion: "0",
   databasePath: "/tmp/test.db",
   platform: "darwin",
@@ -30,7 +28,19 @@ const baseDiagnostics: DiagnosticsReport = {
     walAutocheckpoint: 1000
   },
   ipcStats: [],
-  recentLogs: []
+  recentLogs: [],
+  sqlitePragmas: {
+    journalMode: "wal",
+    foreignKeys: 1,
+    synchronous: 1,
+    busyTimeout: 5000,
+    walAutocheckpoint: 1000
+  },
+  runtime: {
+    rssBytes: 0,
+    openFileDescriptors: 0,
+    tokioTrackedTasks: 0
+  }
 };
 
 function withIpcStats(stats: IpcChannelStats[]): DiagnosticsReport {

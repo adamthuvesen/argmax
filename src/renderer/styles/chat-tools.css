@@ -174,13 +174,61 @@
   margin: 2px 6px 6px;
   padding: 8px 10px;
   border-top: 0;
-  border-left: 2px solid var(--line-strong);
+  /* 1px to match the group + thinking rails — every quiet left rail is the
+     same weight. */
+  border-left: 1px solid var(--line-strong);
   border-radius: 0;
-  background: var(--panel-soft);
 }
 
 .tool-call-row[data-status="error"] > .tool-call-detail {
   border-left-color: var(--rose);
+}
+
+.tool-call-file-preview {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.tool-call-file-preview-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.tool-call-file-preview-header svg {
+  flex: 0 0 auto;
+  color: var(--amber);
+}
+
+.tool-call-file-preview-header code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.tool-call-file-preview-content {
+  max-height: calc(18 * 1.5em);
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  background: var(--code-surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @keyframes tool-row-in {
@@ -254,6 +302,14 @@
 
 .tool-call-item[data-parallel-position]:hover::before {
   background: var(--muted);
+}
+
+/* Sub-agent work — the tool calls a spawned Task made, sit directly under its
+   "Agent …" banner. No indent or rail: the green banner above is the only
+   grouping cue needed, and the child rows align flush-left with it. */
+.tool-call-agent-children {
+  display: flex;
+  flex-direction: column;
 }
 
 .session-meta-cards {
@@ -423,23 +479,23 @@
 }
 
 .additions {
-  color: #009f45;
+  color: var(--diff-add-gutter-fg);
 }
 
 .deletions {
-  color: #e2222a;
+  color: var(--diff-del-gutter-fg);
 }
 
 .session-input {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 28px;
+  gap: 4px;
+  margin-top: 16px;
   margin-inline: var(--session-inline-padding);
-  padding: 14px 14px 10px;
+  padding: 10px 10px 8px;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 16px;
   background: var(--panel);
   box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04), 0 18px 48px rgba(31, 28, 24, 0.08);
   transition: border-color var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);
@@ -460,4 +516,3 @@
   align-items: center;
   gap: 4px;
 }
-

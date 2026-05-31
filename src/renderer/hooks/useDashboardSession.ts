@@ -96,15 +96,16 @@ export function useDashboardSession(
     // Build the args once instead of two conditional spreads — the spread
     // form allocated a fresh empty object on every undefined branch
     // (ralph E1). Equivalent payload, fewer allocations on the hot path.
-    const args: { sessionId: string; eventCursor?: number; rawOutputCursor?: number } = {
-      sessionId
+    const args = {
+      sessionId,
+      eventCursor: cursor?.eventCursor ?? null,
+      rawOutputCursor: cursor?.rawOutputCursor ?? null
     };
-    if (cursor?.eventCursor !== undefined) args.eventCursor = cursor.eventCursor;
-    if (cursor?.rawOutputCursor !== undefined) args.rawOutputCursor = cursor.rawOutputCursor;
     const data = await window.argmax.session.eventsSince(args);
+    const latest = sessionCursorsRef.current.get(sessionId);
     sessionCursorsRef.current.set(sessionId, {
-      eventCursor: data.eventCursor,
-      rawOutputCursor: data.rawOutputCursor
+      eventCursor: Math.max(latest?.eventCursor ?? 0, data.eventCursor),
+      rawOutputCursor: Math.max(latest?.rawOutputCursor ?? 0, data.rawOutputCursor)
     });
     setSnapshot((current) => ({
       ...current,
@@ -140,15 +141,15 @@ export function useDashboardSession(
           ...merged,
           events: pruneSupersededDeltas(
             mergeByCreatedAt(
-              data.events,
               current.events.filter((event) => liveSessionIds.has(event.sessionId)),
+              data.events,
               500,
               "desc"
             )
           ),
           rawOutputs: mergeByCreatedAt(
-            data.rawOutputs,
             current.rawOutputs.filter((output) => liveSessionIds.has(output.sessionId)),
+            data.rawOutputs,
             100,
             "desc"
           )
@@ -328,6 +329,99 @@ export function useDashboardSession(
     setSelectedProjectIdState(snapshot.projects[0]?.id ?? null);
   }, [snapshot.projects, selectedProjectId, selectedWorkspace]);
 
+  // Live-streaming safety net (macOS/Tauri). The `dashboard:delta` push is the
+  // primary live-update path and is now emitted on the main thread so the
+  // event loop delivers it promptly (see agents/docs/runtime.md "Event
+  // delivery"). But the macOS event-loop wake-up for background work is
+  // historically flaky (tao#625 / winit#219), so as a belt-and-suspenders we
+  // poll the selected session on a short interval *while it is actively
+  // running*. Pulls go through the IPC invoke path, which stays reliable
+  // mid-turn (a push can sit undelivered on an idle loop until something wakes
+  // it). This is intentionally scoped to running sessions: idle sessions never
+  // poll, so the steady state remains delta-driven (no dashboard-wide poll).
+  //
+  // Each tick pulls only the cheap event tail (`eventsSince`) so streamed text
+  // keeps flowing, deduped by `mergeByCreatedAt`. The heavier session/workspace
+  // STATE pull (`workspace:status`) reconciles the turn-end
+  // `state: running → complete` transition — the *last* emit of the turn, the
+  // push most likely to lag and leave the header stuck on "Working". It fires
+  // ONCE, when the turn's terminal event (`session.completed`/`error`) has
+  // landed via the event poll but the state-change push hasn't. Both IPC calls
+  // are synchronous Rust commands sharing one DB mutex with the provider's
+  // event ingestion, so doing the status pull every tick (and letting ticks
+  // overlap) starved a busy turn — hence: cheap tail every tick, one status
+  // reconcile at the end, and an in-flight guard so ticks never pile up.
+  useEffect(() => {
+    if (!window.argmax || selectedSession?.state !== "running" || !selectedSessionId) {
+      return;
+    }
+    const runningSessionId = selectedSessionId;
+    const workspaceIds = selectedWorkspaceId ? [selectedWorkspaceId] : null;
+    let cancelled = false;
+    let inFlight = false;
+    let stateReconciled = false;
+    // A multi-turn session keeps the `session.completed`/`error` events from
+    // EARLIER turns in the snapshot. Without scoping, this turn's reconcile
+    // would latch on a prior turn's terminal event the moment the turn starts,
+    // fire once while state is still `running`, set `stateReconciled = true`,
+    // and then never re-fire for the real end of THIS turn — leaving the header
+    // stuck on "Working" (seen with Cursor, whose state transition relies most
+    // on this reconcile). Snapshot the terminal-event ids that already exist so
+    // only a NEW one — produced by the current turn — counts.
+    const priorTerminalEventIds = new Set(
+      snapshotRef.current.events
+        .filter(
+          (event) =>
+            event.sessionId === runningSessionId &&
+            (event.type === "session.completed" || event.type === "error")
+        )
+        .map((event) => event.id)
+    );
+    const turnHasTerminalEvent = (): boolean =>
+      snapshotRef.current.events.some(
+        (event) =>
+          event.sessionId === runningSessionId &&
+          (event.type === "session.completed" || event.type === "error") &&
+          !priorTerminalEventIds.has(event.id)
+      );
+    const tick = async (): Promise<void> => {
+      if (inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        await loadSessionEvents(runningSessionId);
+        if (cancelled || !window.argmax || stateReconciled || !turnHasTerminalEvent()) {
+          return;
+        }
+        // The turn finished (terminal event pulled) but the state push may have
+        // lagged — reconcile session/workspace state once via the reliable pull.
+        stateReconciled = true;
+        const status = await window.argmax.workspaces.status({ workspaceIds });
+        if (cancelled) {
+          return;
+        }
+        setSnapshot((current) =>
+          mergeDashboardDelta(current, {
+            workspaces: status.workspaces,
+            sessions: status.sessions,
+            checks: status.checks,
+            checkpoints: status.checkpoints
+          })
+        );
+      } finally {
+        inFlight = false;
+      }
+    };
+    const interval = window.setInterval(() => {
+      void tick();
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedSession?.state, selectedSessionId, selectedWorkspaceId, loadSessionEvents]);
+
   // Per-session backfill is owned by SessionPane's mount-effect (one call
   // per visible pane). The hook used to also fire loadSessionEvents on
   // every selection change; with the multi-pane grid that doubled the IPC
@@ -389,10 +483,15 @@ export function useDashboardSession(
         }
         resolveApprovalTokens.current.delete(approvalId);
         if (previousApproval) {
+          // Roll back only the optimistically-changed fields against the CURRENT
+          // row, so a concurrent delta that touched other fields mid-resolution
+          // isn't clobbered by the pre-optimistic snapshot.
           setSnapshot((current) => ({
             ...current,
             approvals: current.approvals.map((approval) =>
-              approval.id === approvalId ? previousApproval : approval
+              approval.id === approvalId
+                ? { ...approval, status: previousApproval.status, resolvedAt: previousApproval.resolvedAt }
+                : approval
             )
           }));
         }

@@ -434,7 +434,6 @@ describe("Sidebar — workspaces without sessions", () => {
           completedAt: null,
           lastActivityAt: "2026-05-12T15:54:00.000Z",
           prompt: "Build the dashboard",
-          preferred: false
         }
       ]
     };

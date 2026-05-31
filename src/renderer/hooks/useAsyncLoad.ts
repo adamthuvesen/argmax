@@ -4,7 +4,7 @@ import { errorMessage } from "../../shared/error.js";
 interface AsyncLoadOptions {
   /**
    * Error string surfaced when `window.argmax` is missing — common when the
-   * Settings panel is rendered outside the Electron host (vitest, storybook).
+   * Settings panel is rendered outside the Tauri host (vitest, storybook).
    * Bypasses the fetcher so jsdom tests don't have to mock the IPC layer.
    */
   missingApiMessage?: string;

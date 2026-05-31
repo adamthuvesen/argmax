@@ -1,6 +1,12 @@
-import { ChevronDown, Cpu } from "lucide-react";
+import { Check, ChevronDown, Cpu } from "lucide-react";
 import { Fragment, useRef, useState, type JSX } from "react";
-import { PROVIDER_MODELS, type ProviderModelSelection } from "../../shared/providerModels.js";
+import {
+  DEFAULT_REASONING_EFFORT,
+  PROVIDER_MODELS,
+  REASONING_EFFORTS,
+  type ProviderModelSelection,
+  type ReasoningEffort
+} from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { allModelOptions, effortLabel, modelValue, optionKey, type ModelPickerSelection } from "../lib/models.js";
@@ -11,11 +17,16 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   cursor: "Cursor"
 };
 
+/** Minimum shape the picker needs from each selectable value. */
+type PickerValue = { label: string; modelId: string; reasoningEffort?: ReasoningEffort };
+
 type ChipModelOption<T> = {
   key: string;
+  /** Base model label, without any effort suffix. */
   label: string;
   value: T;
   group?: string;
+  supportsReasoningEffort: boolean;
 };
 
 export function ModelSelector({
@@ -29,26 +40,24 @@ export function ModelSelector({
   provider: ProviderId;
   value: ProviderModelSelection;
 }): JSX.Element {
-  const selectedLabel = value.reasoningEffort
-    ? `${value.label} · ${effortLabel(value.reasoningEffort)}`
-    : value.label;
-  const options = PROVIDER_MODELS[provider].map((model) => ({
+  const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map((model) => ({
     key: optionKey(model),
-    label: model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label,
+    label: model.label,
+    supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
     value: {
       label: model.label,
       modelId: model.modelId,
-      ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+      ...(model.supportsReasoningEffort ? { reasoningEffort: DEFAULT_REASONING_EFFORT } : {})
     }
   }));
 
   return (
     <ChipModelPicker
       ariaLabel={ariaLabel}
-      isSelected={(model) => model.modelId === value.modelId && model.reasoningEffort === value.reasoningEffort}
+      isSelected={(model) => model.modelId === value.modelId}
       onChange={onChange}
       options={options}
-      selectedLabel={selectedLabel}
+      value={value}
     />
   );
 }
@@ -66,41 +75,40 @@ export function LaunchModelSelector({
   open?: boolean;
   value: ModelPickerSelection;
 }): JSX.Element {
-  const selectedLabel = value.reasoningEffort
-    ? `${value.label} · ${effortLabel(value.reasoningEffort)}`
-    : value.label;
-  const options = allModelOptions.map((model) => ({
+  const options: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map((model) => ({
     key: modelValue(model),
-    label: model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label,
-    value: model,
-    group: PROVIDER_GROUP_LABEL[model.provider]
+    label: model.label,
+    group: PROVIDER_GROUP_LABEL[model.provider],
+    supportsReasoningEffort: model.supportsReasoningEffort,
+    value: {
+      provider: model.provider,
+      label: model.label,
+      modelId: model.modelId,
+      ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+    }
   }));
 
   return (
     <ChipModelPicker
       ariaLabel={ariaLabel}
-      isSelected={(model) =>
-        model.provider === value.provider &&
-        model.modelId === value.modelId &&
-        model.reasoningEffort === value.reasoningEffort
-      }
+      isSelected={(model) => model.provider === value.provider && model.modelId === value.modelId}
       onChange={onChange}
       onOpenChange={onOpenChange}
       open={open}
       options={options}
-      selectedLabel={selectedLabel}
+      value={value}
     />
   );
 }
 
-function ChipModelPicker<T>({
+function ChipModelPicker<T extends PickerValue>({
   ariaLabel,
   isSelected,
   onChange,
   onOpenChange,
   open: controlledOpen,
   options,
-  selectedLabel
+  value
 }: {
   ariaLabel: string;
   isSelected: (value: T) => boolean;
@@ -108,22 +116,62 @@ function ChipModelPicker<T>({
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
   options: Array<ChipModelOption<T>>;
-  selectedLabel: string;
+  value: T;
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
+  const [effortMenuFor, setEffortMenuFor] = useState<string | null>(null);
   const open = controlledOpen ?? internalOpen;
   const setOpen = (next: boolean | ((open: boolean) => boolean)): void => {
-    const value = typeof next === "function" ? next(open) : next;
+    const nextValue = typeof next === "function" ? next(open) : next;
     if (controlledOpen === undefined) {
-      setInternalOpen(value);
+      setInternalOpen(nextValue);
     }
-    onOpenChange?.(value);
+    if (!nextValue) setEffortMenuFor(null);
+    onOpenChange?.(nextValue);
   };
   const anchorRef = useRef<HTMLDivElement | null>(null);
   useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
 
+  const selectedOption = options.find((option) => isSelected(option.value));
+  // Show the chosen effort whenever the selection carries one. Only suppress it
+  // when we positively know the selected model is fast/no-effort (e.g. an old
+  // session that stored an effort for Haiku before effort was removed there).
+  const selectedShowsEffort =
+    value.reasoningEffort != null && (selectedOption ? selectedOption.supportsReasoningEffort : true);
+  const selectedLabel =
+    selectedShowsEffort && value.reasoningEffort
+      ? `${value.label} · ${effortLabel(value.reasoningEffort)}`
+      : value.label;
+
+  // Effort currently in effect for a given row: the live selection for the
+  // selected model, otherwise the row's seeded default.
+  const effortForOption = (option: ChipModelOption<T>): ReasoningEffort =>
+    (isSelected(option.value) ? value.reasoningEffort : option.value.reasoningEffort) ?? DEFAULT_REASONING_EFFORT;
+
+  const selectModel = (option: ChipModelOption<T>): void => {
+    // Clicking the already-selected model keeps its current effort; a new
+    // effort-capable model uses the row's seeded default; fast models carry none.
+    const next =
+      option.supportsReasoningEffort && isSelected(option.value) && value.reasoningEffort
+        ? { ...option.value, reasoningEffort: value.reasoningEffort }
+        : option.value;
+    onChange(next);
+    setOpen(false);
+  };
+
+  const selectEffort = (option: ChipModelOption<T>, reasoningEffort: ReasoningEffort): void => {
+    onChange({ ...option.value, reasoningEffort });
+    setOpen(false);
+  };
+
+  // Effort can only be edited on the currently selected model — never on a
+  // different row while another model is active.
+  const editingOption = effortMenuFor
+    ? options.find((option) => option.key === effortMenuFor && isSelected(option.value)) ?? null
+    : null;
+
   return (
-    <div className="project-picker-anchor" ref={anchorRef}>
+    <div className="project-picker-anchor model-picker-anchor" ref={anchorRef}>
       <button
         type="button"
         className="composer-context-chip"
@@ -137,43 +185,88 @@ function ChipModelPicker<T>({
         <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
       </button>
       {open && (
-        <ul
-          className="project-picker-popover model-picker-popover"
-          role="listbox"
-          aria-label={ariaLabel}
+        <div
+          className="model-picker-flyout"
           onClick={(event) => {
-            if (!(event.target instanceof Element && event.target.closest("button.project-picker-item"))) {
+            // Clicking inert popover chrome (group labels, padding) dismisses,
+            // mirroring the other composer pickers. Buttons handle their own
+            // clicks — model/effort rows close themselves, Edit stays open.
+            if (event.target instanceof Element && !event.target.closest("button")) {
               setOpen(false);
             }
           }}
         >
-          {options.map((option, index) => {
-            const selected = isSelected(option.value);
-            const previousGroup = index > 0 ? options[index - 1]?.group : null;
-            return (
-              <Fragment key={option.key}>
-                {option.group && option.group !== previousGroup ? (
-                  <li className="project-picker-group-label" role="presentation">
-                    {option.group}
+          <ul className="project-picker-popover model-picker-popover" role="listbox" aria-label={ariaLabel}>
+            {options.map((option, index) => {
+              const selected = isSelected(option.value);
+              const previousGroup = index > 0 ? options[index - 1]?.group : null;
+              const editing = option.key === effortMenuFor;
+              return (
+                <Fragment key={option.key}>
+                  {option.group && option.group !== previousGroup ? (
+                    <li className="project-picker-group-label" role="presentation">
+                      {option.group}
+                    </li>
+                  ) : null}
+                  <li role="option" aria-selected={selected} className="model-picker-row">
+                    <button
+                      type="button"
+                      className="project-picker-item model-picker-item"
+                      aria-pressed={selected}
+                      onClick={() => selectModel(option)}
+                    >
+                      <span className="model-picker-name">{option.label}</span>
+                      {option.supportsReasoningEffort ? (
+                        <span className="model-picker-effort">{effortLabel(effortForOption(option))}</span>
+                      ) : null}
+                      {/* Always reserve the check column so the selected row's
+                          effort label stays aligned with the others. */}
+                      <span className="model-picker-check" aria-hidden="true">
+                        {selected ? <Check size={14} /> : null}
+                      </span>
+                    </button>
+                    {option.supportsReasoningEffort ? (
+                      <button
+                        type="button"
+                        className="model-picker-edit"
+                        aria-label={`Edit effort for ${option.label}`}
+                        aria-expanded={editing}
+                        disabled={!selected}
+                        title={selected ? "Change reasoning effort" : "Select this model to change its effort"}
+                        onClick={() => setEffortMenuFor((current) => (current === option.key ? null : option.key))}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                   </li>
-                ) : null}
-                <li role="option" aria-selected={selected}>
-                  <button
-                    type="button"
-                    className="project-picker-item"
-                    aria-pressed={selected}
-                    onClick={() => {
-                      onChange(option.value);
-                      setOpen(false);
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                </li>
-              </Fragment>
-            );
-          })}
-        </ul>
+                </Fragment>
+              );
+            })}
+          </ul>
+          {editingOption ? (
+            <ul className="project-picker-popover model-effort-popover" role="listbox" aria-label="Reasoning effort">
+              <li className="project-picker-group-label" role="presentation">
+                Effort
+              </li>
+              {REASONING_EFFORTS.map((reasoningEffort) => {
+                const active = effortForOption(editingOption) === reasoningEffort;
+                return (
+                  <li key={reasoningEffort} role="option" aria-selected={active}>
+                    <button
+                      type="button"
+                      className="project-picker-item model-effort-item"
+                      aria-pressed={active}
+                      onClick={() => selectEffort(editingOption, reasoningEffort)}
+                    >
+                      <span>{effortLabel(reasoningEffort)}</span>
+                      {active ? <Check size={14} aria-hidden="true" className="model-picker-check" /> : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </div>
       )}
     </div>
   );
@@ -192,10 +285,7 @@ export function CombinedModelSelector({
 }): JSX.Element {
   const fallbackKey = allModelOptions[0] ? modelValue(allModelOptions[0]) : "";
   const matched = allModelOptions.find(
-    (model) =>
-      model.provider === value.provider &&
-      model.modelId === value.modelId &&
-      model.reasoningEffort === value.reasoningEffort
+    (model) => model.provider === value.provider && model.modelId === value.modelId
   );
   const selectedValue = matched ? modelValue(matched) : fallbackKey;
 
@@ -208,31 +298,24 @@ export function CombinedModelSelector({
         onChange={(event) => {
           const model = allModelOptions.find((option) => modelValue(option) === event.target.value);
           if (model) {
-            onChange(model);
+            onChange({
+              provider: model.provider,
+              label: model.label,
+              modelId: model.modelId,
+              ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
+            });
           }
         }}
       >
-        <optgroup label="Codex">
-          {PROVIDER_MODELS.codex.map((model) => (
-            <option key={optionKey(model)} value={modelValue({ provider: "codex", ...model })}>
-              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
-            </option>
-          ))}
-        </optgroup>
-        <optgroup label="Claude">
-          {PROVIDER_MODELS.claude.map((model) => (
-            <option key={optionKey(model)} value={modelValue({ provider: "claude", ...model })}>
-              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
-            </option>
-          ))}
-        </optgroup>
-        <optgroup label="Cursor">
-          {PROVIDER_MODELS.cursor.map((model) => (
-            <option key={optionKey(model)} value={modelValue({ provider: "cursor", ...model })}>
-              {model.reasoningEffort ? `${model.label} · ${effortLabel(model.reasoningEffort)}` : model.label}
-            </option>
-          ))}
-        </optgroup>
+        {(Object.keys(PROVIDER_GROUP_LABEL) as ProviderId[]).map((provider) => (
+          <optgroup key={provider} label={PROVIDER_GROUP_LABEL[provider]}>
+            {PROVIDER_MODELS[provider].map((model) => (
+              <option key={optionKey(model)} value={modelValue({ provider, modelId: model.modelId })}>
+                {model.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
       </select>
     </span>
   );

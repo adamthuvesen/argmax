@@ -1,0 +1,14 @@
+[
+  {
+    "sessionId": "session-1",
+    "type": "approval.requested",
+    "message": "rm -rf /tmp/build",
+    "payload": {
+      "command": "rm -rf /tmp/build",
+      "cwd": "/Users/me/project",
+      "reason": "Clean build artifacts",
+      "riskLevel": "high"
+    },
+    "createdAt": "2026-05-24T12:00:00.000Z"
+  }
+]

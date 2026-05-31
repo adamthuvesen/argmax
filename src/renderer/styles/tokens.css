@@ -8,6 +8,10 @@
   --panel: #ffffff;
   --panel-soft: #fafafa;
   --panel-sunken: #eef0f1;
+  /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
+     mode so output blocks read airier; dark/purple reuse their dark sunken
+     surface (overridden in those theme blocks). */
+  --code-surface: #f4f6f7;
 
   --line: #e3e6e8;
   --line-soft: #eceeef;
@@ -132,6 +136,7 @@
   --panel: #1a1a17;
   --panel-soft: #1f1f1c;
   --panel-sunken: #0a0a09;
+  --code-surface: var(--panel-sunken);
 
   --line: #2a2a25;
   --line-soft: #1f1f1b;
@@ -197,6 +202,99 @@
   --row-hover: rgba(255, 250, 235, 0.06);
 }
 
+/* Purple theme — "Nebula".
+   A dark-family theme: deep amethyst canvas, lavender-white ink, a warm gold
+   spark reserved for the primary action, and a faint aurora bloom behind the
+   workspace. Status colors keep their meaning, retuned to glow on violet:
+   mint = online/running, gold = waiting, coral = error. Shadows carry a soft
+   violet outer bloom on top of dark's inset-highlight + drop. */
+:root[data-theme="purple"] {
+  color-scheme: dark;
+
+  /* Warm royal purple, not near-black or indigo — surfaces sit at a clearly-
+     visible true violet (red lifted, blue dominance trimmed so it reads purple,
+     not blue), matched to the reference's lit canvas. Usual bg < sidebar <
+     panel elevation; lighter base, so lines/muted are lifted to keep contrast. */
+  --bg: #5c4187;
+  --sidebar: #62478d;
+  --panel: #6d509b;
+  --panel-soft: #785aaa;
+  --panel-sunken: #46306c;
+  --code-surface: var(--panel-sunken);
+
+  --line: #7d62ac;
+  --line-soft: #674c95;
+  --line-strong: #9078c5;
+
+  --text: #f5f1fd;
+  --text-soft: #e0d8f5;
+  --muted: #c0b4e2;
+  --muted-strong: #d3caf0;
+
+  /* Purple is a purple + gold theme (like the reference) — no green accent.
+     "Running / online / success / approve" reads as a luminous golden YELLOW
+     (the sage slot); "waiting" stays a warmer amber/orange so the two remain
+     distinct hues. Diff add/delete keep conventional green/red below — that's
+     code-review signal, not chrome. */
+  --sage: #efd152;
+  --sage-soft: rgba(239, 209, 82, 0.18);
+  --sage-deep: #d8b23c;
+  --amber: #f0a63c;
+  --amber-soft: rgba(240, 166, 60, 0.18);
+  --rose: #fb7199;
+  --rose-soft: rgba(251, 113, 153, 0.18);
+
+  /* --ink stays light (lavender-white) so every var(--ink) fill/border/text
+     usage keeps its contrast, exactly like dark. The violet identity lives in
+     rings/selection/glow/grain; the gold hero lives in the polish block below. */
+  --ink: #f5f1fd;
+  --ink-soft: #e7e0f8;
+  --bubble-on-ink: #5c4187;
+  --user-bubble-bg: #6b54a4;
+  --user-bubble-fg: #f5f1fd;
+
+  /* Inset top-highlight + deep drop + a soft violet bloom — panels float in the
+     nebula. The bloom grows with elevation (shadow-2 → shadow-3). */
+  --shadow-1: inset 0 1px 0 rgba(210, 196, 255, 0.07), 0 1px 2px rgba(18, 9, 40, 0.5);
+  --shadow-2: inset 0 1px 0 rgba(210, 196, 255, 0.08), 0 8px 24px rgba(18, 9, 40, 0.5), 0 0 40px -16px rgba(168, 138, 255, 0.34);
+  --shadow-3: inset 0 1px 0 rgba(210, 196, 255, 0.09), 0 24px 60px rgba(18, 9, 40, 0.58), 0 0 80px -24px rgba(168, 138, 255, 0.4);
+
+  --ring: 0 0 0 2px rgba(170, 140, 255, 0.6);
+
+  /* Violet-tinted film grain layered over radial aurora blooms: a wide lavender
+     glow at top-center, an orchid glow top-right, and a faint warm spark
+     bottom-left (echoes the reference's peachy corner). Grain tiles at 220px;
+     the gradients fill the canvas (their auto size covers 100%). */
+  --grain-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.80  0 0 0 0 0.73  0 0 0 0 0.98  0 0 0 0.018 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(178, 150, 255, 0.22), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 88% 6%, rgba(224, 165, 255, 0.14), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 6% 94%, rgba(245, 200, 160, 0.07), transparent 55%);
+
+  --overlay-soft: rgba(214, 200, 255, 0.06);
+  --overlay-med: rgba(214, 200, 255, 0.1);
+  --overlay-strong: rgba(214, 200, 255, 0.16);
+  --modal-backdrop: rgba(20, 10, 42, 0.5);
+  --modal-backdrop-gradient: linear-gradient(180deg, rgba(20, 10, 42, 0.22), rgba(20, 10, 42, 0.56));
+  --selection-bg: rgba(170, 140, 255, 0.34);
+  --selection-bg-on-ink: rgba(170, 140, 255, 0.4);
+
+  /* Mint/coral diff washes so code stays the focal point; gutters a touch
+     stronger so line numbers still register against violet. */
+  --diff-add-bg: rgba(95, 217, 164, 0.15);
+  --diff-add-gutter-bg: rgba(95, 217, 164, 0.26);
+  --diff-add-gutter-fg: #8af0c4;
+  --diff-del-bg: rgba(251, 113, 153, 0.15);
+  --diff-del-gutter-bg: rgba(251, 113, 153, 0.26);
+  --diff-del-gutter-fg: #ff93a8;
+
+  /* No paper-mimic spotlights in the dark — same call as the dark theme. */
+  --paper-highlight-strong: transparent;
+  --paper-highlight-soft: transparent;
+
+  --row-hover: rgba(214, 200, 255, 0.1);
+}
+
 /* Smooth crossfade when toggling themes. The .theme-transition class is added
    to <html> for one frame around a theme change (see lib/theme.ts) so the
    ramp only runs intentionally, not on every property change. */
@@ -233,6 +331,45 @@
 :root[data-theme="dark"] ::selection {
   background: color-mix(in oklab, var(--sage) 35%, transparent);
   color: var(--text);
+}
+
+/* Purple polish — the "Nebula" hero moment. The primary submit picks up the
+   warm gold spark from the reference and blooms gold on hover. This theme is
+   purple + gold (no green), so success/approve accents ride the gold --sage
+   slot. Everything else rides the violet glow already baked into the tokens
+   above. Reuses the same primary-action selectors as dark. */
+:root[data-theme="purple"] .composer-submit:not(:disabled),
+:root[data-theme="purple"] .question-card-submit:not(:disabled) {
+  background: linear-gradient(180deg, #f7cd6e, #f0b53f);
+  color: #2a1e05;
+  border-color: transparent;
+}
+
+:root[data-theme="purple"] .composer-submit:not(:disabled):hover,
+:root[data-theme="purple"] .question-card-submit:not(:disabled):hover {
+  box-shadow: var(--shadow-1), 0 0 28px -6px rgba(245, 194, 90, 0.6);
+}
+
+/* Purple status colors — a few component styles hard-code muddy reds/greens
+   (check pass/fail, knowledge verify/delete) that bypass the token system and
+   turn unreadable on violet. Re-point them at the theme's legible rose/gold
+   here; light/dark keep their existing hard-coded values untouched. */
+:root[data-theme="purple"] .checks-row[data-status="passed"] .checks-row-status {
+  color: var(--sage);
+}
+
+:root[data-theme="purple"] .checks-row[data-status="failed"] .checks-row-status {
+  color: var(--rose);
+}
+
+:root[data-theme="purple"] .project-knowledge-delete:hover {
+  color: var(--rose);
+  border-color: var(--rose);
+}
+
+:root[data-theme="purple"] .project-knowledge-verify[aria-pressed="true"] {
+  background: var(--sage-deep);
+  border-color: var(--sage-deep);
 }
 
 /* Honor the OS reduced-motion preference globally. Components that explicitly
@@ -340,9 +477,14 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-  border-radius: inherit;
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+[contenteditable]:focus-visible {
+  box-shadow: none;
 }
 
 .sr-only {

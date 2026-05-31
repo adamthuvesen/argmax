@@ -84,11 +84,11 @@ describe("parseFileQuery", () => {
 
 describe("buildEntries", () => {
   it("derives folder prefixes from file paths", () => {
-    const entries = buildEntries(["src/main/main.ts", "src/renderer/App.tsx", "package.json"]);
+    const entries = buildEntries(["src-tauri/main.ts", "src/renderer/App.tsx", "package.json"]);
     const dirs = entries.filter((e) => e.kind === "dir").map((e) => e.path);
     const files = entries.filter((e) => e.kind === "file").map((e) => e.path);
-    expect(files).toEqual(["src/main/main.ts", "src/renderer/App.tsx", "package.json"]);
-    expect(dirs).toEqual(["src", "src/main", "src/renderer"]);
+    expect(files).toEqual(["src-tauri/main.ts", "src/renderer/App.tsx", "package.json"]);
+    expect(dirs).toEqual(["src", "src-tauri", "src/renderer"]);
   });
 
   it("returns no folders for top-level files only", () => {
@@ -158,7 +158,7 @@ describe("useFileAutocomplete", () => {
 
   it("opens the popover with files and derived folders when the user types `@`", async () => {
     const entries: WorkspaceFileEntry[] = [
-      { path: "src/main/main.ts" },
+      { path: "src-tauri/main.ts" },
       { path: "src/renderer/App.tsx" }
     ];
     listFiles.mockResolvedValue(entries);
@@ -172,7 +172,7 @@ describe("useFileAutocomplete", () => {
 
     await waitFor(() => expect(listFiles).toHaveBeenCalledWith("workspace-1"));
     await waitFor(() => expect(screen.getByTestId("popover-open").textContent).toBe("yes"));
-    // 2 files + 3 derived folders (src, src/main, src/renderer)
+    // 2 files + 3 derived folders (src, src-tauri, src/renderer)
     expect(screen.getByTestId("filtered-count").textContent).toBe("5");
     expect(screen.queryAllByTestId("entry-file")).toHaveLength(2);
     expect(screen.queryAllByTestId("entry-dir")).toHaveLength(3);
@@ -223,7 +223,7 @@ describe("useFileAutocomplete", () => {
 
   it("filters entries by the query after `@`", async () => {
     listFiles.mockResolvedValue([
-      { path: "src/main/main.ts" },
+      { path: "src-tauri/src/main.ts" },
       { path: "src/renderer/App.tsx" },
       { path: "package.json" }
     ]);
@@ -238,13 +238,13 @@ describe("useFileAutocomplete", () => {
     await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
     await waitFor(() => {
       const filePaths = screen.queryAllByTestId("entry-file").map((node) => node.textContent);
-      expect(filePaths).toContain("src/main/main.ts");
+      expect(filePaths).toContain("src-tauri/src/main.ts");
       expect(filePaths).not.toContain("package.json");
     });
   });
 
   it("inserts `@path ` (file, with trailing space) when Enter is pressed", async () => {
-    listFiles.mockResolvedValue([{ path: "src/main/main.ts" }, { path: "src/renderer/App.tsx" }]);
+    listFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "src/renderer/App.tsx" }]);
 
     render(<Harness initialInput="hello @main.ts" />);
 
@@ -260,21 +260,21 @@ describe("useFileAutocomplete", () => {
       fireEvent.keyDown(probe, { key: "Enter" });
     });
 
-    expect(probe.value).toBe("hello @src/main/main.ts ");
+    expect(probe.value).toBe("hello @src-tauri/src/main.ts ");
   });
 
   it("inserts a folder with trailing slash + space when Enter is pressed", async () => {
     listFiles.mockResolvedValue([
-      { path: "src/main/main.ts" },
-      { path: "src/main/ipc.ts" },
+      { path: "src-tauri/main.ts" },
+      { path: "src-tauri/ipc.ts" },
       { path: "package.json" }
     ]);
 
-    render(<Harness initialInput="poke @src/main" />);
+    render(<Harness initialInput="poke @src-tauri" />);
 
     const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
     act(() => {
-      setCaret(probe, 14);
+      setCaret(probe, 15);
     });
 
     await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
@@ -286,7 +286,7 @@ describe("useFileAutocomplete", () => {
       const items = screen.queryAllByTestId(/^entry-/);
       return items.findIndex(
         (node) =>
-          node.getAttribute("data-testid") === "entry-dir" && node.textContent === "src/main"
+          node.getAttribute("data-testid") === "entry-dir" && node.textContent === "src-tauri"
       );
     };
     let target = indexOfDir();
@@ -302,11 +302,11 @@ describe("useFileAutocomplete", () => {
       fireEvent.keyDown(probe, { key: "Enter" });
     });
 
-    expect(probe.value).toBe("poke @src/main/ ");
+    expect(probe.value).toBe("poke @src-tauri/ ");
   });
 
   it("does not open for `foo@bar.com` (email shape)", async () => {
-    listFiles.mockResolvedValue([{ path: "src/main/main.ts" }]);
+    listFiles.mockResolvedValue([{ path: "src-tauri/main.ts" }]);
 
     render(<Harness initialInput="foo@bar.com" />);
 
@@ -322,7 +322,7 @@ describe("useFileAutocomplete", () => {
   });
 
   it("closes on Escape and stays closed while typing in the same token", async () => {
-    listFiles.mockResolvedValue([{ path: "src/main/main.ts" }, { path: "src/renderer/App.tsx" }]);
+    listFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "src/renderer/App.tsx" }]);
 
     render(<Harness initialInput="@" />);
 

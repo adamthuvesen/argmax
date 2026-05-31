@@ -41,6 +41,19 @@ describe("App settings", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
+  it("toggles settings with Cmd+, including from the focused launcher prompt", async () => {
+    render(<App />);
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: ",", metaKey: true });
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
+    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+  });
+
   it("settings Default model label is wired to the select via htmlFor/id", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -52,6 +65,20 @@ describe("App settings", () => {
     const select = screen.getByLabelText("Default model");
     expect(select.tagName).toBe("SELECT");
   });
+
+  it("settings Thinking blocks default persists to localStorage", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings("Agents");
+
+    const group = await screen.findByRole("radiogroup", { name: "Thinking blocks" });
+    fireEvent.click(within(group).getByRole("radio", { name: "Show expanded" }));
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.thinking.expanded")).toBe("true")
+    );
+  });
+
   it("hides sidebar session tokens by default and shows them when enabled in Settings", async () => {
     sessionCostSummary.mockResolvedValue({
       sessionId: "session-1",
@@ -89,6 +116,22 @@ describe("App settings", () => {
     const cell = await screen.findByLabelText(/Tokens: 16\.8k/);
     expect(cell).toHaveTextContent("16.8k");
     expect(cell.getAttribute("title")).toContain("50k cached");
+  });
+
+  it("toggles the launcher globe preference and persists it to localStorage", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Animated globe on the launcher" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.launcher.globe.visible")).toBe("true")
+    );
   });
 
   it("renders the CostPanel rows and totals on session detail", async () => {
@@ -164,7 +207,7 @@ describe("App settings", () => {
     expect(screen.queryByRole("region", { name: "Session cost summary" })).not.toBeInTheDocument();
   });
 
-  it("disables the Open in IDE button when the workspace has no path yet", async () => {
+  it("disables the IDE chooser when the workspace has no path yet", async () => {
     listDetectedIdes.mockResolvedValue([
       { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true }
     ]);
@@ -177,26 +220,12 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    const ideButton = await screen.findByRole("button", { name: "Open in IDE" });
+    const ideButton = await screen.findByRole("button", { name: "Choose IDE" });
     expect(ideButton).toBeDisabled();
     expect(ideButton).toHaveAttribute("title", "Worktree not ready yet");
   });
 
-  it("opens the default IDE when one is configured", async () => {
-    window.localStorage.setItem("argmax.defaultIde", "vscode");
-
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    const ideButton = await screen.findByRole("button", { name: "Open in IDE" });
-    await waitFor(() => expect(ideButton).not.toBeDisabled());
-    fireEvent.click(ideButton);
-
-    await waitFor(() => expect(openInIde).toHaveBeenCalledTimes(1));
-    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "vscode" });
-  });
-
-  it("auto-selects the only detected GUI IDE when no default is stored", async () => {
+  it("auto-selects the only detected GUI IDE as the menu default when none is stored", async () => {
     listDetectedIdes.mockResolvedValue([
       { id: "windsurf", label: "Windsurf", appPath: "/Applications/Windsurf.app", hasCli: false },
       { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false }
@@ -205,12 +234,13 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    const ideButton = await screen.findByRole("button", { name: "Open in IDE" });
-    await waitFor(() => expect(ideButton.getAttribute("title")).toContain("Windsurf"));
-    fireEvent.click(ideButton);
+    const chevron = await screen.findByRole("button", { name: "Choose IDE" });
+    await waitFor(() => expect(chevron).not.toBeDisabled());
+    fireEvent.click(chevron);
 
-    await waitFor(() => expect(openInIde).toHaveBeenCalledTimes(1));
-    expect(openInIde).toHaveBeenCalledWith({ workspaceId: "workspace-1", ide: "windsurf" });
+    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
+    expect(within(menu).getByRole("menuitem", { name: "Windsurf" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(menu).getByRole("menuitem", { name: "Terminal" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("lists every detected IDE in the chevron menu", async () => {

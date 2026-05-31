@@ -1,34 +1,31 @@
-import type { JSX, MutableRefObject } from "react";
+import { memo, useState, type JSX, type MutableRefObject } from "react";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
-import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
+import type { TurnToolItem } from "../lib/toolCalls.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import type { AgentMode } from "../../shared/types.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { PlanCard } from "./PlanCard.js";
 import { QuestionCard } from "./QuestionCard.js";
+import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
-import {
-  sendAfterTerminate,
-  StreamingMarkdown,
-  type SessionConversationSendInput
-} from "./sessionConversationHelpers.js";
+import { StreamingMarkdown } from "./StreamingMarkdown.js";
+import { sendAfterTerminate, type SessionConversationSendInput } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
 
-export function SessionConversationTurn({
+function SessionConversationTurnInner({
   item,
-  index,
-  renderItems,
-  turnShowsModelHeader,
+  priorItem,
+  isLatestTurn,
+  showModelHeader,
   session,
   selectedModel,
   workspace,
@@ -41,12 +38,12 @@ export function SessionConversationTurn({
   setAgentMode,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
-  isFreshTool
+  defaultThinkingExpanded
 }: {
   item: TurnRenderItem;
-  index: number;
-  renderItems: RenderItem[];
-  turnShowsModelHeader: Map<number, boolean>;
+  priorItem: RenderItem | null;
+  isLatestTurn: boolean;
+  showModelHeader: boolean;
   session: SessionSummary | null;
   selectedModel: ProviderModelSelection;
   workspace: WorkspaceSummary | null;
@@ -59,9 +56,8 @@ export function SessionConversationTurn({
   setAgentMode: (mode: AgentMode) => void;
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
-  isFreshTool: (tool: ToolCall) => boolean;
+  defaultThinkingExpanded?: boolean;
 }): JSX.Element {
-  const priorItem = index > 0 ? renderItems[index - 1] : null;
   const turnView = buildTurnRenderState({
     assistantEvents: item.assistantEvents,
     toolItems: item.toolItems,
@@ -77,13 +73,23 @@ export function SessionConversationTurn({
     turnStartedAtMs,
     isPausedOnUserInput
   } = turnView;
-  const handlePlanAccept = (): void => {
-    if (!session) return;
+  // A Thought block is "live" (shown expanded, in place of the thinking verbs)
+  // while this turn is actively working and hasn't produced its answer yet.
+  // Once any answer text lands — or the turn stops being the active one, or it
+  // pauses for user input — it falls back to the saved expanded-by-default
+  // setting for quiet, persistent "Thought" history.
+  const sessionIsLive = session?.state === "running";
+  const turnHasAnswerText = visibleAssistantGroups.some(
+    (group) => !group.thinking && group.text.trim().length > 0
+  );
+  const thinkingLive = isLatestTurn && sessionIsLive && !isPausedOnUserInput && !turnHasAnswerText;
+  const handlePlanAccept = (): Promise<boolean> => {
+    if (!session) return Promise.resolve(false);
     setAgentMode("auto");
     writeStoredAgentMode(sessionAgentModeKey(session.id), "auto");
     shouldRefocusInput.current = true;
     const sessionId = session.id;
-    sendAfterTerminate(
+    return sendAfterTerminate(
       sessionId,
       session.state === "running",
       onTerminateSession,
@@ -94,12 +100,12 @@ export function SessionConversationTurn({
   const handlePlanReject = (): void => {
     inputRef.current?.focus();
   };
-  const handleQuestionAnswer = (answerMarkdown: string): void => {
-    if (!session) return;
+  const handleQuestionAnswer = (answerMarkdown: string): Promise<boolean> => {
+    if (!session) return Promise.resolve(false);
     shouldRefocusInput.current = true;
     const sessionId = session.id;
     const nextAgentMode = turnAgentMode === "plan" ? "plan" : "auto";
-    sendAfterTerminate(
+    return sendAfterTerminate(
       sessionId,
       session.state === "running",
       onTerminateSession,
@@ -154,11 +160,32 @@ export function SessionConversationTurn({
       />
     );
   };
-  type AnnotatedChild = TurnBodyChild & { createdAt: string };
+  // `createdAt` anchors the turn-start header timestamp; `sortAt` orders the
+  // body. Assistant groups order by their LAST activity (see AssistantGroup.
+  // lastActivityAt) so a streamed answer settles below the tools it follows
+  // instead of floating above them.
+  type AnnotatedChild = TurnBodyChild & { createdAt: string; sortAt: string };
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups.map((group) => {
+    if (group.thinking) {
+      const node = (
+        <ThoughtBlock
+          key={group.id}
+          defaultExpanded={defaultThinkingExpanded}
+          live={thinkingLive}
+        >
+          <StreamingMarkdown
+            text={group.text}
+            streaming={false}
+            workspace={workspace}
+            onOpenFile={onOpenFile}
+          />
+        </ThoughtBlock>
+      );
+      return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+    }
     const planNode = tryRenderPlan(group);
     if (planNode) {
-      return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt };
+      return { kind: "assistant", id: group.id, node: planNode, createdAt: group.createdAt, sortAt: group.lastActivityAt };
     }
     const node = (
       <ChatBubble
@@ -174,14 +201,15 @@ export function SessionConversationTurn({
         />
       </ChatBubble>
     );
-    return { kind: "assistant", id: group.id, node, createdAt: group.createdAt };
+    return { kind: "assistant", id: group.id, node, createdAt: group.createdAt, sortAt: group.lastActivityAt };
   });
   if (exitPlanCard && exitPlanTool) {
     assistantChildren.push({
       kind: "assistant",
       id: `plan-${exitPlanTool.id}`,
       node: exitPlanCard,
-      createdAt: exitPlanTool.createdAt
+      createdAt: exitPlanTool.createdAt,
+      sortAt: exitPlanTool.createdAt
     });
   }
   if (questionCard && askUserQuestionTool) {
@@ -189,24 +217,25 @@ export function SessionConversationTurn({
       kind: "assistant",
       id: `question-${askUserQuestionTool.id}`,
       node: questionCard,
-      createdAt: askUserQuestionTool.createdAt
+      createdAt: askUserQuestionTool.createdAt,
+      sortAt: askUserQuestionTool.createdAt
     });
   }
   const visibleToolItems = item.toolItems
     .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
     .filter((tItem): tItem is TurnToolItem => tItem !== null);
-  const isLatestTurn = index === renderItems.length - 1;
-  const anyToolRunningInTurn = visibleToolItems.some((tItem) =>
-    tItem.kind === "tool"
-      ? tItem.tool.status === "running"
-      : tItem.group.tools.some((tool) => tool.status === "running")
-  );
-  const sessionIsLive = session?.state === "running";
-  const turnIsActive = anyToolRunningInTurn || (isLatestTurn && sessionIsLive);
   const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
-  const groupDefaultExpanded = turnIsActive
-    ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded)
+  // Tool groups expand by default for the current turn (you're watching it
+  // work, and it stays open through completion so nothing collapses out from
+  // under the answer) and collapse to headers for older turns. The turn chip
+  // toggles this for the whole turn; collapsing only folds the groups to their
+  // headers — tool calls are NEVER removed from the chat. A per-group chevron
+  // still overrides an individual group.
+  const toolsExpandedDefault = isLatestTurn
+    ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded ?? false)
     : false;
+  const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
+  const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
       if (tItem.kind === "tool") {
@@ -214,11 +243,13 @@ export function SessionConversationTurn({
           kind: "tool",
           id: tItem.tool.id,
           createdAt: tItem.tool.createdAt,
+          sortAt: tItem.tool.createdAt,
           node: (
             <ToolCallRow
               tool={tItem.tool}
-              defaultExpanded={groupDefaultExpanded}
+              defaultExpanded={toolsExpanded}
               workspaceCwd={workspace?.path ?? null}
+              onOpenFile={onOpenFile}
             />
           )
         };
@@ -228,38 +259,45 @@ export function SessionConversationTurn({
         kind: "tool",
         id: tItem.group.id,
         createdAt: firstCreatedAt,
+        sortAt: firstCreatedAt,
         node: (
           <ToolCallGroupBubble
             group={tItem.group}
-            isFreshTool={isFreshTool}
-            defaultExpanded={groupDefaultExpanded}
+            defaultExpanded={toolsExpanded}
             workspaceCwd={workspace?.path ?? null}
+            onOpenFile={onOpenFile}
           />
         )
       };
     });
   const bodyChildren: TurnBodyChild[] = [...assistantChildren, ...toolChildren]
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .sort((a, b) => a.sortAt.localeCompare(b.sortAt))
     .map(({ kind, id, node }) => ({ kind, id, node }));
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
     .filter((t): t is string => typeof t === "string" && t.length > 0)
     .sort()[0];
-  const showModelHeader = turnShowsModelHeader.get(index) ?? false;
   return (
     <TurnBlock
       key={item.id}
       toolItems={visibleToolItems}
       assistantTimestamps={item.assistantTimestamps}
       {...(showModelHeader ? { modelLabel: selectedModel.label } : {})}
-      {...(defaultToolCallsExpanded !== undefined ? { defaultExpanded: defaultToolCallsExpanded } : {})}
       {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
       isTurnActive={isTurnLiveTicking}
+      toolsExpanded={toolsExpanded}
+      onToggleTools={() => setToolsExpandOverride(!toolsExpanded)}
       body={bodyChildren}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
     />
   );
 }
+
+// Memoized so a render of the parent SessionConversation (e.g. a composer
+// keystroke, or a delta for a different turn) only re-renders turns whose props
+// actually changed. Default shallow comparison is sufficient because every prop
+// is referentially stable across a parent render that didn't touch this turn.
+export const SessionConversationTurn = memo(SessionConversationTurnInner);
 
 /** User-message row from a render item (not a turn). */
 export function SessionConversationUserMessage({
@@ -299,19 +337,4 @@ export function SessionConversationUserMessage({
       {displayMessage ? <p>{displayMessage}</p> : null}
     </ChatBubble>
   );
-}
-
-export function parseUserMessageAttachments(
-  item: Extract<RenderItem, { kind: "user-message" }>
-): { filePath: string; mimeType: string }[] {
-  const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
-  return rawAttachments
-    .map((entry) => {
-      const obj = objectValue(entry);
-      const filePath = stringValue(obj?.filePath);
-      const mimeType = stringValue(obj?.mimeType);
-      if (!filePath || !mimeType) return null;
-      return { filePath, mimeType };
-    })
-    .filter((value): value is { filePath: string; mimeType: string } => Boolean(value));
 }

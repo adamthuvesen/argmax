@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Argmax",
+  "version": "0.2.0",
+  "identifier": "com.argmax.rs",
+  "build": {
+    "beforeDevCommand": "vite --host 127.0.0.1",
+    "beforeBuildCommand": "vite build",
+    "frontendDist": "../dist/renderer",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Argmax",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "backgroundColor": "#1a1a1a",
+        "backgroundThrottling": "disabled",
+        "dragDropEnabled": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "icon": ["icons/icon.icns"],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "entitlements": "entitlements.plist"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/adamthuvesen/argmax/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
+  }
+}

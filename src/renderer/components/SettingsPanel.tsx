@@ -44,6 +44,10 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  launcherGlobeVisible,
+  onLauncherGlobeVisibleChange,
+  thinkingExpanded,
+  onThinkingExpandedChange,
   fontFamily,
   onFontFamilyChange,
   themeMode,
@@ -70,6 +74,10 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  launcherGlobeVisible: boolean;
+  onLauncherGlobeVisibleChange: (v: boolean) => void;
+  thinkingExpanded: boolean;
+  onThinkingExpandedChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
   themeMode: ThemeMode;
@@ -94,7 +102,7 @@ export function SettingsPanel({
   } = useAsyncLoad<DiscoveredProvider[]>(
     () => window.argmax!.providers.discover(),
     {
-      missingApiMessage: "Open the Electron app window to detect providers.",
+      missingApiMessage: "Open the Tauri app window to detect providers.",
       fallbackMessage: "Provider discovery failed."
     }
   );
@@ -105,7 +113,7 @@ export function SettingsPanel({
     isLoading: refreshingMcp,
     retry: refreshMcp
   } = useAsyncLoad<McpClientListing[]>(() => window.argmax!.mcp.list(), {
-    missingApiMessage: "Open the Electron app window to read MCP configs.",
+    missingApiMessage: "Open the Tauri app window to read MCP configs.",
     fallbackMessage: "MCP discovery failed."
   });
 
@@ -243,6 +251,8 @@ export function SettingsPanel({
               onSidebarTokensVisibleChange={onSidebarTokensVisibleChange}
               chatCostVisible={chatCostVisible}
               onChatCostVisibleChange={onChatCostVisibleChange}
+              launcherGlobeVisible={launcherGlobeVisible}
+              onLauncherGlobeVisibleChange={onLauncherGlobeVisibleChange}
               newSessionMode={newSessionMode}
               onNewSessionModeChange={onNewSessionModeChange}
             />
@@ -256,6 +266,8 @@ export function SettingsPanel({
               onToolCallsExpandedChange={onToolCallsExpandedChange}
               toolCallGroupsExpanded={toolCallGroupsExpanded}
               onToolCallGroupsExpandedChange={onToolCallGroupsExpandedChange}
+              thinkingExpanded={thinkingExpanded}
+              onThinkingExpandedChange={onThinkingExpandedChange}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}
               providers={providers}

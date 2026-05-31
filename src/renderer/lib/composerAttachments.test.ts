@@ -29,7 +29,7 @@ describe("buildAttachmentReferences", () => {
     expect(refs).toEqual(["@/tmp/foo.ts"]);
   });
 
-  it("skips files with no `path` (web-only File without Electron extension)", () => {
+  it("skips files with no `path` (web-only File without Tauri extension)", () => {
     const refs = buildAttachmentReferences([{}, { path: "/tmp/foo.ts" }], null);
     expect(refs).toEqual(["@/tmp/foo.ts"]);
   });

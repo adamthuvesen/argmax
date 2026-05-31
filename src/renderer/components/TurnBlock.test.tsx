@@ -55,60 +55,85 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("tools")).toBeInTheDocument();
   });
 
-  it("shows 'Worked for Xs' on completion and auto-collapses tool children", () => {
+  it("shows 'Worked for Xs' on completion and keeps tool children in the body", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
     render(
       <TurnBlock
         toolItems={items}
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
         body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
+        toolsExpanded={false}
       />
     );
     const chip = screen.getByRole("button", { name: /Worked for/ });
     expect(chip).toBeInTheDocument();
-    // Tools collapsed after completion; assistant remains.
-    expect(screen.queryByTestId("tools")).not.toBeInTheDocument();
+    expect(chip).toHaveAttribute("aria-expanded", "false");
+    // Collapsing folds tool internals in the caller-built nodes; TurnBlock
+    // still keeps every tool row anchored in the chat body.
+    expect(screen.getByTestId("tools")).toBeInTheDocument();
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 
-  it("re-expands tool children when the chip is clicked after completion", () => {
+  it("reflects expanded tool state after completion while it is the current turn", () => {
+    // The latest turn stays expanded through completion so the tool block
+    // doesn't collapse out from under the answer the moment it lands.
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
     render(
       <TurnBlock
         toolItems={items}
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
         body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
+        toolsExpanded
       />
     );
-    expect(screen.queryByTestId("tools")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByTestId("tools")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 
-  it("collapses on click when defaultExpanded is true (user toggle wins both directions)", () => {
+  it("asks the parent to toggle tools when the chip is clicked after completion", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
+    const onToggleTools = vi.fn();
     render(
       <TurnBlock
         toolItems={items}
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
         body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
-        defaultExpanded
+        toolsExpanded={false}
+        onToggleTools={onToggleTools}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    expect(onToggleTools).toHaveBeenCalledTimes(1);
+  });
+
+  it("reflects expanded state and delegates collapse clicks", () => {
+    const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
+    const onToggleTools = vi.fn();
+    render(
+      <TurnBlock
+        toolItems={items}
+        assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
+        body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
+        toolsExpanded
+        onToggleTools={onToggleTools}
       />
     );
     expect(screen.getByTestId("tools")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
-    // User collapse must stick — earlier bug reset the toggle on the next render.
-    expect(screen.queryByTestId("tools")).not.toBeInTheDocument();
+    const chip = screen.getByRole("button", { name: /Worked for/ });
+    expect(chip).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(chip);
+    expect(onToggleTools).toHaveBeenCalledTimes(1);
   });
 
-  it("respects defaultExpanded while the turn is still running", () => {
+  it("respects expanded state while the turn is still running", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];
     render(
       <TurnBlock
         toolItems={items}
         assistantTimestamps={[]}
         body={body(assistantChild("assistant", "streaming..."), toolChild("tools"))}
-        defaultExpanded
+        toolsExpanded
       />
     );
     expect(screen.getByTestId("tools")).toBeInTheDocument();
@@ -187,7 +212,7 @@ describe("TurnBlock", () => {
           toolChild("tool-before", "search call"),
           assistantChild("assistant-after", "final answer")
         )}
-        defaultExpanded
+        toolsExpanded
       />
     );
     const tool0 = screen.getByTestId("tool-before");

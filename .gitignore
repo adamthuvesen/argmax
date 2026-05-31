@@ -10,3 +10,12 @@ release/
 maestro/
 openspec/
 COMPETITIVE_ANALYSIS.md
+
+# Tauri / Rust port
+src-tauri/target/
+src-tauri/gen/
+
+# Scratch files (e.g. pasted session transcripts)
+tmp.txt
+*.tmp
+scratch/

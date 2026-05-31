@@ -1,4 +1,13 @@
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState, type JSX } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type JSX
+} from "react";
 import type { ProviderModelSelection } from "../shared/providerModels.js";
 import type {
   AgentMode,
@@ -17,9 +26,9 @@ import { PerfOverlay } from "./components/PerfOverlay.js";
 import { SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { EMPTY_GRID, openWorkspaceInGrid } from "./lib/gridState.js";
+import { EMPTY_GRID, focusedCell, isSessionCell, openWorkspaceInGrid } from "./lib/gridState.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
-// out of the production renderer bundle. Browser-preview mode (no Electron
+// out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
 import { useAppGridSelection } from "./hooks/useAppGridSelection.js";
 import { useDashboardSession } from "./hooks/useDashboardSession.js";
@@ -37,7 +46,6 @@ import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
-import { buildSafeFtsPrefixQuery } from "./lib/ftsQuery.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
   PERMISSION_MODE_KEY,
@@ -56,7 +64,9 @@ import {
 } from "./lib/thinkingStyle.js";
 import {
   CHAT_COST_KEY,
+  LAUNCHER_GLOBE_KEY,
   SIDEBAR_TOKENS_KEY,
+  THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
   TOOL_CALLS_EXPANDED_KEY,
   useBooleanUiPreference
@@ -96,6 +106,8 @@ export function App(): JSX.Element {
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, true);
+  const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, true);
+  const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const { themeMode, setThemeMode, fontFamily, setFontFamily, defaultIde, setDefaultIde, detectedIdes } =
     useLauncherAppearance();
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
@@ -105,8 +117,10 @@ export function App(): JSX.Element {
   // place when ⌘N fires from inside an active grid. The flag is purely local
   // — it never persists; only the user's choice in Settings persists.
   const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
+  const [isWorkspaceDropPreviewVisible, setIsWorkspaceDropPreviewVisible] = useState(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
+  const [terminalToggleSignal, setTerminalToggleSignal] = useState(0);
   // The active surface (focused SessionPane, or the LaunchSurface when no
   // session is open) registers its file source + pick handler here so the
   // command palette can surface Files for that surface's scope.
@@ -180,6 +194,11 @@ export function App(): JSX.Element {
     setSelectedProjectId,
     showErrorToast
   });
+  const showWorkspaceDropTarget = draggingWorkspaceId !== null && !isSettingsOpen && (grid.rows.length === 0 || isFullLauncherOpen);
+
+  useEffect(() => {
+    if (!showWorkspaceDropTarget) setIsWorkspaceDropPreviewVisible(false);
+  }, [showWorkspaceDropTarget]);
 
   useEffect(() => {
     // First non-loading render is the renderer's "first content" mark.
@@ -211,7 +230,7 @@ export function App(): JSX.Element {
         case "open-settings":
           setIsPaletteOpen(false);
           setIsFullLauncherOpen(false);
-          setIsSettingsOpen(true);
+          setIsSettingsOpen(!isSettingsOpen);
           return;
         case "new-session":
           setIsPaletteOpen(false);
@@ -234,7 +253,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [openNewSessionPane, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
+    [isSettingsOpen, openNewSessionPane, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
   const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
@@ -242,6 +261,46 @@ export function App(): JSX.Element {
     (): void => setIsContentSearchOpen(true),
     [setIsContentSearchOpen]
   );
+  const toggleIntegratedTerminal = useCallback((): void => {
+    const focused = focusedCell(grid);
+    let workspaceId = focused && isSessionCell(focused) ? focused.workspaceId : null;
+
+    if (!workspaceId) {
+      for (const row of grid.rows) {
+        const sessionCell = row.find(isSessionCell);
+        if (sessionCell) {
+          workspaceId = sessionCell.workspaceId;
+          break;
+        }
+      }
+    }
+
+    workspaceId ??= selectedWorkspace?.id ?? selectedSession?.workspaceId ?? snapshot.sessions[0]?.workspaceId ?? null;
+    if (!workspaceId) {
+      setToast({ kind: "error", message: "Open a session before toggling the terminal." });
+      return;
+    }
+
+    setIsPaletteOpen(false);
+    setIsCheatSheetOpen(false);
+    setIsSearchOpen(false);
+    setIsContentSearchOpen(false);
+    setIsSettingsOpen(false);
+    setIsFullLauncherOpen(false);
+    openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
+    setTerminalToggleSignal((signal) => signal + 1);
+  }, [
+    grid,
+    openWorkspaceChat,
+    selectedSession?.workspaceId,
+    selectedWorkspace?.id,
+    setIsCheatSheetOpen,
+    setIsContentSearchOpen,
+    setIsPaletteOpen,
+    setIsSearchOpen,
+    setIsSettingsOpen,
+    snapshot.sessions
+  ]);
   const selectSessionFromKeybinding = useCallback(
     (session: { id: string; workspaceId: string }): void => {
       // Cmd+1..9 always replaces the focused pane (no split modifier).
@@ -260,6 +319,7 @@ export function App(): JSX.Element {
     onCloseFocusedPane: closeFocusedPane,
     onOpenSearch: openSearchOverlay,
     onOpenContentSearch: openContentSearchOverlay,
+    onToggleTerminal: toggleIntegratedTerminal,
     onSelectSession: selectSessionFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
   });
@@ -291,24 +351,18 @@ export function App(): JSX.Element {
 
   const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Electron app window to archive workspaces." });
+      setToast({ kind: "error", message: "Open the Tauri app window to archive workspaces." });
       return;
     }
-    // A dirty workspace would otherwise come back as "kept" and the user
-    // would have to commit/discard then click archive again. Ask once,
-    // then pass force so the backend skips the dirty-keep guard. For
-    // isolated worktrees git removes the directory (branch preserved);
-    // shared workspaces leave the filesystem alone — only the sidebar
-    // row goes away.
+    // Shared workspaces leave the filesystem alone — only the sidebar row
+    // goes away. Dirty isolated worktrees are destructive, so ask once and
+    // pass force only after confirmation.
     const workspace = workspacesById.get(workspaceId);
     let force = false;
-    if (workspace?.dirty) {
+    if (workspace?.dirty && !workspace.sharedWorkspace) {
       const fileLabel = workspace.changedFiles === 1 ? "1 uncommitted change" : `${workspace.changedFiles} uncommitted changes`;
-      const consequence = workspace.sharedWorkspace
-        ? "The files on disk stay; only the sidebar entry is removed."
-        : "Archiving will delete the worktree and discard these changes (the branch is preserved).";
       const confirmed = window.confirm(
-        `${workspace.taskLabel} has ${fileLabel}. ${consequence} Continue?`
+        `${workspace.taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`
       );
       if (!confirmed) return;
       force = true;
@@ -343,7 +397,7 @@ export function App(): JSX.Element {
   const handleOpenInIde = useCallback(
     async (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to launch an IDE." });
+        setToast({ kind: "error", message: "Open the Tauri app window to launch an IDE." });
         return;
       }
       try {
@@ -361,12 +415,12 @@ export function App(): JSX.Element {
         });
       }
     },
-    [detectedIdes]
+    [detectedIdes, setDefaultIde]
   );
 
   const addProject = useCallback(async (): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Electron app window to add a project." });
+      setToast({ kind: "error", message: "Open the Tauri app window to add a project." });
       return;
     }
 
@@ -386,11 +440,11 @@ export function App(): JSX.Element {
         message: error instanceof Error ? error.message : "Argmax requires a local git repository."
       });
     }
-  }, [setSelectedProjectId, setSnapshot]);
+  }, [setGrid, setSelectedProjectId, setSnapshot]);
 
   const removeProject = useCallback(async (projectId: string): Promise<void> => {
     if (!window.argmax) {
-      setToast({ kind: "error", message: "Open the Electron app window to remove a project." });
+      setToast({ kind: "error", message: "Open the Tauri app window to remove a project." });
       return;
     }
     const projectName = snapshot.projects.find((p) => p.id === projectId)?.name ?? "project";
@@ -425,6 +479,7 @@ export function App(): JSX.Element {
     setSelectedProjectId,
     setSelectedSessionId,
     setSelectedWorkspaceId,
+    setGrid,
     setSnapshot
   ]);
 
@@ -437,17 +492,17 @@ export function App(): JSX.Element {
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Electron app window to send input to a live session.");
+        throw new Error("Open the Tauri app window to send input to a live session.");
       }
 
       const result = await window.argmax.providers.sendInput({
         sessionId,
-        input: `${input}\r`,
+        input,
         modelLabel: model.label,
         modelId: model.modelId,
-        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        reasoningEffort: model.reasoningEffort ?? null,
         agentMode,
-        ...(attachments?.length ? { attachments } : {})
+        attachments: attachments?.length ? attachments : null
       });
       // Queued messages don't write a user.message event yet — the chip in the
       // pending lane is the only renderer-visible artifact, and that arrives
@@ -473,7 +528,7 @@ export function App(): JSX.Element {
   const toggleWorkspacePinned = useCallback(
     async (workspaceId: string, pinned: boolean): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to pin a session." });
+        setToast({ kind: "error", message: "Open the Tauri app window to pin a session." });
         return;
       }
       const ok = await withToast(
@@ -546,7 +601,7 @@ export function App(): JSX.Element {
   const runCheck = useCallback(
     async (workspaceId: string, command: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to run a check." });
+        setToast({ kind: "error", message: "Open the Tauri app window to run a check." });
         return;
       }
       const ok = await withToast(
@@ -562,7 +617,7 @@ export function App(): JSX.Element {
   const createCheckpoint = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Electron app window to save checkpoints." });
+        setToast({ kind: "error", message: "Open the Tauri app window to save checkpoints." });
         return;
       }
       const label = `Checkpoint ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
@@ -582,7 +637,7 @@ export function App(): JSX.Element {
   const terminateSession = useCallback(
     async (sessionId: string): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Electron app window to stop a live session.");
+        throw new Error("Open the Tauri app window to stop a live session.");
       }
       const ok = await withToast(
         () => window.argmax!.providers.terminate(sessionId),
@@ -605,7 +660,7 @@ export function App(): JSX.Element {
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
       if (!window.argmax) {
-        throw new Error("Open the Electron app window to launch local agents.");
+        throw new Error("Open the Tauri app window to launch local agents.");
       }
 
       const projectId = projectIdOverride ?? selectedProject?.id;
@@ -624,12 +679,12 @@ export function App(): JSX.Element {
         prompt,
         modelLabel: model.label,
         modelId: model.modelId,
-        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+        reasoningEffort: model.reasoningEffort ?? null,
         agentMode,
         permissionMode,
         cols: 120,
         rows: 32,
-        ...(attachments?.length ? { attachments } : {})
+        attachments: attachments?.length ? attachments : null
       });
 
       pendingSelectionRef.current = {
@@ -653,7 +708,9 @@ export function App(): JSX.Element {
       refreshDashboardStatus,
       loadSessionEvents,
       pendingSelectionRef,
-      permissionMode
+      permissionMode,
+      setGrid,
+      setIsFullLauncherOpen
     ]
   );
 
@@ -679,6 +736,7 @@ export function App(): JSX.Element {
       openWorkspaceChat,
       setIsSearchOpen,
       setIsSettingsOpen,
+      setGrid,
       setSelectedProjectId
     ]
   );
@@ -698,9 +756,7 @@ export function App(): JSX.Element {
       if (!window.argmax) return [];
       const trimmed = rawQuery.trim();
       if (!trimmed) return [];
-      const ftsQuery = buildSafeFtsPrefixQuery(trimmed);
-      if (!ftsQuery) return [];
-      const hits = await window.argmax.session.search({ query: ftsQuery, limit });
+      const hits = await window.argmax.session.search({ query: trimmed, limit });
       return hits.map((hit) => ({
         id: `${hit.sessionId}:${hit.eventId}`,
         sessionId: hit.sessionId,
@@ -751,6 +807,7 @@ export function App(): JSX.Element {
         projects={snapshot.projects}
         rightPanelToggleSignal={rightPanelToggleSignal}
         registerPaletteFileContext={registerPaletteFileContext}
+        globeEnabled={launcherGlobeVisible}
       />
     ),
     [
@@ -758,6 +815,7 @@ export function App(): JSX.Element {
       handleBranchSwitch,
       launchModel,
       launchTask,
+      launcherGlobeVisible,
       openProjectLauncher,
       registerPaletteFileContext,
       rightPanelToggleSignal,
@@ -765,6 +823,27 @@ export function App(): JSX.Element {
       snapshot.projects
     ]
   );
+
+  const handleWorkspaceSurfaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!showWorkspaceDropTarget) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setIsWorkspaceDropPreviewVisible(true);
+  }, [showWorkspaceDropTarget]);
+
+  const handleWorkspaceSurfaceDragLeave = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    const related = event.relatedTarget;
+    if (related instanceof Node && event.currentTarget.contains(related)) return;
+    setIsWorkspaceDropPreviewVisible(false);
+  }, []);
+
+  const handleWorkspaceSurfaceDrop = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!draggingWorkspaceId || !showWorkspaceDropTarget) return;
+    event.preventDefault();
+    setIsWorkspaceDropPreviewVisible(false);
+    setIsFullLauncherOpen(false);
+    handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
+  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
 
   return (
     <main
@@ -775,7 +854,7 @@ export function App(): JSX.Element {
     >
       {bridgeMissing && !isBrowserPreview() ? (
         <div className="bridge-banner" role="alert">
-          Preload bridge unavailable; running on demo data.
+          Tauri bridge unavailable; running on demo data.
         </div>
       ) : null}
       {/*
@@ -882,6 +961,10 @@ export function App(): JSX.Element {
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
+                launcherGlobeVisible={launcherGlobeVisible}
+                onLauncherGlobeVisibleChange={setLauncherGlobeVisible}
+                thinkingExpanded={thinkingExpanded}
+                onThinkingExpandedChange={setThinkingExpanded}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
                 themeMode={themeMode}
@@ -916,10 +999,12 @@ export function App(): JSX.Element {
               sessionsById={sessionsById}
               defaultToolCallsExpanded={toolCallsExpanded}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
+              defaultThinkingExpanded={thinkingExpanded}
               showCostPanel={chatCostVisible}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
+              terminalToggleSignal={terminalToggleSignal}
               renderLauncher={renderLaunchSurface}
               dragSourceWorkspaceId={draggingWorkspaceId}
               onFocusPane={focusPane}
@@ -939,6 +1024,19 @@ export function App(): JSX.Element {
             renderLaunchSurface(selectedProject)
           )}
         </div>
+        {showWorkspaceDropTarget ? (
+          <div
+            className="workspace-drop-overlay"
+            aria-hidden="true"
+            onDragOver={handleWorkspaceSurfaceDragOver}
+            onDragLeave={handleWorkspaceSurfaceDragLeave}
+            onDrop={handleWorkspaceSurfaceDrop}
+          >
+            {isWorkspaceDropPreviewVisible ? (
+              <div className="workspace-drop-zone" data-hovered="true" />
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </main>
   );

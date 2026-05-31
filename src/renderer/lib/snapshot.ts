@@ -46,7 +46,12 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
     if (e.type === "message.delta") {
       // nextBoundary reflects the closest boundary at j > i because boundaries
       // at j > i were processed in earlier iterations of this loop.
-      if (nextBoundary.get(e.sessionId) === "completed") {
+      // Thinking blocks (Claude extended thinking surfaced as message.delta
+      // with payload.thinking === true) are kept even when a later
+      // message.completed exists — they are the only record of Claude's
+      // reasoning step and should remain visible after the final answer.
+      const isThinkingDelta = e.payload?.["thinking"] === true;
+      if (!isThinkingDelta && nextBoundary.get(e.sessionId) === "completed") {
         supersededIndices.add(i);
       }
       continue;
@@ -69,6 +74,70 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   return isDescending ? kept.reverse() : kept;
 }
 
+// Token-by-token streaming produces hundreds of answer `message.delta` rows per
+// turn, and Claude extended thinking adds hundreds more thinking `message.delta`
+// rows. Capping the merged event list naively (newest-N) would let either flood
+// evict the OLDEST rows — the user bubble and early tool calls — mid-stream,
+// making them flicker out. We cap THREE kinds independently so a flood of one
+// can never evict another:
+//   - answer deltas (non-thinking message.delta): droppable, EVENT_DELTA_LIMIT
+//   - thinking deltas (message.delta with payload.thinking): their own bucket,
+//     EVENT_THINKING_LIMIT — kept generous so reasoning stays visible, but
+//     bounded so a long thinking phase can't crowd out tool rows
+//   - protected/durable rows (user/assistant messages, tool started/completed,
+//     approvals, errors, completions): EVENT_PROTECTED_LIMIT, sized to hold a
+//     large multi-agent turn (hundreds of tool calls) without eviction
+// The current turn's rows are always the newest of their kind, so they survive.
+//
+// Why three buckets and not two: thinking deltas used to be lumped with the
+// protected rows. A long extended-thinking run emitted enough thinking deltas
+// to blow past the protected cap, evicting the oldest tool calls; because each
+// delta added a varying number of thinking deltas, the eviction boundary
+// oscillated and tool rows blinked in and out. Isolating thinking deltas fixes
+// the blink.
+const EVENT_DELTA_LIMIT = 500;
+const EVENT_THINKING_LIMIT = 1000;
+const EVENT_PROTECTED_LIMIT = 2000;
+
+function isThinkingDelta(event: TimelineEvent): boolean {
+  return event.type === "message.delta" && event.payload?.["thinking"] === true;
+}
+
+function isEvictableDelta(event: TimelineEvent): boolean {
+  return event.type === "message.delta" && event.payload?.["thinking"] !== true;
+}
+
+function mergeEventsBounded(
+  current: TimelineEvent[],
+  updates: TimelineEvent[] | undefined
+): TimelineEvent[] {
+  if (!updates) {
+    return current;
+  }
+  const merged = upsertById(current, updates);
+  if (merged === current) {
+    return pruneSupersededDeltas(current);
+  }
+  // Newest-first, same ordering mergeSlice used.
+  const sorted = sortByTimestamp(merged, (event) => event.createdAt, (event) => event.rowCursor);
+  let deltaKept = 0;
+  let thinkingKept = 0;
+  let protectedKept = 0;
+  const capped = sorted.filter((event) => {
+    if (isThinkingDelta(event)) {
+      thinkingKept += 1;
+      return thinkingKept <= EVENT_THINKING_LIMIT;
+    }
+    if (isEvictableDelta(event)) {
+      deltaKept += 1;
+      return deltaKept <= EVENT_DELTA_LIMIT;
+    }
+    protectedKept += 1;
+    return protectedKept <= EVENT_PROTECTED_LIMIT;
+  });
+  return pruneSupersededDeltas(capped.length === sorted.length ? sorted : capped);
+}
+
 export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
   const projects = delta.projects
     ? (() => {
@@ -78,9 +147,7 @@ export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: Dashboar
     : snapshot.projects;
   const workspaces = mergeSlice(snapshot.workspaces, delta.workspaces, (workspace) => workspace.lastActivityAt);
   const sessions = mergeSlice(snapshot.sessions, delta.sessions, (session) => session.lastActivityAt);
-  const events = pruneSupersededDeltas(
-    mergeSlice(snapshot.events, delta.events, (event) => event.createdAt, 500, (event) => event.rowCursor)
-  );
+  const events = mergeEventsBounded(snapshot.events, delta.events);
   const rawOutputs = mergeSlice(
     snapshot.rawOutputs,
     delta.rawOutputs,
@@ -221,13 +288,13 @@ export function mergeByCreatedAt<T extends { id: string; createdAt: string; rowC
   limit: number,
   direction: "asc" | "desc"
 ): T[] {
-  const sorted = sortByTimestamp(
+  // sortByTimestamp is newest-first; take the newest `limit`, then orient.
+  const newestFirst = sortByTimestamp(
     upsertById(current, updates),
     (item) => item.createdAt,
     (item) => item.rowCursor
-  ).reverse();
-  const limited = sorted.slice(-limit);
-  return direction === "asc" ? limited : limited.reverse();
+  ).slice(0, limit);
+  return direction === "asc" ? newestFirst.reverse() : newestFirst;
 }
 
 function isAfter(left: TimelineEvent, right: TimelineEvent): boolean {

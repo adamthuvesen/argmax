@@ -381,7 +381,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(result.current.workspaceFiles.activeTabPath).toBeNull();
   });
 
-  it("keeps project file browsing read-only", async () => {
+  it("edits and saves project files from the launcher review state", async () => {
     const { result } = renderHook(() => useReviewState(projectSource(makeProject())));
 
     await waitFor(() => expect(result.current.filesState).toBe("ready"));
@@ -391,17 +391,18 @@ describe("useReviewState — IPC fan-out resistance", () => {
     await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith("project-1", "src/project.ts"));
     await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
 
-    expect(result.current.workspaceFiles.canEdit).toBe(false);
+    expect(result.current.workspaceFiles.canEdit).toBe(true);
     act(() => {
       result.current.workspaceFiles.editFile("mutated\n");
     });
-    expect(result.current.workspaceFiles.buffer).toBe("project\n");
-    expect(result.current.workspaceFiles.isDirty).toBe(false);
+    expect(result.current.workspaceFiles.buffer).toBe("mutated\n");
+    expect(result.current.workspaceFiles.isDirty).toBe(true);
 
     await act(async () => {
       await result.current.workspaceFiles.saveFile();
     });
 
-    expect(writeProjectFile).not.toHaveBeenCalled();
+    expect(writeProjectFile).toHaveBeenCalledWith("project-1", "src/project.ts", "mutated\n", 10);
+    expect(result.current.workspaceFiles.isDirty).toBe(false);
   });
 });

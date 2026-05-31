@@ -48,7 +48,11 @@ export function WorkspaceContentSearchOverlay({
   useDismissOnOutsideOrEscape(modalRef, open, onClose, undefined, { trapFocus: true });
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      tokenRef.current += 1;
+      return;
+    }
+    tokenRef.current += 1;
     setQuery("");
     setResult({ files: [], truncated: false });
     setRunning(false);
@@ -96,13 +100,14 @@ export function WorkspaceContentSearchOverlay({
     async (rawQuery: string): Promise<void> => {
       const trimmed = rawQuery.trim();
       if (trimmed.length < MIN_QUERY_LENGTH) {
+        tokenRef.current += 1;
         setResult({ files: [], truncated: false });
         setRunning(false);
         setError(null);
         return;
       }
       if (!source || !window.argmax) {
-        setError(source ? "Open the Electron app window to search files." : "Open a project to search its files.");
+        setError(source ? "Open the Tauri app window to search files." : "Open a project to search its files.");
         return;
       }
       const token = ++tokenRef.current;

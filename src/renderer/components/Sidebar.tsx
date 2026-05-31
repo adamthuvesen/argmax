@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import {
   loadCollapsedProjectIds,
   loadExpandedProjectIds,
@@ -33,7 +34,7 @@ import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
 // Marker stored in sessionStorage (cleared on app quit / window close in
-// Electron) so the "collapse every project on launch" seed fires exactly
+// Tauri) so the "collapse every project on launch" seed fires exactly
 // once per real app launch — not on every Sidebar mount. Tests that want
 // the old "respect persisted localStorage" behavior pre-set this marker
 // in their beforeEach.
@@ -214,9 +215,8 @@ export function Sidebar({
   // (a grid pane needs a sessionId). The dashboard query's gap-filler
   // guarantees every workspace that has at least one session row in SQLite
   // also has its latest session in `snapshot.sessions`; anything still
-  // missing is a truly orphaned workspace (session insert failed mid-launch,
-  // leftover tournament worktree, etc.). Hide those rows so the click is
-  // never dead.
+  // missing is a truly orphaned workspace (session insert failed mid-launch).
+  // Hide those rows so the click is never dead.
   const workspaceIdsWithSessions = useMemo(() => {
     const ids = new Set<string>();
     for (const session of snapshot.sessions) {
@@ -335,9 +335,11 @@ export function Sidebar({
 
   const handleWorkspaceDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, workspaceId: string): void => {
     event.stopPropagation();
-    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspaceId);
+    event.dataTransfer.effectAllowed = "copyMove";
     setDraggingWorkspaceId(workspaceId);
-  }, []);
+    onWorkspaceDragStart?.(workspaceId);
+  }, [onWorkspaceDragStart]);
 
   const handleWorkspaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     if (draggingWorkspaceId) {
@@ -378,11 +380,10 @@ export function Sidebar({
 
   const handleWorkspaceDragEnd = useCallback((): void => {
     setDraggingWorkspaceId(null);
-  }, []);
+    onWorkspaceDragEnd?.();
+  }, [onWorkspaceDragEnd]);
 
   const nameplateDate = useMemo(() => formatNameplateDate(), []);
-  const footerState =
-    loadState === "ready" ? "ready" : loadState === "loading" ? "loading" : "issue";
 
   return (
     <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
@@ -391,9 +392,8 @@ export function Sidebar({
         <div className="sidebar-nameplate-line">
           <span className="sidebar-nameplate-mark">argmax</span>
           <span className="sidebar-nameplate-slash">//</span>
-          <span className="sidebar-nameplate-dot" data-state={footerState} />
         </div>
-        <div className="sidebar-nameplate-sub">{nameplateDate} · local</div>
+        <div className="sidebar-nameplate-sub">{nameplateDate} · alpha</div>
       </div>
       <nav className="rail-nav" aria-label="Primary">
         <button
@@ -407,7 +407,6 @@ export function Sidebar({
             <Plus size={14} />
           </span>
           <span className="rail-nav-label">New session</span>
-          <kbd className="rail-nav-kbd" aria-hidden="true">⌘⏎</kbd>
         </button>
       </nav>
 

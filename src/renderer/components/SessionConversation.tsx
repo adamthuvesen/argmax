@@ -43,7 +43,6 @@ import type {
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
-import { useFreshSet } from "../hooks/useFreshSet.js";
 import { MASCOT_BOB_MS, useMascotFlash } from "../hooks/useMascotFlash.js";
 import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
@@ -88,20 +87,33 @@ import { ThinkingTranscript } from "./ThinkingTranscript.js";
 import { ThinkingVerbs } from "./ThinkingVerbs.js";
 import {
   isPayloadTruncationMarker,
-  isSubAgentProseEcho
+  isSubAgentProseEcho,
+  parseUserMessageAttachments
 } from "./sessionConversationHelpers.js";
 import {
-  parseUserMessageAttachments,
   SessionConversationTurn,
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
+// How long a mid-turn pause (the agent finished a chunk and is silently working
+// on the next step) must persist before the Thinking indicator reappears. Short
+// enough to cover a real "few seconds" gap, long enough that the brief window
+// between the final answer completing and the runtime flipping out of `running`
+// — and quick tool-to-tool hand-offs — don't flash a spinner under finished
+// content.
+const THINKING_PAUSE_DELAY_MS = 600;
+
+function isConversationEventType(type: string): boolean {
+  return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
+}
+
 export function SessionConversation({
   checks,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   events,
   isLogOpen,
   onClose,
@@ -126,6 +138,7 @@ export function SessionConversation({
   checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
   isLogOpen: boolean;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
@@ -204,23 +217,42 @@ export function SessionConversation({
             event.payload.raw !== true &&
             !isPayloadTruncationMarker(event) &&
             !isSubAgentProseEcho(event) &&
-            ["user.message", "message.delta", "message.completed", "error"].includes(event.type) &&
+            isConversationEventType(event.type) &&
             event.message !== "turn.completed"
         )
         .reverse();
       // Providers stream message.delta fragments and then a final message.completed
       // with the accumulated text. Once a turn has a completed event, the deltas
       // are stale duplicates — keep them only while streaming (before completion).
-      return ascending.filter((event, index) => {
-        if (event.type !== "message.delta") return true;
-        for (let next = index + 1; next < ascending.length; next++) {
-          const nextEvent = ascending[next];
-          if (!nextEvent) break;
-          if (nextEvent.type === "user.message") return true;
-          if (nextEvent.type === "message.completed") return false;
+      let hasCompletedBeforeNextUser = false;
+      const visible: TimelineEvent[] = [];
+      for (let index = ascending.length - 1; index >= 0; index -= 1) {
+        const event = ascending[index];
+        if (!event) continue;
+        if (event.type === "user.message") {
+          hasCompletedBeforeNextUser = false;
+          visible.push(event);
+          continue;
         }
-        return true;
-      });
+        if (event.type === "message.completed") {
+          hasCompletedBeforeNextUser = true;
+          visible.push(event);
+          continue;
+        }
+        if (event.type !== "message.delta") {
+          visible.push(event);
+          continue;
+        }
+        // Extended-thinking deltas (payload.thinking === true) are the only
+        // record of Claude's reasoning step — message.completed carries the
+        // answer text only. Keep them past completion so the persistent Thought
+        // block survives the turn, matching pruneSupersededDeltas in snapshot.ts.
+        if (event.payload?.["thinking"] === true || !hasCompletedBeforeNextUser) {
+          visible.push(event);
+        }
+      }
+      visible.reverse();
+      return visible;
     },
     [events]
   );
@@ -228,9 +260,15 @@ export function SessionConversation({
   // a streamed message OR a tool call. Otherwise the agent's first beat (often
   // a tool_use before any text) flashes the raw provider JSONL through the
   // gray .chat-bubble.terminal-transcript pre while normalized events catch up.
+  // `session.streaming` is the one-shot beacon the runtime fires on the first
+  // byte from the child; counting it here suppresses the JSON dump that
+  // otherwise leaks the 8 KB system-init payload into the chat while Claude
+  // is still in its pre-answer thinking phase.
   const hasRenderableContent =
     conversationEvents.some((event) => event.type !== "user.message") ||
-    events.some((event) => event.type === "command.started");
+    events.some(
+      (event) => event.type === "command.started" || event.type === "session.streaming"
+    );
   const terminalTranscript = useMemo(
     () => (hasRenderableContent ? "" : buildTerminalTranscript(rawOutputs, session?.id ?? null)),
     [rawOutputs, session?.id, hasRenderableContent]
@@ -257,6 +295,9 @@ export function SessionConversation({
         const input = Object.keys(startInput).length > 0 ? startInput : completionInput;
         const isError = completion ? detectToolError(completion.payload) : false;
         const status: ToolCall["status"] = !completion ? "running" : isError ? "error" : "done";
+        const rawParent = event.payload.parent_tool_use_id;
+        const parentToolUseId =
+          typeof rawParent === "string" && rawParent.length > 0 ? rawParent : null;
         return {
           id: event.id,
           toolUseId,
@@ -267,7 +308,8 @@ export function SessionConversation({
           status,
           createdAt: event.createdAt,
           completedAt: completion ? completion.createdAt : null,
-          error: completion && isError ? extractToolError(completion.payload) : null
+          error: completion && isError ? extractToolError(completion.payload) : null,
+          parentToolUseId
         };
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -278,11 +320,16 @@ export function SessionConversation({
     [conversationEvents, toolCalls]
   );
 
-  const isFreshTool = useFreshSet(toolCalls, (tool) => tool.id, session?.id ?? "");
-
   const renderItems = useMemo(
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
     [conversationItems, session]
+  );
+  // Computed once per render-item change rather than inline in the render loop.
+  // An inline call rebuilt this Map on every render (every keystroke in the
+  // composer included), and a fresh Map prop would defeat the memoized turn.
+  const turnShowsModelHeader = useMemo(
+    () => computeTurnModelHeaderMap(renderItems, selectedModel.label),
+    [renderItems, selectedModel.label]
   );
 
   // Composer is enabled whenever the session is alive — `running` no longer
@@ -299,24 +346,27 @@ export function SessionConversation({
   const lastSignificantEvent = events.find(
     (event) =>
       event.payload.raw !== true &&
+      !isPayloadTruncationMarker(event) &&
+      !isSubAgentProseEcho(event) &&
+      event.message !== "turn.completed" &&
       (event.type === "user.message" ||
         event.type === "message.delta" ||
         event.type === "message.completed" ||
         event.type === "command.started" ||
         event.type === "command.completed")
   );
-  // Show the "Thinking" bubble whenever the session is running and there is
-  // no other live progress indicator on screen. The two indicators that
-  // already convey "work is happening" are:
-  //   (a) the streaming caret on an actively-deltaing message bubble, and
+  // Show the "Thinking" indicator whenever the turn is running but nothing on
+  // screen conveys live progress *right now*. The two things that already say
+  // "work is happening" are:
+  //   (a) assistant text actively streaming (the latest event is a delta), and
   //   (b) the running spinner on a visible tool row.
-  // Between events — say, after a `message.completed` while the model is
-  // deciding the next tool — neither (a) nor (b) is on, and the chat would
-  // otherwise sit silent. Show Thinking there. Also: the `ExitPlanMode` /
-  // `AskUserQuestion` tools are *hidden* (rendered as cards), so a running
-  // instance of either gives no on-screen indicator either; treat them as
-  // "no visible tool running" and let Thinking show.
-  const isStreamingMessage = lastSignificantEvent?.type === "message.delta";
+  // Note we key on a *streaming* delta, not on any completed message: a
+  // finished chunk ("now I'll edit the file") followed by a few seconds of
+  // silent work used to suppress Thinking entirely, leaving the turn looking
+  // idle. The `ExitPlanMode` / `AskUserQuestion` tools are *hidden* (rendered
+  // as cards), so a running instance of either gives no on-screen indicator —
+  // treat them as "no visible tool running" and let Thinking show.
+  const isStreamingText = lastSignificantEvent?.type === "message.delta";
   const anyVisibleToolRunning = useMemo(
     () =>
       toolCalls.some(
@@ -337,11 +387,36 @@ export function SessionConversation({
     () => sessionHasOutstandingCardAsk(events, toolCalls),
     [events, toolCalls]
   );
-  const isThinking =
+  // The turn is live and nothing visible is progressing this instant. True both
+  // for the pre-answer beat (nothing emitted yet) and for mid-turn pauses (the
+  // agent finished a chunk and is silently working on the next step). We used to
+  // suppress the Codex `session.streaming` first-byte beacon here, but that
+  // blanked the whole initial wait — Codex reasons for seconds before any item
+  // lands, and the beacon (raw bytes) isn't user-visible progress. The beacon
+  // still suppresses the raw-stdout transcript via `hasRenderableContent`.
+  const agentWorkingSilently =
     session?.state === "running" &&
     !anyVisibleToolRunning &&
-    !isStreamingMessage &&
-    !hasOutstandingCardAsk;
+    !hasOutstandingCardAsk &&
+    !isStreamingText;
+  // The pre-answer beat shows immediately. A pause *after* completed content is
+  // debounced (THINKING_PAUSE_DELAY_MS): the brief gap between the final answer
+  // completing and the runtime flipping out of `running`, plus quick
+  // tool-to-tool hand-offs, would otherwise flash a spinner under finished
+  // content. Genuine multi-second pauses outlast the delay and surface Thinking.
+  const isPreAnswerBeat =
+    lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
+  const inDebouncedPause = agentWorkingSilently && !isPreAnswerBeat;
+  const [pauseSettled, setPauseSettled] = useState(false);
+  useEffect(() => {
+    if (!inDebouncedPause) {
+      setPauseSettled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setPauseSettled(true), THINKING_PAUSE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [inDebouncedPause]);
+  const isThinking = agentWorkingSilently && (isPreAnswerBeat || pauseSettled);
 
   const {
     conversationListRef,
@@ -600,7 +675,10 @@ export function SessionConversation({
                         role="menuitemcheckbox"
                         className="project-picker-item"
                         aria-checked={isLogOpen}
-                        onClick={onToggleLog}
+                        onClick={() => {
+                          closeActions();
+                          onToggleLog();
+                        }}
                       >
                         <Bug size={14} aria-hidden="true" />
                         Toggle debug log
@@ -648,42 +726,39 @@ export function SessionConversation({
       </div>
       <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
         {renderItems.length > 0 ? (
-          (() => {
-            const turnShowsModelHeader = computeTurnModelHeaderMap(renderItems, selectedModel.label);
-            return renderItems.map((item, index) => {
-              if (item.kind === "user-message") {
-                return (
-                  <SessionConversationUserMessage
-                    key={item.event.id}
-                    event={item.event}
-                    attachments={parseUserMessageAttachments(item)}
-                  />
-                );
-              }
+          renderItems.map((item, index) => {
+            if (item.kind === "user-message") {
               return (
-                <SessionConversationTurn
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  renderItems={renderItems}
-                  turnShowsModelHeader={turnShowsModelHeader}
-                  session={session}
-                  selectedModel={selectedModel}
-                  workspace={workspace}
-                  onOpenFile={onOpenFile}
-                  onTerminateSession={onTerminateSession}
-                  onSendSessionInput={onSendSessionInput}
-                  inputRef={inputRef}
-                  shouldRefocusInput={shouldRefocusInput}
-                  setStatus={setStatus}
-                  setAgentMode={setAgentMode}
-                  defaultToolCallsExpanded={defaultToolCallsExpanded}
-                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                  isFreshTool={isFreshTool}
+                <SessionConversationUserMessage
+                  key={item.event.id}
+                  event={item.event}
+                  attachments={parseUserMessageAttachments(item)}
                 />
               );
-            });
-          })()
+            }
+            return (
+              <SessionConversationTurn
+                key={item.id}
+                item={item}
+                priorItem={index > 0 ? renderItems[index - 1] ?? null : null}
+                isLatestTurn={index === renderItems.length - 1}
+                showModelHeader={turnShowsModelHeader.get(index) ?? false}
+                session={session}
+                selectedModel={selectedModel}
+                workspace={workspace}
+                onOpenFile={onOpenFile}
+                onTerminateSession={onTerminateSession}
+                onSendSessionInput={onSendSessionInput}
+                inputRef={inputRef}
+                shouldRefocusInput={shouldRefocusInput}
+                setStatus={setStatus}
+                setAgentMode={setAgentMode}
+                defaultToolCallsExpanded={defaultToolCallsExpanded}
+                defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                defaultThinkingExpanded={defaultThinkingExpanded}
+              />
+            );
+          })
         ) : terminalTranscript ? (
           <article className="chat-bubble assistant terminal-transcript">
             <pre>{terminalTranscript}</pre>
@@ -972,12 +1047,12 @@ export function SessionConversation({
             );
           })()}
         </div>
+        {status ? (
+          <p className="composer-status" role="status">
+            {status}
+          </p>
+        ) : null}
       </form>
-      {status ? (
-        <p className="composer-status" role="status">
-          {status}
-        </p>
-      ) : null}
     </section>
   );
 }

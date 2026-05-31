@@ -9,11 +9,11 @@ import type { MenuCommand } from "./types.js";
  *
  * - `command`: the `MenuCommand` enum value that flows through the renderer's
  *   `menu:command` channel.
- * - `accelerator`: the Electron-style accelerator string (`CmdOrCtrl+K`).
+ * - `accelerator`: the menu accelerator accelerator string (`CmdOrCtrl+K`).
  *   Forwarded to `MenuItemConstructorOptions.accelerator`.
  * - `displayAccelerator`: the glyph form for the cheat sheet (`⌘K`). Kept
- *   independent of the Electron string because the cheat sheet renders
- *   characters humans recognize, not Electron's normalized identifiers.
+ *   independent of the menu string because the cheat sheet renders
+ *   characters humans recognize, not Tauri's normalized identifiers.
  * - `label`: the menu and cheat-sheet copy.
  * - `menuLocation`: which submenu the entry lives under in the macOS menu.
  *   `null` means the binding exists in the cheat sheet but not the menu
@@ -98,6 +98,7 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   // palette; ⌘P signals to users they can jump to files (the palette's
   // Files group appears when a workspace or project is the active surface).
   { displayAccelerator: "⌘P", label: "Open command palette (with files)" },
+  { displayAccelerator: "⌘G", label: "Toggle file tree" },
   { displayAccelerator: "⌘F", label: "Global search" },
   { displayAccelerator: "⌘⇧F", label: "Search workspace file contents" },
   { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },

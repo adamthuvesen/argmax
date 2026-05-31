@@ -1,6 +1,7 @@
-import { ExternalLink, FilePlus, FileX2, Pencil } from "lucide-react";
+import { FilePlus, FileX2, PanelRight, Pencil } from "lucide-react";
 import { useMemo, type JSX } from "react";
 import type { FileChange } from "../lib/fileChange.js";
+import type { FileChipOpenOptions } from "./FileChip.js";
 import { DiffBlocks } from "./DiffBlocks.js";
 
 function displayPath(path: string, cwd: string | null | undefined): string {
@@ -13,10 +14,12 @@ function displayPath(path: string, cwd: string | null | undefined): string {
 
 export function FileChangeCard({
   change,
-  workspaceCwd
+  workspaceCwd,
+  onOpenFile
 }: {
   change: FileChange;
   workspaceCwd?: string | null;
+  onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
   const verb = change.kind === "create" ? "Created" : change.kind === "delete" ? "Deleted" : "Edited";
   const Icon = change.kind === "create" ? FilePlus : change.kind === "delete" ? FileX2 : Pencil;
@@ -24,6 +27,13 @@ export function FileChangeCard({
   const shortPath = useMemo(() => displayPath(change.path, workspaceCwd), [change.path, workspaceCwd]);
 
   const onOpen = (): void => {
+    if (onOpenFile) {
+      // The agent's file_path is absolute, but the review panel (file tree, tabs,
+      // path resolver) keys on workspace-relative paths — hand it the relativized
+      // path so it resolves and opens instead of silently failing containment.
+      onOpenFile(shortPath);
+      return;
+    }
     if (!window.argmax) return;
     void window.argmax.system
       .openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) })
@@ -48,10 +58,10 @@ export function FileChangeCard({
           className="file-change-card-open"
           type="button"
           onClick={onOpen}
-          aria-label={`Open ${change.path} in editor`}
+          aria-label={`Open ${change.path}`}
         >
-          <ExternalLink size={11} aria-hidden="true" />
-          <span>Open in editor</span>
+          <PanelRight size={11} aria-hidden="true" />
+          <span>Open</span>
         </button>
       </header>
       <div className="file-change-card-body">

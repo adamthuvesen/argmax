@@ -77,7 +77,6 @@ export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSum
     startedAt: "2026-05-12T15:30:00.000Z",
     completedAt: "2026-05-12T15:54:00.000Z",
     lastActivityAt: "2026-05-12T15:54:00.000Z",
-    preferred: false,
     ...overrides
   };
 }
@@ -144,6 +143,9 @@ export function renderConversation(
   session: SessionSummary,
   events: TimelineEvent[] = [],
   options: {
+    defaultThinkingExpanded?: boolean;
+    defaultToolCallsExpanded?: boolean;
+    defaultToolCallGroupsExpanded?: boolean;
     pendingMessages?: PendingMessage[];
     onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
@@ -159,6 +161,9 @@ export function renderConversation(
       onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn().mockResolvedValue(undefined)}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
+      {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}
+      {...(options.defaultToolCallsExpanded !== undefined ? { defaultToolCallsExpanded: options.defaultToolCallsExpanded } : {})}
+      {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       project={project}
       rawOutputs={[]}

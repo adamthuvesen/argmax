@@ -3,6 +3,7 @@ import { createHighlighterCore, type HighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
+import { themeAppearance } from "./theme.js";
 
 // Eager-loaded curated grammars per Ralph SPEC P4.04. Importing each language
 // module explicitly lets Vite tree-shake every grammar shiki bundles by default
@@ -35,7 +36,9 @@ const DARK_THEME = "vitesse-dark";
 
 function activeThemeName(): string {
   if (typeof document === "undefined") return LIGHT_THEME;
-  return document.documentElement.getAttribute("data-theme") === "dark" ? DARK_THEME : LIGHT_THEME;
+  return themeAppearance(document.documentElement.getAttribute("data-theme")) === "dark"
+    ? DARK_THEME
+    : LIGHT_THEME;
 }
 
 const CURATED_LANGS = [

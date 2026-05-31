@@ -1,58 +1,30 @@
-/**
- * IPC-input types are inferred from the zod schemas in `./ipcSchemas.ts`
- * via `import type` so the renderer never pulls zod into its bundle. The
- * `import type` form erases at runtime; only the type signatures cross
- * this boundary.
- */
-import type {
-  CreateCheckpointInputParsed,
-  CreateCurrentWorkspaceInputParsed,
-  CreateWorkspaceInputParsed,
-  TournamentLaunchInputParsed,
-  GitCommitInputParsed,
-  GitCreateBranchInputParsed,
-  GitPushInputParsed,
-  GitViewOrCreatePrInputParsed,
-  IdeIdParsed,
-  LaunchProviderSessionInputParsed,
-  McpAuthResizeInputParsed,
-  McpAuthStartInputParsed,
-  McpAuthWriteInputParsed,
-  OpenInIdeInputParsed,
-  ProviderSessionInputParsed,
-  ProvidersCancelQueuedMessageInputParsed,
-  ProviderSessionResizeInputParsed,
-  ComposerAttachmentParsed,
-  AttachmentSaveImageInputParsed,
-  AttachmentSaveImageResultParsed,
-  AttachmentMimeTypeParsed,
-  RegisterProjectInputParsed,
-  RemoveProjectInputParsed,
-  ResolveApprovalInputParsed,
-  RunCheckInputParsed,
-  SessionCostSummaryInputParsed,
-  SessionEventsSinceInputParsed,
-  SelectPreferredAttemptInputParsed,
-  SkillsListInputParsed,
-  TerminalResizeInputParsed,
-  TerminalSpawnInputParsed,
-  TerminalWriteInputParsed,
-  UpdateProjectSettingsInputParsed,
-  WorkspaceStatusInputParsed,
-  agentModeSchema,
-  permissionModeSchema,
-  providerIdSchema
-} from "./ipcSchemas.js";
-import type { z } from "zod";
-import type { ReasoningEffort, UsageCounts } from "./providerModels.js";
+import type * as Bindings from "./bindings.js";
+import type { UsageCounts } from "./providerModels.js";
 
-// Derived from the Zod source-of-truth in ipcSchemas so the literal union
-// and the runtime validator stay in lockstep. `import type { z }` keeps zod
-// out of the renderer runtime bundle (S-001..S-003).
-export type ProviderId = z.infer<typeof providerIdSchema>;
+// Backend-derived IPC and diagnostics types come from generated Rust bindings.
+// `ArgmaxApi` and renderer-only domain shapes remain hand-written below.
+export type AgentMode = Bindings.AgentMode;
+export type AttachmentMimeType = Bindings.AttachmentMimeType;
+export type DatabaseStats = Bindings.DatabaseStats;
+export type DetectedIde = Bindings.DetectedIde;
+export type DiagnosticsReport = Omit<Bindings.DiagnosticsReport, "recentLogs"> & {
+  recentLogs: LogEntry[];
+};
+export type IdeId = Bindings.IdeId;
+export type IpcChannelStats = Bindings.IpcChannelStats;
+export type LogLevel = "debug" | "info" | "warn" | "error";
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  scope: string;
+  message: string;
+  fields: Record<string, unknown>;
+}
+export type PermissionMode = Bindings.PermissionMode;
+export type ProviderId = Bindings.ProviderId;
+export type ReasoningEffort = Bindings.ReasoningEffort;
+export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
 export type ProviderMode = "interactive-pty" | "structured-json";
-export type PermissionMode = z.infer<typeof permissionModeSchema>;
-export type AgentMode = z.infer<typeof agentModeSchema>;
 
 export interface DiscoveredProvider {
   provider: ProviderId;
@@ -84,6 +56,7 @@ export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelle
 
 export type EventType =
   | "session.started"
+  | "session.streaming"
   | "user.message"
   | "message.delta"
   | "message.completed"
@@ -108,29 +81,41 @@ export interface ProjectSettings {
   checkCommands: string[];
 }
 
-export type RegisterProjectInput = RegisterProjectInputParsed;
-export type RemoveProjectInput = RemoveProjectInputParsed;
-export type UpdateProjectSettingsInput = UpdateProjectSettingsInputParsed;
-export type CreateWorkspaceInput = CreateWorkspaceInputParsed;
-export type CreateCurrentWorkspaceInput = CreateCurrentWorkspaceInputParsed;
-export type LaunchProviderSessionInput = LaunchProviderSessionInputParsed;
-export type ProviderSessionInput = ProviderSessionInputParsed;
-export type ProvidersCancelQueuedMessageInput = ProvidersCancelQueuedMessageInputParsed;
-export type ProviderSessionResizeInput = ProviderSessionResizeInputParsed;
-export type ComposerAttachment = ComposerAttachmentParsed;
-export type AttachmentSaveImageInput = AttachmentSaveImageInputParsed;
-export type AttachmentSaveImageResult = AttachmentSaveImageResultParsed;
-export type AttachmentMimeType = AttachmentMimeTypeParsed;
-export type ResolveApprovalInput = ResolveApprovalInputParsed;
-export type SessionEventsSinceInput = SessionEventsSinceInputParsed;
-export type SessionCostSummaryInput = SessionCostSummaryInputParsed;
-export type WorkspaceStatusInput = WorkspaceStatusInputParsed;
-export type TerminalSpawnInput = TerminalSpawnInputParsed;
-export type TerminalWriteInput = TerminalWriteInputParsed;
-export type TerminalResizeInput = TerminalResizeInputParsed;
-export type McpAuthStartInput = McpAuthStartInputParsed;
-export type McpAuthWriteInput = McpAuthWriteInputParsed;
-export type McpAuthResizeInput = McpAuthResizeInputParsed;
+export type RegisterProjectInput = Bindings.ProjectsRegisterInput;
+export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
+export type UpdateProjectSettingsInput = Bindings.ProjectsUpdateSettingsInput;
+export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
+export type CreateCurrentWorkspaceInput = Bindings.WorkspacesCreateCurrentInput;
+type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
+  [P in K]?: T[P];
+};
+
+export type LaunchProviderSessionInput = OptionalNullable<
+  Bindings.ProvidersLaunchInput,
+  "reasoningEffort" | "agentMode" | "permissionMode" | "attachments"
+>;
+export type ProviderSessionInput = OptionalNullable<
+  Bindings.ProvidersSendInput,
+  "modelLabel" | "modelId" | "reasoningEffort" | "agentMode" | "attachments"
+>;
+export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMessageInput;
+export type ProviderSessionResizeInput = Bindings.ProvidersResizeInput;
+export type ComposerAttachment = Bindings.ComposerAttachmentInput;
+export type AttachmentSaveImageInput = Bindings.AttachmentsSaveImageInput;
+export type AttachmentSaveImageResult = Bindings.SaveImageResult;
+export type ResolveApprovalInput = Bindings.ApprovalsResolveInput;
+export type SessionEventsSinceInput = OptionalNullable<
+  Bindings.SessionEventsSinceInput,
+  "eventCursor" | "rawOutputCursor"
+>;
+export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
+export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
+export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
+export type TerminalWriteInput = Bindings.TerminalWriteInput;
+export type TerminalResizeInput = Bindings.TerminalResizeInput;
+export type McpAuthStartInput = Bindings.McpAuthStartInput;
+export type McpAuthWriteInput = Bindings.McpAuthWriteInput;
+export type McpAuthResizeInput = Bindings.McpAuthResizeInput;
 
 export interface TerminalDataEvent {
   terminalId: string;
@@ -142,6 +127,10 @@ export interface TerminalExitEvent {
   exitCode: number;
   signal: number | null;
 }
+
+export type EventSubscription = (() => void) & {
+  ready?: Promise<void>;
+};
 
 export interface McpAuthDataEvent {
   sessionId: string;
@@ -218,13 +207,12 @@ export type WorkspaceFileWriteResult =
   | { ok: true; mtimeMs: number; size: number }
   | { ok: false; reason: "stale"; currentMtimeMs: number; size: number };
 
-export type RunCheckInput = RunCheckInputParsed;
-export type CreateCheckpointInput = CreateCheckpointInputParsed;
-export type SelectPreferredAttemptInput = SelectPreferredAttemptInputParsed;
-export type GitCommitInput = GitCommitInputParsed;
-export type GitPushInput = GitPushInputParsed;
-export type GitCreateBranchInput = GitCreateBranchInputParsed;
-export type GitViewOrCreatePrInput = GitViewOrCreatePrInputParsed;
+export type RunCheckInput = Bindings.ChecksRunInput;
+export type CreateCheckpointInput = Bindings.CheckpointsCreateInput;
+export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;
+export type GitPushInput = Bindings.GitPushInput;
+export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
+export type GitViewOrCreatePrInput = Bindings.GitViewOrCreatePrInput;
 
 export interface GitCommitResult {
   commitSha: string;
@@ -243,165 +231,8 @@ export interface GitCreateBranchResult {
 export type GitViewOrCreatePrResult =
   | { action: "opened"; url: string; prNumber: number }
   | { action: "created"; url: string; prNumber: number | null };
-export type SkillsListInput = SkillsListInputParsed;
-export type OpenInIdeInput = OpenInIdeInputParsed;
-export type IdeId = IdeIdParsed;
-
-export interface DetectedIde {
-  id: IdeId;
-  label: string;
-  appPath: string | null;
-  hasCli: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Tournament mode (idea #1: parallel agents + auto-judge).
-// See openspec/changes/add-tournament-mode/.
-// ---------------------------------------------------------------------------
-
-export type TournamentState =
-  | "pending"
-  | "running"
-  | "judging"
-  | "awaiting-decision"
-  | "decided"
-  | "cancelled";
-
-export type ContestantOutcome = "pending" | "in-quorum" | "outside-quorum" | "cancelled";
-
-export type CriterionId =
-  | "tests-pass"
-  | "lint-clean"
-  | "typecheck-clean"
-  | "diff-size-lines"
-  | "files-touched"
-  | "wall-clock-seconds"
-  | "cost-usd";
-
-export type CriterionStatus = "ok" | "inconclusive" | "disqualified";
-
-/**
- * Threshold operator for hard gates. `==` requires equality (used for boolean
- * criteria like tests-pass where 1.0 = green, 0.0 = red). `<=` and `>=` are
- * reserved for future numeric gates (e.g. "cost <= $5").
- */
-export interface CriterionThreshold {
-  op: "==" | "<=" | ">=";
-  value: number;
-}
-
-export interface PolicyCriterion {
-  id: CriterionId;
-  weight: number;
-  threshold?: CriterionThreshold;
-}
-
-/**
- * Auto-keep rule: when verdict.totalForWinner >= min_total AND verdict.margin
- * >= min_margin AND no hard gate failed, the UI surfaces a "Keep this winner?"
- * prompt. The rule never archives without explicit user confirmation unless
- * the project is in fully-autonomous mode (separate per-project setting).
- */
-export interface AutoKeepRule {
-  min_total?: number;
-  min_margin?: number;
-}
-
-export interface ScoringPolicy {
-  id: string;
-  name: string;
-  scope: "user" | "project";
-  projectId: string | null;
-  isBuiltIn: boolean;
-  criteria: PolicyCriterion[];
-  autoKeepRule: AutoKeepRule;
-  tiesThreshold: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ContestantConfig {
-  provider: ProviderId;
-  modelId: string;
-  modelLabel: string;
-  reasoningEffort?: ReasoningEffort;
-  /** Free-form per-provider options. JSON-flat scalars only — narrowed at the IPC boundary. */
-  config?: Record<string, string | number | boolean | null>;
-}
-
-export interface TournamentContestant {
-  tournamentId: string;
-  contestantIndex: number;
-  sessionId: string;
-  provider: ProviderId;
-  modelId: string;
-  modelLabel: string;
-  reasoningEffort: ReasoningEffort | null;
-  config: Record<string, unknown>;
-  outcome: ContestantOutcome;
-  createdAt: string;
-}
-
-export interface CriterionScore {
-  tournamentId: string;
-  contestantIndex: number;
-  criterionId: CriterionId;
-  status: CriterionStatus;
-  rawValue: number | null;
-  normalizedValue: number | null;
-  evidence: Record<string, unknown>;
-  scoredAt: string;
-}
-
-export interface TournamentVerdict {
-  winner: number | null;
-  runnerUp: number | null;
-  margin: number;
-  ties: number[];
-  disqualified: number[];
-  totals: Array<{ contestantIndex: number; total: number }>;
-  computedAt: string;
-}
-
-export interface TournamentDecision {
-  /** Contestant index the user kept; null if cancelled before any decision. */
-  keptContestantIndex: number | null;
-  /** "auto" if fully-autonomous mode chose; "manual" if a human picked. */
-  source: "auto" | "manual";
-  /** Set when the user picked someone other than the verdict's winner. */
-  overrodeWinner: boolean;
-  reason?: string;
-  decidedAt: string;
-}
-
-export interface Tournament {
-  id: string;
-  projectId: string;
-  taskLabel: string;
-  prompt: string;
-  state: TournamentState;
-  quorum: number;
-  policyId: string | null;
-  policySnapshot: ScoringPolicy;
-  verdict: TournamentVerdict | null;
-  decision: TournamentDecision | null;
-  createdAt: string;
-  updatedAt: string;
-  decidedAt: string | null;
-}
-
-export interface TournamentLeaderboardRow {
-  contestant: TournamentContestant;
-  scores: CriterionScore[];
-  total: number | null;
-  rank: number | null;
-}
-
-export interface TournamentLeaderboard {
-  tournament: Tournament;
-  rows: TournamentLeaderboardRow[];
-  verdict: TournamentVerdict | null;
-}
+export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
+export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
 
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system";
 
@@ -467,7 +298,6 @@ export interface SessionSummary {
   startedAt: string;
   completedAt: string | null;
   lastActivityAt: string;
-  preferred: boolean;
   costUsd?: number;
   tokens?: UsageCounts;
 }
@@ -666,9 +496,6 @@ export interface ArgmaxApi {
   checkpoints: {
     create: (input: CreateCheckpointInput) => Promise<Checkpoint>;
   };
-  attempts: {
-    selectPreferred: (input: SelectPreferredAttemptInput) => Promise<SessionSummary>;
-  };
   health: {
     ping: () => Promise<{ ok: true; timestamp: string }>;
   };
@@ -680,7 +507,7 @@ export interface ArgmaxApi {
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     vacuumDatabase: () => Promise<{ ok: true }>;
-    setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
+    setTheme: (mode: "light" | "dark" | "system" | "purple") => Promise<{ ok: true }>;
   };
   mcp: {
     list: () => Promise<McpClientListing[]>;
@@ -716,21 +543,10 @@ export interface ArgmaxApi {
     write: (input: TerminalWriteInput) => Promise<{ ok: true }>;
     resize: (input: TerminalResizeInput) => Promise<{ ok: true }>;
     terminate: (terminalId: string) => Promise<{ ok: true }>;
-    onData: (listener: (event: TerminalDataEvent) => void) => () => void;
-    onExit: (listener: (event: TerminalExitEvent) => void) => () => void;
-  };
-  tournaments: {
-    launch: (input: TournamentLaunchInput) => Promise<Tournament>;
-    list: (input: { projectId: string }) => Promise<Tournament[]>;
-    get: (input: { tournamentId: string }) => Promise<TournamentLeaderboard>;
-    keep: (input: { tournamentId: string; contestantIndex: number; reason?: string }) => Promise<TournamentLeaderboard>;
-  };
-  scoring: {
-    listPolicies: () => Promise<ScoringPolicy[]>;
+    onData: (listener: (event: TerminalDataEvent) => void) => EventSubscription;
+    onExit: (listener: (event: TerminalExitEvent) => void) => EventSubscription;
   };
 }
-
-export type TournamentLaunchInput = TournamentLaunchInputParsed;
 
 export interface GhPrRecord {
   sessionId: string;
@@ -738,7 +554,7 @@ export interface GhPrRecord {
   headSha: string;
   lastSeenCheckState: GhCheckState;
   updatedAt: string;
-  /** Upper-case state from `gh pr view --json state`. Null for legacy rows. */
+  /** Upper-case state from `gh pr view --json state`. Null when unknown. */
   prState?: GhPrState | null;
   /** ISO timestamp the failure follow-up notification last fired for this head_sha. */
   notifiedAt?: string | null;
@@ -800,90 +616,6 @@ export type StartupPhase =
   | "ipc.register"
   | "window.create"
   | "window.ready-to-show";
-
-export interface StartupPhaseRecord {
-  phase: StartupPhase;
-  /** Milliseconds since the main process started. */
-  elapsedMs: number;
-  /** Milliseconds since the previous phase mark (0 for the first). */
-  deltaMs: number;
-}
-
-export type LogLevel = "debug" | "info" | "warn" | "error";
-
-export interface LogEntry {
-  /** ISO-8601 timestamp. */
-  timestamp: string;
-  level: LogLevel;
-  scope: string;
-  message: string;
-  /** JSON-serializable structured fields. Always present (may be empty). */
-  fields: Record<string, unknown>;
-}
-
-export interface IpcChannelStats {
-  channel: string;
-  /** Samples in the rolling 100-call window. */
-  count: number;
-  /** Total samples ever recorded for the channel. */
-  totalRecorded: number;
-  /** p50 latency in milliseconds (rolling window). */
-  p50: number;
-  /** p99 latency in milliseconds (rolling window). */
-  p99: number;
-}
-
-export interface DatabaseStats {
-  /** Row counts per major table. */
-  rowCounts: {
-    projects: number;
-    workspaces: number;
-    sessions: number;
-    events: number;
-    rawOutputs: number;
-    approvals: number;
-    checks: number;
-    checkpoints: number;
-    learnings: number;
-    usageEvents: number;
-  };
-  /** Bytes — size of the WAL sidecar file. 0 when missing or unreadable. */
-  walBytes: number;
-  /** Value of `PRAGMA wal_autocheckpoint` (pages between auto-checkpoints). */
-  walAutocheckpoint: number;
-}
-
-export interface DiagnosticsReport {
-  appVersion: string;
-  electronVersion: string;
-  nodeVersion: string;
-  sqliteVersion: string;
-  databasePath: string;
-  platform: string;
-  arch: string;
-  generatedAt: string;
-  /**
-   * Per-phase timings for the current boot. Diagnostics → Startup panel
-   * (SPEC P7.04) renders these and flags any phase that exceeds the budget
-   * documented in `agents/docs/performance.md`.
-   */
-  startupPhases: StartupPhaseRecord[];
-  /**
-   * Live database health stats. Diagnostics → Database panel (SPEC P7.03)
-   * renders row counts + WAL size + autocheckpoint pragma.
-   */
-  databaseStats: DatabaseStats;
-  /**
-   * Per-channel IPC latency stats. Diagnostics → IPC panel (SPEC P7.02)
-   * renders this. Empty array when no channels have been sampled yet.
-   */
-  ipcStats: IpcChannelStats[];
-  /**
-   * Tail of the main-process log ring buffer (most recent 200 entries).
-   * Diagnostics → Logs panel (SPEC P7.01) renders this.
-   */
-  recentLogs: LogEntry[];
-}
 
 export type MenuCommand =
   | "new-session"

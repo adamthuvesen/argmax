@@ -87,15 +87,15 @@
 }
 
 .mascot-button.launcher-send-mascot {
-  width: 40px;
-  height: 40px;
-  padding: 4px 0 0;
+  width: 34px;
+  height: 34px;
+  padding: 3px 0 0;
   border-radius: 10px;
 }
 
 .mascot-button.launcher-send-mascot .mascot {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
 }
 
 /* Composer send-button variant — replaces the old dark-circle .session-send-button.
@@ -317,4 +317,3 @@
 .toast button:hover {
   opacity: 1;
 }
-

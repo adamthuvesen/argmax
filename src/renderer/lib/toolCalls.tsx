@@ -14,6 +14,10 @@ export type ToolCall = {
   createdAt: string;
   completedAt: string | null;
   error: string | null;
+  // The `toolUseId` of the agent (Task) tool that spawned this call, when this
+  // is a sub-agent's tool call. Lets the group bubble nest children under their
+  // agent banner. Absent for top-level calls.
+  parentToolUseId?: string | null;
 };
 
 export type ParallelPosition = "start" | "middle" | "end";
@@ -86,6 +90,33 @@ export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
   };
 }
 
+export type GroupRow = { tool: ToolCall; children: ToolCall[] };
+
+// Split the flat tool list into a one-level tree: a sub-agent's calls (those
+// carrying the spawning Task's toolUseId as parentToolUseId) nest under that
+// Task. Everything else stays top-level. Order is preserved; children are
+// pulled to sit directly beneath their parent so the group renders the agent's
+// work as a nested thread, not an unattributed flat list.
+export function buildGroupRows(tools: ToolCall[]): GroupRow[] {
+  const byId = new Set(tools.map((t) => t.toolUseId));
+  const childrenByParent = new Map<string, ToolCall[]>();
+  const topLevel: ToolCall[] = [];
+  for (const tool of tools) {
+    const parent = tool.parentToolUseId;
+    if (parent && parent !== tool.toolUseId && byId.has(parent)) {
+      const arr = childrenByParent.get(parent) ?? [];
+      arr.push(tool);
+      childrenByParent.set(parent, arr);
+    } else {
+      topLevel.push(tool);
+    }
+  }
+  return topLevel.map((tool) => ({
+    tool,
+    children: childrenByParent.get(tool.toolUseId) ?? []
+  }));
+}
+
 type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bash" | "agent" | "other";
 
 /**
@@ -95,10 +126,14 @@ type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bas
  * a different agent is doing the work.
  */
 function isAgentTool(lower: string): boolean {
-  // Claude's built-in tool is exactly "Task"; Codex/Cursor variants use
-  // "agent"/"subagent" or names ending with "_agent". Anchor the literal
-  // matches so we don't sweep up "TaskList" or "agent_id"-style names.
+  // Claude's built-in tool is exactly "Task". Cursor spawns sub-agents via
+  // `taskToolCall`; Codex coordinates them via `collab_tool_call`. Neither
+  // streams the sub-agent's internal steps, but surfacing the launch as an
+  // Agent (Bot icon + "Spawned N agents") still tells the user a different
+  // agent did the work. Anchor literal matches so we don't sweep up
+  // "TaskList" or "agent_id"-style names.
   return lower === "task" || lower === "agent" || lower === "subagent" ||
+    lower === "tasktoolcall" || lower === "collab_tool_call" ||
     /(^|[_-])(sub-?agent|agent)$/.test(lower);
 }
 
@@ -156,6 +191,13 @@ function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string 
 }
 
 export function describeToolAction(tool: ToolCall): string {
+  // Claude's Skill tool fires when the agent activates a skill. The skill's
+  // full body streams separately (and is dropped upstream as noise), so the
+  // row is the one durable marker — make it name the skill outright instead of
+  // a bare "Skill".
+  if (tool.name.toLowerCase() === "skill") {
+    return tool.inputPreview ? `Activated skill ${tool.inputPreview}` : "Activated skill";
+  }
   const bucket = getFineBucket(tool.name);
   const preview = tool.inputPreview;
   const basename = (path: string): string => {
@@ -164,10 +206,10 @@ export function describeToolAction(tool: ToolCall): string {
   };
   switch (bucket) {
     case "agent":
-      // Agent verb is rendered with a Bot icon and accent color so the
-      // "Agent" label + sub-agent description make it obvious a different
-      // agent is running this work — not the parent.
-      return preview ? `Agent ${preview}` : "Agent task";
+      // Sage "Agent" verb + the sub-agent's description (when the provider
+      // gives one — Claude/Cursor do; Codex's collab call doesn't) make it
+      // obvious a different agent is doing this work. No bland "task" filler.
+      return preview ? `Agent ${preview}` : "Agent";
     case "bash":
       return preview ? `Ran ${preview}` : "Ran command";
     case "edit":
@@ -208,7 +250,9 @@ function previewTokenForTool(tool: ToolCall): string | null {
   const candidate = raw.includes("/") ? basenameOf(raw) : raw;
   const stripped = candidate.replace(/^['"`]|['"`]$/g, "").trim();
   if (!stripped) return null;
-  return stripped.slice(0, 28);
+  // trimEnd so a mid-word slice never leaves a trailing space that reads as
+  // "and , find" once the tokens are comma-joined.
+  return stripped.slice(0, 28).trimEnd();
 }
 
 function extractBashCommandName(input: string): string | null {
@@ -235,7 +279,8 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   headline: string;
   preview: string;
   currentAction: string | null;
-  worstStatus: ToolCall["status"];
+  status: ToolCall["status"];
+  hasErrors: boolean;
 } {
   const counts = new Map<FineBucket, number>();
   for (const tool of tools) {
@@ -257,11 +302,17 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   // `rg` three times shows "rg" once, not three slash-joined repetitions.
   // The prior shape joined raw shell text ("zsh -lc 'git status --short'…")
   // which was a wall, not a preview.
+  // Agent (Task) tools are excluded from the token preview: their full
+  // description already headlines the group as the "Agent …" banner row, and
+  // splicing a sentence fragment in among filenames produced run-ons like
+  // "Explore agent structure and , find, ls, …". The eyebrow stat line
+  // ("Spawned 1 agent") carries the count; the preview stays scannable tokens.
+  const previewable = tools.filter((tool) => getFineBucket(tool.name) !== "agent");
   const seen = new Set<string>();
   const previewParts: string[] = [];
   let truncated = false;
-  for (let i = 0; i < tools.length; i++) {
-    const tool = tools[i];
+  for (let i = 0; i < previewable.length; i++) {
+    const tool = previewable[i];
     if (!tool) continue;
     const token = previewTokenForTool(tool);
     if (!token) continue;
@@ -270,8 +321,8 @@ export function summarizeToolGroup(tools: ToolCall[]): {
     previewParts.push(token);
     if (previewParts.length === 3) {
       // Mark truncated if any later tool would have produced a new token.
-      for (let j = i + 1; j < tools.length; j++) {
-        const next = tools[j];
+      for (let j = i + 1; j < previewable.length; j++) {
+        const next = previewable[j];
         if (!next) continue;
         const t = previewTokenForTool(next);
         if (t && !seen.has(t)) {
@@ -285,18 +336,23 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   const preview = previewParts.join(", ") + (truncated ? ", …" : "");
 
   let hasError = false;
+  let allErrors = tools.length > 0;
   let latestRunning: ToolCall | null = null;
   for (const tool of tools) {
-    if (tool.status === "error") hasError = true;
-    else if (tool.status === "running") latestRunning = tool;
+    if (tool.status === "error") {
+      hasError = true;
+    } else {
+      allErrors = false;
+      if (tool.status === "running") latestRunning = tool;
+    }
   }
-  const worstStatus: ToolCall["status"] = hasError ? "error" : latestRunning ? "running" : "done";
+  const status: ToolCall["status"] = allErrors ? "error" : latestRunning ? "running" : "done";
 
   // While the group is still running, surface the most recent live tool's
   // action so the collapsed header shows what the agent is doing right now.
   const currentAction = latestRunning ? describeToolAction(latestRunning) : null;
 
-  return { headline, preview, currentAction, worstStatus };
+  return { headline, preview, currentAction, status, hasErrors: hasError };
 }
 
 export function extractToolUseId(payload: Record<string, unknown>): string | null {
@@ -339,6 +395,13 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
 
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
   const lower = name.toLowerCase();
+  if (lower === "skill") {
+    // Claude's Skill tool input is `{ skill: "<name>" }`; surface that name so
+    // the row reads "Activated skill <name>".
+    const skill = input.skill ?? input.name ?? input.command;
+    if (typeof skill === "string" && skill.trim().length > 0) return skill.slice(0, 72);
+    return "";
+  }
   if (isAgentTool(lower)) {
     // Claude's Task tool input is `{ description, prompt, subagent_type }`.
     // `description` is the human-friendly 3-5 word title; prefer it over the

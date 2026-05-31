@@ -64,6 +64,24 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result.map((e) => e.id)).toEqual(["e1", "e4"]);
   });
 
+  it("keeps thinking-flagged message.delta even when a message.completed follows", () => {
+    // Claude extended-thinking content is surfaced by the normalizer as
+    // a message.delta with payload.thinking === true. The pruner used to
+    // drop these the moment the final text answer arrived, leaving the
+    // user with no record of the reasoning step. Regression for
+    // adam/rust-port streaming-feedback fix.
+    const events: TimelineEvent[] = [
+      event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
+      {
+        ...event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
+        payload: { thinking: true }
+      },
+      event("e3", "message.completed", "2026-05-12T15:00:02.000Z")
+    ];
+    const result = pruneSupersededDeltas(events);
+    expect(result.map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
+  });
+
   // -------------------------------------------------------------------------
   // audit-2026-05-11 / SPEC P4.06 — mergeDashboardDelta reference stability
   // -------------------------------------------------------------------------
@@ -99,6 +117,31 @@ describe("pruneSupersededDeltas — reference stability", () => {
     // Same identity → upsertById returns the same array → mergeSlice returns it
     // → mergeDashboardDelta short-circuits to the input snapshot.
     expect(mergeDashboardDelta(base, { events: [ev] })).toBe(base);
+  });
+
+  it("does not rescan the event tail for deltas that do not include events", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("e1", "message.delta", "2026-05-12T15:00:01.000Z"),
+        event("e2", "message.completed", "2026-05-12T15:00:02.000Z")
+      ]
+    };
+    const next = mergeDashboardDelta(base, {
+      pendingMessages: {
+        "session-1": [
+          {
+            id: "pending-1",
+            sessionId: "session-1",
+            content: "queued",
+            agentMode: "auto",
+            queuedAt: "2026-05-12T15:00:03.000Z"
+          }
+        ]
+      }
+    });
+    expect(next).not.toBe(base);
+    expect(next.events).toBe(base.events);
   });
 
   it("mergeDashboardDelta returns a new reference when any slice actually changes", () => {
@@ -151,5 +194,100 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const result = pruneSupersededDeltas(events);
     expect(result).not.toBe(events);
     expect(result.map((e) => e.id)).toEqual(["e4", "e1"]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Token-streaming: a flood of answer deltas must not evict tool/user rows
+  // -------------------------------------------------------------------------
+
+  it("keeps user.message and tool rows when a long in-flight answer floods deltas", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("u1", "user.message", "2026-05-12T15:00:00.000Z", 1),
+        event("c1", "command.started", "2026-05-12T15:00:01.000Z", 2),
+        event("c2", "command.completed", "2026-05-12T15:00:02.000Z", 3)
+      ]
+    };
+    // 600 in-flight answer deltas (no completion yet → not prunable). Naive
+    // newest-500 capping would push u1/c1/c2 (oldest) out and flicker them.
+    const deltas: TimelineEvent[] = Array.from({ length: 600 }, (_, i) =>
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+    );
+    const merged = mergeDashboardDelta(base, { events: deltas });
+    const ids = new Set(merged.events.map((e) => e.id));
+    expect(ids.has("u1")).toBe(true);
+    expect(ids.has("c1")).toBe(true);
+    expect(ids.has("c2")).toBe(true);
+    // The newest 500 answer deltas survive; the oldest 100 are evicted.
+    expect(ids.has("d599")).toBe(true);
+    expect(ids.has("d0")).toBe(false);
+  });
+
+  it("prunes the answer deltas once the turn completes, keeping tool rows", () => {
+    const deltas: TimelineEvent[] = Array.from({ length: 500 }, (_, i) =>
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+    );
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        event("u1", "user.message", "2026-05-12T15:00:00.000Z", 1),
+        event("c1", "command.started", "2026-05-12T15:00:01.000Z", 2),
+        ...deltas
+      ]
+    };
+    const merged = mergeDashboardDelta(base, {
+      events: [event("done", "message.completed", "2026-05-12T15:02:00.000Z", 9999)]
+    });
+    const ids = merged.events.map((e) => e.id);
+    expect(ids).toContain("u1");
+    expect(ids).toContain("c1");
+    expect(ids).toContain("done");
+    // The 500 answer deltas (ids d0..d499) are superseded by the completion.
+    expect(ids.filter((id) => /^d\d/.test(id))).toHaveLength(0);
+  });
+
+  it("keeps thinking deltas protected from eviction by a long answer", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        {
+          ...event("t1", "message.delta", "2026-05-12T15:00:00.000Z", 5),
+          payload: { thinking: true }
+        }
+      ]
+    };
+    const deltas: TimelineEvent[] = Array.from({ length: 600 }, (_, i) =>
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+    );
+    const merged = mergeDashboardDelta(base, { events: deltas });
+    expect(merged.events.some((e) => e.id === "t1")).toBe(true);
+  });
+
+  // Regression: a long extended-thinking run floods thinking deltas. These used
+  // to share the protected budget with tool rows, so they evicted the oldest
+  // tool calls — and because the count varied per delta, the eviction boundary
+  // oscillated and the tool list blinked. Thinking deltas now have their own
+  // bucket, so even a huge thinking flood leaves every tool row intact.
+  it("keeps tool rows when a long thinking phase floods thinking deltas", () => {
+    const toolRows: TimelineEvent[] = Array.from({ length: 400 }, (_, i) =>
+      event(`c${i}`, i % 2 === 0 ? "command.started" : "command.completed", "2026-05-12T15:00:00.000Z", i + 1)
+    );
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [event("u1", "user.message", "2026-05-12T14:59:59.000Z", 0), ...toolRows]
+    };
+    // 1200 in-flight thinking deltas — well past any single-bucket cap.
+    const thinking: TimelineEvent[] = Array.from({ length: 1200 }, (_, i) => ({
+      ...event(`t${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 10_000 + i),
+      payload: { thinking: true }
+    }));
+    const merged = mergeDashboardDelta(base, { events: thinking });
+    const ids = new Set(merged.events.map((e) => e.id));
+    // Every tool row and the user message survive the thinking flood.
+    expect(ids.has("u1")).toBe(true);
+    for (let i = 0; i < 400; i++) {
+      expect(ids.has(`c${i}`)).toBe(true);
+    }
   });
 });

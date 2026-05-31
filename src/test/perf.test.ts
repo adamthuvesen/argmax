@@ -1,12 +1,11 @@
 // @vitest-environment node
-import Database from "better-sqlite3";
 import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
-import { runMigrations } from "../main/persistence/migrations.js";
 import { parseUnifiedDiff } from "../renderer/lib/diff.js";
 import { buildFileTree } from "../renderer/lib/fileTree.js";
+import { searchFilePaths } from "../renderer/lib/paletteSearch.js";
 import { mergeDashboardDelta, emptySnapshot } from "../renderer/lib/snapshot.js";
-import type { DashboardSnapshot, SessionSummary } from "../shared/types.js";
+import type { DashboardSnapshot, SessionSummary, TimelineEvent } from "../shared/types.js";
 
 /**
  * SPEC P4.10 — bench harness. Each assertion pins a property documented in
@@ -35,7 +34,6 @@ function makeSession(i: number): SessionSummary {
     startedAt: new Date(2026, 0, 1, 0, 0, i).toISOString(),
     completedAt: null,
     lastActivityAt: new Date(2026, 0, 1, 0, 0, i).toISOString(),
-    preferred: false
   };
 }
 
@@ -64,6 +62,38 @@ describe("perf budgets", () => {
     expect(p95).toBeLessThan(5);
   });
 
+  it("mergeDashboardDelta with a 500-delta streamed answer + tool rows stays p95 < 5 ms", () => {
+    // Token streaming floods the event list; the eviction-protection partition
+    // (snapshot.ts mergeEventsBounded) runs on the hot merge path. Guard it.
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        { id: "u1", sessionId: "s", type: "user.message", message: "", payload: {}, createdAt: new Date(2026, 0, 1).toISOString(), rowCursor: 1 },
+        { id: "c1", sessionId: "s", type: "command.started", message: "", payload: {}, createdAt: new Date(2026, 0, 1, 0, 0, 1).toISOString(), rowCursor: 2 }
+      ]
+    };
+    const delta = {
+      events: Array.from({ length: 500 }, (_, i): TimelineEvent => ({
+        id: `d${i}`,
+        sessionId: "s",
+        type: "message.delta",
+        message: "tok",
+        payload: {},
+        createdAt: new Date(2026, 0, 1, 0, 1, 0).toISOString(),
+        rowCursor: 100 + i
+      }))
+    };
+
+    const durations: number[] = [];
+    for (let i = 0; i < 50; i++) {
+      const start = performance.now();
+      mergeDashboardDelta(base, delta);
+      durations.push(performance.now() - start);
+    }
+    durations.sort((a, b) => a - b);
+    expect(percentile(durations, 0.95)).toBeLessThan(5);
+  });
+
   it("buildFileTree over 10 000 entries completes < 50 ms", () => {
     const entries = [];
     for (let dir = 0; dir < 100; dir++) {
@@ -82,13 +112,20 @@ describe("perf budgets", () => {
     expect(elapsed).toBeLessThan(75);
   });
 
-  it("runMigrations on an empty DB completes < 200 ms", () => {
-    const database = new Database(":memory:");
-    const start = performance.now();
-    runMigrations(database);
-    const elapsed = performance.now() - start;
-    database.close();
-    expect(elapsed).toBeLessThan(200);
+  it("searchFilePaths over 10 000 entries completes p95 < 25 ms", () => {
+    const paths = Array.from({ length: 10_000 }, (_, i) =>
+      i === 9_500 ? "src/renderer/components/NeedlePanel.tsx" : `packages/pkg-${i}/src/file-${i}.ts`
+    );
+
+    const durations: number[] = [];
+    for (let i = 0; i < 50; i++) {
+      const start = performance.now();
+      const hits = searchFilePaths(paths, "Needle", 8);
+      durations.push(performance.now() - start);
+      expect(hits[0]).toBe("src/renderer/components/NeedlePanel.tsx");
+    }
+    durations.sort((a, b) => a - b);
+    expect(percentile(durations, 0.95)).toBeLessThan(25);
   });
 
   it("parseUnifiedDiff over a 500-hunk synthetic diff completes p95 < 20 ms", () => {

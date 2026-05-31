@@ -24,6 +24,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import { useStableFilter } from "../hooks/useStableFilter.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
@@ -37,9 +38,11 @@ const ReviewPanel = lazy(async () => ({
 import { SessionConversation } from "./SessionConversation.js";
 // TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and
 // only loaded when the user opens the integrated terminal. Lazy-mounted
-// (ralph B5) so xterm leaves the main chunk.
+// (ralph B5) so xterm leaves the main chunk. The importer is named so it can
+// also be prefetched on idle (see the warm-up effect below).
+const importTerminalPanel = () => import("./TerminalTabsPanel.js");
 const TerminalTabsPanel = lazy(async () => ({
-  default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel
+  default: (await importTerminalPanel()).TerminalTabsPanel
 }));
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
@@ -56,6 +59,7 @@ export function SessionPane({
   checks,
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
+  defaultThinkingExpanded,
   events,
   isFocused = true,
   onClose,
@@ -72,6 +76,7 @@ export function SessionPane({
   registerPaletteFileContext,
   rightPanelToggleSignal,
   debugLogToggleSignal,
+  terminalToggleSignal,
   session,
   showCostPanel = true,
   thinkingStyle,
@@ -81,6 +86,7 @@ export function SessionPane({
   checks?: CheckRun[];
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
+  defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
   isFocused?: boolean;
@@ -99,6 +105,7 @@ export function SessionPane({
   rawOutputs: RawProviderOutput[];
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
+  terminalToggleSignal?: number;
   session: SessionSummary | null;
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
@@ -157,18 +164,13 @@ export function SessionPane({
     setIsTerminalOpen(false);
     setTerminalOnceOpened(false);
   }, []);
-  const visibleApprovals = useMemo(
-    () => (sessionId ? approvals.filter((approval) => approval.sessionId === sessionId) : approvals),
-    [approvals, sessionId]
-  );
-  const visibleEvents = useMemo(
-    () => (sessionId ? events.filter((event) => event.sessionId === sessionId) : events),
-    [events, sessionId]
-  );
-  const visibleRawOutputs = useMemo(
-    () => (sessionId ? rawOutputs.filter((output) => output.sessionId === sessionId) : rawOutputs),
-    [rawOutputs, sessionId]
-  );
+  // Stable per-session slices: a delta for another session leaves these
+  // identity-equal, so the conversation's derived memos and memoized turns skip
+  // work instead of re-deriving on every unrelated delta (matters most in the
+  // multi-pane grid).
+  const visibleApprovals = useStableFilter(approvals, sessionId, (approval) => approval.sessionId === sessionId);
+  const visibleEvents = useStableFilter(events, sessionId, (event) => event.sessionId === sessionId);
+  const visibleRawOutputs = useStableFilter(rawOutputs, sessionId, (output) => output.sessionId === sessionId);
   const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
     try {
       await onResolveApproval(approvalId, status);
@@ -206,10 +208,35 @@ export function SessionPane({
   const reviewTogglePanel = reviewState.togglePanel;
   const reviewClosePanel = reviewState.closePanel;
   const reviewOpenInFilesView = reviewState.openInFilesView;
+  const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
+  const reviewMode = reviewState.mode;
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
   const workspaceId = workspace?.id ?? null;
+  // After a commit the staged/changed set has shifted; refresh the workspace
+  // status so the Changes panel updates immediately (the refresh publishes a
+  // dashboard delta that bumps changedFilesKey) rather than showing stale rows
+  // until the panel is reopened.
+  const handleCommitted = useCallback((): void => {
+    if (!workspaceId || !window.argmax) return;
+    void window.argmax.workspaces.refreshStatus(workspaceId).catch(() => undefined);
+  }, [workspaceId]);
+
+  // Warm the heavy xterm chunk on idle once a workspace is present, so the first
+  // Cmd+J paints the terminal immediately instead of showing blank panel space
+  // while the bundle downloads. Deferred to idle so it never competes with the
+  // session's own first paint; Vite caches the import, so the real open is instant.
+  useEffect(() => {
+    if (!workspaceId) return;
+    const idle = window.requestIdleCallback;
+    if (typeof idle === "function") {
+      const id = idle(() => void importTerminalPanel().catch(() => undefined));
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const timer = window.setTimeout(() => void importTerminalPanel().catch(() => undefined), 1500);
+    return () => window.clearTimeout(timer);
+  }, [workspaceId]);
   const handleOpenFile = useCallback(
     (path: string, opts?: { line?: number | null; preferIde?: boolean }): void => {
       if (opts?.preferIde && workspaceId && window.argmax) {
@@ -231,6 +258,7 @@ export function SessionPane({
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
+  const lastTerminalToggleSignal = useRef(0);
 
   // Register this pane's file source + pick handler with the command
   // palette when focused. Only the focused pane registers so multiple
@@ -263,6 +291,13 @@ export function SessionPane({
   }, [debugLogToggleSignal, isFocused, toggleLog]);
 
   useEffect(() => {
+    if (!terminalToggleSignal || terminalToggleSignal === lastTerminalToggleSignal.current) return;
+    lastTerminalToggleSignal.current = terminalToggleSignal;
+    if (!isFocused || !workspace) return;
+    setIsTerminalOpen((open) => !open);
+  }, [isFocused, terminalToggleSignal, workspace]);
+
+  useEffect(() => {
     if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
@@ -281,22 +316,31 @@ export function SessionPane({
       }
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === "j") {
-        const target = event.target as HTMLElement | null;
-        const insideTerminal = target?.closest('[data-argmax-terminal="true"]') !== null;
-        if (!insideTerminal && isTypingTarget(event.target)) return;
-        event.preventDefault();
-        setIsTerminalOpen((open) => !open);
-        return;
-      }
       if (key === "b") {
         event.preventDefault();
         reviewTogglePanel();
+        return;
+      }
+      if (key === "g") {
+        event.preventDefault();
+        if (reviewIsPanelOpen && reviewMode === "files") {
+          reviewClosePanel();
+        } else {
+          reviewOpenPanelInFilesMode();
+        }
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFocused, isLogOpen, reviewClosePanel, reviewIsPanelOpen, reviewTogglePanel]);
+  }, [
+    isFocused,
+    isLogOpen,
+    reviewClosePanel,
+    reviewIsPanelOpen,
+    reviewMode,
+    reviewOpenPanelInFilesMode,
+    reviewTogglePanel
+  ]);
 
   // Backfill timeline events for this pane on mount and whenever the session
   // changes. Each pane backfills independently of the focused-pane selection,
@@ -390,6 +434,7 @@ export function SessionPane({
           checks={checks}
           defaultToolCallsExpanded={defaultToolCallsExpanded}
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+          defaultThinkingExpanded={defaultThinkingExpanded}
           events={visibleEvents}
           isLogOpen={isLogOpen}
           onClose={onClose}
@@ -496,6 +541,7 @@ export function SessionPane({
         <CommitDialog
           open={isCommitDialogOpen}
           onClose={handleCloseCommitDialog}
+          onCommitted={handleCommitted}
           workspaceId={workspace.id}
           files={reviewState.files}
           defaultMessage={workspace.taskLabel}

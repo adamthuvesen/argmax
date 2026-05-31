@@ -11,13 +11,15 @@ interface GlobalKeybindingArgs {
   onOpenSearch: () => void;
   /** Cmd+Shift+F opens the workspace content search overlay (git grep). */
   onOpenContentSearch: () => void;
+  /** Cmd+J toggles the integrated terminal for the active session pane. */
+  onToggleTerminal?: () => void;
   /** Cmd+1..9 selects the nth session and closes the settings panel. */
   onSelectSession: (session: SessionSummary) => void;
   /** Cmd+1..9 also closes the settings panel. */
   onCloseSettings: () => void;
   /**
    * Cmd+W closes the focused session pane. Returns `true` if a pane was
-   * closed (suppresses the browser/Electron default of closing the window).
+   * closed (suppresses the browser/Tauri default of closing the window).
    * No-ops when the grid is empty.
    */
   onCloseFocusedPane?: () => boolean;
@@ -37,16 +39,18 @@ interface GlobalKeybindingArgs {
  *   Cmd/Ctrl+/    → open-cheat-sheet (menu command)
  *   Cmd/Ctrl+F    → open global search (session messages)
  *   Cmd/Ctrl+Shift+F → open workspace content search (git grep)
+ *   Cmd/Ctrl+J    → toggle integrated terminal
  *
- * Typing-target guard: any keypress while focus is in
- * contenteditable / textarea / role=textbox is left alone. The Esc
- * dismissal lives in `useOverlays`; this hook is open-only.
+ * Typing-target guard: text-editing keys stay in contenteditable /
+ * textarea / role=textbox. App-level shortcuts that do not edit text
+ * (settings, command palette, new session, pane close) run first.
  */
 export function useGlobalKeybindings({
   sessions,
   onMenuCommand,
   onOpenSearch,
   onOpenContentSearch,
+  onToggleTerminal,
   onSelectSession,
   onCloseSettings,
   onCloseFocusedPane
@@ -66,24 +70,23 @@ export function useGlobalKeybindings({
         }
         return;
       }
-      if (isTypingTarget(event.target)) return;
-      const digit = parseInt(event.key, 10);
-      if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
-        const targetSession = sessions[digit - 1];
-        if (!targetSession) return;
+      // Cmd+N fires even when focus is in the composer — "new" is an
+      // OS-level reflex and no native textarea action binds Cmd+N.
+      if (event.key.toLowerCase() === "n" && !event.shiftKey && !event.altKey) {
+        if (event.isComposing || event.repeat) return;
         event.preventDefault();
-        onCloseSettings();
-        onSelectSession(targetSession);
+        onMenuCommand("new-session");
+        return;
+      }
+      if (event.key.toLowerCase() === "j" && !event.shiftKey && !event.altKey) {
+        if (event.isComposing || event.repeat) return;
+        event.preventDefault();
+        onToggleTerminal?.();
         return;
       }
       if (event.key === ",") {
         event.preventDefault();
         onMenuCommand("open-settings");
-        return;
-      }
-      if (event.key.toLowerCase() === "n" && !event.shiftKey) {
-        event.preventDefault();
-        onMenuCommand("new-session");
         return;
       }
       if (event.key.toLowerCase() === "k") {
@@ -94,6 +97,16 @@ export function useGlobalKeybindings({
       if (event.key.toLowerCase() === "p" && !event.shiftKey) {
         event.preventDefault();
         onMenuCommand("open-command-palette");
+        return;
+      }
+      if (isTypingTarget(event.target)) return;
+      const digit = parseInt(event.key, 10);
+      if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
+        const targetSession = sessions[digit - 1];
+        if (!targetSession) return;
+        event.preventDefault();
+        onCloseSettings();
+        onSelectSession(targetSession);
         return;
       }
       if (event.key === "/") {
@@ -118,6 +131,7 @@ export function useGlobalKeybindings({
     onMenuCommand,
     onOpenSearch,
     onOpenContentSearch,
+    onToggleTerminal,
     onSelectSession,
     onCloseSettings,
     onCloseFocusedPane

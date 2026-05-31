@@ -1,6 +1,8 @@
 import { PanelRightClose } from "lucide-react";
 import { useEffect, useMemo, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type { RawProviderOutput, TimelineEvent } from "../../shared/types.js";
+import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 
 export function DebugLogPanel({
   events,
@@ -126,20 +128,75 @@ function DebugOutputList({ outputs }: { outputs: RawProviderOutput[] }): JSX.Ele
   };
   return (
     <div className="log-output-list">
-      {sorted.map((output) => (
-        <div className="log-output-row" data-stream={output.stream} key={output.id}>
-          <span className="log-stream-badge">{output.stream}</span>
-          <pre className="log-output-content">{output.content}</pre>
-          <button
-            type="button"
-            className="log-output-copy"
-            aria-label="Copy output block"
-            onClick={() => copyBlock(output.content)}
-          >
-            Copy
-          </button>
-        </div>
-      ))}
+      {sorted.map((output) => {
+        const preview = summarizeRawOutput(output.content);
+        return (
+          <div className="log-output-row" data-stream={output.stream} key={output.id}>
+            <span className="log-stream-badge">{output.stream}</span>
+            <pre className="log-output-content">{preview}</pre>
+            <button
+              type="button"
+              className="log-output-copy"
+              aria-label="Copy output block"
+              onClick={() => copyBlock(output.content)}
+            >
+              Copy
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+function summarizeRawOutput(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const summaries = lines.map((line) => {
+    if (!line.trim()) return line;
+    return summarizeProviderProtocolLine(line) ?? line;
+  });
+  return summaries.join("\n");
+}
+
+function summarizeProviderProtocolLine(line: string): string | null {
+  const record = tryParseJsonObject(line.trim());
+  const type = stringValue(record?.type);
+  if (!record || !type) return null;
+
+  const subtype = stringValue(record.subtype);
+  const content = claudeContentSummary(record);
+  const details = [subtype, content].filter(Boolean).join(" - ");
+  return details ? `[provider json] ${type} - ${details}` : `[provider json] ${type}`;
+}
+
+function claudeContentSummary(record: Record<string, unknown>): string | null {
+  const message = objectValue(record.message);
+  const blocks = arrayValue(message?.content) ?? arrayValue(record.content);
+  if (!blocks) return stringValue(record.message);
+
+  const text = blocks
+    .map((block) => stringValue(objectValue(block)?.text))
+    .filter((value): value is string => Boolean(value))
+    .join("")
+    .trim();
+  if (text) return truncateSummary(text);
+
+  const toolNames = blocks
+    .map((block) => {
+      const obj = objectValue(block);
+      if (stringValue(obj?.type) !== "tool_use") return null;
+      return stringValue(obj?.name) ?? "tool_use";
+    })
+    .filter((value): value is string => Boolean(value));
+  if (toolNames.length > 0) return `tool_use ${toolNames.join(", ")}`;
+
+  if (blocks.some((block) => stringValue(objectValue(block)?.type) === "thinking")) {
+    return "thinking block hidden";
+  }
+  return null;
+}
+
+function truncateSummary(text: string): string {
+  const normalized = text.replace(/\s+/g, " ");
+  return normalized.length > 160 ? `${normalized.slice(0, 157)}...` : normalized;
 }

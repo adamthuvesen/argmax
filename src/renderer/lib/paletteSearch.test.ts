@@ -70,7 +70,7 @@ describe("searchPaletteItems", () => {
 
   it("ranks Files-group items by basename when the query matches the filename", () => {
     const files: PaletteItem[] = [
-      { id: "file:src/main/index.ts", label: "index.ts", subtitle: "src/main", group: "Files", run: noop },
+      { id: "file:src-tauri/src/index.ts", label: "index.ts", subtitle: "src-tauri/src", group: "Files", run: noop },
       { id: "file:src/renderer/App.tsx", label: "App.tsx", subtitle: "src/renderer", group: "Files", run: noop }
     ];
     const hits = searchPaletteItems(files, "App");

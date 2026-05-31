@@ -1,6 +1,5 @@
 /** Custom URL scheme that serves files from the attachments folder. Lives in
- *  shared/ so both the renderer (builds URLs) and main (registers the handler)
- *  agree on the scheme name without crossing the electron import boundary. */
+ *  shared/ so the renderer and Tauri protocol handler agree on the scheme. */
 export const ATTACHMENT_PROTOCOL_SCHEME = "argmax-attachment";
 
 /** Renderer-side URL builder for an absolute attachment path. Encodes each

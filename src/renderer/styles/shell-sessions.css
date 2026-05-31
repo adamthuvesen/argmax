@@ -138,16 +138,10 @@
 
 .session-row-action:focus-visible {
   opacity: 1;
-  outline: 2px solid var(--ink);
-  outline-offset: 1px;
-}
-
-.session-ide-btn {
-  width: 18px;
 }
 
 .session-ide-chevron {
-  width: 12px;
+  width: 18px;
 }
 
 
@@ -211,8 +205,6 @@
 
 .session-archive-btn:focus-visible {
   opacity: 1;
-  outline: 2px solid var(--ink);
-  outline-offset: 1px;
 }
 
 .session-archive-btn:hover {
@@ -540,12 +532,81 @@
   overflow: auto;
 }
 
+.workspace-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  pointer-events: auto;
+  padding: clamp(18px, 3vw, 32px);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.workspace-drop-zone {
+  width: 100%;
+  height: 100%;
+  border: 2px dashed var(--sage);
+  border-radius: var(--radius-lg);
+  background: var(--sage-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sage) 30%, transparent);
+}
+
 .launcher-scroll {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 48px 36px;
   -webkit-app-region: drag;
   app-region: drag;
+}
+
+/* Animated globe backdrop (LauncherGlobe). The canvas + scrim are rendered inside
+   the centered .launcher-shell but positioned against the full .launcher-scroll
+   area so the globe fills the launcher rather than the content-sized shell. Both
+   sit below .launcher-surface (z-index 26) and never take pointer events. */
+/* Deep-space pocket behind the canvas: a dark radial centered on the globe that
+   fades to the page before reaching the UI, so the additive atmosphere/dots glow
+   reads against darkness while the rest of the launcher stays light. */
+.launcher-globe-space {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 30% 47% at 61% 33%,
+      #000 0%,
+      #000 56%,
+      rgba(4, 4, 4, 0.82) 74%,
+      rgba(8, 8, 8, 0.26) 88%,
+      transparent 100%
+    );
+}
+
+.launcher-globe {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.launcher-globe-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* Just a whisper of edge falloff now — the space pocket provides the contrast,
+     so the scrim must not mute the glow it sits above. */
+  background: radial-gradient(ellipse 70% 64% at 61% 34%, transparent 64%, rgba(0, 0, 0, 0.05) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launcher-globe-scrim {
+    opacity: 0.8;
+  }
 }
 
 .launcher-scroll:has(.launcher-shell[data-review-open="true"]) {
@@ -555,7 +616,7 @@
 }
 
 .launcher-shell {
-  width: min(100%, 920px);
+  width: min(100%, 820px);
 }
 
 .launcher-surface {
@@ -574,7 +635,7 @@
 }
 
 /* Bare wrapper that lets the launcher surface become a project review canvas
-   when Cmd+B opens the read-only Changes + Files panel. The parent also sets
+   when Cmd+B opens the project Changes + Files panel. The parent also sets
    `-webkit-app-region: drag` so the empty launcher pad is a window drag handle;
    the launcher-surface opts out, and we mirror that here so the ReviewPanel
    stays clickable instead of swallowing pointer events as drag gestures. */
@@ -602,4 +663,3 @@
   z-index: 120;
   border-left: 0;
 }
-

@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CommandPalette, type PaletteCommand } from "./CommandPalette.js";
+import { CommandPalette, type MessageHit, type PaletteCommand } from "./CommandPalette.js";
 
 const COMMANDS: PaletteCommand[] = Array.from({ length: 12 }, (_, i) => ({
   id: `cmd-${i}`,
@@ -45,8 +45,7 @@ describe("CommandPalette", () => {
 
     // The effect runs after the selectedIndex state update — assert that the
     // currently-selected DOM element was the scroll target.
-    const selected = document.querySelector(".command-palette-result.selected");
-    expect(selected).not.toBeNull();
+    expect(screen.getByRole("option", { selected: true })).toHaveTextContent("Command 1");
     expect(scrollSpy).toHaveBeenCalled();
   });
 
@@ -71,5 +70,69 @@ describe("CommandPalette", () => {
       key: "Escape"
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("ranks files beyond the first 200 paths before capping visible rows", async () => {
+    const onClose = vi.fn();
+    const onFilePick = vi.fn();
+    const loadFiles = vi.fn().mockResolvedValue([
+      ...Array.from({ length: 250 }, (_, i) => `src/generated/file-${i}.ts`),
+      "src/renderer/NeedlePanel.tsx"
+    ]);
+
+    render(
+      <CommandPalette
+        open={true}
+        commands={COMMANDS}
+        onClose={onClose}
+        fileSource={{ kind: "workspace", id: "workspace-1" }}
+        loadFiles={loadFiles}
+        onFilePick={onFilePick}
+      />
+    );
+
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    expect(await screen.findByText("NeedlePanel.tsx")).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onFilePick).toHaveBeenCalledWith("src/renderer/NeedlePanel.tsx");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops stale message-search results after the query becomes too short", async () => {
+    let resolveSearch!: (hits: MessageHit[]) => void;
+    const searchMessages = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSearch = resolve;
+        })
+    );
+    render(
+      <CommandPalette
+        open={true}
+        commands={COMMANDS}
+        onClose={vi.fn()}
+        searchMessages={searchMessages}
+      />
+    );
+
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "needle" } });
+    await waitFor(() => expect(searchMessages).toHaveBeenCalledWith("needle", 8));
+
+    fireEvent.change(input, { target: { value: "n" } });
+    resolveSearch([
+      {
+        id: "session-1:event-1",
+        sessionId: "session-1",
+        label: "Stale message",
+        snippetSegments: [{ text: "needle", matched: true }],
+        run: vi.fn()
+      }
+    ]);
+
+    await waitFor(() => expect(screen.queryByText("Stale message")).toBeNull());
   });
 });

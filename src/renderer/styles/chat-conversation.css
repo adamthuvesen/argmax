@@ -52,7 +52,7 @@
 }
 
 .session-multigrid-cell .launcher-surface {
-  width: min(100%, 920px);
+  width: min(100%, 820px);
   gap: 18px;
   transform: none;
   animation: none;
@@ -530,7 +530,9 @@
   align-self: flex-start;
   width: 100%;
   max-width: 100%;
-  padding: 0;
+  /* Reserve a right gutter so the hover copy button (absolutely positioned
+     top-right) sits beside the prose instead of overlapping the first line. */
+  padding: 0 28px 0 0;
   background: transparent;
   box-shadow: none;
 }
@@ -579,7 +581,11 @@
   color: var(--text);
   box-shadow: 0 4px 14px rgba(31, 28, 24, 0.10), 0 1px 0 rgba(31, 28, 24, 0.04);
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease), width var(--duration-base) var(--ease), padding var(--duration-base) var(--ease);
+  /* Only animate composited properties (transform/background). Transitioning
+     width/padding reflowed the conversation on every count change — i.e. while
+     items stream in below the fold, the worst moment for jank. The pill snaps
+     to its sized state instead. */
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
   z-index: 2;
 }
 
@@ -606,4 +612,3 @@
 .scroll-to-bottom-fab[data-has-count="true"]:hover {
   background: var(--sage);
 }
-

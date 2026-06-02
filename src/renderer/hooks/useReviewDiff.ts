@@ -41,6 +41,15 @@ export function useReviewDiff(args: {
   const isPanelOpenRef = useRef(isPanelOpen);
   isPanelOpenRef.current = isPanelOpen;
 
+  // Cache loaded diffs by file path so re-selecting a file you've already
+  // viewed is instant. Busted whenever the source changes or the workspace's
+  // changed-files signature moves (a new key means the diffs may have changed),
+  // so a cache hit always reflects the current state.
+  const diffCache = useRef(new Map<string, WorkspaceDiff>());
+  useEffect(() => {
+    diffCache.current.clear();
+  }, [sourceId, changedFilesKey]);
+
   const resetForSourceChange = useCallback((): void => {
     setSelectedFilePath(null);
     setDiff(null);
@@ -94,6 +103,14 @@ export function useReviewDiff(args: {
       return;
     }
 
+    const cached = diffCache.current.get(selectedFilePath);
+    if (cached) {
+      setDiff(cached);
+      setDiffState("ready");
+      setDiffError(null);
+      return;
+    }
+
     setDiffState("loading");
     setDiffError(null);
     void dispatch.loadDiff(selectedFilePath)
@@ -101,6 +118,7 @@ export function useReviewDiff(args: {
         if (token !== diffLoadToken.current) {
           return;
         }
+        diffCache.current.set(selectedFilePath, result);
         setDiff(result);
         setDiffState("ready");
       })

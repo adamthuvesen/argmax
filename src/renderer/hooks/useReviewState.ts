@@ -201,11 +201,16 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   panelRef.current = { isPanelOpen, filesCount: diffState.files.length, files: diffState.files, mode };
 
   const togglePanel = useCallback((): void => {
-    if (!panelRef.current.isPanelOpen && panelRef.current.filesCount === 0) {
+    const opening = !panelRef.current.isPanelOpen;
+    if (opening && panelRef.current.filesCount === 0) {
       setMode("files");
+    } else if (opening && panelRef.current.mode === "changes") {
+      // Warm the first file's diff the instant the panel opens (the list is
+      // already prefetched on focus), so there's no dead beat before content.
+      setSelectedFilePath((current) => current ?? panelRef.current.files[0]?.path ?? null);
     }
     setIsPanelOpen((open) => !open);
-  }, []);
+  }, [setSelectedFilePath]);
 
   const toggleChangesPanel = useCallback((): void => {
     if (panelRef.current.isPanelOpen && panelRef.current.mode === "changes") {

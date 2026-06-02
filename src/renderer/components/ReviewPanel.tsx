@@ -6,6 +6,7 @@ import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks, type DiffView } from "./DiffBlocks.js";
 import { FilePreview } from "./FilePreview.js";
+import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 
 function fileBasename(path: string): string {
@@ -311,10 +312,7 @@ export function ReviewPanel({
                 </div>
               ) : null}
               {review.diffState === "loading" ? (
-                <p className="review-empty">
-                  <span className="review-empty-mark" aria-hidden="true">∅</span>
-                  <span>Loading diff…</span>
-                </p>
+                <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
               ) : null}
               {review.diffState === "error" ? (
                 <p className="review-empty review-error" role="alert">

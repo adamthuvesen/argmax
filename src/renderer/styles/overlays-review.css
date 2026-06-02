@@ -289,6 +289,68 @@
   background: var(--panel);
 }
 
+/* Shimmering placeholder rows shown while a diff or file preview fetches, in
+   place of a bare "Loading…" line. Row widths vary so the block reads as text
+   rather than a solid bar; the shimmer is the only motion. */
+.lines-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.lines-skeleton-row {
+  height: 11px;
+  width: 92%;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--panel-sunken) 0%,
+    var(--line-soft) 50%,
+    var(--panel-sunken) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s var(--ease) infinite;
+}
+
+.lines-skeleton-row:nth-child(3n) {
+  width: 66%;
+}
+
+.lines-skeleton-row:nth-child(4n) {
+  width: 81%;
+}
+
+.lines-skeleton-row:nth-child(5n) {
+  width: 52%;
+}
+
+.lines-skeleton-row:nth-child(7n) {
+  width: 74%;
+}
+
+/* The diff/file skeletons fill the scroll pane; the file one uses mono-row
+   rhythm to echo code lines. */
+.review-diff-skeleton,
+.review-file-skeleton {
+  margin: 0;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lines-skeleton-row {
+    animation: none;
+  }
+}
+
 .review-toolbar-titles {
   display: flex;
   flex-direction: column;

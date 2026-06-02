@@ -22,7 +22,9 @@ use tempfile::tempdir;
 use uuid::Uuid;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::{run_git_buffer_with_options, run_git_text, GitExecOptions};
+use crate::git::exec::{
+    run_git_buffer_with_options, run_git_text, run_git_text_with_options, GitExecOptions,
+};
 use crate::persistence::checks::{persist_checkpoint, Checkpoint, PersistCheckpointInput};
 use crate::persistence::database::Database;
 use crate::persistence::workspaces::find_workspace_by_id;
@@ -172,42 +174,26 @@ async fn build_checkpoint_diff(workspace_path: &Path) -> ArgmaxResult<Vec<u8>> {
     })?;
     let temp_index = temp_dir.path().join("index");
 
-    let env_opts = || GitExecOptions::default().with_env("GIT_INDEX_FILE", temp_index.as_os_str());
-
-    let mut text_opts = env_opts();
-    text_opts.timeout = GIT_TIMEOUT;
-    let mut text_opts_for_add = text_opts.clone();
-    // `add` needs to scan the worktree, so give it the same timeout budget.
-    text_opts_for_add.timeout = GIT_TIMEOUT;
+    // Every stage runs against the scratch index under the shared 60s budget.
+    let opts = || {
+        let mut options =
+            GitExecOptions::default().with_env("GIT_INDEX_FILE", temp_index.as_os_str());
+        options.timeout = GIT_TIMEOUT;
+        options
+    };
 
     // Stage 1: read-tree HEAD → temp index.
-    run_git_text_with_options(workspace_path, ["read-tree", "HEAD"], text_opts.clone()).await?;
+    run_git_text_with_options(workspace_path, ["read-tree", "HEAD"], opts()).await?;
     // Stage 2: add -A -- . against the temp index.
-    run_git_text_with_options(workspace_path, ["add", "-A", "--", "."], text_opts_for_add).await?;
+    run_git_text_with_options(workspace_path, ["add", "-A", "--", "."], opts()).await?;
     // Stage 3: produce the binary diff against the temp index.
-    let mut buffer_opts = env_opts();
-    buffer_opts.timeout = GIT_TIMEOUT;
     let diff = run_git_buffer_with_options(
         workspace_path,
         ["diff", "--binary", "--cached", "HEAD"],
-        buffer_opts,
+        opts(),
     )
     .await?;
     Ok(diff)
-}
-
-async fn run_git_text_with_options(
-    workspace_path: &Path,
-    args: impl IntoIterator<Item = &'static str>,
-    options: GitExecOptions,
-) -> ArgmaxResult<String> {
-    let bytes = run_git_buffer_with_options(workspace_path, args, options).await?;
-    String::from_utf8(bytes).map_err(|error| {
-        ArgmaxError::service(
-            "GIT_STDOUT_NOT_UTF8",
-            format!("git stdout was not valid UTF-8: {error}"),
-        )
-    })
 }
 
 #[cfg(test)]

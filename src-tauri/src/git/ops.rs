@@ -10,7 +10,7 @@ use specta::Type;
 use tempfile::tempdir;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::{run_git_buffer_with_options, run_git_text, GitExecOptions};
+use crate::git::exec::{run_git_text, run_git_text_with_options, GitExecOptions};
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_gh_pr_for_session, GhPrRecord};
 use crate::persistence::projects::get_project_remote;
@@ -334,24 +334,6 @@ async fn commit_selected_files(
     run_git_text(workspace_path, reset_args, GIT_TIMEOUT)
         .await
         .map(|_| ())
-}
-
-async fn run_git_text_with_options<I, S>(
-    workspace_path: &Path,
-    args: I,
-    options: GitExecOptions,
-) -> ArgmaxResult<String>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-{
-    let bytes = run_git_buffer_with_options(workspace_path, args, options).await?;
-    String::from_utf8(bytes).map_err(|error| {
-        ArgmaxError::service(
-            "GIT_STDOUT_NOT_UTF8",
-            format!("git stdout was not valid UTF-8: {error}"),
-        )
-    })
 }
 
 fn is_missing_upstream_error(error: &ArgmaxError) -> bool {

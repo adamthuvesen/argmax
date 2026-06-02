@@ -429,10 +429,11 @@ describe("useDashboardSession — refresh / delta race", () => {
     }
   });
 
-  it("does not pull workspace:status while a turn is still running", async () => {
-    // Regression: pulling the heavy status command every tick (and overlapping
-    // ticks) starved a busy turn. With no terminal event, only the cheap event
-    // tail is pulled — status stays off the hot path.
+  it("throttles workspace:status mid-turn instead of pulling it every tick", async () => {
+    // Pulling the heavy status command every 250ms tick (and overlapping ticks)
+    // starved a busy turn. Mid-turn we still refresh `changedFiles`/dirty state
+    // so the UI tracks edits live — but throttled far below the event cadence:
+    // nothing within the first interval, then a single pull, not one per tick.
     vi.useFakeTimers();
     try {
       const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -447,15 +448,28 @@ describe("useDashboardSession — refresh / delta race", () => {
       expect(result.current.selectedSession?.state).toBe("running");
       statusMock.mockClear();
 
-      // Several ticks while the turn keeps running (no terminal event).
+      // Within the first refresh interval: only the cheap event tail runs.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1200);
       });
-
       expect(statusMock).not.toHaveBeenCalled();
       expect(
         (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mock.calls.length
       ).toBeGreaterThan(0);
+
+      // Past the throttle window: exactly one mid-turn status refresh fires,
+      // and the still-running session is not flipped to complete by it.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(statusMock).toHaveBeenCalledTimes(1);
+      expect(result.current.selectedSession?.state).toBe("running");
+
+      // It stays throttled — a few more ticks don't pull once per tick.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(750);
+      });
+      expect(statusMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

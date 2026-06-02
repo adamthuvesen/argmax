@@ -590,7 +590,10 @@ impl ProviderSessionService {
         let result = async {
             match entry {
                 Some(HandleEntry::Resolved(handle)) => {
-                    self.flush_trailing(&session_id)?;
+                    // User-initiated cancel: flush buffered text but don't
+                    // synthesize a Cursor turn completion — the turn didn't
+                    // finish, it was cancelled.
+                    self.flush_trailing(&session_id, false)?;
                     handle.terminate().await?;
                     self.cancel_session(&session_id)?;
                 }
@@ -858,17 +861,20 @@ impl ProviderSessionService {
 
     fn handle_lifecycle_event(self: &Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
         self.cancel_idle_flush(&event.session_id);
-        self.flush_trailing(&event.session_id)?;
+        // A genuine process exit is the one place a Cursor turn that never sent
+        // `result/success` should be synthesized as completed — but not when the
+        // user cancelled (the session is heading to `cancelled`, not `complete`).
+        let is_terminating = self
+            .terminating
+            .lock()
+            .expect("terminating poisoned")
+            .contains(&event.session_id);
+        self.flush_trailing(&event.session_id, !is_terminating)?;
         // If the user already initiated terminate(), let cancel_session
         // own the state transition. Writing `failed`/`complete` here
         // would race against (and could clobber) the `cancelled` state
         // the user just saw flash in the dashboard.
-        if self
-            .terminating
-            .lock()
-            .expect("terminating poisoned")
-            .contains(&event.session_id)
-        {
+        if is_terminating {
             self.handles
                 .lock()
                 .expect("handles poisoned")
@@ -1229,13 +1235,21 @@ impl ProviderSessionService {
         });
     }
 
-    fn flush_trailing(&self, session_id: &str) -> ArgmaxResult<()> {
+    /// `synthesize_cursor_exit` is `true` only on a genuine Cursor process exit
+    /// (see `flush_trailing_fragments`). Mid-turn idle flushes and user
+    /// terminates pass `false` so they don't prematurely complete the turn.
+    fn flush_trailing(&self, session_id: &str, synthesize_cursor_exit: bool) -> ArgmaxResult<()> {
         let mut connection = self.database.connection();
         let delta = self
             .flush_queue
             .lock()
             .expect("flush queue poisoned")
-            .flush_trailing_fragments(&mut connection, session_id, &now_iso())?;
+            .flush_trailing_fragments(
+                &mut connection,
+                session_id,
+                &now_iso(),
+                synthesize_cursor_exit,
+            )?;
         drop(connection);
         if let Some(delta) = delta {
             self.publish(delta);
@@ -1264,7 +1278,9 @@ impl ProviderSessionService {
             }
         }
         self.cancel_idle_flush(session_id);
-        self.flush_trailing(session_id)?;
+        // `result/success` already emitted the completion via the normalizer, so
+        // no exit synth here.
+        self.flush_trailing(session_id, false)?;
 
         let (session, workspace, projects) = {
             let connection = self.database.connection();
@@ -1355,7 +1371,9 @@ impl ProviderSessionService {
             if current != Some(generation) {
                 return;
             }
-            let flush_result = service.flush_trailing(&session_id_owned);
+            // Mid-turn idle flush: never synthesize a Cursor completion, or the
+            // turn completes prematurely and the next delta duplicates.
+            let flush_result = service.flush_trailing(&session_id_owned, false);
             service
                 .idle_flush_tasks
                 .lock()

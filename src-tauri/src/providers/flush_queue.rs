@@ -211,16 +211,24 @@ impl ProviderEventFlushQueue {
         })
     }
 
+    /// Flush any buffered, newline-less stream fragments to SQLite.
+    ///
+    /// `synthesize_cursor_exit` must be `true` only on a genuine Cursor process
+    /// exit that never sent a `result/success`. The synth `.take()`s the
+    /// cumulative-delta baseline and marks the turn completed, so firing it on a
+    /// mid-turn idle flush (or a user terminate) would prematurely complete the
+    /// turn and duplicate the next delta. Mid-stream callers pass `false`.
     pub fn flush_trailing_fragments(
         &mut self,
         connection: &mut Connection,
         session_id: &str,
         created_at: &str,
+        synthesize_cursor_exit: bool,
     ) -> ArgmaxResult<Option<DashboardDelta>> {
         let Some(session) = self.sessions.get_mut(session_id) else {
             return Ok(None);
         };
-        if session.provider == ProviderId::Cursor {
+        if synthesize_cursor_exit && session.provider == ProviderId::Cursor {
             let exit_event = ProviderOutputEvent {
                 session_id: session_id.to_string(),
                 stream: ProviderOutputStream::Stdout,
@@ -629,7 +637,7 @@ mod tests {
         assert!(queued.has_trailing_fragment);
 
         let delta = queue
-            .flush_trailing_fragments(&mut connection, "s1", "2026-05-24T10:00:01.000Z")
+            .flush_trailing_fragments(&mut connection, "s1", "2026-05-24T10:00:01.000Z", false)
             .expect("flush trailing")
             .expect("delta");
         assert_eq!(delta.events.len(), 1);
@@ -650,6 +658,68 @@ mod tests {
 
         assert_eq!(buffer.pending_events.len(), 1);
         assert_eq!(buffer.pending_events[0].event.id, "event-duplicate");
+    }
+
+    #[test]
+    fn cursor_idle_flush_does_not_prematurely_complete_turn() {
+        let database = Database::open_in_memory().expect("open db");
+        let mut connection = database.connection();
+        seed_session(&connection);
+
+        let mut queue = ProviderEventFlushQueue::new();
+        queue.initialize_session("s1", ProviderId::Cursor, NormalizerSessionContext::default());
+
+        // A complete cumulative assistant line establishes the delta baseline.
+        queue
+            .queue_output_event(
+                &mut connection,
+                output_event(
+                    ProviderOutputStream::Stdout,
+                    "{\"type\":\"assistant\",\"message\":\"Hello\",\"timestamp_ms\":1}\n",
+                ),
+            )
+            .expect("queue first assistant line");
+
+        // A mid-turn idle flush must NOT synthesize a turn completion...
+        let idle = queue
+            .flush_trailing_fragments(&mut connection, "s1", "2026-05-24T10:00:01.000Z", false)
+            .expect("idle flush");
+        let synthesized_completions = idle
+            .as_ref()
+            .map(|delta| {
+                delta
+                    .events
+                    .iter()
+                    .filter(|event| event.r#type == "message.completed")
+                    .count()
+            })
+            .unwrap_or(0);
+        assert_eq!(synthesized_completions, 0, "idle flush must not complete the turn");
+
+        // ...and must leave the cumulative baseline intact, so the next delta is
+        // the suffix only — not the whole message re-emitted.
+        let next = queue
+            .queue_output_event(
+                &mut connection,
+                output_event(
+                    ProviderOutputStream::Stdout,
+                    "{\"type\":\"assistant\",\"message\":\"Hello world\",\"timestamp_ms\":2}\n",
+                ),
+            )
+            .expect("queue second assistant line")
+            .delta
+            .expect("delta");
+        assert_eq!(next.events.len(), 1);
+        assert_eq!(next.events[0].message, " world");
+
+        // A genuine process exit (no prior result/success) does synthesize.
+        let exit = queue
+            .flush_trailing_fragments(&mut connection, "s1", "2026-05-24T10:00:02.000Z", true)
+            .expect("exit flush")
+            .expect("delta");
+        assert_eq!(exit.events.len(), 1);
+        assert_eq!(exit.events[0].r#type, "message.completed");
+        assert_eq!(exit.events[0].message, "Hello world");
     }
 
     fn event(message: &str) -> PersistTimelineEventInput {

@@ -223,6 +223,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 2px;
   min-height: 24px;
   margin: 22px 0 8px 12px;
 }
@@ -245,9 +246,11 @@
   flex: 0 0 auto;
 }
 
+/* Match the project/session row action boxes so the header … / + line up in
+   the same right-edge columns as the rows below. */
 .rail-heading .small-icon {
-  width: 24px;
-  height: 24px;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
 }
 
 .project-group {

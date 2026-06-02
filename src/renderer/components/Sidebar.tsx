@@ -426,7 +426,7 @@ export function Sidebar({
               aria-expanded={sortMenuOpen}
               onClick={() => setSortMenuOpen((open) => !open)}
             >
-              <MoreHorizontal size={16} />
+              <MoreHorizontal size={14} />
             </button>
             {sortMenuOpen && (
               <ul
@@ -458,7 +458,7 @@ export function Sidebar({
             )}
           </div>
           <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
-            <Plus size={16} />
+            <Plus size={14} />
           </button>
         </div>
         {orderedProjects.map((project) => {

@@ -215,6 +215,19 @@ pub async fn load_diff_at_path(
             let file = parse_porcelain_z(&porcelain)
                 .into_iter()
                 .find(|item| item.path == path);
+            // In branch mode a committed-but-clean file isn't in working-tree
+            // status. Recover its change entry from the branch-vs-base list,
+            // which carries `old_path` for committed renames, so the opened
+            // diff renders the same rename the file list shows instead of an
+            // orphaned add. A plain `git diff <base> -- path` is the fallback.
+            let file = match file {
+                Some(file) => Some(file),
+                None if comparison.branch_mode => collect_changed_files(&repo_path, &comparison)
+                    .await?
+                    .into_iter()
+                    .find(|item| item.path == path),
+                None => None,
+            };
             match file {
                 Some(file) => load_file_diff(&repo_path, &file, &comparison.diff_base).await?,
                 None => {

@@ -70,6 +70,48 @@ async fn lists_changed_files_and_loads_diffs() {
 }
 
 #[tokio::test]
+async fn branch_mode_single_file_diff_renders_committed_rename() {
+    // A rename committed on the branch is clean in the working tree, so the
+    // single-file diff path can't learn the old path from `git status`. In
+    // branch mode it must recover the rename from the branch-vs-base file list
+    // (which carries `old_path`) and render one rename diff — matching the file
+    // list — instead of an orphaned full add.
+    let repo = seed_git_repo(&[("src/old-name.ts", "export const value = 1;\n")]);
+    run_git(repo.path(), &["branch", "base"]);
+    run_git(repo.path(), &["checkout", "-b", "feature"]);
+    run_git(
+        repo.path(),
+        &["mv", "src/old-name.ts", "src/new-name.ts"],
+    );
+    run_git(repo.path(), &["commit", "-m", "rename"]);
+
+    let files = list_changed_files_at_path(repo.path(), Some("base"))
+        .await
+        .unwrap();
+    let renamed = files
+        .iter()
+        .find(|file| file.path == "src/new-name.ts")
+        .expect("renamed file in branch-vs-base list");
+    assert_eq!(renamed.old_path.as_deref(), Some("src/old-name.ts"));
+
+    let diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/new-name.ts"),
+        Some("base"),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        diff.content.contains("rename from src/old-name.ts"),
+        "expected a rename diff, got:\n{}",
+        diff.content
+    );
+    assert!(diff.content.contains("rename to src/new-name.ts"));
+}
+
+#[tokio::test]
 async fn skips_untracked_directories_without_crashing() {
     let repo = seed_git_repo(&[("src/index.ts", "export const ok = true;\n")]);
     std::fs::create_dir(repo.path().join("src/untracked-dir")).unwrap();

@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, ExternalLink, Pin, PinOff, Terminal } from "lucide-react";
+import { Archive, ExternalLink, Pin, PinOff, Terminal } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -255,7 +255,7 @@ function SidebarSessionRowInner({
       })() : null}
       <div className="session-ide-cluster" ref={pickerRef}>
         <button
-          className="session-row-action session-ide-chevron"
+          className="session-row-action session-ide-open"
           aria-label="Choose IDE"
           aria-haspopup="menu"
           aria-expanded={pickerOpen}
@@ -264,7 +264,7 @@ function SidebarSessionRowInner({
           disabled={buttonDisabled}
           onClick={handleChevronClick}
         >
-          <ChevronDown size={11} />
+          <ExternalLink size={12} />
         </button>
         {pickerOpen && popoverPos && createPortal(
           <ul
@@ -327,7 +327,7 @@ function SidebarSessionRowInner({
             onTogglePin(workspace.id, !workspace.pinned);
           }}
         >
-          {workspace.pinned ? <PinOff size={11} /> : <Pin size={11} />}
+          {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
         </button>
       ) : null}
       {showArchive && (
@@ -338,7 +338,7 @@ function SidebarSessionRowInner({
           type="button"
           onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
         >
-          <Archive size={11} />
+          <Archive size={12} />
         </button>
       )}
     </div>

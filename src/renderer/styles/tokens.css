@@ -44,6 +44,12 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
 
+  /* Sidebar row action icons — shared by the project row (… / chevron) and the
+     session row (ide / pin / archive) so both stay one size and right-align on
+     the same vertical edge. `step` is the box plus a 2px gap. */
+  --sidebar-action-size: 20px;
+  --sidebar-action-step: 22px;
+
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --duration-fast: 140ms;
   --duration-base: 220ms;

@@ -18,7 +18,7 @@ type Entry = {
 const entries = new Set<Entry>();
 let rafId: number | null = null;
 
-function tick(): void {
+function flush(): void {
   for (const entry of entries) {
     const next = entry.format(entry.getMs());
     if (next !== entry.last) {
@@ -26,6 +26,10 @@ function tick(): void {
       entry.last = next;
     }
   }
+}
+
+function tick(): void {
+  flush();
   rafId = entries.size > 0 ? requestAnimationFrame(tick) : null;
 }
 
@@ -53,11 +57,5 @@ export function registerLiveTimer(
 // Test-only: forces a synchronous tick without waiting for rAF. Exported for
 // vitest where the jsdom rAF polyfill timing is awkward.
 export function __liveTimerTickForTest(): void {
-  for (const entry of entries) {
-    const next = entry.format(entry.getMs());
-    if (next !== entry.last) {
-      entry.node.textContent = next;
-      entry.last = next;
-    }
-  }
+  flush();
 }

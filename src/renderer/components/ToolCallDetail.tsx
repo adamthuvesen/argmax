@@ -6,6 +6,7 @@ import { FileChangeCard } from "./FileChangeCard.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 
 const MAX_INLINE_CONTENT_CHARS = 2400;
+const MAX_OUTPUT_CHARS = 3000;
 
 function pickString(input: Record<string, unknown>, keys: readonly string[]): string | null {
   for (const key of keys) {
@@ -149,16 +150,16 @@ export function ToolCallDetail({
         <div className="tool-call-section">
           <p className="tool-call-section-label">
             Output
-            {tool.output.length > 3000 ? (
+            {tool.output.length > MAX_OUTPUT_CHARS ? (
               <span className="tool-call-section-meta">
-                {" "}— showing first 3,000 of {tool.output.length.toLocaleString()} chars
+                {" "}— showing first {MAX_OUTPUT_CHARS.toLocaleString()} of {tool.output.length.toLocaleString()} chars
               </span>
             ) : null}
           </p>
           <pre
             className={`tool-call-code${isBashLikeTool(tool.name) ? " tool-call-code--terminal" : ""}`}
           >
-            {tool.output.length > 3000 ? `${tool.output.slice(0, 3000)}\n…` : tool.output}
+            {tool.output.length > MAX_OUTPUT_CHARS ? `${tool.output.slice(0, MAX_OUTPUT_CHARS)}\n…` : tool.output}
           </pre>
         </div>
       ) : null}

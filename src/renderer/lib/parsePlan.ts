@@ -4,8 +4,7 @@ import type {
   ListItem,
   Paragraph,
   PhrasingContent,
-  Root,
-  Strong
+  Root
 } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -332,6 +331,3 @@ function strongOrEmphasisInner(children: readonly PhrasingContent[]): string {
     })
     .join("");
 }
-
-// Re-export for callers that need to inspect a Strong node directly.
-export type { Strong };

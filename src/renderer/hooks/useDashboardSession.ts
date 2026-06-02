@@ -7,7 +7,7 @@ import {
   pruneSupersededDeltas
 } from "../lib/snapshot.js";
 
-type SessionCursor = { eventCursor?: number; rawOutputCursor?: number };
+type SessionCursor = { eventCursor?: number; rawOutputCursor?: number; seeded?: boolean };
 
 export interface UseDashboardSessionOptions {
   onErrorToast?: (message: string) => void;
@@ -92,7 +92,27 @@ export function useDashboardSession(
       return;
     }
 
-    const cursor = sessionCursorsRef.current.get(sessionId);
+    let cursor = sessionCursorsRef.current.get(sessionId);
+    // Self-heal an evicted session. `snapshot.events` is a single array shared
+    // by every session and capped to the newest rows across ALL of them (the
+    // mergeByCreatedAt(…, 500) below plus mergeEventsBounded on the delta
+    // path). A busy session can therefore evict an idle session's rows from the
+    // array while that idle session's cursor stays parked at the last fetched
+    // rowid. A cursored `eventsSince` then returns only rows NEWER than the
+    // cursor — none, for an idle session — so the conversation re-renders empty
+    // (often just the user message that happened to survive the cap) and never
+    // recovers. If we previously loaded content for this session (`seeded`) but
+    // the snapshot now holds none of its events, the rows were evicted: drop the
+    // cursor and re-pull the tail from scratch. The `seeded` guard keeps a
+    // genuinely event-less session from looping on full re-reads.
+    if (
+      cursor?.seeded &&
+      cursor.eventCursor &&
+      !snapshotRef.current.events.some((event) => event.sessionId === sessionId)
+    ) {
+      sessionCursorsRef.current.delete(sessionId);
+      cursor = undefined;
+    }
     // Build the args once instead of two conditional spreads — the spread
     // form allocated a fresh empty object on every undefined branch
     // (ralph E1). Equivalent payload, fewer allocations on the hot path.
@@ -105,7 +125,10 @@ export function useDashboardSession(
     const latest = sessionCursorsRef.current.get(sessionId);
     sessionCursorsRef.current.set(sessionId, {
       eventCursor: Math.max(latest?.eventCursor ?? 0, data.eventCursor),
-      rawOutputCursor: Math.max(latest?.rawOutputCursor ?? 0, data.rawOutputCursor)
+      rawOutputCursor: Math.max(latest?.rawOutputCursor ?? 0, data.rawOutputCursor),
+      // Once we've seen any events for this session, stay seeded so a later
+      // eviction (empty snapshot + parked cursor) is recognised as recoverable.
+      seeded: (latest?.seeded ?? false) || data.events.length > 0
     });
     setSnapshot((current) => ({
       ...current,

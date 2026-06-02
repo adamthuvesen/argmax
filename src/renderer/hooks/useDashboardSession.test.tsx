@@ -515,6 +515,108 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
   });
 
+  it("re-pulls a session's tail from scratch when its events were evicted from the global cap", async () => {
+    // Repro of the empty-session bug: switch to a busy session, its stream
+    // floods the global newest-N events cap and evicts the idle session's rows,
+    // then switch back. The parked cursor makes `eventsSince` return nothing, so
+    // the chat renders empty. The self-heal must re-read the tail from scratch.
+    const tail = [
+      {
+        id: "ev-user",
+        sessionId: "session-existing",
+        type: "user.message",
+        message: "hi",
+        payload: {},
+        createdAt: "2026-05-12T15:00:05.000Z",
+        rowCursor: 3
+      },
+      {
+        id: "ev-answer",
+        sessionId: "session-existing",
+        type: "message.completed",
+        message: "hello",
+        payload: {},
+        createdAt: "2026-05-12T15:00:06.000Z",
+        rowCursor: 4
+      }
+    ];
+    const eventsSince = window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>;
+    eventsSince.mockResolvedValueOnce({
+      events: tail,
+      rawOutputs: [],
+      eventCursor: 4,
+      rawOutputCursor: 0
+    });
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    // First focus loads the tail with no cursor and seeds it.
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+    expect(eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: null,
+      rawOutputCursor: null
+    });
+    expect(result.current.snapshot.events).toHaveLength(2);
+
+    // A busy session floods the shared cap and evicts these rows.
+    act(() => {
+      result.current.setSnapshot((current) => ({ ...current, events: [] }));
+    });
+
+    // Re-focus: pre-fix this fetched with the parked cursor (4) and got nothing.
+    eventsSince.mockResolvedValueOnce({
+      events: tail,
+      rawOutputs: [],
+      eventCursor: 4,
+      rawOutputCursor: 0
+    });
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    expect(eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: null,
+      rawOutputCursor: null
+    });
+    expect(result.current.snapshot.events).toHaveLength(2);
+  });
+
+  it("does not reset the cursor for a session that legitimately has no events", async () => {
+    // Guard against the self-heal looping on full re-reads: a session that has
+    // never returned events must keep using its incremental cursor.
+    const eventsSince = window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>;
+    eventsSince.mockResolvedValue({
+      events: [],
+      rawOutputs: [],
+      eventCursor: 7,
+      rawOutputCursor: 0
+    });
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    // Never seeded → no heal → second call keeps the advanced cursor.
+    expect(eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: 7,
+      rawOutputCursor: 0
+    });
+  });
+
   it("rolls back only the failed approval when approval resolves overlap", async () => {
     const approvalA: ApprovalRequest = {
       id: "approval-a",

@@ -59,6 +59,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
   let writeProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFileForProject"]>>;
 
   beforeEach(() => {
+    // The Local/Branch toggle persists to localStorage; clear it so each test
+    // starts from the "local" default regardless of run order.
+    window.localStorage.clear();
     listChangedFiles = vi
       .fn<ArgmaxApi["review"]["listChangedFiles"]>()
       .mockResolvedValue([]);
@@ -171,7 +174,43 @@ describe("useReviewState — IPC fan-out resistance", () => {
     rerender({ ws: makeWorkspace({ id: "workspace-2" }) });
 
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(2, "workspace-2");
+    expect(listChangedFiles).toHaveBeenNthCalledWith(2, "workspace-2", "workingTree");
+  });
+
+  it("refetches changed files against the base branch when the comparison toggles", async () => {
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+    expect(listChangedFiles).toHaveBeenNthCalledWith(1, "workspace-1", "workingTree");
+    expect(result.current.comparisonBaseLabel).toBe("main");
+
+    act(() => {
+      result.current.setChangesComparison("branch");
+    });
+
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
+    expect(listChangedFiles).toHaveBeenNthCalledWith(2, "workspace-1", "branch");
+  });
+
+  it("reloads the diff under the new baseline when the comparison toggles (cache busted)", async () => {
+    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }]);
+    const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
+    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
+
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.openFile("src/a.ts");
+    });
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/a.ts", "workingTree"));
+
+    act(() => {
+      result.current.setChangesComparison("branch");
+    });
+
+    // The cached working-tree diff must not be served for the branch baseline.
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/a.ts", "branch"));
   });
 
   it("does not refetch workspace.listFiles when lastActivityAt ticks while in Files mode", async () => {

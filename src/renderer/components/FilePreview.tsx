@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
+import { LinesSkeleton } from "./LinesSkeleton.js";
 import { formatBytes } from "../lib/formatBytes.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 
@@ -95,7 +96,7 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
     return <p className="review-empty">Select a file to preview.</p>;
   }
   if (state.previewState === "loading") {
-    return <p className="review-empty">Loading file…</p>;
+    return <LinesSkeleton rows={18} label="Loading file" className="review-file-skeleton" />;
   }
   if (state.previewState === "error") {
     return <p className="review-empty review-error">{state.previewError}</p>;

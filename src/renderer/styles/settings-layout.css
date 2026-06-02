@@ -19,8 +19,6 @@
   margin: 0 auto;
   padding: 0 0 96px;
   animation: surface-in 320ms var(--ease) both;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 @media (max-width: 900px) {
@@ -240,8 +238,6 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
   transition: color var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease);

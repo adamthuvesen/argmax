@@ -2,6 +2,8 @@ mod claude;
 mod codex;
 mod cursor;
 
+pub use cursor::synthesize_message_completed_from_exit;
+
 use std::collections::HashMap;
 
 use regex::Regex;
@@ -30,8 +32,8 @@ use self::{
         event_type as cursor_event_type, extract_usage as extract_cursor_usage,
         is_lifecycle_event as is_cursor_lifecycle_event,
         normalize_assistant_text as normalize_cursor_assistant_text,
+        normalize_result_success as normalize_cursor_result_success,
         normalize_tool_call as normalize_cursor_tool_call,
-        synthesize_message_completed_from_result as synthesize_cursor_message_completed_from_result,
     },
 };
 use super::ProviderId;
@@ -115,6 +117,9 @@ pub struct NormalizerSessionContext {
     pub codex_current_model: Option<String>,
     pub cursor_current_model: Option<String>,
     pub cursor_assistant_text: Option<String>,
+    /// Set when Cursor emits `result/success` or we synthesize a turn-ending
+    /// `message.completed` on process exit.
+    pub cursor_turn_completed_emitted: bool,
     /// Set when Claude emits a `message.completed` for the current turn so a
     /// trailing `result` line does not synthesize a duplicate bubble.
     pub claude_turn_answer_emitted: bool,
@@ -362,13 +367,11 @@ fn normalize_json_payload(
         if provider_type.as_deref() == Some("result")
             && string_value(payload.get("subtype")) == Some("success")
         {
-            if let Some(event) = synthesize_cursor_message_completed_from_result(event, context) {
-                return NormalizedProviderResult {
-                    events: vec![event],
-                    usages,
-                    provider_conversation_id,
-                };
-            }
+            return NormalizedProviderResult {
+                events: normalize_cursor_result_success(event, context),
+                usages,
+                provider_conversation_id,
+            };
         }
         return NormalizedProviderResult {
             events: Vec::new(),

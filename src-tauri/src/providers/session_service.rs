@@ -132,6 +132,16 @@ impl ProviderSessionService {
         self.handles.lock().expect("handles poisoned").len()
     }
 
+    /// Whether the session's provider handle has finished spawning (`Resolved`)
+    /// rather than still launching in the background (`Pending`). Used to tell
+    /// the two states apart now that `launch` returns before the spawn lands.
+    pub fn is_handle_resolved(&self, session_id: &str) -> bool {
+        matches!(
+            self.handles.lock().expect("handles poisoned").get(session_id),
+            Some(HandleEntry::Resolved(handle)) if !handle.disposed()
+        )
+    }
+
     pub async fn launch(
         self: &Arc<Self>,
         input: ProvidersLaunchInput,
@@ -233,41 +243,84 @@ impl ProviderSessionService {
             cols: input.cols.get(),
             rows: input.rows.get(),
         };
+        // Spawn the provider process in the background instead of awaiting it
+        // here. The session row, user.message, and session.started are already
+        // persisted and broadcast above, so returning now lets the renderer
+        // switch to the chat view instantly — the PTY/CLI spawn (hundreds of ms
+        // on a cold launch) no longer blocks the IPC response. The Pending
+        // handle inserted above keeps send_input queueing (not relaunching) and
+        // resize buffering until the handle resolves; a terminate during the
+        // window removes the Pending entry, which the task detects below and
+        // disposes the freshly spawned handle so nothing runs orphaned.
         let service = Arc::clone(self);
-        let handle = match self
-            .launcher
-            .launch(
-                launch_input,
-                Arc::new(move |event| {
-                    let service = Arc::clone(&service);
-                    service.handle_provider_event(event);
-                }),
-            )
-            .await
-        {
-            Ok(handle) => handle,
-            Err(error) => {
-                self.handles
-                    .lock()
-                    .expect("handles poisoned")
-                    .remove(&session_id);
-                self.record_launch_failure(&session_id, provider, error.clone())?;
-                return Err(error);
+        tokio::spawn(async move {
+            let event_service = Arc::clone(&service);
+            let handle = match service
+                .launcher
+                .launch(
+                    launch_input,
+                    Arc::new(move |event| {
+                        let event_service = Arc::clone(&event_service);
+                        event_service.handle_provider_event(event);
+                    }),
+                )
+                .await
+            {
+                Ok(handle) => handle,
+                Err(error) => {
+                    let prior = service
+                        .handles
+                        .lock()
+                        .expect("handles poisoned")
+                        .remove(&session_id);
+                    // Only flip to `failed` if the session was still pending; if
+                    // terminate already removed the entry, it's cancelled and
+                    // must not be overwritten with a failure.
+                    if matches!(prior, Some(HandleEntry::Pending(_))) {
+                        if let Err(persist_error) =
+                            service.record_launch_failure(&session_id, provider, error)
+                        {
+                            tracing::error!(
+                                ?persist_error,
+                                "failed to record provider launch failure"
+                            );
+                        }
+                    }
+                    return;
+                }
+            };
+            // Swap the Pending entry for the resolved handle. Keep the lock
+            // scoped to this block so it's released before any await below.
+            let pending_ops = {
+                let mut handles = service.handles.lock().expect("handles poisoned");
+                match handles.insert(
+                    session_id.clone(),
+                    HandleEntry::Resolved(Arc::clone(&handle)),
+                ) {
+                    Some(HandleEntry::Pending(ops)) => Some(ops),
+                    // The Pending entry is gone — terminate() removed it while
+                    // the process was spawning. Drop our Resolved insertion so
+                    // the handle can be disposed below (outside the lock).
+                    _ => {
+                        handles.remove(&session_id);
+                        None
+                    }
+                }
+            };
+            let Some(pending_ops) = pending_ops else {
+                // Cancelled during spawn: dispose the freshly spawned handle so
+                // the provider process doesn't run orphaned.
+                if let Err(error) = handle.terminate().await {
+                    tracing::error!(?error, "failed to dispose handle cancelled during spawn");
+                }
+                return;
+            };
+            for op in pending_ops {
+                if let Err(error) = service.apply_op(&handle, op).await {
+                    tracing::error!(?error, "failed to apply queued op after launch");
+                }
             }
-        };
-        let pending_ops = {
-            let mut handles = self.handles.lock().expect("handles poisoned");
-            match handles.insert(
-                session_id.clone(),
-                HandleEntry::Resolved(Arc::clone(&handle)),
-            ) {
-                Some(HandleEntry::Pending(ops)) => ops,
-                _ => Vec::new(),
-            }
-        };
-        for op in pending_ops {
-            self.apply_op(&handle, op).await?;
-        }
+        });
         Ok(session)
     }
 
@@ -310,6 +363,30 @@ impl ProviderSessionService {
             return Ok(SendInputResult {
                 ok: true,
                 queued: false,
+            });
+        }
+
+        // The handle is still spawning (Pending): the process isn't up yet, so
+        // we can't route directly — and we must NOT fall through to the relaunch
+        // path below, which would double-spawn. Queue the message; it drains
+        // after the in-flight turn completes, exactly like a follow-up sent
+        // while the agent is working.
+        if matches!(
+            self.handles
+                .lock()
+                .expect("handles poisoned")
+                .get(&session_id),
+            Some(HandleEntry::Pending(_))
+        ) {
+            self.enqueue_pending_message(
+                &session_id,
+                &message,
+                input.agent_mode.unwrap_or(AgentMode::Auto),
+                &input,
+            )?;
+            return Ok(SendInputResult {
+                ok: true,
+                queued: true,
             });
         }
 
@@ -513,7 +590,10 @@ impl ProviderSessionService {
         let result = async {
             match entry {
                 Some(HandleEntry::Resolved(handle)) => {
-                    self.flush_trailing(&session_id)?;
+                    // User-initiated cancel: flush buffered text but don't
+                    // synthesize a Cursor turn completion — the turn didn't
+                    // finish, it was cancelled.
+                    self.flush_trailing(&session_id, false)?;
                     handle.terminate().await?;
                     self.cancel_session(&session_id)?;
                 }
@@ -742,8 +822,30 @@ impl ProviderSessionService {
         }
         drop(flush_queue);
         drop(connection);
+        let cursor_turn_finished = result.delta.as_ref().is_some_and(|delta| {
+            delta.events.iter().any(|event| {
+                event.r#type == "session.completed"
+                    && event.payload.get("cursorResultSuccess") == Some(&json!(true))
+            })
+        });
         if let Some(delta) = result.delta {
             self.publish(delta);
+        }
+        if cursor_turn_finished {
+            let service = Arc::clone(&self);
+            let session_id = event.session_id.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = service
+                    .complete_cursor_turn_after_result(&session_id)
+                    .await
+                {
+                    tracing::warn!(
+                        ?error,
+                        session_id = %session_id,
+                        "cursor turn completion after result/success failed"
+                    );
+                }
+            });
         }
         // A completed answer can sit in the stream buffer without a trailing
         // newline while the provider process stays alive. Debounce-flush only
@@ -759,17 +861,20 @@ impl ProviderSessionService {
 
     fn handle_lifecycle_event(self: &Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
         self.cancel_idle_flush(&event.session_id);
-        self.flush_trailing(&event.session_id)?;
+        // A genuine process exit is the one place a Cursor turn that never sent
+        // `result/success` should be synthesized as completed — but not when the
+        // user cancelled (the session is heading to `cancelled`, not `complete`).
+        let is_terminating = self
+            .terminating
+            .lock()
+            .expect("terminating poisoned")
+            .contains(&event.session_id);
+        self.flush_trailing(&event.session_id, !is_terminating)?;
         // If the user already initiated terminate(), let cancel_session
         // own the state transition. Writing `failed`/`complete` here
         // would race against (and could clobber) the `cancelled` state
         // the user just saw flash in the dashboard.
-        if self
-            .terminating
-            .lock()
-            .expect("terminating poisoned")
-            .contains(&event.session_id)
-        {
+        if is_terminating {
             self.handles
                 .lock()
                 .expect("handles poisoned")
@@ -1130,17 +1235,92 @@ impl ProviderSessionService {
         });
     }
 
-    fn flush_trailing(&self, session_id: &str) -> ArgmaxResult<()> {
+    /// `synthesize_cursor_exit` is `true` only on a genuine Cursor process exit
+    /// (see `flush_trailing_fragments`). Mid-turn idle flushes and user
+    /// terminates pass `false` so they don't prematurely complete the turn.
+    fn flush_trailing(&self, session_id: &str, synthesize_cursor_exit: bool) -> ArgmaxResult<()> {
         let mut connection = self.database.connection();
         let delta = self
             .flush_queue
             .lock()
             .expect("flush queue poisoned")
-            .flush_trailing_fragments(&mut connection, session_id, &now_iso())?;
+            .flush_trailing_fragments(
+                &mut connection,
+                session_id,
+                &now_iso(),
+                synthesize_cursor_exit,
+            )?;
         drop(connection);
         if let Some(delta) = delta {
             self.publish(delta);
         }
+        Ok(())
+    }
+
+    /// Cursor's `cursor-agent` often emits `result/success` while the child
+    /// process stays alive (same class of bug as the idle-flush comment above).
+    /// Mark the session complete and dispose the handle so the UI does not
+    /// sit on "Working" / thinking verbs until the user hits Stop.
+    async fn complete_cursor_turn_after_result(self: Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
+        if self
+            .terminating
+            .lock()
+            .expect("terminating poisoned")
+            .contains(session_id)
+        {
+            return Ok(());
+        }
+        {
+            let connection = self.database.connection();
+            let session = find_session_by_id(&connection, session_id)?;
+            if session.state != "running" {
+                return Ok(());
+            }
+        }
+        self.cancel_idle_flush(session_id);
+        // `result/success` already emitted the completion via the normalizer, so
+        // no exit synth here.
+        self.flush_trailing(session_id, false)?;
+
+        let (session, workspace, projects) = {
+            let connection = self.database.connection();
+            let completed_at = now_iso();
+            let session = update_session_state(
+                &connection,
+                session_id,
+                &SessionStateInput {
+                    state: "complete".to_string(),
+                    attention: attention_for_state("complete").to_string(),
+                    completed_at: Some(completed_at.clone()),
+                    last_activity_at: Some(completed_at),
+                },
+            )?;
+            let workspace = update_workspace_state(&connection, &session.workspace_id, "complete")?;
+            let projects = list_projects(&connection)?;
+            (session, workspace, projects)
+        };
+
+        let entry = self
+            .handles
+            .lock()
+            .expect("handles poisoned")
+            .remove(session_id);
+        self.flush_queue
+            .lock()
+            .expect("flush queue poisoned")
+            .delete_session(session_id);
+
+        self.publish(DashboardDelta {
+            projects,
+            workspaces: vec![workspace],
+            sessions: vec![session],
+            ..DashboardDelta::default()
+        });
+
+        if let Some(HandleEntry::Resolved(handle)) = entry {
+            handle.terminate().await?;
+        }
+        self.drain_queue_after_complete(session_id.to_string());
         Ok(())
     }
 
@@ -1191,7 +1371,9 @@ impl ProviderSessionService {
             if current != Some(generation) {
                 return;
             }
-            let flush_result = service.flush_trailing(&session_id_owned);
+            // Mid-turn idle flush: never synthesize a Cursor completion, or the
+            // turn completes prematurely and the next delta duplicates.
+            let flush_result = service.flush_trailing(&session_id_owned, false);
             service
                 .idle_flush_tasks
                 .lock()

@@ -131,19 +131,27 @@
   position: relative;
 }
 
+/* A proper square icon-button rather than a bare glyph: rounded hit area that
+   fills softly on hover. On assistant bubbles it sits in the reserved right
+   gutter; the user-bubble override below floats it outside the slab. */
 .chat-bubble-copy {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 6px;
+  right: 6px;
   display: inline-flex;
   align-items: center;
-  padding: 2px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   background: transparent;
   border: 0;
+  border-radius: 6px;
   color: var(--muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease);
+  transition: opacity var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .chat-bubble:hover .chat-bubble-copy,
@@ -152,7 +160,18 @@
 }
 
 .chat-bubble-copy:hover {
+  background: var(--panel-sunken);
   color: var(--text);
+}
+
+/* The user bubble is a tight filled slab, so an in-corner icon overlaps the
+   text and rounded corner. Drop it just below the bubble, aligned to its right
+   edge, where it reads as a clean affordance (and fits inside the inter-bubble
+   gap). */
+.chat-bubble.user .chat-bubble-copy {
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
 }
 
 .error-boundary {
@@ -228,7 +247,7 @@
   min-height: 56px;
   padding: 8px 10px 8px 14px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: var(--panel);
   box-shadow: var(--shadow-1),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -359,18 +378,20 @@
   margin-left: auto;
 }
 
+/* Shared metadata-pill family (with .turn-block-chip / .composer-footer-chip):
+   borderless 999px pill, --text-xs mono, quiet until hover fills it. */
 .composer-context-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 9px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 999px;
   background: transparent;
   color: var(--muted-strong);
   cursor: pointer;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   line-height: 1.2;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
@@ -400,22 +421,14 @@
   transform: rotate(180deg);
 }
 
+/* Auto is the default mode and not "special" — at rest it's a plain ghost chip
+   identical to its siblings (transparent fill, muted text, inherited from
+   .composer-context-chip including the hover fill). Only the non-default Plan
+   mode (aria-pressed) gets a subtle sage fill as an active-state cue. min-width
+   keeps the row from jumping as the label toggles Auto ↔ Plan. */
 .agent-mode-toggle {
   min-width: 56px;
   justify-content: center;
-  /* Same shape as the other chips so the row reads as one family; state is
-     conveyed by a subtle filled background, not a competing border. */
-  background: var(--panel-sunken);
-  color: var(--muted-strong);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.agent-mode-toggle:hover {
-  background: var(--line);
-  color: var(--text);
 }
 
 .agent-mode-toggle[aria-pressed="true"] {
@@ -485,8 +498,6 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .model-selector select,
@@ -520,8 +531,6 @@
   position: fixed;
   inset: 0;
   z-index: 25;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .project-picker-popover {
@@ -629,6 +638,26 @@
   color: var(--muted);
   font-size: var(--text-sm);
   font-weight: 400;
+}
+
+/* Advisory annotation ("not installed" / "needs login") trailing a model name. */
+.model-picker-annotation {
+  flex: none;
+  color: var(--amber);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+/* A disabled row = provider CLI not installed. Dim it and block the pointer;
+   the annotation keeps its amber so the "why" stays legible. */
+.model-picker-row[data-disabled] .model-picker-item {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-picker-row[data-disabled] .model-picker-name {
+  color: var(--muted);
 }
 
 /* Fixed-width check column, always present (empty when unselected) so the

@@ -429,10 +429,11 @@ describe("useDashboardSession — refresh / delta race", () => {
     }
   });
 
-  it("does not pull workspace:status while a turn is still running", async () => {
-    // Regression: pulling the heavy status command every tick (and overlapping
-    // ticks) starved a busy turn. With no terminal event, only the cheap event
-    // tail is pulled — status stays off the hot path.
+  it("throttles workspace:status mid-turn instead of pulling it every tick", async () => {
+    // Pulling the heavy status command every 250ms tick (and overlapping ticks)
+    // starved a busy turn. Mid-turn we still refresh `changedFiles`/dirty state
+    // so the UI tracks edits live — but throttled far below the event cadence:
+    // nothing within the first interval, then a single pull, not one per tick.
     vi.useFakeTimers();
     try {
       const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -447,15 +448,28 @@ describe("useDashboardSession — refresh / delta race", () => {
       expect(result.current.selectedSession?.state).toBe("running");
       statusMock.mockClear();
 
-      // Several ticks while the turn keeps running (no terminal event).
+      // Within the first refresh interval: only the cheap event tail runs.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1200);
       });
-
       expect(statusMock).not.toHaveBeenCalled();
       expect(
         (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mock.calls.length
       ).toBeGreaterThan(0);
+
+      // Past the throttle window: exactly one mid-turn status refresh fires,
+      // and the still-running session is not flipped to complete by it.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(statusMock).toHaveBeenCalledTimes(1);
+      expect(result.current.selectedSession?.state).toBe("running");
+
+      // It stays throttled — a few more ticks don't pull once per tick.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(750);
+      });
+      expect(statusMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
@@ -512,6 +526,108 @@ describe("useDashboardSession — refresh / delta race", () => {
       sessionId: "session-existing",
       eventCursor: 20,
       rawOutputCursor: 10
+    });
+  });
+
+  it("re-pulls a session's tail from scratch when its events were evicted from the global cap", async () => {
+    // Repro of the empty-session bug: switch to a busy session, its stream
+    // floods the global newest-N events cap and evicts the idle session's rows,
+    // then switch back. The parked cursor makes `eventsSince` return nothing, so
+    // the chat renders empty. The self-heal must re-read the tail from scratch.
+    const tail = [
+      {
+        id: "ev-user",
+        sessionId: "session-existing",
+        type: "user.message",
+        message: "hi",
+        payload: {},
+        createdAt: "2026-05-12T15:00:05.000Z",
+        rowCursor: 3
+      },
+      {
+        id: "ev-answer",
+        sessionId: "session-existing",
+        type: "message.completed",
+        message: "hello",
+        payload: {},
+        createdAt: "2026-05-12T15:00:06.000Z",
+        rowCursor: 4
+      }
+    ];
+    const eventsSince = window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>;
+    eventsSince.mockResolvedValueOnce({
+      events: tail,
+      rawOutputs: [],
+      eventCursor: 4,
+      rawOutputCursor: 0
+    });
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    // First focus loads the tail with no cursor and seeds it.
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+    expect(eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: null,
+      rawOutputCursor: null
+    });
+    expect(result.current.snapshot.events).toHaveLength(2);
+
+    // A busy session floods the shared cap and evicts these rows.
+    act(() => {
+      result.current.setSnapshot((current) => ({ ...current, events: [] }));
+    });
+
+    // Re-focus: pre-fix this fetched with the parked cursor (4) and got nothing.
+    eventsSince.mockResolvedValueOnce({
+      events: tail,
+      rawOutputs: [],
+      eventCursor: 4,
+      rawOutputCursor: 0
+    });
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    expect(eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: null,
+      rawOutputCursor: null
+    });
+    expect(result.current.snapshot.events).toHaveLength(2);
+  });
+
+  it("does not reset the cursor for a session that legitimately has no events", async () => {
+    // Guard against the self-heal looping on full re-reads: a session that has
+    // never returned events must keep using its incremental cursor.
+    const eventsSince = window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>;
+    eventsSince.mockResolvedValue({
+      events: [],
+      rawOutputs: [],
+      eventCursor: 7,
+      rawOutputCursor: 0
+    });
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    // Never seeded → no heal → second call keeps the advanced cursor.
+    expect(eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: 7,
+      rawOutputCursor: 0
     });
   });
 

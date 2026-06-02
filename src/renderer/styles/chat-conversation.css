@@ -77,8 +77,6 @@
   cursor: col-resize;
   touch-action: none;
   background: transparent;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .session-multigrid-resizer::after {
@@ -218,8 +216,6 @@
   gap: 18px;
   margin-bottom: 14px;
   padding-inline: var(--session-inline-padding);
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 .section-heading > div {
@@ -230,8 +226,6 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .section-heading h2 {
@@ -247,7 +241,7 @@
 .eyebrow {
   margin: 0 0 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -257,19 +251,20 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 32px;
+  gap: var(--space-8);
   overflow: auto;
-  padding: 8px var(--session-inline-padding) 28px;
+  padding: var(--space-2) var(--session-inline-padding) var(--space-7);
   scroll-behavior: smooth;
 }
 
+/* Base layout only. The fill is owned by the variants: .user paints the ink
+   slab, .assistant is transparent full-width prose — so a base panel-soft bg +
+   inset border + shadow only ever rendered as dead, overridden layering. */
 .chat-bubble {
   position: relative;
   max-width: min(78%, 920px);
   padding: 12px 16px;
   border-radius: 20px;
-  background: var(--panel-soft);
-  box-shadow: inset 0 0 0 1px var(--line-soft), var(--shadow-1);
   animation: msg-in 240ms var(--ease) both;
 }
 
@@ -287,7 +282,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: var(--text-base);
   line-height: 1.55;
   color: var(--text);
 }
@@ -315,8 +310,21 @@
   margin-bottom: 0;
 }
 
+/* A paragraph immediately followed by a list is a lead-in ("Three-layer
+   structure:" → bullets). Pull it tight to its list so the two read as one
+   group, while ordinary paragraph-to-paragraph spacing stays open. This is the
+   tight-within / loose-between rhythm that lets the eye see what belongs to
+   what. Elevate it a touch (size + tighter tracking) so it registers as a
+   section header when skimming a long answer, not just bold body text. */
+.markdown p:has(+ ul),
+.markdown p:has(+ ol) {
+  margin-bottom: 6px;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
 .markdown strong {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-soft);
 }
 
@@ -344,7 +352,7 @@
   background: var(--sage-soft);
   border: 0;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-variant-ligatures: none;
   color: var(--sage-deep);
 }
@@ -352,11 +360,11 @@
 .markdown pre {
   margin: 14px 0;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--panel-sunken);
   border: 1px solid var(--line);
   overflow-x: auto;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   line-height: 1.55;
 }
 
@@ -370,7 +378,9 @@
 
 .markdown ul,
 .markdown ol {
-  margin: 14px 0 6px;
+  /* Hug the lead-in above (6px, matched to p:has) and leave a clear gap below
+     (18px) so the bulleted group separates from the next section. */
+  margin: 6px 0 18px;
   padding-left: 24px;
 }
 
@@ -409,8 +419,11 @@
 }
 
 .markdown li {
-  margin: 7px 0;
-  line-height: 1.86;
+  /* Items sit tight and read denser than body prose so the list reads as one
+     cohesive unit instead of a stack of floating mini-paragraphs (multi-line
+     bullets in particular). */
+  margin: 3px 0;
+  line-height: 1.62;
 }
 
 .markdown ul > li::marker {
@@ -428,7 +441,7 @@
 
 .markdown li > ul,
 .markdown li > ol {
-  margin: 4px 0;
+  margin: 2px 0;
 }
 
 .markdown h1,
@@ -488,7 +501,7 @@
   border-collapse: collapse;
   border-spacing: 0;
   font-size: 13px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   box-shadow: inset 0 0 0 1px var(--line-soft);
 }
@@ -521,8 +534,11 @@
 
 .markdown hr {
   height: 1px;
-  margin: 22px 0;
-  background: linear-gradient(90deg, transparent, var(--line-strong) 30%, var(--line-strong) 70%, transparent);
+  /* Tight margins + a more present line so it reads as a deliberate section
+     rule. At 14px+faint-fade the eye saw an empty hole rather than a divider;
+     pulling the margins in and widening the solid span fixes that. */
+  margin: 10px 0;
+  background: linear-gradient(90deg, transparent, var(--line-strong) 12%, var(--line-strong) 88%, transparent);
   border: 0;
 }
 
@@ -598,7 +614,7 @@
 }
 
 .scroll-to-bottom-fab-count {
-  font-size: 11.5px;
+  font-size: var(--text-sm);
   font-weight: 540;
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;

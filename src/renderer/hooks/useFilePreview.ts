@@ -67,6 +67,23 @@ export function useFilePreview(args: {
   const workspaceSaveSeq = useRef(0);
   const workspaceSaveTokens = useRef(new Map<string, number>());
 
+  // Remembers the disk content of files whose tabs were closed, so reopening
+  // one is instant instead of re-reading from disk. Seeds new tabs as `ready`;
+  // the external-change poll still revalidates mtime on focus, so a file edited
+  // on disk after close is flagged rather than shown stale. Cleared on source
+  // change.
+  const previewCache = useRef(
+    new Map<
+      string,
+      {
+        preview: WorkspaceFilePreview;
+        buffer: string | null;
+        original: string | null;
+        diskMtimeMs: number | null;
+      }
+    >()
+  );
+
   const activeTab = tabs.find((tab) => tab.path === activeTabPath) ?? null;
   const activeFilePath = activeTab?.path;
   const activePreviewState = activeTab?.previewState;
@@ -94,6 +111,7 @@ export function useFilePreview(args: {
     setDirtyClosePath(null);
     workspaceReadTokens.current.clear();
     workspaceSaveTokens.current.clear();
+    previewCache.current.clear();
   }, []);
 
   const updateTab = useCallback(
@@ -159,9 +177,21 @@ export function useFilePreview(args: {
   }, [mode, isPanelOpen, sourceId, sourceKind, activeFilePath, activePreviewState, loadFile]);
 
   const openFile = useCallback((filePath: string): void => {
-    setTabs((current) =>
-      current.some((tab) => tab.path === filePath) ? current : [...current, createWorkspaceFileTab(filePath)]
-    );
+    setTabs((current) => {
+      if (current.some((tab) => tab.path === filePath)) return current;
+      const cached = previewCache.current.get(filePath);
+      const tab = cached
+        ? {
+            ...createWorkspaceFileTab(filePath),
+            preview: cached.preview,
+            previewState: "ready" as AsyncState,
+            buffer: cached.buffer,
+            original: cached.original,
+            diskMtimeMs: cached.diskMtimeMs
+          }
+        : createWorkspaceFileTab(filePath);
+      return [...current, tab];
+    });
     setActiveTabPath(filePath);
     setDirtyClosePath(null);
   }, []);
@@ -176,6 +206,18 @@ export function useFilePreview(args: {
     const current = listenerStateRef.current.workspaceFileTabs;
     const index = current.findIndex((tab) => tab.path === filePath);
     if (index < 0) return;
+    // Remember the on-disk content so reopening this file is instant. Cache the
+    // saved `original`, never a dirty buffer — by the time a tab force-closes it
+    // was either saved (original updated) or discarded.
+    const closing = current[index];
+    if (closing && closing.previewState === "ready" && closing.preview) {
+      previewCache.current.set(filePath, {
+        preview: closing.preview,
+        buffer: closing.original,
+        original: closing.original,
+        diskMtimeMs: closing.diskMtimeMs
+      });
+    }
     const remaining = current.filter((tab) => tab.path !== filePath);
     const fallbackPath = remaining[index]?.path ?? remaining[index - 1]?.path ?? null;
     setTabs(remaining);

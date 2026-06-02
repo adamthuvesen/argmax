@@ -22,6 +22,9 @@ export function reviewStub(): ReviewState {
     isPanelOpen: false,
     mode: "changes",
     setMode: () => {},
+    changesComparison: "local",
+    setChangesComparison: () => {},
+    comparisonBaseLabel: "main",
     workspaceFiles: {
       entries: [],
       listState: "idle",

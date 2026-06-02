@@ -6,6 +6,7 @@ import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks, type DiffView } from "./DiffBlocks.js";
 import { FilePreview } from "./FilePreview.js";
+import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 
 function fileBasename(path: string): string {
@@ -236,6 +237,30 @@ export function ReviewPanel({
           </h2>
         </div>
         <div className="review-toolbar-actions">
+          {isChanges ? (
+            <div className="review-comparison-tabs" role="group" aria-label="Diff baseline">
+              <button
+                type="button"
+                aria-pressed={review.changesComparison === "local"}
+                title="Working-tree changes (uncommitted, vs HEAD)"
+                onClick={() => review.setChangesComparison("local")}
+              >
+                Local
+              </button>
+              <button
+                type="button"
+                aria-pressed={review.changesComparison === "branch"}
+                title={
+                  review.comparisonBaseLabel
+                    ? `All changes vs ${review.comparisonBaseLabel}`
+                    : "All changes vs base branch"
+                }
+                onClick={() => review.setChangesComparison("branch")}
+              >
+                Branch
+              </button>
+            </div>
+          ) : null}
           <button
             className="small-icon"
             type="button"
@@ -311,10 +336,7 @@ export function ReviewPanel({
                 </div>
               ) : null}
               {review.diffState === "loading" ? (
-                <p className="review-empty">
-                  <span className="review-empty-mark" aria-hidden="true">∅</span>
-                  <span>Loading diff…</span>
-                </p>
+                <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
               ) : null}
               {review.diffState === "error" ? (
                 <p className="review-empty review-error" role="alert">

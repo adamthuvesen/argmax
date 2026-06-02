@@ -7,7 +7,7 @@ import {
   pruneSupersededDeltas
 } from "../lib/snapshot.js";
 
-type SessionCursor = { eventCursor?: number; rawOutputCursor?: number };
+type SessionCursor = { eventCursor?: number; rawOutputCursor?: number; seeded?: boolean };
 
 export interface UseDashboardSessionOptions {
   onErrorToast?: (message: string) => void;
@@ -92,7 +92,27 @@ export function useDashboardSession(
       return;
     }
 
-    const cursor = sessionCursorsRef.current.get(sessionId);
+    let cursor = sessionCursorsRef.current.get(sessionId);
+    // Self-heal an evicted session. `snapshot.events` is a single array shared
+    // by every session and capped to the newest rows across ALL of them (the
+    // mergeByCreatedAt(…, 500) below plus mergeEventsBounded on the delta
+    // path). A busy session can therefore evict an idle session's rows from the
+    // array while that idle session's cursor stays parked at the last fetched
+    // rowid. A cursored `eventsSince` then returns only rows NEWER than the
+    // cursor — none, for an idle session — so the conversation re-renders empty
+    // (often just the user message that happened to survive the cap) and never
+    // recovers. If we previously loaded content for this session (`seeded`) but
+    // the snapshot now holds none of its events, the rows were evicted: drop the
+    // cursor and re-pull the tail from scratch. The `seeded` guard keeps a
+    // genuinely event-less session from looping on full re-reads.
+    if (
+      cursor?.seeded &&
+      cursor.eventCursor &&
+      !snapshotRef.current.events.some((event) => event.sessionId === sessionId)
+    ) {
+      sessionCursorsRef.current.delete(sessionId);
+      cursor = undefined;
+    }
     // Build the args once instead of two conditional spreads — the spread
     // form allocated a fresh empty object on every undefined branch
     // (ralph E1). Equivalent payload, fewer allocations on the hot path.
@@ -105,7 +125,10 @@ export function useDashboardSession(
     const latest = sessionCursorsRef.current.get(sessionId);
     sessionCursorsRef.current.set(sessionId, {
       eventCursor: Math.max(latest?.eventCursor ?? 0, data.eventCursor),
-      rawOutputCursor: Math.max(latest?.rawOutputCursor ?? 0, data.rawOutputCursor)
+      rawOutputCursor: Math.max(latest?.rawOutputCursor ?? 0, data.rawOutputCursor),
+      // Once we've seen any events for this session, stay seeded so a later
+      // eviction (empty snapshot + parked cursor) is recognised as recoverable.
+      seeded: (latest?.seeded ?? false) || data.events.length > 0
     });
     setSnapshot((current) => ({
       ...current,
@@ -340,17 +363,17 @@ export function useDashboardSession(
   // it). This is intentionally scoped to running sessions: idle sessions never
   // poll, so the steady state remains delta-driven (no dashboard-wide poll).
   //
-  // Each tick pulls only the cheap event tail (`eventsSince`) so streamed text
-  // keeps flowing, deduped by `mergeByCreatedAt`. The heavier session/workspace
-  // STATE pull (`workspace:status`) reconciles the turn-end
-  // `state: running → complete` transition — the *last* emit of the turn, the
-  // push most likely to lag and leave the header stuck on "Working". It fires
-  // ONCE, when the turn's terminal event (`session.completed`/`error`) has
-  // landed via the event poll but the state-change push hasn't. Both IPC calls
-  // are synchronous Rust commands sharing one DB mutex with the provider's
-  // event ingestion, so doing the status pull every tick (and letting ticks
-  // overlap) starved a busy turn — hence: cheap tail every tick, one status
-  // reconcile at the end, and an in-flight guard so ticks never pile up.
+  // Each tick pulls the cheap event tail (`eventsSince`) so streamed text keeps
+  // flowing, deduped by `mergeByCreatedAt`. The heavier session/workspace STATE
+  // pull (`workspace:status`) runs on two cadences: (1) a throttled mid-turn
+  // refresh (~2s) so `changedFiles` and dirty markers track the agent's edits
+  // live instead of freezing until the turn ends, and (2) a guaranteed pull
+  // when the turn's terminal event (`session.completed`/`error`) lands, to
+  // reconcile the `running → complete` push that's most likely to lag and leave
+  // the header stuck on "Working". Both IPC calls are synchronous Rust commands
+  // sharing one DB mutex with event ingestion, so the status pull is throttled
+  // far below the 250ms event tick and an in-flight guard keeps ticks from
+  // piling up — doing it every tick (with overlap) once starved a busy turn.
   useEffect(() => {
     if (!window.argmax || selectedSession?.state !== "running" || !selectedSessionId) {
       return;
@@ -384,6 +407,16 @@ export function useDashboardSession(
           (event.type === "session.completed" || event.type === "error") &&
           !priorTerminalEventIds.has(event.id)
       );
+    // Throttle for the mid-turn status pull. Edits land on the workspace as the
+    // agent works, but `changedFiles` is only refreshed by a `workspace:status`
+    // pull — so without this the changed-files card and dirty markers freeze
+    // until the turn ends. Pull on a slow cadence (well above the 250ms event
+    // tick) so the card tracks edits live without contending the DB mutex.
+    const STATUS_REFRESH_MS = 2000;
+    // Start the clock at turn focus so the first mid-turn refresh lands one
+    // interval out, not on the first tick (avoids a status pull every time a
+    // running session is briefly focused).
+    let lastStatusPullAt = Date.now();
     const tick = async (): Promise<void> => {
       if (inFlight) {
         return;
@@ -391,12 +424,21 @@ export function useDashboardSession(
       inFlight = true;
       try {
         await loadSessionEvents(runningSessionId);
-        if (cancelled || !window.argmax || stateReconciled || !turnHasTerminalEvent()) {
+        if (cancelled || !window.argmax) {
           return;
         }
-        // The turn finished (terminal event pulled) but the state push may have
-        // lagged — reconcile session/workspace state once via the reliable pull.
-        stateReconciled = true;
+        // Two reasons to pull workspace status: (a) the turn just ended and the
+        // `running → complete` push may have lagged (reconcile once), or (b) a
+        // throttled mid-turn refresh so changed-files/dirty state stay live.
+        const turnEnded = !stateReconciled && turnHasTerminalEvent();
+        const now = Date.now();
+        if (!turnEnded && now - lastStatusPullAt < STATUS_REFRESH_MS) {
+          return;
+        }
+        if (turnEnded) {
+          stateReconciled = true;
+        }
+        lastStatusPullAt = now;
         const status = await window.argmax.workspaces.status({ workspaceIds });
         if (cancelled) {
           return;

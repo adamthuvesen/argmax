@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use crate::review::git_review::ReviewComparison;
+
 use super::validation::{
     AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
     CommandText, FileContent, GitCommitMessage, McpAuthSessionId, NonEmptyString, OpenPath,
@@ -22,12 +24,20 @@ empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);
 empty_input!(DashboardLoadInput);
-empty_input!(ProvidersDiscoverInput);
 empty_input!(ApprovalsPendingInput);
 empty_input!(SystemListDetectedIdesInput);
 empty_input!(SystemDiagnosticsInput);
 empty_input!(SystemVacuumDatabaseInput);
 empty_input!(McpListInput);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProvidersDiscoverInput {
+    /// When true, drop the cached capability reports and re-probe each provider
+    /// CLI. Defaults to false so an absent `{}` payload reuses the cache.
+    #[serde(default)]
+    pub refresh: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -420,6 +430,8 @@ pub struct SessionEventsSinceInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewListChangedFilesInput {
     pub workspace_id: WorkspaceId,
+    #[serde(default)]
+    pub comparison: ReviewComparison,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -427,12 +439,16 @@ pub struct ReviewListChangedFilesInput {
 pub struct ReviewLoadDiffInput {
     pub workspace_id: WorkspaceId,
     pub file_path: Option<RelativePath>,
+    #[serde(default)]
+    pub comparison: ReviewComparison,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewListChangedFilesForProjectInput {
     pub project_id: ProjectId,
+    #[serde(default)]
+    pub comparison: ReviewComparison,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -440,6 +456,8 @@ pub struct ReviewListChangedFilesForProjectInput {
 pub struct ReviewLoadDiffForProjectInput {
     pub project_id: ProjectId,
     pub file_path: Option<RelativePath>,
+    #[serde(default)]
+    pub comparison: ReviewComparison,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

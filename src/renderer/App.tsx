@@ -189,6 +189,7 @@ export function App(): JSX.Element {
     snapshot,
     selectedProject,
     selectedWorkspace,
+    pendingSelectionRef,
     setSelectedSessionId,
     setSelectedWorkspaceId,
     setSelectedProjectId,
@@ -691,6 +692,14 @@ export function App(): JSX.Element {
         sessionId: launchedSession.id,
         workspaceId: workspace.id
       };
+      // Seed the snapshot immediately so the grid-reconcile effect doesn't
+      // drop the just-opened pane while refresh/status is still in flight.
+      setSnapshot((current) =>
+        mergeDashboardDelta(current, {
+          workspaces: [workspace],
+          sessions: [launchedSession]
+        })
+      );
       // If the user launched from the standalone full launcher, return them
       // to the grid view now that the new pane will be present and focused.
       setIsFullLauncherOpen(false);
@@ -710,7 +719,8 @@ export function App(): JSX.Element {
       pendingSelectionRef,
       permissionMode,
       setGrid,
-      setIsFullLauncherOpen
+      setIsFullLauncherOpen,
+      setSnapshot
     ]
   );
 

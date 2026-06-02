@@ -360,7 +360,7 @@ describe("App sidebar", () => {
 
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" });
     expect(reviewPanel).toBeInTheDocument();
-    expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/renderer/App.tsx");
+    expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/renderer/App.tsx", "workingTree");
     expect(await screen.findByText("16 unmodified lines")).toBeInTheDocument();
     // shiki tokenizes lines into per-token <span> children, so getByText on
     // the full source line misses. toHaveTextContent matches concatenated

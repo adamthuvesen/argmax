@@ -33,10 +33,14 @@
   animation: mascot-hop 0.7s var(--ease) 1, mascot-bob 2.4s var(--ease) 0.7s infinite;
 }
 
+/* Rest state (empty composer → send disabled). Muted and theme-aware so the
+   mascot recedes into the palette instead of blaring near-white on the dark
+   canvas; it blooms to the purple --mascot-body the moment there's text to
+   send (mood flips sad → idle). */
 .mascot[data-mood="sad"] {
   animation: mascot-droop 2.6s var(--ease) infinite;
-  --mascot-body: #c8c7c2;
-  --mascot-rain: #8c8b86;
+  --mascot-body: var(--muted);
+  --mascot-rain: var(--muted);
 }
 
 .mascot[data-mood="working"] {

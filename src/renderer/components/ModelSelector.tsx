@@ -17,6 +17,35 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   cursor: "Cursor"
 };
 
+/** Per-provider install/auth state used to gate the picker. */
+export interface ProviderAvailabilityEntry {
+  installed: boolean;
+  authenticated: boolean | null;
+}
+
+/**
+ * Optional availability map keyed by provider. When absent (or a provider is
+ * missing), the picker stays optimistic — every model enabled. Discovery is
+ * async, so the picker must work before it resolves.
+ */
+export type ProviderAvailability = Partial<Record<ProviderId, ProviderAvailabilityEntry>>;
+
+/**
+ * Resolve a provider to a picker annotation. Not installed → disabled +
+ * "not installed". Installed but not authenticated → advisory "needs login"
+ * (still selectable, per product decision). Unknown/ready → no annotation.
+ */
+function availabilityAnnotation(
+  availability: ProviderAvailability | undefined,
+  provider: ProviderId
+): { disabled?: boolean; annotation?: string } {
+  const entry = availability?.[provider];
+  if (!entry) return {};
+  if (!entry.installed) return { disabled: true, annotation: "not installed" };
+  if (entry.authenticated === false) return { annotation: "needs login" };
+  return {};
+}
+
 /** Minimum shape the picker needs from each selectable value. */
 type PickerValue = { label: string; modelId: string; reasoningEffort?: ReasoningEffort };
 
@@ -27,6 +56,10 @@ type ChipModelOption<T> = {
   value: T;
   group?: string;
   supportsReasoningEffort: boolean;
+  /** Provider CLI not installed — row is shown disabled. */
+  disabled?: boolean;
+  /** Small advisory suffix ("not installed" / "needs login"). */
+  annotation?: string;
 };
 
 export function ModelSelector({
@@ -64,12 +97,14 @@ export function ModelSelector({
 
 export function LaunchModelSelector({
   ariaLabel,
+  availability,
   onOpenChange,
   onChange,
   open,
   value
 }: {
   ariaLabel: string;
+  availability?: ProviderAvailability;
   onOpenChange?: (open: boolean) => void;
   onChange: (model: ModelPickerSelection) => void;
   open?: boolean;
@@ -80,6 +115,7 @@ export function LaunchModelSelector({
     label: model.label,
     group: PROVIDER_GROUP_LABEL[model.provider],
     supportsReasoningEffort: model.supportsReasoningEffort,
+    ...availabilityAnnotation(availability, model.provider),
     value: {
       provider: model.provider,
       label: model.label,
@@ -149,6 +185,9 @@ function ChipModelPicker<T extends PickerValue>({
     (isSelected(option.value) ? value.reasoningEffort : option.value.reasoningEffort) ?? DEFAULT_REASONING_EFFORT;
 
   const selectModel = (option: ChipModelOption<T>): void => {
+    // A disabled row (provider CLI not installed) can't be chosen — the button
+    // is also disabled, this is just belt-and-suspenders.
+    if (option.disabled) return;
     // Clicking the already-selected model keeps its current effort; a new
     // effort-capable model uses the row's seeded default; fast models carry none.
     const next =
@@ -208,15 +247,26 @@ function ChipModelPicker<T extends PickerValue>({
                       {option.group}
                     </li>
                   ) : null}
-                  <li role="option" aria-selected={selected} className="model-picker-row">
+                  <li
+                    role="option"
+                    aria-selected={selected}
+                    aria-disabled={option.disabled || undefined}
+                    className="model-picker-row"
+                    data-disabled={option.disabled || undefined}
+                  >
                     <button
                       type="button"
                       className="project-picker-item model-picker-item"
                       aria-pressed={selected}
+                      disabled={option.disabled}
+                      title={option.disabled ? `${option.label} — provider CLI not installed` : undefined}
                       onClick={() => selectModel(option)}
                     >
                       <span className="model-picker-name">{option.label}</span>
-                      {option.supportsReasoningEffort ? (
+                      {option.annotation ? (
+                        <span className="model-picker-annotation">{option.annotation}</span>
+                      ) : null}
+                      {option.supportsReasoningEffort && !option.disabled ? (
                         <span className="model-picker-effort">{effortLabel(effortForOption(option))}</span>
                       ) : null}
                       {/* Always reserve the check column so the selected row's
@@ -225,7 +275,7 @@ function ChipModelPicker<T extends PickerValue>({
                         {selected ? <Check size={14} /> : null}
                       </span>
                     </button>
-                    {option.supportsReasoningEffort ? (
+                    {option.supportsReasoningEffort && !option.disabled ? (
                       <button
                         type="button"
                         className="model-picker-edit"
@@ -274,11 +324,13 @@ function ChipModelPicker<T extends PickerValue>({
 
 export function CombinedModelSelector({
   ariaLabel,
+  availability,
   inputId,
   onChange,
   value
 }: {
   ariaLabel: string;
+  availability?: ProviderAvailability;
   inputId?: string;
   onChange: (model: ModelPickerSelection) => void;
   value: ModelPickerSelection;
@@ -307,15 +359,25 @@ export function CombinedModelSelector({
           }
         }}
       >
-        {(Object.keys(PROVIDER_GROUP_LABEL) as ProviderId[]).map((provider) => (
-          <optgroup key={provider} label={PROVIDER_GROUP_LABEL[provider]}>
-            {PROVIDER_MODELS[provider].map((model) => (
-              <option key={optionKey(model)} value={modelValue({ provider, modelId: model.modelId })}>
-                {model.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
+        {(Object.keys(PROVIDER_GROUP_LABEL) as ProviderId[]).map((provider) => {
+          const { disabled, annotation } = availabilityAnnotation(availability, provider);
+          const groupLabel = annotation
+            ? `${PROVIDER_GROUP_LABEL[provider]} — ${annotation}`
+            : PROVIDER_GROUP_LABEL[provider];
+          return (
+            <optgroup key={provider} label={groupLabel}>
+              {PROVIDER_MODELS[provider].map((model) => (
+                <option
+                  key={optionKey(model)}
+                  value={modelValue({ provider, modelId: model.modelId })}
+                  disabled={disabled}
+                >
+                  {model.label}
+                </option>
+              ))}
+            </optgroup>
+          );
+        })}
       </select>
     </span>
   );

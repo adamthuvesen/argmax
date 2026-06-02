@@ -33,6 +33,12 @@ export interface DiscoveredProvider {
   installed: boolean;
   binaryPath: string | null;
   version: string | null;
+  /**
+   * Tri-state auth signal: `null` = not installed or inconclusive probe,
+   * `true` = logged in, `false` = installed but not authenticated. Advisory
+   * only — never used to hard-block.
+   */
+  authenticated: boolean | null;
   modes: ProviderMode[];
   setupGuidance: string | null;
 }
@@ -163,6 +169,13 @@ export interface WorkspaceDiff {
   filePath: string | null;
   content: string;
 }
+
+/**
+ * Review diff baseline. `workingTree` (default) diffs the working tree against
+ * `HEAD` (uncommitted changes); `branch` diffs against the merge-base with the
+ * base branch — the whole delta from main, committed + uncommitted + untracked.
+ */
+export type ReviewComparison = Bindings.ReviewComparison;
 
 export interface WorkspaceFileEntry {
   path: string;
@@ -435,7 +448,7 @@ export interface ArgmaxApi {
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
   };
   providers: {
-    discover: () => Promise<DiscoveredProvider[]>;
+    discover: (refresh?: boolean) => Promise<DiscoveredProvider[]>;
     launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
     sendInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
@@ -460,10 +473,10 @@ export interface ArgmaxApi {
     }>>;
   };
   review: {
-    listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;
-    loadDiff: (workspaceId: string, filePath?: string) => Promise<WorkspaceDiff>;
-    listChangedFilesForProject: (projectId: string) => Promise<ChangedFileSummary[]>;
-    loadDiffForProject: (projectId: string, filePath?: string) => Promise<WorkspaceDiff>;
+    listChangedFiles: (workspaceId: string, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+    loadDiff: (workspaceId: string, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
+    listChangedFilesForProject: (projectId: string, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+    loadDiffForProject: (projectId: string, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
   };
   workspace: {
     listFiles: (workspaceId: string) => Promise<WorkspaceFileEntry[]>;

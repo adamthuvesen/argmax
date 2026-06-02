@@ -27,6 +27,9 @@ function reviewStub(): ReviewState {
     isPanelOpen: true,
     mode: "changes",
     setMode: vi.fn(),
+    changesComparison: "local",
+    setChangesComparison: vi.fn(),
+    comparisonBaseLabel: "main",
     workspaceFiles: {
       entries: [],
       listState: "idle",

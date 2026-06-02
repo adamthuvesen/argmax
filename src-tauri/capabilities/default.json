@@ -3,5 +3,9 @@
   "identifier": "main-capability",
   "description": "Allows the main app window to use required Tauri core APIs.",
   "windows": ["main"],
-  "permissions": ["core:event:default"]
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize"
+  ]
 }

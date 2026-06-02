@@ -336,9 +336,13 @@ export function SessionConversation({
   // blocks: typed messages get queued in main and drain when the current turn
   // finishes. `complete` and `cancelled` are also enabled because main's
   // sendInput re-launches the agent when no live handle exists, so the user
-  // can keep chatting after a turn ends or they hit Stop.
+  // can keep chatting after a turn ends or they hit Stop. `failed` is enabled
+  // for the same reason: a session marked failed (most commonly because its
+  // provider process didn't survive an app restart — orphan recovery) has no
+  // live handle, so sending input takes the same relaunch-with-resume path and
+  // continues the old conversation rather than stranding it.
   const canSend = Boolean(
-    session && ["complete", "waiting", "running", "cancelled"].includes(session.state)
+    session && ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state)
   );
   // Currently running → the next submit goes onto the queue rather than
   // straight to the agent. Used to tweak placeholder and Send tooltip copy.
@@ -585,7 +589,7 @@ export function SessionConversation({
 
   return (
     <section className="conversation-surface" aria-label="Session conversation">
-      <div className="section-heading">
+      <div className="section-heading" data-window-drag>
         <div>
           <p className="eyebrow">Repository</p>
           <h2>{repositoryName}</h2>

@@ -27,8 +27,6 @@
 }
 
 .window-controls {
-  app-region: drag;
-  -webkit-app-region: drag;
   height: 36px;
   margin-bottom: 2px;
 }
@@ -40,8 +38,6 @@
   gap: 2px;
   margin: 2px 12px 16px;
   user-select: none;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .sidebar-nameplate-line {
@@ -78,8 +74,6 @@
 .rail-nav {
   display: grid;
   gap: 1px;
-  app-region: no-drag;
-  -webkit-app-region: no-drag;
 }
 
 .rail-nav-item {
@@ -131,8 +125,6 @@
   border-radius: 6px;
   background: transparent;
   color: var(--text-soft);
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0;
@@ -181,8 +173,6 @@
 }
 
 .small-icon {
-  app-region: no-drag;
-  -webkit-app-region: no-drag;
   display: grid;
   width: 30px;
   height: 30px;
@@ -233,6 +223,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 2px;
   min-height: 24px;
   margin: 22px 0 8px 12px;
 }
@@ -255,9 +246,11 @@
   flex: 0 0 auto;
 }
 
+/* Match the project/session row action boxes so the header … / + line up in
+   the same right-edge columns as the rows below. */
 .rail-heading .small-icon {
-  width: 24px;
-  height: 24px;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
 }
 
 .project-group {
@@ -293,10 +286,24 @@
 
 .project-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 22px 22px;
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-action-size) var(--sidebar-action-size);
   align-items: center;
   gap: 2px;
   margin-bottom: 2px;
+  /* Keep the … / chevron off the row edge so the rightmost icon isn't tight
+     against the hover highlight — matches the session row's action inset. The
+     hover background paints the padding box, so the highlight still spans the
+     full width. */
+  padding-right: var(--sidebar-action-inset);
+  border-radius: 8px;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+/* Highlight the whole row — label + action buttons — on hover, so the
+   affordance matches the session row's full-width hover bar instead of
+   lighting up only the name column. */
+.project-row:hover {
+  background: var(--row-hover);
 }
 
 /* Sidebar project row "..." trigger — hidden until row hover (matches the
@@ -304,14 +311,14 @@
    the right edge so it stays inside the sidebar column. */
 .project-actions-anchor {
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
   place-items: center;
 }
 
 .project-actions-trigger {
-  width: 22px;
-  height: 22px;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
   opacity: 0;
   color: var(--muted);
   transition: opacity var(--duration-fast) var(--ease);
@@ -421,10 +428,8 @@
   transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
-.project-name:hover {
-  background: var(--row-hover);
-}
-
+/* No own hover background — the parent `.project-row:hover` now paints the
+   full-width highlight, so a second tint here would double up over it. */
 .project-name:hover .project-visibility,
 .project-row:hover .project-visibility,
 .project-row:focus-within .project-visibility {
@@ -450,15 +455,15 @@
 
 .project-visibility {
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
   place-items: center;
   color: var(--muted);
   border: 0;
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
-  opacity: 0.25;
+  opacity: 0;
   transition: color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease),
     opacity var(--duration-fast) var(--ease);
@@ -471,8 +476,8 @@
 }
 
 .project-visibility svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   transform: rotate(90deg);
   transition: transform var(--duration-base) var(--ease);
 }

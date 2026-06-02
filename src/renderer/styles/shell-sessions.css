@@ -86,12 +86,12 @@
 }
 
 .session-row .session-link {
-  padding-right: 44px;
+  padding-right: 46px;
 }
 
 .session-row:has(.session-archive-btn) .session-link,
 .session-row:has(.session-pin-btn) .session-link {
-  padding-right: 68px;
+  padding-right: 70px;
 }
 
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link {
@@ -100,12 +100,11 @@
 
 .session-ide-cluster {
   position: absolute;
-  right: 6px;
+  right: var(--sidebar-action-inset);
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 1px;
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease);
   pointer-events: none;
@@ -118,16 +117,17 @@
 }
 
 .session-row:has(.session-archive-btn) .session-ide-cluster {
-  right: 30px;
+  right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
 }
 
 .session-row-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 18px;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
   padding: 0;
-  opacity: 0.18;
+  opacity: 0;
   color: var(--muted);
   background: transparent;
   border: 0;
@@ -139,11 +139,6 @@
 .session-row-action:focus-visible {
   opacity: 1;
 }
-
-.session-ide-chevron {
-  width: 18px;
-}
-
 
 .session-row:hover .session-row-action,
 .session-row:focus-within .session-row-action {
@@ -180,16 +175,16 @@
 
 .session-archive-btn {
   position: absolute;
-  right: 5px;
+  right: var(--sidebar-action-inset);
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
   padding: 0;
-  opacity: 0.18;
+  opacity: 0;
   color: var(--muted);
   background: transparent;
   border: 0;
@@ -215,10 +210,9 @@
 
 .session-pin-btn {
   position: absolute;
-  right: 5px;
+  right: var(--sidebar-action-inset);
   top: 50%;
   transform: translateY(-50%);
-  width: 18px;
 }
 
 /*
@@ -247,15 +241,15 @@
 }
 
 .session-row:has(.session-pin-btn) .session-ide-cluster {
-  right: 30px;
+  right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
 }
 
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-pin-btn {
-  right: 30px;
+  right: calc(var(--sidebar-action-step) + var(--sidebar-action-inset));
 }
 
 .session-row:has(.session-pin-btn):has(.session-archive-btn) .session-ide-cluster {
-  right: 54px;
+  right: calc(2 * var(--sidebar-action-step) + var(--sidebar-action-inset));
 }
 
 .session-tokens {
@@ -381,8 +375,6 @@
   width: 6px;
   cursor: col-resize;
   z-index: 10;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .sidebar-resizer::after {
@@ -507,8 +499,6 @@
   height: 52px;
   z-index: 0;
   pointer-events: none;
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 .workspace {
@@ -538,8 +528,6 @@
   z-index: 45;
   pointer-events: auto;
   padding: clamp(18px, 3vw, 32px);
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .workspace-drop-zone {
@@ -556,8 +544,6 @@
   display: grid;
   place-items: center;
   padding: 48px 36px;
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 /* Animated globe backdrop (LauncherGlobe). The canvas + scrim are rendered inside
@@ -630,15 +616,10 @@
      portaled .picker-dismiss-layer (z-index:25). Without position, z-index is
      ignored and the layer paints on top — swallowing wheel events on pickers. */
   z-index: 26;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 /* Bare wrapper that lets the launcher surface become a project review canvas
-   when Cmd+B opens the project Changes + Files panel. The parent also sets
-   `-webkit-app-region: drag` so the empty launcher pad is a window drag handle;
-   the launcher-surface opts out, and we mirror that here so the ReviewPanel
-   stays clickable instead of swallowing pointer events as drag gestures. */
+   when Cmd+B opens the project Changes + Files panel. */
 .launcher-shell[data-review-open="true"] {
   position: relative;
   display: grid;
@@ -649,8 +630,6 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .launcher-shell[data-review-open="true"] .launcher-surface {

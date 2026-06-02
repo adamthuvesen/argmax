@@ -1,10 +1,10 @@
-import { ExternalLink, RefreshCcw } from "lucide-react";
-import type { JSX } from "react";
+import { AlertTriangle, ExternalLink, RefreshCcw } from "lucide-react";
+import { useMemo, type JSX } from "react";
 import type { DiscoveredProvider } from "../../../shared/types.js";
 import type { ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode } from "../../lib/permissionMode.js";
 import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
-import { CombinedModelSelector } from "../ModelSelector.js";
+import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { SectionHeader, Segmented } from "./settingsPrimitives.js";
 
 export function AgentsSettings({
@@ -38,6 +38,17 @@ export function AgentsSettings({
   refreshingProviders: boolean;
   refreshProviders: () => void;
 }): JSX.Element {
+  // Mirror discovery into the default-model picker so uninstalled providers are
+  // disabled and unauthenticated ones are annotated, matching the launcher.
+  const providerAvailability = useMemo<ProviderAvailability | undefined>(() => {
+    if (!providers) return undefined;
+    const map: ProviderAvailability = {};
+    for (const entry of providers) {
+      map[entry.provider] = { installed: entry.installed, authenticated: entry.authenticated };
+    }
+    return map;
+  }, [providers]);
+
   return (
     <>
       <section className="settings-section" id="settings-agent-defaults" aria-labelledby="settings-agent-defaults-h">
@@ -53,6 +64,7 @@ export function AgentsSettings({
             <label htmlFor="settings-default-model">Default model</label>
             <CombinedModelSelector
               ariaLabel="Default model"
+              availability={providerAvailability}
               inputId="settings-default-model"
               value={defaultModel}
               onChange={onDefaultModelChange}
@@ -168,22 +180,36 @@ export function AgentsSettings({
             <ul className="settings-providers-list">
               {providers.map((provider) => {
                 const installHint = PROVIDER_INSTALL_HINTS[provider.provider];
+                // Inconclusive auth (authenticated === null) reads as ready —
+                // the badge is advisory and never blocks.
+                const needsLogin = provider.installed && provider.authenticated === false;
+                const dataState = !provider.installed ? "false" : needsLogin ? "needs-login" : "true";
+                const statusText = !provider.installed
+                  ? "Not found on PATH"
+                  : provider.version
+                    ? `Installed · v${provider.version}`
+                    : "Installed";
                 return (
                   <li
                     key={provider.provider}
                     className="settings-provider-row"
-                    data-installed={provider.installed ? "true" : "false"}
+                    data-installed={dataState}
                   >
                     <span className="settings-provider-dot" aria-hidden="true" />
                     <div className="settings-provider-meta">
-                      <span className="settings-provider-name">{provider.displayName}</span>
-                      <span className="settings-provider-status">
-                        {provider.installed
-                          ? provider.version
-                            ? `Installed · v${provider.version}`
-                            : "Installed"
-                          : "Not found on PATH"}
+                      <span className="settings-provider-name">
+                        {provider.displayName}
+                        {needsLogin ? (
+                          <span className="settings-provider-badge">
+                            <AlertTriangle size={11} aria-hidden="true" />
+                            Needs login
+                          </span>
+                        ) : null}
                       </span>
+                      <span className="settings-provider-status">{statusText}</span>
+                      {needsLogin && provider.setupGuidance ? (
+                        <span className="settings-provider-guidance">{provider.setupGuidance}</span>
+                      ) : null}
                     </div>
                     {!provider.installed && installHint ? (
                       <a

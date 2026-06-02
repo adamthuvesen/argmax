@@ -1,6 +1,7 @@
 import { ClipboardCopy, FolderOpen } from "lucide-react";
 import type { JSX } from "react";
 import type { DiagnosticsReport, ProjectSummary } from "../../../shared/types.js";
+import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
 import { formatBytes } from "../../lib/formatBytes.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
@@ -282,6 +283,7 @@ export function SystemSettings({
           <KeyValueList
             rows={[
               { dt: "App", dd: "Argmax" },
+              { dt: "Version", dd: APP_VERSION_LABEL },
               { dt: "Runtime", dd: "Tauri · single-user local" },
               { dt: "Providers", dd: "Claude Code · Codex" }
             ]}

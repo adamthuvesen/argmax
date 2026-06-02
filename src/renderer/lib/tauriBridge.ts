@@ -42,6 +42,7 @@ import type {
   RegisterProjectInput,
   RemoveProjectInput,
   ResolveApprovalInput,
+  ReviewComparison,
   RunCheckInput,
   SessionCostSummary,
   SessionCostSummaryInput,
@@ -80,7 +81,7 @@ type SessionSearchResult = Array<{
   rank: number;
 }>;
 
-function isTauriRuntime(): boolean {
+export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
 }
 
@@ -147,7 +148,8 @@ function createTauriArgmaxApi(): ArgmaxApi {
       setPinned: (input) => invokeLegacy<WorkspaceSummary>("workspaces:set-pinned", input)
     },
     providers: {
-      discover: () => invokeLegacy<DiscoveredProvider[]>("providers:discover"),
+      discover: (refresh = false) =>
+        invokeLegacy<DiscoveredProvider[]>("providers:discover", { refresh }),
       launch: (input: LaunchProviderSessionInput) => invokeLegacy<SessionSummary>("providers:launch", input),
       sendInput: (input: ProviderSessionInput) =>
         invokeLegacy<{ ok: true; queued: boolean }>("providers:send-input", input),
@@ -173,14 +175,14 @@ function createTauriArgmaxApi(): ArgmaxApi {
       search: (input) => invokeLegacy<SessionSearchResult>("session:search", input)
     },
     review: {
-      listChangedFiles: (workspaceId: string) =>
-        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files", { workspaceId }),
-      loadDiff: (workspaceId: string, filePath?: string) =>
-        invokeLegacy<WorkspaceDiff>("review:load-diff", { workspaceId, filePath }),
-      listChangedFilesForProject: (projectId: string) =>
-        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files-for-project", { projectId }),
-      loadDiffForProject: (projectId: string, filePath?: string) =>
-        invokeLegacy<WorkspaceDiff>("review:load-diff-for-project", { projectId, filePath })
+      listChangedFiles: (workspaceId: string, comparison?: ReviewComparison) =>
+        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files", { workspaceId, comparison }),
+      loadDiff: (workspaceId: string, filePath?: string, comparison?: ReviewComparison) =>
+        invokeLegacy<WorkspaceDiff>("review:load-diff", { workspaceId, filePath, comparison }),
+      listChangedFilesForProject: (projectId: string, comparison?: ReviewComparison) =>
+        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files-for-project", { projectId, comparison }),
+      loadDiffForProject: (projectId: string, filePath?: string, comparison?: ReviewComparison) =>
+        invokeLegacy<WorkspaceDiff>("review:load-diff-for-project", { projectId, filePath, comparison })
     },
     workspace: {
       listFiles: (workspaceId: string) =>

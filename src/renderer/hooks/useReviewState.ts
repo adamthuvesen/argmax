@@ -2,19 +2,31 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangedFileSummary,
   ProjectSummary,
+  ReviewComparison,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
   WorkspaceSummary
 } from "../../shared/types.js";
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
+import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
 import { useReviewDiff } from "./useReviewDiff.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
 export type ReviewPanelMode = "changes" | "files";
+/** Which baseline the Changes view diffs against. "local" → working tree vs
+ *  HEAD; "branch" → everything different from the base branch. */
+export type ReviewChangesComparison = "local" | "branch";
 export type WorkspaceFileSaveState = "idle" | "saving" | "error";
+
+const COMPARISON_KEY = "argmax.reviewPanel.changesComparison";
+
+function readStoredComparison(): ReviewChangesComparison {
+  if (typeof window === "undefined") return "local";
+  return window.localStorage.getItem(COMPARISON_KEY) === "branch" ? "branch" : "local";
+}
 
 /**
  * Either a workspace (worktree-backed) or the project's main checkout
@@ -88,6 +100,12 @@ export interface ReviewState {
   isPanelOpen: boolean;
   mode: ReviewPanelMode;
   setMode: (mode: ReviewPanelMode) => void;
+  /** Changes-view baseline: working tree ("local") vs base branch ("branch"). */
+  changesComparison: ReviewChangesComparison;
+  setChangesComparison: (comparison: ReviewChangesComparison) => void;
+  /** Base branch label for the Branch toggle title (e.g. "main"); null when no
+   *  source is active. */
+  comparisonBaseLabel: string | null;
   workspaceFiles: WorkspaceFilesState;
   openFile: (filePath: string) => void;
   openPanelInFilesMode: () => void;
@@ -115,7 +133,16 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [mode, setMode] = useState<ReviewPanelMode>("changes");
+  const [changesComparison, setChangesComparison] = useState<ReviewChangesComparison>(readStoredComparison);
+  usePersistedSetting(COMPARISON_KEY, changesComparison);
   const previousSourceId = useRef<string | null>(null);
+
+  const comparison: ReviewComparison = changesComparison === "branch" ? "branch" : "workingTree";
+  const comparisonBaseLabel: string | null = source
+    ? source.kind === "workspace"
+      ? source.workspace.baseRef
+      : source.project.defaultBranch ?? source.project.currentBranch
+    : null;
 
   const openChangesMode = useCallback((): void => {
     setMode("changes");
@@ -126,6 +153,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     sourceId,
     sourceKind,
     changedFilesKey,
+    comparison,
     dispatch,
     isPanelOpen,
     onOpenChanges: openChangesMode
@@ -201,11 +229,16 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   panelRef.current = { isPanelOpen, filesCount: diffState.files.length, files: diffState.files, mode };
 
   const togglePanel = useCallback((): void => {
-    if (!panelRef.current.isPanelOpen && panelRef.current.filesCount === 0) {
+    const opening = !panelRef.current.isPanelOpen;
+    if (opening && panelRef.current.filesCount === 0) {
       setMode("files");
+    } else if (opening && panelRef.current.mode === "changes") {
+      // Warm the first file's diff the instant the panel opens (the list is
+      // already prefetched on focus), so there's no dead beat before content.
+      setSelectedFilePath((current) => current ?? panelRef.current.files[0]?.path ?? null);
     }
     setIsPanelOpen((open) => !open);
-  }, []);
+  }, [setSelectedFilePath]);
 
   const toggleChangesPanel = useCallback((): void => {
     if (panelRef.current.isPanelOpen && panelRef.current.mode === "changes") {
@@ -259,6 +292,9 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     isPanelOpen,
     mode,
     setMode,
+    changesComparison,
+    setChangesComparison,
+    comparisonBaseLabel,
     workspaceFiles,
     openFile: diffState.openFile,
     openPanelInFilesMode,

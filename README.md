@@ -8,6 +8,11 @@ A local Tauri desktop app for running Claude Code, Codex, and Cursor Agent in is
 
 Single-user, on-device, no cloud, no auth. Built for sessions that need real repo context: persistent transcripts, review tools, checks, approvals, and worktree isolation.
 
+## Status
+
+> [!WARNING]
+> **Alpha (0.2.0).** Argmax is early and under active development — **bugs are expected.** Behavior, the SQLite schema, and the UI can change between versions. Treat it as a preview, keep backups of anything you care about, and don't rely on it for production work. Bug reports are welcome.
+
 ## Stack
 
 | Layer | Tooling |

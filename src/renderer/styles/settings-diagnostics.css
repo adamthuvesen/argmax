@@ -93,6 +93,35 @@
   background: var(--panel-sunken);
 }
 
+/* Installed-but-not-authenticated: advisory amber, never a hard block. */
+.settings-provider-row[data-installed="needs-login"] .settings-provider-dot {
+  background: var(--amber);
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+.settings-provider-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--amber);
+  background: var(--amber-soft);
+  vertical-align: middle;
+}
+
+.settings-provider-guidance {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 /* ---- Diagnostics ---- */
 
 .settings-diagnostics-path {

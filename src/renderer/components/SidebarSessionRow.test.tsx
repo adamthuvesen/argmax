@@ -189,21 +189,29 @@ describe("SidebarSessionRow", () => {
     expect(sidebarSessionRowEqual(prev, { ...prev, canDragToGrid: false })).toBe(false);
   });
 
-  it("ships sidebar action CSS that is visible at rest", () => {
+  it("ships sidebar action CSS that reveals on hover and stays keyboard-reachable", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);
 
+    // Actions are hidden at rest...
     const actionRule = /\.session-row-action\s*\{[^}]*opacity:\s*([0-9.]+)/i.exec(css);
     const archiveRule = /\.session-archive-btn\s*\{[^}]*opacity:\s*([0-9.]+)/i.exec(css);
 
     expect(actionRule, "expected .session-row-action opacity rule").not.toBeNull();
     expect(archiveRule, "expected .session-archive-btn opacity rule").not.toBeNull();
 
-    const actionOpacity = parseFloat(actionRule?.[1] ?? "0");
-    const archiveOpacity = parseFloat(archiveRule?.[1] ?? "0");
+    expect(parseFloat(actionRule?.[1] ?? "1")).toBe(0);
+    expect(parseFloat(archiveRule?.[1] ?? "1")).toBe(0);
 
-    expect(actionOpacity).toBeGreaterThan(0);
-    expect(archiveOpacity).toBeGreaterThan(0);
+    // ...revealed when the row is hovered or focused...
+    const hoverReveal = /\.session-row:hover \.session-row-action[^{]*\{[^}]*opacity:\s*([0-9.]+)/i.exec(css);
+    expect(hoverReveal, "expected hover reveal rule for row actions").not.toBeNull();
+    expect(parseFloat(hoverReveal?.[1] ?? "0")).toBeGreaterThan(0);
+
+    // ...and always reachable via keyboard focus even without a hover.
+    const focusReveal = /\.session-row-action:focus-visible\s*\{[^}]*opacity:\s*([0-9.]+)/i.exec(css);
+    expect(focusReveal, "expected :focus-visible reveal rule for row actions").not.toBeNull();
+    expect(parseFloat(focusReveal?.[1] ?? "0")).toBeGreaterThan(0);
   });
 });
 

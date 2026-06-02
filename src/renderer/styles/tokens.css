@@ -29,6 +29,9 @@
   --amber-soft: #f5edd9;
   --rose: #b85763;
   --rose-soft: #f5e3e4;
+  --stop: #c4726c;
+  --stop-hover: #b5645f;
+  --stop-fg: #ffffff;
   --ink: #1f1d18;
   --ink-soft: #2a2722;
 
@@ -154,6 +157,9 @@
   --amber-soft: rgba(217, 165, 102, 0.14);
   --rose: #e08591;
   --rose-soft: rgba(224, 133, 145, 0.14);
+  --stop: #c85850;
+  --stop-hover: #b04a44;
+  --stop-fg: #1a1a17;
 
   /* --ink still inverts for primary controls; chat user bubbles get their own
      softer dark-mode tokens below so they don't become bright slabs. */
@@ -243,6 +249,9 @@
   --amber-soft: rgba(240, 166, 60, 0.18);
   --rose: #fb7199;
   --rose-soft: rgba(251, 113, 153, 0.18);
+  --stop: #e895a8;
+  --stop-hover: #d57f94;
+  --stop-fg: #3d1a28;
 
   /* --ink stays light (lavender-white) so every var(--ink) fill/border/text
      usage keeps its contrast, exactly like dark. The violet identity lives in
@@ -317,13 +326,6 @@
 :root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
   box-shadow: var(--shadow-1),
               0 0 28px -8px color-mix(in oklab, var(--sage) 55%, transparent);
-}
-
-/* Subtle hover-lift on chat bubbles in dark — the inset highlight catches
-   the eye, and a 1px translate would feel cheap, so we just brighten the
-   top edge for a moment. */
-:root[data-theme="dark"] .chat-bubble.assistant {
-  box-shadow: var(--shadow-1);
 }
 
 /* User-bubble selection swaps via --selection-bg-on-ink; this is just the

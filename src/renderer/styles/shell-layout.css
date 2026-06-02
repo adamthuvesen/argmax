@@ -290,6 +290,20 @@
   align-items: center;
   gap: 2px;
   margin-bottom: 2px;
+  /* Keep the … / chevron off the row edge so the rightmost icon isn't tight
+     against the hover highlight — matches the session row's action inset. The
+     hover background paints the padding box, so the highlight still spans the
+     full width. */
+  padding-right: var(--sidebar-action-inset);
+  border-radius: 8px;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+/* Highlight the whole row — label + action buttons — on hover, so the
+   affordance matches the session row's full-width hover bar instead of
+   lighting up only the name column. */
+.project-row:hover {
+  background: var(--row-hover);
 }
 
 /* Sidebar project row "..." trigger — hidden until row hover (matches the
@@ -414,10 +428,8 @@
   transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
-.project-name:hover {
-  background: var(--row-hover);
-}
-
+/* No own hover background — the parent `.project-row:hover` now paints the
+   full-width highlight, so a second tint here would double up over it. */
 .project-name:hover .project-visibility,
 .project-row:hover .project-visibility,
 .project-row:focus-within .project-visibility {

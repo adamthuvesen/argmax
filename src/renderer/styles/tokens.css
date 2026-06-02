@@ -46,9 +46,12 @@
 
   /* Sidebar row action icons — shared by the project row (… / chevron) and the
      session row (ide / pin / archive) so both stay one size and right-align on
-     the same vertical edge. `step` is the box plus a 2px gap. */
+     the same vertical edge. `step` is the box plus a 2px gap. `inset` keeps the
+     rightmost icon off the row edge so it isn't tight against the hover
+     highlight — it matches the tokens badge's right offset. */
   --sidebar-action-size: 20px;
   --sidebar-action-step: 22px;
+  --sidebar-action-inset: 6px;
 
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --duration-fast: 140ms;

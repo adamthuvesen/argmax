@@ -336,7 +336,10 @@ async fn archive_shared_workspace_when_dirty_and_not_forced() {
         })
         .await
         .expect("archive");
-    assert_eq!(result.state, "archived", "dirty shared workspace should archive");
+    assert_eq!(
+        result.state, "archived",
+        "dirty shared workspace should archive"
+    );
 
     // Workspace still exists on disk (shared workspace points at repo root).
     assert!(repo.path().exists());
@@ -374,7 +377,10 @@ async fn archive_isolated_worktree_kept_when_dirty_and_not_forced() {
         .await
         .expect("archive");
 
-    assert_eq!(result.state, "kept", "dirty isolated worktree should be kept");
+    assert_eq!(
+        result.state, "kept",
+        "dirty isolated worktree should be kept"
+    );
     assert!(std::path::Path::new(&workspace.path).exists());
 }
 

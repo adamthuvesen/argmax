@@ -39,9 +39,10 @@ async fn lists_changed_files_and_loads_diffs() {
     let untracked_diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/new.ts"), None)
         .await
         .unwrap();
-    let deleted_diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/delete-me.ts"), None)
-        .await
-        .unwrap();
+    let deleted_diff =
+        load_diff_at_path(repo.path(), "workspace-1", Some("src/delete-me.ts"), None)
+            .await
+            .unwrap();
 
     assert_eq!(
         files
@@ -79,10 +80,7 @@ async fn branch_mode_single_file_diff_renders_committed_rename() {
     let repo = seed_git_repo(&[("src/old-name.ts", "export const value = 1;\n")]);
     run_git(repo.path(), &["branch", "base"]);
     run_git(repo.path(), &["checkout", "-b", "feature"]);
-    run_git(
-        repo.path(),
-        &["mv", "src/old-name.ts", "src/new-name.ts"],
-    );
+    run_git(repo.path(), &["mv", "src/old-name.ts", "src/new-name.ts"]);
     run_git(repo.path(), &["commit", "-m", "rename"]);
 
     let files = list_changed_files_at_path(repo.path(), Some("base"))

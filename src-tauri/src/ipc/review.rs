@@ -144,7 +144,8 @@ mod tests {
         run_git(repo.path(), &["commit", "-q", "-m", "add app"]);
 
         run_git(repo.path(), &["checkout", "-q", "-b", "feature"]);
-        std::fs::write(repo.path().join("README.md"), "hello\nfrom feature\n").expect("edit readme");
+        std::fs::write(repo.path().join("README.md"), "hello\nfrom feature\n")
+            .expect("edit readme");
         run_git(repo.path(), &["commit", "-q", "-am", "feature readme"]);
         std::fs::write(repo.path().join("app.txt"), "v1\nv2\n").expect("edit app");
         std::fs::write(repo.path().join("notes.txt"), "scratch\n").expect("write notes");

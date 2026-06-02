@@ -162,7 +162,13 @@ pub async fn load_diff_for_project(
     // we reuse it for the project's repoPath-rooted view; renderer never
     // round-trips this id back, so keeping the type unchanged is safer than
     // forking the shape.
-    load_diff_at_path(project.repo_path, project_id.to_owned(), file_path, base_ref).await
+    load_diff_at_path(
+        project.repo_path,
+        project_id.to_owned(),
+        file_path,
+        base_ref,
+    )
+    .await
 }
 
 /// `None` ⇒ working-tree mode (diff vs HEAD); `Some(base_ref)` ⇒ branch mode
@@ -439,7 +445,10 @@ fn parse_porcelain_z(value: &str) -> Vec<ChangedFileSummary> {
 /// `R<score>`/`C<score>` token followed by two paths (`R100\0old\0new`). The
 /// status is normalized to a single letter to match `parse_porcelain_z`.
 fn parse_name_status_z(value: &str) -> Vec<ChangedFileSummary> {
-    let records: Vec<_> = value.split('\0').filter(|entry| !entry.is_empty()).collect();
+    let records: Vec<_> = value
+        .split('\0')
+        .filter(|entry| !entry.is_empty())
+        .collect();
     let mut out = Vec::new();
     let mut index = 0;
     while index < records.len() {
@@ -647,9 +656,18 @@ mod tests {
         // `M\0a\0A\0b\0D\0c` — three single-path records.
         let parsed = parse_name_status_z("M\0src/a.rs\0A\0src/b.rs\0D\0src/c.rs\0");
         assert_eq!(parsed.len(), 3);
-        assert_eq!((parsed[0].status.as_str(), parsed[0].path.as_str()), ("M", "src/a.rs"));
-        assert_eq!((parsed[1].status.as_str(), parsed[1].path.as_str()), ("A", "src/b.rs"));
-        assert_eq!((parsed[2].status.as_str(), parsed[2].path.as_str()), ("D", "src/c.rs"));
+        assert_eq!(
+            (parsed[0].status.as_str(), parsed[0].path.as_str()),
+            ("M", "src/a.rs")
+        );
+        assert_eq!(
+            (parsed[1].status.as_str(), parsed[1].path.as_str()),
+            ("A", "src/b.rs")
+        );
+        assert_eq!(
+            (parsed[2].status.as_str(), parsed[2].path.as_str()),
+            ("D", "src/c.rs")
+        );
         assert!(parsed.iter().all(|file| file.old_path.is_none()));
     }
 
@@ -661,7 +679,10 @@ mod tests {
         assert_eq!(parsed[0].status, "R");
         assert_eq!(parsed[0].path, "src/new.rs");
         assert_eq!(parsed[0].old_path.as_deref(), Some("src/old.rs"));
-        assert_eq!((parsed[1].status.as_str(), parsed[1].path.as_str()), ("M", "README.md"));
+        assert_eq!(
+            (parsed[1].status.as_str(), parsed[1].path.as_str()),
+            ("M", "README.md")
+        );
     }
 
     #[test]

@@ -197,7 +197,12 @@ mod tests {
         };
         let mut errors = 0;
         let mut out = String::new();
-        pump_utf8_stream(reader, |_| true, |chunk| out.push_str(&chunk), |_| errors += 1);
+        pump_utf8_stream(
+            reader,
+            |_| true,
+            |chunk| out.push_str(&chunk),
+            |_| errors += 1,
+        );
         assert_eq!(out, "x");
         assert_eq!(errors, 1);
     }

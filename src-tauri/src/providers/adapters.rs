@@ -321,7 +321,7 @@ fn codex_model_disables_reasoning_summary(model_id: &str) -> bool {
     model_id == "gpt-5.3-codex-spark"
 }
 
-fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
+pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
     if agent_mode == AgentMode::Plan {
         format!("{PLAN_MODE_PROMPT_PREFIX}\n\n{prompt}")
     } else {

@@ -572,8 +572,10 @@ describe("App", () => {
     fireEvent.click(screen.getByTitle("Start agent"));
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole("heading", { name: "New chat" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Session prompt")).toBeInTheDocument();
+    });
 
     const existingSession = snapshot.sessions[0];
     if (!existingSession) throw new Error("snapshot must include session-1");
@@ -587,8 +589,8 @@ describe("App", () => {
       await new Promise((resolve) => setTimeout(resolve, 60));
     });
 
-    expect(screen.getByRole("heading", { name: "New chat" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Session prompt")).toBeInTheDocument();
   });
 
   it("displays an @-mention-only launch prompt as the user message in the new session", async () => {

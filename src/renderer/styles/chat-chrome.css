@@ -131,19 +131,27 @@
   position: relative;
 }
 
+/* A proper square icon-button rather than a bare glyph: rounded hit area that
+   fills softly on hover. On assistant bubbles it sits in the reserved right
+   gutter; the user-bubble override below floats it outside the slab. */
 .chat-bubble-copy {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 6px;
+  right: 6px;
   display: inline-flex;
   align-items: center;
-  padding: 2px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   background: transparent;
   border: 0;
+  border-radius: 6px;
   color: var(--muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease);
+  transition: opacity var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .chat-bubble:hover .chat-bubble-copy,
@@ -152,7 +160,18 @@
 }
 
 .chat-bubble-copy:hover {
+  background: var(--panel-sunken);
   color: var(--text);
+}
+
+/* The user bubble is a tight filled slab, so an in-corner icon overlaps the
+   text and rounded corner. Drop it just below the bubble, aligned to its right
+   edge, where it reads as a clean affordance (and fits inside the inter-bubble
+   gap). */
+.chat-bubble.user .chat-bubble-copy {
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
 }
 
 .error-boundary {

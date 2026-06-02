@@ -15,7 +15,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { createPortal } from "react-dom";
-import type { AgentMode, AttachmentMimeType, ComposerAttachment, ProjectSummary } from "../../shared/types.js";
+import type {
+  AgentMode,
+  AttachmentMimeType,
+  ComposerAttachment,
+  DiscoveredProvider,
+  ProjectSummary
+} from "../../shared/types.js";
 import {
   appendReferencesToPrompt,
   buildAttachmentReferences,
@@ -23,16 +29,17 @@ import {
   isSupportedImageMime,
   readBlobAsBase64
 } from "../lib/composerAttachments.js";
+import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { type ModelPickerSelection } from "../lib/models.js";
+import { modelDefaultForProvider, type ModelPickerSelection } from "../lib/models.js";
 import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
 import { Mascot } from "./Mascot.js";
-import { LaunchModelSelector } from "./ModelSelector.js";
+import { LaunchModelSelector, type ProviderAvailability } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
@@ -110,6 +117,36 @@ export function LaunchSurface({
   const [branches, setBranches] = useState<string[]>([]);
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+
+  // Provider discovery for the model picker. Non-blocking: fires after mount
+  // (cached in Rust, so the cold-launch path pays nothing extra) and the picker
+  // stays optimistic — every model enabled — until it resolves. Used to disable
+  // uninstalled providers and annotate ones that need login.
+  const { data: discoveredProviders } = useAsyncLoad<DiscoveredProvider[]>(
+    () => window.argmax!.providers.discover(),
+    { fallbackMessage: "Provider discovery failed." }
+  );
+  const providerAvailability = useMemo<ProviderAvailability | undefined>(() => {
+    if (!discoveredProviders) return undefined;
+    const map: ProviderAvailability = {};
+    for (const entry of discoveredProviders) {
+      map[entry.provider] = { installed: entry.installed, authenticated: entry.authenticated };
+    }
+    return map;
+  }, [discoveredProviders]);
+
+  // If the pre-filled selection points at a provider whose CLI isn't installed
+  // (e.g. a persisted default that was later uninstalled), steer to the first
+  // installed provider's default so the composer isn't stuck on a disabled,
+  // unlaunchable pick. Runs once discovery resolves; no-op if all-or-none.
+  useEffect(() => {
+    if (!project || !discoveredProviders) return;
+    const current = discoveredProviders.find((entry) => entry.provider === model.provider);
+    if (!current || current.installed) return;
+    const firstInstalled = discoveredProviders.find((entry) => entry.installed);
+    if (!firstInstalled) return;
+    onModelChange({ provider: firstInstalled.provider, ...modelDefaultForProvider(firstInstalled.provider) });
+  }, [project, discoveredProviders, model.provider, onModelChange]);
 
   // Changes + Files panel against the selected project's main checkout. Lets
   // the user inspect and edit files before starting a session. Cmd/Ctrl+B
@@ -653,6 +690,7 @@ export function LaunchSurface({
           <div className="composer-context-group composer-context-group--model">
             <LaunchModelSelector
               ariaLabel="Switch model"
+              availability={providerAvailability}
               open={modelPickerOpen}
               onOpenChange={setModelPickerOpen}
               value={model}

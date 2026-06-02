@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../../shared/types.js";
+import { APP_VERSION_LABEL } from "../../shared/appVersion.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import {
@@ -387,13 +388,13 @@ export function Sidebar({
 
   return (
     <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
-      <div className="window-controls" />
+      <div className="window-controls" data-window-drag />
       <div className="sidebar-nameplate" aria-hidden="true">
         <div className="sidebar-nameplate-line">
           <span className="sidebar-nameplate-mark">argmax</span>
           <span className="sidebar-nameplate-slash">//</span>
         </div>
-        <div className="sidebar-nameplate-sub">{nameplateDate} · alpha</div>
+        <div className="sidebar-nameplate-sub">{nameplateDate} · {APP_VERSION_LABEL}</div>
       </div>
       <nav className="rail-nav" aria-label="Primary">
         <button

@@ -83,6 +83,18 @@ function SessionConversationTurnInner({
     (group) => !group.thinking && group.text.trim().length > 0
   );
   const thinkingLive = isLatestTurn && sessionIsLive && !isPausedOnUserInput && !turnHasAnswerText;
+  // Tool groups expand by default for the current turn (you're watching it
+  // work, and it stays open through completion so nothing collapses out from
+  // under the answer) and collapse to headers for older turns. The turn chip
+  // toggles this for the whole turn; collapsing folds the tool groups to their
+  // headers AND the Thought block, so one control governs the turn's reasoning
+  // and its tools. Nothing is removed from the chat. A per-row chevron still
+  // overrides an individual group or the Thought block.
+  const toolsExpandedDefault = isLatestTurn
+    ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded ?? false)
+    : false;
+  const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
+  const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   const handlePlanAccept = (): Promise<boolean> => {
     if (!session) return Promise.resolve(false);
     setAgentMode("auto");
@@ -170,7 +182,7 @@ function SessionConversationTurnInner({
       const node = (
         <ThoughtBlock
           key={group.id}
-          defaultExpanded={defaultThinkingExpanded}
+          defaultExpanded={toolsExpandOverride ?? defaultThinkingExpanded}
           live={thinkingLive}
         >
           <StreamingMarkdown
@@ -225,17 +237,6 @@ function SessionConversationTurnInner({
     .map((tItem) => visibleTurnToolItem(tItem, hiddenToolIds))
     .filter((tItem): tItem is TurnToolItem => tItem !== null);
   const isTurnLiveTicking = isLatestTurn && sessionIsLive && !isPausedOnUserInput;
-  // Tool groups expand by default for the current turn (you're watching it
-  // work, and it stays open through completion so nothing collapses out from
-  // under the answer) and collapse to headers for older turns. The turn chip
-  // toggles this for the whole turn; collapsing only folds the groups to their
-  // headers — tool calls are NEVER removed from the chat. A per-group chevron
-  // still overrides an individual group.
-  const toolsExpandedDefault = isLatestTurn
-    ? (defaultToolCallGroupsExpanded ?? defaultToolCallsExpanded ?? false)
-    : false;
-  const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
-  const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
       if (tItem.kind === "tool") {

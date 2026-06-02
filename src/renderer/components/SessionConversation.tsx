@@ -589,7 +589,7 @@ export function SessionConversation({
 
   return (
     <section className="conversation-surface" aria-label="Session conversation">
-      <div className="section-heading">
+      <div className="section-heading" data-window-drag>
         <div>
           <p className="eyebrow">Repository</p>
           <h2>{repositoryName}</h2>

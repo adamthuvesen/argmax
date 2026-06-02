@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, Plus, RefreshCcw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Plus, RefreshCcw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState, type JSX } from "react";
 import type { DiscoveredProvider } from "../../shared/types.js";
 import { PROVIDER_INSTALL_HINTS } from "../lib/providerInstallHints.js";
@@ -17,7 +17,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (force: boolean): Promise<void> => {
     if (!window.argmax) {
       setLoadError("Open the Tauri app window to detect providers.");
       return;
@@ -25,7 +25,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
     setRefreshing(true);
     setLoadError(null);
     try {
-      const discovered = await window.argmax.providers.discover();
+      const discovered = await window.argmax.providers.discover(force);
       setProviders(discovered);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Provider discovery failed.");
@@ -35,7 +35,8 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
   }, []);
 
   useEffect(() => {
-    void refresh();
+    // Initial detection reuses the cached reports; "Try again" forces a re-probe.
+    void refresh(false);
   }, [refresh]);
 
   const anyInstalled = providers !== null && providers.some((p) => p.installed);
@@ -54,7 +55,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
           <button
             type="button"
             className="welcome-refresh"
-            onClick={() => void refresh()}
+            onClick={() => void refresh(true)}
             disabled={refreshing}
             aria-label="Re-run provider discovery"
           >
@@ -72,24 +73,31 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
           <ul className="welcome-providers">
             {providers.map((entry) => {
               const hint = PROVIDER_INSTALL_HINTS[entry.provider];
+              // Three states: not installed, installed-but-needs-login (auth
+              // probe returned false), and ready. An inconclusive probe
+              // (authenticated === null) is treated as ready — advisory only.
+              const needsLogin = entry.installed && entry.authenticated === false;
+              const dataState = !entry.installed ? "false" : needsLogin ? "needs-login" : "true";
               return (
                 <li
                   key={entry.provider}
                   className="welcome-provider"
-                  data-installed={entry.installed ? "true" : "false"}
+                  data-installed={dataState}
                 >
                   <div className="welcome-provider-head">
-                    {entry.installed ? (
-                      <CheckCircle2 size={16} aria-hidden="true" className="welcome-provider-icon installed" />
-                    ) : (
+                    {!entry.installed ? (
                       <XCircle size={16} aria-hidden="true" className="welcome-provider-icon missing" />
+                    ) : needsLogin ? (
+                      <AlertTriangle size={16} aria-hidden="true" className="welcome-provider-icon needs-login" />
+                    ) : (
+                      <CheckCircle2 size={16} aria-hidden="true" className="welcome-provider-icon installed" />
                     )}
                     <span className="welcome-provider-name">{entry.displayName}</span>
                     {entry.version ? (
                       <span className="welcome-provider-version">v{entry.version}</span>
                     ) : null}
                   </div>
-                  {entry.installed ? null : hint ? (
+                  {!entry.installed && hint ? (
                     <a
                       className="welcome-install-link"
                       href={hint.url}

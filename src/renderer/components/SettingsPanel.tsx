@@ -94,13 +94,20 @@ export function SettingsPanel({
   projects: ProjectSummary[];
   onClose: () => void;
 }): JSX.Element {
+  // First load reuses the cached reports; every explicit "Refresh" (retry)
+  // forces a re-probe so a provider installed after boot is actually detected.
+  const hasDiscoveredRef = useRef(false);
   const {
     data: providers,
     error: providerLoadError,
     isLoading: refreshingProviders,
     retry: refreshProviders
   } = useAsyncLoad<DiscoveredProvider[]>(
-    () => window.argmax!.providers.discover(),
+    () => {
+      const force = hasDiscoveredRef.current;
+      hasDiscoveredRef.current = true;
+      return window.argmax!.providers.discover(force);
+    },
     {
       missingApiMessage: "Open the Tauri app window to detect providers.",
       fallbackMessage: "Provider discovery failed."

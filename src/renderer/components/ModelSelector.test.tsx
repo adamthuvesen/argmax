@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
-import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
+import { LaunchModelSelector, ModelSelector, type ProviderAvailability } from "./ModelSelector.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 
 afterEach(cleanup);
@@ -129,5 +129,71 @@ describe("LaunchModelSelector — all providers", () => {
       modelId: "gpt-5.5-medium",
       reasoningEffort: "xhigh"
     });
+  });
+});
+
+describe("LaunchModelSelector — provider availability gating", () => {
+  const CLAUDE_VALUE: ModelPickerSelection = {
+    provider: "claude",
+    label: "Claude Opus 4.8",
+    modelId: "claude-opus-4-8",
+    reasoningEffort: "medium"
+  };
+
+  function openLauncher(availability?: ProviderAvailability): ReturnType<typeof vi.fn> {
+    const onChange = vi.fn();
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        availability={availability}
+        value={CLAUDE_VALUE}
+        onChange={onChange}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    return onChange;
+  }
+
+  it("leaves every model selectable when availability is unknown (optimistic)", () => {
+    openLauncher(undefined);
+    const codexRow = screen.getByText("Codex Spark").closest("li");
+    expect(codexRow).not.toHaveAttribute("data-disabled");
+    expect(codexRow && within(codexRow).getAllByRole("button")[0]).toBeEnabled();
+  });
+
+  it("disables and annotates an uninstalled provider's models", () => {
+    openLauncher({
+      claude: { installed: true, authenticated: true },
+      codex: { installed: false, authenticated: null },
+      cursor: { installed: true, authenticated: true }
+    });
+    const codexRow = screen.getByText("Codex Spark").closest("li");
+    expect(codexRow).toHaveAttribute("data-disabled", "true");
+    expect(codexRow && within(codexRow).getByText("not installed")).toBeInTheDocument();
+    // The row's primary button is disabled, so it can't be chosen.
+    expect(codexRow && within(codexRow).getAllByRole("button")[0]).toBeDisabled();
+  });
+
+  it("does not fire onChange when an uninstalled model row is clicked", () => {
+    const onChange = openLauncher({
+      claude: { installed: true, authenticated: true },
+      codex: { installed: false, authenticated: null },
+      cursor: { installed: true, authenticated: true }
+    });
+    fireEvent.click(screen.getByText("Codex Spark"));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("annotates an installed-but-unauthenticated provider while keeping it selectable", () => {
+    const onChange = openLauncher({
+      claude: { installed: true, authenticated: true },
+      codex: { installed: true, authenticated: false },
+      cursor: { installed: true, authenticated: true }
+    });
+    const codexRow = screen.getByText("Codex Spark").closest("li");
+    expect(codexRow).not.toHaveAttribute("data-disabled");
+    expect(codexRow && within(codexRow).getByText("needs login")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Codex Spark"));
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });

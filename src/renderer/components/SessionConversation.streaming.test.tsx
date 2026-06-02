@@ -236,6 +236,63 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText("Here we go")).toBeTruthy();
   });
 
+  it("collapses the Thought block when the turn chip collapses the turn", () => {
+    const thinking = "Mapping the modules before I touch anything.";
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("c1", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" }
+        }),
+        event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", { id: "c1", content: "" }),
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
+      ],
+      { defaultThinkingExpanded: true, defaultToolCallsExpanded: true, defaultToolCallGroupsExpanded: true }
+    );
+
+    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(thinking)).toBeTruthy();
+
+    // The turn chip folds the whole turn — tool groups AND the Thought block.
+    fireEvent.click(screen.getByRole("button", { name: /Worked/ }));
+
+    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(thinking)).toBeNull();
+  });
+
+  it("expands the Thought block when the turn chip expands the turn", () => {
+    const thinking = "Checking the IPC layer first.";
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("c1", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "ipc.md" }
+        }),
+        event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", { id: "c1", content: "" }),
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
+      ],
+      { defaultThinkingExpanded: false, defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false }
+    );
+
+    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(thinking)).toBeNull();
+
+    // Chip starts collapsed (tool defaults off); expanding it reveals the
+    // Thought block too, not just the tool rows.
+    fireEvent.click(screen.getByRole("button", { name: /Worked/ }));
+
+    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(thinking)).toBeTruthy();
+  });
+
   it("accumulates streamed text_delta fragments into a single bubble", () => {
     // Token streaming: many small message.delta fragments fold into one bubble.
     renderConversation(

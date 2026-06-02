@@ -59,6 +59,12 @@ export function useReviewDiff(args: {
     diffCache.current.clear();
   }, [sourceId, changedFilesKey, comparison]);
 
+  // Identifies which (source, comparison, file) the loaded diff belongs to. A
+  // re-fetch within the same context — the changed-files signature moved as the
+  // agent edited the open file mid-turn — keeps the current diff on screen
+  // instead of flashing the skeleton. Only a new file/source/comparison loads.
+  const diffContextRef = useRef<string | null>(null);
+
   const resetForSourceChange = useCallback((): void => {
     setSelectedFilePath(null);
     setDiff(null);
@@ -119,11 +125,16 @@ export function useReviewDiff(args: {
   useEffect(() => {
     const token = ++diffLoadToken.current;
     if (!sourceId || !sourceKind || !selectedFilePath || !dispatch || !window.argmax) {
+      diffContextRef.current = null;
       setDiff(null);
       setDiffState("idle");
       setDiffError(null);
       return;
     }
+
+    const context = `${sourceKind}:${sourceId}:${comparison}:${selectedFilePath}`;
+    const isNewContext = diffContextRef.current !== context;
+    diffContextRef.current = context;
 
     const cached = diffCache.current.get(selectedFilePath);
     if (cached) {
@@ -133,8 +144,15 @@ export function useReviewDiff(args: {
       return;
     }
 
-    setDiffState("loading");
     setDiffError(null);
+    // New file/source/comparison shows the skeleton. A same-file revalidation
+    // (the changed-files signature moved as the agent edited the open file)
+    // keeps the current diff on screen until the fresh one lands.
+    if (isNewContext) {
+      setDiffState("loading");
+    } else {
+      setDiffState((prev) => (prev === "ready" ? prev : "loading"));
+    }
     void dispatch.loadDiff(selectedFilePath, comparison)
       .then((result) => {
         if (token !== diffLoadToken.current) {
@@ -152,7 +170,7 @@ export function useReviewDiff(args: {
         setDiffState("error");
         setDiffError(errorMessage(error) || "Could not load diff.");
       });
-  }, [sourceId, sourceKind, selectedFilePath, comparison, dispatch]);
+  }, [sourceId, sourceKind, selectedFilePath, changedFilesKey, comparison, dispatch]);
 
   const openFile = useCallback(
     (filePath: string): void => {

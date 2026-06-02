@@ -640,11 +640,24 @@ export type ProjectsRemoveInput = { projectId: ProjectId }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
-export type ProviderCapabilityReport = { provider: ProviderId; displayName: string; binaryName: string; installed: boolean; binaryPath: string | null; version: string | null; modes: ProviderMode[]; setupGuidance: string | null }
+export type ProviderCapabilityReport = { provider: ProviderId; displayName: string; binaryName: string; installed: boolean; binaryPath: string | null; version: string | null; 
+/**
+ * Tri-state auth signal. `None` = not installed or the status probe was
+ * inconclusive (timed out / errored); `Some(true)` = logged in;
+ * `Some(false)` = installed but not authenticated. Advisory only — the UI
+ * never hard-blocks on it, since a CLI changing its status command must not
+ * lock out a working provider.
+ */
+authenticated: boolean | null; modes: ProviderMode[]; setupGuidance: string | null }
 export type ProviderId = "claude" | "codex" | "cursor"
 export type ProviderMode = "interactive-pty" | "structured-json"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
-export type ProvidersDiscoverInput = Record<string, never>
+export type ProvidersDiscoverInput = { 
+/**
+ * When true, drop the cached capability reports and re-probe each provider
+ * CLI. Defaults to false so an absent `{}` payload reuses the cache.
+ */
+refresh?: boolean }
 export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
 export type ProvidersSendInput = { sessionId: SessionId; input: Prompt; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }

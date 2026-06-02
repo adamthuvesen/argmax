@@ -80,7 +80,7 @@ type SessionSearchResult = Array<{
   rank: number;
 }>;
 
-function isTauriRuntime(): boolean {
+export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
 }
 
@@ -147,7 +147,8 @@ function createTauriArgmaxApi(): ArgmaxApi {
       setPinned: (input) => invokeLegacy<WorkspaceSummary>("workspaces:set-pinned", input)
     },
     providers: {
-      discover: () => invokeLegacy<DiscoveredProvider[]>("providers:discover"),
+      discover: (refresh = false) =>
+        invokeLegacy<DiscoveredProvider[]>("providers:discover", { refresh }),
       launch: (input: LaunchProviderSessionInput) => invokeLegacy<SessionSummary>("providers:launch", input),
       sendInput: (input: ProviderSessionInput) =>
         invokeLegacy<{ ok: true; queued: boolean }>("providers:send-input", input),

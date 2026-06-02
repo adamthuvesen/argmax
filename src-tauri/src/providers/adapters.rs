@@ -14,6 +14,9 @@ pub struct ProviderLaunchDefinition {
     pub id: ProviderId,
     pub display_name: &'static str,
     pub binary_name: &'static str,
+    /// Fast, non-interactive subcommand that reports auth/login status. Exit 0
+    /// means authenticated. Used by discovery to tell "installed" from "ready".
+    pub status_args: &'static [&'static str],
     pub structured_args: fn(&ProviderLaunchInput) -> Vec<String>,
     pub structured_resume_args: fn(&ProviderLaunchInput, &str) -> Vec<String>,
     pub interactive_args: fn(&ProviderLaunchInput) -> Result<Vec<String>, ProviderLaunchError>,
@@ -52,6 +55,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         id: ProviderId::Claude,
         display_name: "Claude Code",
         binary_name: "claude",
+        status_args: &["auth", "status"],
         structured_args: claude_structured_args,
         structured_resume_args: claude_structured_resume_args,
         interactive_args: claude_interactive_args,
@@ -61,6 +65,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         id: ProviderId::Codex,
         display_name: "Codex",
         binary_name: "codex",
+        status_args: &["login", "status"],
         structured_args: codex_structured_args,
         structured_resume_args: codex_structured_resume_args,
         interactive_args: codex_interactive_args,
@@ -70,6 +75,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         id: ProviderId::Cursor,
         display_name: "Cursor",
         binary_name: "cursor-agent",
+        status_args: &["status"],
         structured_args: cursor_structured_args,
         structured_resume_args: cursor_structured_resume_args,
         interactive_args: cursor_interactive_args,

@@ -22,12 +22,20 @@ empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);
 empty_input!(DashboardLoadInput);
-empty_input!(ProvidersDiscoverInput);
 empty_input!(ApprovalsPendingInput);
 empty_input!(SystemListDetectedIdesInput);
 empty_input!(SystemDiagnosticsInput);
 empty_input!(SystemVacuumDatabaseInput);
 empty_input!(McpListInput);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProvidersDiscoverInput {
+    /// When true, drop the cached capability reports and re-probe each provider
+    /// CLI. Defaults to false so an absent `{}` payload reuses the cache.
+    #[serde(default)]
+    pub refresh: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

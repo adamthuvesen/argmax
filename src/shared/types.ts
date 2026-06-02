@@ -33,6 +33,12 @@ export interface DiscoveredProvider {
   installed: boolean;
   binaryPath: string | null;
   version: string | null;
+  /**
+   * Tri-state auth signal: `null` = not installed or inconclusive probe,
+   * `true` = logged in, `false` = installed but not authenticated. Advisory
+   * only — never used to hard-block.
+   */
+  authenticated: boolean | null;
   modes: ProviderMode[];
   setupGuidance: string | null;
 }
@@ -435,7 +441,7 @@ export interface ArgmaxApi {
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
   };
   providers: {
-    discover: () => Promise<DiscoveredProvider[]>;
+    discover: (refresh?: boolean) => Promise<DiscoveredProvider[]>;
     launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
     sendInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;

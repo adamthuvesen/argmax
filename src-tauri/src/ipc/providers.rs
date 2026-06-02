@@ -14,8 +14,11 @@ use tauri::State;
 #[specta::specta]
 pub async fn providers_discover(
     state: State<'_, AppState>,
-    _input: ProvidersDiscoverInput,
+    input: ProvidersDiscoverInput,
 ) -> ArgmaxResult<Vec<ProviderCapabilityReport>> {
+    if input.refresh {
+        state.provider_discovery.invalidate().await;
+    }
     Ok(state.provider_discovery.discover_all().await)
 }
 

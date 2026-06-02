@@ -53,11 +53,53 @@ pub fn normalize_assistant_text(
     }
 }
 
+pub fn normalize_result_success(
+    event: &ProviderOutputEvent,
+    context: &mut NormalizerSessionContext,
+) -> Vec<PersistTimelineEventInput> {
+    let mut events = Vec::new();
+    if let Some(completed) = synthesize_message_completed_from_result(event, context) {
+        events.push(completed);
+    }
+    events.push(timeline_event(
+        event,
+        "session.completed",
+        String::new(),
+        json!({ "cursorResultSuccess": true }),
+    ));
+    context.cursor_turn_completed_emitted = true;
+    events
+}
+
+pub fn synthesize_message_completed_from_exit(
+    event: &ProviderOutputEvent,
+    context: &mut NormalizerSessionContext,
+) -> Option<PersistTimelineEventInput> {
+    if context.cursor_turn_completed_emitted {
+        return None;
+    }
+    let final_text = context.cursor_assistant_text.take()?;
+    if final_text.trim().is_empty() {
+        return None;
+    }
+    context.cursor_turn_completed_emitted = true;
+    Some(timeline_event(
+        event,
+        "message.completed",
+        final_text.clone(),
+        json!({ "synthesizedFromExit": true, "text": final_text }),
+    ))
+}
+
 pub fn synthesize_message_completed_from_result(
     event: &ProviderOutputEvent,
     context: &mut NormalizerSessionContext,
 ) -> Option<PersistTimelineEventInput> {
     let final_text = context.cursor_assistant_text.take()?;
+    if final_text.trim().is_empty() {
+        return None;
+    }
+    context.cursor_turn_completed_emitted = true;
     Some(timeline_event(
         event,
         "message.completed",
@@ -187,8 +229,41 @@ mod tests {
             &output_event(r#"{"type":"result","subtype":"success"}"#),
             &mut context,
         );
+        assert_eq!(result.events.len(), 2);
         assert_eq!(result.events[0].r#type, "message.completed");
         assert_eq!(result.events[0].message, "Done");
+        assert_eq!(result.events[1].r#type, "session.completed");
+        assert_eq!(
+            result.events[1].payload.get("cursorResultSuccess"),
+            Some(&json!(true))
+        );
+    }
+
+    #[test]
+    fn cursor_success_result_without_assistant_text_still_emits_session_completed() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"result","subtype":"success"}"#),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "session.completed");
+    }
+
+    #[test]
+    fn cursor_exit_synthesizes_message_completed_from_buffered_assistant_text() {
+        let mut context = NormalizerSessionContext::default();
+        normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"assistant","message":"Partial summary","timestamp_ms":1}"#),
+            &mut context,
+        );
+        let synthesized = synthesize_message_completed_from_exit(
+            &output_event(""),
+            &mut context,
+        );
+        assert_eq!(synthesized.as_ref().map(|event| event.message.as_str()), Some("Partial summary"));
     }
 
     #[test]

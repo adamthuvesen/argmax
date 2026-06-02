@@ -742,8 +742,30 @@ impl ProviderSessionService {
         }
         drop(flush_queue);
         drop(connection);
+        let cursor_turn_finished = result.delta.as_ref().is_some_and(|delta| {
+            delta.events.iter().any(|event| {
+                event.r#type == "session.completed"
+                    && event.payload.get("cursorResultSuccess") == Some(&json!(true))
+            })
+        });
         if let Some(delta) = result.delta {
             self.publish(delta);
+        }
+        if cursor_turn_finished {
+            let service = Arc::clone(&self);
+            let session_id = event.session_id.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = service
+                    .complete_cursor_turn_after_result(&session_id)
+                    .await
+                {
+                    tracing::warn!(
+                        ?error,
+                        session_id = %session_id,
+                        "cursor turn completion after result/success failed"
+                    );
+                }
+            });
         }
         // A completed answer can sit in the stream buffer without a trailing
         // newline while the provider process stays alive. Debounce-flush only
@@ -1141,6 +1163,71 @@ impl ProviderSessionService {
         if let Some(delta) = delta {
             self.publish(delta);
         }
+        Ok(())
+    }
+
+    /// Cursor's `cursor-agent` often emits `result/success` while the child
+    /// process stays alive (same class of bug as the idle-flush comment above).
+    /// Mark the session complete and dispose the handle so the UI does not
+    /// sit on "Working" / thinking verbs until the user hits Stop.
+    async fn complete_cursor_turn_after_result(self: Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
+        if self
+            .terminating
+            .lock()
+            .expect("terminating poisoned")
+            .contains(session_id)
+        {
+            return Ok(());
+        }
+        {
+            let connection = self.database.connection();
+            let session = find_session_by_id(&connection, session_id)?;
+            if session.state != "running" {
+                return Ok(());
+            }
+        }
+        self.cancel_idle_flush(session_id);
+        self.flush_trailing(session_id)?;
+
+        let (session, workspace, projects) = {
+            let connection = self.database.connection();
+            let completed_at = now_iso();
+            let session = update_session_state(
+                &connection,
+                session_id,
+                &SessionStateInput {
+                    state: "complete".to_string(),
+                    attention: attention_for_state("complete").to_string(),
+                    completed_at: Some(completed_at.clone()),
+                    last_activity_at: Some(completed_at),
+                },
+            )?;
+            let workspace = update_workspace_state(&connection, &session.workspace_id, "complete")?;
+            let projects = list_projects(&connection)?;
+            (session, workspace, projects)
+        };
+
+        let entry = self
+            .handles
+            .lock()
+            .expect("handles poisoned")
+            .remove(session_id);
+        self.flush_queue
+            .lock()
+            .expect("flush queue poisoned")
+            .delete_session(session_id);
+
+        self.publish(DashboardDelta {
+            projects,
+            workspaces: vec![workspace],
+            sessions: vec![session],
+            ..DashboardDelta::default()
+        });
+
+        if let Some(HandleEntry::Resolved(handle)) = entry {
+            handle.terminate().await?;
+        }
+        self.drain_queue_after_complete(session_id.to_string());
         Ok(())
     }
 

@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use super::{
     normalizer::{
-        normalize_provider_event, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
-        ProviderOutputStream,
+        normalize_provider_event, synthesize_message_completed_from_exit,
+        NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
     },
     ProviderId,
 };
@@ -220,6 +220,19 @@ impl ProviderEventFlushQueue {
         let Some(session) = self.sessions.get_mut(session_id) else {
             return Ok(None);
         };
+        if session.provider == ProviderId::Cursor {
+            let exit_event = ProviderOutputEvent {
+                session_id: session_id.to_string(),
+                stream: ProviderOutputStream::Stdout,
+                message: String::new(),
+                created_at: created_at.to_string(),
+            };
+            if let Some(event) =
+                synthesize_message_completed_from_exit(&exit_event, &mut session.normalizer_context)
+            {
+                session.buffer.queue_timeline_event(event);
+            }
+        }
         let fragments = std::mem::take(&mut session.stream_buffers);
         for (stream, fragment) in fragments {
             if fragment.trim().is_empty() {

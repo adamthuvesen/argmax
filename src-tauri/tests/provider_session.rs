@@ -273,6 +273,43 @@ impl ProviderProcessLauncher for FakeLauncher {
     }
 }
 
+// A launcher whose spawn future blocks until `release` is notified, so tests
+// can deterministically observe the Pending window: launch() returns while the
+// handle is still spawning, the test exercises send_input/terminate against the
+// Pending handle, then releases the spawn to resolve.
+struct GatedLauncher {
+    handle: Arc<FakeHandle>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+impl ProviderProcessLauncher for GatedLauncher {
+    fn launch<'a>(
+        &'a self,
+        _input: argmax_lib::providers::ProviderLaunchInput,
+        _on_event: EventCallback,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        let handle = self.handle.clone() as Arc<dyn ProviderRuntimeHandle>;
+        let release = Arc::clone(&self.release);
+        Box::pin(async move {
+            release.notified().await;
+            Ok(handle)
+        })
+    }
+}
+
+// `launch` now returns before the provider process finishes spawning, so the
+// handle is briefly Pending. Poll until it resolves before asserting behavior
+// that depends on a live handle.
+async fn wait_for_resolved(service: &ProviderSessionService, session_id: &str) {
+    for _ in 0..500 {
+        if service.is_handle_resolved(session_id) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    panic!("provider handle did not resolve in time");
+}
+
 // ---------------------------------------------------------------------------
 // DB fixture helpers.
 // ---------------------------------------------------------------------------
@@ -704,6 +741,7 @@ async fn send_input_routes_to_handle_when_accepting() {
         .launch(build_launch_input())
         .await
         .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
     let send = ProvidersSendInput {
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("- follow-up\nwith context".to_owned()).expect("prompt valid"),
@@ -742,6 +780,7 @@ async fn send_input_queues_when_handle_rejecting() {
         .launch(build_launch_input())
         .await
         .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
     let send = ProvidersSendInput {
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("queued one".to_owned()).expect("prompt valid"),
@@ -780,6 +819,7 @@ async fn terminate_disposes_handle_and_cancels_session() {
         .await
         .expect("launch ok");
     let session_id = session.id.clone();
+    wait_for_resolved(&service, &session_id).await;
 
     service
         .terminate(ProvidersTerminateInput {
@@ -795,6 +835,107 @@ async fn terminate_disposes_handle_and_cancels_session() {
             .lock()
             .expect("fake handle poisoned")
             .terminate_called
+    );
+    assert_eq!(service.open_handle_count(), 0);
+
+    let connection = database.connection();
+    let persisted = find_session_by_id(&connection, &session_id).expect("find session");
+    assert_eq!(persisted.state, "cancelled");
+}
+
+// A follow-up sent while the provider is still spawning must queue, never fall
+// through to the relaunch path (which would double-spawn the provider).
+#[tokio::test]
+async fn send_input_during_spawn_queues_instead_of_relaunching() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(true);
+    let release = Arc::new(tokio::sync::Notify::new());
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(GatedLauncher {
+            handle: handle.clone(),
+            release: release.clone(),
+        }),
+        |_| {},
+    );
+
+    // launch() returns immediately; the spawn is parked on `release`, so the
+    // handle stays Pending.
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    assert!(!service.is_handle_resolved(&session.id));
+
+    let send = ProvidersSendInput {
+        session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+        input: Prompt::try_from("during spawn".to_owned()).expect("prompt valid"),
+        model_label: None,
+        model_id: None,
+        reasoning_effort: None,
+        agent_mode: None,
+        attachments: None,
+    };
+    let result = service.send_input(send).await.expect("send_input ok");
+    assert!(result.queued, "message sent during spawn should queue");
+    assert!(
+        handle
+            .state
+            .lock()
+            .expect("fake handle poisoned")
+            .sent_inputs
+            .is_empty(),
+        "queued message must not reach the handle directly"
+    );
+
+    // Let the spawn resolve; the handle wires up cleanly afterwards.
+    release.notify_one();
+    wait_for_resolved(&service, &session.id).await;
+}
+
+// Terminating while the provider is still spawning must dispose the handle once
+// it resolves, so the process never runs orphaned.
+#[tokio::test]
+async fn terminate_during_spawn_disposes_handle_on_resolve() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(true);
+    let release = Arc::new(tokio::sync::Notify::new());
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(GatedLauncher {
+            handle: handle.clone(),
+            release: release.clone(),
+        }),
+        |_| {},
+    );
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    let session_id = session.id.clone();
+
+    // Terminate while still Pending — removes the entry and cancels the session.
+    service
+        .terminate(ProvidersTerminateInput {
+            session_id: SessionId::try_from(session_id.clone()).expect("session id valid"),
+        })
+        .await
+        .expect("terminate ok");
+
+    // Release the parked spawn; the resolve path must dispose the handle.
+    release.notify_one();
+    for _ in 0..500 {
+        if handle.disposed.load(Ordering::SeqCst) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert!(
+        handle.disposed.load(Ordering::SeqCst),
+        "handle spawned after terminate must be disposed"
     );
     assert_eq!(service.open_handle_count(), 0);
 

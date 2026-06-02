@@ -132,6 +132,16 @@ impl ProviderSessionService {
         self.handles.lock().expect("handles poisoned").len()
     }
 
+    /// Whether the session's provider handle has finished spawning (`Resolved`)
+    /// rather than still launching in the background (`Pending`). Used to tell
+    /// the two states apart now that `launch` returns before the spawn lands.
+    pub fn is_handle_resolved(&self, session_id: &str) -> bool {
+        matches!(
+            self.handles.lock().expect("handles poisoned").get(session_id),
+            Some(HandleEntry::Resolved(handle)) if !handle.disposed()
+        )
+    }
+
     pub async fn launch(
         self: &Arc<Self>,
         input: ProvidersLaunchInput,
@@ -233,41 +243,84 @@ impl ProviderSessionService {
             cols: input.cols.get(),
             rows: input.rows.get(),
         };
+        // Spawn the provider process in the background instead of awaiting it
+        // here. The session row, user.message, and session.started are already
+        // persisted and broadcast above, so returning now lets the renderer
+        // switch to the chat view instantly — the PTY/CLI spawn (hundreds of ms
+        // on a cold launch) no longer blocks the IPC response. The Pending
+        // handle inserted above keeps send_input queueing (not relaunching) and
+        // resize buffering until the handle resolves; a terminate during the
+        // window removes the Pending entry, which the task detects below and
+        // disposes the freshly spawned handle so nothing runs orphaned.
         let service = Arc::clone(self);
-        let handle = match self
-            .launcher
-            .launch(
-                launch_input,
-                Arc::new(move |event| {
-                    let service = Arc::clone(&service);
-                    service.handle_provider_event(event);
-                }),
-            )
-            .await
-        {
-            Ok(handle) => handle,
-            Err(error) => {
-                self.handles
-                    .lock()
-                    .expect("handles poisoned")
-                    .remove(&session_id);
-                self.record_launch_failure(&session_id, provider, error.clone())?;
-                return Err(error);
+        tokio::spawn(async move {
+            let event_service = Arc::clone(&service);
+            let handle = match service
+                .launcher
+                .launch(
+                    launch_input,
+                    Arc::new(move |event| {
+                        let event_service = Arc::clone(&event_service);
+                        event_service.handle_provider_event(event);
+                    }),
+                )
+                .await
+            {
+                Ok(handle) => handle,
+                Err(error) => {
+                    let prior = service
+                        .handles
+                        .lock()
+                        .expect("handles poisoned")
+                        .remove(&session_id);
+                    // Only flip to `failed` if the session was still pending; if
+                    // terminate already removed the entry, it's cancelled and
+                    // must not be overwritten with a failure.
+                    if matches!(prior, Some(HandleEntry::Pending(_))) {
+                        if let Err(persist_error) =
+                            service.record_launch_failure(&session_id, provider, error)
+                        {
+                            tracing::error!(
+                                ?persist_error,
+                                "failed to record provider launch failure"
+                            );
+                        }
+                    }
+                    return;
+                }
+            };
+            // Swap the Pending entry for the resolved handle. Keep the lock
+            // scoped to this block so it's released before any await below.
+            let pending_ops = {
+                let mut handles = service.handles.lock().expect("handles poisoned");
+                match handles.insert(
+                    session_id.clone(),
+                    HandleEntry::Resolved(Arc::clone(&handle)),
+                ) {
+                    Some(HandleEntry::Pending(ops)) => Some(ops),
+                    // The Pending entry is gone — terminate() removed it while
+                    // the process was spawning. Drop our Resolved insertion so
+                    // the handle can be disposed below (outside the lock).
+                    _ => {
+                        handles.remove(&session_id);
+                        None
+                    }
+                }
+            };
+            let Some(pending_ops) = pending_ops else {
+                // Cancelled during spawn: dispose the freshly spawned handle so
+                // the provider process doesn't run orphaned.
+                if let Err(error) = handle.terminate().await {
+                    tracing::error!(?error, "failed to dispose handle cancelled during spawn");
+                }
+                return;
+            };
+            for op in pending_ops {
+                if let Err(error) = service.apply_op(&handle, op).await {
+                    tracing::error!(?error, "failed to apply queued op after launch");
+                }
             }
-        };
-        let pending_ops = {
-            let mut handles = self.handles.lock().expect("handles poisoned");
-            match handles.insert(
-                session_id.clone(),
-                HandleEntry::Resolved(Arc::clone(&handle)),
-            ) {
-                Some(HandleEntry::Pending(ops)) => ops,
-                _ => Vec::new(),
-            }
-        };
-        for op in pending_ops {
-            self.apply_op(&handle, op).await?;
-        }
+        });
         Ok(session)
     }
 
@@ -310,6 +363,30 @@ impl ProviderSessionService {
             return Ok(SendInputResult {
                 ok: true,
                 queued: false,
+            });
+        }
+
+        // The handle is still spawning (Pending): the process isn't up yet, so
+        // we can't route directly — and we must NOT fall through to the relaunch
+        // path below, which would double-spawn. Queue the message; it drains
+        // after the in-flight turn completes, exactly like a follow-up sent
+        // while the agent is working.
+        if matches!(
+            self.handles
+                .lock()
+                .expect("handles poisoned")
+                .get(&session_id),
+            Some(HandleEntry::Pending(_))
+        ) {
+            self.enqueue_pending_message(
+                &session_id,
+                &message,
+                input.agent_mode.unwrap_or(AgentMode::Auto),
+                &input,
+            )?;
+            return Ok(SendInputResult {
+                ok: true,
+                queued: true,
             });
         }
 

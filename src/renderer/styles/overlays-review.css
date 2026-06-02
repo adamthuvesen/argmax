@@ -33,8 +33,6 @@
   gap: 14px;
   padding: 18px 18px 14px;
   border-bottom: 1px solid var(--line);
-  app-region: no-drag;
-  -webkit-app-region: no-drag;
 }
 
 .review-eyebrow {
@@ -512,8 +510,6 @@
   display: inline-flex;
   align-self: flex-start;
   gap: 6px;
-  app-region: no-drag;
-  -webkit-app-region: no-drag;
 }
 
 .review-mode-tabs button {

@@ -21,6 +21,8 @@
   border-left: 3px solid var(--rose);
 }
 
+/* Neutral header for every kind — the coloured 3px left rail + icon carry the
+   create/edit/delete signal, so a tinted header background was redundant. */
 .file-change-card-header {
   display: flex;
   align-items: center;
@@ -29,19 +31,8 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--text);
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.file-change-card[data-kind="create"] .file-change-card-header {
-  background: var(--sage-soft);
-}
-
-.file-change-card[data-kind="edit"] .file-change-card-header {
   background: var(--panel-soft);
-}
-
-.file-change-card[data-kind="delete"] .file-change-card-header {
-  background: var(--rose-soft);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .file-change-card-header svg {
@@ -125,8 +116,15 @@
   display: none;
 }
 
-/* Pure-create cards are 100% additions; the darker line-number gutter then
-   adds noise instead of contrast. Flatten to the body tint. */
+/* Pure-create cards are 100% additions — there's no "before" to diff against,
+   so tinting every line green just floods the card with a solid green slab. The
+   green rail + "+N" badge + create icon already say "new file"; render the body
+   as a plain code preview instead. (Edit cards keep the add/del tints, where
+   green vs red actually contrasts.) */
+.file-change-card[data-kind="create"] .diff-line.addition {
+  background: transparent;
+}
+
 .file-change-card[data-kind="create"] .diff-line.addition .diff-line-number {
   background: transparent;
   color: var(--sage-deep);
@@ -495,7 +493,7 @@
   margin-inline: var(--session-inline-padding);
   padding: 10px 10px 8px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   background: var(--panel);
   box-shadow: 0 1px 0 rgba(31, 28, 24, 0.04), 0 18px 48px rgba(31, 28, 24, 0.08);
   transition: border-color var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);

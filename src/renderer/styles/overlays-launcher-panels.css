@@ -17,8 +17,6 @@
   width: 6px;
   cursor: col-resize;
   z-index: 6;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .panel-col-resize-handle::after {

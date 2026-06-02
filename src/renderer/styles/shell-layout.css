@@ -27,8 +27,6 @@
 }
 
 .window-controls {
-  app-region: drag;
-  -webkit-app-region: drag;
   height: 36px;
   margin-bottom: 2px;
 }
@@ -40,8 +38,6 @@
   gap: 2px;
   margin: 2px 12px 16px;
   user-select: none;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .sidebar-nameplate-line {
@@ -78,8 +74,6 @@
 .rail-nav {
   display: grid;
   gap: 1px;
-  app-region: no-drag;
-  -webkit-app-region: no-drag;
 }
 
 .rail-nav-item {
@@ -131,8 +125,6 @@
   border-radius: 6px;
   background: transparent;
   color: var(--text-soft);
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0;
@@ -181,8 +173,6 @@
 }
 
 .small-icon {
-  app-region: no-drag;
-  -webkit-app-region: no-drag;
   display: grid;
   width: 30px;
   height: 30px;

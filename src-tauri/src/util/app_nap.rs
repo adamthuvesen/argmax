@@ -26,8 +26,10 @@ pub fn prevent_app_nap() {
     // `UserInitiatedAllowingIdleSystemSleep` blocks App Nap (and automatic
     // termination) without preventing the display or system from sleeping —
     // we only need the app to keep processing, not to keep the Mac awake.
-    let activity = NSProcessInfo::processInfo()
-        .beginActivityWithOptions_reason(NSActivityOptions::UserInitiatedAllowingIdleSystemSleep, &reason);
+    let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+        &reason,
+    );
     // The assertion lasts exactly as long as the returned token is retained.
     // Argmax wants it for the whole run, so deliberately leak the token instead
     // of threading an end-of-life handle through app state.

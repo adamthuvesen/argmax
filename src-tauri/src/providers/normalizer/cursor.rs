@@ -259,11 +259,11 @@ mod tests {
             &output_event(r#"{"type":"assistant","message":"Partial summary","timestamp_ms":1}"#),
             &mut context,
         );
-        let synthesized = synthesize_message_completed_from_exit(
-            &output_event(""),
-            &mut context,
+        let synthesized = synthesize_message_completed_from_exit(&output_event(""), &mut context);
+        assert_eq!(
+            synthesized.as_ref().map(|event| event.message.as_str()),
+            Some("Partial summary")
         );
-        assert_eq!(synthesized.as_ref().map(|event| event.message.as_str()), Some("Partial summary"));
     }
 
     #[test]

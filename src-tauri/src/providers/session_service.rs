@@ -22,13 +22,14 @@ use specta::Type;
 use uuid::Uuid;
 
 use super::{
+    adapters::prompt_for_agent_mode,
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
     normalizer::{NormalizerSessionContext, ProviderOutputEvent},
     runtime::{
         attention_for_state, composer_payload, parse_agent_mode, parse_permission_mode,
-        parse_provider, parse_reasoning_effort, prompt_for_agent_mode, signal_process,
-        sqlite_error, DeltaPublisher, ProviderProcessLauncher, ProviderRuntimeEvent,
-        ProviderRuntimeEventType, ProviderRuntimeHandle, RealProviderProcessLauncher, SignalKind,
+        parse_provider, parse_reasoning_effort, signal_process, sqlite_error, DeltaPublisher,
+        ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
+        ProviderRuntimeHandle, RealProviderProcessLauncher, SignalKind,
     },
     AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ProviderMode,
 };
@@ -390,7 +391,7 @@ impl ProviderSessionService {
             });
         }
 
-        let (workspace_id, provider, permission_mode, agent_mode, launch_input) = {
+        let (provider, launch_input) = {
             let connection = self.database.connection();
             let mut session = find_session_by_id(&connection, &session_id)?;
             let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
@@ -479,13 +480,7 @@ impl ProviderSessionService {
                 cols: STRUCTURED_LAUNCH_COLS,
                 rows: STRUCTURED_LAUNCH_ROWS,
             };
-            (
-                workspace.id,
-                provider,
-                permission_mode,
-                agent_mode,
-                launch_input,
-            )
+            (provider, launch_input)
         };
 
         self.flush_queue
@@ -538,7 +533,6 @@ impl ProviderSessionService {
         for op in pending_ops {
             self.apply_op(&handle, op).await?;
         }
-        let _ = (workspace_id, permission_mode, agent_mode);
         Ok(SendInputResult {
             ok: true,
             queued: false,
@@ -835,10 +829,7 @@ impl ProviderSessionService {
             let service = Arc::clone(&self);
             let session_id = event.session_id.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(error) = service
-                    .complete_cursor_turn_after_result(&session_id)
-                    .await
-                {
+                if let Err(error) = service.complete_cursor_turn_after_result(&session_id).await {
                     tracing::warn!(
                         ?error,
                         session_id = %session_id,
@@ -1261,7 +1252,10 @@ impl ProviderSessionService {
     /// process stays alive (same class of bug as the idle-flush comment above).
     /// Mark the session complete and dispose the handle so the UI does not
     /// sit on "Working" / thinking verbs until the user hits Stop.
-    async fn complete_cursor_turn_after_result(self: Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
+    async fn complete_cursor_turn_after_result(
+        self: Arc<Self>,
+        session_id: &str,
+    ) -> ArgmaxResult<()> {
         if self
             .terminating
             .lock()

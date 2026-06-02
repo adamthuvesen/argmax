@@ -97,7 +97,7 @@ fn extract_command_key(event: &TimelineEvent) -> Option<String> {
         return None;
     }
     if source.chars().count() <= COMMAND_KEY_PREFIX_CHARS {
-        return Some(truncate_chars(&source, MAX_SUMMARY_LENGTH));
+        return Some(source.chars().take(MAX_SUMMARY_LENGTH).collect());
     }
     let prefix: String = source.chars().take(COMMAND_KEY_PREFIX_CHARS).collect();
     let tail: String = source.chars().skip(COMMAND_KEY_PREFIX_CHARS).collect();
@@ -105,10 +105,12 @@ fn extract_command_key(event: &TimelineEvent) -> Option<String> {
     hasher.update(tail.as_bytes());
     let digest = hasher.finalize();
     let tail_hash: String = digest.iter().take(4).map(|b| format!("{b:02x}")).collect();
-    Some(truncate_chars(
-        &format!("{prefix}#{tail_hash}"),
-        MAX_SUMMARY_LENGTH,
-    ))
+    Some(
+        format!("{prefix}#{tail_hash}")
+            .chars()
+            .take(MAX_SUMMARY_LENGTH)
+            .collect(),
+    )
 }
 
 fn detect_error(payload: &serde_json::Value) -> bool {
@@ -126,17 +128,6 @@ fn detect_error(payload: &serde_json::Value) -> bool {
         }
     }
     false
-}
-
-fn truncate_chars(value: &str, max: usize) -> String {
-    let mut out = String::with_capacity(value.len().min(max));
-    for (idx, ch) in value.chars().enumerate() {
-        if idx >= max {
-            break;
-        }
-        out.push(ch);
-    }
-    out
 }
 
 #[cfg(test)]

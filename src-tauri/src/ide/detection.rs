@@ -98,15 +98,23 @@ pub async fn detect_installed_ides_uncached() -> Vec<DetectedIde> {
 }
 
 async fn run_detection() -> Vec<DetectedIde> {
-    let mut detected: Vec<DetectedIde> = Vec::new();
-    let gui_futures: Vec<_> = GUI_IDES
-        .iter()
-        .map(|candidate| detect_gui_ide(*candidate))
-        .collect();
-    let gui_results = futures_join(gui_futures).await;
-    for result in gui_results.into_iter().flatten() {
-        detected.push(result);
+    // Probe every GUI IDE concurrently — each does a `mdfind` + `which` under
+    // multi-second timeouts, so serializing them would stack the worst-case
+    // latency onto cold start. Results are re-sorted into `GUI_IDES` order.
+    let mut tasks = tokio::task::JoinSet::new();
+    for (index, candidate) in GUI_IDES.iter().enumerate() {
+        let candidate = *candidate;
+        tasks.spawn(async move { (index, detect_gui_ide(candidate).await) });
     }
+    let mut gui_results: Vec<(usize, DetectedIde)> = Vec::new();
+    while let Some(joined) = tasks.join_next().await {
+        if let Ok((index, Some(ide))) = joined {
+            gui_results.push((index, ide));
+        }
+    }
+    gui_results.sort_by_key(|(index, _)| *index);
+
+    let mut detected: Vec<DetectedIde> = gui_results.into_iter().map(|(_, ide)| ide).collect();
 
     if let Some(iterm_path) = locate_app(ITERM_BUNDLE_ID, ITERM_APP_NAME).await {
         detected.push(DetectedIde {
@@ -173,17 +181,6 @@ async fn mdfind_first(bundle_id: &str) -> Option<String> {
 async fn probe_cli(cmd: &str) -> bool {
     let result = time::timeout(WHICH_TIMEOUT, Command::new("which").arg(cmd).output()).await;
     matches!(result, Ok(Ok(output)) if output.status.success())
-}
-
-async fn futures_join<F>(futures: Vec<F>) -> Vec<F::Output>
-where
-    F: std::future::Future,
-{
-    let mut out = Vec::with_capacity(futures.len());
-    for f in futures {
-        out.push(f.await);
-    }
-    out
 }
 
 #[cfg(test)]

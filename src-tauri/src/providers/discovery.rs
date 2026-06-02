@@ -112,10 +112,9 @@ async fn resolve_binary(binary_name: &str) -> Option<String> {
 }
 
 async fn read_version(binary_path: &str) -> Option<String> {
-    match tokio::time::timeout(PROBE_TIMEOUT, command_output(binary_path, &["--version"])).await {
-        Ok(version) => version,
-        Err(_) => None,
-    }
+    tokio::time::timeout(PROBE_TIMEOUT, command_output(binary_path, &["--version"]))
+        .await
+        .unwrap_or_default()
 }
 
 /// Probe the provider's auth/login status command. Returns `Some(true)` on a

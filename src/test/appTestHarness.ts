@@ -1,6 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
-import type { ArgmaxApi, DashboardDelta, DashboardSnapshot } from "../shared/types.js";
+import type { ArgmaxApi, DashboardDelta, DashboardSnapshot, MenuCommand } from "../shared/types.js";
 import {
   dashboardListSnapshot,
   defaultDashboardSnapshot,
@@ -95,8 +95,7 @@ export let workspaceStatus: AppTestMocks["workspaceStatus"];
 export let skillsList: AppTestMocks["skillsList"];
 export let openInIde: AppTestMocks["openInIde"];
 export let listDetectedIdes: AppTestMocks["listDetectedIdes"];
-export let menuCommandListener: ((command: Parameters<Parameters<ArgmaxApi["menu"]["onCommand"]>[0]>[0]) => void) | null =
-  null;
+export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
   window.localStorage.clear();

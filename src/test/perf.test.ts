@@ -94,7 +94,7 @@ describe("perf budgets", () => {
     expect(percentile(durations, 0.95)).toBeLessThan(5);
   });
 
-  it("buildFileTree over 10 000 entries completes < 50 ms", () => {
+  it("buildFileTree over 10 000 entries completes < 75 ms", () => {
     const entries = [];
     for (let dir = 0; dir < 100; dir++) {
       for (let file = 0; file < 100; file++) {

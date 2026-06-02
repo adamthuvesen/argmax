@@ -80,11 +80,7 @@ pub fn parse_git_grep_output(
                 continue;
             }
         };
-        let preview = if let Some(stripped) = preview_raw.strip_prefix(':') {
-            stripped
-        } else {
-            preview_raw
-        };
+        let preview = preview_raw.strip_prefix(':').unwrap_or(preview_raw);
         let preview: String = preview.chars().take(MAX_PREVIEW_CHARS).collect();
 
         let bucket_index = files.iter().position(|file| file.path == path);

@@ -43,12 +43,10 @@ use nix::{
 use serde_json::json;
 
 use super::{
-    adapters::{get_provider_definition, PLAN_MODE_PROMPT_PREFIX},
-    discovery::ProviderDiscovery,
-    environment::build_provider_environment,
-    flush_queue::DashboardDelta,
-    normalizer::ProviderOutputStream,
-    AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ProviderMode, ReasoningEffort,
+    adapters::get_provider_definition, discovery::ProviderDiscovery,
+    environment::build_provider_environment, flush_queue::DashboardDelta,
+    normalizer::ProviderOutputStream, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
+    ProviderMode, ReasoningEffort,
 };
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
@@ -542,14 +540,6 @@ pub(super) fn composer_payload(
         payload["attachments"] = serde_json::to_value(attachments).unwrap_or_else(|_| json!([]));
     }
     payload
-}
-
-pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
-    if agent_mode == AgentMode::Plan {
-        format!("{}\n\n{prompt}", PLAN_MODE_PROMPT_PREFIX)
-    } else {
-        prompt.to_string()
-    }
 }
 
 pub(super) fn attention_for_state(state: &str) -> &'static str {

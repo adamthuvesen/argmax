@@ -76,12 +76,24 @@ where
         },
     )
     .await?;
-    String::from_utf8(output).map_err(|error| {
-        ArgmaxError::service(
-            "GIT_STDOUT_NOT_UTF8",
-            format!("git stdout was not valid UTF-8: {error}"),
-        )
-    })
+    decode_stdout(output)
+}
+
+/// Like [`run_git_text`] but with caller-supplied [`GitExecOptions`] (env
+/// overrides, custom timeout). Used by callers that drive git against a
+/// scratch `GIT_INDEX_FILE`.
+pub async fn run_git_text_with_options<P, I, S>(
+    workspace_path: P,
+    args: I,
+    options: GitExecOptions,
+) -> ArgmaxResult<String>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let output = run_git_output(workspace_path.as_ref(), args, options).await?;
+    decode_stdout(output)
 }
 
 pub async fn run_git_text_with_allowed_exit_codes<P, I, S>(

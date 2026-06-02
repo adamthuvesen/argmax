@@ -36,7 +36,7 @@ export function useWorkspaceFileList(args: {
   useEffect(() => {
     if (mode !== "files" || !isPanelOpen) return;
     const token = ++workspaceListToken.current;
-    if (!sourceId || !sourceKind || !window.argmax) {
+    if (!sourceId || !sourceKind || !dispatch || !window.argmax) {
       setEntries([]);
       setListState("idle");
       setListError(null);
@@ -44,7 +44,7 @@ export function useWorkspaceFileList(args: {
     }
     setListState("loading");
     setListError(null);
-    void dispatch!.listFiles()
+    void dispatch.listFiles()
       .then((loaded) => {
         if (token !== workspaceListToken.current) return;
         setEntries(loaded);

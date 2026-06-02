@@ -452,7 +452,7 @@ async fn grep_content_at_path(
 
 async fn looks_binary(path: &Path) -> ArgmaxResult<bool> {
     let mut file = tokio_fs::File::open(path).await.map_err(io_error)?;
-    let mut buffer = vec![0_u8; BINARY_SNIFF_BYTES];
+    let mut buffer = [0_u8; BINARY_SNIFF_BYTES];
     let read = file.read(&mut buffer).await.map_err(io_error)?;
     Ok(buffer[..read].contains(&0))
 }

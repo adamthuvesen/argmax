@@ -188,11 +188,7 @@ impl GhPoller {
 
 impl Drop for GhPoller {
     fn drop(&mut self) {
-        if let Ok(mut tasks) = self.tasks.lock() {
-            for task in tasks.drain(..) {
-                task.abort();
-            }
-        }
+        self.dispose();
     }
 }
 

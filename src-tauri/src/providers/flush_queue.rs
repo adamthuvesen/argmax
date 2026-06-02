@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use super::{
     normalizer::{
-        normalize_provider_event, synthesize_message_completed_from_exit,
-        NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
+        normalize_provider_event, synthesize_message_completed_from_exit, NormalizedUsage,
+        NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
     },
     ProviderId,
 };
@@ -667,7 +667,11 @@ mod tests {
         seed_session(&connection);
 
         let mut queue = ProviderEventFlushQueue::new();
-        queue.initialize_session("s1", ProviderId::Cursor, NormalizerSessionContext::default());
+        queue.initialize_session(
+            "s1",
+            ProviderId::Cursor,
+            NormalizerSessionContext::default(),
+        );
 
         // A complete cumulative assistant line establishes the delta baseline.
         queue
@@ -694,7 +698,10 @@ mod tests {
                     .count()
             })
             .unwrap_or(0);
-        assert_eq!(synthesized_completions, 0, "idle flush must not complete the turn");
+        assert_eq!(
+            synthesized_completions, 0,
+            "idle flush must not complete the turn"
+        );
 
         // ...and must leave the cumulative baseline intact, so the next delta is
         // the suffix only — not the whole message re-emitted.

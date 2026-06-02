@@ -1,5 +1,6 @@
 import type {
   ChangedFileSummary,
+  ReviewComparison,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
@@ -15,8 +16,8 @@ export interface ReviewTarget {
 }
 
 export interface ReviewIpcDispatch {
-  listChangedFiles: () => Promise<ChangedFileSummary[]>;
-  loadDiff: (filePath: string) => Promise<WorkspaceDiff>;
+  listChangedFiles: (comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+  loadDiff: (filePath: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
   listFiles: () => Promise<WorkspaceFileEntry[]>;
   readFile: (filePath: string) => Promise<WorkspaceFilePreview>;
   /** Returns null when the IPC bridge is unavailable (e.g. vitest). */
@@ -49,17 +50,17 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
   // didn't install a bridge.
   const noBridge = (): Promise<never> => Promise.reject(new Error("bridge unavailable"));
   return {
-    listChangedFiles: () => {
+    listChangedFiles: (comparison) => {
       if (!window.argmax) return noBridge();
       return kind === "workspace"
-        ? window.argmax.review.listChangedFiles(id)
-        : window.argmax.review.listChangedFilesForProject(id);
+        ? window.argmax.review.listChangedFiles(id, comparison)
+        : window.argmax.review.listChangedFilesForProject(id, comparison);
     },
-    loadDiff: (filePath) => {
+    loadDiff: (filePath, comparison) => {
       if (!window.argmax) return noBridge();
       return kind === "workspace"
-        ? window.argmax.review.loadDiff(id, filePath)
-        : window.argmax.review.loadDiffForProject(id, filePath);
+        ? window.argmax.review.loadDiff(id, filePath, comparison)
+        : window.argmax.review.loadDiffForProject(id, filePath, comparison);
     },
     listFiles: () => {
       if (!window.argmax) return noBridge();

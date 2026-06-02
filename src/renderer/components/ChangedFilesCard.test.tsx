@@ -16,6 +16,9 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     isPanelOpen: false,
     mode: "changes",
     setMode: () => {},
+    changesComparison: "local",
+    setChangesComparison: () => {},
+    comparisonBaseLabel: "main",
     workspaceFiles: {
       entries: [],
       listState: "idle",

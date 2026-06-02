@@ -237,6 +237,30 @@ export function ReviewPanel({
           </h2>
         </div>
         <div className="review-toolbar-actions">
+          {isChanges ? (
+            <div className="review-comparison-tabs" role="group" aria-label="Diff baseline">
+              <button
+                type="button"
+                aria-pressed={review.changesComparison === "local"}
+                title="Working-tree changes (uncommitted, vs HEAD)"
+                onClick={() => review.setChangesComparison("local")}
+              >
+                Local
+              </button>
+              <button
+                type="button"
+                aria-pressed={review.changesComparison === "branch"}
+                title={
+                  review.comparisonBaseLabel
+                    ? `All changes vs ${review.comparisonBaseLabel}`
+                    : "All changes vs base branch"
+                }
+                onClick={() => review.setChangesComparison("branch")}
+              >
+                Branch
+              </button>
+            </div>
+          ) : null}
           <button
             className="small-icon"
             type="button"

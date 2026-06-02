@@ -170,6 +170,13 @@ export interface WorkspaceDiff {
   content: string;
 }
 
+/**
+ * Review diff baseline. `workingTree` (default) diffs the working tree against
+ * `HEAD` (uncommitted changes); `branch` diffs against the merge-base with the
+ * base branch — the whole delta from main, committed + uncommitted + untracked.
+ */
+export type ReviewComparison = Bindings.ReviewComparison;
+
 export interface WorkspaceFileEntry {
   path: string;
 }
@@ -466,10 +473,10 @@ export interface ArgmaxApi {
     }>>;
   };
   review: {
-    listChangedFiles: (workspaceId: string) => Promise<ChangedFileSummary[]>;
-    loadDiff: (workspaceId: string, filePath?: string) => Promise<WorkspaceDiff>;
-    listChangedFilesForProject: (projectId: string) => Promise<ChangedFileSummary[]>;
-    loadDiffForProject: (projectId: string, filePath?: string) => Promise<WorkspaceDiff>;
+    listChangedFiles: (workspaceId: string, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+    loadDiff: (workspaceId: string, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
+    listChangedFilesForProject: (projectId: string, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+    loadDiffForProject: (projectId: string, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
   };
   workspace: {
     listFiles: (workspaceId: string) => Promise<WorkspaceFileEntry[]>;

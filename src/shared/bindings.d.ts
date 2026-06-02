@@ -668,10 +668,19 @@ export type RawProviderOutput = { id: string; sessionId: string; stream: string;
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh"
 export type RelativePath = string
 export type RepoPath = string
-export type ReviewListChangedFilesForProjectInput = { projectId: ProjectId }
-export type ReviewListChangedFilesInput = { workspaceId: WorkspaceId }
-export type ReviewLoadDiffForProjectInput = { projectId: ProjectId; filePath: RelativePath | null }
-export type ReviewLoadDiffInput = { workspaceId: WorkspaceId; filePath: RelativePath | null }
+/**
+ * Which baseline the review diff is computed against.
+ * 
+ * `WorkingTree` is the historical behavior: working tree vs `HEAD` (whatever is
+ * uncommitted). `Branch` shows the whole delta from the base branch — committed
+ * *and* uncommitted *and* untracked — computed from `merge-base(base_ref, HEAD)`
+ * to the working tree, i.e. "everything different from main".
+ */
+export type ReviewComparison = "workingTree" | "branch"
+export type ReviewListChangedFilesForProjectInput = { projectId: ProjectId; comparison?: ReviewComparison }
+export type ReviewListChangedFilesInput = { workspaceId: WorkspaceId; comparison?: ReviewComparison }
+export type ReviewLoadDiffForProjectInput = { projectId: ProjectId; filePath: RelativePath | null; comparison?: ReviewComparison }
+export type ReviewLoadDiffInput = { workspaceId: WorkspaceId; filePath: RelativePath | null; comparison?: ReviewComparison }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; checkpoints: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }

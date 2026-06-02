@@ -48,7 +48,12 @@ async fn list_changed_files_for_workspace(
     input: ReviewListChangedFilesInput,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
     let database = live_database(state)?;
-    git_review::list_changed_files(database.as_ref(), input.workspace_id.as_str()).await
+    git_review::list_changed_files(
+        database.as_ref(),
+        input.workspace_id.as_str(),
+        input.comparison,
+    )
+    .await
 }
 
 async fn load_diff_for_workspace(
@@ -60,6 +65,7 @@ async fn load_diff_for_workspace(
         database.as_ref(),
         input.workspace_id.as_str(),
         input.file_path.as_ref().map(|path| path.as_str()),
+        input.comparison,
     )
     .await
 }
@@ -69,7 +75,12 @@ async fn list_changed_files_for_project(
     input: ReviewListChangedFilesForProjectInput,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
     let database = live_database(state)?;
-    git_review::list_changed_files_for_project(database.as_ref(), input.project_id.as_str()).await
+    git_review::list_changed_files_for_project(
+        database.as_ref(),
+        input.project_id.as_str(),
+        input.comparison,
+    )
+    .await
 }
 
 async fn load_diff_for_project(
@@ -81,6 +92,7 @@ async fn load_diff_for_project(
         database.as_ref(),
         input.project_id.as_str(),
         input.file_path.as_ref().map(|path| path.as_str()),
+        input.comparison,
     )
     .await
 }
@@ -92,6 +104,7 @@ mod tests {
         ipc::validation::ProjectId,
         persistence::projects::{persist_project, PersistProjectInput, ProjectSettings},
         persistence::Database,
+        review::git_review::ReviewComparison,
     };
     use std::{path::Path, process::Command, sync::Arc};
     use tempfile::tempdir;
@@ -107,6 +120,7 @@ mod tests {
             &state,
             ReviewListChangedFilesForProjectInput {
                 project_id: ProjectId::try_from("p1".to_string()).expect("project id"),
+                comparison: ReviewComparison::default(),
             },
         )
         .await
@@ -116,6 +130,56 @@ mod tests {
         assert_eq!(files[0].path, "README.md");
         assert_eq!(files[0].status, "M");
         assert_eq!(files[0].additions, 1);
+    }
+
+    #[tokio::test]
+    async fn branch_comparison_includes_committed_uncommitted_and_untracked() {
+        // main has README.md + app.txt committed. A feature branch commits a
+        // README change, leaves app.txt edited but uncommitted, and adds an
+        // untracked notes.txt.
+        let repo = tempdir().expect("repo dir");
+        init_repo(repo.path());
+        std::fs::write(repo.path().join("app.txt"), "v1\n").expect("write app");
+        run_git(repo.path(), &["add", "app.txt"]);
+        run_git(repo.path(), &["commit", "-q", "-m", "add app"]);
+
+        run_git(repo.path(), &["checkout", "-q", "-b", "feature"]);
+        std::fs::write(repo.path().join("README.md"), "hello\nfrom feature\n").expect("edit readme");
+        run_git(repo.path(), &["commit", "-q", "-am", "feature readme"]);
+        std::fs::write(repo.path().join("app.txt"), "v1\nv2\n").expect("edit app");
+        std::fs::write(repo.path().join("notes.txt"), "scratch\n").expect("write notes");
+
+        let state = state_with_project(repo.path());
+        let project_id = || ProjectId::try_from("p1".to_string()).expect("project id");
+
+        let working_tree = list_changed_files_for_project(
+            &state,
+            ReviewListChangedFilesForProjectInput {
+                project_id: project_id(),
+                comparison: ReviewComparison::WorkingTree,
+            },
+        )
+        .await
+        .expect("working-tree files");
+        // Working tree vs HEAD: only the uncommitted edit + untracked file. The
+        // committed README change is clean in the working tree, so it's absent.
+        let working_paths: Vec<_> = working_tree.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(working_paths, vec!["app.txt", "notes.txt"]);
+
+        let branch = list_changed_files_for_project(
+            &state,
+            ReviewListChangedFilesForProjectInput {
+                project_id: project_id(),
+                comparison: ReviewComparison::Branch,
+            },
+        )
+        .await
+        .expect("branch files");
+        // Everything different from main: committed README + uncommitted app +
+        // untracked notes.
+        let mut branch_paths: Vec<_> = branch.iter().map(|file| file.path.as_str()).collect();
+        branch_paths.sort_unstable();
+        assert_eq!(branch_paths, vec!["README.md", "app.txt", "notes.txt"]);
     }
 
     fn state_with_project(repo_path: &Path) -> AppState {

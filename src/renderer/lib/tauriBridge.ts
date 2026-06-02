@@ -42,6 +42,7 @@ import type {
   RegisterProjectInput,
   RemoveProjectInput,
   ResolveApprovalInput,
+  ReviewComparison,
   RunCheckInput,
   SessionCostSummary,
   SessionCostSummaryInput,
@@ -174,14 +175,14 @@ function createTauriArgmaxApi(): ArgmaxApi {
       search: (input) => invokeLegacy<SessionSearchResult>("session:search", input)
     },
     review: {
-      listChangedFiles: (workspaceId: string) =>
-        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files", { workspaceId }),
-      loadDiff: (workspaceId: string, filePath?: string) =>
-        invokeLegacy<WorkspaceDiff>("review:load-diff", { workspaceId, filePath }),
-      listChangedFilesForProject: (projectId: string) =>
-        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files-for-project", { projectId }),
-      loadDiffForProject: (projectId: string, filePath?: string) =>
-        invokeLegacy<WorkspaceDiff>("review:load-diff-for-project", { projectId, filePath })
+      listChangedFiles: (workspaceId: string, comparison?: ReviewComparison) =>
+        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files", { workspaceId, comparison }),
+      loadDiff: (workspaceId: string, filePath?: string, comparison?: ReviewComparison) =>
+        invokeLegacy<WorkspaceDiff>("review:load-diff", { workspaceId, filePath, comparison }),
+      listChangedFilesForProject: (projectId: string, comparison?: ReviewComparison) =>
+        invokeLegacy<ChangedFileSummary[]>("review:list-changed-files-for-project", { projectId, comparison }),
+      loadDiffForProject: (projectId: string, filePath?: string, comparison?: ReviewComparison) =>
+        invokeLegacy<WorkspaceDiff>("review:load-diff-for-project", { projectId, filePath, comparison })
     },
     workspace: {
       listFiles: (workspaceId: string) =>

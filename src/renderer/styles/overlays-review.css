@@ -599,4 +599,40 @@
   color: var(--text);
 }
 
+/* Local / Branch diff-baseline toggle (Changes view only). A small text
+ * segmented control distinct from the icon-only mode tabs above. */
+.review-comparison-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--panel-sunken);
+}
+
+.review-comparison-tabs button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.review-comparison-tabs button:hover {
+  color: var(--text);
+}
+
+.review-comparison-tabs button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--panel);
+}
+
 

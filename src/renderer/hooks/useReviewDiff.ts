@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import type { ChangedFileSummary, WorkspaceDiff } from "../../shared/types.js";
+import type { ChangedFileSummary, ReviewComparison, WorkspaceDiff } from "../../shared/types.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
@@ -22,11 +22,12 @@ export function useReviewDiff(args: {
   sourceId: string | null;
   sourceKind: ReviewSourceKind | null;
   changedFilesKey: string | null;
+  comparison: ReviewComparison;
   dispatch: ReviewIpcDispatch | null;
   isPanelOpen: boolean;
   onOpenChanges: () => void;
 }): UseReviewDiffResult {
-  const { sourceId, sourceKind, changedFilesKey, dispatch, isPanelOpen, onOpenChanges } = args;
+  const { sourceId, sourceKind, changedFilesKey, comparison, dispatch, isPanelOpen, onOpenChanges } = args;
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
   const [filesState, setFilesState] = useState<AsyncState>("idle");
@@ -41,14 +42,22 @@ export function useReviewDiff(args: {
   const isPanelOpenRef = useRef(isPanelOpen);
   isPanelOpenRef.current = isPanelOpen;
 
+  // Identifies which (source, comparison) the current list belongs to. A
+  // re-fetch within the same context — the workspace's changed-files signature
+  // moving as the agent edits mid-turn — keeps the list on screen rather than
+  // flashing "loading", so the changed-files card doesn't flicker on every
+  // refresh. Only a new source/comparison (or the first load) shows loading.
+  const filesContextRef = useRef<string | null>(null);
+
   // Cache loaded diffs by file path so re-selecting a file you've already
-  // viewed is instant. Busted whenever the source changes or the workspace's
+  // viewed is instant. Busted whenever the source changes, the workspace's
   // changed-files signature moves (a new key means the diffs may have changed),
-  // so a cache hit always reflects the current state.
+  // or the comparison baseline flips (local ↔ branch produce different diffs
+  // for the same path), so a cache hit always reflects the current state.
   const diffCache = useRef(new Map<string, WorkspaceDiff>());
   useEffect(() => {
     diffCache.current.clear();
-  }, [sourceId, changedFilesKey]);
+  }, [sourceId, changedFilesKey, comparison]);
 
   const resetForSourceChange = useCallback((): void => {
     setSelectedFilePath(null);
@@ -61,15 +70,28 @@ export function useReviewDiff(args: {
     const token = ++fileLoadToken.current;
 
     if (!sourceId || !sourceKind || !dispatch || !window.argmax) {
+      filesContextRef.current = null;
       setFiles([]);
       setFilesState("idle");
       setFilesError(null);
       return;
     }
 
-    setFilesState("loading");
+    // Show "loading" only for a genuinely new source/comparison (or the first
+    // load). A re-fetch within the same context keeps the current list on
+    // screen (stale-while-revalidate) so the changed-files card doesn't flicker
+    // through a loading state every time the agent edits a file mid-turn.
+    const context = `${sourceKind}:${sourceId}:${comparison}`;
+    const isNewContext = filesContextRef.current !== context;
+    filesContextRef.current = context;
+
     setFilesError(null);
-    void dispatch.listChangedFiles()
+    if (isNewContext) {
+      setFilesState("loading");
+    } else {
+      setFilesState((prev) => (prev === "ready" ? prev : "loading"));
+    }
+    void dispatch.listChangedFiles(comparison)
       .then((result) => {
         if (token !== fileLoadToken.current) {
           return;
@@ -92,7 +114,7 @@ export function useReviewDiff(args: {
         setFilesState("error");
         setFilesError(errorMessage(error) || "Could not load changed files.");
       });
-  }, [sourceId, sourceKind, changedFilesKey, dispatch]);
+  }, [sourceId, sourceKind, changedFilesKey, comparison, dispatch]);
 
   useEffect(() => {
     const token = ++diffLoadToken.current;
@@ -113,7 +135,7 @@ export function useReviewDiff(args: {
 
     setDiffState("loading");
     setDiffError(null);
-    void dispatch.loadDiff(selectedFilePath)
+    void dispatch.loadDiff(selectedFilePath, comparison)
       .then((result) => {
         if (token !== diffLoadToken.current) {
           return;
@@ -130,7 +152,7 @@ export function useReviewDiff(args: {
         setDiffState("error");
         setDiffError(errorMessage(error) || "Could not load diff.");
       });
-  }, [sourceId, sourceKind, selectedFilePath, dispatch]);
+  }, [sourceId, sourceKind, selectedFilePath, comparison, dispatch]);
 
   const openFile = useCallback(
     (filePath: string): void => {

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction
+} from "react";
 import type { DashboardSnapshot, ProjectSummary, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js";
 import {
@@ -19,6 +27,7 @@ export interface UseAppGridSelectionParams {
   snapshot: DashboardSnapshot;
   selectedProject: ProjectSummary | null;
   selectedWorkspace: WorkspaceSummary | null;
+  pendingSelectionRef: MutableRefObject<{ sessionId: string; workspaceId: string } | null>;
   setSelectedSessionId: (value: string | null) => void;
   setSelectedWorkspaceId: (value: string | null) => void;
   setSelectedProjectId: (value: string | null) => void;
@@ -48,6 +57,7 @@ export function useAppGridSelection({
   snapshot,
   selectedProject,
   selectedWorkspace,
+  pendingSelectionRef,
   setSelectedSessionId,
   setSelectedWorkspaceId,
   setSelectedProjectId,
@@ -88,6 +98,13 @@ export function useAppGridSelection({
         .map((row) => {
           const next = row.filter((cell) => {
             if (!isSessionCell(cell)) return projectsById.has(cell.projectId);
+            const pending = pendingSelectionRef.current;
+            if (
+              pending?.sessionId === cell.sessionId &&
+              pending.workspaceId === cell.workspaceId
+            ) {
+              return true;
+            }
             return sessionsById.has(cell.sessionId) && workspacesById.has(cell.workspaceId);
           });
           if (next.length !== row.length) mutated = true;
@@ -107,7 +124,7 @@ export function useAppGridSelection({
       }
       return { rows, focused: { row: 0, col: 0 } };
     });
-  }, [projectsById, sessionsById, workspacesById]);
+  }, [pendingSelectionRef, projectsById, sessionsById, workspacesById]);
 
   // Mirror grid.focused → hook selection state. Avoids racing on initial
   // mount by skipping when the focused cell already matches what the hook

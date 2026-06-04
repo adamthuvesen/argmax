@@ -136,6 +136,37 @@ async fn create_isolated_rejects_dash_prefixed_base_ref() {
 }
 
 #[tokio::test]
+async fn create_isolated_rejects_nonexistent_base_ref() {
+    let repo = seed_git_repo(&[("file.txt", "x")]);
+    ensure_main_branch(repo.path());
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+    );
+    let service = WorkspaceService::new(database.clone());
+
+    // A well-formed name that does not resolve (e.g. a merged-and-pruned branch)
+    // must be rejected up front, not forked into a broken worktree.
+    let input = WorkspacesCreateIsolatedInput {
+        project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+        task_label: TaskLabel::try_from("Task".to_owned()).expect("task label"),
+        base_ref: Some(BaseRef::try_from("adam/rust-port".to_owned()).expect("base ref")),
+    };
+    let err = service
+        .create_isolated(input)
+        .await
+        .expect_err("nonexistent base ref must be rejected");
+    let json = serde_json::to_value(&err).expect("serialize error");
+    assert!(
+        json.to_string().contains("does not exist"),
+        "expected a 'does not exist' error, got: {json}"
+    );
+}
+
+#[tokio::test]
 async fn create_current_records_shared_workspace_pointing_at_repo() {
     let repo = seed_git_repo(&[("file.txt", "x")]);
     ensure_main_branch(repo.path());

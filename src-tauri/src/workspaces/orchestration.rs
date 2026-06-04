@@ -607,14 +607,39 @@ async fn assert_valid_ref(repo_path: &str, reference: &str) -> ArgmaxResult<()> 
         Duration::from_millis(GIT_TIMEOUT_MS),
     )
     .await;
-    if res.is_ok() {
-        Ok(())
-    } else {
-        Err(invalid_workspace(
+    if res.is_err() {
+        return Err(invalid_workspace(
             format!("Invalid git ref {reference}"),
             "Pick a base ref that conforms to git's ref-format rules.",
-        ))
+        ));
     }
+    // A well-formed name is not enough: the ref must actually resolve so the
+    // worktree can fork from it. Catches stale base branches (e.g. one that was
+    // merged and pruned) before they produce a confusing worktree-add failure.
+    if !ref_resolves(repo_path, reference).await {
+        return Err(invalid_workspace(
+            format!("Base ref {reference} does not exist in this repository"),
+            "Pick a base branch that still exists and retry.",
+        ));
+    }
+    Ok(())
+}
+
+/// True when `reference` resolves to a commit we can fork a worktree from
+/// (local/remote branch, tag, or sha) — not merely a well-formed name.
+async fn ref_resolves(repo_path: &str, reference: &str) -> bool {
+    run_git_text(
+        Path::new(repo_path),
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{reference}^{{commit}}"),
+        ],
+        Duration::from_millis(GIT_TIMEOUT_MS),
+    )
+    .await
+    .is_ok()
 }
 
 fn assert_worktree_location_contained(

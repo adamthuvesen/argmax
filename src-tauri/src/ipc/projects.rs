@@ -87,17 +87,62 @@ pub async fn projects_list_branches(
     state: State<'_, AppState>,
     input: ProjectsListBranchesInput,
 ) -> ArgmaxResult<Vec<String>> {
+    let (repo_path, default_branch) = {
+        let database = live_database(&state)?;
+        let connection = database.connection();
+        let project = require_project(&connection, input.project_id.as_str())?;
+        (project.repo_path, project.default_branch)
+    };
+    let raw = run_git_text(&repo_path, ["branch"], GIT_DEFAULT_TIMEOUT).await?;
+    let branches = raw
+        .lines()
+        .map(|line| line.trim_start_matches('*').trim().to_owned())
+        .filter(|name| !name.is_empty());
+    Ok(order_branches_default_first(branches, default_branch.as_deref()))
+}
+
+/// Surface the default branch (typically main/master) at the top of the picker;
+/// git lists alphabetically, which buries it. Other branches keep git's order.
+fn order_branches_default_first(
+    branches: impl IntoIterator<Item = String>,
+    default_branch: Option<&str>,
+) -> Vec<String> {
+    let mut branches: Vec<String> = branches.into_iter().collect();
+    if let Some(default_branch) = default_branch {
+        if let Some(index) = branches.iter().position(|name| name == default_branch) {
+            let default_branch = branches.remove(index);
+            branches.insert(0, default_branch);
+        }
+    }
+    branches
+}
+
+#[tauri::command(rename = "projects:refresh-branch")]
+#[specta::specta]
+pub async fn projects_refresh_branch(
+    state: State<'_, AppState>,
+    input: ProjectsRefreshBranchInput,
+) -> ArgmaxResult<ProjectSummary> {
     let repo_path = {
         let database = live_database(&state)?;
         let connection = database.connection();
         require_project(&connection, input.project_id.as_str())?.repo_path
     };
-    let raw = run_git_text(&repo_path, ["branch"], GIT_DEFAULT_TIMEOUT).await?;
-    Ok(raw
-        .lines()
-        .map(|line| line.trim_start_matches('*').trim().to_owned())
-        .filter(|name| !name.is_empty())
-        .collect())
+    // Re-read the repo's live HEAD so the launcher defaults to whatever branch
+    // the user has checked out (in a terminal or elsewhere), not the branch we
+    // recorded at add time. Detached HEAD persists as "HEAD".
+    let current_branch = run_git_text(&repo_path, ["branch", "--show-current"], GIT_DEFAULT_TIMEOUT)
+        .await?
+        .trim()
+        .to_string();
+    let current_branch = if current_branch.is_empty() {
+        "HEAD".to_string()
+    } else {
+        current_branch
+    };
+    let database = live_database(&state)?;
+    let connection = database.connection();
+    update_project_branch(&connection, input.project_id.as_str(), &current_branch)
 }
 
 #[tauri::command(rename = "projects:switch-branch")]
@@ -328,7 +373,7 @@ async fn assert_valid_ref_name(repo_path: &Path, reference: &str) -> ArgmaxResul
 fn default_settings(repo_path: &Path) -> ProjectSettings {
     ProjectSettings {
         default_provider: "codex".to_string(),
-        default_model_label: "Codex Spark".to_string(),
+        default_model_label: "GPT-5.5".to_string(),
         worktree_location: repo_path
             .join(".argmax")
             .join("worktrees")
@@ -344,4 +389,32 @@ fn project_git_error(error: ArgmaxError) -> ArgmaxError {
         "PROJECT_GIT",
         format!("Argmax requires a local git repository. {error}"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::order_branches_default_first;
+
+    fn owned(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn default_branch_moves_to_front_preserving_rest() {
+        let ordered = order_branches_default_first(
+            owned(&["adam/feature", "main", "zeta"]),
+            Some("main"),
+        );
+        assert_eq!(ordered, owned(&["main", "adam/feature", "zeta"]));
+    }
+
+    #[test]
+    fn unknown_or_absent_default_leaves_order_untouched() {
+        let input = owned(&["adam/feature", "zeta"]);
+        assert_eq!(
+            order_branches_default_first(input.clone(), Some("main")),
+            input,
+        );
+        assert_eq!(order_branches_default_first(input.clone(), None), input);
+    }
 }

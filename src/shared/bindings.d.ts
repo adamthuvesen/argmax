@@ -64,6 +64,14 @@ async projectsListBranches(input: ProjectsListBranchesInput) : Promise<Result<st
     else return { status: "error", error: e  as any };
 }
 },
+async projectsRefreshBranch(input: ProjectsRefreshBranchInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_refresh_branch", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async projectsSwitchBranch(input: ProjectsSwitchBranchInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("projects_switch_branch", { input }) };
@@ -635,6 +643,7 @@ export type ProjectSummary = { id: string; name: string; repoPath: string; curre
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
 export type ProjectsPickFolderInput = Record<string, never>
+export type ProjectsRefreshBranchInput = { projectId: ProjectId }
 export type ProjectsRegisterInput = { repoPath: RepoPath }
 export type ProjectsRemoveInput = { projectId: ProjectId }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }

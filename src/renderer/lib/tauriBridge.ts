@@ -132,6 +132,8 @@ function createTauriArgmaxApi(): ArgmaxApi {
         invokeLegacy<ProjectSummary>("projects:update-settings", input),
       listBranches: (projectId: string) =>
         invokeLegacy<string[]>("projects:list-branches", { projectId }),
+      refreshBranch: (projectId: string) =>
+        invokeLegacy<ProjectSummary>("projects:refresh-branch", { projectId }),
       switchBranch: (projectId: string, branch: string) =>
         invokeLegacy<ProjectSummary>("projects:switch-branch", { projectId, branch })
     },

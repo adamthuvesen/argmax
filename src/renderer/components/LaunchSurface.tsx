@@ -244,6 +244,33 @@ export function LaunchSurface({
     setAgentMode((mode) => toggleAgentMode(mode));
   }, []);
 
+  // The persisted current branch goes stale when the user checks out a
+  // different branch outside Argmax (e.g. in a terminal). Re-read the repo's
+  // live HEAD when the launcher mounts or the project changes so the branch
+  // chip — and the shared workspace a launch forks from — track what's actually
+  // checked out. Keyed on id + branch (not the whole project) so unrelated
+  // dashboard deltas don't trigger a git shellout; only pushes an update when
+  // the branch actually moved.
+  const projectId = project?.id ?? null;
+  const knownBranch = project?.currentBranch ?? null;
+  useEffect(() => {
+    if (!window.argmax || !projectId) return undefined;
+    let cancelled = false;
+    void window.argmax.projects
+      .refreshBranch(projectId)
+      .then((updated) => {
+        if (cancelled || updated.currentBranch === knownBranch) return;
+        onBranchSwitch(updated);
+      })
+      .catch(() => {
+        // Best-effort refresh; a transient git failure leaves the persisted
+        // branch in place rather than surfacing an error on the launcher.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, knownBranch, onBranchSwitch]);
+
   const openBranchPicker = useCallback(async (): Promise<void> => {
     if (!window.argmax || !project) return;
     try {

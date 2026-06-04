@@ -14,7 +14,7 @@ use crate::{
     git::exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
     persistence::database::Database,
     persistence::projects::require_project,
-    persistence::workspaces::find_workspace_by_id,
+    persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
     util::workspace_paths::{resolve_inside, PathError},
 };
 
@@ -110,12 +110,15 @@ pub async fn list_changed_files(
     workspace_id: &str,
     comparison: ReviewComparison,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    let workspace = {
-        let connection = database.connection();
-        find_workspace_by_id(&connection, workspace_id)?
-    };
-    let base_ref = comparison_base_ref(comparison, &workspace.base_ref);
-    list_changed_files_at_path(workspace.path, base_ref).await
+    let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
+    let base_ref = resolve_workspace_base(
+        Path::new(&workspace.path),
+        comparison,
+        &workspace.base_ref,
+        default_branch.as_deref(),
+    )
+    .await;
+    list_changed_files_at_path(&workspace.path, base_ref.as_deref()).await
 }
 
 pub async fn load_diff(
@@ -124,12 +127,21 @@ pub async fn load_diff(
     file_path: Option<&str>,
     comparison: ReviewComparison,
 ) -> ArgmaxResult<WorkspaceDiff> {
-    let workspace = {
-        let connection = database.connection();
-        find_workspace_by_id(&connection, workspace_id)?
-    };
-    let base_ref = comparison_base_ref(comparison, &workspace.base_ref);
-    load_diff_at_path(workspace.path, workspace_id.to_owned(), file_path, base_ref).await
+    let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
+    let base_ref = resolve_workspace_base(
+        Path::new(&workspace.path),
+        comparison,
+        &workspace.base_ref,
+        default_branch.as_deref(),
+    )
+    .await;
+    load_diff_at_path(
+        workspace.path,
+        workspace_id.to_owned(),
+        file_path,
+        base_ref.as_deref(),
+    )
+    .await
 }
 
 pub async fn list_changed_files_for_project(
@@ -184,6 +196,64 @@ fn comparison_base_ref(comparison: ReviewComparison, base_ref: &str) -> Option<&
 /// currently checked-out branch when no default is recorded.
 fn project_base_ref<'a>(default_branch: &'a Option<String>, current_branch: &'a str) -> &'a str {
     default_branch.as_deref().unwrap_or(current_branch)
+}
+
+/// Load a workspace plus its project's recorded default branch (if any). The
+/// default branch is the fallback base when the workspace's own base_ref no
+/// longer resolves.
+fn load_workspace_with_default_branch(
+    database: &Database,
+    workspace_id: &str,
+) -> ArgmaxResult<(WorkspaceSummary, Option<String>)> {
+    let connection = database.connection();
+    let workspace = find_workspace_by_id(&connection, workspace_id)?;
+    let default_branch = require_project(&connection, &workspace.project_id)
+        .ok()
+        .and_then(|project| project.default_branch);
+    Ok((workspace, default_branch))
+}
+
+/// Resolve the effective diff base for a workspace review, tolerating a base
+/// branch that has since been deleted. Working-tree comparison stays `None`.
+/// Branch comparison prefers the workspace's recorded base_ref, falls back to
+/// the project default branch, then to working-tree mode — so a pruned base
+/// branch downgrades the diff to "vs HEAD" instead of failing it with
+/// "not a valid object name".
+async fn resolve_workspace_base(
+    repo_path: &Path,
+    comparison: ReviewComparison,
+    base_ref: &str,
+    default_branch: Option<&str>,
+) -> Option<String> {
+    if comparison == ReviewComparison::WorkingTree {
+        return None;
+    }
+    if ref_exists(repo_path, base_ref).await {
+        return Some(base_ref.to_owned());
+    }
+    match default_branch {
+        Some(default_branch)
+            if default_branch != base_ref && ref_exists(repo_path, default_branch).await =>
+        {
+            Some(default_branch.to_owned())
+        }
+        _ => None,
+    }
+}
+
+/// True when `reference` resolves to a commit in this repo/worktree. Exit code 1
+/// (no such ref) is the expected "missing" signal, not a hard git failure.
+async fn ref_exists(repo_path: &Path, reference: &str) -> bool {
+    let rev = format!("{reference}^{{commit}}");
+    run_git_text_with_allowed_exit_codes(
+        repo_path,
+        ["rev-parse", "--verify", "--quiet", rev.as_str()],
+        &[1],
+        GIT_TIMEOUT,
+    )
+    .await
+    .map(|exit| !exit.stdout.trim().is_empty())
+    .unwrap_or(false)
 }
 
 pub async fn list_changed_files_at_path(

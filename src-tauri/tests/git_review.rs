@@ -2,8 +2,66 @@ mod support;
 
 use std::os::unix::fs::symlink;
 
-use argmax_lib::review::git_review::{list_changed_files_at_path, load_diff_at_path};
+use std::sync::Arc;
+
+use argmax_lib::persistence::{
+    database::Database,
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    workspaces::{persist_workspace, PersistWorkspaceInput},
+};
+use argmax_lib::review::git_review::{
+    list_changed_files, list_changed_files_at_path, load_diff_at_path, ReviewComparison,
+};
 use support::git_repo::{run_git, seed_git_repo};
+
+/// Persist a project + a workspace whose `path` is the repo itself, so the
+/// database-backed review functions can be driven against a real git tree.
+fn seed_project_and_workspace(
+    repo_path: &str,
+    default_branch: Option<&str>,
+    current_branch: &str,
+    base_ref: &str,
+) -> Arc<Database> {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    {
+        let connection = database.connection();
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "p-review".to_owned(),
+                name: "review-test".to_owned(),
+                repo_path: repo_path.to_owned(),
+                current_branch: current_branch.to_owned(),
+                default_branch: default_branch.map(str::to_owned),
+                settings: ProjectSettings {
+                    default_provider: "claude".to_owned(),
+                    default_model_label: "Sonnet".to_owned(),
+                    worktree_location: format!("{repo_path}/worktrees"),
+                    setup_command: String::new(),
+                    check_commands: vec![],
+                },
+            },
+        )
+        .expect("persist project");
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "ws-review".to_owned(),
+                project_id: "p-review".to_owned(),
+                task_label: "review".to_owned(),
+                branch: current_branch.to_owned(),
+                base_ref: base_ref.to_owned(),
+                path: repo_path.to_owned(),
+                state: "running".to_owned(),
+                shared_workspace: false,
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace");
+    }
+    database
+}
 
 #[tokio::test]
 async fn lists_changed_files_and_loads_diffs() {
@@ -168,4 +226,75 @@ async fn rejects_paths_that_escape_repo() {
     let json = serde_json::to_value(&err).unwrap();
 
     assert_eq!(json["sub_code"], "WORKSPACE_PATH_INVALID");
+}
+
+#[tokio::test]
+async fn branch_mode_falls_back_to_default_when_base_deleted() {
+    // A worktree forked from `doomed`; that branch is later merged and pruned.
+    // The stored base_ref now dangles. Branch-mode review must fall back to the
+    // project default branch instead of failing with "not a valid object name".
+    let repo = seed_git_repo(&[("src/index.ts", "export const value = 1;\n")]);
+    run_git(repo.path(), &["branch", "-M", "main"]);
+    run_git(repo.path(), &["branch", "doomed"]);
+    run_git(repo.path(), &["checkout", "-b", "feature"]);
+    std::fs::write(
+        repo.path().join("src/index.ts"),
+        "export const value = 2;\n",
+    )
+    .unwrap();
+    run_git(repo.path(), &["commit", "-am", "feature change"]);
+    // The base branch is gone; only main + feature remain.
+    run_git(repo.path(), &["branch", "-D", "doomed"]);
+
+    let database = seed_project_and_workspace(
+        &repo.path().display().to_string(),
+        Some("main"),
+        "feature",
+        "doomed",
+    );
+
+    let files = list_changed_files(&database, "ws-review", ReviewComparison::Branch)
+        .await
+        .expect("review should fall back to default branch, not error on dead base");
+
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| (file.status.as_str(), file.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("M", "src/index.ts")],
+    );
+}
+
+#[tokio::test]
+async fn branch_mode_falls_back_to_working_tree_when_base_and_default_gone() {
+    // Both the workspace base_ref and the project default branch are missing.
+    // Review degrades to working-tree mode (vs HEAD) so uncommitted work still
+    // renders rather than erroring on the dead refs.
+    let repo = seed_git_repo(&[("src/index.ts", "export const value = 1;\n")]);
+    run_git(repo.path(), &["branch", "-M", "main"]);
+    std::fs::write(
+        repo.path().join("src/index.ts"),
+        "export const value = 2;\n",
+    )
+    .unwrap();
+
+    let database = seed_project_and_workspace(
+        &repo.path().display().to_string(),
+        Some("also-gone"),
+        "main",
+        "doomed",
+    );
+
+    let files = list_changed_files(&database, "ws-review", ReviewComparison::Branch)
+        .await
+        .expect("review should fall back to working tree when no ref resolves");
+
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| (file.status.as_str(), file.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("M", "src/index.ts")],
+    );
 }

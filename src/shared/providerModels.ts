@@ -15,8 +15,6 @@ export interface ProviderModelOption {
    * which render without an effort control.
    */
   supportsReasoningEffort?: boolean;
-  /** When true, explicitly disables model_reasoning_summary so global config can't inject it. */
-  disableReasoningSummary?: boolean;
   description?: string;
   badge?: string;
 }
@@ -53,7 +51,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" }
   ],
   codex: [
-    { label: "Codex Spark", modelId: "gpt-5.3-codex-spark", supportsReasoningEffort: true, disableReasoningSummary: true },
     { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true }
   ],
   cursor: [
@@ -71,8 +68,8 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     launchMode: "structured-json"
   },
   codex: {
-    label: "Codex Spark",
-    modelId: "gpt-5.3-codex-spark",
+    label: "GPT-5.5",
+    modelId: "gpt-5.5",
     reasoningEffort: "medium",
     launchMode: "structured-json"
   },

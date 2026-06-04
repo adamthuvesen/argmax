@@ -437,8 +437,8 @@ struct ProviderDefaults {
 fn provider_defaults(provider: &str) -> ProviderDefaults {
     match provider {
         "codex" => ProviderDefaults {
-            model_label: "Codex Spark",
-            model_id: "gpt-5.3-codex-spark",
+            model_label: "GPT-5.5",
+            model_id: "gpt-5.5",
             reasoning_effort: Some("medium"),
         },
         "cursor" => ProviderDefaults {

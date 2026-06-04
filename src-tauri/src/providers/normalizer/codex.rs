@@ -264,7 +264,7 @@ mod tests {
         let mut context = NormalizerSessionContext::default();
         normalize_provider_event(
             ProviderId::Codex,
-            &output_event(r#"{"type":"turn_context","model":"gpt-5.3-codex-spark"}"#),
+            &output_event(r#"{"type":"turn_context","model":"gpt-5.5"}"#),
             &mut context,
         );
         let result = normalize_provider_event(
@@ -274,7 +274,7 @@ mod tests {
             ),
             &mut context,
         );
-        assert_eq!(result.usages[0].model_id, "gpt-5.3-codex-spark");
+        assert_eq!(result.usages[0].model_id, "gpt-5.5");
         assert_eq!(result.usages[0].tokens.input, 60);
         assert_eq!(result.usages[0].tokens.cache_read, 40);
     }

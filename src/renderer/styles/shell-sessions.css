@@ -2,11 +2,11 @@
   position: relative;
   display: grid;
   grid-template-columns: 4px minmax(0, 1fr);
-  gap: 11px;
+  gap: 8px;
   align-items: center;
   width: 100%;
   min-height: 28px;
-  padding: 0 10px 0 12px;
+  padding: 0 10px 0 8px;
   color: var(--muted-strong);
   text-align: left;
   border: 0;

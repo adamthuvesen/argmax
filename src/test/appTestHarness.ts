@@ -283,6 +283,7 @@ export function setupAppTestMocks(): void {
       remove: ({ projectId }) => Promise.resolve({ projectId }),
       updateSettings: () => Promise.resolve(primaryProject()),
       listBranches: () => Promise.resolve(["main"]),
+      refreshBranch: () => Promise.resolve(primaryProject()),
       switchBranch: () => Promise.resolve(primaryProject())
     },
     workspaces: {

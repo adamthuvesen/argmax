@@ -76,6 +76,12 @@ pub struct ProjectsListBranchesInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsRefreshBranchInput {
+    pub project_id: ProjectId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsSwitchBranchInput {
     pub project_id: ProjectId,
     pub branch: BranchName,

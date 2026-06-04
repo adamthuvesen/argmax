@@ -435,6 +435,7 @@ export interface ArgmaxApi {
     remove: (input: RemoveProjectInput) => Promise<{ projectId: string }>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
     listBranches: (projectId: string) => Promise<string[]>;
+    refreshBranch: (projectId: string) => Promise<ProjectSummary>;
     switchBranch: (projectId: string, branch: string) => Promise<ProjectSummary>;
   };
   workspaces: {

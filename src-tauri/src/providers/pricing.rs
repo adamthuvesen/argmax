@@ -61,6 +61,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "gpt-5.5-pro" => ModelPricing { input: 30.0, output: 180.0, cache_read: 0.0, cache_write: 0.0 },
     "o4-mini" => ModelPricing { input: 1.1, output: 4.4, cache_read: 0.275, cache_write: 0.0 },
     "composer-2.5" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-3.5-flash" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-4-8-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-4-7-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },

@@ -58,6 +58,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   ],
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" },
+    { label: "Gemini 3.5 Flash (Cursor)", modelId: "gemini-3.5-flash" },
     { label: "GPT-5.5 (Cursor)", modelId: "gpt-5.5-medium", supportsReasoningEffort: true },
     { label: "Claude Opus 4.8 (Cursor)", modelId: "claude-opus-4-8-medium", supportsReasoningEffort: true }
   ]
@@ -137,6 +138,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // layer. (audit-2026-05-17 H2 — the `-medium` aliased ids previously
   // mirrored base pricing, contradicting this rule.)
   "composer-2.5":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.5-flash":        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-8-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-7-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.5-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }

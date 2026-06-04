@@ -304,21 +304,10 @@ fn codex_reasoning_args(input: &ProviderLaunchInput, structured: bool) -> Vec<St
         };
     };
 
-    let mut args = vec![
+    vec![
         "-c".to_string(),
         format!("model_reasoning_effort=\"{}\"", reasoning_effort.as_str()),
-    ];
-    if structured && codex_model_disables_reasoning_summary(&input.model_id) {
-        args.extend([
-            "-c".to_string(),
-            "model_reasoning_summary=\"none\"".to_string(),
-        ]);
-    }
-    args
-}
-
-fn codex_model_disables_reasoning_summary(model_id: &str) -> bool {
-    model_id == "gpt-5.3-codex-spark"
+    ]
 }
 
 pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
@@ -430,11 +419,9 @@ mod tests {
                 "--json",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
-                "gpt-5.3-codex-spark",
+                "gpt-5.5",
                 "-c",
                 "model_reasoning_effort=\"low\"",
-                "-c",
-                "model_reasoning_summary=\"none\"",
                 "-",
             ]
         );
@@ -479,11 +466,9 @@ mod tests {
                 "--json",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
-                "gpt-5.3-codex-spark",
+                "gpt-5.5",
                 "-c",
                 "model_reasoning_effort=\"low\"",
-                "-c",
-                "model_reasoning_summary=\"none\"",
                 "thread-1",
                 "-",
             ]
@@ -613,8 +598,8 @@ mod tests {
         let (model_label, model_id, reasoning_effort, mode) = match provider_id {
             ProviderId::Claude => ("Claude Haiku", "haiku", None, ProviderMode::StructuredJson),
             ProviderId::Codex => (
-                "GPT-5.3 Codex Spark Low",
-                "gpt-5.3-codex-spark",
+                "GPT-5.5 Low",
+                "gpt-5.5",
                 Some(ReasoningEffort::Low),
                 ProviderMode::StructuredJson,
             ),

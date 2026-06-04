@@ -156,7 +156,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
 
   it("leaves every model selectable when availability is unknown (optimistic)", () => {
     openLauncher(undefined);
-    const codexRow = screen.getByText("Codex Spark").closest("li");
+    const codexRow = screen.getByText("GPT-5.5").closest("li");
     expect(codexRow).not.toHaveAttribute("data-disabled");
     expect(codexRow && within(codexRow).getAllByRole("button")[0]).toBeEnabled();
   });
@@ -167,7 +167,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
       codex: { installed: false, authenticated: null },
       cursor: { installed: true, authenticated: true }
     });
-    const codexRow = screen.getByText("Codex Spark").closest("li");
+    const codexRow = screen.getByText("GPT-5.5").closest("li");
     expect(codexRow).toHaveAttribute("data-disabled", "true");
     expect(codexRow && within(codexRow).getByText("not installed")).toBeInTheDocument();
     // The row's primary button is disabled, so it can't be chosen.
@@ -180,7 +180,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
       codex: { installed: false, authenticated: null },
       cursor: { installed: true, authenticated: true }
     });
-    fireEvent.click(screen.getByText("Codex Spark"));
+    fireEvent.click(screen.getByText("GPT-5.5"));
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -190,10 +190,10 @@ describe("LaunchModelSelector — provider availability gating", () => {
       codex: { installed: true, authenticated: false },
       cursor: { installed: true, authenticated: true }
     });
-    const codexRow = screen.getByText("Codex Spark").closest("li");
+    const codexRow = screen.getByText("GPT-5.5").closest("li");
     expect(codexRow).not.toHaveAttribute("data-disabled");
     expect(codexRow && within(codexRow).getByText("needs login")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Codex Spark"));
+    fireEvent.click(screen.getByText("GPT-5.5"));
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 });

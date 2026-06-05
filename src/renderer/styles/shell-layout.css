@@ -265,6 +265,13 @@
   padding-left: 0;
 }
 
+/* Flat "by date" view: a collapsible date header reusing the full
+   `.project-group` / `.project-row` chrome so spacing matches project groups
+   exactly. The header isn't draggable, so drop the grab cursor. */
+.project-group.session-date-group > .session-date-row {
+  cursor: pointer;
+}
+
 .project-group.dragging {
   opacity: 0.4;
 }

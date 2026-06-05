@@ -16,20 +16,28 @@ import { APP_VERSION_LABEL } from "../../shared/appVersion.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import {
+  groupWorkspacesByDate,
+  loadCollapsedDateGroupIds,
   loadCollapsedProjectIds,
+  loadExpandedDateGroupIds,
   loadExpandedProjectIds,
   loadProjectOrder,
   loadProjectSortMode,
+  loadSidebarViewMode,
   loadWorkspaceOrders,
+  saveCollapsedDateGroupIds,
   saveCollapsedProjectIds,
+  saveExpandedDateGroupIds,
   saveExpandedProjectIds,
   saveProjectOrder,
   saveProjectSortMode,
+  saveSidebarViewMode,
   saveWorkspaceOrders,
   SIDEBAR_SESSION_LIMIT,
   sortProjectsBy,
   sortWorkspaceGroup,
-  type ProjectSortMode
+  type ProjectSortMode,
+  type SidebarViewMode
 } from "../lib/projects.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
@@ -59,6 +67,11 @@ function markBootCollapseSeeded(): void {
     // again on the next render, which is harmless.
   }
 }
+
+const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
+  { value: "projects", label: "Projects", description: "Group sessions under their project" },
+  { value: "sessions", label: "Date", description: "Flat list of all sessions by date" }
+];
 
 const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
   { value: "recent", label: "Recent activity", description: "Most recently active project first" },
@@ -148,6 +161,13 @@ export function Sidebar({
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
+  const [viewMode, setViewMode] = useState<SidebarViewMode>(() => loadSidebarViewMode());
+  const [collapsedDateGroups, setCollapsedDateGroups] = useState<Set<string>>(() =>
+    loadCollapsedDateGroupIds()
+  );
+  const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() =>
+    loadExpandedDateGroupIds()
+  );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   // Per-project actions menu. `mode === "confirm"` swaps the menu in-place
@@ -212,6 +232,16 @@ export function Sidebar({
     [sortMode]
   );
 
+  const handleSelectViewMode = useCallback(
+    (mode: SidebarViewMode): void => {
+      if (mode !== viewMode) {
+        setViewMode(mode);
+        saveSidebarViewMode(mode);
+      }
+    },
+    [viewMode]
+  );
+
   // Workspaces without any matching session in the snapshot can't be opened
   // (a grid pane needs a sessionId). The dashboard query's gap-filler
   // guarantees every workspace that has at least one session row in SQLite
@@ -225,6 +255,19 @@ export function Sidebar({
     }
     return ids;
   }, [snapshot.sessions]);
+
+  // Flat, date-bucketed list for the "sessions" view mode — every non-archived
+  // workspace that has a session, regardless of project.
+  const dateGroups = useMemo(
+    () =>
+      groupWorkspacesByDate(
+        snapshot.workspaces.filter(
+          (workspace) =>
+            workspace.state !== "archived" && workspaceIdsWithSessions.has(workspace.id)
+        )
+      ),
+    [snapshot.workspaces, workspaceIdsWithSessions]
+  );
 
   const workspaceTokenMap = useMemo(() => {
     const map = new Map<string, { input: number; output: number; cached: number }>();
@@ -283,6 +326,34 @@ export function Sidebar({
       saveExpandedProjectIds(next);
     },
     [expandedProjectIds]
+  );
+
+  const toggleDateGroupVisibility = useCallback(
+    (key: string): void => {
+      const next = new Set(collapsedDateGroups);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      setCollapsedDateGroups(next);
+      saveCollapsedDateGroupIds(next);
+    },
+    [collapsedDateGroups]
+  );
+
+  const toggleDateGroupExpansion = useCallback(
+    (key: string): void => {
+      const next = new Set(expandedDateGroups);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      setExpandedDateGroups(next);
+      saveExpandedDateGroupIds(next);
+    },
+    [expandedDateGroups]
   );
 
   const handleDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
@@ -414,14 +485,14 @@ export function Sidebar({
       <div className="project-list">
         <div className="rail-heading">
           <p className="rail-label">
-            <span className="rail-label-text">Projects</span>
+            <span className="rail-label-text">{viewMode === "sessions" ? "Sessions" : "Projects"}</span>
           </p>
           <div className="project-picker-anchor rail-sort-anchor" ref={sortMenuAnchorRef}>
             <button
               className="small-icon"
               type="button"
-              title="Sort projects"
-              aria-label="Sort projects"
+              title="Sidebar view options"
+              aria-label="Sidebar view options"
               aria-haspopup="menu"
               aria-expanded={sortMenuOpen}
               onClick={() => setSortMenuOpen((open) => !open)}
@@ -432,10 +503,13 @@ export function Sidebar({
               <ul
                 className="project-picker-popover rail-sort-popover"
                 role="menu"
-                aria-label="Sort projects"
+                aria-label="Sidebar view options"
               >
-                {SORT_MODE_OPTIONS.map((option) => {
-                  const isActive = option.value === sortMode;
+                <li className="rail-sort-group-label" role="presentation">
+                  Group by
+                </li>
+                {VIEW_MODE_OPTIONS.map((option) => {
+                  const isActive = option.value === viewMode;
                   return (
                     <li key={option.value} role="none">
                       <button
@@ -444,7 +518,7 @@ export function Sidebar({
                         aria-checked={isActive}
                         className="project-picker-item"
                         title={option.description}
-                        onClick={() => handleSelectSortMode(option.value)}
+                        onClick={() => handleSelectViewMode(option.value)}
                       >
                         <span className="rail-sort-check" aria-hidden="true">
                           {isActive ? <Check size={14} /> : null}
@@ -454,6 +528,34 @@ export function Sidebar({
                     </li>
                   );
                 })}
+                {viewMode === "projects" ? (
+                  <>
+                    <li className="rail-sort-divider" role="separator" />
+                    <li className="rail-sort-group-label" role="presentation">
+                      Sort projects
+                    </li>
+                    {SORT_MODE_OPTIONS.map((option) => {
+                      const isActive = option.value === sortMode;
+                      return (
+                        <li key={option.value} role="none">
+                          <button
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={isActive}
+                            className="project-picker-item"
+                            title={option.description}
+                            onClick={() => handleSelectSortMode(option.value)}
+                          >
+                            <span className="rail-sort-check" aria-hidden="true">
+                              {isActive ? <Check size={14} /> : null}
+                            </span>
+                            {option.label}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </>
+                ) : null}
               </ul>
             )}
           </div>
@@ -461,7 +563,99 @@ export function Sidebar({
             <Plus size={14} />
           </button>
         </div>
-        {orderedProjects.map((project) => {
+        {viewMode === "sessions"
+          ? dateGroups.map((group) => {
+              const isCollapsed = collapsedDateGroups.has(group.key);
+              const totalCount = group.items.length;
+              const isExpanded = expandedDateGroups.has(group.key);
+              const selectedIndex = selectedWorkspaceId
+                ? group.items.findIndex((workspace) => workspace.id === selectedWorkspaceId)
+                : -1;
+              const forceExpand = selectedIndex >= SIDEBAR_SESSION_LIMIT;
+              const showAll = isExpanded || forceExpand;
+              const visibleItems = showAll ? group.items : group.items.slice(0, SIDEBAR_SESSION_LIMIT);
+              const hiddenCount = totalCount - visibleItems.length;
+              const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
+              return (
+                <div
+                  className="project-group session-date-group"
+                  data-collapsed={isCollapsed ? "true" : undefined}
+                  key={group.key}
+                >
+                  <div
+                    className="project-row session-date-row"
+                    onClick={() => toggleDateGroupVisibility(group.key)}
+                  >
+                    <span className="project-name session-date-label">
+                      <span className="project-name-text">{group.label}</span>
+                    </span>
+                    {/* Empty actions column so the chevron lands in the same
+                        right-edge slot as a project row's visibility chevron. */}
+                    <span aria-hidden="true" />
+                    <button
+                      aria-expanded={!isCollapsed}
+                      aria-label={`${isCollapsed ? "Show" : "Hide"} ${group.label} sessions`}
+                      className="project-visibility"
+                      title={`${isCollapsed ? "Show" : "Hide"} Sessions`}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleDateGroupVisibility(group.key);
+                      }}
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  {isCollapsed ? null : (
+                    <>
+                      {visibleItems.map((workspace, workspaceIndex) => {
+                        const isLast = !hasOverflow && workspaceIndex === visibleItems.length - 1;
+                        return (
+                          <div
+                            key={workspace.id}
+                            className="session-row-wrap"
+                            data-last={isLast ? "true" : "false"}
+                          >
+                            <SidebarSessionRow
+                              workspace={workspace}
+                              workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
+                              isSelected={selectedWorkspaceId === workspace.id}
+                              isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                              canDragToGrid={canDragWorkspaceToGrid}
+                              onOpenWorkspaceChat={onOpenWorkspaceChat}
+                              onArchiveWorkspace={onArchiveWorkspace}
+                              onOpenInIde={onOpenInIde}
+                              onTogglePin={onToggleWorkspacePinned}
+                              onWorkspaceDragStart={onWorkspaceDragStart}
+                              onWorkspaceDragEnd={onWorkspaceDragEnd}
+                              detectedIdes={detectedIdes}
+                              defaultIde={defaultIde}
+                              showTokens={showSessionTokens}
+                            />
+                          </div>
+                        );
+                      })}
+                      {hasOverflow ? (
+                        <button
+                          type="button"
+                          className="sidebar-show-more"
+                          aria-expanded={showAll}
+                          aria-label={
+                            showAll
+                              ? `Show fewer ${group.label} sessions`
+                              : `Show ${hiddenCount} more ${group.label} sessions`
+                          }
+                          onClick={() => toggleDateGroupExpansion(group.key)}
+                        >
+                          {showAll ? "Show less" : `Show ${hiddenCount} more`}
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              );
+            })
+          : orderedProjects.map((project) => {
           const manualOrder = workspaceOrders[project.id] ?? [];
           const liveWorkspaces = sortWorkspaceGroup(
             snapshot.workspaces.filter(
@@ -501,14 +695,21 @@ export function Sidebar({
               onDrop={(e) => handleDrop(e, project.id, orderedProjects)}
               onDragEnd={handleDragEnd}
             >
-              <div className="project-row">
+              <div
+                className="project-row"
+                onClick={() => toggleProjectVisibility(project.id)}
+              >
                 <button
                   aria-current={selectedProjectId === project.id && !selectedWorkspaceId ? "true" : undefined}
                   className={
                     selectedProjectId === project.id && !selectedWorkspaceId ? "project-name active" : "project-name"
                   }
                   type="button"
-                  onClick={() => {
+                  onClick={(event) => {
+                    // The project name opens the project; the row-level click
+                    // (and the chevron) handle collapse, so stop this from
+                    // bubbling up and immediately toggling visibility back.
+                    event.stopPropagation();
                     if (selectedProjectId === project.id && !selectedWorkspaceId) {
                       toggleProjectVisibility(project.id);
                       return;
@@ -551,7 +752,10 @@ export function Sidebar({
                   className="project-visibility"
                   title={`${isCollapsed ? "Show" : "Hide"} Sessions`}
                   type="button"
-                  onClick={() => toggleProjectVisibility(project.id)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleProjectVisibility(project.id);
+                  }}
                 >
                   <ChevronRight size={14} />
                 </button>

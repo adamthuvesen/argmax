@@ -75,6 +75,15 @@ pub fn workspaces_set_pinned(
     live_workspaces(&state)?.set_pinned(input)
 }
 
+#[tauri::command(rename = "workspaces:set-label")]
+#[specta::specta]
+pub fn workspaces_set_label(
+    state: State<'_, AppState>,
+    input: WorkspacesSetLabelInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(&state)?.set_label(input)
+}
+
 fn live_workspaces(state: &AppState) -> ArgmaxResult<Arc<WorkspaceService>> {
     state.workspaces.get().cloned().ok_or_else(|| {
         ArgmaxError::service(

@@ -211,6 +211,25 @@ pub fn set_workspace_pinned(
     find_workspace_by_id(connection, workspace_id)
 }
 
+pub fn set_workspace_label(
+    connection: &Connection,
+    workspace_id: &str,
+    task_label: &str,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let mut statement = prepared(
+        connection,
+        "UPDATE workspaces SET task_label = ?, updated_at = ? WHERE id = ?",
+    )
+    .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((task_label, now_iso(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("workspace", workspace_id));
+    }
+    find_workspace_by_id(connection, workspace_id)
+}
+
 pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSummary> {
     Ok(WorkspaceSummary {
         id: row.get("id")?,

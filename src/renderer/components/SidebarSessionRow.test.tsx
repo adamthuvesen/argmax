@@ -137,6 +137,94 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByRole("menuitem", { name: /Cursor/ })).toHaveFocus();
   });
 
+  it("right-click → Rename edits the label in place and commits on Enter", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onRename = vi.fn();
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onRename={onRename}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    // Right-click opens the session context menu.
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+
+    // The label is replaced by an input seeded with the current label.
+    const input = screen.getByRole("textbox", { name: "Rename session" });
+    expect(input).toHaveValue("Build the dashboard");
+
+    fireEvent.change(input, { target: { value: "Ship the date view" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith("workspace-1", "Ship the date view");
+  });
+
+  it("Escape cancels a rename without calling onRename", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onRename = vi.fn();
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onRename={onRename}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByRole("textbox", { name: "Rename session" });
+    fireEvent.change(input, { target: { value: "Discarded" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(onRename).not.toHaveBeenCalled();
+    // Back to the normal label button.
+    expect(screen.getByRole("button", { name: /Build the dashboard/ })).toBeInTheDocument();
+  });
+
+  it("does not offer a rename menu when onRename is not provided", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
+  });
+
   it("memo comparator skips re-render when a new workspace object has identical visible fields (ralph C1)", () => {
     const onOpenWorkspaceChat = vi.fn();
     const onArchiveWorkspace = vi.fn();

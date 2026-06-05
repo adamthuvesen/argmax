@@ -1,4 +1,4 @@
-import { Archive, ExternalLink, Pin, PinOff, Terminal } from "lucide-react";
+import { Archive, ExternalLink, Pencil, Pin, PinOff, Terminal } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -38,6 +38,7 @@ type SidebarSessionRowProps = {
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => void;
+  onRename?: (workspaceId: string, taskLabel: string) => void;
   onWorkspaceDragStart?: (workspaceId: string) => void;
   onWorkspaceDragEnd?: () => void;
   detectedIdes: DetectedIde[];
@@ -55,6 +56,7 @@ function SidebarSessionRowInner({
   onArchiveWorkspace,
   onOpenInIde,
   onTogglePin,
+  onRename,
   onWorkspaceDragStart,
   onWorkspaceDragEnd,
   detectedIdes,
@@ -71,6 +73,24 @@ function SidebarSessionRowInner({
   // `pickerOpen && popoverPos`.
   const menuItemRefs = useRef(new Map<string, HTMLButtonElement | null>());
   useDismissOnOutsideOrEscape(pickerRef, pickerOpen, () => setPickerOpen(false), popoverRef);
+
+  // Right-click "Rename" → inline edit. The context menu is portaled at the
+  // cursor; committing writes the new label through onRename.
+  const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState("");
+  const contextMenuRef = useRef<HTMLUListElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const closeContextMenu = (): void => setContextMenuPos(null);
+  useDismissOnOutsideOrEscape(contextMenuRef, contextMenuPos !== null, closeContextMenu);
+
+  // Focus + select the input once it mounts so the user can type immediately.
+  useEffect(() => {
+    if (isEditing) {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }
+  }, [isEditing]);
 
   // Focus the first menuitem (preferring the current default IDE) once the
   // popover has been positioned and its menuitems have mounted into the DOM.
@@ -158,6 +178,52 @@ function SidebarSessionRowInner({
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled session";
   const title = `${displayLabel} — ${workspace.state}${isOpenInGrid ? " — in view" : ""}`;
 
+  const handleContextMenu = (event: ReactMouseEvent): void => {
+    if (!onRename) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // Clamp to the viewport so a right-click near the bottom/right edge doesn't
+    // push the menu off-screen. Sizes are the popover's min-width plus a small
+    // single-item height estimate.
+    const MENU_WIDTH = 150;
+    const MENU_HEIGHT = 44;
+    const left = Math.min(event.clientX, Math.max(8, window.innerWidth - MENU_WIDTH));
+    const top = Math.min(event.clientY, Math.max(8, window.innerHeight - MENU_HEIGHT));
+    setContextMenuPos({ top, left });
+  };
+
+  const startRename = (): void => {
+    closeContextMenu();
+    setDraftLabel(workspace.taskLabel.trim() || workspace.branch || "");
+    setIsEditing(true);
+  };
+
+  const commitRename = (): void => {
+    if (!isEditing) return;
+    setIsEditing(false);
+    const next = draftLabel.trim();
+    // Skip empty or unchanged values — the label column is NOT NULL and the
+    // backend rejects blanks anyway.
+    if (next && next !== workspace.taskLabel.trim()) {
+      onRename?.(workspace.id, next);
+    }
+  };
+
+  const cancelRename = (): void => {
+    setIsEditing(false);
+  };
+
+  const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitRename();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRename();
+    }
+  };
+
   const handleWorkspaceDragStart = (event: ReactDragEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
     if (!canDragToGrid) {
@@ -214,27 +280,41 @@ function SidebarSessionRowInner({
 
   return (
     <div className="session-row">
-      <button
-        aria-current={isSelected ? "true" : undefined}
-        className={isSelected ? "session-link active" : "session-link"}
-        data-open={isOpenInGrid ? "true" : undefined}
-        data-status={workspace.state}
-        type="button"
-        title={title}
-        draggable={canDragToGrid}
-        onKeyDown={handleSessionLinkKeyDown}
-        onClick={(event) =>
-          onOpenWorkspaceChat(workspace.id, {
-            ctrlOrMeta: event.metaKey || event.ctrlKey,
-            alt: event.altKey
-          })
-        }
-        onDragStart={handleWorkspaceDragStart}
-        onDragEnd={handleWorkspaceDragEnd}
-      >
-        <span className="status-dot" aria-hidden="true" />
-        <span>{displayLabel}</span>
-      </button>
+      {isEditing ? (
+        <input
+          ref={renameInputRef}
+          className="session-rename-input"
+          value={draftLabel}
+          aria-label="Rename session"
+          maxLength={200}
+          onChange={(event) => setDraftLabel(event.target.value)}
+          onKeyDown={handleRenameKeyDown}
+          onBlur={commitRename}
+        />
+      ) : (
+        <>
+          <button
+            aria-current={isSelected ? "true" : undefined}
+            className={isSelected ? "session-link active" : "session-link"}
+            data-open={isOpenInGrid ? "true" : undefined}
+            data-status={workspace.state}
+            type="button"
+            title={title}
+            draggable={canDragToGrid}
+            onKeyDown={handleSessionLinkKeyDown}
+            onContextMenu={handleContextMenu}
+            onClick={(event) =>
+              onOpenWorkspaceChat(workspace.id, {
+                ctrlOrMeta: event.metaKey || event.ctrlKey,
+                alt: event.altKey
+              })
+            }
+            onDragStart={handleWorkspaceDragStart}
+            onDragEnd={handleWorkspaceDragEnd}
+          >
+            <span className="status-dot" aria-hidden="true" />
+            <span>{displayLabel}</span>
+          </button>
       {showTokens ? (() => {
         const inputOutput = (workspaceTokens?.input ?? 0) + (workspaceTokens?.output ?? 0);
         const display = formatTokens(inputOutput);
@@ -330,17 +410,52 @@ function SidebarSessionRowInner({
           {workspace.pinned ? <PinOff size={12} /> : <Pin size={12} />}
         </button>
       ) : null}
-      {showArchive && (
-        <button
-          className="session-archive-btn"
-          title="Archive session"
-          aria-label="Archive session"
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
-        >
-          <Archive size={12} />
-        </button>
+          {showArchive && (
+            <button
+              className="session-archive-btn"
+              title="Archive session"
+              aria-label="Archive session"
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onArchiveWorkspace(workspace.id); }}
+            >
+              <Archive size={12} />
+            </button>
+          )}
+        </>
       )}
+      {contextMenuPos && onRename
+        ? createPortal(
+            <ul
+              ref={contextMenuRef}
+              className="project-picker-popover session-context-menu"
+              role="menu"
+              aria-label="Session actions"
+              style={{
+                position: "fixed",
+                top: contextMenuPos.top,
+                left: contextMenuPos.left,
+                right: "auto",
+                bottom: "auto"
+              }}
+            >
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    startRename();
+                  }}
+                >
+                  <Pencil size={13} aria-hidden="true" />
+                  Rename
+                </button>
+              </li>
+            </ul>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -369,6 +484,7 @@ export function sidebarSessionRowEqual(
   if (prev.onArchiveWorkspace !== next.onArchiveWorkspace) return false;
   if (prev.onOpenInIde !== next.onOpenInIde) return false;
   if (prev.onTogglePin !== next.onTogglePin) return false;
+  if (prev.onRename !== next.onRename) return false;
   if (prev.onWorkspaceDragStart !== next.onWorkspaceDragStart) return false;
   if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
   const pw = prev.workspace;

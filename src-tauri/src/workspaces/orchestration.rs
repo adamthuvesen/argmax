@@ -34,14 +34,15 @@ use crate::git::exec::run_git_text;
 use crate::ipc::inputs::{
     OpenIdeChoice, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
     WorkspacesCreateIsolatedInput, WorkspacesKeepInput, WorkspacesOpenInIdeInput,
-    WorkspacesSetPinnedInput,
+    WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
 use crate::persistence::projects::{list_projects, require_project};
 use crate::persistence::workspaces::{
-    find_workspace_by_id, persist_workspace, set_workspace_pinned, update_workspace_state,
-    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
+    find_workspace_by_id, persist_workspace, set_workspace_label, set_workspace_pinned,
+    update_workspace_state, update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
+    WorkspaceSummary,
 };
 use crate::providers::flush_queue::DashboardDelta;
 use crate::util::workspace_paths::normalize;
@@ -503,6 +504,23 @@ impl WorkspaceService {
         let connection = self.database.connection();
         let workspace =
             set_workspace_pinned(&connection, input.workspace_id.as_str(), input.pinned)?;
+        self.publish(DashboardDelta {
+            workspaces: vec![workspace.clone()],
+            ..DashboardDelta::default()
+        });
+        Ok(workspace)
+    }
+
+    pub fn set_label(
+        self: &Arc<Self>,
+        input: WorkspacesSetLabelInput,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let connection = self.database.connection();
+        let workspace = set_workspace_label(
+            &connection,
+            input.workspace_id.as_str(),
+            input.task_label.as_str(),
+        )?;
         self.publish(DashboardDelta {
             workspaces: vec![workspace.clone()],
             ..DashboardDelta::default()

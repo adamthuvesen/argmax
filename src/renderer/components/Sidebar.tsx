@@ -96,6 +96,7 @@ export function Sidebar({
   onOpenSettings,
   onOpenWorkspaceChat,
   onRemoveProject,
+  onRenameWorkspace,
   onResizeMouseDown,
   onToggleWorkspacePinned,
   onWorkspaceDragStart,
@@ -119,6 +120,7 @@ export function Sidebar({
   onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onRemoveProject?: (projectId: string) => void;
+  onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
   /** Notifies the parent that a sidebar drag started carrying this workspace. */
@@ -608,13 +610,10 @@ export function Sidebar({
                   </div>
                   {isCollapsed ? null : (
                     <>
-                      {visibleItems.map((workspace, workspaceIndex) => {
-                        const isLast = !hasOverflow && workspaceIndex === visibleItems.length - 1;
-                        return (
+                      {visibleItems.map((workspace) => (
                           <div
                             key={workspace.id}
                             className="session-row-wrap"
-                            data-last={isLast ? "true" : "false"}
                           >
                             <SidebarSessionRow
                               workspace={workspace}
@@ -626,6 +625,7 @@ export function Sidebar({
                               onArchiveWorkspace={onArchiveWorkspace}
                               onOpenInIde={onOpenInIde}
                               onTogglePin={onToggleWorkspacePinned}
+                              onRename={onRenameWorkspace}
                               onWorkspaceDragStart={onWorkspaceDragStart}
                               onWorkspaceDragEnd={onWorkspaceDragEnd}
                               detectedIdes={detectedIdes}
@@ -633,8 +633,7 @@ export function Sidebar({
                               showTokens={showSessionTokens}
                             />
                           </div>
-                        );
-                      })}
+                      ))}
                       {hasOverflow ? (
                         <button
                           type="button"
@@ -762,14 +761,10 @@ export function Sidebar({
               </div>
               {isCollapsed ? null : (
                 <>
-                  {visibleWorkspaces.map((workspace, workspaceIndex) => {
-                    const isLast =
-                      !hasOverflow && workspaceIndex === visibleWorkspaces.length - 1;
-                    return (
+                  {visibleWorkspaces.map((workspace) => (
                       <div
                         key={workspace.id}
                         className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
-                        data-last={isLast ? "true" : "false"}
                         draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
                         onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
                         onDragOver={handleWorkspaceDragOver}
@@ -788,6 +783,7 @@ export function Sidebar({
                           onArchiveWorkspace={onArchiveWorkspace}
                           onOpenInIde={onOpenInIde}
                           onTogglePin={onToggleWorkspacePinned}
+                          onRename={onRenameWorkspace}
                           onWorkspaceDragStart={onWorkspaceDragStart}
                           onWorkspaceDragEnd={onWorkspaceDragEnd}
                           detectedIdes={detectedIdes}
@@ -795,8 +791,7 @@ export function Sidebar({
                           showTokens={showSessionTokens}
                         />
                       </div>
-                    );
-                  })}
+                  ))}
                   {hasOverflow ? (
                     <button
                       type="button"

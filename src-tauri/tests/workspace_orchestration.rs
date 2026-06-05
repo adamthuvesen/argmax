@@ -15,7 +15,7 @@ use std::time::Duration;
 use argmax_lib::ipc::inputs::{
     OpenIdeChoice, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
     WorkspacesCreateIsolatedInput, WorkspacesKeepInput, WorkspacesOpenInIdeInput,
-    WorkspacesSetPinnedInput,
+    WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::{
@@ -323,6 +323,51 @@ async fn set_pinned_toggles_persisted_bit() {
         })
         .expect("unpin");
     assert!(!unpinned.pinned);
+}
+
+#[tokio::test]
+async fn set_label_persists_new_task_label() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let connection = database.connection();
+    let workspace = persist_workspace(
+        &connection,
+        &PersistWorkspaceInput {
+            id: "w-label".to_owned(),
+            project_id: PROJECT_ID.to_owned(),
+            task_label: "old label".to_owned(),
+            branch: "main".to_owned(),
+            base_ref: "main".to_owned(),
+            path: repo.path().display().to_string(),
+            state: "kept".to_owned(),
+            shared_workspace: true,
+            dirty: false,
+            changed_files: 0,
+        },
+    )
+    .expect("persist workspace");
+    drop(connection);
+
+    let service = WorkspaceService::new(database.clone());
+    let renamed = service
+        .set_label(WorkspacesSetLabelInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            task_label: TaskLabel::try_from("new label".to_owned()).expect("task label"),
+        })
+        .expect("rename");
+    assert_eq!(renamed.task_label, "new label");
+
+    // The new label survives a fresh read from the database.
+    let connection = database.connection();
+    let reloaded =
+        find_workspace_by_id(&connection, workspace.id.as_str()).expect("reload workspace");
+    assert_eq!(reloaded.task_label, "new label");
 }
 
 #[tokio::test]

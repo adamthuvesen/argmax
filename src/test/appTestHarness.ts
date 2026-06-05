@@ -299,6 +299,12 @@ export function setupAppTestMocks(): void {
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
           pinned
+        }),
+      setLabel: ({ workspaceId, taskLabel }) =>
+        Promise.resolve({
+          ...(snapshot.workspaces[0] ?? missingWorkspace()),
+          id: workspaceId,
+          taskLabel
         })
     },
     providers: {

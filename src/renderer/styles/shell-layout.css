@@ -226,6 +226,10 @@
   gap: 2px;
   min-height: 24px;
   margin: 22px 0 8px 12px;
+  /* Same right inset as the rows below so the header … / + sit in the same
+     right-edge columns as each project row's … / chevron (which carry this
+     inset via `.project-row` padding / the session-row action offset). */
+  padding-right: var(--sidebar-action-inset);
 }
 
 .rail-label {

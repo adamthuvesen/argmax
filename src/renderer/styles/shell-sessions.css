@@ -1,7 +1,7 @@
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 4px minmax(0, 1fr);
+  grid-template-columns: 5px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   width: 100%;
@@ -49,32 +49,34 @@
   white-space: nowrap;
 }
 
+/* Every session row gets a small leading marker. Idle/complete rows show a
+   hollow ring; active states fill it with their status color. */
 .status-dot {
   display: inline-block;
-  visibility: hidden;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   flex: 0 0 auto;
   border-radius: 999px;
   background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
   transition: background var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
 }
 
 .session-link[data-status="running"] .status-dot {
-  visibility: visible;
   background: var(--sage);
+  box-shadow: none;
   animation: status-pulse 1.6s var(--ease) infinite;
 }
 
 .session-link[data-status="waiting"] .status-dot {
-  visibility: visible;
   background: var(--amber);
+  box-shadow: none;
 }
 
 .session-link[data-status="failed"] .status-dot,
 .session-link[data-status="blocked"] .status-dot {
-  visibility: visible;
   background: var(--rose);
+  box-shadow: none;
 }
 
 .session-row {
@@ -87,6 +89,33 @@
 
 .session-row .session-link {
   padding-right: 46px;
+}
+
+/* Inline rename field — fills the row in place of the session link, matching
+   its height/inset so the row doesn't jump while editing. */
+.session-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 10px 0 8px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 400;
+  background: var(--panel);
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+}
+
+.session-rename-input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+/* Right-click session menu — reuses the picker popover look, but anchors at
+   the cursor (left/top) instead of the trigger's right edge. */
+.session-context-menu {
+  min-width: 140px;
 }
 
 .session-row:has(.session-archive-btn) .session-link,

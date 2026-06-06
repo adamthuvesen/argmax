@@ -779,6 +779,22 @@
   flex: 0 0 auto;
 }
 
+/* Section header inside the sidebar view menu ("Group by", "Sort projects"). */
+.rail-sort-group-label {
+  padding: 6px 10px 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rail-sort-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
 /* Session actions menu — replaces the row of header icons. Sized to fit short
    text labels; opens downward and anchors to the trigger's right edge.
    The "Git actions" item swaps the menu's contents in place instead of

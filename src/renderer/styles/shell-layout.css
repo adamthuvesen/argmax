@@ -15,7 +15,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 12px 14px 12px;
+  padding: 12px 14px 12px 8px;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
   background-image: linear-gradient(180deg, var(--paper-highlight-strong), transparent);
@@ -263,6 +263,13 @@
   gap: 0;
   margin-bottom: 2px;
   padding-left: 0;
+}
+
+/* Flat "by date" view: a collapsible date header reusing the full
+   `.project-group` / `.project-row` chrome so spacing matches project groups
+   exactly. The header isn't draggable, so drop the grab cursor. */
+.project-group.session-date-group > .session-date-row {
+  cursor: pointer;
 }
 
 .project-group.dragging {

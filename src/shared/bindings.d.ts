@@ -502,6 +502,14 @@ async workspacesSetPinned(input: WorkspacesSetPinnedInput) : Promise<Result<Work
     else return { status: "error", error: e  as any };
 }
 },
+async workspacesSetLabel(input: WorkspacesSetLabelInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_set_label", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async prsListForSession(input: PrsListForSessionInput) : Promise<Result<GhPrRecord[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("prs_list_for_session", { input }) };
@@ -757,6 +765,7 @@ export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: T
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
 export type WorkspacesOpenInIdeInput = { workspaceId: WorkspaceId; ide: OpenIdeChoice }
 export type WorkspacesRefreshStatusInput = { workspaceId: WorkspaceId }
+export type WorkspacesSetLabelInput = { workspaceId: WorkspaceId; taskLabel: TaskLabel }
 export type WorkspacesSetPinnedInput = { workspaceId: WorkspaceId; pinned: boolean }
 export type WriteStaleReason = "stale"
 

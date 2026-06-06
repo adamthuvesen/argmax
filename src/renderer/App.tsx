@@ -542,6 +542,22 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
+  const renameWorkspace = useCallback(
+    async (workspaceId: string, taskLabel: string): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Tauri app window to rename a session." });
+        return;
+      }
+      const ok = await withToast(
+        () => window.argmax!.workspaces.setLabel({ workspaceId, taskLabel }),
+        setToast,
+        "Could not rename session."
+      );
+      if (ok) await refreshDashboardStatus();
+    },
+    [refreshDashboardStatus]
+  );
+
   // Stable per-row callbacks so SidebarSessionRow's memo comparator (which
   // checks reference equality on each prop) doesn't re-render every row on
   // every dashboard:delta. Inline lambdas would be recreated each render and
@@ -551,6 +567,12 @@ export function App(): JSX.Element {
       void toggleWorkspacePinned(workspaceId, pinned);
     },
     [toggleWorkspacePinned]
+  );
+  const onRenameWorkspaceRow = useCallback(
+    (workspaceId: string, taskLabel: string): void => {
+      void renameWorkspace(workspaceId, taskLabel);
+    },
+    [renameWorkspace]
   );
   const onAddProjectRow = useCallback((): void => {
     void addProject();
@@ -924,6 +946,7 @@ export function App(): JSX.Element {
       <Sidebar
         loadState={loadState}
         onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
+        onRenameWorkspace={onRenameWorkspaceRow}
         onOpenLauncher={onOpenLauncherRow}
         onAddProject={onAddProjectRow}
         onRemoveProject={onRemoveProjectRow}

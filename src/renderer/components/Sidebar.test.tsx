@@ -3,9 +3,11 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardSnapshot } from "../../shared/types.js";
 import {
+  collapsedDateGroupsStorageKey,
   collapsedProjectsStorageKey,
   projectOrderStorageKey,
-  projectSortModeStorageKey
+  projectSortModeStorageKey,
+  sidebarViewModeStorageKey
 } from "../lib/projects.js";
 import { Sidebar } from "./Sidebar.js";
 
@@ -250,7 +252,7 @@ describe("Sidebar — project sort menu", () => {
 
     expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax", "Mango"]);
 
-    const trigger = screen.getByRole("button", { name: "Sort projects" });
+    const trigger = screen.getByRole("button", { name: "Sidebar view options" });
     expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
@@ -262,9 +264,9 @@ describe("Sidebar — project sort menu", () => {
       </StrictMode>
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Sort projects" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
 
-    const menu = screen.getByRole("menu", { name: "Sort projects" });
+    const menu = screen.getByRole("menu", { name: "Sidebar view options" });
     const recentItem = within(menu).getByRole("menuitemradio", { name: /Recent activity/ });
     expect(recentItem.getAttribute("aria-checked")).toBe("true");
 
@@ -281,7 +283,7 @@ describe("Sidebar — project sort menu", () => {
     expect(sortWrites[0]?.[1]).toBe(JSON.stringify("alphabetical"));
 
     // Menu closes on selection.
-    expect(screen.queryByRole("menu", { name: "Sort projects" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Sidebar view options" })).toBeNull();
   });
 
   it("reads the persisted sort mode on mount", () => {
@@ -291,7 +293,7 @@ describe("Sidebar — project sort menu", () => {
 
     expect(getProjectButtonOrder()).toEqual(["Argmax", "Mango", "Zebra"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Sort projects" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
     const alphabeticalItem = screen.getByRole("menuitemradio", { name: /Alphabetical/ });
     expect(alphabeticalItem.getAttribute("aria-checked")).toBe("true");
   });
@@ -328,7 +330,7 @@ describe("Sidebar — project sort menu", () => {
     expect(getProjectButtonOrder()[0]).toBe("Mango");
 
     // The menu now reports Manual as the active radio.
-    fireEvent.click(screen.getByRole("button", { name: "Sort projects" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
     const manualItem = screen.getByRole("menuitemradio", { name: /Manual/ });
     expect(manualItem.getAttribute("aria-checked")).toBe("true");
   });
@@ -459,5 +461,163 @@ describe("Sidebar — workspaces without sessions", () => {
 
     expect(screen.getByRole("button", { name: "Show Argmax sessions" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Build dashboard/ })).toBeNull();
+  });
+});
+
+describe("Sidebar — date (sessions) view mode", () => {
+  // Two projects, one session each, on different days so they fall into
+  // distinct date buckets. System time is pinned so the buckets are stable.
+  const session = (workspaceId: string, lastActivityAt: string) => ({
+    id: `session-${workspaceId}`,
+    workspaceId,
+    provider: "codex" as const,
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.3-codex",
+    permissionMode: "auto-approve" as const,
+    agentMode: "auto" as const,
+    providerConversationId: null,
+    state: "complete" as const,
+    attention: "normal" as const,
+    startedAt: lastActivityAt,
+    completedAt: lastActivityAt,
+    lastActivityAt,
+    prompt: "Do the thing"
+  });
+
+  const workspace = (id: string, projectId: string, taskLabel: string, lastActivityAt: string) => ({
+    id,
+    projectId,
+    taskLabel,
+    branch: `argmax/${id}`,
+    baseRef: "main",
+    path: `/tmp/${id}`,
+    state: "complete" as const,
+    sharedWorkspace: false,
+    dirty: false,
+    changedFiles: 0,
+    lastActivityAt,
+    pinned: false
+  });
+
+  const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
+  const APRIL = new Date(2026, 3, 2, 9, 0, 0).toISOString();
+
+  const viewSnapshot: DashboardSnapshot = {
+    ...multiProjectSnapshot,
+    projects: [multiProjectSnapshot.projects[0], multiProjectSnapshot.projects[1]],
+    workspaces: [
+      workspace("w-zebra", "project-zebra", "Zebra task today", TODAY),
+      workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL)
+    ],
+    sessions: [session("w-zebra", TODAY), session("w-argmax", APRIL)]
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 5, 12, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  it("flattens sessions from every project under date headers with no project rows", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    // Header label switches to "Sessions".
+    expect(screen.getByText("Sessions")).toBeInTheDocument();
+
+    // Date buckets render, newest first.
+    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.getByText("April")).toBeInTheDocument();
+
+    // Both sessions are visible immediately (no per-project collapse), across
+    // both projects.
+    expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Argmax task in april/ })).toBeInTheDocument();
+
+    // No project rows in this view.
+    expect(getProjectButtonOrder()).toEqual([]);
+  });
+
+  it("collapses a date bucket with the chevron and caps overflow behind Show more", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    // 12 sessions, all Today → over the 10-row cap.
+    const workspaces = Array.from({ length: 12 }, (_, i) =>
+      workspace(`w-${i}`, "project-zebra", `Today task ${i}`, new Date(2026, 5, 5, 6, i).toISOString())
+    );
+    const overflowSnapshot: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces,
+      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt))
+    };
+
+    render(<Sidebar {...baseProps} snapshot={overflowSnapshot} />);
+
+    // Only the first 10 render; the rest hide behind "Show more".
+    expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(10);
+    const showMore = screen.getByRole("button", { name: /Show 2 more Today sessions/ });
+    fireEvent.click(showMore);
+    expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(12);
+
+    // The chevron collapses the whole bucket.
+    fireEvent.click(screen.getByRole("button", { name: "Hide Today sessions" }));
+    expect(screen.queryByRole("button", { name: /Today task/ })).toBeNull();
+    // Collapse state is persisted.
+    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify(["today"]));
+  });
+
+  it("toggles a date bucket by clicking the row, not just the chevron", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    // Sessions start visible; click the date header row itself (its label) to
+    // collapse — no chevron needed.
+    expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Today"));
+    expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
+    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify(["today"]));
+
+    // Clicking the row again expands it back.
+    fireEvent.click(screen.getByText("Today"));
+    expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+  });
+
+  it("toggles a project's sessions by clicking the project row background", () => {
+    // Default (projects) view boots collapsed. Clicking the row container —
+    // not the project-name button, not the chevron — expands it.
+    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    const zebraName = screen.getByRole("button", { name: "Zebra" });
+    const zebraRow = zebraName.closest(".project-row");
+    if (!zebraRow) throw new Error("expected a project row for Zebra");
+
+    expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
+    fireEvent.click(zebraRow);
+    expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+    fireEvent.click(zebraRow);
+    expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
+  });
+
+  it("switches to date mode from the menu and persists the choice", () => {
+    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    // Defaults to project grouping: the header reads "Projects".
+    expect(screen.getByText("Projects")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
+    const menu = screen.getByRole("menu", { name: "Sidebar view options" });
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Date" }));
+
+    expect(window.localStorage.getItem(sidebarViewModeStorageKey)).toBe(JSON.stringify("sessions"));
+    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
   });
 });

@@ -447,6 +447,7 @@ export interface ArgmaxApi {
     archive: (input: { workspaceId: string; force?: boolean }) => Promise<WorkspaceSummary>;
     openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
+    setLabel: (input: { workspaceId: string; taskLabel: string }) => Promise<WorkspaceSummary>;
   };
   providers: {
     discover: (refresh?: boolean) => Promise<DiscoveredProvider[]>;

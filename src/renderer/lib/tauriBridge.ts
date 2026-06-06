@@ -147,7 +147,8 @@ function createTauriArgmaxApi(): ArgmaxApi {
       keep: (workspaceId) => invokeLegacy<WorkspaceSummary>("workspaces:keep", { workspaceId }),
       archive: (input) => invokeLegacy<WorkspaceSummary>("workspaces:archive", input),
       openInIde: (input: OpenInIdeInput) => invokeLegacy<{ ok: true }>("workspaces:open-in-ide", input),
-      setPinned: (input) => invokeLegacy<WorkspaceSummary>("workspaces:set-pinned", input)
+      setPinned: (input) => invokeLegacy<WorkspaceSummary>("workspaces:set-pinned", input),
+      setLabel: (input) => invokeLegacy<WorkspaceSummary>("workspaces:set-label", input)
     },
     providers: {
       discover: (refresh = false) =>

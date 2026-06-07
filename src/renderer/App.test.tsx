@@ -5,6 +5,7 @@ import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
   archiveWorkspace,
   createCurrentWorkspace,
+  createIsolatedWorkspace,
   dashboardDeltaListener,
   dashboardDeltaUnsubscribe,
   dashboardList,
@@ -411,6 +412,54 @@ describe("App", () => {
       attachments: null
     });
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+  });
+
+  it("launches into an isolated worktree when the worktree toggle is enabled", async () => {
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Implement PTY launch" }
+    });
+    // Worktree is off by default (current checkout); enable it.
+    const worktreeToggle = screen.getByRole("button", { name: "Worktree" });
+    expect(worktreeToggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(worktreeToggle);
+    expect(worktreeToggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(createIsolatedWorkspace).toHaveBeenCalledWith({
+        projectId: "project-1",
+        taskLabel: "Implement PTY launch",
+        baseRef: "main"
+      })
+    );
+    expect(createCurrentWorkspace).not.toHaveBeenCalled();
+    expect(launchProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "workspace-1", prompt: "Implement PTY launch" })
+    );
+    expect(window.localStorage.getItem("argmax.workspaceMode")).toBe("worktree");
+  });
+
+  it("honors a persisted worktree preference without re-toggling", async () => {
+    window.localStorage.setItem("argmax.workspaceMode", "worktree");
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Worktree" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Resume the migration" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(createIsolatedWorkspace).toHaveBeenCalledWith({
+        projectId: "project-1",
+        taskLabel: "Resume the migration",
+        baseRef: "main"
+      })
+    );
+    expect(createCurrentWorkspace).not.toHaveBeenCalled();
   });
 
   it("toggles launcher agent mode with Shift+Tab and sends plan mode", async () => {

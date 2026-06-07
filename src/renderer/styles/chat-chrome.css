@@ -447,6 +447,21 @@
   opacity: 0.45;
 }
 
+/* Worktree toggle — a single on/off chip, off by default. At rest it's a plain
+   ghost chip identical to its siblings; when enabled (aria-pressed) it picks up
+   the same subtle sage fill as the Plan mode chip, so the two launch toggles
+   read as a family. The label is fixed ("Worktree"), so no min-width is needed. */
+.workspace-mode-toggle[aria-pressed="true"] {
+  color: var(--sage-deep);
+  background: var(--sage-soft);
+}
+
+.workspace-mode-toggle[aria-pressed="true"]:hover {
+  background: var(--sage-soft);
+  color: var(--sage-deep);
+  filter: brightness(0.97);
+}
+
 .composer-context svg {
   color: currentColor;
   opacity: 0.7;

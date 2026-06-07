@@ -33,6 +33,7 @@ export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<
 
 export type AppTestMocks = {
   createCurrentWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createCurrent"]>;
+  createIsolatedWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createIsolated"]>;
   archiveWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["archive"]>;
   dashboardLoad: AppTestMockFn<ArgmaxApi["dashboard"]["load"]>;
   dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
@@ -65,6 +66,7 @@ export type AppTestMocks = {
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
+export let createIsolatedWorkspace: AppTestMocks["createIsolatedWorkspace"];
 export let archiveWorkspace: AppTestMocks["archiveWorkspace"];
 export let dashboardLoad: AppTestMocks["dashboardLoad"];
 export let dashboardList: AppTestMocks["dashboardList"];
@@ -108,6 +110,9 @@ export function setupAppTestMocks(): void {
   // that exercise the boot-collapse seed clear this marker themselves.
   window.sessionStorage.setItem("argmax.sidebar.bootCollapseSeeded", "1");
   createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
+    snapshot.workspaces[0] ?? missingWorkspace()
+  );
+  createIsolatedWorkspace = vi.fn<ArgmaxApi["workspaces"]["createIsolated"]>().mockResolvedValue(
     snapshot.workspaces[0] ?? missingWorkspace()
   );
   archiveWorkspace = vi.fn<ArgmaxApi["workspaces"]["archive"]>().mockImplementation(({ workspaceId }) =>
@@ -287,7 +292,7 @@ export function setupAppTestMocks(): void {
       switchBranch: () => Promise.resolve(primaryProject())
     },
     workspaces: {
-      createIsolated: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
+      createIsolated: createIsolatedWorkspace,
       createCurrent: createCurrentWorkspace,
       refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
       status: workspaceStatus,

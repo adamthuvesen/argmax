@@ -45,6 +45,7 @@ import { useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
+import type { WorkspaceMode } from "./lib/workspaceMode.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
@@ -679,7 +680,8 @@ export function App(): JSX.Element {
       prompt: string,
       model: ModelPickerSelection,
       agentMode: AgentMode,
-      projectIdOverride?: string,
+      projectIdOverride: string | undefined,
+      workspaceMode: WorkspaceMode,
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
       if (!window.argmax) {
@@ -691,10 +693,21 @@ export function App(): JSX.Element {
         throw new Error("Register a project before launching an agent.");
       }
 
-      const workspace = await window.argmax.workspaces.createCurrent({
-        projectId,
-        taskLabel: titleFromPrompt(prompt)
-      });
+      const taskLabel = titleFromPrompt(prompt);
+      // `worktree` forks an isolated git worktree off the live checked-out
+      // branch; `current` runs in the project's existing checkout (shared
+      // workspace). A grid cell can launch with an explicit project that
+      // differs from `selectedProject`, so resolve the base branch by id.
+      const launchingProject =
+        snapshot.projects.find((p) => p.id === projectId) ?? selectedProject ?? null;
+      const workspace =
+        workspaceMode === "worktree"
+          ? await window.argmax.workspaces.createIsolated({
+              projectId,
+              taskLabel,
+              baseRef: launchingProject?.currentBranch ?? null
+            })
+          : await window.argmax.workspaces.createCurrent({ projectId, taskLabel });
 
       const launchedSession = await window.argmax.providers.launch({
         workspaceId: workspace.id,
@@ -735,7 +748,8 @@ export function App(): JSX.Element {
       await Promise.all([refreshDashboardStatus(), loadSessionEvents(launchedSession.id)]);
     },
     [
-      selectedProject?.id,
+      selectedProject,
+      snapshot.projects,
       refreshDashboardStatus,
       loadSessionEvents,
       pendingSelectionRef,
@@ -831,7 +845,7 @@ export function App(): JSX.Element {
       <LaunchSurface
         onAddProject={() => void addProject()}
         onBranchSwitch={handleBranchSwitch}
-        onLaunchTask={(prompt, model, agentMode, attachments) => launchTask(prompt, model, agentMode, project?.id, attachments)}
+        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments)}
         model={launchModel}
         onModelChange={setLaunchModel}
         onSelectProject={openProjectLauncher}

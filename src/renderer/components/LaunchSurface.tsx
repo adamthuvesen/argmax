@@ -38,6 +38,12 @@ import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { modelDefaultForProvider, type ModelPickerSelection } from "../lib/models.js";
 import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
+import {
+  readStoredWorkspaceMode,
+  toggleWorkspaceMode,
+  writeWorkspaceMode,
+  type WorkspaceMode
+} from "../lib/workspaceMode.js";
 import { Mascot } from "./Mascot.js";
 import { LaunchModelSelector, type ProviderAvailability } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
@@ -88,6 +94,7 @@ export function LaunchSurface({
     prompt: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
+    workspaceMode: WorkspaceMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
   onModelChange: (model: ModelPickerSelection) => void;
@@ -111,6 +118,7 @@ export function LaunchSurface({
   const launchAttachmentNamespaceRef = useRef<string>(`launch-${crypto.randomUUID()}`);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [agentMode, setAgentMode] = useState<AgentMode>("auto");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const projectPickerRef = useRef<HTMLDivElement | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
@@ -242,6 +250,14 @@ export function LaunchSurface({
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
+  }, []);
+
+  const toggleWorkspace = useCallback((): void => {
+    setWorkspaceMode((mode) => {
+      const next = toggleWorkspaceMode(mode);
+      writeWorkspaceMode(next);
+      return next;
+    });
   }, []);
 
   // The persisted current branch goes stale when the user checks out a
@@ -482,6 +498,7 @@ export function LaunchSurface({
         finalPrompt,
         model,
         agentMode,
+        workspaceMode,
         attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
       );
       setPrompt("");
@@ -733,6 +750,20 @@ export function LaunchSurface({
             onClick={toggleMode}
           >
             {AGENT_MODE_LABELS[agentMode]}
+          </button>
+          <button
+            type="button"
+            className="composer-context-chip workspace-mode-toggle"
+            aria-label="Worktree"
+            aria-pressed={workspaceMode === "worktree"}
+            title={
+              workspaceMode === "worktree"
+                ? "On — agent runs in an isolated git worktree on a new branch"
+                : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
+            }
+            onClick={toggleWorkspace}
+          >
+            Worktree
           </button>
         </div>
         {status ? (

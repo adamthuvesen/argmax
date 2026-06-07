@@ -351,6 +351,59 @@ describe("SessionConversation — streaming & composer", () => {
     expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Hello world"));
   });
 
+  it("pins a streaming answer below a started tool instead of sliding it down mid-stream", () => {
+    // Mid-stream snapshot: the answer's only token so far (15:00:02) predates the
+    // tool (15:00:03) and the next token hasn't landed. Without the pin the bubble
+    // renders ABOVE the tool now and jumps below once more tokens arrive; the pin
+    // keeps it below the already-started tool from the first token (no slide).
+    const { container } = renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" }
+        }),
+        event(
+          "a1",
+          "message.delta",
+          "Reading the file",
+          "2026-05-12T15:00:02.000Z",
+          cursorAssistantPayload("Reading the file")
+        ),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    expect(text).toContain("architecture.md");
+    expect(text).toContain("Reading the file");
+    expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Reading the file"));
+  });
+
+  it("keeps a completed pre-tool narration above the tool it precedes", () => {
+    // A narration chunk that COMPLETED before the tool started is anchored at its
+    // own time and must stay above the tool. The streaming-tail pin only applies
+    // to the still-streaming answer, so a finished segment is never dragged down.
+    const { container } = renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" }
+        }),
+        event("m1", "message.completed", "Let me read the file", "2026-05-12T15:00:02.500Z"),
+        event("d1", "message.delta", "Let me read the file", "2026-05-12T15:00:02.000Z"),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
+      ]
+    );
+
+    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    expect(text).toContain("Let me read the file");
+    expect(text.indexOf("Let me read the file")).toBeLessThan(text.indexOf("architecture.md"));
+  });
+
   it("folds Codex command_execution singletons into the turn command group", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),

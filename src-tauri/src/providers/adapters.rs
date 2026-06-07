@@ -286,7 +286,7 @@ fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
             "Reason carefully through this task. Consider edge cases and trade-offs before acting."
         }
         ReasoningEffort::High => {
-            "Reason deeply through this task. Explore alternatives, consider edge cases, and weigh trade-offs comprehensively before acting."
+            "Reason deeply through this task. Explore alternatives, consider edge cases, and weigh trade-offs before acting."
         }
         ReasoningEffort::Xhigh => {
             "Reason exhaustively through this task. Enumerate every alternative, edge case, and trade-off, and verify your conclusions before acting. Take as much thinking as the problem demands."

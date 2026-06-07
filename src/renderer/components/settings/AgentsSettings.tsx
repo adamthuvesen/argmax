@@ -119,7 +119,7 @@ export function AgentsSettings({
         <SectionHeader
           index={1}
           id="settings-permissions-h"
-          eyebrow="Risk gate"
+          eyebrow="Approvals"
           title="Permissions"
           description="Controls how each provider session treats commands the agent wants to run."
         />

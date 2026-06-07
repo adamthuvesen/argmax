@@ -461,8 +461,8 @@ export function SessionPane({
           <section className="approval-surface">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">Approvals</p>
-                <h2>Risk gate</h2>
+                <p className="eyebrow">Pending</p>
+                <h2>Approvals</h2>
               </div>
               <ShieldAlert size={20} />
             </div>

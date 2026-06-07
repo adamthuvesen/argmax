@@ -45,8 +45,8 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
     <div className="launcher-surface welcome-pane" aria-labelledby="welcome-title">
       <h1 id="welcome-title">Welcome to Argmax</h1>
       <p className="welcome-tagline">
-        Argmax runs AI coding agents in parallel git worktrees on your machine. To get
-        started, install one or more provider CLIs, then add a project.
+        Argmax runs AI coding agents on your machine — in isolated git worktrees or your
+        current checkout. To get started, install one or more provider CLIs, then add a project.
       </p>
 
       <section className="welcome-section" aria-labelledby="welcome-providers">

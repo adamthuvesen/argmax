@@ -10,8 +10,7 @@ Single-user, on-device, no cloud, no auth. Built for sessions that need real rep
 
 ## Status
 
-> [!WARNING]
-> **Alpha (0.2.0).** Argmax is early and under active development — **bugs are expected.** Behavior, the SQLite schema, and the UI can change between versions. Treat it as a preview, keep backups of anything you care about, and don't rely on it for production work. Bug reports are welcome.
+Early and still evolving (0.2.0). Behavior, the SQLite schema, and the UI change between versions, and there are no stability guarantees yet.
 
 ## Stack
 

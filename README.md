@@ -4,7 +4,7 @@
   <img src="assets/icon.png" alt="Argmax purple mascot" width="96" height="96">
 </p>
 
-A local Tauri desktop app for running Claude Code, Codex, and Cursor Agent — in isolated git worktrees or your current checkout.
+A local desktop app with a Rust core and React UI for running Claude Code, Codex, and Cursor Agent in isolated git worktrees or your current checkout.
 
 Single-user, on-device, no cloud, no auth. Built for sessions that need real repo context: persistent transcripts, review tools, checks, approvals, and optional worktree isolation for running agents in parallel.
 

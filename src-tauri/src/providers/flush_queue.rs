@@ -83,7 +83,7 @@ pub struct PendingMessage {
 #[derive(Debug)]
 pub struct ProviderEventFlushQueue {
     sessions: HashMap<String, ProviderFlushSession>,
-    gate: DashboardDeltaGate,
+    throttle: DashboardDeltaThrottle,
 }
 
 #[derive(Debug)]
@@ -105,7 +105,7 @@ impl ProviderEventFlushQueue {
     pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
-            gate: DashboardDeltaGate::new(),
+            throttle: DashboardDeltaThrottle::new(),
         }
     }
 
@@ -197,13 +197,13 @@ impl ProviderEventFlushQueue {
             &mut session.buffer,
         )?;
         // The events in `delta` are already persisted to SQLite. Dropping
-        // the delta because the 16ms throttle gate said "no" used to lose
+        // the delta because the 16ms throttle said "no" used to lose
         // streaming chunks in flight — they sat in the DB invisible to
         // the renderer until end-of-turn flushed a single bulk delta,
         // which is what made Claude/Codex feel "super mega slow". Always
-        // publish non-empty deltas; the gate is retained but only used by
+        // publish non-empty deltas; the throttle is retained but only used by
         // flush_trailing_fragments() as a force-next signal.
-        let _ = &self.gate;
+        let _ = &self.throttle;
         Ok(QueueOutputResult {
             delta: (!delta.is_empty()).then_some(delta),
             provider_conversation_id,
@@ -261,7 +261,7 @@ impl ProviderEventFlushQueue {
                 session.buffer.queue_usage(usage);
             }
         }
-        self.gate.force_next_dashboard_delta();
+        self.throttle.force_next_dashboard_delta();
         let delta = flush_session_buffer(connection, session_id, &mut session.buffer)?;
         Ok((!delta.is_empty()).then_some(delta))
     }
@@ -442,11 +442,11 @@ pub fn flush_session_buffer(
 }
 
 #[derive(Debug)]
-pub struct DashboardDeltaGate {
+pub struct DashboardDeltaThrottle {
     coalescer: DeltaCoalescer,
 }
 
-impl DashboardDeltaGate {
+impl DashboardDeltaThrottle {
     pub fn new() -> Self {
         Self {
             coalescer: DeltaCoalescer::new(DEFAULT_CADENCE_MS),
@@ -462,7 +462,7 @@ impl DashboardDeltaGate {
     }
 }
 
-impl Default for DashboardDeltaGate {
+impl Default for DashboardDeltaThrottle {
     fn default() -> Self {
         Self::new()
     }
@@ -516,12 +516,12 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_delta_gate_throttles_dashboard_only() {
-        let gate = DashboardDeltaGate::new();
-        assert!(gate.should_publish_dashboard_delta());
-        assert!(!gate.should_publish_dashboard_delta());
-        gate.force_next_dashboard_delta();
-        assert!(gate.should_publish_dashboard_delta());
+    fn dashboard_delta_throttle_throttles_dashboard_only() {
+        let throttle = DashboardDeltaThrottle::new();
+        assert!(throttle.should_publish_dashboard_delta());
+        assert!(!throttle.should_publish_dashboard_delta());
+        throttle.force_next_dashboard_delta();
+        assert!(throttle.should_publish_dashboard_delta());
     }
 
     #[test]
@@ -598,7 +598,7 @@ mod tests {
         assert!(first.delta.is_none());
         assert!(first.has_trailing_fragment);
 
-        queue.gate.force_next_dashboard_delta();
+        queue.throttle.force_next_dashboard_delta();
         let second = queue
             .queue_output_event(
                 &mut connection,

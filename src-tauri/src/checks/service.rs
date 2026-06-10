@@ -86,6 +86,7 @@ impl CancelRegistry {
         }
     }
 
+    #[cfg(test)]
     fn pending_count(&self) -> usize {
         self.workspaces.values().map(Vec::len).sum()
     }
@@ -112,7 +113,7 @@ impl CheckService {
         registry.cancel_all(workspace_id);
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn pending_cancel_count(&self) -> usize {
         self.cancel_registry
             .lock()

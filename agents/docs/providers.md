@@ -4,7 +4,7 @@ Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [s
 
 ## Shape
 
-- [adapters.rs](../../src-tauri/src/providers/adapters.rs) builds argv/stdin for structured and interactive launches. Permission bypass flags stay centralized here.
+- [adapters.rs](../../src-tauri/src/providers/adapters.rs) builds argv/stdin for structured-json launches. Permission bypass flags stay centralized here.
 - [environment.rs](../../src-tauri/src/providers/environment.rs) builds provider PATH/env.
 - [discovery.rs](../../src-tauri/src/providers/discovery.rs) finds provider CLIs.
 - [runtime.rs](../../src-tauri/src/providers/runtime.rs) owns PTY/process launch.

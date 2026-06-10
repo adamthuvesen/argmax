@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::collections::HashMap;
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -30,19 +27,15 @@ use crate::{
         usage::{insert_usage_event, InsertUsageEventInput},
         workspaces::WorkspaceSummary,
     },
-    util::delta_coalescer::{DeltaCoalescer, DEFAULT_CADENCE_MS},
 };
-
-pub const MICRO_BATCH_MS: u64 = 16;
 
 #[derive(Debug)]
 pub struct SessionFlushBuffer {
-    sequence: AtomicU64,
+    sequence: u64,
     pending_events: Vec<PendingTimelineEvent>,
     pending_raw_outputs: Vec<PersistRawOutputInput>,
     pending_usages: Vec<NormalizedUsage>,
     pending_approvals: Vec<PersistApprovalInput>,
-    pending_session_update: Option<SessionSummary>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,7 +76,6 @@ pub struct PendingMessage {
 #[derive(Debug)]
 pub struct ProviderEventFlushQueue {
     sessions: HashMap<String, ProviderFlushSession>,
-    throttle: DashboardDeltaThrottle,
 }
 
 #[derive(Debug)]
@@ -105,7 +97,6 @@ impl ProviderEventFlushQueue {
     pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
-            throttle: DashboardDeltaThrottle::new(),
         }
     }
 
@@ -128,12 +119,6 @@ impl ProviderEventFlushQueue {
 
     pub fn delete_session(&mut self, session_id: &str) {
         self.sessions.remove(session_id);
-    }
-
-    pub fn session_provider(&self, session_id: &str) -> Option<ProviderId> {
-        self.sessions
-            .get(session_id)
-            .map(|session| session.provider)
     }
 
     pub fn queue_output_event(
@@ -196,14 +181,11 @@ impl ProviderEventFlushQueue {
             &normalized_event.session_id,
             &mut session.buffer,
         )?;
-        // The events in `delta` are already persisted to SQLite. Dropping
-        // the delta because the 16ms throttle said "no" used to lose
-        // streaming chunks in flight — they sat in the DB invisible to
-        // the renderer until end-of-turn flushed a single bulk delta,
-        // which is what made Claude/Codex feel "super mega slow". Always
-        // publish non-empty deltas; the throttle is retained but only used by
-        // flush_trailing_fragments() as a force-next signal.
-        let _ = &self.throttle;
+        // The events in `delta` are already persisted to SQLite. Always
+        // publish non-empty deltas: throttling here used to drop streaming
+        // chunks in flight — they sat in the DB invisible to the renderer
+        // until end-of-turn flushed a single bulk delta. Rate bounding lives
+        // in the emit worker, which conflates queued deltas per cycle.
         Ok(QueueOutputResult {
             delta: (!delta.is_empty()).then_some(delta),
             provider_conversation_id,
@@ -261,7 +243,6 @@ impl ProviderEventFlushQueue {
                 session.buffer.queue_usage(usage);
             }
         }
-        self.throttle.force_next_dashboard_delta();
         let delta = flush_session_buffer(connection, session_id, &mut session.buffer)?;
         Ok((!delta.is_empty()).then_some(delta))
     }
@@ -276,12 +257,11 @@ impl Default for ProviderEventFlushQueue {
 impl SessionFlushBuffer {
     pub fn new() -> Self {
         Self {
-            sequence: AtomicU64::new(0),
+            sequence: 0,
             pending_events: Vec::new(),
             pending_raw_outputs: Vec::new(),
             pending_usages: Vec::new(),
             pending_approvals: Vec::new(),
-            pending_session_update: None,
         }
     }
 
@@ -290,11 +270,11 @@ impl SessionFlushBuffer {
             && self.pending_raw_outputs.is_empty()
             && self.pending_usages.is_empty()
             && self.pending_approvals.is_empty()
-            && self.pending_session_update.is_none()
     }
 
     pub fn queue_timeline_event(&mut self, event: PersistTimelineEventInput) -> u64 {
-        let sequence = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
+        self.sequence += 1;
+        let sequence = self.sequence;
         self.pending_events
             .push(PendingTimelineEvent { sequence, event });
         sequence
@@ -310,10 +290,6 @@ impl SessionFlushBuffer {
 
     pub fn queue_approval(&mut self, approval: PersistApprovalInput) {
         self.pending_approvals.push(approval);
-    }
-
-    pub fn queue_session_update(&mut self, session: SessionSummary) {
-        self.pending_session_update = Some(session);
     }
 }
 
@@ -367,7 +343,6 @@ pub fn flush_session_buffer(
     let pending_raw_outputs = std::mem::take(&mut buffer.pending_raw_outputs);
     let pending_usages = std::mem::take(&mut buffer.pending_usages);
     let pending_approvals = std::mem::take(&mut buffer.pending_approvals);
-    let pending_session_update = buffer.pending_session_update.take();
 
     let result = (|| {
         let transaction = connection.transaction().map_err(sqlite_error)?;
@@ -420,9 +395,6 @@ pub fn flush_session_buffer(
             };
             delta.approvals.push(row);
         }
-        if let Some(session) = &pending_session_update {
-            delta.sessions.push(session.clone());
-        }
 
         transaction.commit().map_err(sqlite_error)?;
         Ok(delta)
@@ -435,36 +407,8 @@ pub fn flush_session_buffer(
             buffer.pending_raw_outputs = pending_raw_outputs;
             buffer.pending_usages = pending_usages;
             buffer.pending_approvals = pending_approvals;
-            buffer.pending_session_update = pending_session_update;
             Err(error)
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct DashboardDeltaThrottle {
-    coalescer: DeltaCoalescer,
-}
-
-impl DashboardDeltaThrottle {
-    pub fn new() -> Self {
-        Self {
-            coalescer: DeltaCoalescer::new(DEFAULT_CADENCE_MS),
-        }
-    }
-
-    pub fn should_publish_dashboard_delta(&self) -> bool {
-        self.coalescer.should_emit("dashboard:delta")
-    }
-
-    pub fn force_next_dashboard_delta(&self) {
-        self.coalescer.reset("dashboard:delta");
-    }
-}
-
-impl Default for DashboardDeltaThrottle {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -513,15 +457,6 @@ mod tests {
             vec!["first", "second"]
         );
         assert_eq!(fetched.event_cursor, delta.events[1].row_cursor.unwrap());
-    }
-
-    #[test]
-    fn dashboard_delta_throttle_throttles_dashboard_only() {
-        let throttle = DashboardDeltaThrottle::new();
-        assert!(throttle.should_publish_dashboard_delta());
-        assert!(!throttle.should_publish_dashboard_delta());
-        throttle.force_next_dashboard_delta();
-        assert!(throttle.should_publish_dashboard_delta());
     }
 
     #[test]
@@ -598,7 +533,6 @@ mod tests {
         assert!(first.delta.is_none());
         assert!(first.has_trailing_fragment);
 
-        queue.throttle.force_next_dashboard_delta();
         let second = queue
             .queue_output_event(
                 &mut connection,

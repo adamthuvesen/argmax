@@ -1,5 +1,3 @@
-use thiserror::Error;
-
 use super::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
@@ -19,24 +17,7 @@ pub struct ProviderLaunchDefinition {
     pub status_args: &'static [&'static str],
     pub structured_args: fn(&ProviderLaunchInput) -> Vec<String>,
     pub structured_resume_args: fn(&ProviderLaunchInput, &str) -> Vec<String>,
-    pub interactive_args: fn(&ProviderLaunchInput) -> Result<Vec<String>, ProviderLaunchError>,
     pub structured_stdin: fn(&ProviderLaunchInput) -> Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("{message}")]
-pub struct ProviderLaunchError {
-    pub provider: ProviderId,
-    pub message: String,
-}
-
-impl ProviderLaunchError {
-    fn new(provider: ProviderId, message: impl Into<String>) -> Self {
-        Self {
-            provider,
-            message: message.into(),
-        }
-    }
 }
 
 pub fn provider_definitions() -> &'static [ProviderLaunchDefinition] {
@@ -58,7 +39,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         status_args: &["auth", "status"],
         structured_args: claude_structured_args,
         structured_resume_args: claude_structured_resume_args,
-        interactive_args: claude_interactive_args,
         structured_stdin: |_| None,
     },
     ProviderLaunchDefinition {
@@ -68,7 +48,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         status_args: &["login", "status"],
         structured_args: codex_structured_args,
         structured_resume_args: codex_structured_resume_args,
-        interactive_args: codex_interactive_args,
         structured_stdin: codex_structured_stdin,
     },
     ProviderLaunchDefinition {
@@ -78,7 +57,6 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         status_args: &["status"],
         structured_args: cursor_structured_args,
         structured_resume_args: cursor_structured_resume_args,
-        interactive_args: cursor_interactive_args,
         structured_stdin: |_| None,
     },
 ];
@@ -131,15 +109,6 @@ fn claude_structured_resume_args(
     args
 }
 
-fn claude_interactive_args(
-    input: &ProviderLaunchInput,
-) -> Result<Vec<String>, ProviderLaunchError> {
-    let mut args = vec!["--model".to_string(), input.model_id.clone()];
-    args.extend(claude_permission_args(input));
-    args.extend(claude_reasoning_args(input));
-    Ok(args)
-}
-
 fn codex_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec!["exec".to_string(), "--json".to_string()];
     args.extend(codex_permission_args(input));
@@ -163,13 +132,6 @@ fn codex_structured_resume_args(
     args.extend(codex_reasoning_args(input, true));
     args.extend([resume_conversation_id.to_string(), "-".to_string()]);
     args
-}
-
-fn codex_interactive_args(input: &ProviderLaunchInput) -> Result<Vec<String>, ProviderLaunchError> {
-    let mut args = vec!["--model".to_string(), input.model_id.clone()];
-    args.extend(codex_reasoning_args(input, false));
-    args.extend(codex_permission_args(input));
-    Ok(args)
 }
 
 fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
@@ -221,15 +183,6 @@ fn cursor_structured_resume_args(
         input.prompt.clone(),
     ]);
     args
-}
-
-fn cursor_interactive_args(
-    _input: &ProviderLaunchInput,
-) -> Result<Vec<String>, ProviderLaunchError> {
-    Err(ProviderLaunchError::new(
-        ProviderId::Cursor,
-        "Cursor interactive mode is not supported yet.",
-    ))
 }
 
 fn claude_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
@@ -581,17 +534,6 @@ mod tests {
                 "{provider_id:?} leaked a bypass flag in plan mode: {args:?}"
             );
         }
-    }
-
-    #[test]
-    fn cursor_interactive_mode_is_rejected() {
-        let input = ProviderLaunchInput {
-            mode: ProviderMode::InteractivePty,
-            ..launch_input(ProviderId::Cursor)
-        };
-        let error = (get_provider_definition(ProviderId::Cursor).interactive_args)(&input)
-            .expect_err("cursor error");
-        assert!(error.message.contains("Cursor interactive mode"));
     }
 
     fn launch_input(provider_id: ProviderId) -> ProviderLaunchInput {

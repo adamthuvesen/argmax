@@ -20,23 +20,23 @@ describe("uiPreferences", () => {
   it("uses product defaults when no preference is stored", () => {
 
     expect(readStoredSidebarTokensVisible()).toBe(false);
-    expect(readStoredChatCostVisible()).toBe(true);
+    expect(readStoredChatCostVisible()).toBe(false);
     expect(readStoredThinkingExpanded()).toBe(false);
-    expect(readStoredToolCallsExpanded()).toBe(true);
-    expect(readStoredToolCallGroupsExpanded()).toBe(true);
+    expect(readStoredToolCallsExpanded()).toBe(false);
+    expect(readStoredToolCallGroupsExpanded()).toBe(false);
   });
 
   it("reads explicit boolean strings from localStorage", () => {
     window.localStorage.setItem(SIDEBAR_TOKENS_KEY, "true");
-    window.localStorage.setItem(CHAT_COST_KEY, "false");
+    window.localStorage.setItem(CHAT_COST_KEY, "true");
     window.localStorage.setItem(THINKING_EXPANDED_KEY, "true");
-    window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, "false");
+    window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, "true");
     window.localStorage.setItem(TOOL_CALL_GROUPS_EXPANDED_KEY, "false");
 
     expect(readStoredSidebarTokensVisible()).toBe(true);
-    expect(readStoredChatCostVisible()).toBe(false);
+    expect(readStoredChatCostVisible()).toBe(true);
     expect(readStoredThinkingExpanded()).toBe(true);
-    expect(readStoredToolCallsExpanded()).toBe(false);
+    expect(readStoredToolCallsExpanded()).toBe(true);
     expect(readStoredToolCallGroupsExpanded()).toBe(false);
   });
 });

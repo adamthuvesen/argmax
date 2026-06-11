@@ -179,6 +179,7 @@ describe("App grid", () => {
   });
 
   it("keeps the current session and opens a launcher pane to the right from New session", async () => {
+    window.localStorage.setItem("argmax.newSessionMode", "embedded");
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -220,14 +221,14 @@ describe("App grid", () => {
     expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
   });
 
-  it("defaults the new-session toggle to 'Open in grid' on first launch", async () => {
+  it("defaults the new-session toggle to 'Open full view' on first launch", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings();
 
-    expect(await screen.findByRole("radio", { name: "Open in grid" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "Open full view" })).not.toBeChecked();
-    expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("embedded");
+    expect(await screen.findByRole("radio", { name: "Open full view" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Open in grid" })).not.toBeChecked();
+    expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
   });
 
   it("opens the Cmd+N launcher below when the focused row already has 3 panes", async () => {
@@ -295,6 +296,7 @@ describe("App grid", () => {
       sessions: [...snapshot.sessions, secondSession, thirdSession]
     });
 
+    window.localStorage.setItem("argmax.newSessionMode", "embedded");
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));

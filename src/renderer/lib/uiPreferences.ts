@@ -27,7 +27,7 @@ export function readStoredSidebarTokensVisible(): boolean {
 }
 
 export function readStoredChatCostVisible(): boolean {
-  return readBooleanPreference(CHAT_COST_KEY, true);
+  return readBooleanPreference(CHAT_COST_KEY, false);
 }
 
 export function readStoredThinkingExpanded(): boolean {
@@ -35,15 +35,15 @@ export function readStoredThinkingExpanded(): boolean {
 }
 
 export function readStoredToolCallsExpanded(): boolean {
-  return readBooleanPreference(TOOL_CALLS_EXPANDED_KEY, true);
+  return readBooleanPreference(TOOL_CALLS_EXPANDED_KEY, false);
 }
 
 export function readStoredToolCallGroupsExpanded(): boolean {
-  return readBooleanPreference(TOOL_CALL_GROUPS_EXPANDED_KEY, true);
+  return readBooleanPreference(TOOL_CALL_GROUPS_EXPANDED_KEY, false);
 }
 
 export function readStoredLauncherGlobeVisible(): boolean {
-  return readBooleanPreference(LAUNCHER_GLOBE_KEY, true);
+  return readBooleanPreference(LAUNCHER_GLOBE_KEY, false);
 }
 
 /** Boolean UI preference with mirrored localStorage persistence. */

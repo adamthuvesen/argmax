@@ -63,14 +63,17 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
-    label: "Claude Haiku 4.5",
-    modelId: "claude-haiku-4-5",
+    label: "Claude Opus 4.8",
+    modelId: "claude-opus-4-8",
+    supportsReasoningEffort: true,
+    reasoningEffort: "high",
     launchMode: "structured-json"
   },
   codex: {
     label: "GPT-5.5",
     modelId: "gpt-5.5",
-    reasoningEffort: "medium",
+    supportsReasoningEffort: true,
+    reasoningEffort: "high",
     launchMode: "structured-json"
   },
   cursor: {

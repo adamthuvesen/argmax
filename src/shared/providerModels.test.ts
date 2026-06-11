@@ -17,14 +17,15 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
   // The CLAUDE.md "Critical conventions" section documents these defaults. If
   // a maintainer changes the constant they need to update the doc too — this
   // test is the tripwire.
-  it("matches the documented launch defaults (Claude Haiku 4.5 / GPT-5.5 medium)", () => {
+  it("matches the documented launch defaults (Claude Opus 4.8 high / GPT-5.5 high)", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
-      modelId: "claude-haiku-4-5",
+      modelId: "claude-opus-4-8",
+      reasoningEffort: "high",
       launchMode: "structured-json"
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
       modelId: "gpt-5.5",
-      reasoningEffort: "medium",
+      reasoningEffort: "high",
       launchMode: "structured-json"
     });
   });

@@ -14,9 +14,9 @@ afterEach(() => {
 });
 
 describe("fonts", () => {
-  it("defaults to Lilex when nothing is stored", () => {
+  it("defaults to Inter when nothing is stored", () => {
     expect(readStoredFont()).toBe(DEFAULT_FONT_ID);
-    expect(DEFAULT_FONT_ID).toBe("lilex");
+    expect(DEFAULT_FONT_ID).toBe("inter");
   });
 
   it("reads a previously stored font id", () => {

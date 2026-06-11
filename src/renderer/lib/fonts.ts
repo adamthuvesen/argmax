@@ -96,7 +96,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
   }
 ] as const;
 
-export const DEFAULT_FONT_ID: FontFamilyId = "lilex";
+export const DEFAULT_FONT_ID: FontFamilyId = "inter";
 export const FONT_STORAGE_KEY = "argmax.font.family";
 
 const ALL_FONT_IDS = new Set<string>(FONT_OPTIONS.map((option) => option.id));
@@ -134,10 +134,10 @@ export function resolveMonoFontStack(): string {
   return computed || '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace';
 }
 
-// Per-font CSS loaders. Default Lilex + system fonts (system-mono, menlo,
-// monaco) need no JS-loaded assets; the rest pull in @fontsource bundles
-// only when the user actually picks them (ralph B6 — defers ~80 kB of
-// CSS-embedded font URLs from cold launch).
+// Per-font CSS loaders. Lilex + system fonts (system-mono, menlo, monaco)
+// need no JS-loaded assets; the rest pull in @fontsource bundles only when
+// actually applied (ralph B6 — defers CSS-embedded font URLs from cold
+// launch). Inter is the default, so its bundle loads on cold launch.
 const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = {
   "jetbrains-mono": () => import("@fontsource-variable/jetbrains-mono/wght.css"),
   "fira-code": () => import("@fontsource-variable/fira-code/wght.css"),

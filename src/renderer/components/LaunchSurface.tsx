@@ -36,7 +36,7 @@ import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { modelDefaultForProvider, type ModelPickerSelection } from "../lib/models.js";
+import { modelDefaultForProvider, preferredLaunchProvider, type ModelPickerSelection } from "../lib/models.js";
 import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
 import {
   readStoredWorkspaceMode,
@@ -143,17 +143,20 @@ export function LaunchSurface({
     return map;
   }, [discoveredProviders]);
 
-  // If the pre-filled selection points at a provider whose CLI isn't installed
-  // (e.g. a persisted default that was later uninstalled), steer to the first
-  // installed provider's default so the composer isn't stuck on a disabled,
-  // unlaunchable pick. Runs once discovery resolves; no-op if all-or-none.
+  // If the pre-filled selection points at a provider that isn't usable — CLI
+  // not installed, or installed but not logged in — steer to the highest-
+  // priority usable provider's default (Claude → Codex → Cursor) so the
+  // composer isn't stuck on an unlaunchable pick. Runs once when discovery
+  // resolves; picks the user makes afterwards are never overridden.
+  const providerSteeringDone = useRef(false);
   useEffect(() => {
-    if (!project || !discoveredProviders) return;
+    if (!project || !discoveredProviders || providerSteeringDone.current) return;
+    providerSteeringDone.current = true;
     const current = discoveredProviders.find((entry) => entry.provider === model.provider);
-    if (!current || current.installed) return;
-    const firstInstalled = discoveredProviders.find((entry) => entry.installed);
-    if (!firstInstalled) return;
-    onModelChange({ provider: firstInstalled.provider, ...modelDefaultForProvider(firstInstalled.provider) });
+    if (!current || (current.installed && current.authenticated !== false)) return;
+    const preferred = preferredLaunchProvider(discoveredProviders);
+    if (!preferred || preferred === model.provider) return;
+    onModelChange({ provider: preferred, ...modelDefaultForProvider(preferred) });
   }, [project, discoveredProviders, model.provider, onModelChange]);
 
   // Changes + Files panel against the selected project's main checkout. Lets

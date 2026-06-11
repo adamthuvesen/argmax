@@ -6,7 +6,7 @@ import {
   type ProviderModelSelection,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
-import type { ProviderId, SessionCostSummary, SessionSummary } from "../../shared/types.js";
+import type { DiscoveredProvider, ProviderId, SessionCostSummary, SessionSummary } from "../../shared/types.js";
 
 export type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId };
 
@@ -52,6 +52,26 @@ export function modelDefaultForProvider(provider: ProviderId): ProviderModelSele
     modelId: model.modelId,
     ...(reasoningEffort ? { reasoningEffort } : {})
   };
+}
+
+/** Launch-default provider order: Claude first, then Codex, then Cursor. */
+export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = ["claude", "codex", "cursor"];
+
+/**
+ * Highest-priority provider whose CLI is installed and logged in
+ * (`authenticated: null` means unknown and counts as usable). Falls back to
+ * the highest-priority installed provider when none are logged in.
+ */
+export function preferredLaunchProvider(providers: DiscoveredProvider[]): ProviderId | null {
+  const byId = new Map(providers.map((entry) => [entry.provider, entry]));
+  for (const provider of PROVIDER_LAUNCH_PRIORITY) {
+    const entry = byId.get(provider);
+    if (entry?.installed && entry.authenticated !== false) return provider;
+  }
+  for (const provider of PROVIDER_LAUNCH_PRIORITY) {
+    if (byId.get(provider)?.installed) return provider;
+  }
+  return null;
 }
 
 export function modelSelectionFromSession(session: SessionSummary | null): ProviderModelSelection {

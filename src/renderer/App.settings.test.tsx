@@ -149,6 +149,7 @@ describe("App settings", () => {
     };
     mockDashboardSnapshot(costed);
 
+    window.localStorage.setItem("argmax.chat.cost.visible", "true");
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
@@ -190,6 +191,7 @@ describe("App settings", () => {
     };
     mockDashboardSnapshot(costed);
 
+    window.localStorage.setItem("argmax.chat.cost.visible", "true");
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("region", { name: "Session cost summary" })).toBeInTheDocument();

@@ -100,14 +100,14 @@ export function App(): JSX.Element {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize();
-  const [toolCallsExpanded, setToolCallsExpanded] = useBooleanUiPreference(TOOL_CALLS_EXPANDED_KEY, true);
+  const [toolCallsExpanded, setToolCallsExpanded] = useBooleanUiPreference(TOOL_CALLS_EXPANDED_KEY, false);
   const [toolCallGroupsExpanded, setToolCallGroupsExpanded] = useBooleanUiPreference(
     TOOL_CALL_GROUPS_EXPANDED_KEY,
-    true
+    false
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
-  const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, true);
-  const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, true);
+  const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
+  const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, false);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const { themeMode, setThemeMode, fontFamily, setFontFamily, defaultIde, setDefaultIde, detectedIdes } =
     useLauncherAppearance();

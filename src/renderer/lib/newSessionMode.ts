@@ -3,12 +3,12 @@
  * the multi-grid already has at least one active session pane.
  *
  * - `embedded`: insert a launcher cell into the active grid alongside the
- *   running sessions. This is the historical Argmax default — the user can
- *   compose a new task while still watching their other panes.
+ *   running sessions — the user can compose a new task while still watching
+ *   their other panes.
  * - `full`: hide the grid and show the standalone LaunchSurface as a full
  *   workspace view. After the new session launches, Argmax returns to the
  *   grid with the new pane focused. The grid state is preserved across the
- *   round trip.
+ *   round trip. This is the default.
  *
  * When the grid is empty, both modes behave identically — the LaunchSurface
  * shows full-screen as it does today.
@@ -19,7 +19,7 @@
 export type NewSessionMode = "embedded" | "full";
 
 export const NEW_SESSION_MODE_KEY = "argmax.newSessionMode";
-export const DEFAULT_NEW_SESSION_MODE: NewSessionMode = "embedded";
+export const DEFAULT_NEW_SESSION_MODE: NewSessionMode = "full";
 
 export function isNewSessionMode(value: unknown): value is NewSessionMode {
   return value === "embedded" || value === "full";

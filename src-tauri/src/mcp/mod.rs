@@ -3,7 +3,7 @@
 // `registry` enumerates user-scope MCP servers from each CLI client's
 // global config (~/.claude.json, ~/.codex/config.toml, ~/.cursor/mcp.json).
 // `auth` owns the interactive PTY behind Settings → MCP servers →
-// "Authenticate via Claude (/mcp)". See `agents/docs/architecture.md`.
+// "Authenticate via Claude (/mcp)". See `docs/architecture.md`.
 
 pub mod auth;
 pub mod registry;

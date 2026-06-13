@@ -9,7 +9,7 @@ import type { DashboardSnapshot, SessionSummary, TimelineEvent } from "../shared
 
 /**
  * SPEC P4.10 — bench harness. Each assertion pins a property documented in
- * `agents/docs/performance.md`. A regression that pushes any of these past
+ * `docs/performance.md`. A regression that pushes any of these past
  * the documented budget fails this suite in CI so we notice before users do.
  *
  * The numbers themselves are slack: budgets are 2–5× larger than the

@@ -75,7 +75,7 @@ fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
         "--verbose".to_string(),
         // Stream partial content blocks so the answer and extended-thinking
         // arrive token-by-token (content_block_delta) instead of as whole
-        // assistant messages. See agents/docs/runtime.md "Event delivery".
+        // assistant messages. See docs/runtime.md "Event delivery".
         "--include-partial-messages".to_string(),
         "--".to_string(),
         input.prompt.clone(),

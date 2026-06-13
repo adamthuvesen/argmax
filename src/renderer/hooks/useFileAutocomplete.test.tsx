@@ -201,7 +201,7 @@ describe("useFileAutocomplete", () => {
     // state for every short prefix.
     listFiles.mockResolvedValue([
       { path: "AGENTS.md" },
-      { path: "agents/docs/architecture.md" },
+      { path: "src/renderer/lib/agentMode.ts" },
       { path: "package.json" }
     ]);
 
@@ -216,7 +216,7 @@ describe("useFileAutocomplete", () => {
     await waitFor(() => {
       const filePaths = screen.queryAllByTestId("entry-file").map((node) => node.textContent);
       expect(filePaths).toContain("AGENTS.md");
-      expect(filePaths).toContain("agents/docs/architecture.md");
+      expect(filePaths).toContain("src/renderer/lib/agentMode.ts");
       expect(filePaths).not.toContain("package.json");
     });
   });

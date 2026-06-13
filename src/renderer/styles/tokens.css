@@ -68,7 +68,7 @@
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Spacing tokens (Ralph SPEC F2). New code should prefer these over raw
-     pixel values. agents/docs/styling.md documents the full scale. */
+     pixel values. docs/styling.md documents the full scale. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;

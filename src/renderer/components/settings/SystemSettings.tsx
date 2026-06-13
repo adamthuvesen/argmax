@@ -236,7 +236,7 @@ export function SystemSettings({
             <ColdStartSummary phases={diagnostics.startupPhases} />
             <p className="settings-hint">
               Cold-start timing for the current boot. Budget: 1500&nbsp;ms to <code>ready-to-show</code>.
-              See <code>agents/docs/performance.md</code>.
+              See <code>docs/performance.md</code>.
             </p>
             <table className="settings-startup-table" aria-label="Startup phase timings">
               <thead>

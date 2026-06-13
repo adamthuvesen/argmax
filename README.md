@@ -69,7 +69,7 @@ src/
 └── test/         Vitest setup and renderer fixtures
 
 src-tauri/        Rust runtime, services, persistence, IPC, packaging config
-agents/docs/      Subsystem docs
+docs/             Subsystem docs
 scripts/          Lightweight CI/check scripts
 assets/           App icons
 ```

@@ -193,7 +193,7 @@ pub fn run() {
                                     // `run_on_main_thread` dispatches the webview eval as a
                                     // main-thread task the loop processes promptly, so the
                                     // chat streams live. See tao#625 / winit#219 and
-                                    // agents/docs/runtime.md "Event delivery".
+                                    // docs/runtime.md "Event delivery".
                                     let handle = emit_handle.clone();
                                     if let Err(error) = emit_handle.run_on_main_thread(move || {
                                         if let Err(error) = handle.emit("dashboard:delta", delta) {

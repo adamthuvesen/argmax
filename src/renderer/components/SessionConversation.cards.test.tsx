@@ -55,7 +55,7 @@ describe("SessionConversation — cards", () => {
     // still in inputFull.plan, so the card MUST still render — otherwise the
     // user just sees a "Plan written" text bubble with no card.
     const planMarkdown =
-      "## Refactor docs\n\n**Files to change:** README.md, agents/docs/\n\nApprove?";
+      "## Refactor docs\n\n**Files to change:** README.md, docs/\n\nApprove?";
     renderConversation(
       baseSession({ provider: "claude", state: "complete" }),
       [

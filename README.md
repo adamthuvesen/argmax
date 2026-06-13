@@ -37,13 +37,13 @@ npm install
 npm run tauri:dev
 ```
 
-Browser-preview mode still works for fast renderer work:
+For fast renderer-only work you can run Vite without Tauri:
 
 ```bash
 npx vite --host 127.0.0.1
 ```
 
-When `window.__TAURI_INTERNALS__` is absent, `window.argmax` is left unset and the renderer falls back to `src/renderer/demoSnapshot.ts`.
+Outside Tauri there's no Rust backend, so the renderer falls back to a static fixture (`src/renderer/demoSnapshot.ts`) instead of live IPC.
 
 ## Common Commands
 
@@ -69,21 +69,13 @@ src/
 └── test/         Vitest setup and renderer fixtures
 
 src-tauri/        Rust runtime, services, persistence, IPC, packaging config
-agents/docs/      Subsystem docs
+docs/             Subsystem docs
 scripts/          Lightweight CI/check scripts
 assets/           App icons
 ```
 
-Local/generated paths:
+Build output (`dist/`, `release/`, `src-tauri/target/`) and local databases (`*.sqlite*`) are gitignored.
 
-```
-dist/             Renderer build output
-release/          Packaged distributable output
-src-tauri/target/ Rust build output
-*.sqlite*         Local SQLite databases and WAL/SHM files
-node_modules/     Installed dependencies
-```
-
-Runtime state is stored under the Rust/Tauri app id's app-data directory in `argmax.sqlite`. This release does not import Electron-era app data. Checkpoint patches live alongside the database under `checkpoints/`. `raw_outputs` rows older than 7 days are pruned daily; everything else is retained indefinitely.
+Runtime state lives in the Tauri app-data directory: `argmax.sqlite` plus checkpoint patches under `checkpoints/`. `raw_outputs` rows older than 7 days are pruned daily; everything else is kept.
 
 Subsystem conventions live in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md).

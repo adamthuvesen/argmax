@@ -354,7 +354,7 @@ export function useDashboardSession(
 
   // Live-streaming safety net (macOS/Tauri). The `dashboard:delta` push is the
   // primary live-update path and is now emitted on the main thread so the
-  // event loop delivers it promptly (see agents/docs/runtime.md "Event
+  // event loop delivers it promptly (see docs/runtime.md "Event
   // delivery"). But the macOS event-loop wake-up for background work is
   // historically flaky (tao#625 / winit#219), so as a belt-and-suspenders we
   // poll the selected session on a short interval *while it is actively

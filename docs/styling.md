@@ -62,7 +62,7 @@ Keep each module under **1000 lines**. Add rules to the matching surface file; d
 | `overlays-launcher-panels.css` | Session panels — debug log, integrated terminal, responsive review/log stacking |
 | `overlays-launcher-cards.css` | Chat cards in session — plan card and question card |
 
-Keep each stylesheet module under **1000 lines** (OpenSpec maintainability sweep). Split further by surface if a file grows past the cap. Add new rules to the matching surface file. Do not grow aggregator files (`overlays.css`, `shell.css`, `settings.css`, `chat.css`) beyond imports and a short header comment.
+Keep each stylesheet module under **1000 lines**. Split further by surface if a file grows past the cap. Add new rules to the matching surface file. Do not grow aggregator files (`overlays.css`, `shell.css`, `settings.css`, `chat.css`) beyond imports and a short header comment.
 
 ## Hard constraints
 

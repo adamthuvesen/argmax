@@ -14,7 +14,6 @@ src/
 
 src-tauri/        Rust runtime, services, IPC handlers, persistence, packaging
 scripts/          Lightweight CI/check scripts
-openspec/         OpenSpec change & spec artifacts (see agents/docs/openspec.md)
 agents/docs/      Deeper agent docs — see Index
 assets/           App icon (icns + png) bundled into release builds
 dist/             Renderer build output (gitignored)
@@ -64,7 +63,6 @@ Before editing a subsystem, read the matching `agents/docs/*.md`:
 - **Tests** → [testing.md](agents/docs/testing.md)
 - **Perf budgets** → [performance.md](agents/docs/performance.md)
 - **Release** → [release.md](agents/docs/release.md)
-- **OpenSpec** → [openspec.md](agents/docs/openspec.md)
 
 If a doc disagrees with code, fix the doc in the same change.
 

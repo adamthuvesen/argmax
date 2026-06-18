@@ -359,9 +359,10 @@ fn summarize_output(output: &str) -> String {
     lines[start..].join("\n")
 }
 
-/// Mirrors `SENSITIVE_ENV_PATTERNS` in the TS source. Default-deny by
-/// pattern, not allowlist — check commands legitimately need access to
-/// PYTHONPATH, GOPATH, npm_config_*, etc.
+/// Default-deny sensitive env vars by name pattern, not allowlist — check
+/// commands legitimately need access to PYTHONPATH, GOPATH, npm_config_*, etc.
+/// Spawned check commands are user-authored, so this only guards against an
+/// accidental credential leak into a command's environment, not a hostile one.
 fn filtered_env() -> Vec<(String, String)> {
     let patterns: Vec<Regex> = vec![
         Regex::new(r"(?i)(^|_)(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?|APIKEY)$").unwrap(),
@@ -371,7 +372,11 @@ fn filtered_env() -> Vec<(String, String)> {
         Regex::new(r"(?i)^GCP_").unwrap(),
         Regex::new(r"(?i)^OPENAI_").unwrap(),
         Regex::new(r"(?i)^ANTHROPIC_").unwrap(),
-        Regex::new(r"(?i)^DATABASE_URL$").unwrap(),
+        // Connection strings embed credentials (user:pass@host). Anchor the
+        // suffix like the KEY/TOKEN pattern so plain words (e.g. CURL) aren't
+        // over-matched: DATABASE_URL, SUPABASE_URL, POSTGRES_URL, *_URI,
+        // *_DSN, *_CONNECTION_STRING all drop.
+        Regex::new(r"(?i)(^|_)(URL|URI|DSN|CONNECTION_STRING)$").unwrap(),
     ];
     std::env::vars()
         .filter(|(key, _)| !patterns.iter().any(|p| p.is_match(key)))
@@ -617,15 +622,26 @@ mod tests {
     fn filtered_env_drops_sensitive_keys() {
         std::env::set_var("ARGMAX_TEST_SECRET", "shh");
         std::env::set_var("ARGMAX_TEST_API_KEY", "x");
+        // Connection strings embed user:pass@host — must be dropped.
+        std::env::set_var("ARGMAX_TEST_POSTGRES_URL", "postgres://u:p@h/db");
+        std::env::set_var("ARGMAX_TEST_SERVICE_URI", "mongodb://u:p@h");
         std::env::set_var("PATH_PASSTHROUGH", "/usr/bin");
+        // The suffix anchor must not over-match plain words like CURL.
+        std::env::set_var("ARGMAX_TEST_CURL", "ok");
         let env = filtered_env();
         let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
         assert!(!keys.contains(&"ARGMAX_TEST_SECRET"));
         assert!(!keys.contains(&"ARGMAX_TEST_API_KEY"));
+        assert!(!keys.contains(&"ARGMAX_TEST_POSTGRES_URL"));
+        assert!(!keys.contains(&"ARGMAX_TEST_SERVICE_URI"));
         assert!(keys.contains(&"PATH_PASSTHROUGH"));
+        assert!(keys.contains(&"ARGMAX_TEST_CURL"));
         std::env::remove_var("ARGMAX_TEST_SECRET");
         std::env::remove_var("ARGMAX_TEST_API_KEY");
+        std::env::remove_var("ARGMAX_TEST_POSTGRES_URL");
+        std::env::remove_var("ARGMAX_TEST_SERVICE_URI");
         std::env::remove_var("PATH_PASSTHROUGH");
+        std::env::remove_var("ARGMAX_TEST_CURL");
     }
 
     #[cfg(unix)]

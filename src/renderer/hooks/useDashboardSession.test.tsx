@@ -8,6 +8,7 @@ import type {
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
+import { emptySnapshot } from "../lib/snapshot.js";
 import { useDashboardSession } from "./useDashboardSession.js";
 
 function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
@@ -212,15 +213,39 @@ describe("useDashboardSession — refresh / delta race", () => {
     expect(result.current.snapshot.approvals).toEqual([]);
   });
 
-  it("surfaces refresh errors after earlier refreshes have bumped the refresh token", async () => {
+  it("preserves the last-good snapshot and toasts when a single refresh fails", async () => {
+    // A genuine single-refresh failure must NOT blank a populated dashboard:
+    // App renders loadState === "error" as a full-screen EmptyState. The
+    // failure is surfaced via toast/log instead, and the snapshot is kept.
+    // (The token guard only filters superseded refreshes, not real failures.)
+    const onErrorToast = vi.fn();
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
-    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot, { onErrorToast }));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
 
     await act(async () => {
       await result.current.refresh();
     });
     expect(result.current.loadState).toBe("ready");
+
+    statusMock.mockRejectedValueOnce(new Error("status refresh failed"));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.loadState).toBe("ready");
+    expect(result.current.snapshot.sessions).toHaveLength(1);
+    expect(result.current.snapshot.workspaces).toHaveLength(1);
+    expect(onErrorToast).toHaveBeenCalledWith("status refresh failed");
+  });
+
+  it("escalates a refresh failure to the error state when no snapshot is populated", async () => {
+    // With nothing loaded yet there is no last-good snapshot to protect, so a
+    // refresh failure should still surface as the fatal error state.
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(emptySnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
 
     statusMock.mockRejectedValueOnce(new Error("status refresh failed"));
 

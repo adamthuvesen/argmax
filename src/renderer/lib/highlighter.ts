@@ -60,7 +60,10 @@ const CURATED_LANGS = [
 ];
 
 let highlighter: HighlighterCore | null = null;
-let highlighterPromise: Promise<HighlighterCore> | null = null;
+// Used only as an in-flight re-entrancy guard (null-checked, never awaited by
+// callers), so the resolved value is unused — on init failure the catch above
+// resolves it to undefined rather than re-throwing.
+let highlighterPromise: Promise<unknown> | null = null;
 const readyCallbacks = new Set<() => void>();
 
 function ensureHighlighter(): HighlighterCore | null {
@@ -82,12 +85,13 @@ function ensureHighlighter(): HighlighterCore | null {
       // crashing the whole review pane. Clear the promise so a future call
       // can retry; in practice this only fires in degraded environments
       // (e.g. tests that haven't mocked the module). Log a breadcrumb so a
-      // degraded environment isn't a silent fallback (R-042).
+      // degraded environment isn't a silent fallback (R-042). Don't re-throw:
+      // this promise is an unawaited re-entrancy guard, so a rejection would
+      // surface as an unhandledrejection with no consumer to catch it.
       logger.warn("renderer.highlighter", "shiki init failed; falling back to plain text", {
         error: errorMessage(error)
       });
       highlighterPromise = null;
-      throw error;
     });
   return null;
 }

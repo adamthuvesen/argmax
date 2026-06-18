@@ -41,7 +41,7 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.42.1",
     "@fontsource-variable/fira-code": "^5.2.7",
-    "@fontsource-variable/geist-mono": "^5.2.7",
+    "@fontsource-variable/geist-mono": "^5.2.8",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource-variable/manrope": "^5.2.8",

@@ -514,7 +514,12 @@ export function App(): JSX.Element {
         await refreshDashboardStatus();
         return;
       }
-      await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      // The send already succeeded; this post-send refresh is best-effort
+      // catch-up. Use allSettled so a rejecting refresh/event-load never
+      // bubbles out of sendSessionInput and makes the caller treat the
+      // delivered input as failed (which would skip clearing the composer
+      // and invite a double-send).
+      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
     [refreshDashboardStatus, loadSessionEvents]
   );
@@ -669,7 +674,9 @@ export function App(): JSX.Element {
         "Could not stop session."
       );
       if (ok) {
-        await Promise.all([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+        // Terminate already succeeded; the refresh is best-effort catch-up.
+        // allSettled keeps a rejecting refresh from surfacing as a failed stop.
+        await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
       }
     },
     [refreshDashboardStatus, loadSessionEvents]
@@ -745,7 +752,10 @@ export function App(): JSX.Element {
           { ctrlOrMeta: false, alt: false }
         )
       );
-      await Promise.all([refreshDashboardStatus(), loadSessionEvents(launchedSession.id)]);
+      // Launch already succeeded and the snapshot is seeded above; this
+      // refresh is best-effort. allSettled keeps a rejecting refresh from
+      // surfacing the successful launch as a failure to the caller.
+      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(launchedSession.id)]);
     },
     [
       selectedProject,

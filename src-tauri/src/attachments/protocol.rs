@@ -124,7 +124,7 @@ fn extract_url_path(url: &str) -> Option<String> {
     None
 }
 
-fn percent_decode(input: &str) -> Result<String, ()> {
+pub(crate) fn percent_decode(input: &str) -> Result<String, ()> {
     let mut out = Vec::with_capacity(input.len());
     let bytes = input.as_bytes();
     let mut i = 0;
@@ -146,7 +146,7 @@ fn percent_decode(input: &str) -> Result<String, ()> {
     String::from_utf8(out).map_err(|_| ())
 }
 
-fn content_type_for_path(path: &Path) -> &'static str {
+pub(crate) fn content_type_for_path(path: &Path) -> &'static str {
     match path
         .extension()
         .and_then(|ext| ext.to_str())

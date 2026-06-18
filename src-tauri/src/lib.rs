@@ -29,6 +29,7 @@ pub mod state;
 pub mod terminal;
 pub mod updater;
 pub mod util;
+pub mod workspace_assets;
 pub mod workspaces;
 
 use serde_json::json;
@@ -95,6 +96,34 @@ pub fn run() {
                         Ok(response) => responder.respond(response),
                         Err(error) => {
                             tracing::warn!(?error, "attachment protocol: failed to build response")
+                        }
+                    }
+                });
+            },
+        )
+        // Serve `argmax-asset://file/<abs-path>` image URLs referenced from
+        // rendered workspace files (e.g. relative `<img>` in a previewed
+        // README.md). Without this, those images 404. Serving is confined to
+        // known project/workspace roots (resolved per request from AppState)
+        // and runs off-thread so the webview's IO isn't blocked.
+        .register_asynchronous_uri_scheme_protocol(
+            workspace_assets::protocol::WORKSPACE_ASSET_PROTOCOL_SCHEME,
+            |ctx, request, responder| {
+                let app = ctx.app_handle().clone();
+                let uri = request.uri().to_string();
+                let roots = workspace_assets::protocol::known_roots(&app);
+                tauri::async_runtime::spawn(async move {
+                    let response =
+                        workspace_assets::protocol::serve_workspace_asset(&roots, &uri).await;
+                    let mut builder =
+                        tauri::http::Response::builder().status(response.http_status());
+                    if let Some(content_type) = response.content_type {
+                        builder = builder.header(tauri::http::header::CONTENT_TYPE, content_type);
+                    }
+                    match builder.body(response.bytes) {
+                        Ok(response) => responder.respond(response),
+                        Err(error) => {
+                            tracing::warn!(?error, "asset protocol: failed to build response")
                         }
                     }
                 });

@@ -69,7 +69,7 @@ sha2 = "0.10"
 regex = "1"
 walkdir = "2"
 nix = { version = "0.29", features = ["signal", "fs", "term", "process"] }
-phf = { version = "0.11", features = ["macros"] }
+phf = { version = "0.13", features = ["macros"] }
 
 # `tauri-specta` emits TypeScript bindings from the Rust command surface
 # so the renderer's `bindings.d.ts` stays in lockstep with the backend.

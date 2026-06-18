@@ -8,16 +8,19 @@
   "scripts": {
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "build:renderer": "vite build",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:perf && npm run test:rust",
     "test:unit": "vitest run",
     "test:perf": "vitest run --config vitest.perf.config.ts --no-file-parallelism",
     "test:watch": "vitest",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "coverage": "vitest run --coverage",
     "tauri": "tauri",
     "check:bindings": "node scripts/check-bindings-fresh.mjs",
     "generate:bindings": "cargo run --manifest-path src-tauri/Cargo.toml --bin export-bindings -- src/shared/bindings.d.ts",
     "check:tauri-bridge": "node scripts/check-tauri-bridge.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -69,6 +72,7 @@
     "@types/react-dom": "^19.0.2",
     "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.8",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",

@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Rust crates for the Tauri runtime live under src-tauri.
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+
+  # Renderer / tooling npm dependencies are at the repo root.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Keep the GitHub Actions used in .github/workflows pinned and current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

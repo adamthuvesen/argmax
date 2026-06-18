@@ -13,6 +13,9 @@ jobs:
   ci:
     name: lint · typecheck · test
     runs-on: macos-latest
+    # macos-latest minutes bill at 10x, so cap a hung job instead of letting it
+    # ride GitHub's 360-minute default. A healthy run finishes in a few minutes.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +46,45 @@ jobs:
       - run: npm run test:rust
 
       # Run the JS suites directly instead of `npm test`, which would re-run
-      # `test:rust` a second time. The Rust tests already ran above.
-      - run: npm run test:unit
+      # `test:rust` a second time. The Rust tests already ran above. The unit
+      # suite runs under coverage so the text-summary prints in the log (report
+      # only — there are no thresholds, so this never fails the build).
+      - run: npm run coverage
 
       - run: npm run test:perf
+
+      # Build the renderer and assert its main chunk stays within budget so a
+      # stray heavyweight import can't silently bloat cold-start payloads.
+      - run: npm run build:renderer
+
+      - run: npm run check:bundle
+
+  dependency-audit:
+    name: dependency audit
+    # Cheap to run and platform-agnostic — keep it on Linux, not the 10x macOS runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Fail on high/critical advisories in dependencies that actually ship in
+      # the renderer bundle. `--omit=dev` excludes the build/test toolchain
+      # (vite, vitest, eslint, …), which never runs on a user's machine and
+      # whose advisories can't be cleared without breaking-major bumps —
+      # Dependabot tracks those separately for routine upgrades.
+      - run: npm audit --omit=dev --audit-level=high
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Prebuilt cargo-audit binary — avoids a from-source compile.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Audit the Tauri crate's lockfile against the RustSec advisory DB.
+      - run: cargo audit --file src-tauri/Cargo.lock

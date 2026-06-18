@@ -31,7 +31,7 @@ use std::{
 };
 
 #[cfg(unix)]
-use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsFd, OwnedFd};
 
 #[cfg(unix)]
 use nix::{
@@ -214,15 +214,15 @@ fn launch_structured_via_pty(
 
     // Each Stdio takes ownership of an fd; dup the slave three times so
     // stdin/stdout/stderr each get their own.
+    // nix 0.31's `dup` borrows an `AsFd` and hands back a fresh `OwnedFd`
+    // we exclusively own — no raw-fd round-trip or `unsafe` needed.
     let dup_slave = || -> ArgmaxResult<OwnedFd> {
-        let fd = dup(slave.as_raw_fd()).map_err(|error| {
+        dup(slave.as_fd()).map_err(|error| {
             ArgmaxError::service(
                 "PROVIDER_PTY_DUP_FAILED",
                 format!("could not dup PTY slave: {error}"),
             )
-        })?;
-        // SAFETY: dup returned a fresh fd we exclusively own.
-        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+        })
     };
     let stdin_fd = dup_slave()?;
     let stdout_fd = dup_slave()?;

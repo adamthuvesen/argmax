@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { DashboardSnapshot, ProjectSummary, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
+import { logger } from "../../shared/logger.js";
 import {
   emptySnapshot,
   mergeByCreatedAt,
@@ -231,8 +233,26 @@ export function useDashboardSession(
       if (token !== dashboardRefreshToken.current) {
         return;
       }
+      // A single failed incremental refresh must not blank a dashboard that
+      // already has content: App renders loadState === "error" as a
+      // full-screen EmptyState, so escalating here would throw away the
+      // last-good snapshot on any transient blip (backend busy, IPC hiccup).
+      // Only fall into the fatal error state when there is nothing populated
+      // to preserve (the initial loadDashboard path owns that case). Otherwise
+      // keep the snapshot, log a breadcrumb, and surface a toast.
+      const current = snapshotRef.current;
+      const hasSnapshot =
+        current.projects.length > 0 || current.workspaces.length > 0 || current.sessions.length > 0;
+      const message = error instanceof Error ? error.message : "Dashboard refresh failed";
+      if (hasSnapshot) {
+        logger.warn("renderer.dashboard", "refresh failed; keeping last-good snapshot", {
+          error: errorMessage(error)
+        });
+        onErrorToastRef.current?.(message);
+        return;
+      }
       setLoadState("error");
-      setLoadError(error instanceof Error ? error.message : "Dashboard refresh failed");
+      setLoadError(message);
     }
   }, [loadDashboard]);
 

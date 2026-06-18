@@ -67,6 +67,8 @@ import type {
   WorkspaceStatusSnapshot,
   WorkspaceSummary
 } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
+import { logger } from "../../shared/logger.js";
 
 declare global {
   interface Window {
@@ -101,7 +103,10 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): EventSub
     unlisten = nextUnlisten;
     });
   ready.catch((error: unknown) => {
-    console.error(`failed to subscribe to ${channel}`, error);
+    logger.error("renderer.bridge", "failed to subscribe to channel", {
+      channel,
+      error: errorMessage(error)
+    });
   });
 
   const off = (): void => {

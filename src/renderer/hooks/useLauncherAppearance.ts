@@ -8,6 +8,8 @@ import {
 } from "../lib/fonts.js";
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "../lib/ide.js";
 import type { DetectedIde, IdeId } from "../../shared/types.js";
+import { errorMessage } from "../../shared/error.js";
+import { logger } from "../../shared/logger.js";
 import type { ThemeMode } from "../lib/theme.js";
 import {
   animateThemeChange,
@@ -74,8 +76,12 @@ export function useLauncherAppearance(): {
     void window.argmax.system
       .listDetectedIdes()
       .then((list) => setDetectedIdes(list))
-      .catch(() => {
-        // Detection failure leaves detectedIdes empty; the button disables.
+      .catch((error: unknown) => {
+        // Detection failure leaves detectedIdes empty and the button disables;
+        // log a breadcrumb so the empty list isn't a silent fallback.
+        logger.warn("renderer.launcher", "IDE detection failed", {
+          error: errorMessage(error)
+        });
       });
   }, []);
 

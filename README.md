@@ -8,9 +8,13 @@ A local desktop app with a Rust core and React UI for running Claude Code, Codex
 
 Single-user, on-device, no cloud, no auth. Built for sessions that need real repo context: persistent transcripts, review tools, checks, approvals, and optional worktree isolation for running agents in parallel.
 
+![Argmax browser-preview demo](assets/screenshots/demo-dashboard.png)
+
 ## Status
 
-Early and still evolving (0.2.0). Behavior, the SQLite schema, and the UI change between versions, and there are no stability guarantees yet.
+Early and still changing (0.2.0). The first public Rust/Tauri release targets macOS. Linux and Windows are not release targets yet.
+
+Behavior, the SQLite schema, and the UI can change between versions. There are no stability guarantees yet.
 
 ## Stack
 
@@ -37,19 +41,39 @@ npm install
 npm run tauri:dev
 ```
 
-For fast renderer-only work you can run Vite without Tauri:
+This starts the macOS Tauri app with the Rust backend.
+
+## Static Demo
+
+Run the renderer in a browser with no secrets and no local app data:
 
 ```bash
 npx vite --host 127.0.0.1
 ```
 
-Outside Tauri there's no Rust backend, so the renderer falls back to a static fixture (`src/renderer/demoSnapshot.ts`) instead of live IPC.
+Open `http://127.0.0.1:5173/`.
+
+Outside Tauri there is no Rust backend. The renderer uses `src/renderer/demoSnapshot.ts` instead of live IPC. The fixture uses sample paths and sample session text only.
+
+The screenshot above was captured from this static demo.
+
+## Reproducible Check
+
+The renderer entry chunk is checked against a 2 MiB budget:
+
+```bash
+npm run build:renderer
+npm run check:bundle
+```
+
+`check:bundle` reads `dist/renderer/index.html`, finds the emitted entry script, and fails if that file is over budget.
 
 ## Common Commands
 
 ```bash
 npm run tauri:dev       # Tauri dev app
 npm run tauri:build     # production Tauri bundle
+npm run build:renderer  # browser renderer build
 npm run lint            # ESLint
 npm run typecheck       # renderer/shared TypeScript
 npm run test:unit       # Vitest unit/integration tests

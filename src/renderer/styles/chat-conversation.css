@@ -254,7 +254,15 @@
   gap: var(--space-8);
   overflow: auto;
   padding: var(--space-2) var(--session-inline-padding) var(--space-7);
-  scroll-behavior: smooth;
+  /* Intentionally NOT smooth. The pin-to-bottom effect in
+     useSmartFollowScroll sets el.scrollTop = el.scrollHeight on every
+     conversationItems change (every streaming token). With smooth scroll
+     the browser animates each assignment, but the next token arrives
+     before the animation finishes, so the browser interrupts and
+     restarts the animation repeatedly — the viewport oscillates up and
+     down chasing a moving target. Instant scroll snaps to the new bottom
+     without fighting. The scroll-to-bottom FAB still gets smooth behavior
+     because it calls el.scrollTo({ behavior: "smooth" }) explicitly. */
 }
 
 /* Base layout only. The fill is owned by the variants: .user paints the ink

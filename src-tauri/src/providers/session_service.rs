@@ -6,13 +6,12 @@
 // + `DashboardDelta` publishes.
 //
 // The process / PTY / IO substrate lives in `runtime.rs` — this module
-// imports its handle traits and helpers. The only direct process inspection
-// here is startup cleanup for detached provider CLIs after an app restart.
+// imports its handle traits and helpers. Follow-up transcript assembly and
+// detached-process cleanup live in adjacent provider modules.
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
-    process::Command,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -24,12 +23,14 @@ use uuid::Uuid;
 use super::{
     adapters::prompt_for_agent_mode,
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
+    follow_up::compose_follow_up_prompt,
     normalizer::{NormalizerSessionContext, ProviderOutputEvent},
+    orphan_cleanup::{terminate_orphaned_provider_processes, RecoveredProviderSession},
     runtime::{
         attention_for_state, composer_payload, parse_agent_mode, parse_permission_mode,
-        parse_provider, parse_reasoning_effort, signal_process, sqlite_error, DeltaPublisher,
+        parse_provider, parse_reasoning_effort, sqlite_error, DeltaPublisher,
         ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
-        ProviderRuntimeHandle, RealProviderProcessLauncher, SignalKind,
+        ProviderRuntimeHandle, RealProviderProcessLauncher,
     },
     AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ProviderMode,
 };
@@ -59,8 +60,6 @@ use crate::{
 const MAX_PENDING_QUEUE: usize = 64;
 const STRUCTURED_LAUNCH_COLS: u16 = 120;
 const STRUCTURED_LAUNCH_ROWS: u16 = 32;
-const FOLLOW_UP_CONTEXT_MAX_MESSAGES: usize = 12;
-const FOLLOW_UP_CONTEXT_MAX_CHARS: usize = 12_000;
 /// After the last stdout/stderr chunk, flush any provider line still sitting in
 /// the per-session stream buffer (no trailing `\n` yet). Interactive CLIs often
 /// keep the process alive after a completed answer, so `flush_trailing` on exit
@@ -1431,378 +1430,9 @@ fn infer_cursor_provider_conversation_id(
     Ok(None)
 }
 
-#[derive(Debug, Clone)]
-struct RecoveredProviderSession {
-    id: String,
-    provider: String,
-    provider_conversation_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ProviderProcess {
-    pid: u32,
-    ppid: u32,
-}
-
-fn terminate_orphaned_provider_processes(sessions: &[RecoveredProviderSession]) {
-    if sessions.is_empty() {
-        return;
-    }
-    let Ok(output) = Command::new("ps")
-        .args(["-axo", "pid=,ppid=,command="])
-        .output()
-    else {
-        tracing::warn!("failed to list processes while recovering provider sessions");
-        return;
-    };
-    if !output.status.success() {
-        tracing::warn!(
-            exit_code = output.status.code(),
-            "ps failed while recovering provider sessions"
-        );
-        return;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let current_pid = std::process::id();
-    let mut matched = stdout
-        .lines()
-        .filter_map(parse_provider_process_line)
-        .filter(|(process, command)| {
-            // Only clean provider CLIs already reparented away from Argmax.
-            // A second running app instance should keep its own children.
-            process.pid != current_pid && process.ppid == 1 && {
-                sessions
-                    .iter()
-                    .any(|session| provider_command_matches_session(command, session))
-            }
-        })
-        .map(|(process, _)| process)
-        .collect::<Vec<_>>();
-    matched.sort_by_key(|process| process.pid);
-    matched.dedup_by_key(|process| process.pid);
-
-    if matched.is_empty() {
-        return;
-    }
-
-    for process in &matched {
-        signal_process(process.pid, SignalKind::Term);
-    }
-    std::thread::sleep(Duration::from_millis(250));
-    for process in &matched {
-        signal_process(process.pid, SignalKind::Kill);
-    }
-    tracing::warn!(
-        process_count = matched.len(),
-        "terminated orphaned provider processes during session recovery"
-    );
-}
-
-fn parse_provider_process_line(line: &str) -> Option<(ProviderProcess, &str)> {
-    let line = line.trim_start();
-    let (pid, rest) = split_first_field(line)?;
-    let (ppid, command) = split_first_field(rest.trim_start())?;
-    Some((
-        ProviderProcess {
-            pid: pid.parse().ok()?,
-            ppid: ppid.parse().ok()?,
-        },
-        command.trim_start(),
-    ))
-}
-
-fn split_first_field(value: &str) -> Option<(&str, &str)> {
-    let value = value.trim_start();
-    let split_at = value.find(char::is_whitespace)?;
-    Some((&value[..split_at], &value[split_at..]))
-}
-
-fn provider_command_matches_session(command: &str, session: &RecoveredProviderSession) -> bool {
-    let mut args = command.split_whitespace();
-    let Some(binary) = args.next() else {
-        return false;
-    };
-    if provider_binary_name(binary) != Some(session.provider.as_str()) {
-        return false;
-    }
-    let args = args.collect::<Vec<_>>();
-    match session.provider.as_str() {
-        "claude" => {
-            has_flag_value(&args, "--session-id", &session.id)
-                || session
-                    .provider_conversation_id
-                    .as_deref()
-                    .is_some_and(|id| has_flag_value(&args, "--resume", id))
-        }
-        "cursor" => session
-            .provider_conversation_id
-            .as_deref()
-            .is_some_and(|id| has_flag_value(&args, "--resume", id)),
-        "codex" => session
-            .provider_conversation_id
-            .as_deref()
-            .is_some_and(|id| {
-                (args
-                    .windows(2)
-                    .any(|window| window[0] == "exec" && window[1] == "resume")
-                    && args.contains(&id))
-                    || args
-                        .windows(2)
-                        .any(|window| window[0] == "resume" && window[1] == id)
-            }),
-        _ => false,
-    }
-}
-
-fn provider_binary_name(binary: &str) -> Option<&'static str> {
-    let basename = std::path::Path::new(binary).file_name()?.to_str()?;
-    match basename {
-        "claude" => Some("claude"),
-        "codex" => Some("codex"),
-        "cursor-agent" => Some("cursor"),
-        _ => None,
-    }
-}
-
-fn has_flag_value(args: &[&str], flag: &str, value: &str) -> bool {
-    args.windows(2)
-        .any(|window| window[0] == flag && window[1] == value)
-        || args.iter().any(|arg| {
-            arg.strip_prefix(flag)
-                .and_then(|suffix| suffix.strip_prefix('='))
-                == Some(value)
-        })
-}
-
-fn compose_follow_up_prompt(
-    connection: &rusqlite::Connection,
-    session_id: &str,
-    message: &str,
-) -> ArgmaxResult<String> {
-    let mut statement = connection
-        .prepare(
-            r#"
-            SELECT type, message
-            FROM events
-            WHERE session_id = ?
-              AND type IN ('user.message', 'message.completed', 'error')
-              AND trim(message) <> ''
-            ORDER BY rowid DESC
-            LIMIT ?
-            "#,
-        )
-        .map_err(sqlite_error)?;
-    let rows = statement
-        .query_map((session_id, FOLLOW_UP_CONTEXT_MAX_MESSAGES as i64), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(sqlite_error)?;
-    let mut transcript = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(sqlite_error)?
-        .into_iter()
-        .filter_map(|(event_type, text)| {
-            let speaker = match event_type.as_str() {
-                "user.message" => "User",
-                "message.completed" => "Assistant",
-                "error" => "System",
-                _ => return None,
-            };
-            let text = text.trim();
-            if text.is_empty() {
-                None
-            } else {
-                Some(format!("{speaker}: {}", clamp_context_text(text)))
-            }
-        })
-        .collect::<Vec<_>>();
-    transcript.reverse();
-
-    if transcript.is_empty() {
-        return Ok(message.to_string());
-    }
-
-    let mut transcript_chars = transcript.iter().map(|line| line.len()).sum::<usize>()
-        + transcript.len().saturating_sub(1);
-    while transcript_chars > FOLLOW_UP_CONTEXT_MAX_CHARS && transcript.len() > 1 {
-        transcript_chars = transcript_chars.saturating_sub(transcript[0].len() + 1);
-        transcript.remove(0);
-    }
-
-    Ok(format!(
-        "The user is continuing this Argmax chat session. Use the visible conversation transcript below as context for the new message. Continue naturally.\n\nConversation so far:\n{}\n\nNew user message:\n{}",
-        transcript.join("\n"),
-        message
-    ))
-}
-
-fn clamp_context_text(text: &str) -> String {
-    const MAX_LINE_CHARS: usize = 4_000;
-    if text.len() <= MAX_LINE_CHARS {
-        return text.to_string();
-    }
-
-    let mut end = 0;
-    for (index, _) in text.char_indices() {
-        if index > MAX_LINE_CHARS {
-            break;
-        }
-        end = index;
-    }
-    format!("{}...", text[..end].trim_end())
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SendInputResult {
     pub ok: bool,
     pub queued: bool,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::persistence::database::Database;
-    use serde_json::json;
-
-    #[test]
-    fn follow_up_prompt_reads_latest_messages_only() {
-        let database = Database::open_in_memory().expect("open db");
-        let connection = database.connection();
-        seed_session(&connection);
-        for index in 0..20 {
-            persist_timeline_event(
-                &connection,
-                &PersistTimelineEventInput {
-                    id: format!("event-{index}"),
-                    session_id: "s1".to_string(),
-                    r#type: "user.message".to_string(),
-                    message: format!("message {index}"),
-                    payload: json!({}),
-                    created_at: Some(format!("2026-05-24T10:00:{index:02}.000Z")),
-                },
-            )
-            .expect("insert event");
-        }
-
-        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
-
-        assert!(!prompt.contains("message 7"));
-        assert!(prompt.contains("message 8"));
-        assert!(prompt.contains("message 19"));
-        assert!(prompt.contains("New user message:\nnext"));
-    }
-
-    #[test]
-    fn follow_up_prompt_keeps_newest_lines_under_char_budget() {
-        let database = Database::open_in_memory().expect("open db");
-        let connection = database.connection();
-        seed_session(&connection);
-        for index in 0..4 {
-            persist_timeline_event(
-                &connection,
-                &PersistTimelineEventInput {
-                    id: format!("large-{index}"),
-                    session_id: "s1".to_string(),
-                    r#type: "message.completed".to_string(),
-                    message: format!("large {index} {}", "x".repeat(4_000)),
-                    payload: json!({}),
-                    created_at: Some(format!("2026-05-24T10:00:{index:02}.000Z")),
-                },
-            )
-            .expect("insert event");
-        }
-
-        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
-
-        assert!(!prompt.contains("large 0"));
-        assert!(!prompt.contains("large 1"));
-        assert!(prompt.contains("large 2"));
-        assert!(prompt.contains("large 3"));
-    }
-
-    fn seed_session(connection: &rusqlite::Connection) {
-        connection
-            .execute(
-                "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
-                [],
-            )
-            .expect("insert project");
-        connection
-            .execute(
-                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'task', 'branch', 'main', '/tmp/w1', 'running', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
-                [],
-            )
-            .expect("insert workspace");
-        connection
-            .execute(
-                "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode, prompt, state, attention, started_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'claude-sonnet-4', NULL, 'auto-approve', 'auto', 'prompt', 'complete', 'none', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
-                [],
-            )
-            .expect("insert session");
-    }
-
-    #[test]
-    fn recovery_process_matcher_finds_claude_session_and_resume_commands() {
-        let session = RecoveredProviderSession {
-            id: "session-1".to_owned(),
-            provider: "claude".to_owned(),
-            provider_conversation_id: Some("provider-1".to_owned()),
-        };
-
-        assert!(provider_command_matches_session(
-            "/Users/me/.local/bin/claude -p --session-id session-1 --output-format stream-json hello",
-            &session,
-        ));
-        assert!(provider_command_matches_session(
-            "/Users/me/.local/bin/claude -p --resume provider-1 --output-format stream-json hello",
-            &session,
-        ));
-        assert!(!provider_command_matches_session(
-            "/Users/me/.local/bin/claude -p --resume other-session --output-format stream-json hello",
-            &session,
-        ));
-        assert!(!provider_command_matches_session(
-            "node ./script-that-mentions-claude --resume provider-1",
-            &session,
-        ));
-    }
-
-    #[test]
-    fn recovery_process_matcher_finds_cursor_and_codex_resume_commands() {
-        let cursor = RecoveredProviderSession {
-            id: "argmax-session".to_owned(),
-            provider: "cursor".to_owned(),
-            provider_conversation_id: Some("cursor-session".to_owned()),
-        };
-        let codex = RecoveredProviderSession {
-            id: "argmax-session".to_owned(),
-            provider: "codex".to_owned(),
-            provider_conversation_id: Some("codex-thread".to_owned()),
-        };
-
-        assert!(provider_command_matches_session(
-            "/opt/bin/cursor-agent agent -p --resume cursor-session --output-format stream-json prompt",
-            &cursor,
-        ));
-        assert!(provider_command_matches_session(
-            "/opt/bin/codex exec resume --json --model gpt-5 codex-thread -",
-            &codex,
-        ));
-        assert!(!provider_command_matches_session(
-            "/opt/bin/codex exec --json --model gpt-5 -",
-            &codex,
-        ));
-    }
-
-    #[test]
-    fn recovery_process_line_parser_reads_pid_ppid_and_command() {
-        let parsed = parse_provider_process_line("  123  1 /usr/bin/claude -p --resume abc")
-            .expect("parse ps row");
-
-        assert_eq!(parsed.0.pid, 123);
-        assert_eq!(parsed.0.ppid, 1);
-        assert_eq!(parsed.1, "/usr/bin/claude -p --resume abc");
-    }
 }

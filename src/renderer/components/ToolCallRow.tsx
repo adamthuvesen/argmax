@@ -37,6 +37,11 @@ function verbForChanges(changes: FileChange[]): string | null {
   return "Changed";
 }
 
+type UserToggle = {
+  value: boolean;
+  defaultExpanded?: boolean;
+};
+
 function ToolCallRowInner({
   tool,
   workspaceCwd,
@@ -51,20 +56,23 @@ function ToolCallRowInner({
   // Follow the parent turn's expanded state until the user manually toggles
   // this row. That keeps the turn chip authoritative for single-tool rows
   // (including MCP calls) while preserving per-row overrides.
-  const [userToggle, setUserToggle] = useState<boolean | null>(null);
+  const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   // Auto-expand on error so the failure is visible without a click. We only
   // run this once per row — if the user manually collapses, we don't reopen.
   const [autoExpandedOnError, setAutoExpandedOnError] = useState<boolean>(tool.status === "error");
   const autoExpandedOnErrorRef = useRef<boolean>(tool.status === "error");
 
   useEffect(() => {
-    if (tool.status === "error" && !autoExpandedOnErrorRef.current && userToggle === null) {
+    const hasLocalOverride = userToggle?.defaultExpanded === defaultExpanded;
+    if (tool.status === "error" && !autoExpandedOnErrorRef.current && !hasLocalOverride) {
       autoExpandedOnErrorRef.current = true;
       setAutoExpandedOnError(true);
     }
-  }, [tool.status, userToggle]);
+  }, [defaultExpanded, tool.status, userToggle]);
 
-  const expanded = userToggle ?? (autoExpandedOnError || (defaultExpanded ?? false));
+  const localExpanded =
+    userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
+  const expanded = localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false));
 
   const action = describeToolAction(tool);
   const baseSplit = splitVerbTarget(action);
@@ -86,7 +94,7 @@ function ToolCallRowInner({
         type="button"
         aria-expanded={expanded}
         aria-label={action}
-        onClick={() => setUserToggle(!expanded)}
+        onClick={() => setUserToggle({ value: !expanded, defaultExpanded })}
       >
         {/* Always render the status dot — transparent when done — so every row
             reserves the same left gutter and verbs/targets stay column-aligned

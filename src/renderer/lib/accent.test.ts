@@ -24,13 +24,13 @@ describe("accent", () => {
   });
 
   it("round-trips valid accent ids through localStorage", () => {
-    writeStoredAccent("anthropic-orange");
-    expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("anthropic-orange");
-    expect(readStoredAccent()).toBe("anthropic-orange");
+    writeStoredAccent("orange");
+    expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange");
+    expect(readStoredAccent()).toBe("orange");
   });
 
   it("applyAccentToDocument sets the data-accent attribute on <html>", () => {
-    applyAccentToDocument("codex-blue");
-    expect(document.documentElement.getAttribute("data-accent")).toBe("codex-blue");
+    applyAccentToDocument("blue");
+    expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
   });
 });

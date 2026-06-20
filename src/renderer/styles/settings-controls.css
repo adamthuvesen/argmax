@@ -377,7 +377,7 @@
   --accent-swatch-soft: #e7efe7;
 }
 
-.accent-picker-chip[data-accent-id="mascot-purple"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="purple"] .accent-picker-swatch {
   --accent-swatch-color: #8f63d9;
   --accent-swatch-soft: #eee7fb;
 }
@@ -387,12 +387,12 @@
   --accent-swatch-soft: #ecebea;
 }
 
-.accent-picker-chip[data-accent-id="anthropic-orange"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="orange"] .accent-picker-swatch {
   --accent-swatch-color: #c77d3a;
   --accent-swatch-soft: #f6eadc;
 }
 
-.accent-picker-chip[data-accent-id="codex-blue"] .accent-picker-swatch {
+.accent-picker-chip[data-accent-id="blue"] .accent-picker-swatch {
   --accent-swatch-color: #3f7ecb;
   --accent-swatch-soft: #e5eef9;
 }

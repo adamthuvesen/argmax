@@ -1,4 +1,4 @@
-export type AccentId = "green" | "mascot-purple" | "neutral" | "anthropic-orange" | "codex-blue";
+export type AccentId = "green" | "purple" | "neutral" | "orange" | "blue";
 
 export type AccentOption = {
   id: AccentId;
@@ -21,9 +21,9 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     swatch: { color: "#5a8f72", soft: "#e7efe7" }
   },
   {
-    id: "mascot-purple",
-    label: "Mascot purple",
-    hint: "A soft purple accent for chrome, inspired by the mascot.",
+    id: "purple",
+    label: "Purple",
+    hint: "A soft purple accent for chrome.",
     swatch: { color: "#8f63d9", soft: "#eee7fb" }
   },
   {
@@ -33,14 +33,14 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     swatch: { color: "#2f2f2b", soft: "#ededeb" }
   },
   {
-    id: "anthropic-orange",
-    label: "Anthropic orange",
+    id: "orange",
+    label: "Orange",
     hint: "A warm orange accent for chrome without changing warnings or diffs.",
     swatch: { color: "#c77d3a", soft: "#f6eadc" }
   },
   {
-    id: "codex-blue",
-    label: "Codex blue",
+    id: "blue",
+    label: "Blue",
     hint: "A cool blue accent for selection, focus, and transcript chrome.",
     swatch: { color: "#3f7ecb", soft: "#e5eef9" }
   }

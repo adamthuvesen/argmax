@@ -112,7 +112,7 @@
   margin: 0;
   border: 0;
   background: transparent;
-  color: var(--sage-deep);
+  color: var(--accent-deep);
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: inherit;
@@ -120,13 +120,13 @@
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
-  text-decoration-color: rgba(61, 106, 82, 0.4);
+  text-decoration-color: color-mix(in oklab, var(--accent) 42%, transparent);
   transition: text-decoration-color var(--duration-fast) var(--ease);
   vertical-align: baseline;
 }
 
 .file-chip:hover {
-  text-decoration-color: var(--sage-deep);
+  text-decoration-color: var(--accent-deep);
 }
 
 .file-chip svg {
@@ -230,7 +230,7 @@
 }
 
 .file-preview-popover-line.is-target {
-  background: var(--sage-soft);
+  background: var(--accent-soft);
 }
 
 .file-preview-popover-gutter {
@@ -349,4 +349,3 @@
     opacity: 1;
   }
 }
-

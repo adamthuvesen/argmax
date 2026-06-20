@@ -320,7 +320,7 @@
    focus rings, selection, picker states, command palette affordances, launcher
    ornament, and transcript metadata. Semantic status colors stay on --sage,
    --amber, --rose, and the diff tokens so code additions remain green. */
-:root[data-accent="mascot-purple"] {
+:root[data-accent="purple"] {
   --accent: #8f63d9;
   --accent-soft: #eee7fb;
   --accent-deep: #6740ad;
@@ -332,19 +332,19 @@
   --accent-deep: #2f2d29;
 }
 
-:root[data-accent="anthropic-orange"] {
+:root[data-accent="orange"] {
   --accent: #c77d3a;
   --accent-soft: #f6eadc;
   --accent-deep: #945824;
 }
 
-:root[data-accent="codex-blue"] {
+:root[data-accent="blue"] {
   --accent: #3f7ecb;
   --accent-soft: #e5eef9;
   --accent-deep: #2d5f9f;
 }
 
-:root[data-theme="dark"][data-accent="mascot-purple"] {
+:root[data-theme="dark"][data-accent="purple"] {
   --accent: #b894ff;
   --accent-soft: rgba(184, 148, 255, 0.16);
   --accent-deep: #d0b9ff;
@@ -356,19 +356,19 @@
   --accent-deep: #f1ede3;
 }
 
-:root[data-theme="dark"][data-accent="anthropic-orange"] {
+:root[data-theme="dark"][data-accent="orange"] {
   --accent: #e8a263;
   --accent-soft: rgba(232, 162, 99, 0.16);
   --accent-deep: #f0bc89;
 }
 
-:root[data-theme="dark"][data-accent="codex-blue"] {
+:root[data-theme="dark"][data-accent="blue"] {
   --accent: #79aeee;
   --accent-soft: rgba(121, 174, 238, 0.16);
   --accent-deep: #a8cbff;
 }
 
-:root[data-theme="purple"][data-accent="mascot-purple"] {
+:root[data-theme="purple"][data-accent="purple"] {
   --accent: #f0d6ff;
   --accent-soft: rgba(240, 214, 255, 0.18);
   --accent-deep: #ffe8ff;
@@ -380,13 +380,13 @@
   --accent-deep: #ffffff;
 }
 
-:root[data-theme="purple"][data-accent="anthropic-orange"] {
+:root[data-theme="purple"][data-accent="orange"] {
   --accent: #ffd18a;
   --accent-soft: rgba(255, 209, 138, 0.18);
   --accent-deep: #ffe0ad;
 }
 
-:root[data-theme="purple"][data-accent="codex-blue"] {
+:root[data-theme="purple"][data-accent="blue"] {
   --accent: #9cc6ff;
   --accent-soft: rgba(156, 198, 255, 0.18);
   --accent-deep: #c7defc;

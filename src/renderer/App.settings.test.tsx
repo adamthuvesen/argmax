@@ -346,17 +346,17 @@ describe("App settings", () => {
       "true"
     );
 
-    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Anthropic orange" }));
+    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
     await waitFor(() =>
-      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("anthropic-orange")
+      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange")
     );
-    expect(document.documentElement.getAttribute("data-accent")).toBe("anthropic-orange");
+    expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
 
-    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Codex blue" }));
+    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Blue" }));
     await waitFor(() =>
-      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("codex-blue")
+      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue")
     );
-    expect(document.documentElement.getAttribute("data-accent")).toBe("codex-blue");
+    expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
   });
 
   it("settings Appearance section wires the macOS-native options through to the document attribute", async () => {

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
+import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import {
   dashboardDeltaListener,
   launchProvider,
@@ -330,6 +331,32 @@ describe("App settings", () => {
       expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
     );
     expect(document.documentElement.getAttribute("data-font")).toBe("jetbrains-mono");
+  });
+
+  it("settings Appearance section renders the Accent picker and persists accent changes", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
+    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+
+    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange")
+    );
+    expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
+
+    fireEvent.click(within(accentPicker).getByRole("radio", { name: "Blue" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue")
+    );
+    expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
   });
 
   it("settings Appearance section wires the macOS-native options through to the document attribute", async () => {

@@ -212,8 +212,8 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--sage);
-  box-shadow: 0 0 0 3px var(--sage-soft);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
   animation: status-pulse 2.4s var(--ease) infinite;
   flex: 0 0 auto;
 }
@@ -276,7 +276,7 @@
 }
 
 .settings-hero-period {
-  color: var(--sage);
+  color: var(--accent);
 }
 
 .settings-hero-lede {
@@ -306,7 +306,7 @@
   border-bottom: 1px solid var(--line-strong);
 }
 
-/* Group eyebrow = the active tab's "you are here" kicker. Sage-accented and
+/* Group eyebrow = the active tab's "you are here" kicker. Accent-tinted and
    distinct from the neutral section eyebrows so the chapter heading reads
    above the sections it contains. */
 .settings-group-eyebrow {
@@ -318,15 +318,15 @@
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--sage-deep);
+  color: var(--accent-deep);
 }
 
 .settings-group-eyebrow-mark {
   width: 6px;
   height: 6px;
   border-radius: 2px;
-  background: var(--sage);
-  box-shadow: 0 0 0 3px var(--sage-soft);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
   flex: 0 0 auto;
 }
 
@@ -370,7 +370,7 @@
 }
 
 .settings-group-map li span:first-child {
-  color: var(--sage-deep);
+  color: var(--accent-deep);
   font-size: 10.5px;
   font-weight: 600;
   font-feature-settings: "tnum", "zero";
@@ -448,9 +448,9 @@
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1;
-  color: var(--sage-deep);
-  background: var(--sage-soft);
-  border: 1px solid rgba(90, 143, 114, 0.32);
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in oklab, var(--accent) 32%, var(--line));
   border-radius: 8px;
   align-self: start;
   margin-top: 1px;
@@ -792,4 +792,3 @@
   outline: none;
   box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
-

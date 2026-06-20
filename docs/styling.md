@@ -6,6 +6,7 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 |---|---|
 | Add a color or surface | [Tokens](#tokens) — define on `:root`, never inline hex |
 | Add a status color | `data-status` / `data-state` / `data-risk` attribute selectors |
+| Add configurable chrome tint | `--accent`, `--accent-soft`, `--accent-deep` in [Tokens](#tokens) |
 | Add an animation | [Patterns](#patterns) — reuse `--ease`, respect `prefers-reduced-motion` |
 | Add a font | `src/renderer/lib/fonts.ts` + matching `:root[data-font="…"]` block |
 | Style markdown | `.markdown <selector>` rules (defined for headings, lists, code, etc.) |
@@ -67,6 +68,7 @@ Keep each stylesheet module under **1000 lines**. Split further by surface if a 
 ## Hard constraints
 
 - **Four themes: Light / Dark / System / Purple.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Purple ("Nebula") is a dark-family theme — deep amethyst canvas, a gold-spark hero action, aurora glow. Tokens live in `:root` (light), `:root[data-theme="dark"]`, and `:root[data-theme="purple"]`. Purple resolves to the **dark** palettes for code/terminal via `themeAppearance()` in [theme.ts](../../src/renderer/lib/theme.ts). Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Tauri-side for no-flash startup). See [src/renderer/lib/theme.ts](../../src/renderer/lib/theme.ts).
+- **Accent tint is chrome-only.** Settings → Appearance lets users pick `green`, `purple`, `neutral`, `orange`, or `blue`; the choice persists under `argmax.accent.tint` and sets `<html data-accent="…">`. Use `--accent`, `--accent-soft`, and `--accent-deep` for decorative brand/chrome tint: focus rings, selection, picker states, command palette selection, launcher decoration, and transcript metadata.
 - **Fonts flow through `--font-ui` / `--font-mono`.** Never hardcode a family — chrome reads `--font-ui`, code and the terminal read `--font-mono`. Mono font picks set both variables to the same stack; sans picks keep a system mono stack for code/terminal.
 - **Inter is the default** (`@fontsource-variable/inter`, loaded on cold launch since it's the default). Lilex remains available, kept Nerd-Font–patched so terminal-style glyphs still render. Mono alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) and the other sans options (Geist Sans, IBM Plex Sans, Manrope) are lazy-loaded via `@fontsource` / `@fontsource-variable` only when picked, and selected from Settings → Appearance. System fonts (System Mono, Menlo, Monaco) need no JS asset load. New fonts live in [src/renderer/lib/fonts.ts](../../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
 
@@ -79,7 +81,8 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 | Surfaces | `--bg`, `--sidebar`, `--panel`, `--panel-soft`, `--panel-sunken` |
 | Lines | `--line`, `--line-soft`, `--line-strong` |
 | Ink | `--text`, `--text-soft`, `--muted`, `--muted-strong`, `--ink`, `--ink-soft` |
-| Status | `--sage` (running/online), `--amber` (waiting), `--rose` (error/risk) — each with a `*-soft` companion; plus `--sage-deep` for the Approve button |
+| Chrome accent | `--accent`, `--accent-soft`, `--accent-deep` — configurable brand/decorative tint, defaults to the green `--sage*` values |
+| Status | `--sage` (running/online/success/approve), `--amber` (waiting), `--rose` (error/risk) — each with a `*-soft` companion. Keep status chips, running/error states, diffs, checks, file-change cards, code additions, and logs on semantic tokens; do not migrate them to `--accent*`. |
 | Elevation | `--shadow-1`, `--shadow-2`, `--shadow-3` |
 | Radii | `--radius-sm/md/lg/xl` |
 | Motion | `--ease` (cubic-bezier), `--duration-fast` (140ms), `--duration-base` (220ms); newer code prefers `--motion-fast` (120ms), `--motion-base` (180ms), `--motion-slow` (240ms), `--ease-out`, `--ease-in-out` |

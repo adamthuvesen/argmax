@@ -93,8 +93,8 @@
 
 .session-multigrid-resizer:hover::after,
 .session-multigrid[data-resizing="true"] .session-multigrid-resizer::after {
-  background: var(--sage);
-  box-shadow: 0 0 0 1px var(--sage-soft);
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
 /* Drop-zone overlay — appears inside each cell while a sidebar drag is in
@@ -111,8 +111,8 @@
 .multigrid-drop-zone {
   position: absolute;
   pointer-events: none;
-  background: var(--sage-soft);
-  outline: 2px dashed var(--sage);
+  background: var(--accent-soft);
+  outline: 2px dashed var(--accent);
   outline-offset: -4px;
   transition: background var(--duration-fast, 140ms) var(--ease, ease);
 }
@@ -342,27 +342,27 @@
 }
 
 .markdown a {
-  color: var(--sage-deep);
+  color: var(--accent-deep);
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
-  text-decoration-color: rgba(61, 106, 82, 0.4);
+  text-decoration-color: color-mix(in oklab, var(--accent) 42%, transparent);
   transition: text-decoration-color var(--duration-fast) var(--ease);
 }
 
 .markdown a:hover {
-  text-decoration-color: var(--sage-deep);
+  text-decoration-color: var(--accent-deep);
 }
 
 .markdown code {
   padding: 0 4px;
   border-radius: 4px;
-  background: var(--sage-soft);
+  background: var(--accent-soft);
   border: 0;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   font-variant-ligatures: none;
-  color: var(--sage-deep);
+  color: var(--accent-deep);
 }
 
 .markdown pre {
@@ -413,7 +413,7 @@
 }
 
 .markdown ol > li:only-child::marker {
-  color: var(--sage);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -435,7 +435,7 @@
 }
 
 .markdown ul > li::marker {
-  color: var(--sage);
+  color: var(--accent);
 }
 
 .markdown ol > li::marker {
@@ -488,8 +488,8 @@
   position: relative;
   margin: 18px 0;
   padding: 10px 14px 10px 18px;
-  background: var(--sage-soft);
-  border-left: 3px solid var(--sage);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
   border-radius: 0 8px 8px 0;
   color: var(--text-soft);
   font-style: italic;
@@ -616,9 +616,9 @@
 .scroll-to-bottom-fab[data-has-count="true"] {
   width: auto;
   padding: 0 12px 0 10px;
-  background: var(--sage-deep);
+  background: var(--accent-deep);
   color: var(--bubble-on-ink);
-  border-color: var(--sage-deep);
+  border-color: var(--accent-deep);
 }
 
 .scroll-to-bottom-fab-count {
@@ -634,5 +634,5 @@
 }
 
 .scroll-to-bottom-fab[data-has-count="true"]:hover {
-  background: var(--sage);
+  background: var(--accent);
 }

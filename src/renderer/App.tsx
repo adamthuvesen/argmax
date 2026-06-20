@@ -109,8 +109,17 @@ export function App(): JSX.Element {
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
   const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, false);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
-  const { themeMode, setThemeMode, fontFamily, setFontFamily, defaultIde, setDefaultIde, detectedIdes } =
-    useLauncherAppearance();
+  const {
+    themeMode,
+    setThemeMode,
+    accentId,
+    setAccentId,
+    fontFamily,
+    setFontFamily,
+    defaultIde,
+    setDefaultIde,
+    detectedIdes
+  } = useLauncherAppearance();
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>(() => readStoredThinkingStyle());
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
@@ -929,6 +938,11 @@ export function App(): JSX.Element {
                 onThemeModeChange={(mode) => {
                   animateThemeChange();
                   setThemeMode(mode);
+                }}
+                accentId={accentId}
+                onAccentChange={(id) => {
+                  animateThemeChange();
+                  setAccentId(id);
                 }}
                 detectedIdes={detectedIdes}
                 defaultIde={defaultIde}

@@ -6,6 +6,12 @@ import {
   readStoredFont,
   type FontFamilyId
 } from "../lib/fonts.js";
+import {
+  applyAccentToDocument,
+  readStoredAccent,
+  writeStoredAccent,
+  type AccentId
+} from "../lib/accent.js";
 import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "../lib/ide.js";
 import type { DetectedIde, IdeId } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
@@ -22,6 +28,8 @@ import {
 export function useLauncherAppearance(): {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
+  accentId: AccentId;
+  setAccentId: (accentId: AccentId) => void;
   fontFamily: FontFamilyId;
   setFontFamily: (font: FontFamilyId) => void;
   defaultIde: IdeId | null;
@@ -29,6 +37,7 @@ export function useLauncherAppearance(): {
   detectedIdes: DetectedIde[];
 } {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
+  const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
@@ -40,6 +49,12 @@ export function useLauncherAppearance(): {
     applyFontToDocument(fontFamily);
     void loadFontAssets(fontFamily);
   }, [fontFamily]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    writeStoredAccent(accentId);
+    applyAccentToDocument(accentId);
+  }, [accentId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -97,6 +112,8 @@ export function useLauncherAppearance(): {
   return {
     themeMode,
     setThemeMode,
+    accentId,
+    setAccentId,
     fontFamily,
     setFontFamily,
     defaultIde,

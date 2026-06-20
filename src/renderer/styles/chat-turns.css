@@ -87,7 +87,8 @@
 .turn-block-tools {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  margin: -6px 0 2px;
 }
 
 /* Running turn — subtle pulse on the subtitle to confirm activity without
@@ -155,11 +156,8 @@
 /* ThoughtBlock — Claude extended-thinking (reasoning) rendered as a distinct,
    collapsible disclosure inside the turn body. Collapsed by default; the chip
    reads quieter than the answer so reasoning stays available without competing
-   with the actual response. */
-/* Structurally mirrors .tool-call-group — the whole block is indented and a
-   full-height left rail runs alongside the eyebrow and body, hidden when
-   collapsed. The rail stays neutral (--line-strong) rather than the tool
-   groups' sage, so reasoning reads as the quieter sibling. */
+   with the actual response. Reasoning keeps its own neutral rail so it reads as
+   a quieter sibling to tool work. */
 .thought-block {
   position: relative;
   display: flex;
@@ -227,7 +225,8 @@
   transition: color var(--duration-fast) var(--ease);
 }
 
-/* `+` / `−` glyph matching .tool-call-group-toggle. */
+/* `+` / `−` glyph for the Thought disclosure. Tool summaries keep their
+   header chrome quieter and use the whole row as the click target. */
 .thought-block-toggle {
   flex: 0 0 auto;
   display: inline-flex;
@@ -262,8 +261,8 @@
 }
 
 /* Expanded reasoning — muted text reads as a quieter, secondary stream. The
-   left rail and indent now come from the .thought-block container (mirroring
-   .tool-call-group), so the body itself carries no rail of its own. */
+   left rail and indent come from the .thought-block container, so the body
+   itself carries no rail of its own. */
 .thought-block-body {
   color: var(--muted);
   font-size: 13px;
@@ -633,55 +632,16 @@
   flex: 0 0 auto;
 }
 
-/* Tool-call group — editorial margin note.
-   A single sage-deep rail runs down the left side; the header reads as a
-   small-caps eyebrow + slash-separated preview; child rows fade in with a
-   short stagger. No panel chrome, no icon stack — just typography and one
-   accent thread. */
+/* Tool-call group — quiet transcript summary.
+   The header sits on the same left edge as assistant prose; expanded child rows
+   are lightly inset for scanability. No panel chrome and no accent rail. */
 .tool-call-group {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding-left: var(--space-4);
   background: transparent;
   border-radius: 0;
   animation: msg-in 200ms var(--ease) both;
-}
-
-.tool-call-group::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 1px;
-  background: var(--sage-deep);
-  opacity: 0.55;
-  transition: opacity var(--duration-base) var(--ease);
-}
-
-.tool-call-group[data-expanded="true"]::before {
-  opacity: 0.85;
-}
-
-/* The rail is a margin thread for the child rows — it only reads as a rail when
-   the group is open. Collapsed, it shrank to a stray green stub beside the
-   header, so hide it there; the green eyebrow label already names the group.
-   Running/error keep their rail collapsed too, as an at-a-glance status cue. */
-.tool-call-group:not([data-expanded="true"]):not([data-status="running"]):not([data-status="error"])::before {
-  display: none;
-}
-
-.tool-call-group[data-status="running"]::before {
-  background: var(--amber);
-  opacity: 0.7;
-  animation: rail-pulse 1.8s var(--ease) infinite;
-}
-
-.tool-call-group[data-status="error"]::before {
-  background: var(--rose);
-  opacity: 1;
-  width: 2px;
 }
 
 .tool-call-group[data-status="error"] .tool-call-group-eyebrow-label {
@@ -712,10 +672,6 @@
   color: var(--text);
 }
 
-.tool-call-group-header:hover .tool-call-group-toggle {
-  color: var(--sage-deep);
-}
-
 .tool-call-group-eyebrow {
   display: inline-flex;
   align-items: baseline;
@@ -742,19 +698,13 @@
   color: var(--muted);
 }
 
-.tool-call-group-toggle {
+.tool-call-group-running {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  color: var(--muted);
-  transition: color var(--duration-fast) var(--ease);
+  margin-left: auto;
+  color: var(--amber);
 }
 
 .tool-call-group-body {
@@ -766,6 +716,14 @@
 
 .tool-call-group-row {
   animation: tool-row-in 220ms var(--ease) both;
+}
+
+.tool-call-group-body .tool-call-row-button {
+  padding-left: 0;
+}
+
+.tool-call-group-body .tool-call-row-dot[data-status="done"] {
+  display: none;
 }
 
 /* Codex-style compact rows: one line per tool ("Read foo.ts", "Ran git

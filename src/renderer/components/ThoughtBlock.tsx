@@ -19,6 +19,12 @@ import { useState, type JSX, type ReactNode } from "react";
  * expanded-by-default setting. A manual toggle overrides the auto behavior
  * (same pattern as the turn chip).
  */
+type UserToggle = {
+  value: boolean;
+  defaultExpanded: boolean;
+  live: boolean;
+};
+
 export function ThoughtBlock({
   children,
   defaultExpanded = false,
@@ -28,8 +34,12 @@ export function ThoughtBlock({
   defaultExpanded?: boolean;
   live?: boolean;
 }): JSX.Element {
-  const [userToggle, setUserToggle] = useState<boolean | null>(null);
-  const expanded = userToggle ?? (live || defaultExpanded);
+  const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
+  const localExpanded =
+    userToggle && userToggle.defaultExpanded === defaultExpanded && userToggle.live === live
+      ? userToggle.value
+      : null;
+  const expanded = localExpanded ?? (live || defaultExpanded);
   return (
     <div
       className="thought-block"
@@ -42,7 +52,7 @@ export function ThoughtBlock({
         aria-expanded={expanded}
         aria-label="Reasoning"
         title={expanded ? "Hide reasoning" : "Show reasoning"}
-        onClick={() => setUserToggle(!expanded)}
+        onClick={() => setUserToggle({ value: !expanded, defaultExpanded, live })}
       >
         <span className="thought-block-eyebrow" aria-hidden="true">
           <span className="thought-block-eyebrow-label">{live ? "Thinking" : "Thought"}</span>

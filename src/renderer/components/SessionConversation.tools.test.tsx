@@ -98,6 +98,76 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByText("Output")).toBeNull();
   });
 
+  it("turn chip expands every tool group even after one group was toggled locally", () => {
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Claude Opus 4.8", state: "complete" }),
+      [
+        event("u1", "user.message", "explore this", "2026-05-12T15:00:00.000Z"),
+        event("m1", "message.completed", "I'll explore.", "2026-05-12T15:00:01.000Z"),
+        event("g1-read-start", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
+          id: "g1-read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("g1-read-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
+          tool_use_id: "g1-read",
+          content: "readme"
+        }),
+        event("g1-bash-start", "command.started", "Bash", "2026-05-12T15:00:04.000Z", {
+          id: "g1-bash",
+          name: "Bash",
+          input: { command: "echo first" }
+        }),
+        event("g1-bash-end", "command.completed", "tool_result", "2026-05-12T15:00:05.000Z", {
+          tool_use_id: "g1-bash",
+          content: "first"
+        }),
+        event("m2", "message.completed", "I'll keep going.", "2026-05-12T15:00:06.000Z"),
+        event("g2-read-start", "command.started", "Read", "2026-05-12T15:00:07.000Z", {
+          id: "g2-read",
+          name: "Read",
+          input: { file_path: "package.json" }
+        }),
+        event("g2-read-end", "command.completed", "tool_result", "2026-05-12T15:00:08.000Z", {
+          tool_use_id: "g2-read",
+          content: "package"
+        }),
+        event("g2-bash-start", "command.started", "Bash", "2026-05-12T15:00:09.000Z", {
+          id: "g2-bash",
+          name: "Bash",
+          input: { command: "echo second" }
+        }),
+        event("g2-bash-end", "command.completed", "tool_result", "2026-05-12T15:00:10.000Z", {
+          tool_use_id: "g2-bash",
+          content: "second"
+        })
+      ],
+      { defaultToolCallGroupsExpanded: false }
+    );
+
+    const groups = screen.getAllByRole("button", { name: /Explored 1 file, ran 1 command/ });
+    expect(groups).toHaveLength(2);
+    for (const group of groups) {
+      expect(group).toHaveAttribute("aria-expanded", "false");
+      expect(group).not.toHaveTextContent("✓");
+      expect(group).not.toHaveTextContent(/\d(?:\.\d)?s/);
+      expect(group).not.toHaveTextContent("+");
+      expect(group).not.toHaveTextContent("−");
+    }
+
+    fireEvent.click(groups[0]);
+    expect(groups[0]).toHaveAttribute("aria-expanded", "true");
+    expect(groups[1]).toHaveAttribute("aria-expanded", "false");
+    expect(groups[0]).not.toHaveTextContent("−");
+
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+
+    expect(groups[0]).toHaveAttribute("aria-expanded", "true");
+    expect(groups[1]).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read package.json" })).toBeInTheDocument();
+  });
+
   it("leaves external markdown links as anchors (does not call onOpenFile)", () => {
     const onOpenFile = vi.fn();
     renderConversation(

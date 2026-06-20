@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { memo, useMemo, useState, type JSX } from "react";
 import {
   buildGroupRows,
@@ -5,7 +6,6 @@ import {
   type ToolCallGroup
 } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import { LiveElapsedChip } from "./LiveElapsedChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 
 type ToolCallGroupBubbleProps = {
@@ -15,13 +15,18 @@ type ToolCallGroupBubbleProps = {
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 };
 
+type UserToggle = {
+  value: boolean;
+  defaultExpanded?: boolean;
+};
+
 function ToolCallGroupBubbleInner({
   group,
   defaultExpanded,
   workspaceCwd,
   onOpenFile
 }: ToolCallGroupBubbleProps): JSX.Element {
-  const [userToggle, setUserToggle] = useState<boolean | null>(null);
+  const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
   const rows = useMemo(() => buildGroupRows(group.tools), [group.tools]);
   // Collapsed by default to match Codex — the user clicks the chevron to
@@ -29,16 +34,9 @@ function ToolCallGroupBubbleInner({
   // error case used to auto-expand; that made groups inconsistent (failed
   // groups open, successful groups closed) which read as noisy, so the
   // error state now just colors the chevron + status dot on the header.
-  const expanded = userToggle ?? (defaultExpanded ?? false);
-  const { startedAtMs, completedAtMs } = useMemo(() => {
-    const start = Math.min(...group.tools.map((t) => Date.parse(t.createdAt)));
-    const anyRunning = group.tools.some((t) => !t.completedAt);
-    if (anyRunning) return { startedAtMs: start, completedAtMs: null };
-    const end = Math.max(
-      ...group.tools.map((t) => (t.completedAt ? Date.parse(t.completedAt) : 0))
-    );
-    return { startedAtMs: start, completedAtMs: end };
-  }, [group.tools]);
+  const localExpanded =
+    userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
+  const expanded = localExpanded ?? (defaultExpanded ?? false);
 
   // While collapsed and still running, show the current action ("Read foo.ts")
   // in place of the slash-joined input preview so the user has a live signal.
@@ -59,7 +57,7 @@ function ToolCallGroupBubbleInner({
         type="button"
         aria-expanded={expanded}
         aria-label={`${summary.headline}${previewText ? ": " + previewText : ""}`}
-        onClick={() => setUserToggle(!expanded)}
+        onClick={() => setUserToggle({ value: !expanded, defaultExpanded })}
       >
         <span className="tool-call-group-eyebrow" aria-hidden="true">
           <span className="tool-call-group-eyebrow-label">{summary.headline}</span>
@@ -67,14 +65,11 @@ function ToolCallGroupBubbleInner({
         {previewText ? (
           <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
         ) : null}
-        <LiveElapsedChip
-          status={summary.status}
-          startedAtMs={startedAtMs}
-          completedAtMs={completedAtMs}
-        />
-        <span className={`tool-call-group-toggle${expanded ? " expanded" : ""}`} aria-hidden="true">
-          {expanded ? "−" : "+"}
-        </span>
+        {summary.status === "running" ? (
+          <span className="tool-call-group-running" aria-label="running" title="Running">
+            <Loader2 size={11} className="tool-call-spinner" aria-hidden="true" />
+          </span>
+        ) : null}
       </button>
       {expanded ? (
         <div className="tool-call-group-body">

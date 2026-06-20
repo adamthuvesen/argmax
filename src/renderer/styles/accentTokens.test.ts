@@ -16,15 +16,20 @@ function cssRuleBody(source: string, selector: string): string {
 describe("accent CSS contract", () => {
   it("keeps tool-summary labels tinted but quieter than assistant prose", () => {
     const chatTurns = readSource("src/renderer/styles/chat-turns.css");
+    const chatTools = readSource("src/renderer/styles/chat-tools.css");
     const labelRule = cssRuleBody(chatTurns, ".tool-call-group-eyebrow-label");
+    const previewRule = cssRuleBody(chatTurns, ".tool-call-group-preview");
     const rowTargetRule = cssRuleBody(chatTurns, ".tool-call-row-target");
+    const filePreviewRule = cssRuleBody(chatTools, ".tool-call-file-preview-header code");
 
     expect(labelRule).toContain("font-weight: 500;");
     expect(labelRule).toContain("letter-spacing: 0.045em;");
-    expect(labelRule).toContain("color: color-mix(in oklab, var(--accent) 12%, var(--muted));");
+    expect(labelRule).toContain("color: color-mix(in oklab, var(--accent) 20%, var(--muted));");
     expect(labelRule).not.toContain("var(--accent-deep)");
-    expect(rowTargetRule).toContain("color: var(--muted);");
+    expect(previewRule).toContain("color: color-mix(in oklab, var(--accent) 14%, var(--muted));");
+    expect(rowTargetRule).toContain("color: color-mix(in oklab, var(--accent) 14%, var(--muted));");
     expect(rowTargetRule).not.toContain("color: var(--text);");
+    expect(filePreviewRule).toContain("color: color-mix(in oklab, var(--accent) 14%, var(--muted));");
   });
 
   it("uses configurable accent tokens for markdown output chrome", () => {

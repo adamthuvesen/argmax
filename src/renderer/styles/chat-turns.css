@@ -658,7 +658,7 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--accent) 10%, var(--muted));
   font-size: var(--text-sm);
   transition: color var(--duration-fast) var(--ease);
 }
@@ -683,7 +683,7 @@
   font-weight: 500;
   letter-spacing: 0.045em;
   text-transform: uppercase;
-  color: color-mix(in oklab, var(--accent) 12%, var(--muted));
+  color: color-mix(in oklab, var(--accent) 20%, var(--muted));
 }
 
 .tool-call-group-preview {
@@ -694,7 +694,7 @@
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
 }
 
 .tool-call-group-running {
@@ -752,7 +752,7 @@
   font-family: inherit;
   font-size: var(--text-sm);
   line-height: 1.6;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--accent) 10%, var(--muted));
   transition: background var(--duration-fast) var(--ease);
 }
 
@@ -765,7 +765,7 @@
   /* Fixed column so the target/path after the verb left-aligns down the list
      regardless of "Ran" (3) vs "Read" (4) etc. */
   min-width: 4ch;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--accent) 12%, var(--muted));
   font-weight: 500;
 }
 
@@ -777,7 +777,7 @@
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
 }
 
 .tool-call-row-dot {

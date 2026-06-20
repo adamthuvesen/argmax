@@ -624,7 +624,7 @@
 
 .tool-call-open-button:hover {
   background: var(--accent-soft);
-  color: var(--accent-deep);
+  color: color-mix(in oklab, var(--accent) 48%, var(--muted-strong));
   border-color: color-mix(in oklab, var(--accent) 32%, var(--line));
 }
 
@@ -658,17 +658,17 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--muted-strong);
+  color: color-mix(in oklab, var(--accent) 10%, var(--muted));
   font-size: var(--text-sm);
   transition: color var(--duration-fast) var(--ease);
 }
 
 .tool-call-group-header:hover {
-  color: var(--text);
+  color: var(--muted-strong);
 }
 
 .tool-call-group-header:hover .tool-call-group-toggle {
-  color: var(--accent-deep);
+  color: color-mix(in oklab, var(--accent) 28%, var(--muted-strong));
 }
 
 .tool-call-group-eyebrow {
@@ -680,10 +680,10 @@
 .tool-call-group-eyebrow-label {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.045em;
   text-transform: uppercase;
-  color: var(--accent-deep);
+  color: color-mix(in oklab, var(--accent) 20%, var(--muted));
 }
 
 .tool-call-group-preview {
@@ -694,7 +694,7 @@
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
 }
 
 .tool-call-group-running {
@@ -752,7 +752,7 @@
   font-family: inherit;
   font-size: var(--text-sm);
   line-height: 1.6;
-  color: var(--text);
+  color: color-mix(in oklab, var(--accent) 10%, var(--muted));
   transition: background var(--duration-fast) var(--ease);
 }
 
@@ -765,7 +765,7 @@
   /* Fixed column so the target/path after the verb left-aligns down the list
      regardless of "Ran" (3) vs "Read" (4) etc. */
   min-width: 4ch;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--accent) 12%, var(--muted));
   font-weight: 500;
 }
 
@@ -777,7 +777,7 @@
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text);
+  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
 }
 
 .tool-call-row-dot {
@@ -824,7 +824,7 @@
 /* Sub-agent rows are marked by the accent "Agent" verb + prose target alone —
    the full-row tint read as loud, so it's gone; the row uses the normal hover. */
 .tool-call-row[data-tool-type="agent"] .tool-call-row-verb {
-  color: var(--accent-deep);
+  color: color-mix(in oklab, var(--accent) 28%, var(--muted-strong));
   font-weight: 600;
   letter-spacing: 0.01em;
 }

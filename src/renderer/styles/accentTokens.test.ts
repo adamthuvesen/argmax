@@ -19,9 +19,11 @@ describe("accent CSS contract", () => {
     const labelRule = cssRuleBody(chatTurns, ".tool-call-group-eyebrow-label");
     const rowTargetRule = cssRuleBody(chatTurns, ".tool-call-row-target");
 
-    expect(labelRule).toContain("color: color-mix(in oklab, var(--accent) 34%, var(--muted-strong));");
+    expect(labelRule).toContain("font-weight: 500;");
+    expect(labelRule).toContain("letter-spacing: 0.045em;");
+    expect(labelRule).toContain("color: color-mix(in oklab, var(--accent) 12%, var(--muted));");
     expect(labelRule).not.toContain("var(--accent-deep)");
-    expect(rowTargetRule).toContain("color: var(--muted-strong);");
+    expect(rowTargetRule).toContain("color: var(--muted);");
     expect(rowTargetRule).not.toContain("color: var(--text);");
   });
 

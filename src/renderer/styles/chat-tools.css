@@ -197,7 +197,7 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line-soft);
   background: var(--panel-soft);
-  color: var(--muted-strong);
+  color: var(--muted);
 }
 
 .tool-call-file-preview-header svg {
@@ -213,7 +213,7 @@
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  color: var(--muted-strong);
+  color: var(--muted);
 }
 
 .tool-call-file-preview-content {

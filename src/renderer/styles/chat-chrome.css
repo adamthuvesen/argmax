@@ -424,7 +424,7 @@
 /* Auto is the default mode and not "special" — at rest it's a plain ghost chip
    identical to its siblings (transparent fill, muted text, inherited from
    .composer-context-chip including the hover fill). Only the non-default Plan
-   mode (aria-pressed) gets a subtle sage fill as an active-state cue. min-width
+   mode (aria-pressed) gets a subtle accent fill as an active-state cue. min-width
    keeps the row from jumping as the label toggles Auto ↔ Plan. */
 .agent-mode-toggle {
   min-width: 56px;
@@ -432,13 +432,13 @@
 }
 
 .agent-mode-toggle[aria-pressed="true"] {
-  color: var(--sage-deep);
-  background: var(--sage-soft);
+  color: var(--accent-deep);
+  background: var(--accent-soft);
 }
 
 .agent-mode-toggle[aria-pressed="true"]:hover {
-  background: var(--sage-soft);
-  color: var(--sage-deep);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
   filter: brightness(0.97);
 }
 
@@ -449,16 +449,16 @@
 
 /* Worktree toggle — a single on/off chip, off by default. At rest it's a plain
    ghost chip identical to its siblings; when enabled (aria-pressed) it picks up
-   the same subtle sage fill as the Plan mode chip, so the two launch toggles
+   the same subtle accent fill as the Plan mode chip, so the two launch toggles
    read as a family. The label is fixed ("Worktree"), so no min-width is needed. */
 .workspace-mode-toggle[aria-pressed="true"] {
-  color: var(--sage-deep);
-  background: var(--sage-soft);
+  color: var(--accent-deep);
+  background: var(--accent-soft);
 }
 
 .workspace-mode-toggle[aria-pressed="true"]:hover {
-  background: var(--sage-soft);
-  color: var(--sage-deep);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
   filter: brightness(0.97);
 }
 
@@ -948,7 +948,7 @@
 
 .git-actions-textarea:focus,
 .git-actions-input:focus {
-  outline: 2px solid var(--sage);
+  outline: 2px solid var(--accent);
   outline-offset: -1px;
   border-color: transparent;
 }
@@ -959,7 +959,7 @@
   padding: 7px 18px;
   border: 0;
   border-radius: 8px;
-  background: var(--sage);
+  background: var(--accent);
   color: var(--bubble-on-ink);
   font-size: 12px;
   font-weight: 600;

@@ -21,8 +21,8 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--sage);
-  box-shadow: 0 0 0 3px var(--sage-soft);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
   animation: status-pulse 2.4s var(--ease) infinite;
   flex: 0 0 auto;
 }

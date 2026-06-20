@@ -217,13 +217,15 @@
 
 /* ---- Theme picker ---- */
 
-.theme-picker {
+.theme-picker,
+.accent-picker {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.theme-picker-chip {
+.theme-picker-chip,
+.accent-picker-chip {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -241,21 +243,24 @@
     color var(--motion-fast) var(--ease-out);
 }
 
-.theme-picker-chip:hover {
+.theme-picker-chip:hover,
+.accent-picker-chip:hover {
   border-color: var(--line-strong);
   color: var(--text);
 }
 
-.theme-picker-chip:focus-visible {
+.theme-picker-chip:focus-visible,
+.accent-picker-chip:focus-visible {
   outline: none;
   box-shadow: var(--ring);
 }
 
-.theme-picker-chip[data-selected] {
-  border-color: var(--sage);
-  background: var(--sage-soft);
+.theme-picker-chip[data-selected],
+.accent-picker-chip[data-selected] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
   color: var(--text);
-  box-shadow: 0 0 24px -10px color-mix(in oklab, var(--sage) 60%, transparent);
+  box-shadow: 0 0 24px -10px color-mix(in oklab, var(--accent) 60%, transparent);
 }
 
 .theme-picker-label {
@@ -268,7 +273,8 @@
    the chip so dark/light/system each preview their own palette without flipping
    the page's actual theme. The "system" variant splits diagonally between the
    two — a half-sun, half-moon affordance. */
-.theme-picker-swatch {
+.theme-picker-swatch,
+.accent-picker-swatch {
   position: relative;
   display: inline-block;
   width: 28px;
@@ -302,7 +308,7 @@
 }
 
 .theme-picker-swatch-accent {
-  background: var(--swatch-accent, var(--sage));
+  background: var(--swatch-accent, var(--accent));
   width: 6px;
   left: auto;
   right: 4px;
@@ -354,6 +360,43 @@
   background: linear-gradient(180deg, #5a8f72 0%, #5a8f72 50%, #7fb494 50%, #7fb494 100%);
 }
 
+.accent-picker-swatch {
+  background: var(--accent-swatch-soft, var(--accent-soft));
+}
+
+.accent-picker-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 4px 6px;
+  border-radius: 999px;
+  background: var(--accent-swatch-color, var(--accent));
+}
+
+.accent-picker-chip[data-accent-id="green"] .accent-picker-swatch {
+  --accent-swatch-color: #5a8f72;
+  --accent-swatch-soft: #e7efe7;
+}
+
+.accent-picker-chip[data-accent-id="mascot-purple"] .accent-picker-swatch {
+  --accent-swatch-color: #8f63d9;
+  --accent-swatch-soft: #eee7fb;
+}
+
+.accent-picker-chip[data-accent-id="neutral"] .accent-picker-swatch {
+  --accent-swatch-color: #4f4d47;
+  --accent-swatch-soft: #ecebea;
+}
+
+.accent-picker-chip[data-accent-id="anthropic-orange"] .accent-picker-swatch {
+  --accent-swatch-color: #c77d3a;
+  --accent-swatch-soft: #f6eadc;
+}
+
+.accent-picker-chip[data-accent-id="codex-blue"] .accent-picker-swatch {
+  --accent-swatch-color: #3f7ecb;
+  --accent-swatch-soft: #e5eef9;
+}
+
 
 /* ---- Refresh button ---- */
 
@@ -389,4 +432,3 @@
 .settings-refresh svg.is-spinning {
   animation: spin 900ms linear infinite;
 }
-

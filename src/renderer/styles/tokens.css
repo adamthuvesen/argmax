@@ -25,6 +25,9 @@
   --sage: #5a8f72;
   --sage-soft: #e7efe7;
   --sage-deep: #3d6a52;
+  --accent: var(--sage);
+  --accent-soft: var(--sage-soft);
+  --accent-deep: var(--sage-deep);
   --amber: #b08039;
   --amber-soft: #f5edd9;
   --rose: #b85763;
@@ -88,7 +91,7 @@
   --text-lg: 18px;
 
   /* Focus ring (Ralph SPEC F4). Single source for every focus-visible style. */
-  --ring: 0 0 0 2px rgba(90, 143, 114, 0.5);
+  --ring: 0 0 0 2px color-mix(in oklab, var(--accent) 50%, transparent);
 
   /* Body grain — swapped per theme so the paper texture inverts to film grain
      in dark mode. The noise SVG itself flips via the feColorMatrix values in
@@ -103,7 +106,7 @@
   --overlay-strong: rgba(31, 28, 24, 0.12);
   --modal-backdrop: rgba(31, 28, 24, 0.30);
   --modal-backdrop-gradient: linear-gradient(180deg, rgba(31, 28, 24, 0.10), rgba(31, 28, 24, 0.34));
-  --selection-bg: rgba(90, 143, 114, 0.22);
+  --selection-bg: color-mix(in oklab, var(--accent) 24%, transparent);
   --selection-bg-on-ink: rgba(255, 255, 255, 0.28);
   --bubble-on-ink: #ffffff;
   --user-bubble-bg: var(--ink);
@@ -182,7 +185,7 @@
   --shadow-2: inset 0 1px 0 rgba(255, 250, 235, 0.05), 0 8px 24px rgba(0, 0, 0, 0.55);
   --shadow-3: inset 0 1px 0 rgba(255, 250, 235, 0.06), 0 24px 60px rgba(0, 0, 0, 0.65);
 
-  --ring: 0 0 0 2px rgba(127, 180, 148, 0.45);
+  --ring: 0 0 0 2px color-mix(in oklab, var(--accent) 48%, transparent);
 
   /* Light-on-dark grain — same fractal noise SVG, light pixels instead of dark,
      lower alpha so it reads as film grain rather than texture. */
@@ -193,7 +196,7 @@
   --overlay-strong: rgba(255, 250, 235, 0.12);
   --modal-backdrop: rgba(14, 14, 12, 0.36);
   --modal-backdrop-gradient: linear-gradient(180deg, rgba(14, 14, 12, 0.14), rgba(14, 14, 12, 0.42));
-  --selection-bg: rgba(127, 180, 148, 0.28);
+  --selection-bg: color-mix(in oklab, var(--accent) 30%, transparent);
   --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 
   /* Diff palette tuned for warm charcoal: low-alpha sage/rose washes so the
@@ -277,7 +280,7 @@
   --shadow-2: inset 0 1px 0 rgba(210, 196, 255, 0.08), 0 8px 24px rgba(18, 9, 40, 0.5), 0 0 40px -16px rgba(168, 138, 255, 0.34);
   --shadow-3: inset 0 1px 0 rgba(210, 196, 255, 0.09), 0 24px 60px rgba(18, 9, 40, 0.58), 0 0 80px -24px rgba(168, 138, 255, 0.4);
 
-  --ring: 0 0 0 2px rgba(170, 140, 255, 0.6);
+  --ring: 0 0 0 2px color-mix(in oklab, var(--accent) 58%, transparent);
 
   /* Violet-tinted film grain layered over radial aurora blooms: a wide lavender
      glow at top-center, an orchid glow top-right, and a faint warm spark
@@ -294,7 +297,7 @@
   --overlay-strong: rgba(214, 200, 255, 0.16);
   --modal-backdrop: rgba(20, 10, 42, 0.5);
   --modal-backdrop-gradient: linear-gradient(180deg, rgba(20, 10, 42, 0.22), rgba(20, 10, 42, 0.56));
-  --selection-bg: rgba(170, 140, 255, 0.34);
+  --selection-bg: color-mix(in oklab, var(--accent) 34%, transparent);
   --selection-bg-on-ink: rgba(170, 140, 255, 0.4);
 
   /* Mint/coral diff washes so code stays the focal point; gutters a touch
@@ -311,6 +314,82 @@
   --paper-highlight-soft: transparent;
 
   --row-hover: rgba(214, 200, 255, 0.1);
+}
+
+/* Configurable chrome accent. These tokens are for brand/decorative tint:
+   focus rings, selection, picker states, command palette affordances, launcher
+   ornament, and transcript metadata. Semantic status colors stay on --sage,
+   --amber, --rose, and the diff tokens so code additions remain green. */
+:root[data-accent="mascot-purple"] {
+  --accent: #8f63d9;
+  --accent-soft: #eee7fb;
+  --accent-deep: #6740ad;
+}
+
+:root[data-accent="neutral"] {
+  --accent: #4f4d47;
+  --accent-soft: #ecebea;
+  --accent-deep: #2f2d29;
+}
+
+:root[data-accent="anthropic-orange"] {
+  --accent: #c77d3a;
+  --accent-soft: #f6eadc;
+  --accent-deep: #945824;
+}
+
+:root[data-accent="codex-blue"] {
+  --accent: #3f7ecb;
+  --accent-soft: #e5eef9;
+  --accent-deep: #2d5f9f;
+}
+
+:root[data-theme="dark"][data-accent="mascot-purple"] {
+  --accent: #b894ff;
+  --accent-soft: rgba(184, 148, 255, 0.16);
+  --accent-deep: #d0b9ff;
+}
+
+:root[data-theme="dark"][data-accent="neutral"] {
+  --accent: #d6d2c7;
+  --accent-soft: rgba(214, 210, 199, 0.14);
+  --accent-deep: #f1ede3;
+}
+
+:root[data-theme="dark"][data-accent="anthropic-orange"] {
+  --accent: #e8a263;
+  --accent-soft: rgba(232, 162, 99, 0.16);
+  --accent-deep: #f0bc89;
+}
+
+:root[data-theme="dark"][data-accent="codex-blue"] {
+  --accent: #79aeee;
+  --accent-soft: rgba(121, 174, 238, 0.16);
+  --accent-deep: #a8cbff;
+}
+
+:root[data-theme="purple"][data-accent="mascot-purple"] {
+  --accent: #f0d6ff;
+  --accent-soft: rgba(240, 214, 255, 0.18);
+  --accent-deep: #ffe8ff;
+}
+
+:root[data-theme="purple"][data-accent="neutral"] {
+  --accent: #efe9fa;
+  --accent-soft: rgba(239, 233, 250, 0.16);
+  --accent-deep: #ffffff;
+}
+
+:root[data-theme="purple"][data-accent="anthropic-orange"] {
+  --accent: #ffd18a;
+  --accent-soft: rgba(255, 209, 138, 0.18);
+  --accent-deep: #ffe0ad;
+}
+
+:root[data-theme="purple"][data-accent="codex-blue"] {
+  --accent: #9cc6ff;
+  --accent-soft: rgba(156, 198, 255, 0.18);
+  --accent-deep: #c7defc;
 }
 
 /* Smooth crossfade when toggling themes. The .theme-transition class is added
@@ -334,13 +413,13 @@
 :root[data-theme="dark"] .question-card-submit:not(:disabled):hover,
 :root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
   box-shadow: var(--shadow-1),
-              0 0 28px -8px color-mix(in oklab, var(--sage) 55%, transparent);
+              0 0 28px -8px color-mix(in oklab, var(--accent) 55%, transparent);
 }
 
 /* User-bubble selection swaps via --selection-bg-on-ink; this is just the
    global selection in dark. */
 :root[data-theme="dark"] ::selection {
-  background: color-mix(in oklab, var(--sage) 35%, transparent);
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
   color: var(--text);
 }
 
@@ -358,7 +437,7 @@
 
 :root[data-theme="purple"] .composer-submit:not(:disabled):hover,
 :root[data-theme="purple"] .question-card-submit:not(:disabled):hover {
-  box-shadow: var(--shadow-1), 0 0 28px -6px rgba(245, 194, 90, 0.6);
+  box-shadow: var(--shadow-1), 0 0 28px -6px color-mix(in oklab, var(--accent) 62%, transparent);
 }
 
 /* Purple status colors — a few component styles hard-code muddy reds/greens

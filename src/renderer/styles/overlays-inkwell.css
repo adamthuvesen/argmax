@@ -185,10 +185,10 @@
 
 .command-palette-result.selected {
   color: var(--text);
-  background: var(--sage-soft);
+  background: var(--accent-soft);
   box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--sage) 36%, var(--line)),
-    0 0 24px -18px color-mix(in oklab, var(--sage) 70%, transparent);
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 36%, var(--line)),
+    0 0 24px -18px color-mix(in oklab, var(--accent) 70%, transparent);
 }
 
 .command-palette-sigil {
@@ -212,8 +212,8 @@
 
 .command-palette-result.selected .command-palette-sigil {
   color: var(--text);
-  background: color-mix(in oklab, var(--sage) 18%, var(--panel));
-  border-color: color-mix(in oklab, var(--sage) 58%, var(--line));
+  background: color-mix(in oklab, var(--accent) 18%, var(--panel));
+  border-color: color-mix(in oklab, var(--accent) 58%, var(--line));
 }
 
 .command-palette-result-body {
@@ -242,7 +242,7 @@
 }
 
 .command-palette-result mark {
-  background: var(--sage-soft);
+  background: var(--accent-soft);
   color: var(--text);
   padding: 0 1px;
   border-radius: 2px;
@@ -250,7 +250,7 @@
 }
 
 .command-palette-result.selected mark {
-  background: rgba(90, 143, 114, 0.3);
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
 .command-palette-result-hint {
@@ -325,8 +325,8 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--sage);
-  box-shadow: 0 0 0 3px var(--sage-soft);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
   animation: status-pulse 1.4s var(--ease) infinite;
   flex: 0 0 auto;
 }
@@ -617,10 +617,10 @@
 
 .search-result.selected {
   color: var(--text);
-  background: var(--sage-soft);
+  background: var(--accent-soft);
   box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--sage) 36%, var(--line)),
-    0 0 24px -18px color-mix(in oklab, var(--sage) 70%, transparent);
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 36%, var(--line)),
+    0 0 24px -18px color-mix(in oklab, var(--accent) 70%, transparent);
 }
 
 .search-result-session {
@@ -641,7 +641,7 @@
 }
 
 .search-result-snippet mark {
-  background: var(--sage-soft);
+  background: var(--accent-soft);
   color: var(--text);
   padding: 0 1px;
   border-radius: 2px;
@@ -649,7 +649,7 @@
 }
 
 .search-result.selected .search-result-snippet mark {
-  background: rgba(90, 143, 114, 0.3);
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
 /* ---- Workspace content search (⌘⇧F) ---- */

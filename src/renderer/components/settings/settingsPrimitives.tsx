@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useRef, useState, type JSX, type ReactNode } from "react";
 import type { DiagnosticsReport } from "../../../shared/types.js";
+import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../../lib/fonts.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { readFirstContentMeasure } from "../../lib/paintTimings.js";
@@ -345,6 +346,41 @@ export function ThemePicker({
               <span className="theme-picker-swatch-text" />
               <span className="theme-picker-swatch-accent" />
             </span>
+            <span className="theme-picker-label">{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function AccentPicker({
+  value,
+  onChange,
+  inputId
+}: {
+  value: AccentId;
+  onChange: (accentId: AccentId) => void;
+  inputId?: string;
+}): JSX.Element {
+  return (
+    <div className="accent-picker" role="radiogroup" aria-label="Accent" id={inputId}>
+      {ACCENT_OPTIONS.map((option) => {
+        const isSelected = option.id === value;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            className="accent-picker-chip"
+            role="radio"
+            aria-checked={isSelected}
+            aria-label={option.label}
+            data-accent-id={option.id}
+            data-selected={isSelected || undefined}
+            title={option.hint}
+            onClick={() => onChange(option.id)}
+          >
+            <span className="accent-picker-swatch" aria-hidden="true" />
             <span className="theme-picker-label">{option.label}</span>
           </button>
         );

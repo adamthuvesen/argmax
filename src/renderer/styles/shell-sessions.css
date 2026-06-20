@@ -30,12 +30,12 @@
 
 .session-link.active {
   color: var(--text);
-  background: var(--sage-soft);
+  background: var(--accent-soft);
 }
 
 /* Keyboard focus inside the sidebar — use an inset shadow instead of the
    global outline so the ring doesn't clip against the row's right-side
-   action chrome and doesn't fight the sage-soft selected background. */
+   action chrome and doesn't fight the selected background. */
 .session-link:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--ink);
@@ -562,10 +562,10 @@
 .workspace-drop-zone {
   width: 100%;
   height: 100%;
-  border: 2px dashed var(--sage);
+  border: 2px dashed var(--accent);
   border-radius: var(--radius-lg);
-  background: var(--sage-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sage) 30%, transparent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
 .launcher-scroll {

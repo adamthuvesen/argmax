@@ -1,9 +1,11 @@
 import type { JSX } from "react";
+import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import { FONT_OPTIONS, type FontFamilyId } from "../../lib/fonts.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import type { ThinkingStyle } from "../../lib/thinkingStyle.js";
 import {
+  AccentPicker,
   FontFamilyPicker,
   KeyValueList,
   SectionHeader,
@@ -17,6 +19,8 @@ export function GeneralSettings({
   onFontFamilyChange,
   themeMode,
   onThemeModeChange,
+  accentId,
+  onAccentChange,
   thinkingStyle,
   onThinkingStyleChange,
   sidebarTokensVisible,
@@ -32,6 +36,8 @@ export function GeneralSettings({
   onFontFamilyChange: (id: FontFamilyId) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
+  accentId: AccentId;
+  onAccentChange: (accentId: AccentId) => void;
   thinkingStyle: ThinkingStyle;
   onThinkingStyleChange: (style: ThinkingStyle) => void;
   sidebarTokensVisible: boolean;
@@ -96,6 +102,20 @@ export function GeneralSettings({
           <div className="settings-card-sub">
             <p className="settings-font-caption">
               {THEME_OPTIONS.find((o) => o.id === themeMode)?.hint}
+            </p>
+          </div>
+
+          <div className="settings-row">
+            <label htmlFor="settings-accent-tint">Accent</label>
+            <AccentPicker
+              inputId="settings-accent-tint"
+              value={accentId}
+              onChange={onAccentChange}
+            />
+          </div>
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">
+              {ACCENT_OPTIONS.find((o) => o.id === accentId)?.hint}
             </p>
           </div>
 

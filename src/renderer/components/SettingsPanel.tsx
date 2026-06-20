@@ -10,6 +10,7 @@ import type {
 } from "../../shared/types.js";
 import type { FontFamilyId } from "../lib/fonts.js";
 import type { ThemeMode } from "../lib/theme.js";
+import type { AccentId } from "../lib/accent.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
@@ -52,6 +53,8 @@ export function SettingsPanel({
   onFontFamilyChange,
   themeMode,
   onThemeModeChange,
+  accentId,
+  onAccentChange,
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
@@ -82,6 +85,8 @@ export function SettingsPanel({
   onFontFamilyChange: (id: FontFamilyId) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
+  accentId: AccentId;
+  onAccentChange: (accentId: AccentId) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   onDefaultIdeChange: (ide: IdeId | null) => void;
@@ -252,6 +257,8 @@ export function SettingsPanel({
               onFontFamilyChange={onFontFamilyChange}
               themeMode={themeMode}
               onThemeModeChange={onThemeModeChange}
+              accentId={accentId}
+              onAccentChange={onAccentChange}
               thinkingStyle={thinkingStyle}
               onThinkingStyleChange={onThinkingStyleChange}
               sidebarTokensVisible={sidebarTokensVisible}

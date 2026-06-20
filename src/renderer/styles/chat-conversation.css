@@ -93,8 +93,8 @@
 
 .session-multigrid-resizer:hover::after,
 .session-multigrid[data-resizing="true"] .session-multigrid-resizer::after {
-  background: var(--sage);
-  box-shadow: 0 0 0 1px var(--sage-soft);
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
 /* Drop-zone overlay — appears inside each cell while a sidebar drag is in
@@ -111,8 +111,8 @@
 .multigrid-drop-zone {
   position: absolute;
   pointer-events: none;
-  background: var(--sage-soft);
-  outline: 2px dashed var(--sage);
+  background: var(--accent-soft);
+  outline: 2px dashed var(--accent);
   outline-offset: -4px;
   transition: background var(--duration-fast, 140ms) var(--ease, ease);
 }
@@ -616,9 +616,9 @@
 .scroll-to-bottom-fab[data-has-count="true"] {
   width: auto;
   padding: 0 12px 0 10px;
-  background: var(--sage-deep);
+  background: var(--accent-deep);
   color: var(--bubble-on-ink);
-  border-color: var(--sage-deep);
+  border-color: var(--accent-deep);
 }
 
 .scroll-to-bottom-fab-count {
@@ -634,5 +634,5 @@
 }
 
 .scroll-to-bottom-fab[data-has-count="true"]:hover {
-  background: var(--sage);
+  background: var(--accent);
 }

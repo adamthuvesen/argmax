@@ -314,16 +314,10 @@ export function LaunchSurface({
   }, [project, onBranchSwitch]);
   const placeholderText = useMemo(() => {
     const options = [
-      "Do or do not. There is no try.",
-      "You can't handle the diff.",
-      "I'll be back. (After this build passes.)",
-      "My precious... what are we shipping?",
-      "Make it so.",
-      "Elementary. What needs debugging?",
-      "You had me at \"merge conflict\".",
-      "Why so serious? Describe the task.",
-      "What is thy bidding, master?",
-      "They may take our lives, but they'll never take our main branch.",
+      "Coffee and code time?",
+      "What's on your mind?",
+      "Time to ship.",
+      "What are we hacking on?",
     ];
     return options[Math.floor(Math.random() * options.length)];
   }, []);

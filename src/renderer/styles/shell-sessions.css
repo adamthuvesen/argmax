@@ -10,7 +10,7 @@
   color: var(--muted-strong);
   text-align: left;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   font-size: 12.5px;
@@ -39,7 +39,7 @@
 .session-link:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--ink);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .session-link span {
@@ -104,7 +104,7 @@
   font-weight: 400;
   background: var(--panel);
   border: 1px solid var(--ink);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .session-rename-input:focus {
@@ -160,7 +160,7 @@
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
@@ -217,7 +217,7 @@
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
@@ -291,7 +291,7 @@
   font-size: 10.5px;
   color: var(--muted-strong);
   background: var(--sidebar);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "calt" 0, "ss01" 0;
   letter-spacing: -0.01em;
@@ -314,7 +314,7 @@
   margin: 0;
   padding: 8px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.02);
 }
 

@@ -109,7 +109,9 @@ export function Sidebar({
   snapshot,
   detectedIdes,
   defaultIde,
-  showSessionTokens
+  showSessionTokens,
+  collapsed,
+  onPeekLeave
 }: {
   loadState: "loading" | "ready" | "error";
   onAddProject: () => void;
@@ -136,6 +138,10 @@ export function Sidebar({
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   showSessionTokens: boolean;
+  /** Whether the sidebar is collapsed (rendered as a hover-peek overlay). */
+  collapsed?: boolean;
+  /** Pointer left the sidebar while collapsed — parent should end the peek. */
+  onPeekLeave?: () => void;
 }): JSX.Element {
   // Per-launch behavior: every project starts collapsed so no sessions are
   // visible on app start. After the first non-empty snapshot, we set a
@@ -460,7 +466,11 @@ export function Sidebar({
   const nameplateDate = useMemo(() => formatNameplateDate(), []);
 
   return (
-    <aside className="sidebar" data-loading={loadState === "loading" ? "true" : undefined}>
+    <aside
+      className="sidebar"
+      data-loading={loadState === "loading" ? "true" : undefined}
+      onMouseLeave={collapsed ? onPeekLeave : undefined}
+    >
       <div className="window-controls" data-window-drag />
       <div className="sidebar-nameplate" aria-hidden="true">
         <div className="sidebar-nameplate-line">

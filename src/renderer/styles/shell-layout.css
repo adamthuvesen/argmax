@@ -31,6 +31,71 @@
   margin-bottom: 2px;
 }
 
+/* ---- Sidebar toggle: single fixed button, parked right of the macOS traffic
+   lights and vertically aligned with them, so it never moves between the
+   hide (expanded) and show (collapsed) states. ---- */
+.sidebar-toggle {
+  position: fixed;
+  top: 4px;
+  left: 84px;
+  z-index: 62;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.sidebar-toggle:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+/* ---- Collapsed sidebar: hover-peek overlay ---- */
+
+/* When collapsed, the sidebar leaves the grid (column is 0) and floats as an
+   overlay that slides in on peek and back out on leave. */
+.app-shell[data-sidebar-collapsed="true"] .sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width, 272px);
+  z-index: 60;
+  transform: translateX(-100%);
+  transition: transform var(--duration-base) var(--ease);
+  box-shadow: 0 16px 48px rgba(31, 28, 24, 0.20);
+}
+
+.app-shell[data-sidebar-peek="true"] .sidebar {
+  transform: translateX(0);
+}
+
+/* Thin hot-zone pinned to the left edge — entering it begins the peek. */
+.sidebar-peek-zone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 16px;
+  z-index: 55;
+}
+
+/* When the sidebar (which normally holds the macOS titlebar strip) is
+   collapsed, surfaces without their own top chrome still need to clear the
+   traffic lights + show-sidebar button. The conversation surface opts out
+   below because its repo-title row becomes the titlebar itself. */
+.app-shell[data-sidebar-collapsed="true"] .launcher-scroll,
+.app-shell[data-sidebar-collapsed="true"] .settings-scroll {
+  padding-top: 38px;
+}
+
 /* ---- Margin Notes: nameplate ---- */
 
 .sidebar-nameplate {
@@ -86,7 +151,7 @@
   color: var(--text-soft);
   text-align: left;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
@@ -122,7 +187,7 @@
   padding: 0 10px;
   margin: 0 2px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-soft);
   font-size: 13px;
@@ -179,7 +244,7 @@
   place-items: center;
   color: var(--muted-strong);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
@@ -270,6 +335,19 @@
    exactly. The header isn't draggable, so drop the grab cursor. */
 .project-group.session-date-group > .session-date-row {
   cursor: pointer;
+  /* Small step between the date header and its sessions. */
+  margin-bottom: 3px;
+}
+
+/* Give the date-grouped session list room to breathe between buckets. */
+.project-group.session-date-group {
+  margin-bottom: 7px;
+}
+
+/* Date bucket labels are already title-cased in data; undo the project-name
+   lowercase styling reused from `.project-name-text`. */
+.session-date-label .project-name-text {
+  text-transform: none;
 }
 
 .project-group.dragging {
@@ -278,7 +356,7 @@
 
 .project-group.drag-over > .project-row {
   background: var(--panel-sunken);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   outline: 1.5px solid var(--line-strong);
   outline-offset: -1px;
 }
@@ -306,7 +384,7 @@
      hover background paints the padding box, so the highlight still spans the
      full width. */
   padding-right: var(--sidebar-action-inset);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   transition: background var(--duration-fast) var(--ease);
 }
 
@@ -433,7 +511,7 @@
   color: var(--muted-strong);
   text-align: left;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
@@ -471,7 +549,7 @@
   place-items: center;
   color: var(--muted);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   opacity: 0;

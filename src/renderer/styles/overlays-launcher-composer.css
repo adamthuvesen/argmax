@@ -64,7 +64,7 @@
   margin: 0;
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   color: inherit;
   font: inherit;
@@ -94,7 +94,7 @@
   width: 34px;
   height: 34px;
   padding: 3px 0 0;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
 }
 
 .mascot-button.launcher-send-mascot .mascot {
@@ -109,7 +109,7 @@
   height: 36px;
   /* Proportional top padding: 3/30 ≈ 4/36 to keep the body optically centered. */
   padding: 4px 0 0;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 
 .mascot-button.session-send-mascot .mascot {
@@ -252,7 +252,7 @@
   min-height: 32px;
   padding: 0 16px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   background: var(--panel);
   cursor: pointer;
@@ -289,7 +289,7 @@
   gap: 12px;
   align-items: center;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
   font-size: 13px;
   animation: msg-in 220ms var(--ease) both;

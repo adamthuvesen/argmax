@@ -88,13 +88,13 @@ describe("SessionConversation — tools & chrome", () => {
     );
 
     expect(screen.getByRole("button", { name: /mcp__engram__recall/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Raw input")).toBeInTheDocument();
+    expect(screen.getByText("Input")).toBeInTheDocument();
     expect(screen.getByText("Output")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
     expect(screen.getByRole("button", { name: /mcp__engram__recall/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Raw input")).toBeNull();
+    expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText("Output")).toBeNull();
   });
 

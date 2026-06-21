@@ -22,11 +22,7 @@ export function DiffBlocks({
   return (
     <div className={`diff-blocks${view === "side-by-side" ? " diff-side-by-side" : ""}`}>
       {blocks.map((block) =>
-        block.kind === "omitted" ? (
-          <div className="diff-omitted" key={block.id}>
-            {block.count} unmodified lines
-          </div>
-        ) : view === "side-by-side" ? (
+        block.kind === "omitted" ? null : view === "side-by-side" ? (
           <SideBySideHunk key={block.id} block={block} lang={effectiveLang} />
         ) : (
           <UnifiedHunk key={block.id} block={block} lang={effectiveLang} />

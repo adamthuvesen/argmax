@@ -97,7 +97,7 @@
   min-height: 56px;
   padding: 9px 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -231,7 +231,7 @@
   padding: 4px 8px 4px 6px;
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--muted-strong);
   font: inherit;
   font-size: 11px;
@@ -259,7 +259,7 @@
   letter-spacing: 0.06em;
   padding: 1px 5px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--muted);
   box-shadow: 0 1px 0 var(--line);
@@ -324,7 +324,7 @@
 .settings-group-eyebrow-mark {
   width: 6px;
   height: 6px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
   flex: 0 0 auto;
@@ -363,7 +363,7 @@
   min-width: 180px;
   padding: 6px 9px;
   border: 1px solid var(--line-soft);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--panel-soft);
   color: var(--text-soft);
   font-size: 12px;
@@ -451,7 +451,7 @@
   color: var(--accent-deep);
   background: var(--accent-soft);
   border: 1px solid color-mix(in oklab, var(--accent) 32%, var(--line));
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   align-self: start;
   margin-top: 1px;
 }
@@ -550,7 +550,7 @@
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--ink);
   color: var(--bubble-on-ink);
   flex: 0 0 auto;
@@ -598,7 +598,7 @@
   align-items: center;
   gap: 6px;
   padding: 3px 9px 3px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   letter-spacing: 0.04em;
   border: 1px solid var(--line);
@@ -677,7 +677,7 @@
   gap: 4px;
   padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--panel-soft);
 }
 
@@ -725,7 +725,7 @@
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--panel-sunken);
 }
 
@@ -736,7 +736,7 @@
   justify-content: center;
   gap: 6px;
   padding: 5px 12px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   font-size: 12.5px;
   color: var(--muted-strong);
   cursor: pointer;
@@ -772,7 +772,7 @@
   color: var(--muted);
   padding: 0 4px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--panel);
 }
 

@@ -1,3 +1,4 @@
+import { PanelLeft, PanelLeftClose } from "lucide-react";
 import {
   Suspense,
   useCallback,
@@ -66,6 +67,7 @@ import {
 import {
   CHAT_COST_KEY,
   LAUNCHER_GLOBE_KEY,
+  SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_TOKENS_KEY,
   THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
@@ -106,6 +108,14 @@ export function App(): JSX.Element {
     false
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useBooleanUiPreference(SIDEBAR_COLLAPSED_KEY, false);
+  // Transient "peek" state: while collapsed, hovering the left edge slides the
+  // sidebar out as an overlay; leaving it slides back. Not persisted.
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarPeek(false);
+    setSidebarCollapsed(!sidebarCollapsed);
+  }, [sidebarCollapsed, setSidebarCollapsed]);
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
   const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, false);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
@@ -815,9 +825,30 @@ export function App(): JSX.Element {
     <main
       className="app-shell"
       tabIndex={-1}
-      style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}
+      style={{
+        gridTemplateColumns: sidebarCollapsed ? "minmax(0, 1fr)" : `${sidebarWidth}px minmax(0, 1fr)`,
+        ["--sidebar-width" as string]: `${sidebarWidth}px`
+      }}
       data-resizing={isResizing ? "true" : undefined}
+      data-sidebar-collapsed={sidebarCollapsed ? "true" : undefined}
+      data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
+      <button
+        type="button"
+        className="sidebar-toggle"
+        title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+        aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+        onClick={toggleSidebarCollapsed}
+      >
+        {sidebarCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+      </button>
+      {sidebarCollapsed ? (
+        <div
+          className="sidebar-peek-zone"
+          aria-hidden="true"
+          onMouseEnter={() => setSidebarPeek(true)}
+        />
+      ) : null}
       {bridgeMissing && !isBrowserPreview() ? (
         <div className="bridge-banner" role="alert">
           Tauri bridge unavailable; running on demo data.
@@ -901,6 +932,8 @@ export function App(): JSX.Element {
         detectedIdes={detectedIdes}
         defaultIde={defaultIde}
         showSessionTokens={sidebarTokensVisible}
+        collapsed={sidebarCollapsed}
+        onPeekLeave={() => setSidebarPeek(false)}
       />
 
       <section className="workspace">

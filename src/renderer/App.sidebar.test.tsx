@@ -361,7 +361,8 @@ describe("App sidebar", () => {
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" });
     expect(reviewPanel).toBeInTheDocument();
     expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/renderer/App.tsx", "workingTree");
-    expect(await screen.findByText("16 unmodified lines")).toBeInTheDocument();
+    // Omitted (unmodified) context blocks are not rendered — only changed hunks.
+    expect(screen.queryByText("16 unmodified lines")).not.toBeInTheDocument();
     // shiki tokenizes lines into per-token <span> children, so getByText on
     // the full source line misses. toHaveTextContent matches concatenated
     // textContent regardless of token carving (same workaround P6.01 used).

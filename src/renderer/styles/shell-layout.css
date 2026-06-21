@@ -36,7 +36,7 @@
    hide (expanded) and show (collapsed) states. ---- */
 .sidebar-toggle {
   position: fixed;
-  top: 4px;
+  top: 1px;
   left: 84px;
   z-index: 62;
   display: inline-flex;

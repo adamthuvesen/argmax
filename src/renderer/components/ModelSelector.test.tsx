@@ -39,11 +39,10 @@ describe("ModelSelector — one row per model", () => {
     expect(opusRow && within(opusRow).getByText("Medium")).toBeTruthy();
   });
 
-  it("only lets you edit effort on the selected model", () => {
+  it("only shows Edit on the selected model", () => {
     openClaudePicker(OPUS_MEDIUM);
-    // Opus is selected → its Edit is active; the others are grayed out.
     expect(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Edit effort for Claude Sonnet 4.6" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Edit effort for Claude Sonnet 4.6" })).toBeNull();
   });
 
   it("gives fast models (Haiku) no Edit button and no effort", () => {
@@ -94,13 +93,13 @@ describe("ModelSelector — one row per model", () => {
 });
 
 describe("ModelSelector — Cursor", () => {
-  it("treats Composer 2.5 as fast (no Edit) but exposes effort for the others", () => {
+  it("treats Composer 2.5 as fast (no Edit) and hides Edit on unselected effort models", () => {
     const value: ProviderModelSelection = { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" };
     render(<ModelSelector ariaLabel="Session model" provider="cursor" value={value} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Session model" }));
     expect(screen.queryByRole("button", { name: "Edit effort for Composer 2.5 (Cursor)" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8 (Cursor)" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit effort for Claude Opus 4.8 (Cursor)" })).toBeNull();
   });
 });
 

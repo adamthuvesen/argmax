@@ -1,4 +1,4 @@
-import { Columns2, Folder, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Columns2, Folder, FolderOpen, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState, WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
@@ -12,11 +12,6 @@ import { WorkspaceTree } from "./WorkspaceTree.js";
 function fileBasename(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash === -1 ? path : path.slice(slash + 1);
-}
-
-function fileDirname(path: string): string {
-  const slash = path.lastIndexOf("/");
-  return slash === -1 ? "" : path.slice(0, slash);
 }
 
 function statusGlyph(status: string): string {
@@ -123,6 +118,7 @@ export function ReviewPanel({
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
   const [leftColumnWidth, setLeftColumnWidth] = useState<number>(() => readStoredLeftColumnWidth());
   const [diffView, setDiffView] = useState<DiffView>(() => readStoredDiffView());
+  const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -198,6 +194,16 @@ export function ReviewPanel({
   const summaryStrip = isChanges && review.files.length > 0
     ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
     : null;
+  const expandedFilePath = selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
+
+  const toggleChangedFile = (filePath: string): void => {
+    if (review.selectedFilePath === filePath) {
+      setCollapsedDiffPath((current) => (current === filePath ? null : filePath));
+      return;
+    }
+    setCollapsedDiffPath(null);
+    review.openFile(filePath);
+  };
 
   return (
     <aside className="review-panel" aria-label="Review panel" ref={panelRef}>
@@ -276,82 +282,91 @@ export function ReviewPanel({
           </button>
         </div>
       </div>
-      <div className="review-body">
-        <div className="review-list-col" style={{ width: leftColumnWidth }}>
-          {isChanges ? (
-            review.filesState === "ready" && review.files.length === 0 ? (
-              <p className="review-empty">
-                <span className="review-empty-mark" aria-hidden="true">∅</span>
-                <span>No changes.</span>
-              </p>
-            ) : (
-            <div className="review-file-tabs" aria-label="Changed file list">
-              {review.files.map((file) => {
-                const name = fileBasename(file.path);
-                const dir = fileDirname(file.path);
-                const glyph = statusGlyph(file.status);
-                return (
-                  <button
-                    aria-pressed={review.selectedFilePath === file.path}
-                    key={file.path}
-                    type="button"
-                    title={`${statusLabel(file.status)} · ${file.path}`}
-                    data-status={glyph.toLowerCase()}
-                    onClick={() => review.openFile(file.path)}
-                  >
-                    <span className="review-file-row-status" aria-hidden="true">{glyph}</span>
-                    <span className="review-file-row-meta">
-                      <span className="review-file-row-name">{name}</span>
-                      {dir ? <span className="review-file-row-dir">{dir}</span> : null}
-                    </span>
-                    <ChangeCount additions={file.additions} deletions={file.deletions} />
-                  </button>
-                );
-              })}
+      <div className={isChanges ? "review-body review-body-changes" : "review-body"}>
+        {isChanges ? null : (
+          <>
+            <div className="review-list-col" style={{ width: leftColumnWidth }}>
+              <WorkspaceTree state={review.workspaceFiles} />
             </div>
-            )
-          ) : (
-            <WorkspaceTree state={review.workspaceFiles} />
-          )}
-        </div>
-        <div
-          className="review-resize-handle"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize file list width"
-          onMouseDown={handleResizeMouseDown}
-        />
+            <div
+              className="review-resize-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize file list width"
+              onMouseDown={handleResizeMouseDown}
+            />
+          </>
+        )}
         <div className={isChanges ? "review-diff" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
-              {selectedFile ? (
-                <div className="review-diff-heading">
-                  <div>
-                    <strong>{selectedFile.path}</strong>
-                    <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
-                  </div>
-                  <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : null}
-              {review.diffState === "loading" ? (
-                <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
-              ) : null}
-              {review.diffState === "error" ? (
-                <p className="review-empty review-error" role="alert">
-                  <span className="review-empty-mark" aria-hidden="true">!</span>
-                  <span>{review.diffError ?? "Couldn't load this diff."}</span>
-                </p>
-              ) : null}
-              {review.diffState === "ready" && diffBlocks.length === 0 ? (
+              {review.filesState === "ready" && review.files.length === 0 ? (
                 <p className="review-empty">
                   <span className="review-empty-mark" aria-hidden="true">∅</span>
-                  <span>No textual diff.</span>
+                  <span>No changes.</span>
                 </p>
               ) : null}
-              {review.diffState === "ready" && diffBlocks.length > 0 ? (
-                <DiffBlocks blocks={diffBlocks} filePath={selectedFile?.path ?? null} view={diffView} />
+              {review.files.length > 0 ? (
+                <div className="review-changed-file-stack" aria-label="Changed files">
+                  {review.files.map((file) => {
+                    const isExpanded = expandedFilePath === file.path;
+                    const glyph = statusGlyph(file.status);
+                    return (
+                      <section className="review-changed-file-section" key={file.path} data-expanded={isExpanded ? "true" : "false"}>
+                        <div className="review-changed-file-row">
+                          <button
+                            className="review-changed-file-toggle"
+                            type="button"
+                            aria-label={`${isExpanded ? "Collapse" : "Expand"} ${file.path} diff`}
+                            aria-expanded={isExpanded}
+                            aria-controls={`review-diff-${file.path}`}
+                            title={`${isExpanded ? "Collapse" : "Expand"} ${file.path}`}
+                            data-status={glyph.toLowerCase()}
+                            onClick={() => toggleChangedFile(file.path)}
+                          >
+                            <span className="review-file-row-status" aria-hidden="true">{glyph}</span>
+                            <span className="review-file-row-path">{file.path}</span>
+                            <span className="review-file-row-chevron" aria-hidden="true">
+                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </span>
+                          </button>
+                          <ChangeCount additions={file.additions} deletions={file.deletions} />
+                          <button
+                            className="small-icon"
+                            type="button"
+                            title={`Open ${file.path} in Files view`}
+                            aria-label={`Open ${file.path} in Files view`}
+                            onClick={() => review.openInFilesView(file.path)}
+                          >
+                            <FolderOpen size={16} />
+                          </button>
+                        </div>
+                        {isExpanded ? (
+                          <div className="review-inline-diff" id={`review-diff-${file.path}`}>
+                            {review.diffState === "loading" ? (
+                              <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
+                            ) : null}
+                            {review.diffState === "error" ? (
+                              <p className="review-empty review-error" role="alert">
+                                <span className="review-empty-mark" aria-hidden="true">!</span>
+                                <span>{review.diffError ?? "Couldn't load this diff."}</span>
+                              </p>
+                            ) : null}
+                            {review.diffState === "ready" && diffBlocks.length === 0 ? (
+                              <p className="review-empty">
+                                <span className="review-empty-mark" aria-hidden="true">∅</span>
+                                <span>No textual diff.</span>
+                              </p>
+                            ) : null}
+                            {review.diffState === "ready" && diffBlocks.length > 0 ? (
+                              <DiffBlocks blocks={diffBlocks} filePath={file.path} view={diffView} />
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </section>
+                    );
+                  })}
+                </div>
               ) : null}
             </>
           ) : (

@@ -99,7 +99,7 @@ describe("ReviewPanel side-by-side toggle", () => {
   });
 });
 
-describe("ReviewPanel side-by-side layout", () => {
+describe("ReviewPanel changes layout", () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
@@ -108,22 +108,84 @@ describe("ReviewPanel side-by-side layout", () => {
     cleanup();
   });
 
-  it("renders file list and diff as siblings inside .review-body with an inline width on the left column", () => {
-    const { container } = render(<ReviewPanel review={reviewStub()} />);
+  it("renders changed files as stacked full-width rows with the selected diff inline", () => {
+    const review = reviewStub();
+    review.files = [
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 },
+      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 }
+    ];
+    const { container } = render(<ReviewPanel review={review} />);
     const body = container.querySelector(".review-body");
-    const leftCol = container.querySelector<HTMLElement>(".review-list-col");
+    const leftCol = container.querySelector(".review-list-col");
+    const resizeHandle = screen.queryByRole("separator", { name: "Resize file list width" });
+    const changedFilesStack = screen.getByLabelText("Changed files");
     const diff = container.querySelector(".review-diff");
 
     expect(body).not.toBeNull();
-    expect(leftCol).not.toBeNull();
     expect(diff).not.toBeNull();
-    expect(body?.contains(leftCol)).toBe(true);
+    expect(leftCol).toBeNull();
+    expect(resizeHandle).toBeNull();
+    expect(body).toHaveClass("review-body-changes");
+    expect(container.querySelector(".review-changed-files-strip")).toBeNull();
+    expect(within(changedFilesStack).getByRole("button", { name: "Collapse src/a.ts diff" })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    expect(within(changedFilesStack).getByRole("button", { name: "Expand src/deep/b.ts diff" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect(changedFilesStack.querySelector(".review-inline-diff")).not.toBeNull();
     expect(body?.contains(diff)).toBe(true);
-    expect(leftCol?.style.width).toMatch(/px$/);
   });
 
-  it("persists left column width to localStorage when the handle is dragged", () => {
-    render(<ReviewPanel review={reviewStub()} />);
+  it("routes changed file row expansion through openFile", () => {
+    const review = reviewStub();
+    const openFile = vi.fn();
+    review.openFile = openFile;
+    review.files = [
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 },
+      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 }
+    ];
+
+    render(<ReviewPanel review={review} />);
+
+    const changedFilesStack = screen.getByLabelText("Changed files");
+    fireEvent.click(within(changedFilesStack).getByRole("button", { name: "Expand src/deep/b.ts diff" }));
+
+    expect(openFile).toHaveBeenCalledWith("src/deep/b.ts");
+  });
+
+  it("collapses the expanded changed file row without changing Files mode state", () => {
+    const review = reviewStub();
+    render(<ReviewPanel review={review} />);
+
+    const changedFilesStack = screen.getByLabelText("Changed files");
+    const row = within(changedFilesStack).getByRole("button", { name: "Collapse src/a.ts diff" });
+    expect(row).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(row);
+
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(changedFilesStack.querySelector(".review-inline-diff")).toBeNull();
+    expect(review.openFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps the resizable workspace file tree in Files mode", () => {
+    const review = reviewStub();
+    review.mode = "files";
+    render(<ReviewPanel review={review} />);
+    const leftCol = document.querySelector<HTMLElement>(".review-list-col");
+
+    expect(leftCol).not.toBeNull();
+    expect(leftCol?.style.width).toMatch(/px$/);
+    expect(screen.getByRole("separator", { name: "Resize file list width" })).toBeInTheDocument();
+  });
+
+  it("persists the Files-mode left column width to localStorage when the handle is dragged", () => {
+    const review = reviewStub();
+    review.mode = "files";
+    render(<ReviewPanel review={review} />);
     const handle = screen.getByRole("separator", { name: "Resize file list width" });
 
     fireEvent.mouseDown(handle, { clientX: 600 });
@@ -262,7 +324,9 @@ describe("ReviewPanel — drag listener cleanup on unmount", () => {
   it("removes document listeners and resets body styles when unmounted mid-drag", () => {
     const removeListener = vi.spyOn(document, "removeEventListener");
 
-    const { unmount } = render(<ReviewPanel review={reviewStub()} />);
+    const review = reviewStub();
+    review.mode = "files";
+    const { unmount } = render(<ReviewPanel review={review} />);
 
     // Start a drag: mousedown on the resize handle activates the cursor
     // grab and registers two document-level listeners.

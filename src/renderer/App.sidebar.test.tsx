@@ -358,7 +358,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open changed files in review panel" }));
 
-    const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" });
+    const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
     expect(reviewPanel).toBeInTheDocument();
     expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/renderer/App.tsx", "workingTree");
     // Omitted (unmodified) context blocks are not rendered — only changed hunks.

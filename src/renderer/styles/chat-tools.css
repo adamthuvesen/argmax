@@ -156,15 +156,6 @@
   font-size: var(--text-xs);
 }
 
-.tool-call-row-dot[data-status="running"] {
-  background: var(--amber);
-  animation: rail-pulse 1.6s var(--ease) infinite;
-}
-
-.tool-call-row-dot[data-status="error"] {
-  background: var(--rose);
-}
-
 /* Expanded detail under a row reuses the same .tool-call-detail block as
    the bubble; just add a left rail accent so the panel reads as a child
    of the row above it. */

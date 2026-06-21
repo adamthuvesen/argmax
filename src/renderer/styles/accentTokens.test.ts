@@ -14,7 +14,7 @@ function cssRuleBody(source: string, selector: string): string {
 }
 
 describe("accent CSS contract", () => {
-  it("keeps tool-summary labels tinted but quieter than assistant prose", () => {
+  it("keeps tool-summary labels neutral and quieter than assistant prose", () => {
     const chatTurns = readSource("src/renderer/styles/chat-turns.css");
     const chatTools = readSource("src/renderer/styles/chat-tools.css");
     const labelRule = cssRuleBody(chatTurns, ".tool-call-group-eyebrow-label");
@@ -22,24 +22,27 @@ describe("accent CSS contract", () => {
     const rowTargetRule = cssRuleBody(chatTurns, ".tool-call-row-target");
     const filePreviewRule = cssRuleBody(chatTools, ".tool-call-file-preview-header code");
 
-    expect(labelRule).toContain("font-weight: 500;");
-    expect(labelRule).toContain("letter-spacing: 0.045em;");
-    expect(labelRule).toContain("color: color-mix(in oklab, var(--accent) 20%, var(--muted));");
+    expect(labelRule).toContain("font-weight: 400;");
+    expect(labelRule).toContain("letter-spacing: 0;");
+    expect(labelRule).toContain("text-transform: none;");
+    expect(labelRule).toContain("color: var(--muted);");
     expect(labelRule).not.toContain("var(--accent-deep)");
-    expect(previewRule).toContain("color: color-mix(in oklab, var(--accent) 14%, var(--muted));");
-    expect(rowTargetRule).toContain("color: color-mix(in oklab, var(--accent) 14%, var(--muted));");
+    expect(previewRule).toContain("color: var(--muted);");
+    expect(rowTargetRule).toContain("color: var(--muted);");
     expect(rowTargetRule).not.toContain("color: var(--text);");
     expect(filePreviewRule).toContain("color: color-mix(in oklab, var(--accent) 14%, var(--muted));");
   });
 
-  it("uses configurable accent tokens for markdown output chrome", () => {
+  it("uses configurable accent tokens for markdown output chrome while file chips stay neutral", () => {
     const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
     const chatComposer = readSource("src/renderer/styles/chat-composer.css");
+    const fileChipRule = cssRuleBody(chatComposer, ".file-chip");
     expect(chatConversation).toContain(".markdown code");
     expect(chatConversation).toContain("background: var(--accent-soft);");
     expect(chatConversation).toContain("color: var(--accent-deep);");
     expect(chatComposer).toContain(".file-chip");
-    expect(chatComposer).toContain("color: var(--accent-deep);");
+    expect(fileChipRule).toContain("background: var(--panel-sunken);");
+    expect(fileChipRule).toContain("color: var(--muted-strong);");
   });
 
   it("keeps file-change and diff greens on semantic tokens", () => {

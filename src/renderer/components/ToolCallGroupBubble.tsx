@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react";
 import { memo, useMemo, useState, type JSX } from "react";
 import {
   buildGroupRows,
+  getToolIcon,
   summarizeToolGroup,
   type ToolCallGroup
 } from "../lib/toolCalls.js";
@@ -29,6 +30,7 @@ function ToolCallGroupBubbleInner({
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
   const rows = useMemo(() => buildGroupRows(group.tools), [group.tools]);
+  const leadingTool = rows[0]?.tool ?? group.tools[0] ?? null;
   // Collapsed by default to match Codex — the user clicks the chevron to
   // reveal per-tool rows. defaultExpanded (from Settings) overrides. The
   // error case used to auto-expand; that made groups inconsistent (failed
@@ -59,6 +61,11 @@ function ToolCallGroupBubbleInner({
         aria-label={`${summary.headline}${previewText ? ": " + previewText : ""}`}
         onClick={() => setUserToggle({ value: !expanded, defaultExpanded })}
       >
+        {leadingTool ? (
+          <span className="tool-call-group-icon" aria-hidden="true">
+            {getToolIcon(leadingTool.name)}
+          </span>
+        ) : null}
         <span className="tool-call-group-eyebrow" aria-hidden="true">
           <span className="tool-call-group-eyebrow-label">{summary.headline}</span>
         </span>

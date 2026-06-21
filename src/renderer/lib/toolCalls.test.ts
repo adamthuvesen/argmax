@@ -112,12 +112,12 @@ describe("Task / sub-agent tools", () => {
     expect(describeToolAction(t)).toBe("Agent Audit shared + scripts");
   });
 
-  it("group headline uses the 'Spawned' verb", () => {
+  it("group headline uses a quiet started-agent phrase", () => {
     const out = summarizeToolGroup([
       tool({ name: "Task", id: "1" }),
       tool({ name: "Task", id: "2" })
     ]);
-    expect(out.headline).toBe("Spawned 2 agents");
+    expect(out.headline).toBe("Started 2 agents");
   });
 });
 
@@ -139,9 +139,9 @@ describe("file_change tools", () => {
 });
 
 describe("summarizeToolGroup — single-bucket headlines", () => {
-  it("reads-only → Explored N files", () => {
+  it("reads-only → Read N files", () => {
     const out = summarizeToolGroup([tool({ name: "Read" }), tool({ name: "read", id: "id-2" })]);
-    expect(out.headline).toBe("Explored 2 files");
+    expect(out.headline).toBe("Read 2 files");
   });
 
   it("bash-only → Ran N commands", () => {
@@ -159,8 +159,8 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
   });
 
   it("singular pluralization", () => {
-    expect(summarizeToolGroup([tool({ name: "Read" })]).headline).toBe("Explored 1 file");
-    expect(summarizeToolGroup([tool({ name: "Bash" })]).headline).toBe("Ran 1 command");
+    expect(summarizeToolGroup([tool({ name: "Read" })]).headline).toBe("Read a file");
+    expect(summarizeToolGroup([tool({ name: "Bash" })]).headline).toBe("Ran a command");
   });
 });
 
@@ -172,7 +172,7 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "list_dir", id: "3" }),
       tool({ name: "Bash", id: "4" })
     ]);
-    expect(out.headline).toBe("Explored 1 file, 2 lists, ran 1 command");
+    expect(out.headline).toBe("Read a file, listed 2 directories, ran a command");
   });
 
   it("first clause is capitalized, subsequent clauses lowercase", () => {
@@ -180,8 +180,8 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "Bash", id: "1" }),
       tool({ name: "Read", id: "2" })
     ]);
-    // read-files comes first in fixed order, so "Explored ..." leads.
-    expect(out.headline).toBe("Explored 1 file, ran 1 command");
+    // read-files comes first in fixed order, so "Read ..." leads.
+    expect(out.headline).toBe("Read a file, ran a command");
   });
 
   it("preserves bucket ordering regardless of input order", () => {
@@ -190,7 +190,7 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "Edit", id: "2" }),
       tool({ name: "Grep", id: "3" })
     ]);
-    expect(out.headline).toBe("Searched 1 time, 1 edit, ran 1 command");
+    expect(out.headline).toBe("Searched once, edited a file, ran a command");
   });
 });
 

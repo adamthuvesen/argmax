@@ -17,7 +17,7 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
 
   return (
     <article className={`chat-bubble ${kind}`}>
-      {children}
+      {kind === "user" ? <div className="chat-bubble-body">{children}</div> : children}
       <button
         type="button"
         className="chat-bubble-copy"

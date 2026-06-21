@@ -630,6 +630,17 @@
   color: var(--user-bubble-fg);
 }
 
+/* A long paste (multi-paragraph message) would otherwise grow the bubble to the
+   full height of its content and push the reply off-screen. Cap the body and let
+   it scroll internally past that point; short messages stay below the cap and
+   look unchanged. The cap lives on this inner wrapper rather than .chat-bubble so
+   the copy button (anchored at top: 100%) isn't clipped by the scroll container.
+   The scrollbar inherits the app's global ::-webkit-scrollbar styling. */
+.chat-bubble.user .chat-bubble-body {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 /* Floating "scroll to latest" button. Anchors to the conversation list (which
    is `position: relative`'d below) so it doesn't drift over the composer. */
 .conversation-list {

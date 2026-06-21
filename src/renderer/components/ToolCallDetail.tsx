@@ -142,7 +142,7 @@ export function ToolCallDetail({
       ) : null}
       {showRawInput ? (
         <div className="tool-call-section">
-          <p className="tool-call-section-label">Raw input</p>
+          <p className="tool-call-section-label">Input</p>
           <pre className="tool-call-code">{JSON.stringify(visibleInput, null, 2)}</pre>
         </div>
       ) : null}

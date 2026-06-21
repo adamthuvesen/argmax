@@ -47,7 +47,7 @@
   position: relative;
   width: 56px;
   height: 56px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface, var(--panel));
   overflow: hidden;
@@ -72,7 +72,7 @@
   height: 18px;
   padding: 0;
   border: 0;
-  border-radius: 9999px;
+  border-radius: var(--radius-sm);
   background: rgba(31, 28, 24, 0.75);
   color: var(--bubble-on-ink);
   cursor: pointer;
@@ -96,7 +96,7 @@
   gap: 8px;
   padding: 4px 6px 4px 10px;
   border: 1px dashed var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   background: var(--surface, var(--panel));
   color: var(--text-muted, var(--text));
   font-size: 12px;
@@ -120,7 +120,7 @@
   height: 18px;
   padding: 0;
   border: 0;
-  border-radius: 9999px;
+  border-radius: var(--radius-sm);
   background: rgba(31, 28, 24, 0.08);
   color: var(--text-muted, var(--text));
   cursor: pointer;
@@ -145,7 +145,7 @@
   gap: 4px;
   padding: 2px 8px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--panel);
   font-family: var(--mono, ui-monospace, "SF Mono", monospace);
   font-size: 12px;
@@ -170,7 +170,7 @@
   padding: 8px 8px;
   color: var(--text);
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   outline: 0;
   background: transparent;
   font-family: inherit;
@@ -204,7 +204,7 @@
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
   z-index: 30;
 }
@@ -214,7 +214,7 @@
   flex-direction: column;
   gap: 2px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
   line-height: 1.35;
@@ -250,7 +250,7 @@
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
   z-index: 30;
 }
@@ -260,7 +260,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -308,7 +308,7 @@
   place-items: center;
   color: var(--bubble-on-ink);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   background: var(--ink);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
   cursor: pointer;

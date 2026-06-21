@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Columns2, Folder, FolderOpen, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
+import { Columns2, Folder, FolderOpen, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState, WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
@@ -326,9 +326,6 @@ export function ReviewPanel({
                           >
                             <span className="review-file-row-status" aria-hidden="true">{glyph}</span>
                             <span className="review-file-row-path">{file.path}</span>
-                            <span className="review-file-row-chevron" aria-hidden="true">
-                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            </span>
                           </button>
                           <ChangeCount additions={file.additions} deletions={file.deletions} />
                           <button

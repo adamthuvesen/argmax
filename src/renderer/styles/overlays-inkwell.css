@@ -31,7 +31,7 @@
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--line);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.85) inset,
@@ -76,7 +76,7 @@
   letter-spacing: 0.04em;
   padding: 1px 6px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--panel-sunken);
   color: var(--text-soft);
   text-transform: none;
@@ -169,7 +169,7 @@
   gap: 12px;
   margin: 0 8px;
   padding: 9px 12px 9px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   cursor: pointer;
   color: var(--text-soft);
@@ -198,7 +198,7 @@
   height: 22px;
   flex: 0 0 auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--panel);
   color: var(--muted-strong);
   font-family: var(--font-mono);
@@ -245,7 +245,7 @@
   background: var(--accent-soft);
   color: var(--text);
   padding: 0 1px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   font-weight: 600;
 }
 
@@ -274,7 +274,7 @@
   font-family: var(--font-mono);
   font-size: 10px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--panel-sunken);
   color: var(--text-soft);
 }
@@ -295,7 +295,7 @@
   color: var(--muted-strong);
   font-size: 12.5px;
   border: 1px dashed var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--panel-soft);
 }
 
@@ -306,7 +306,7 @@
   height: 22px;
   flex: 0 0 auto;
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-family: var(--font-mono);
   color: var(--muted);
   background: var(--panel);
@@ -354,7 +354,7 @@
   font-family: var(--font-mono);
   font-size: 10px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--text-soft);
   letter-spacing: 0;
@@ -377,7 +377,7 @@
 .cheat-sheet {
   width: min(520px, 92vw);
   background: var(--panel, #ffffff);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
   padding: 20px 24px 18px;
@@ -429,7 +429,7 @@
 .cheat-sheet kbd {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: rgba(0, 0, 0, 0.06);
   border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
   font-family: inherit;
@@ -446,7 +446,7 @@
   flex-direction: column;
   gap: 0;
   background: var(--panel);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--line);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.85) inset,
@@ -492,7 +492,7 @@
   letter-spacing: 0.04em;
   padding: 1px 6px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--panel-sunken);
   color: var(--text-soft);
   text-transform: none;
@@ -572,7 +572,7 @@
   color: var(--muted-strong);
   font-size: 12.5px;
   border: 1px dashed var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--panel-soft);
 }
 
@@ -583,7 +583,7 @@
   height: 22px;
   flex: 0 0 auto;
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-family: var(--font-mono);
   color: var(--muted);
   background: var(--panel);
@@ -602,7 +602,7 @@
   align-items: center;
   margin: 0 8px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
   color: var(--text-soft);
@@ -644,7 +644,7 @@
   background: var(--accent-soft);
   color: var(--text);
   padding: 0 1px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   font-weight: 600;
 }
 
@@ -692,7 +692,7 @@
   color: var(--muted);
   padding: 0 6px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
 }
 
@@ -747,7 +747,7 @@
   font-family: var(--font-mono);
   font-size: 10px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--text-soft);
   letter-spacing: 0;

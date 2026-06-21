@@ -84,7 +84,7 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 | Chrome accent | `--accent`, `--accent-soft`, `--accent-deep` — configurable brand/decorative tint, defaults to the green `--sage*` values |
 | Status | `--sage` (running/online/success/approve), `--amber` (waiting), `--rose` (error/risk) — each with a `*-soft` companion. Keep status chips, running/error states, diffs, checks, file-change cards, code additions, and logs on semantic tokens; do not migrate them to `--accent*`. |
 | Elevation | `--shadow-1`, `--shadow-2`, `--shadow-3` |
-| Radii | `--radius-sm/md/lg/xl` |
+| Radii | `--radius-xs` (3px), `--radius-sm` (4px), `--radius-md` (6px), `--radius-lg` (8px), `--radius-xl` (10px). Prefer tokens; reserve `999px` / `50%` for truly circular elements only (status dots, toggle knobs). |
 | Motion | `--ease` (cubic-bezier), `--duration-fast` (140ms), `--duration-base` (220ms); newer code prefers `--motion-fast` (120ms), `--motion-base` (180ms), `--motion-slow` (240ms), `--ease-out`, `--ease-in-out` |
 | Spacing | `--space-1` (4px) through `--space-8` (32px). Use these for paddings, gaps, and margins; reserve raw `px` for one-off optical adjustments. |
 | Type | `--text-xs` (11px) → `--text-sm` (12px) → `--text-base` (13px) → `--text-md` (15px) → `--text-lg` (18px). |

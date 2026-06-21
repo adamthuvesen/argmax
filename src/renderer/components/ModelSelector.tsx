@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Cpu } from "lucide-react";
+import { ChevronDown, Cpu } from "lucide-react";
 import { Fragment, useRef, useState, type JSX } from "react";
 import {
   DEFAULT_REASONING_EFFORT,
@@ -269,20 +269,14 @@ function ChipModelPicker<T extends PickerValue>({
                       {option.supportsReasoningEffort && !option.disabled ? (
                         <span className="model-picker-effort">{effortLabel(effortForOption(option))}</span>
                       ) : null}
-                      {/* Always reserve the check column so the selected row's
-                          effort label stays aligned with the others. */}
-                      <span className="model-picker-check" aria-hidden="true">
-                        {selected ? <Check size={14} /> : null}
-                      </span>
                     </button>
-                    {option.supportsReasoningEffort && !option.disabled ? (
+                    {selected && option.supportsReasoningEffort && !option.disabled ? (
                       <button
                         type="button"
                         className="model-picker-edit"
                         aria-label={`Edit effort for ${option.label}`}
                         aria-expanded={editing}
-                        disabled={!selected}
-                        title={selected ? "Change reasoning effort" : "Select this model to change its effort"}
+                        title="Change reasoning effort"
                         onClick={() => setEffortMenuFor((current) => (current === option.key ? null : option.key))}
                       >
                         Edit
@@ -309,7 +303,6 @@ function ChipModelPicker<T extends PickerValue>({
                       onClick={() => selectEffort(editingOption, reasoningEffort)}
                     >
                       <span>{effortLabel(reasoningEffort)}</span>
-                      {active ? <Check size={14} aria-hidden="true" className="model-picker-check" /> : null}
                     </button>
                   </li>
                 );

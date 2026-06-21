@@ -590,8 +590,8 @@ export function SessionConversation({
   return (
     <section className="conversation-surface" aria-label="Session conversation">
       <div className="section-heading" data-window-drag>
-        <div>
-          <p className="eyebrow">Repository</p>
+        <div className="session-title">
+          <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
           <h2>{repositoryName}</h2>
         </div>
         <div className="conversation-header-actions">

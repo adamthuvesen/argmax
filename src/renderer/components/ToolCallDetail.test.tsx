@@ -42,7 +42,7 @@ describe("ToolCallDetail", () => {
     expect(within(preview).getByText(/The loop begins/)).toBeInTheDocument();
     expect(within(preview).getByRole("button", { name: "Open /repo/poem.md" })).toBeInTheDocument();
 
-    expect(screen.getByText("Raw input")).toBeInTheDocument();
-    expect(screen.queryByText("INPUT")).not.toBeInTheDocument();
+    expect(screen.getByText("Input")).toBeInTheDocument();
+    expect(screen.queryByText("Raw input")).not.toBeInTheDocument();
   });
 });

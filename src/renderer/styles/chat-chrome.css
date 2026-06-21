@@ -7,7 +7,7 @@
   margin-top: 28px;
   padding: 10px 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--panel-soft);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -48,7 +48,7 @@
   flex-direction: column;
   gap: 12px;
   background: var(--panel, #ffffff);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
   padding: 20px 24px 18px;
@@ -77,7 +77,7 @@
   font-size: 11px;
   padding: 1px 4px;
   background: rgba(0, 0, 0, 0.04);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .mcp-auth-dialog-header button {
@@ -94,7 +94,7 @@
   gap: 6px;
   margin: 0;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 12px;
   line-height: 1.3;
   background: var(--danger-soft, rgba(220, 38, 38, 0.08));
@@ -105,7 +105,7 @@
   flex: 1;
   min-height: 360px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px;
   background: var(--panel-soft);
   overflow: hidden;
@@ -120,7 +120,7 @@
 .mcp-auth-dialog-actions button {
   height: 32px;
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--panel);
   font-size: 13px;
@@ -146,7 +146,7 @@
   padding: 0;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--muted);
   cursor: pointer;
   opacity: 0;
@@ -189,7 +189,7 @@
 
 .error-boundary-message {
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.04);
   font-family: var(--font-mono);
   font-size: 13px;
@@ -204,7 +204,7 @@
 .error-boundary-actions button {
   padding: 8px 14px;
   border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
 }
@@ -217,7 +217,7 @@
   padding: 0 14px;
   color: var(--bubble-on-ink);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--ink);
   cursor: pointer;
   box-shadow: var(--shadow-2);
@@ -305,7 +305,7 @@
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
@@ -386,7 +386,7 @@
   gap: 6px;
   padding: 4px 9px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted-strong);
   cursor: pointer;
@@ -478,7 +478,7 @@
   padding: 3px;
   margin-left: auto;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--panel-soft);
 }
 
@@ -489,7 +489,7 @@
   padding: 0 11px;
   color: var(--muted-strong);
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   font-size: 12px;
@@ -521,7 +521,7 @@
   max-width: 220px;
   color: var(--text);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
   font: inherit;
   font-size: 12px;
@@ -561,7 +561,7 @@
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
 }
 
@@ -587,10 +587,11 @@
 
 .model-picker-popover .project-picker-item {
   white-space: nowrap;
+  gap: 10px;
 }
 
 .model-picker-popover {
-  min-width: 248px;
+  min-width: 300px;
   /* Taller than the generic picker so the full model list fits with little or
      no scrolling. Opens upward in-session, so there's room above the composer. */
   max-height: 440px;
@@ -634,12 +635,37 @@
 .model-picker-row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  padding-right: 48px; /* Reserve space for the absolute Edit button */
+  border-radius: var(--radius-sm);
+  position: relative;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.model-picker-row:hover {
+  background: var(--panel-soft);
+}
+
+.model-picker-row[aria-selected="true"] {
+  background: var(--panel-sunken);
 }
 
 .model-picker-item {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.model-picker-item:hover,
+.model-picker-item[aria-pressed="true"] {
+  background: transparent !important;
+}
+
+.model-picker-row[aria-selected="true"] .model-picker-item {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .model-picker-name {
@@ -653,6 +679,7 @@
   color: var(--muted);
   font-size: var(--text-sm);
   font-weight: 400;
+  margin-left: auto;
 }
 
 /* Advisory annotation ("not installed" / "needs login") trailing a model name. */
@@ -675,52 +702,24 @@
   color: var(--muted);
 }
 
-/* Fixed-width check column, always present (empty when unselected) so the
-   effort label keeps the same position whether or not the row is selected. */
-.model-picker-check {
-  flex: none;
-  width: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .model-picker-edit {
+  position: absolute;
+  right: 4px;
   flex: none;
   padding: 4px 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);
   font-size: var(--text-sm);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
-}
-
-.model-picker-row:hover .model-picker-edit,
-.model-picker-row[aria-selected="true"] .model-picker-edit,
-.model-picker-edit[aria-expanded="true"] {
-  opacity: 1;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .model-picker-edit:hover,
 .model-picker-edit[aria-expanded="true"] {
   background: var(--panel-soft);
   color: var(--text);
-}
-
-/* Effort is editable only on the selected model; other rows show a grayed,
-   non-interactive Edit so it's clear you must pick the model first. */
-.model-picker-edit:disabled {
-  color: var(--muted);
-  cursor: default;
-}
-
-.model-picker-edit:disabled:hover {
-  background: transparent;
-  color: var(--muted);
 }
 
 .model-effort-item {
@@ -735,7 +734,7 @@
   padding: 7px 10px;
   color: var(--text-soft);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
@@ -866,7 +865,7 @@
   color: var(--muted-strong);
   font-size: 11px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -910,7 +909,7 @@
   color: var(--muted-strong);
   font-size: 11px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -932,7 +931,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--text);
   font-family: inherit;
@@ -958,7 +957,7 @@
   margin-top: 4px;
   padding: 7px 18px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--bubble-on-ink);
   font-size: 12px;
@@ -978,7 +977,7 @@
   margin: 10px 0 0;
   padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   line-height: 1.45;
   word-break: break-word;
@@ -1034,7 +1033,7 @@
   color: var(--text-soft);
   font-size: 12.5px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--panel-soft);
   box-shadow: 0 8px 24px rgba(31, 28, 24, 0.10);
   width: max-content;

@@ -337,4 +337,17 @@ describe("styles.css startup contract", () => {
     expect(settingsRule?.groups?.body).toMatch(/top:\s*calc\(100%\s*\+\s*6px\)/i);
     expect(settingsRule?.groups?.body).toMatch(/bottom:\s*auto/i);
   });
+
+  it("keeps the first assistant turn reveal from moving vertically under metadata", () => {
+    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
+    const css = readBundledCss(cssPath);
+    const revealRule = /\.turn-block-body\[data-just-revealed="true"\]\s*>\s*\*:first-child\s*\{(?<body>[^}]+)\}/i.exec(css);
+    const keyframeStart = css.indexOf("@keyframes turn-phase-land");
+    const nextKeyframe = css.indexOf("@keyframes", keyframeStart + 1);
+    const keyframe = css.slice(keyframeStart, nextKeyframe > keyframeStart ? nextKeyframe : undefined);
+
+    expect(revealRule?.groups?.body).toContain("turn-phase-land");
+    expect(keyframeStart).toBeGreaterThanOrEqual(0);
+    expect(keyframe).not.toMatch(/translateY|transform/i);
+  });
 });

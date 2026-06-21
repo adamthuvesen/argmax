@@ -98,8 +98,9 @@
 }
 
 /* Thinking → answered transition. The first visible child of a freshly
-   populated turn body settles in with a soft translate+fade, marking the
-   moment the agent's indeterminate "thinking" becomes determinate output. */
+   populated turn body fades in, marking the moment the agent's indeterminate
+   "thinking" becomes determinate output without moving the answer under the
+   metadata row. */
 .turn-block-body[data-just-revealed="true"] > *:first-child {
   animation: turn-phase-land 280ms var(--ease) both;
 }
@@ -107,11 +108,9 @@
 @keyframes turn-phase-land {
   from {
     opacity: 0;
-    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

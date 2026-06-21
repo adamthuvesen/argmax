@@ -101,41 +101,43 @@
 }
 
 /* Inline file chip — replaces a plain `<code>` pill when the text matches a
-   file-path pattern. Styled to read like a markdown link so file references
-   sit inline with prose instead of breaking the line with a chunky button.
-   Click opens the file in the workspace's IDE. */
+   file-path pattern. Click opens the file in the workspace's IDE. */
 .file-chip {
   display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent-deep);
+  align-items: center;
+  gap: 4px;
+  max-width: min(100%, 34ch);
+  padding: 1px 8px 2px;
+  margin: 0 1px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--panel-sunken);
+  color: var(--muted-strong);
   font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.35;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in oklab, var(--accent) 42%, transparent);
-  transition: text-decoration-color var(--duration-fast) var(--ease);
-  vertical-align: baseline;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  vertical-align: middle;
 }
 
 .file-chip:hover {
-  text-decoration-color: var(--accent-deep);
+  background: var(--panel-soft);
+  border-color: var(--line);
+  color: var(--text);
 }
 
 .file-chip svg {
-  opacity: 0.55;
+  opacity: 0.6;
   flex-shrink: 0;
   align-self: center;
 }
 
 .file-chip-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

@@ -169,24 +169,27 @@ const FINE_BUCKET_ORDER: FineBucket[] = [
 // is used for subsequent clauses — Codex-style "Explored 1 file, 2 lists,
 // ran 1 command" emerges by mixing the two.
 function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string {
-  const plural = (singular: string, pluralWord: string): string => (n === 1 ? singular : pluralWord);
+  const count = (singular: string, pluralWord: string): string =>
+    n === 1 ? `a ${singular}` : `${n} ${pluralWord}`;
+  const once = n === 1 ? "once" : `${n} times`;
+  const lowerFirst = (value: string): string => first ? value : value.charAt(0).toLowerCase() + value.slice(1);
   switch (bucket) {
     case "agent":
-      return first ? `Spawned ${n} ${plural("agent", "agents")}` : `${n} ${plural("agent", "agents")}`;
+      return lowerFirst(`Started ${n === 1 ? "an agent" : `${n} agents`}`);
     case "read-files":
-      return first ? `Explored ${n} ${plural("file", "files")}` : `${n} ${plural("file", "files")}`;
+      return lowerFirst(`Read ${count("file", "files")}`);
     case "read-lists":
-      return first ? `Listed ${n} ${plural("directory", "directories")}` : `${n} ${plural("list", "lists")}`;
+      return lowerFirst(`Listed ${count("directory", "directories")}`);
     case "search":
-      return first ? `Searched ${n} ${plural("time", "times")}` : `${n} ${plural("search", "searches")}`;
+      return lowerFirst(`Searched ${once}`);
     case "web":
-      return first ? `Fetched ${n} ${plural("URL", "URLs")}` : `${n} ${plural("URL", "URLs")}`;
+      return lowerFirst(`Fetched ${count("URL", "URLs")}`);
     case "edit":
-      return first ? `Edited ${n} ${plural("file", "files")}` : `${n} ${plural("edit", "edits")}`;
+      return lowerFirst(`Edited ${count("file", "files")}`);
     case "bash":
-      return first ? `Ran ${n} ${plural("command", "commands")}` : `ran ${n} ${plural("command", "commands")}`;
+      return lowerFirst(`Ran ${count("command", "commands")}`);
     case "other":
-      return first ? `Used ${n} ${plural("tool", "tools")}` : `${n} ${plural("tool", "tools")}`;
+      return lowerFirst(`Used ${count("tool", "tools")}`);
   }
 }
 

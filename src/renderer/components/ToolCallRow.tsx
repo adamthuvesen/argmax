@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
-import { describeToolAction, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
+import { describeToolAction, getToolIcon, getToolTypeBucket, type ToolCall } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
 
@@ -96,14 +96,9 @@ function ToolCallRowInner({
         aria-label={action}
         onClick={() => setUserToggle({ value: !expanded, defaultExpanded })}
       >
-        {/* Always render the status dot — transparent when done — so every row
-            reserves the same left gutter and verbs/targets stay column-aligned
-            instead of the error/running rows jumping right. */}
-        <span
-          className="tool-call-row-dot"
-          data-status={tool.status}
-          aria-hidden="true"
-        />
+        <span className="tool-call-row-icon" aria-hidden="true">
+          {getToolIcon(tool.name)}
+        </span>
         <span className="tool-call-row-verb">{verb}</span>
         {target ? (
           <span className="tool-call-row-target">{shortenPathsInText(target)}</span>

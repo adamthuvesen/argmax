@@ -81,14 +81,14 @@
 .turn-block-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 12px;
 }
 
 .turn-block-tools {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: -6px 0 2px;
+  gap: 4px;
+  margin: 0;
 }
 
 /* Running turn — subtle pulse on the subtitle to confirm activity without
@@ -650,16 +650,17 @@
 
 .tool-call-group-header {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  padding: 6px 4px 6px 0;
+  padding: 4px 4px 4px 0;
   text-align: left;
   border: 0;
   background: transparent;
   cursor: pointer;
-  color: color-mix(in oklab, var(--accent) 10%, var(--muted));
-  font-size: var(--text-sm);
+  color: var(--muted);
+  font-size: var(--text-base);
+  line-height: 1.3;
   transition: color var(--duration-fast) var(--ease);
 }
 
@@ -667,23 +668,35 @@
   color: var(--muted-strong);
 }
 
-.tool-call-group-header:hover .tool-call-group-toggle {
-  color: color-mix(in oklab, var(--accent) 28%, var(--muted-strong));
-}
-
 .tool-call-group-eyebrow {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   flex: 0 0 auto;
 }
 
+.tool-call-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.tool-call-group-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
 .tool-call-group-eyebrow-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--accent) 20%, var(--muted));
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
 }
 
 .tool-call-group-preview {
@@ -693,8 +706,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
+  font-size: var(--text-base);
+  color: var(--muted);
+  opacity: 0.86;
 }
 
 .tool-call-group-running {
@@ -721,10 +735,6 @@
   padding-left: 0;
 }
 
-.tool-call-group-body .tool-call-row-dot[data-status="done"] {
-  display: none;
-}
-
 /* Codex-style compact rows: one line per tool ("Read foo.ts", "Ran git
    status"). Click to expand into the same Error/Open/Input/Output panel a
    ToolCallBubble would show. No icon, no chip, no chevron — just the verb
@@ -740,33 +750,31 @@
 
 .tool-call-row-button {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  padding: 3px 6px;
+  padding: 2px 4px 2px 0;
   margin: 0;
   text-align: left;
   border: 0;
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  color: color-mix(in oklab, var(--accent) 10%, var(--muted));
+  font-size: var(--text-base);
+  line-height: 1.3;
+  color: var(--muted);
   transition: background var(--duration-fast) var(--ease);
 }
 
 .tool-call-row-button:hover {
-  background: var(--panel);
+  background: transparent;
+  color: var(--muted-strong);
 }
 
 .tool-call-row-verb {
   flex: 0 0 auto;
-  /* Fixed column so the target/path after the verb left-aligns down the list
-     regardless of "Ran" (3) vs "Read" (4) etc. */
-  min-width: 4ch;
-  color: color-mix(in oklab, var(--accent) 12%, var(--muted));
-  font-weight: 500;
+  color: inherit;
+  font-weight: 400;
 }
 
 .tool-call-row-target {
@@ -776,24 +784,33 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
+  font-size: var(--text-base);
+  color: var(--muted);
+  opacity: 0.86;
 }
 
-.tool-call-row-dot {
+.tool-call-row-icon {
   flex: 0 0 auto;
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted);
-  transform: translateY(-1px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
 }
 
-/* Done rows keep the gutter (for alignment) but hide the dot — a clean list
-   with dots only on the running/error rows that need a signal. */
-.tool-call-row-dot[data-status="done"] {
-  background: transparent;
+.tool-call-row-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.tool-call-row[data-status="running"] .tool-call-row-icon {
+  color: var(--amber);
+}
+
+.tool-call-row[data-status="error"] .tool-call-row-icon {
+  color: var(--rose);
 }
 
 .tool-call-row-counts {
@@ -824,9 +841,9 @@
 /* Sub-agent rows are marked by the accent "Agent" verb + prose target alone —
    the full-row tint read as loud, so it's gone; the row uses the normal hover. */
 .tool-call-row[data-tool-type="agent"] .tool-call-row-verb {
-  color: color-mix(in oklab, var(--accent) 28%, var(--muted-strong));
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  color: var(--muted-strong);
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 /* A sub-agent's description ("Map renderer surface") is prose, not a path or
@@ -834,6 +851,6 @@
    reads naturally beside the sage "Agent" verb. */
 .tool-call-row[data-tool-type="agent"] .tool-call-row-target {
   font-family: inherit;
-  font-size: 13px;
-  color: var(--muted-strong);
+  font-size: var(--text-base);
+  color: var(--muted);
 }

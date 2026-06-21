@@ -145,7 +145,7 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallGroupsExpanded: false }
     );
 
-    const groups = screen.getAllByRole("button", { name: /Explored 1 file, ran 1 command/ });
+    const groups = screen.getAllByRole("button", { name: /Read a file, ran a command/ });
     expect(groups).toHaveLength(2);
     for (const group of groups) {
       expect(group).toHaveAttribute("aria-expanded", "false");

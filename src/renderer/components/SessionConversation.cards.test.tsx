@@ -643,7 +643,7 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
     expect(screen.getByText("What should we prioritize?")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Spawned 1 agent/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Started an agent/ }));
     expect(screen.getByRole("button", { name: "Agent Explore docs" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ran echo ok" })).toBeInTheDocument();
     expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();

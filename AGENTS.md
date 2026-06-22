@@ -49,6 +49,7 @@ npm run tauri:build     # production Tauri bundle
 
 Before editing a subsystem, read the matching `docs/*.md`:
 
+- **Start here / Architecture** → [architecture.md](docs/architecture.md)
 - **Runtime / lifecycle / bridge** → [runtime.md](docs/runtime.md)
 - **IPC / `window.argmax`** → [ipc.md](docs/ipc.md)
 - **Database / migrations** → [data.md](docs/data.md)

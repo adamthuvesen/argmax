@@ -35,6 +35,11 @@
   border-bottom: 1px solid var(--line);
 }
 
+.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-toolbar {
+  padding-top: 52px;
+  padding-bottom: 22px;
+}
+
 .review-eyebrow {
   margin: 0 0 6px;
   font-family: var(--font-mono);

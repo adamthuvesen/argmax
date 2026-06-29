@@ -651,6 +651,30 @@ describe("App sidebar", () => {
     );
   });
 
+  it("keeps launcher review chrome below the collapsed-sidebar titlebar controls", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src-tauri/src/main.ts" },
+      { path: "README.md" }
+    ]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Hide sidebar" }));
+    expect(screen.getByRole("button", { name: "Show sidebar" })).toBeInTheDocument();
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: "b", metaKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        '.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-toolbar'
+      )
+    ).toBeInTheDocument();
+  });
+
   it("opens the launcher review panel when Tauri sends the Cmd+B menu command", async () => {
     listProjectFiles.mockResolvedValue([
       { path: "src-tauri/src/main.ts" },

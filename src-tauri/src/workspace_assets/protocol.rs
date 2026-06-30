@@ -88,7 +88,8 @@ pub fn known_roots(app: &tauri::AppHandle) -> Vec<PathBuf> {
     if let Ok(projects) = crate::persistence::projects::list_projects(&conn) {
         roots.extend(projects.into_iter().map(|p| PathBuf::from(p.repo_path)));
     }
-    if let Ok(workspaces) = crate::persistence::workspaces::list_workspaces(&conn, None, MAX_ROOTS) {
+    if let Ok(workspaces) = crate::persistence::workspaces::list_workspaces(&conn, None, MAX_ROOTS)
+    {
         roots.extend(workspaces.into_iter().map(|w| PathBuf::from(w.path)));
     }
     roots

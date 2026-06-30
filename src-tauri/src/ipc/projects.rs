@@ -98,7 +98,10 @@ pub async fn projects_list_branches(
         .lines()
         .map(|line| line.trim_start_matches('*').trim().to_owned())
         .filter(|name| !name.is_empty());
-    Ok(order_branches_default_first(branches, default_branch.as_deref()))
+    Ok(order_branches_default_first(
+        branches,
+        default_branch.as_deref(),
+    ))
 }
 
 /// Surface the default branch (typically main/master) at the top of the picker;
@@ -131,10 +134,14 @@ pub async fn projects_refresh_branch(
     // Re-read the repo's live HEAD so the launcher defaults to whatever branch
     // the user has checked out (in a terminal or elsewhere), not the branch we
     // recorded at add time. Detached HEAD persists as "HEAD".
-    let current_branch = run_git_text(&repo_path, ["branch", "--show-current"], GIT_DEFAULT_TIMEOUT)
-        .await?
-        .trim()
-        .to_string();
+    let current_branch = run_git_text(
+        &repo_path,
+        ["branch", "--show-current"],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .await?
+    .trim()
+    .to_string();
     let current_branch = if current_branch.is_empty() {
         "HEAD".to_string()
     } else {
@@ -401,10 +408,8 @@ mod tests {
 
     #[test]
     fn default_branch_moves_to_front_preserving_rest() {
-        let ordered = order_branches_default_first(
-            owned(&["adam/feature", "main", "zeta"]),
-            Some("main"),
-        );
+        let ordered =
+            order_branches_default_first(owned(&["adam/feature", "main", "zeta"]), Some("main"));
         assert_eq!(ordered, owned(&["main", "adam/feature", "zeta"]));
     }
 

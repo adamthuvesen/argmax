@@ -10,19 +10,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: lint · typecheck · test
+  rust-tests:
+    name: rust tests
     runs-on: macos-latest
-    # macos-latest minutes bill at 10x, so cap a hung job instead of letting it
-    # ride GitHub's 360-minute default. A healthy run finishes in a few minutes.
-    timeout-minutes: 20
+    # macOS minutes bill at 10x, so keep only the Tauri/Rust lane here.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -32,6 +30,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      - run: npm run test:rust
+
+  js-checks:
+    name: js lint · typecheck · tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
 
       - run: npm ci
 
@@ -43,21 +55,64 @@ jobs:
 
       - run: npm run check:tauri-bridge
 
-      - run: npm run test:rust
-
-      # Run the JS suites directly instead of `npm test`, which would re-run
-      # `test:rust` a second time. The Rust tests already ran above. The unit
-      # suite runs under coverage so the text-summary prints in the log (report
-      # only — there are no thresholds, so this never fails the build).
-      - run: npm run coverage
+      - run: npm run test:unit
 
       - run: npm run test:perf
+
+  bundle-validation:
+    name: bundle validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
 
       # Build the renderer and assert its main chunk stays within budget so a
       # stray heavyweight import can't silently bloat cold-start payloads.
       - run: npm run build:renderer
 
       - run: npm run check:bundle
+
+  ci:
+    name: lint · typecheck · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - rust-tests
+      - js-checks
+      - bundle-validation
+    if: ${{ always() }}
+    steps:
+      - name: Verify required jobs passed
+        run: |
+          test "${{ needs.rust-tests.result }}" = "success"
+          test "${{ needs.js-checks.result }}" = "success"
+          test "${{ needs.bundle-validation.result }}" = "success"
+
+  coverage-report:
+    name: coverage report
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Report only: vitest.config.ts has no coverage thresholds, so coverage
+      # numbers stay visible on main without extending the required PR lane.
+      - run: npm run coverage
 
   dependency-audit:
     name: dependency audit

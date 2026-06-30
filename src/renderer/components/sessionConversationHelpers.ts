@@ -1,5 +1,5 @@
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
-import type { AgentMode, TimelineEvent } from "../../shared/types.js";
+import type { AgentMode } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 
@@ -30,16 +30,6 @@ export async function sendAfterTerminate(
     onError(error instanceof Error ? error.message : "Could not send input.");
     return false;
   }
-}
-
-export function isPayloadTruncationMarker(event: TimelineEvent): boolean {
-  return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
-}
-
-export function isSubAgentProseEcho(event: TimelineEvent): boolean {
-  if (event.type !== "message.delta" && event.type !== "message.completed") return false;
-  const parentToolUseId = event.payload.parent_tool_use_id;
-  return typeof parentToolUseId === "string" && parentToolUseId.length > 0;
 }
 
 export function parseUserMessageAttachments(

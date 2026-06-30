@@ -6,9 +6,26 @@ assistant bubble stream: **PlanCard** (Claude Code plan mode) and
 state live in [turnInteractiveCards.ts](../../src/renderer/lib/turnInteractiveCards.ts)
 and [turnToolItems.ts](../../src/renderer/lib/turnToolItems.ts); question parsing
 in [questions.ts](../../src/renderer/lib/questions.ts). Rendering still flows
-through [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
-plus [PlanCard.tsx](../../src/renderer/components/PlanCard.tsx) and
+through the turn body in
+[SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx),
+[SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx),
+[PlanCard.tsx](../../src/renderer/components/PlanCard.tsx), and
 [QuestionCard.tsx](../../src/renderer/components/QuestionCard.tsx).
+
+## Chat surface ownership
+
+[SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+is the shell: it derives the timeline projections, thinking state, turn model,
+card handlers, scroll behavior, and pane chrome. Pure timeline plumbing lives in
+[sessionConversationModel.ts](../../src/renderer/lib/sessionConversationModel.ts):
+conversation-event filtering, raw transcript suppression checks, tool-call
+pairing, and last-significant-event selection. The prompt box, attachment flow,
+model/mode chips, queued follow-ups, stop/send controls, focus behavior, and
+mascot state live in
+[SessionComposer.tsx](../../src/renderer/components/SessionComposer.tsx).
+Header actions, PR refresh state, checkpoint browsing, git actions, and debug-log
+toggling live in
+[SessionActionsMenu.tsx](../../src/renderer/components/SessionActionsMenu.tsx).
 
 ## Why cards exist
 
@@ -28,9 +45,10 @@ user message; Claude's next turn picks it up via `--resume`.
 ## Detection rules (per turn)
 
 Turn view-model prep (assistant group fold, card cutoff, hidden tool ids) lives in
-[sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts). The `renderItems.map(...)`
-turn branch in [SessionConversation.tsx:824](../../src/renderer/components/SessionConversation.tsx:824)
-consumes `buildTurnRenderState` and renders cards.
+[sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts). The turn branch
+in [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+consumes `buildTurnRenderState` and renders cards through
+[SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx).
 
 | Rule | Applies to | Why |
 |---|---|---|
@@ -78,8 +96,8 @@ only, so these deltas are the sole record of the reasoning.
 Two layers cooperate to keep it visible and out of the way:
 
 - **Survival.** `pruneSupersededDeltas` ([snapshot.ts](../../src/renderer/lib/snapshot.ts))
-  and the `conversationEvents` supersede filter in
-  [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+  and `buildConversationEvents`
+  ([sessionConversationModel.ts](../../src/renderer/lib/sessionConversationModel.ts))
   both make an exception for thinking deltas, so they are *not* dropped when the
   turn's `message.completed` lands. (These must stay in sync — a thinking delta
   kept by one and dropped by the other produces a flash-then-vanish.)
@@ -211,9 +229,11 @@ Not card-specific, but living next to cards in the same conversation surface
   date + time). `ChatBubble` no longer renders a `chat-bubble-timestamp` —
   the per-bubble timestamp was removed when the turn header took over.
 - **Mascot happy-flash.** The composer mascot pops to its "happy" expression
-  for 1.5 s after each `message.completed`. `SessionConversation` tracks
-  `lastCompletedIdRef` so re-renders don't re-fire the flash; the first
-  observation per session is skipped (stale completions on open).
+  after each new `message.completed`.
+  [SessionComposer.tsx](../../src/renderer/components/SessionComposer.tsx)
+  owns the mascot state via `useMascotFlash`, which prevents re-renders from
+  re-firing the flash and skips the first observation per session (stale
+  completions on open).
 - **Thinking → answered reveal.** `TurnBlock` sets `data-just-revealed` on
   `.turn-block-body` for 280 ms the first time the turn gains any visible
   child, so the first element animates in instead of popping.
@@ -225,6 +245,8 @@ Not card-specific, but living next to cards in the same conversation surface
   keyed by `workspaceId|path|line`. The popover stays out of IPC traffic
   during passive scroll-by because the timer never fires.
 - **Submit terminate helper.** `sendAfterTerminate(sessionId, isRunning,
-  onTerminateSession, send, onError)` in `SessionConversation` factors out
-  the "terminate-then-send" dance used by PlanCard / QuestionCard submits
-  and other card-style flows.
+  onTerminateSession, send, onError)` in
+  [sessionConversationHelpers.ts](../../src/renderer/components/sessionConversationHelpers.ts)
+  factors out the "terminate-then-send" dance that
+  [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+  uses for PlanCard / QuestionCard submits and other card-style flows.

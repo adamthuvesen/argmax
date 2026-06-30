@@ -243,7 +243,7 @@
 }
 
 .tool-call-group-body .tool-call-item[data-status="running"] .tool-call-status-glyph {
-  color: var(--amber);
+  color: var(--accent);
 }
 
 .tool-call-group-body .tool-call-item[data-status="error"] .tool-call-status-glyph {

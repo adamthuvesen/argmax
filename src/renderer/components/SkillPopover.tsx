@@ -35,6 +35,17 @@ export function SkillPopover({
           role="option"
           aria-selected={index === state.selectionIndex}
           className={`skill-option${index === state.selectionIndex ? " is-selected" : ""}`}
+          // Hover highlights the row by moving the shared selection index, so
+          // pointer and arrow-key navigation light up the same row. Use
+          // mouseMove, not mouseEnter: arrow-key navigation scrolls the list,
+          // and a scroll that slides a new row under a resting pointer fires
+          // mouseEnter — which would snatch selection back from the keyboard.
+          // mouseMove only fires on real pointer movement.
+          onMouseMove={() => {
+            if (index !== state.selectionIndex) {
+              state.setSelectionIndex(index);
+            }
+          }}
           onMouseDown={(event) => {
             event.preventDefault();
             state.setSelectionIndex(index);

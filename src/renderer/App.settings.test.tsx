@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
+import { FAST_MODE_KEY } from "./lib/uiPreferences.js";
 import {
   dashboardDeltaListener,
   launchProvider,
@@ -314,6 +315,30 @@ describe("App settings", () => {
       expect(launchProvider).toHaveBeenCalledWith(
         expect.objectContaining({ permissionMode: "ask-each-time" })
       )
+    );
+  });
+
+  it("settings Fast mode defaults off, persists, and propagates through the next launch", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings("Agents");
+    await screen.findByRole("heading", { name: "Model defaults" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Fast mode for Claude and Cursor" });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(window.localStorage.getItem(FAST_MODE_KEY)).toBe("true"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Launch quickly" }
+    });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ fastMode: true }))
     );
   });
 

@@ -16,6 +16,7 @@ import type {
   MenuCommand,
   ProjectSummary
 } from "../shared/types.js";
+import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
 import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
@@ -66,6 +67,7 @@ import {
 } from "./lib/thinkingStyle.js";
 import {
   CHAT_COST_KEY,
+  FAST_MODE_KEY,
   LAUNCHER_GLOBE_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_TOKENS_KEY,
@@ -119,6 +121,7 @@ export function App(): JSX.Element {
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
   const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, false);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
+  const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const {
     themeMode,
     setThemeMode,
@@ -591,7 +594,7 @@ export function App(): JSX.Element {
   }, [openNewSessionPane, setIsSettingsOpen]);
 
   const { sendSessionInput, cancelQueuedMessage, runCheck, createCheckpoint, terminateSession } =
-    useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast });
+    useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: fastModeEnabled });
 
   const launchTask = useCallback(
     async (
@@ -634,6 +637,7 @@ export function App(): JSX.Element {
         modelLabel: model.label,
         modelId: model.modelId,
         reasoningEffort: model.reasoningEffort ?? null,
+        fastMode: fastModeEnabled,
         agentMode,
         permissionMode,
         cols: 120,
@@ -663,6 +667,14 @@ export function App(): JSX.Element {
           { ctrlOrMeta: false, alt: false }
         )
       );
+      void window.argmax.workspaces
+        .autoTitle({
+          workspaceId: workspace.id,
+          provider: model.provider,
+          modelId: PROVIDER_TITLE_MODEL[model.provider],
+          prompt
+        })
+        .catch(() => undefined);
       // Launch already succeeded and the snapshot is seeded above; this
       // refresh is best-effort. allSettled keeps a rejecting refresh from
       // surfacing the successful launch as a failure to the caller.
@@ -675,6 +687,7 @@ export function App(): JSX.Element {
       loadSessionEvents,
       pendingSelectionRef,
       permissionMode,
+      fastModeEnabled,
       setGrid,
       setIsFullLauncherOpen,
       setSnapshot
@@ -956,6 +969,8 @@ export function App(): JSX.Element {
                 onLauncherGlobeVisibleChange={setLauncherGlobeVisible}
                 thinkingExpanded={thinkingExpanded}
                 onThinkingExpandedChange={setThinkingExpanded}
+                fastModeEnabled={fastModeEnabled}
+                onFastModeEnabledChange={setFastModeEnabled}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
                 themeMode={themeMode}

@@ -419,6 +419,7 @@ fn build_launch_input() -> ProvidersLaunchInput {
         model_label: NonEmptyString::try_from("Sonnet 4.6".to_owned()).expect("label valid"),
         model_id: NonEmptyString::try_from("claude-sonnet-4-6".to_owned()).expect("id valid"),
         reasoning_effort: None,
+        fast_mode: false,
         agent_mode: None,
         permission_mode: None,
         cols: serde_json::from_value::<TerminalCols>(json!(120)).expect("cols valid"),
@@ -600,6 +601,7 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
         model_label: None,
         model_id: None,
         reasoning_effort: None,
+        fast_mode: false,
         agent_mode: None,
         attachments: None,
     };
@@ -675,6 +677,7 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
             model_label: None,
             model_id: None,
             reasoning_effort: None,
+            fast_mode: false,
             agent_mode: None,
             attachments: None,
         })
@@ -761,6 +764,7 @@ async fn completed_session_follow_up_launch_includes_visible_transcript_context(
             model_label: None,
             model_id: None,
             reasoning_effort: None,
+            fast_mode: false,
             agent_mode: None,
             attachments: None,
         })
@@ -819,6 +823,7 @@ async fn send_input_routes_to_handle_when_accepting() {
         model_label: None,
         model_id: None,
         reasoning_effort: None,
+        fast_mode: false,
         agent_mode: None,
         attachments: None,
     };
@@ -858,6 +863,7 @@ async fn send_input_queues_when_handle_rejecting() {
         model_label: None,
         model_id: None,
         reasoning_effort: None,
+        fast_mode: false,
         agent_mode: None,
         attachments: None,
     };
@@ -875,7 +881,7 @@ async fn send_input_queues_when_handle_rejecting() {
 }
 
 #[tokio::test]
-async fn queued_follow_up_drains_after_provider_completion() {
+async fn queued_follow_up_drains_after_provider_thread_completion() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
@@ -899,6 +905,7 @@ async fn queued_follow_up_drains_after_provider_completion() {
                 NonEmptyString::try_from("claude-sonnet-4-6".to_owned()).expect("model id valid"),
             ),
             reasoning_effort: None,
+            fast_mode: true,
             agent_mode: None,
             attachments: None,
         })
@@ -909,7 +916,15 @@ async fn queued_follow_up_drains_after_provider_completion() {
         "live non-accepting handle should queue follow-up"
     );
 
-    launcher.emit_exit(&session.id, 0);
+    let launcher_for_thread = Arc::clone(&launcher);
+    let session_id_for_thread = session.id.clone();
+    let join = std::thread::spawn(move || {
+        launcher_for_thread.emit_exit(&session_id_for_thread, 0);
+    });
+    assert!(
+        join.join().is_ok(),
+        "provider event callback must be safe outside a Tokio runtime"
+    );
     wait_for_manual_launch_count(&launcher, 2).await;
     wait_for_event(&database, &session.id, "user.message", "queued after done").await;
 
@@ -920,6 +935,7 @@ async fn queued_follow_up_drains_after_provider_completion() {
         .contains("New user message:\nqueued after done"));
     assert_eq!(launches[1].model_label, "Claude Sonnet 4.6");
     assert_eq!(launches[1].model_id, "claude-sonnet-4-6");
+    assert!(launches[1].fast_mode);
 }
 
 #[tokio::test]
@@ -993,6 +1009,7 @@ async fn send_input_during_spawn_queues_instead_of_relaunching() {
         model_label: None,
         model_id: None,
         reasoning_effort: None,
+        fast_mode: false,
         agent_mode: None,
         attachments: None,
     };

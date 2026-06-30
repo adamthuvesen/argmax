@@ -5,7 +5,7 @@ import type { ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode } from "../../lib/permissionMode.js";
 import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
-import { SectionHeader, Segmented } from "./settingsPrimitives.js";
+import { SectionHeader, Segmented, ToggleRow } from "./settingsPrimitives.js";
 
 export function AgentsSettings({
   defaultModel,
@@ -16,6 +16,8 @@ export function AgentsSettings({
   onToolCallGroupsExpandedChange,
   thinkingExpanded,
   onThinkingExpandedChange,
+  fastModeEnabled,
+  onFastModeEnabledChange,
   permissionMode,
   onPermissionModeChange,
   providers,
@@ -31,6 +33,8 @@ export function AgentsSettings({
   onToolCallGroupsExpandedChange: (v: boolean) => void;
   thinkingExpanded: boolean;
   onThinkingExpandedChange: (v: boolean) => void;
+  fastModeEnabled: boolean;
+  onFastModeEnabledChange: (v: boolean) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   providers: DiscoveredProvider[] | null;
@@ -112,6 +116,12 @@ export function AgentsSettings({
             Controls saved “Thought” reasoning blocks after a turn has answered.
             Live thinking still expands while the agent is actively reasoning.
           </p>
+          <ToggleRow
+            label="Fast mode for Claude and Cursor"
+            description="Launch Claude Code with fast mode and pass Cursor's fast model override."
+            checked={fastModeEnabled}
+            onChange={onFastModeEnabledChange}
+          />
         </div>
       </section>
 

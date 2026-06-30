@@ -32,6 +32,18 @@ const ALL_TABLES: &[&str] = &[
 
 pub static EMPTY_EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {};
 
+// Post-v4 `workspaces` shape: the v1 column set plus `task_label_auto`. Kept
+// separate from `EXPECTED_COLUMNS` (which still describes the v1 schema) so the
+// v1 migration's own column check keeps passing — each migration validates the
+// affected tables against its own expected set at its own point in history.
+pub static WORKSPACES_AUTO_LABEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "id",
+        "last_activity_at", "path", "pinned", "project_id", "shared_workspace",
+        "state", "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -107,7 +119,22 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 4,
+        name: "workspace_auto_label_flag",
+        up: WORKSPACE_AUTO_LABEL_FLAG,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACES_AUTO_LABEL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Tracks whether `task_label` is still the auto-generated title (1) or has been
+// renamed by the user (0). The session-title generator only overwrites while
+// this is 1, so a manual rename is never clobbered. Existing rows default to 1.
+const WORKSPACE_AUTO_LABEL_FLAG: &str = r#"
+ALTER TABLE workspaces ADD COLUMN task_label_auto INTEGER NOT NULL DEFAULT 1;
+"#;
 
 const DASHBOARD_READ_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_sessions_last_activity_id
@@ -397,11 +424,7 @@ pub fn run_migrations_with(
         }
     }
 
-    for migration in migrations {
-        for table in migration.affected_tables {
-            verify_table_columns(connection, migration.expected_columns, table)?;
-        }
-    }
+    verify_head_table_columns(connection, migrations)?;
 
     Ok(())
 }
@@ -566,6 +589,25 @@ fn verify_table_columns(
     Ok(())
 }
 
+fn verify_head_table_columns(
+    connection: &Connection,
+    migrations: &[Migration],
+) -> ArgmaxResult<()> {
+    let mut head_expected_columns = std::collections::HashMap::new();
+    for migration in migrations {
+        for table in migration.affected_tables {
+            if migration.expected_columns.contains_key(table) {
+                head_expected_columns.insert(*table, migration.expected_columns);
+            }
+        }
+    }
+
+    for (table, expected_columns) in head_expected_columns {
+        verify_table_columns(connection, expected_columns, table)?;
+    }
+    Ok(())
+}
+
 fn foreign_key_violations(connection: &Connection) -> ArgmaxResult<Vec<String>> {
     let mut statement = connection
         .prepare("PRAGMA foreign_key_check")
@@ -634,7 +676,8 @@ mod tests {
             vec![
                 (1, compute_migration_checksum(INITIAL_SCHEMA)),
                 (2, compute_migration_checksum(DASHBOARD_READ_INDEXES)),
-                (3, compute_migration_checksum(DASHBOARD_EXTRA_READ_INDEXES))
+                (3, compute_migration_checksum(DASHBOARD_EXTRA_READ_INDEXES)),
+                (4, compute_migration_checksum(WORKSPACE_AUTO_LABEL_FLAG)),
             ]
         );
 
@@ -671,6 +714,16 @@ mod tests {
                 "idx_workspaces_last_activity_id"
             ]
         );
+    }
+
+    #[test]
+    fn rerunning_migrations_accepts_head_workspace_shape() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("first migrate");
+        run_migrations(&mut connection).expect("second migrate");
+
+        verify_table_columns(&connection, &WORKSPACES_AUTO_LABEL_COLUMNS, "workspaces")
+            .expect("head workspace shape");
     }
 
     #[test]

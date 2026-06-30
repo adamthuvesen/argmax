@@ -65,6 +65,7 @@ fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec!["-p".to_string()];
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
+    args.extend(claude_fast_mode_args(input));
     args.extend([
         "--model".to_string(),
         input.model_id.clone(),
@@ -94,6 +95,7 @@ fn claude_structured_resume_args(
     ];
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
+    args.extend(claude_fast_mode_args(input));
     args.extend([
         "--model".to_string(),
         input.model_id.clone(),
@@ -138,10 +140,10 @@ fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
     Some(prompt_for_agent_mode(&input.prompt, input.agent_mode))
 }
 
-// Cursor's CLI has no reasoning-effort flag, so `input.reasoning_effort` is
-// intentionally ignored here. The picker still lets users set an effort for
-// Cursor models — that choice is persisted for UI parity but does not change
-// the invocation. Do not wire it into `--model` or a flag.
+// Cursor's CLI has no separate reasoning-effort flag, so `input.reasoning_effort`
+// is intentionally ignored here. Fast mode is different: Cursor exposes it as
+// a model parameter override (`model[fast=true]`), so Argmax merges only that
+// parameter into the selected model id when the user opts in.
 fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
@@ -154,7 +156,7 @@ fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     args.extend(cursor_permission_args(input));
     args.extend([
         "--model".to_string(),
-        input.model_id.clone(),
+        cursor_model_id(input),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -178,7 +180,7 @@ fn cursor_structured_resume_args(
     args.extend(cursor_permission_args(input));
     args.extend([
         "--model".to_string(),
-        input.model_id.clone(),
+        cursor_model_id(input),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -248,6 +250,55 @@ fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
     vec!["--append-system-prompt".to_string(), prompt.to_string()]
 }
 
+fn claude_fast_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
+    vec![
+        "--settings".to_string(),
+        format!(r#"{{"fastMode":{}}}"#, input.fast_mode),
+    ]
+}
+
+fn cursor_model_id(input: &ProviderLaunchInput) -> String {
+    if input.fast_mode {
+        cursor_model_with_fast_mode(&input.model_id)
+    } else {
+        input.model_id.clone()
+    }
+}
+
+fn cursor_model_with_fast_mode(model_id: &str) -> String {
+    let fast_override = "fast=true";
+    let Some((base, params)) = model_id
+        .strip_suffix(']')
+        .and_then(|without_suffix| without_suffix.rsplit_once('['))
+    else {
+        return format!("{model_id}[{fast_override}]");
+    };
+
+    let mut has_fast = false;
+    let mut merged_params = params
+        .split(',')
+        .filter_map(|part| {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let Some((key, _)) = trimmed.split_once('=') else {
+                return Some(trimmed.to_string());
+            };
+            if key.trim() == "fast" {
+                has_fast = true;
+                Some(fast_override.to_string())
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .collect::<Vec<_>>();
+    if !has_fast {
+        merged_params.push(fast_override.to_string());
+    }
+    format!("{base}[{}]", merged_params.join(","))
+}
+
 fn codex_reasoning_args(input: &ProviderLaunchInput, structured: bool) -> Vec<String> {
     let Some(reasoning_effort) = input.reasoning_effort else {
         return if structured {
@@ -293,6 +344,8 @@ mod tests {
                 "-p",
                 "--permission-mode",
                 "bypassPermissions",
+                "--settings",
+                r#"{"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--session-id",
@@ -321,6 +374,8 @@ mod tests {
                 "conv-7",
                 "--permission-mode",
                 "bypassPermissions",
+                "--settings",
+                r#"{"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--output-format",
@@ -358,6 +413,20 @@ mod tests {
             .position(|arg| arg == "--append-system-prompt")
             .expect("append system prompt flag");
         assert!(args[index + 1].contains("Reason deeply"));
+    }
+
+    #[test]
+    fn claude_fast_mode_is_carried_by_settings_json() {
+        let input = ProviderLaunchInput {
+            fast_mode: true,
+            ..launch_input(ProviderId::Claude)
+        };
+        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input);
+        let index = args
+            .iter()
+            .position(|arg| arg == "--settings")
+            .expect("settings flag");
+        assert_eq!(args[index + 1], r#"{"fastMode":true}"#);
     }
 
     #[test]
@@ -463,6 +532,24 @@ mod tests {
     }
 
     #[test]
+    fn cursor_fast_mode_merges_into_model_parameters_when_enabled() {
+        let input = ProviderLaunchInput {
+            model_id: "claude-opus-4-8[context=1m,fast=false,effort=high]".to_string(),
+            fast_mode: true,
+            ..launch_input(ProviderId::Cursor)
+        };
+        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+        let index = args
+            .iter()
+            .position(|arg| arg == "--model")
+            .expect("model flag");
+        assert_eq!(
+            args[index + 1],
+            "claude-opus-4-8[context=1m,fast=true,effort=high]"
+        );
+    }
+
+    #[test]
     fn multiline_and_dash_prefixed_prompts_are_kept_safe() {
         for provider_id in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
             let input = ProviderLaunchInput {
@@ -561,6 +648,7 @@ mod tests {
             model_label: model_label.to_string(),
             model_id: model_id.to_string(),
             reasoning_effort,
+            fast_mode: false,
             resume_conversation_id: None,
             mode,
             permission_mode: PermissionMode::AutoApprove,

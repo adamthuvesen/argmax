@@ -70,6 +70,7 @@ pub struct PendingMessage {
     pub model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
     pub queued_at: String,
 }
 
@@ -481,6 +482,7 @@ mod tests {
             model_label: None,
             model_id: None,
             reasoning_effort: None,
+            fast_mode: false,
             queued_at: "2026-01-01T00:00:00Z".to_string(),
         };
 

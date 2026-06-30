@@ -91,6 +91,7 @@ export function foldRenderItems(
   let pending:
     | { assistantEvents: TimelineEvent[]; toolItems: TurnToolItem[]; firstId: string | null }
     | null = null;
+  let activeTurnId: string | null = null;
   const flush = (): void => {
     if (!pending) return;
     if (pending.assistantEvents.length === 0 && pending.toolItems.length === 0) {
@@ -110,9 +111,10 @@ export function foldRenderItems(
     if (item.kind === "message" && item.event.type === "user.message") {
       flush();
       out.push({ kind: "user-message", event: item.event });
+      activeTurnId = `turn-${item.event.id}`;
       continue;
     }
-    if (!pending) pending = { assistantEvents: [], toolItems: [], firstId: null };
+    if (!pending) pending = { assistantEvents: [], toolItems: [], firstId: activeTurnId };
     if (item.kind === "message") {
       pending.assistantEvents.push(item.event);
       if (!pending.firstId) pending.firstId = `turn-${item.event.id}`;

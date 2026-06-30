@@ -270,7 +270,7 @@
 }
 
 .plan-card-summary {
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.55;
   color: var(--text);
   max-width: 66ch;
@@ -288,7 +288,7 @@
 }
 
 .plan-card-section-note {
-  font-size: 13.5px;
+  font-size: var(--text-base);
   line-height: 1.55;
   color: var(--muted-strong);
   max-width: 66ch;
@@ -326,7 +326,7 @@
 }
 
 .plan-card-change-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.45;
   color: var(--text);
   letter-spacing: -0.003em;

@@ -216,9 +216,11 @@ pub fn set_workspace_label(
     workspace_id: &str,
     task_label: &str,
 ) -> ArgmaxResult<WorkspaceSummary> {
+    // A manual rename marks the label custom (`task_label_auto = 0`) so the
+    // session-title generator stops overwriting it.
     let mut statement = prepared(
         connection,
-        "UPDATE workspaces SET task_label = ?, updated_at = ? WHERE id = ?",
+        "UPDATE workspaces SET task_label = ?, task_label_auto = 0, updated_at = ? WHERE id = ?",
     )
     .map_err(sqlite_error)?;
     let changes = statement
@@ -228,6 +230,29 @@ pub fn set_workspace_label(
         return Err(ArgmaxError::record_not_found("workspace", workspace_id));
     }
     find_workspace_by_id(connection, workspace_id)
+}
+
+/// Sets an auto-generated title, but only while the label is still auto
+/// (`task_label_auto = 1`). Returns `Ok(None)` when the row is missing or the
+/// user has already renamed it — the caller treats that as a no-op so a manual
+/// rename is never clobbered by a late-arriving generated title.
+pub fn set_workspace_label_auto(
+    connection: &Connection,
+    workspace_id: &str,
+    task_label: &str,
+) -> ArgmaxResult<Option<WorkspaceSummary>> {
+    let mut statement = prepared(
+        connection,
+        "UPDATE workspaces SET task_label = ?, updated_at = ? WHERE id = ? AND task_label_auto = 1",
+    )
+    .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((task_label, now_iso(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Ok(None);
+    }
+    find_workspace_by_id(connection, workspace_id).map(Some)
 }
 
 pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSummary> {

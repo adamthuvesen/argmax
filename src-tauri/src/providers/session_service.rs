@@ -237,6 +237,7 @@ impl ProviderSessionService {
             model_label: input.model_label.as_str().to_string(),
             model_id: input.model_id.as_str().to_string(),
             reasoning_effort: input.reasoning_effort,
+            fast_mode: input.fast_mode,
             resume_conversation_id: None,
             mode: ProviderMode::StructuredJson,
             permission_mode,
@@ -473,6 +474,7 @@ impl ProviderSessionService {
                     .reasoning_effort
                     .as_deref()
                     .and_then(parse_reasoning_effort),
+                fast_mode: input.fast_mode,
                 resume_conversation_id,
                 mode: ProviderMode::StructuredJson,
                 permission_mode,
@@ -1129,6 +1131,7 @@ impl ProviderSessionService {
             reasoning_effort: input
                 .reasoning_effort
                 .map(|value| value.as_str().to_string()),
+            fast_mode: input.fast_mode,
             queued_at: now_iso(),
         });
         drop(queues);
@@ -1185,7 +1188,7 @@ impl ProviderSessionService {
         // silently dropping it after the UI already showed the queue drained.
         let restore = next.clone();
         let restore_session = session_id.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let send_input = match pending_message_to_send_input(session_id, next) {
                 Ok(input) => input,
                 Err(error) => {
@@ -1411,6 +1414,7 @@ fn pending_message_to_send_input(
             .reasoning_effort
             .as_deref()
             .and_then(parse_reasoning_effort),
+        fast_mode: message.fast_mode,
         agent_mode: parse_agent_mode(&message.agent_mode),
         attachments: None,
     })

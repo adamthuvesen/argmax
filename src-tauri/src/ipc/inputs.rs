@@ -142,6 +142,15 @@ pub struct WorkspacesOpenInIdeInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspacesAutotitleInput {
+    pub workspace_id: WorkspaceId,
+    pub provider: ProviderId,
+    pub model_id: NonEmptyString,
+    pub prompt: Prompt,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceStatusInput {
     pub workspace_ids: Option<Vec<WorkspaceId>>,
 }
@@ -333,6 +342,8 @@ pub struct ProvidersLaunchInput {
     pub model_label: NonEmptyString,
     pub model_id: NonEmptyString,
     pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default)]
+    pub fast_mode: bool,
     pub agent_mode: Option<AgentMode>,
     pub permission_mode: Option<PermissionMode>,
     pub cols: TerminalCols,
@@ -348,6 +359,8 @@ pub struct ProvidersSendInput {
     pub model_label: Option<NonEmptyString>,
     pub model_id: Option<NonEmptyString>,
     pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default)]
+    pub fast_mode: bool,
     pub agent_mode: Option<AgentMode>,
     pub attachments: Option<Vec<ComposerAttachmentInput>>,
 }

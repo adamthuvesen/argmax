@@ -128,6 +128,14 @@ async workspacesOpenInIde(input: WorkspacesOpenInIdeInput) : Promise<Result<Syst
     else return { status: "error", error: e  as any };
 }
 },
+async workspacesAutotitle(input: WorkspacesAutotitleInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_autotitle", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspaceStatus(input: WorkspaceStatusInput) : Promise<Result<WorkspaceStatusSnapshot, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspace_status", { input }) };
@@ -675,9 +683,9 @@ export type ProvidersDiscoverInput = {
  * CLI. Defaults to false so an absent `{}` payload reuses the cache.
  */
 refresh?: boolean }
-export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null }
+export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
-export type ProvidersSendInput = { sessionId: SessionId; input: Prompt; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }
+export type ProvidersSendInput = { sessionId: SessionId; input: Prompt; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
@@ -760,6 +768,7 @@ export type WorkspaceSummary = { id: string; projectId: string; taskLabel: strin
 export type WorkspaceWriteFileForProjectInput = { projectId: ProjectId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspaceWriteFileInput = { workspaceId: WorkspaceId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
+export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
 export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: TaskLabel }
 export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: TaskLabel; baseRef: BaseRef | null }
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }

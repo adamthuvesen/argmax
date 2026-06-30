@@ -1,6 +1,6 @@
 # IPC
 
-The renderer talks to Rust only through `window.argmax`. Tauri commands use stable channel names (`"providers:launch"`, `"session:events-since"`, etc.) so renderer code and the generated bridge stay in lockstep.
+Renderer app IPC talks to Rust only through `window.argmax`. Tauri commands use stable channel names (`"providers:launch"`, `"session:events-since"`, etc.) so renderer code and the generated bridge stay in lockstep. Window chrome is separate: [windowChrome.ts](../../src/renderer/lib/windowChrome.ts) uses Tauri's window API directly for overlay-titlebar drag/zoom behavior.
 
 ## Files
 

@@ -32,8 +32,9 @@ use super::sessions::{
 };
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
-    find_workspace_by_id, persist_workspace, set_workspace_pinned, update_workspace_state,
-    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
+    find_workspace_by_id, persist_workspace, set_workspace_label, set_workspace_label_auto,
+    set_workspace_pinned, update_workspace_state, update_workspace_status, PersistWorkspaceInput,
+    WorkspaceStatusInput,
 };
 use crate::error::ArgmaxError;
 
@@ -171,6 +172,32 @@ fn project_workspace_and_session_repositories_round_trip() {
     delete_project(&connection, "p1").expect("delete project");
     let deleted = require_project(&connection, "p1").expect_err("project deleted");
     assert!(matches!(deleted, ArgmaxError::RecordNotFound { .. }));
+}
+
+#[test]
+fn workspace_auto_label_updates_until_manual_rename() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+
+    let generated = set_workspace_label_auto(&connection, "w1", "Generated Session Title")
+        .expect("auto label")
+        .expect("workspace updated");
+    assert_eq!(generated.task_label, "Generated Session Title");
+
+    let manual = set_workspace_label(&connection, "w1", "My Manual Title").expect("manual label");
+    assert_eq!(manual.task_label, "My Manual Title");
+
+    let skipped = set_workspace_label_auto(&connection, "w1", "Late Generated Title")
+        .expect("late auto label");
+    assert!(skipped.is_none());
+    assert_eq!(
+        find_workspace_by_id(&connection, "w1")
+            .expect("workspace")
+            .task_label,
+        "My Manual Title"
+    );
 }
 
 #[test]

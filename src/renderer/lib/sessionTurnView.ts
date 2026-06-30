@@ -87,6 +87,8 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
   type Buffer = { id: string; createdAt: string; lastCreatedAt: string; text: string };
   let answerBuffer: Buffer | null = null;
   let thinkingBuffer: Buffer | null = null;
+  let groupIndex = 0;
+  const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-${groupIndex++}`;
   const flushAnswer = (): void => {
     if (!answerBuffer) return;
     assistantGroups.push({
@@ -114,7 +116,12 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
     if (isThinkingDelta(event)) {
       flushAnswer();
       if (!thinkingBuffer) {
-        thinkingBuffer = { id: event.id, createdAt: event.createdAt, lastCreatedAt: event.createdAt, text: "" };
+        thinkingBuffer = {
+          id: nextGroupId("thinking"),
+          createdAt: event.createdAt,
+          lastCreatedAt: event.createdAt,
+          text: ""
+        };
       }
       thinkingBuffer.lastCreatedAt = event.createdAt;
       thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
@@ -123,7 +130,12 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
     if (event.type === "message.delta") {
       flushThinking();
       if (!answerBuffer) {
-        answerBuffer = { id: event.id, createdAt: event.createdAt, lastCreatedAt: event.createdAt, text: "" };
+        answerBuffer = {
+          id: nextGroupId("answer"),
+          createdAt: event.createdAt,
+          lastCreatedAt: event.createdAt,
+          text: ""
+        };
       }
       answerBuffer.lastCreatedAt = event.createdAt;
       answerBuffer.text += deltaTextForBuffer(event, answerBuffer.text);
@@ -141,7 +153,7 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
       continue;
     }
     assistantGroups.push({
-      id: event.id,
+      id: nextGroupId("answer"),
       createdAt: event.createdAt,
       lastActivityAt: event.createdAt,
       text: event.message,

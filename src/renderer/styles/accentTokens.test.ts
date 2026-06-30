@@ -60,4 +60,32 @@ describe("accent CSS contract", () => {
     expect(tokens).toContain("color: var(--sage);");
     expect(tokens).toContain(':root[data-theme="purple"][data-accent="blue"]');
   });
+
+  it("uses themed user bubble surfaces and launch composer focus", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
+    const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
+    const userBubbleRule = cssRuleBody(chatConversation, ".chat-bubble.user");
+    const composerFocusRule = cssRuleBody(chatChrome, ".composer-input:focus-within");
+
+    expect(tokens).toContain("--user-message-bg: color-mix(in oklab, var(--panel-sunken) 72%, var(--panel) 28%);");
+    expect(tokens).toContain("--user-message-selection-bg:");
+    expect(tokens).not.toContain("--user-message-border:");
+    expect(tokens).toContain(':root[data-theme="dark"]');
+    expect(tokens).toContain(':root[data-theme="purple"]');
+    expect(userBubbleRule).toContain("background: var(--user-message-bg);");
+    expect(userBubbleRule).toContain("box-shadow: var(--user-message-shadow);");
+    expect(userBubbleRule).not.toContain("border:");
+    expect(composerFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 55%, var(--line-strong));");
+    expect(composerFocusRule).toContain("0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent)");
+  });
+
+  it("keeps session composer text aligned with assistant prose size", () => {
+    const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
+    const inputRule = cssRuleBody(chatComposerChips, ".session-input input,\n.session-input textarea");
+    const highlightRule = cssRuleBody(chatComposerChips, ".composer-highlight-backdrop");
+
+    expect(inputRule).toContain("font-size: var(--text-base);");
+    expect(highlightRule).toContain("font-size: var(--text-base);");
+  });
 });

@@ -210,7 +210,7 @@
   outline: 0;
   background: transparent;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.4;
   resize: none;
   overflow-y: hidden;
@@ -243,7 +243,7 @@
   overflow: hidden;
   padding: 8px 8px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.4;
   color: var(--text);
   white-space: pre-wrap;
@@ -281,6 +281,17 @@
   z-index: 30;
 }
 
+/* In the session composer the popover lives in `.session-input-field`, nested
+   inside the form's 12px side padding, so the default left/right:0 insets it
+   from the visible input box on each edge. Pull it back out by that padding so
+   the popover spans the field's full width. The launcher composer anchors these
+   same classes to its bordered box directly, so it must NOT inherit this. */
+.session-input-field .skill-popover,
+.session-input-field .file-popover {
+  left: -12px;
+  right: -12px;
+}
+
 .skill-option {
   display: flex;
   flex-direction: column;
@@ -294,7 +305,7 @@
 
 .skill-option.is-selected,
 .skill-option[aria-selected="true"] {
-  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+  background: var(--accent-soft);
 }
 
 .skill-option-name {
@@ -345,7 +356,7 @@
 
 .file-popover-item.is-selected,
 .file-popover-item[aria-selected="true"] {
-  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+  background: var(--accent-soft);
 }
 
 .file-popover-icon {

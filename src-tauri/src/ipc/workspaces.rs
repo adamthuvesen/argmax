@@ -66,6 +66,16 @@ pub fn workspaces_open_in_ide(
     Ok(SystemOk { ok: true })
 }
 
+#[tauri::command(rename = "workspaces:autotitle")]
+#[specta::specta]
+pub async fn workspaces_autotitle(
+    state: State<'_, AppState>,
+    input: WorkspacesAutotitleInput,
+) -> ArgmaxResult<SystemOk> {
+    live_workspaces(&state)?.autotitle(input).await?;
+    Ok(SystemOk { ok: true })
+}
+
 #[tauri::command(rename = "workspaces:set-pinned")]
 #[specta::specta]
 pub fn workspaces_set_pinned(

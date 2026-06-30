@@ -92,6 +92,7 @@ export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
 export type UpdateProjectSettingsInput = Bindings.ProjectsUpdateSettingsInput;
 export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
 export type CreateCurrentWorkspaceInput = Bindings.WorkspacesCreateCurrentInput;
+export type AutotitleWorkspaceInput = Bindings.WorkspacesAutotitleInput;
 type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
   [P in K]?: T[P];
 };
@@ -328,6 +329,7 @@ export interface PendingMessage {
   modelLabel?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort;
+  fastMode?: boolean;
   attachments?: ComposerAttachment[];
   queuedAt: string;
 }
@@ -446,6 +448,7 @@ export interface ArgmaxApi {
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;
     archive: (input: { workspaceId: string; force?: boolean }) => Promise<WorkspaceSummary>;
     openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
+    autoTitle: (input: AutotitleWorkspaceInput) => Promise<{ ok: true }>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
     setLabel: (input: { workspaceId: string; taskLabel: string }) => Promise<WorkspaceSummary>;
   };

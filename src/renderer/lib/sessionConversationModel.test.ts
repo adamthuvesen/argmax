@@ -136,6 +136,77 @@ describe("buildSessionToolCalls", () => {
       error: "permission denied"
     });
   });
+
+  it("keeps an uncorrelated tool running while the session is running", () => {
+    const events = [
+      event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
+        id: "read-1",
+        name: "Read",
+        input: { file_path: "shot.png" }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
+      status: "running",
+      completedAt: null
+    });
+  });
+
+  it("retires an uncorrelated tool once later assistant text proves the turn moved on", () => {
+    const events = [
+      event("answer", "message.delta", "2026-05-12T15:00:02.000Z", "Continuing after the read."),
+      event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
+        id: "read-1",
+        name: "Read",
+        input: { file_path: "shot.png" }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
+      status: "done",
+      completedAt: "2026-05-12T15:00:01.000Z",
+      error: null
+    });
+  });
+
+  it("keeps an uncorrelated agent tool running even after later assistant text", () => {
+    const events = [
+      event("answer", "message.delta", "2026-05-12T15:00:02.000Z", "Waiting for the exploration agent."),
+      event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
+        id: "agent-1",
+        name: "Agent",
+        input: {
+          description: "Explore repo structure",
+          prompt: "Read the repo and report back."
+        }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
+      name: "Agent",
+      status: "running",
+      completedAt: null
+    });
+  });
+
+  it("retires an uncorrelated tool once the session has stopped (dropped completion)", () => {
+    // An image Read's tool_result overflows the normalizer parse cap, so its
+    // `command.completed` never arrives. Once the session is no longer running
+    // the tool must render done, not a perpetual spinner.
+    const events = [
+      event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
+        id: "read-1",
+        name: "Read",
+        input: { file_path: "shot.png" }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, false)[0]).toMatchObject({
+      status: "done",
+      completedAt: "2026-05-12T15:00:01.000Z",
+      error: null
+    });
+  });
 });
 
 describe("lastSignificantSessionEvent", () => {

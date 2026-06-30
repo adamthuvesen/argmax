@@ -14,6 +14,7 @@ workspaces:refresh-status
 workspaces:keep
 workspaces:archive
 workspaces:open-in-ide
+workspaces:autotitle
 workspace:status
 providers:discover
 providers:launch

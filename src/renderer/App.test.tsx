@@ -4,6 +4,7 @@ import { App } from "./App.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
   archiveWorkspace,
+  autotitleWorkspace,
   createCurrentWorkspace,
   createIsolatedWorkspace,
   dashboardDeltaListener,
@@ -405,12 +406,27 @@ describe("App", () => {
       modelLabel: "Claude Opus 4.8",
       modelId: "claude-opus-4-8",
       reasoningEffort: "high",
+      fastMode: false,
       agentMode: "auto",
       permissionMode: "auto-approve",
       cols: 120,
       rows: 32,
       attachments: null
     });
+    await waitFor(() =>
+      expect(autotitleWorkspace).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        provider: "claude",
+        modelId: "claude-haiku-4-5",
+        prompt: "Implement PTY launch"
+      })
+    );
+    expect(createCurrentWorkspace.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      launchProvider.mock.invocationCallOrder[0] ?? 0
+    );
+    expect(launchProvider.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      autotitleWorkspace.mock.invocationCallOrder[0] ?? 0
+    );
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
   });
 
@@ -735,6 +751,7 @@ describe("App", () => {
         modelLabel: "Claude Sonnet 4.6",
         modelId: "claude-sonnet-4-6",
         reasoningEffort: "medium",
+        fastMode: false,
         agentMode: "auto",
         permissionMode: "auto-approve",
         cols: 120,

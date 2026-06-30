@@ -25,7 +25,7 @@
 
 .session-link[data-open="true"]:not(.active) {
   color: var(--text);
-  background: rgba(107, 142, 113, 0.10);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 
 .session-link.active {
@@ -63,7 +63,7 @@
 }
 
 .session-link[data-status="running"] .status-dot {
-  background: var(--sage);
+  background: var(--accent);
   box-shadow: none;
   animation: status-pulse 1.6s var(--ease) infinite;
 }
@@ -118,13 +118,28 @@
   min-width: 140px;
 }
 
-.session-row:has(.session-archive-btn) .session-link,
-.session-row:has(.session-pin-btn) .session-link {
+/* The IDE / pin / archive actions are hidden until hover or focus, yet the
+   resting label used to reserve their full clearance — stranding the truncated
+   "…" ~90px from the edge. Reserve the wide clearance only while those actions
+   are on screen; at rest the base padding (which already clears the tokens
+   badge) is enough, so the label runs close to the edge. */
+.session-row:hover:has(.session-archive-btn) .session-link,
+.session-row:focus-within:has(.session-archive-btn) .session-link,
+.session-row:hover:has(.session-pin-btn) .session-link,
+.session-row:focus-within:has(.session-pin-btn) .session-link {
   padding-right: 70px;
 }
 
-.session-row:has(.session-pin-btn):has(.session-archive-btn) .session-link {
+.session-row:hover:has(.session-pin-btn):has(.session-archive-btn) .session-link,
+.session-row:focus-within:has(.session-pin-btn):has(.session-archive-btn) .session-link {
   padding-right: 92px;
+}
+
+/* A pinned (pressed) pin stays visible at rest. Alone it sits in the inset lane
+   the base padding already clears; paired with an archive button it shifts one
+   lane out, so keep that lane reserved even before hover. */
+.session-row:not(:hover):not(:focus-within):has(.session-pin-btn[aria-pressed="true"]):has(.session-archive-btn) .session-link {
+  padding-right: 70px;
 }
 
 .session-ide-cluster {

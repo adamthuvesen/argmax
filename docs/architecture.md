@@ -42,7 +42,7 @@ Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:e
 
 ## Renderer — `src/renderer`
 
-React 19 + Vite. [App.tsx](../../src/renderer/App.tsx) composes the shell; [tauriBridge.ts](../../src/renderer/lib/tauriBridge.ts) is the only renderer file that imports `@tauri-apps/api`. Browser-preview mode detects missing Tauri internals and falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts).
+React 19 + Vite. [App.tsx](../../src/renderer/App.tsx) composes the shell; [tauriBridge.ts](../../src/renderer/lib/tauriBridge.ts) centralizes app command IPC through `window.argmax`. The overlay-titlebar helper [windowChrome.ts](../../src/renderer/lib/windowChrome.ts) is the one direct renderer Tauri API exception: it uses the window API for drag/zoom chrome, not app IPC. Browser-preview mode detects missing Tauri internals and falls back to [demoSnapshot.ts](../../src/renderer/demoSnapshot.ts).
 
 Heavy panels are lazy-loaded. Renderer tests use [src/test/appTestHarness.ts](../../src/test/appTestHarness.ts) and [src/test/fixtures/dashboardSnapshot.ts](../../src/test/fixtures/dashboardSnapshot.ts).
 

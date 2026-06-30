@@ -243,3 +243,18 @@ export function focusedCell(grid: GridState): GridCell | null {
   if (!row) return null;
   return row[grid.focused.col] ?? null;
 }
+
+export function terminalWorkspaceId(
+  grid: GridState,
+  fallbacks: readonly (string | null | undefined)[]
+): string | null {
+  const focused = focusedCell(grid);
+  if (focused && isSessionCell(focused)) return focused.workspaceId;
+
+  for (const row of grid.rows) {
+    const sessionCell = row.find(isSessionCell);
+    if (sessionCell) return sessionCell.workspaceId;
+  }
+
+  return fallbacks.find((workspaceId): workspaceId is string => Boolean(workspaceId)) ?? null;
+}

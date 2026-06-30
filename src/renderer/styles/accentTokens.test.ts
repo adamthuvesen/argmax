@@ -79,4 +79,13 @@ describe("accent CSS contract", () => {
     expect(composerFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 55%, var(--line-strong));");
     expect(composerFocusRule).toContain("0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent)");
   });
+
+  it("keeps session composer text aligned with assistant prose size", () => {
+    const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
+    const inputRule = cssRuleBody(chatComposerChips, ".session-input input,\n.session-input textarea");
+    const highlightRule = cssRuleBody(chatComposerChips, ".composer-highlight-backdrop");
+
+    expect(inputRule).toContain("font-size: var(--text-base);");
+    expect(highlightRule).toContain("font-size: var(--text-base);");
+  });
 });

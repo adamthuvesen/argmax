@@ -492,7 +492,7 @@
 }
 
 .tool-call-item[data-status="running"] .tool-call-status-chip {
-  color: var(--amber);
+  color: var(--accent);
 }
 
 .tool-call-item[data-status="error"] .tool-call-status-chip {
@@ -703,7 +703,7 @@
   align-items: center;
   justify-content: center;
   margin-left: auto;
-  color: var(--amber);
+  color: var(--accent);
 }
 
 .tool-call-group-body {
@@ -792,7 +792,7 @@
 }
 
 .tool-call-row[data-status="running"] .tool-call-row-icon {
-  color: var(--amber);
+  color: var(--accent);
 }
 
 .tool-call-row[data-status="error"] .tool-call-row-icon {

@@ -620,14 +620,14 @@
 .chat-bubble.user {
   align-self: flex-end;
   max-width: min(80%, 880px);
-  color: var(--user-bubble-fg);
-  background: var(--user-bubble-bg);
-  box-shadow: none;
+  color: var(--user-message-fg);
+  background: var(--user-message-bg);
+  box-shadow: var(--user-message-shadow);
   animation-name: msg-in-right;
 }
 
 .chat-bubble.user p {
-  color: var(--user-bubble-fg);
+  color: var(--user-message-fg);
 }
 
 /* A long paste (multi-paragraph message) would otherwise grow the bubble to the

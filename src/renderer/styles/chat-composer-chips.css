@@ -132,11 +132,47 @@
   background: rgba(31, 28, 24, 0.18);
 }
 
+.user-message-group {
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(80%, 880px);
+}
+
+.user-message-group .chat-bubble.user {
+  max-width: 100%;
+}
+
 .user-message-attachments {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.user-message-attachment-preview {
+  display: block;
+  flex: 0 0 auto;
+  width: 112px;
+  height: 112px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: 0 1px 3px rgba(31, 28, 24, 0.06);
+}
+
+.user-message-attachment-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--panel);
 }
 
 .user-message-attachment-chip {
@@ -190,6 +226,42 @@
 .session-input-field textarea {
   width: 100%;
   min-width: 0;
+}
+
+/* Slash-command highlight. A textarea can't colour a substring, so a mirror
+   div paints the text behind the textarea and the textarea text goes
+   transparent (caret stays visible). Only the leading /command token is
+   tinted; the rest is painted in the normal text colour so the visible text
+   still reads through. Every metric here MUST match the `.session-input
+   textarea` box (font, padding, line-height, wrapping) or the painted text
+   drifts from the caret. The overlay is mounted only while a real skill is
+   typed, so this never affects ordinary input. */
+.composer-highlight-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  padding: 8px 8px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.composer-skill-token {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.session-input-field textarea.composer-input--highlighting {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--text);
 }
 
 .skill-popover {

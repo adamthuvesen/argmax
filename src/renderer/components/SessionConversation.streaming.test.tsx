@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
 import {
@@ -456,6 +457,36 @@ describe("SessionConversation — streaming & composer", () => {
     expect(bubbleText.closest(".chat-bubble.user")).not.toBeNull();
   });
 
+  it("renders image attachments as previews above user.message bubbles", () => {
+    const imagePath =
+      "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
+    const { container } = renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event(
+          "u1",
+          "user.message",
+          `Check this screenshot @${imagePath}`,
+          "2026-05-12T15:00:00.000Z",
+          {
+            attachments: [{ filePath: imagePath, mimeType: "image/png", sizeBytes: 1234 }]
+          }
+        )
+      ]
+    );
+
+    const image = screen.getByRole("img", { name: "Attached image: screenshot 1.png" });
+    const bubble = screen.getByText("Check this screenshot", { selector: "p" }).closest(".chat-bubble.user");
+    const attachmentStrip = image.closest(".user-message-attachments");
+    expect(image).toHaveAttribute("src", attachmentProtocolUrl(imagePath));
+    expect(bubble).not.toBeNull();
+    expect(attachmentStrip).not.toBeNull();
+    expect(bubble?.contains(image)).toBe(false);
+    expect(attachmentStrip?.nextElementSibling).toBe(bubble);
+    expect(screen.queryByText("screenshot 1.png")).toBeNull();
+    expect(container.querySelector(".chat-bubble.user")?.textContent).not.toContain(`@${imagePath}`);
+  });
+
   it("synthesizes a user bubble from session.prompt before the user.message event arrives", () => {
     renderConversation(baseSession({ state: "running", prompt: "@AGENTS.md" }), []);
 
@@ -594,6 +625,46 @@ describe("SessionConversation — streaming & composer", () => {
       });
 
       expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not flash Thinking in the silent gap between two completed tool calls", () => {
+    // Tool chaining (grep → read → grep) leaves a `command.completed` as the last
+    // significant event while the model picks the next call. That gap must NOT
+    // re-show the verbs — doing so blinked them on for ~1s then hid them the
+    // moment the next tool started, over and over. The completed tool row already
+    // conveys progress. (Only a completed *text* chunk re-shows after a pause.)
+    vi.useFakeTimers();
+    try {
+      // Events arrive newest-first (see sessionConversationModel) — the
+      // completed tool is the last significant event.
+      renderConversation(
+        baseSession({ provider: "claude", state: "running" }),
+        [
+          event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:02.000Z", {
+            tool_use_id: "tu_grep",
+            content: "match"
+          }),
+          event("c1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_grep",
+            name: "Bash",
+            input: { command: "grep foo" }
+          }),
+          event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+        ]
+      );
+
+      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+      // Well past THINKING_PAUSE_DELAY_MS — still no verbs in the inter-tool gap.
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

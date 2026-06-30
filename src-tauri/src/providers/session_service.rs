@@ -40,6 +40,7 @@ use crate::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersTerminateInput,
     },
+    ipc::validation::{NonEmptyString, Prompt, SessionId},
     persistence::{
         database::Database,
         events::{
@@ -1185,28 +1186,18 @@ impl ProviderSessionService {
         let restore = next.clone();
         let restore_session = session_id.clone();
         tokio::spawn(async move {
-            let result = service
-                .send_input(ProvidersSendInput {
-                    session_id: crate::ipc::validation::SessionId::try_from(session_id)
-                        .expect("existing session id valid"),
-                    input: crate::ipc::validation::Prompt::try_from(next.content)
-                        .expect("queued prompt valid"),
-                    model_label: next.model_label.map(|value| {
-                        crate::ipc::validation::NonEmptyString::try_from(value)
-                            .expect("queued label valid")
-                    }),
-                    model_id: next.model_id.map(|value| {
-                        crate::ipc::validation::NonEmptyString::try_from(value)
-                            .expect("queued model valid")
-                    }),
-                    reasoning_effort: next
-                        .reasoning_effort
-                        .as_deref()
-                        .and_then(parse_reasoning_effort),
-                    agent_mode: parse_agent_mode(&next.agent_mode),
-                    attachments: None,
-                })
-                .await;
+            let send_input = match pending_message_to_send_input(session_id, next) {
+                Ok(input) => input,
+                Err(error) => {
+                    tracing::warn!(
+                        session_id = %restore_session,
+                        ?error,
+                        "dropping invalid queued follow-up"
+                    );
+                    return;
+                }
+            };
+            let result = service.send_input(send_input).await;
             if let Err(error) = result {
                 tracing::warn!(
                     session_id = %restore_session,
@@ -1391,6 +1382,59 @@ impl ProviderSessionService {
             (self.publish_delta)(delta);
         }
     }
+}
+
+fn pending_message_to_send_input(
+    session_id: String,
+    message: PendingMessage,
+) -> ArgmaxResult<ProvidersSendInput> {
+    let message_id = message.id;
+    let queued_session_id = message.session_id;
+    let session_id = SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?;
+    let input = Prompt::try_from(message.content).map_err(ArgmaxError::invalid)?;
+    Ok(ProvidersSendInput {
+        session_id,
+        input,
+        model_label: pending_model_metadata(
+            &queued_session_id,
+            &message_id,
+            "modelLabel",
+            message.model_label,
+        ),
+        model_id: pending_model_metadata(
+            &queued_session_id,
+            &message_id,
+            "modelId",
+            message.model_id,
+        ),
+        reasoning_effort: message
+            .reasoning_effort
+            .as_deref()
+            .and_then(parse_reasoning_effort),
+        agent_mode: parse_agent_mode(&message.agent_mode),
+        attachments: None,
+    })
+}
+
+fn pending_model_metadata(
+    session_id: &str,
+    message_id: &str,
+    field: &'static str,
+    value: Option<String>,
+) -> Option<NonEmptyString> {
+    value.and_then(|value| match NonEmptyString::try_from(value) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(
+                session_id,
+                message_id,
+                field,
+                ?error,
+                "dropping invalid queued model metadata"
+            );
+            None
+        }
+    })
 }
 
 fn infer_cursor_provider_conversation_id(

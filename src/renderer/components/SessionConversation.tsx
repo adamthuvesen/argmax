@@ -1,5 +1,5 @@
 import {
-  ChevronDown,
+  ArrowDown,
   GitBranch,
   X
 } from "lucide-react";
@@ -232,14 +232,22 @@ export function SessionConversation({
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
     !isStreamingText;
-  // The pre-answer beat shows immediately. A pause *after* completed content is
-  // debounced (THINKING_PAUSE_DELAY_MS): the brief gap between the final answer
-  // completing and the runtime flipping out of `running`, plus quick
-  // tool-to-tool hand-offs, would otherwise flash a spinner under finished
-  // content. Genuine multi-second pauses outlast the delay and surface Thinking.
+  // The pre-answer beat shows immediately. A pause *after* completed assistant
+  // text is debounced (THINKING_PAUSE_DELAY_MS): the brief gap between the final
+  // answer completing and the runtime flipping out of `running` would otherwise
+  // flash a spinner under finished content. Genuine multi-second pauses outlast
+  // the delay and surface Thinking.
+  //
+  // A pause after a completed *tool* (`command.completed`) is deliberately NOT a
+  // re-show trigger. Tool chaining is bursty — grep → read → grep — with silent
+  // gaps of up to a couple seconds between steps while the model picks the next
+  // call. Re-showing verbs in those gaps blinked them on for ~1s then hid them
+  // the instant the next tool started, over and over. The just-finished tool row
+  // already conveys that work is happening, so we leave the gap alone.
   const isPreAnswerBeat =
     lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
-  const inDebouncedPause = agentWorkingSilently && !isPreAnswerBeat;
+  const inDebouncedPause =
+    agentWorkingSilently && lastSignificantEvent?.type === "message.completed";
   const [pauseSettled, setPauseSettled] = useState(false);
   useEffect(() => {
     if (!inDebouncedPause) {
@@ -357,15 +365,11 @@ export function SessionConversation({
           <button
             type="button"
             className="scroll-to-bottom-fab"
-            data-has-count={newBelowCount > 0 ? "true" : "false"}
-            aria-label={newBelowCount > 0 ? `${newBelowCount} new — scroll to latest` : "Scroll to latest"}
-            title={newBelowCount > 0 ? `${newBelowCount} new` : "Scroll to latest"}
+            aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
+            title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
             onClick={scrollConversationToBottom}
           >
-            <ChevronDown size={16} aria-hidden="true" />
-            {newBelowCount > 0 ? (
-              <span className="scroll-to-bottom-fab-count">{newBelowCount} new</span>
-            ) : null}
+            <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
           </button>
         ) : null}
         {isThinking ? (

@@ -3,6 +3,11 @@ import type { AgentMode } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 
+export type UserMessageAttachment = {
+  filePath: string;
+  mimeType: string;
+};
+
 /**
  * Terminate a running probe (if needed) then send follow-up input. Surfaces
  * errors via `onError` and resolves to `false` on failure so optimistic callers
@@ -34,7 +39,7 @@ export async function sendAfterTerminate(
 
 export function parseUserMessageAttachments(
   item: Extract<RenderItem, { kind: "user-message" }>
-): { filePath: string; mimeType: string }[] {
+): UserMessageAttachment[] {
   const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
   return rawAttachments
     .map((entry) => {
@@ -44,7 +49,7 @@ export function parseUserMessageAttachments(
       if (!filePath || !mimeType) return null;
       return { filePath, mimeType };
     })
-    .filter((value): value is { filePath: string; mimeType: string } => Boolean(value));
+    .filter((value): value is UserMessageAttachment => Boolean(value));
 }
 
 export type SessionConversationSendInput = (

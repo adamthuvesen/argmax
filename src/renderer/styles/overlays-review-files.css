@@ -83,14 +83,20 @@
   height: 34px;
   font-size: 11.5px;
   border-right: 1px solid var(--line-soft);
+  color: var(--muted-strong);
+  background: color-mix(in oklab, var(--panel) 72%, var(--panel-sunken));
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.file-tab:hover {
   color: var(--text-soft);
-  background: var(--panel-sunken);
+  background: color-mix(in oklab, var(--panel) 86%, var(--panel-sunken));
 }
 
 .file-tab[data-active="true"] {
   color: var(--text);
   background: var(--panel);
-  box-shadow: inset 0 -2px 0 var(--ink);
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--text) 34%, var(--line));
 }
 
 .file-tab > button[role="tab"] {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { decideSmartFollow } from "../lib/smartFollow.js";
 
 export interface SmartFollowScroll {
@@ -23,7 +23,7 @@ export interface SmartFollowScroll {
  * - If the user is near the bottom, keep them pinned as items arrive
  *   (`pinToBottom` from `decideSmartFollow`).
  * - If they've scrolled up to read, surface a scroll-to-bottom FAB and a
- *   running count of items that have arrived since they scrolled away.
+ *   count for its accessible label/title.
  * - When the session changes, snap to the latest content so the previous
  *   session's scroll position doesn't bleed into the new one.
  * - When the meta-cards row resizes (changed files / cost panel grows or
@@ -32,6 +32,14 @@ export interface SmartFollowScroll {
  *
  * `now` is intentionally NOT in the deps of the pin effect — re-scrolling
  * every 250 ms while a tool runs would be jittery.
+ *
+ * The pin and session-snap run in `useLayoutEffect`, not `useEffect`: the
+ * scroll correction has to land in the same frame as the DOM growth it's
+ * compensating for. A passive `useEffect` fires *after* the browser paints,
+ * so each streaming token paints once at the old scrollTop (content shoved
+ * up off the bottom) and again after the snap-down — a visible up/down
+ * shimmer. A layout effect mutates scrollTop before paint, so there's only
+ * the pinned frame.
  */
 export function useSmartFollowScroll(
   sessionId: string | null | undefined,
@@ -64,7 +72,7 @@ export function useSmartFollowScroll(
   }, []);
 
   // Snap to the latest content when the session changes.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = conversationListRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
@@ -73,7 +81,7 @@ export function useSmartFollowScroll(
 
   // Pin to bottom as items / thinking-state change, IF the user is already
   // near the bottom. Otherwise leave their position alone.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = conversationListRef.current;
     if (!el || !wasNearBottomRef.current) return;
     el.scrollTop = el.scrollHeight;

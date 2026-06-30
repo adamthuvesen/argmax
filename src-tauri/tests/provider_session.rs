@@ -10,6 +10,7 @@
 //   - terminate disposes the handle and flips the session to cancelled
 //   - recover_orphaned_sessions marks `running` rows as failed on boot
 
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -297,6 +298,61 @@ impl ProviderProcessLauncher for GatedLauncher {
     }
 }
 
+#[derive(Default)]
+struct ManualExitLauncher {
+    launches: Mutex<Vec<ProviderLaunchInput>>,
+    callbacks: Mutex<HashMap<String, EventCallback>>,
+}
+
+impl ManualExitLauncher {
+    fn launch_count(&self) -> usize {
+        self.launches.lock().expect("launches poisoned").len()
+    }
+
+    fn launches(&self) -> Vec<ProviderLaunchInput> {
+        self.launches.lock().expect("launches poisoned").clone()
+    }
+
+    fn emit_exit(&self, session_id: &str, exit_code: i32) {
+        let callback = self
+            .callbacks
+            .lock()
+            .expect("callbacks poisoned")
+            .get(session_id)
+            .cloned()
+            .expect("session callback registered");
+        callback(ProviderRuntimeEvent {
+            session_id: session_id.to_string(),
+            r#type: if exit_code == 0 {
+                ProviderRuntimeEventType::Exit
+            } else {
+                ProviderRuntimeEventType::Error
+            },
+            stream: ProviderOutputStream::System,
+            message: format!("Manual provider exit {exit_code}."),
+            exit_code: Some(exit_code),
+            created_at: now_iso(),
+        });
+    }
+}
+
+impl ProviderProcessLauncher for ManualExitLauncher {
+    fn launch<'a>(
+        &'a self,
+        input: ProviderLaunchInput,
+        on_event: EventCallback,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        let session_id = input.session_id.clone();
+        self.launches.lock().expect("launches poisoned").push(input);
+        self.callbacks
+            .lock()
+            .expect("callbacks poisoned")
+            .insert(session_id, on_event);
+        let handle = FakeHandle::new(false) as Arc<dyn ProviderRuntimeHandle>;
+        Box::pin(async move { Ok(handle) })
+    }
+}
+
 // `launch` now returns before the provider process finishes spawning, so the
 // handle is briefly Pending. Poll until it resolves before asserting behavior
 // that depends on a live handle.
@@ -405,6 +461,21 @@ async fn wait_for_launch_count(launcher: &FakeCliLauncher, expected: usize) {
         assert!(
             tokio::time::Instant::now() < deadline,
             "timed out waiting for {expected} fake CLI launches; got {count}",
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+async fn wait_for_manual_launch_count(launcher: &ManualExitLauncher, expected: usize) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let count = launcher.launch_count();
+        if count == expected {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {expected} manual launches; got {count}",
         );
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
@@ -801,6 +872,54 @@ async fn send_input_queues_when_handle_rejecting() {
         .sent_inputs
         .clone();
     assert!(sent.is_empty(), "rejected handle should not receive bytes");
+}
+
+#[tokio::test]
+async fn queued_follow_up_drains_after_provider_completion() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(ManualExitLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    let result = service
+        .send_input(ProvidersSendInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("queued after done".to_owned()).expect("prompt valid"),
+            model_label: Some(
+                NonEmptyString::try_from("Claude Sonnet 4.6".to_owned())
+                    .expect("model label valid"),
+            ),
+            model_id: Some(
+                NonEmptyString::try_from("claude-sonnet-4-6".to_owned()).expect("model id valid"),
+            ),
+            reasoning_effort: None,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(
+        result.queued,
+        "live non-accepting handle should queue follow-up"
+    );
+
+    launcher.emit_exit(&session.id, 0);
+    wait_for_manual_launch_count(&launcher, 2).await;
+    wait_for_event(&database, &session.id, "user.message", "queued after done").await;
+
+    let launches = launcher.launches();
+    assert_eq!(launches[0].prompt, "hello world");
+    assert!(launches[1]
+        .prompt
+        .contains("New user message:\nqueued after done"));
+    assert_eq!(launches[1].model_label, "Claude Sonnet 4.6");
+    assert_eq!(launches[1].model_id, "claude-sonnet-4-6");
 }
 
 #[tokio::test]

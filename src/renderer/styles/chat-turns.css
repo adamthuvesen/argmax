@@ -65,19 +65,6 @@
   transform: rotate(90deg);
 }
 
-.turn-block-spinner {
-  animation: turn-block-spin 900ms linear infinite;
-}
-
-@keyframes turn-block-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .turn-block-body {
   display: flex;
   flex-direction: column;

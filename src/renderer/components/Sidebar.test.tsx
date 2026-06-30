@@ -548,7 +548,7 @@ describe("Sidebar — date (sessions) view mode", () => {
   it("collapses a date bucket with the chevron and caps overflow behind Show more", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 
-    // 12 sessions, all Today → over the 10-row cap.
+    // 12 sessions, all Today → over the 5-row cap.
     const workspaces = Array.from({ length: 12 }, (_, i) =>
       workspace(`w-${i}`, "project-zebra", `Today task ${i}`, new Date(2026, 5, 5, 6, i).toISOString())
     );
@@ -560,9 +560,9 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     render(<Sidebar {...baseProps} snapshot={overflowSnapshot} />);
 
-    // Only the first 10 render; the rest hide behind "Show more".
-    expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(10);
-    const showMore = screen.getByRole("button", { name: /Show 2 more Today sessions/ });
+    // Only the first 5 render; the rest hide behind "Show more".
+    expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(5);
+    const showMore = screen.getByRole("button", { name: /Show 7 more Today sessions/ });
     fireEvent.click(showMore);
     expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(12);
 

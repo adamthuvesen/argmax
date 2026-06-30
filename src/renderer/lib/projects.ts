@@ -12,7 +12,7 @@ export const sidebarViewModeStorageKey = "argmax.sidebar.viewMode";
 export const collapsedDateGroupsStorageKey = "argmax.sidebar.collapsedDateGroups";
 export const expandedDateGroupsStorageKey = "argmax.sidebar.expandedDateGroups";
 
-export const SIDEBAR_SESSION_LIMIT = 10;
+export const SIDEBAR_SESSION_LIMIT = 5;
 
 export type ProjectSortMode = "recent" | "alphabetical" | "manual";
 

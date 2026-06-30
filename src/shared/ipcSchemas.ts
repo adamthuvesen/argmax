@@ -22,6 +22,7 @@ export const IPC_CHANNELS = [
   "workspaces:keep",
   "workspaces:archive",
   "workspaces:open-in-ide",
+  "workspaces:autotitle",
   "workspace:status",
   "providers:discover",
   "providers:launch",

@@ -7,6 +7,7 @@ interface UseSessionCommandsOptions {
   refreshDashboardStatus: () => Promise<void>;
   loadSessionEvents: (sessionId: string) => Promise<void>;
   setToast: (toast: ToastMessage) => void;
+  fastMode: boolean;
 }
 
 export interface SessionCommands {
@@ -26,7 +27,8 @@ export interface SessionCommands {
 export function useSessionCommands({
   refreshDashboardStatus,
   loadSessionEvents,
-  setToast
+  setToast,
+  fastMode
 }: UseSessionCommandsOptions): SessionCommands {
   const sendSessionInput = useCallback(
     async (
@@ -46,6 +48,7 @@ export function useSessionCommands({
         modelLabel: model.label,
         modelId: model.modelId,
         reasoningEffort: model.reasoningEffort ?? null,
+        fastMode,
         agentMode,
         attachments: attachments?.length ? attachments : null
       });
@@ -64,7 +67,7 @@ export function useSessionCommands({
       // and invite a double-send).
       await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
-    [refreshDashboardStatus, loadSessionEvents]
+    [refreshDashboardStatus, loadSessionEvents, fastMode]
   );
 
   const cancelQueuedMessage = useCallback(async (sessionId: string, messageId: string): Promise<void> => {

@@ -49,6 +49,8 @@ export function SettingsPanel({
   onLauncherGlobeVisibleChange,
   thinkingExpanded,
   onThinkingExpandedChange,
+  fastModeEnabled,
+  onFastModeEnabledChange,
   fontFamily,
   onFontFamilyChange,
   themeMode,
@@ -81,6 +83,8 @@ export function SettingsPanel({
   onLauncherGlobeVisibleChange: (v: boolean) => void;
   thinkingExpanded: boolean;
   onThinkingExpandedChange: (v: boolean) => void;
+  fastModeEnabled: boolean;
+  onFastModeEnabledChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
   themeMode: ThemeMode;
@@ -282,6 +286,8 @@ export function SettingsPanel({
               onToolCallGroupsExpandedChange={onToolCallGroupsExpandedChange}
               thinkingExpanded={thinkingExpanded}
               onThinkingExpandedChange={onThinkingExpandedChange}
+              fastModeEnabled={fastModeEnabled}
+              onFastModeEnabledChange={onFastModeEnabledChange}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}
               providers={providers}

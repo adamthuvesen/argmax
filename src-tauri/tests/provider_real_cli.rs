@@ -91,6 +91,7 @@ async fn real_claude_launcher_streams_json_and_exits_cleanly() {
         model_label: "Claude Haiku 4.5".to_string(),
         model_id: "claude-haiku-4-5".to_string(),
         reasoning_effort: None,
+        fast_mode: false,
         resume_conversation_id: None,
         mode: ProviderMode::StructuredJson,
         permission_mode: PermissionMode::AutoApprove,

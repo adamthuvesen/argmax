@@ -8,6 +8,7 @@ mod orphan_cleanup;
 pub mod pricing;
 pub mod runtime;
 pub mod session_service;
+pub mod title;
 
 use std::path::PathBuf;
 
@@ -33,6 +34,7 @@ pub struct ProviderLaunchInput {
     pub model_label: String,
     pub model_id: String,
     pub reasoning_effort: Option<ReasoningEffort>,
+    pub fast_mode: bool,
     pub resume_conversation_id: Option<String>,
     pub mode: ProviderMode,
     pub permission_mode: PermissionMode,

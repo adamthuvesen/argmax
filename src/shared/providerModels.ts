@@ -61,6 +61,16 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   ]
 };
 
+// Cheap, fast model per provider used only to mint a short sidebar title from
+// the launch prompt (see workspaces:autotitle). A title is a handful of tokens,
+// so picking the smallest model keeps it ~free and lets it snap in within a
+// second or two instead of blocking on the session's (possibly Opus-high) model.
+export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
+  claude: "claude-haiku-4-5",
+  codex: "gpt-5.5",
+  cursor: "composer-2.5"
+};
+
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
     label: "Claude Opus 4.8",

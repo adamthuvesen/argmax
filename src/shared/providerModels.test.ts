@@ -8,6 +8,7 @@ import {
   normalizeModelId,
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
+  PROVIDER_TITLE_MODEL,
   type UsageCounts
 } from "./providerModels.js";
 
@@ -132,6 +133,13 @@ describe("MODEL_PRICING coverage", () => {
     for (const [provider, fallback] of Object.entries(PROVIDER_MODEL_DEFAULTS)) {
       const key = normalizeModelId(fallback.modelId);
       expect(MODEL_PRICING[key], `${provider}.default.${fallback.modelId}`).toBeDefined();
+    }
+  });
+
+  it("covers every provider title model id", () => {
+    for (const [provider, modelId] of Object.entries(PROVIDER_TITLE_MODEL)) {
+      const key = normalizeModelId(modelId);
+      expect(MODEL_PRICING[key], `${provider}.title.${modelId}`).toBeDefined();
     }
   });
 

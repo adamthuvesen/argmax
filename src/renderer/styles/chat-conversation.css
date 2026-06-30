@@ -653,53 +653,43 @@
   /* Dock to the right edge instead of floating centered — a control on
      the gutter reads as UI; a centered control reads as orphan content. */
   align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  aspect-ratio: 1 / 1;
+  inline-size: 28px;
+  block-size: 28px;
   width: 28px;
   height: 28px;
+  min-inline-size: 28px;
+  max-inline-size: 28px;
+  min-block-size: 28px;
+  max-block-size: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  min-height: 28px;
+  max-height: 28px;
   padding: 0;
   margin-top: -28px;
   margin-right: 6px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--panel) 82%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--muted-strong);
-  box-shadow: 0 1px 3px rgba(31, 28, 24, 0.06);
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--user-bubble-bg);
+  color: var(--user-bubble-fg);
+  box-shadow: 0 6px 18px rgba(31, 28, 24, 0.16);
   cursor: pointer;
-  /* Only animate composited properties (transform/background). Transitioning
-     width/padding reflowed the conversation on every count change — i.e. while
-     items stream in below the fold, the worst moment for jank. The pill snaps
-     to its sized state instead. */
-  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+  line-height: 0;
+  overflow: hidden;
+  transition: transform var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
   z-index: 2;
 }
 
-.scroll-to-bottom-fab[data-has-count="true"] {
-  width: auto;
-  padding: 0 12px 0 10px;
-  background: var(--accent-deep);
-  color: var(--bubble-on-ink);
-  border-color: var(--accent-deep);
-}
-
-.scroll-to-bottom-fab-count {
-  font-size: var(--text-sm);
-  font-weight: 540;
-  letter-spacing: 0.01em;
-  font-variant-numeric: tabular-nums;
-}
-
 .scroll-to-bottom-fab:hover {
-  background: var(--panel);
-  border-color: var(--line);
-  color: var(--text);
   transform: translateY(-1px);
-}
-
-.scroll-to-bottom-fab[data-has-count="true"]:hover {
-  background: var(--accent);
+  box-shadow: 0 8px 22px rgba(31, 28, 24, 0.2);
 }

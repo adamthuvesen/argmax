@@ -1,4 +1,4 @@
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
@@ -148,7 +148,7 @@ export function TurnBlock({
   headerTimestampIso?: string;
 }): JSX.Element {
   const toolRunning = useMemo(() => toolItems.some(isToolRunning), [toolItems]);
-  // `running` controls the chip's "Working" label, spinner and live ticker —
+  // `running` controls the chip's "Working" label and live ticker —
   // the parent's isTurnActive flag is authoritative because it also knows
   // about thinking phases and user-input pauses (PlanCard / QuestionCard).
   // Fall back to tool status so back-compat callers without the prop still
@@ -236,9 +236,6 @@ export function TurnBlock({
             {...(hasTools ? { "aria-expanded": toolsAreExpanded } : {})}
             {...(hasTools && onToggleTools ? { onClick: onToggleTools } : {})}
           >
-            {running ? (
-              <Loader2 size={11} className="turn-block-spinner" aria-hidden="true" />
-            ) : null}
             {liveStartMs !== null ? (
               <span>
                 Working for <span ref={liveRef} />

@@ -23,7 +23,7 @@ export interface SmartFollowScroll {
  * - If the user is near the bottom, keep them pinned as items arrive
  *   (`pinToBottom` from `decideSmartFollow`).
  * - If they've scrolled up to read, surface a scroll-to-bottom FAB and a
- *   running count of items that have arrived since they scrolled away.
+ *   count for its accessible label/title.
  * - When the session changes, snap to the latest content so the previous
  *   session's scroll position doesn't bleed into the new one.
  * - When the meta-cards row resizes (changed files / cost panel grows or

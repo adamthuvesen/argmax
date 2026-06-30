@@ -1,5 +1,5 @@
 import {
-  ChevronDown,
+  ArrowDown,
   GitBranch,
   X
 } from "lucide-react";
@@ -365,15 +365,11 @@ export function SessionConversation({
           <button
             type="button"
             className="scroll-to-bottom-fab"
-            data-has-count={newBelowCount > 0 ? "true" : "false"}
-            aria-label={newBelowCount > 0 ? `${newBelowCount} new — scroll to latest` : "Scroll to latest"}
-            title={newBelowCount > 0 ? `${newBelowCount} new` : "Scroll to latest"}
+            aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
+            title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
             onClick={scrollConversationToBottom}
           >
-            <ChevronDown size={16} aria-hidden="true" />
-            {newBelowCount > 0 ? (
-              <span className="scroll-to-bottom-fab-count">{newBelowCount} new</span>
-            ) : null}
+            <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
           </button>
         ) : null}
         {isThinking ? (

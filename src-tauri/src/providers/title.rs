@@ -2,15 +2,16 @@
 //!
 //! None of the provider CLIs expose a human-readable title in their protocol
 //! output — they emit only opaque session/thread ids — so we mint one
-//! ourselves: a single cheap, no-tools model call that turns the launch prompt
-//! into a short sidebar label, mirroring what the Codex/Cursor/Claude desktop
-//! apps do. It is strictly best-effort: any failure (CLI missing, not logged
-//! in, timeout, junk output) returns `None` and the provisional first-line
-//! title stays in place.
+//! ourselves: a single cheap, locked-down model call that turns the launch
+//! prompt into a short sidebar label, mirroring what the Codex/Cursor/Claude
+//! desktop apps do. It is strictly best-effort: any failure (CLI missing, not
+//! logged in, timeout, junk output) returns `None` and the provisional
+//! first-line title stays in place.
 //!
-//! The call runs in a neutral temp dir with MCP/user-config loading disabled so
-//! it never picks up the project's `CLAUDE.md`, spawns MCP servers, or touches
-//! the workspace — it only needs the prompt text.
+//! The call runs in a neutral temp dir with provider-specific no-tools or
+//! read-only flags and config loading disabled, so it never picks up the
+//! project's `CLAUDE.md`, spawns MCP servers, or touches the workspace — it
+//! only needs the prompt text.
 
 use std::process::Stdio;
 use std::time::Duration;
@@ -43,7 +44,8 @@ pub async fn generate_title(provider: ProviderId, model_id: &str, prompt: &str) 
 
 /// Wraps the user's prompt as data and asks for a bare title. Keeping the prompt
 /// clearly framed as data contains injection: the worst case is an odd title the
-/// user can rename, never a tool call or file edit (the call has no tools).
+/// user can rename, while provider flags keep tool use and side effects out of
+/// this best-effort call.
 fn meta_prompt(prompt: &str) -> String {
     format!(
         "Write a short title (3-6 words, Title Case, no quotes and no trailing \
@@ -59,13 +61,13 @@ struct TitleCommand {
     stdin: Option<String>,
 }
 
-/// Minimal, no-tools, no-bypass invocation per provider. Deliberately separate
-/// from the streaming launch builders in `adapters.rs`, which spin up the full
-/// agent with permission bypass — titling needs neither.
+/// Minimal, no-bypass invocation per provider. Deliberately separate from the
+/// streaming launch builders in `adapters.rs`, which spin up the full agent
+/// with permission bypass — titling needs neither.
 fn title_command(provider: ProviderId, model_id: &str, instruction: &str) -> TitleCommand {
     match provider {
-        // `--strict-mcp-config` + empty `--mcp-config` skips MCP loading so the
-        // call is fast and side-effect free. Plain `--output-format text`
+        // `--tools ""` disables built-in tools, and `--strict-mcp-config` with
+        // an empty config skips MCP loading. Plain `--output-format text`
         // returns the answer verbatim.
         ProviderId::Claude => TitleCommand {
             args: vec![
@@ -74,6 +76,9 @@ fn title_command(provider: ProviderId, model_id: &str, instruction: &str) -> Tit
                 model_id.into(),
                 "--output-format".into(),
                 "text".into(),
+                "--tools".into(),
+                "".into(),
+                "--no-session-persistence".into(),
                 "--strict-mcp-config".into(),
                 "--mcp-config".into(),
                 r#"{"mcpServers":{}}"#.into(),
@@ -82,15 +87,19 @@ fn title_command(provider: ProviderId, model_id: &str, instruction: &str) -> Tit
             ],
             stdin: None,
         },
-        // `--trust` is the headless-safe way to skip the workspace-trust prompt
-        // (our cwd is a throwaway temp dir); we deliberately omit `--force`, so
-        // the agent still cannot run commands.
+        // Cursor has no no-tools switch for `agent -p`; `--mode ask` keeps it in
+        // read-only Q&A behavior and `--sandbox enabled` prevents shell writes.
+        // `--trust` is safe here because the cwd is a throwaway temp dir.
         ProviderId::Cursor => TitleCommand {
             args: vec![
                 "agent".into(),
                 "-p".into(),
                 "--output-format".into(),
                 "text".into(),
+                "--mode".into(),
+                "ask".into(),
+                "--sandbox".into(),
+                "enabled".into(),
                 "--trust".into(),
                 "--model".into(),
                 model_id.into(),
@@ -100,15 +109,19 @@ fn title_command(provider: ProviderId, model_id: &str, instruction: &str) -> Tit
             stdin: None,
         },
         // `--json` gives a parseable event stream (plain `exec` stdout mixes in
-        // chrome). `--skip-git-repo-check` lets it run in the temp dir,
-        // `--ignore-user-config` keeps it deterministic, and low reasoning keeps
-        // a title fast.
+        // chrome). `--sandbox read-only` blocks writes, `--ephemeral` prevents
+        // session persistence, `--ignore-user-config`/`--ignore-rules` keep it
+        // deterministic, and low reasoning keeps a title fast.
         ProviderId::Codex => TitleCommand {
             args: vec![
                 "exec".into(),
                 "--json".into(),
+                "--sandbox".into(),
+                "read-only".into(),
+                "--ephemeral".into(),
                 "--skip-git-repo-check".into(),
                 "--ignore-user-config".into(),
+                "--ignore-rules".into(),
                 "--model".into(),
                 model_id.into(),
                 "-c".into(),
@@ -257,7 +270,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn claude_command_is_text_mode_with_mcp_disabled() {
+    fn claude_command_disables_tools_and_persistence() {
         let command = title_command(ProviderId::Claude, "claude-haiku-4-5", "META");
         assert_eq!(
             command.args,
@@ -267,6 +280,9 @@ mod tests {
                 "claude-haiku-4-5",
                 "--output-format",
                 "text",
+                "--tools",
+                "",
+                "--no-session-persistence",
                 "--strict-mcp-config",
                 "--mcp-config",
                 r#"{"mcpServers":{}}"#,
@@ -280,8 +296,16 @@ mod tests {
     }
 
     #[test]
-    fn cursor_command_trusts_but_never_forces() {
+    fn cursor_command_uses_read_only_mode_without_force() {
         let command = title_command(ProviderId::Cursor, "composer-2.5", "META");
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--mode" && args[1] == "ask"));
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--sandbox" && args[1] == "enabled"));
         assert!(command.args.iter().any(|a| a == "--trust"));
         assert!(!command.args.iter().any(|a| a == "--force"));
         assert_eq!(command.args.last().unwrap(), "META");
@@ -289,10 +313,16 @@ mod tests {
     }
 
     #[test]
-    fn codex_command_streams_json_with_prompt_on_stdin() {
+    fn codex_command_streams_json_read_only_with_prompt_on_stdin() {
         let command = title_command(ProviderId::Codex, "gpt-5.5", "META");
         assert!(command.args.iter().any(|a| a == "--json"));
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--sandbox" && args[1] == "read-only"));
+        assert!(command.args.iter().any(|a| a == "--ephemeral"));
         assert!(command.args.iter().any(|a| a == "--skip-git-repo-check"));
+        assert!(command.args.iter().any(|a| a == "--ignore-rules"));
         assert_eq!(command.args.last().unwrap(), "-");
         assert_eq!(command.stdin.as_deref(), Some("META"));
         assert!(!command

@@ -14,7 +14,7 @@ Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [s
 - [normalizer](../../src-tauri/src/providers/normalizer) maps provider JSONL/stdout into timeline events.
 - [flush_queue.rs](../../src-tauri/src/providers/flush_queue.rs) micro-batches event writes and publishes `dashboard:delta` after commit. Complete JSONL lines flush immediately; any trailing fragment without a newline is debounced-flushed (~16 ms after the last stdout chunk) so interactive sessions that stay alive after answering still surface chat rows before Stop.
 - [pricing.rs](../../src-tauri/src/providers/pricing.rs) mirrors renderer pricing defaults.
-- [title.rs](../../src-tauri/src/providers/title.rs) runs a best-effort, no-tools one-shot CLI call to replace the provisional first-line sidebar label with a short generated title.
+- [title.rs](../../src-tauri/src/providers/title.rs) runs a best-effort, locked-down one-shot CLI call to replace the provisional first-line sidebar label with a short generated title.
 
 Provider protocol output is persisted for debugging but must not render as chat. Visible chat is normalized timeline events.
 

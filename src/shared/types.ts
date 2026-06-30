@@ -329,6 +329,7 @@ export interface PendingMessage {
   modelLabel?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort;
+  fastMode?: boolean;
   attachments?: ComposerAttachment[];
   queuedAt: string;
 }

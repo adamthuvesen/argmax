@@ -1,0 +1,416 @@
+import { Folder, GitBranch, Plus, Square, X } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MutableRefObject,
+  type SetStateAction
+} from "react";
+import type { ProviderModelSelection } from "../../shared/providerModels.js";
+import type {
+  AgentMode,
+  ComposerAttachment,
+  PendingMessage,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary
+} from "../../shared/types.js";
+import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
+import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
+import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
+import { MASCOT_BOB_MS, useMascotFlash } from "../hooks/useMascotFlash.js";
+import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
+import {
+  appendReferencesToPrompt,
+  imageAttachmentReference
+} from "../lib/composerAttachments.js";
+import {
+  AGENT_MODE_LABELS,
+  toggleAgentMode
+} from "../lib/agentMode.js";
+import { FilePopover } from "./FilePopover.js";
+import { Mascot } from "./Mascot.js";
+import { ModelSelector } from "./ModelSelector.js";
+import { SkillPopover } from "./SkillPopover.js";
+
+const PROMPT_MAX_HEIGHT_PX = 140;
+
+export function SessionComposer({
+  agentMode,
+  canSend,
+  events,
+  inputRef,
+  isQueueing,
+  isThinking,
+  onCancelQueuedMessage,
+  onSendSessionInput,
+  onTerminateSession,
+  pendingMessages,
+  reviewPanelOpen,
+  selectedModel,
+  session,
+  setAgentMode,
+  setSelectedModel,
+  setStatus,
+  shouldRefocusInput,
+  status,
+  workspace
+}: {
+  agentMode: AgentMode;
+  canSend: boolean;
+  events: TimelineEvent[];
+  inputRef: MutableRefObject<HTMLTextAreaElement | null>;
+  isQueueing: boolean;
+  isThinking: boolean;
+  onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
+  onSendSessionInput: (
+    sessionId: string,
+    input: string,
+    model: ProviderModelSelection,
+    agentMode: AgentMode,
+    attachments?: ComposerAttachment[]
+  ) => Promise<void>;
+  onTerminateSession: (sessionId: string) => Promise<void>;
+  pendingMessages: PendingMessage[];
+  reviewPanelOpen: boolean;
+  selectedModel: ProviderModelSelection;
+  session: SessionSummary | null;
+  setAgentMode: Dispatch<SetStateAction<AgentMode>>;
+  setSelectedModel: Dispatch<SetStateAction<ProviderModelSelection>>;
+  setStatus: (message: string | null) => void;
+  shouldRefocusInput: MutableRefObject<boolean>;
+  status: string | null;
+  workspace: WorkspaceSummary | null;
+}): JSX.Element {
+  const [input, setInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const inputFormRef = useRef<HTMLFormElement | null>(null);
+  const sessionId = session?.id ?? null;
+  const { happyFlashUntilMs, justSentAt, markSent } = useMascotFlash(sessionId, events);
+  const {
+    pendingAttachments,
+    attachmentInputRef,
+    removePendingAttachment,
+    onComposerDragOver,
+    onComposerDrop,
+    onComposerPaste,
+    onAttachmentInputChange,
+    openFilePicker,
+    clearAttachments
+  } = useComposerAttachments({
+    sessionId,
+    workspacePath: workspace?.path ?? null,
+    setInput,
+    setStatus
+  });
+
+  const slashAutocomplete = useSlashAutocomplete({
+    input,
+    setInput,
+    provider: session?.provider ?? null,
+    workspaceId: workspace?.id ?? null
+  });
+
+  const fileAutocomplete = useFileAutocomplete({
+    input,
+    setInput,
+    inputRef,
+    source: workspace ? { kind: "workspace", id: workspace.id } : null
+  });
+
+  useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
+
+  const toggleMode = useCallback((): void => {
+    setAgentMode((mode) => toggleAgentMode(mode));
+  }, [setAgentMode]);
+
+  useEffect(() => {
+    if (!shouldRefocusInput.current || isSending || !canSend) {
+      return;
+    }
+
+    shouldRefocusInput.current = false;
+    inputRef.current?.focus();
+  }, [canSend, inputRef, isSending, shouldRefocusInput]);
+
+  useEffect(() => {
+    if (reviewPanelOpen || isSending || !canSend) return;
+    inputRef.current?.focus();
+  }, [reviewPanelOpen, canSend, inputRef, isSending]);
+
+  const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
+    slashAutocomplete.onKeyDown(event);
+    if (event.defaultPrevented) return;
+    fileAutocomplete.onKeyDown(event);
+    if (event.defaultPrevented) return;
+    if (event.key === "Tab" && event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      toggleMode();
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      inputFormRef.current?.requestSubmit();
+    }
+  };
+
+  const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    const trimmedInput = input.trim();
+    if (!session || !trimmedInput || isSending) {
+      return;
+    }
+
+    const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
+    const prompt = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
+    const attachmentsForPersist: ComposerAttachment[] = pendingAttachments.map((a) => ({
+      filePath: a.filePath,
+      mimeType: a.mimeType,
+      sizeBytes: a.sizeBytes
+    }));
+
+    setIsSending(true);
+    setStatus(null);
+    shouldRefocusInput.current = true;
+    markSent();
+    try {
+      await onSendSessionInput(
+        session.id,
+        prompt,
+        selectedModel,
+        agentMode,
+        attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
+      );
+      setInput("");
+      clearAttachments();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not send input.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <form
+      className="session-input"
+      ref={inputFormRef}
+      onSubmit={(event) => void submitInput(event)}
+      onDragOver={onComposerDragOver}
+      onDrop={onComposerDrop}
+    >
+      <input
+        ref={attachmentInputRef}
+        type="file"
+        multiple
+        hidden
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={onAttachmentInputChange}
+      />
+      {pendingAttachments.length > 0 ? (
+        <div className="composer-attachments" aria-label="Attached images">
+          {pendingAttachments.map((attachment) => (
+            <div key={attachment.id} className="composer-attachment-chip">
+              <img src={attachment.thumbnailDataUrl} alt="" />
+              <button
+                type="button"
+                className="composer-attachment-remove"
+                aria-label="Remove attachment"
+                title="Remove attachment"
+                onClick={() => removePendingAttachment(attachment.id)}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {pendingMessages.length > 0 ? (
+        <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
+          {pendingMessages.map((entry) => {
+            const cancel = (): void => {
+              if (!session || !onCancelQueuedMessage) return;
+              void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
+            };
+            return (
+              <div
+                key={entry.id}
+                className="composer-queued-chip"
+                role="listitem"
+                tabIndex={0}
+                title={entry.content}
+                aria-label={`Queued follow-up: ${entry.content}`}
+                onKeyDown={(event) => {
+                  if (event.key === "Backspace" || event.key === "Delete") {
+                    event.preventDefault();
+                    cancel();
+                  }
+                }}
+              >
+                <span className="composer-queued-chip-label">{entry.content}</span>
+                <button
+                  type="button"
+                  className="composer-queued-chip-remove"
+                  aria-label="Cancel queued follow-up"
+                  title="Cancel queued follow-up"
+                  onClick={cancel}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      <div className="session-input-field">
+        <textarea
+          aria-label="Session prompt"
+          aria-autocomplete="list"
+          aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+          aria-controls={
+            slashAutocomplete.popoverOpen
+              ? "skill-popover"
+              : fileAutocomplete.popoverOpen
+                ? "file-popover"
+                : undefined
+          }
+          disabled={!canSend || isSending}
+          onChange={(event) => {
+            setInput(event.target.value);
+            fileAutocomplete.onSelectionChange(event);
+          }}
+          onKeyDown={onSessionInputKeyDown}
+          onPaste={onComposerPaste}
+          onSelect={fileAutocomplete.onSelectionChange}
+          onClick={fileAutocomplete.onSelectionChange}
+          placeholder={
+            canSend
+              ? isQueueing
+                ? "Queue a follow-up — sent when the current turn finishes"
+                : "Reply to your agent, or @-mention files"
+              : ""
+          }
+          ref={inputRef}
+          value={input}
+          rows={1}
+        />
+        <SkillPopover state={slashAutocomplete} inputRef={inputRef} />
+        <FilePopover state={fileAutocomplete} inputRef={inputRef} />
+      </div>
+      <div className="session-input-toolbar">
+        <button
+          className="composer-tool"
+          type="button"
+          title="Attach file"
+          aria-label="Attach file"
+          disabled={!canSend || isSending}
+          onClick={openFilePicker}
+        >
+          <Plus size={16} />
+        </button>
+        {session ? (
+          <div className="composer-chips-group composer-chips-model">
+            <ModelSelector
+              provider={session.provider}
+              value={selectedModel}
+              onChange={setSelectedModel}
+              ariaLabel="Session model"
+            />
+          </div>
+        ) : null}
+        {session ? (
+          <div className="composer-chips-group composer-chips-mode">
+            <button
+              type="button"
+              className="composer-context-chip agent-mode-toggle"
+              aria-label="Agent mode"
+              aria-pressed={agentMode === "plan"}
+              title="Toggle agent mode (Shift+Tab)"
+              disabled={!canSend || isSending}
+              onClick={toggleMode}
+            >
+              {AGENT_MODE_LABELS[agentMode]}
+            </button>
+          </div>
+        ) : null}
+        {workspace ? (
+          <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
+            {workspace.sharedWorkspace ? null : (
+              <button
+                type="button"
+                className="composer-footer-chip"
+                title={`Open worktree: ${workspace.path}`}
+                aria-label={`Open worktree at ${workspace.path}`}
+                onClick={() => {
+                  if (!window.argmax) return;
+                  void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
+                }}
+              >
+                <Folder size={11} aria-hidden="true" />
+                <span>Worktree</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="composer-footer-chip"
+              title={`Branch: ${workspace.branch}`}
+              aria-label={`Branch ${workspace.branch}`}
+            >
+              <GitBranch size={11} aria-hidden="true" />
+              <span>{workspace.branch}</span>
+            </button>
+          </div>
+        ) : null}
+        <span className="session-toolbar-spacer" />
+        {session && session.state === "running" ? (
+          <button
+            className="session-send-button session-stop-button"
+            type="button"
+            title="Stop session"
+            aria-label="Stop session"
+            onClick={() => void onTerminateSession(session.id)}
+          >
+            <Square size={16} />
+          </button>
+        ) : (() => {
+          const sendDisabled = !canSend || isSending || !input.trim();
+          const sendTitle = isQueueing
+            ? "Queue follow-up — sent when the current turn finishes"
+            : "Send follow-up";
+          const happy = happyFlashUntilMs > Date.now();
+          const mood: "idle" | "thinking" | "happy" | "sad" | "working" = happy
+            ? "happy"
+            : sendDisabled
+              ? "sad"
+              : isThinking
+                ? "thinking"
+                : session?.state === "running"
+                  ? "working"
+                  : "idle";
+          const bobbing = justSentAt > 0 && Date.now() - justSentAt < MASCOT_BOB_MS;
+          return (
+            <Mascot
+              size={36}
+              mood={mood}
+              type="submit"
+              disabled={sendDisabled}
+              title={sendTitle}
+              label={sendTitle}
+              buttonClassName={`session-send-mascot${bobbing ? " session-send-mascot--bob" : ""}`}
+            />
+          );
+        })()}
+      </div>
+      {status ? (
+        <p className="composer-status" role="status">
+          {status}
+        </p>
+      ) : null}
+    </form>
+  );
+}

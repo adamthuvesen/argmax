@@ -26,7 +26,7 @@ import { PerfOverlay } from "./components/PerfOverlay.js";
 import { SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { EMPTY_GRID, focusedCell, isSessionCell, openWorkspaceInGrid } from "./lib/gridState.js";
+import { EMPTY_GRID, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -283,20 +283,11 @@ export function App(): JSX.Element {
     [setIsContentSearchOpen]
   );
   const toggleIntegratedTerminal = useCallback((): void => {
-    const focused = focusedCell(grid);
-    let workspaceId = focused && isSessionCell(focused) ? focused.workspaceId : null;
-
-    if (!workspaceId) {
-      for (const row of grid.rows) {
-        const sessionCell = row.find(isSessionCell);
-        if (sessionCell) {
-          workspaceId = sessionCell.workspaceId;
-          break;
-        }
-      }
-    }
-
-    workspaceId ??= selectedWorkspace?.id ?? selectedSession?.workspaceId ?? snapshot.sessions[0]?.workspaceId ?? null;
+    const workspaceId = terminalWorkspaceId(grid, [
+      selectedWorkspace?.id,
+      selectedSession?.workspaceId,
+      snapshot.sessions[0]?.workspaceId
+    ]);
     if (!workspaceId) {
       setToast({ kind: "error", message: "Open a session before toggling the terminal." });
       return;

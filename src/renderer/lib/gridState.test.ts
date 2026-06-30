@@ -8,6 +8,7 @@ import {
   openLauncherInGrid,
   openWorkspaceInGrid,
   setFocus,
+  terminalWorkspaceId,
   type GridState
 } from "./gridState.js";
 
@@ -280,5 +281,26 @@ describe("focusedCell", () => {
 
   it("returns null when nothing is focused", () => {
     expect(focusedCell(EMPTY_GRID)).toBeNull();
+  });
+});
+
+describe("terminalWorkspaceId", () => {
+  it("prefers the focused session cell", () => {
+    const grid: GridState = { rows: [[cell(1), cell(2)]], focused: { row: 0, col: 1 } };
+    expect(terminalWorkspaceId(grid, ["fallback"])).toBe("w2");
+  });
+
+  it("uses the first visible session when the focused cell is a launcher", () => {
+    const grid: GridState = {
+      rows: [[launcher(), cell(1)], [cell(2)]],
+      focused: { row: 0, col: 0 }
+    };
+    expect(terminalWorkspaceId(grid, ["fallback"])).toBe("w1");
+  });
+
+  it("falls back to selected or recent workspace ids when the grid has no session", () => {
+    const grid: GridState = { rows: [[launcher()]], focused: { row: 0, col: 0 } };
+    expect(terminalWorkspaceId(grid, [null, undefined, "recent"])).toBe("recent");
+    expect(terminalWorkspaceId(grid, [null, undefined])).toBeNull();
   });
 });

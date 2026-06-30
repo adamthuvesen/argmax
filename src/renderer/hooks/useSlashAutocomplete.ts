@@ -29,6 +29,10 @@ interface UseSlashAutocompleteArgs {
 export interface SlashAutocompleteState {
   popoverOpen: boolean;
   filteredSkills: SkillSummary[];
+  /** Lowercased names of every skill available for this provider/workspace.
+      Lets the composer tint a `/command` token even after the popover closes
+      (e.g. once args are typed). */
+  skillNames: Set<string>;
   selectionIndex: number;
   setSelectionIndex: (index: number) => void;
   selectSkill: (name: string) => void;
@@ -49,8 +53,13 @@ export function useSlashAutocomplete({
   // below on deps that didn't actually change.
   const slashQuery = useMemo(() => parseSlashQuery(input), [input]);
 
+  // Fetch whenever the input opens with a slash — not only while the popover
+  // query is live. The composer tints a `/command` token even after a space
+  // is typed (popover closed), which needs the list loaded in that state too.
+  // Keyed on `input` so a retry after a transient failure refires as the user
+  // keeps typing; the `fetchedFor` latch still collapses it to one IPC call.
   useEffect(() => {
-    if (!slashQuery || !provider) {
+    if (!input.startsWith("/") || !provider) {
       return;
     }
     const cacheKey = `${provider}::${workspaceId ?? ""}`;
@@ -80,7 +89,12 @@ export function useSlashAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [slashQuery, provider, workspaceId]);
+  }, [input, provider, workspaceId]);
+
+  const skillNames = useMemo(
+    () => new Set(skills.map((skill) => skill.name.toLowerCase())),
+    [skills]
+  );
 
   const filteredSkills = useMemo(() => {
     if (!slashQuery) {
@@ -135,5 +149,5 @@ export function useSlashAutocomplete({
     }
   };
 
-  return { popoverOpen, filteredSkills, selectionIndex, setSelectionIndex, selectSkill, onKeyDown };
+  return { popoverOpen, filteredSkills, skillNames, selectionIndex, setSelectionIndex, selectSkill, onKeyDown };
 }

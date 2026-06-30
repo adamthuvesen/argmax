@@ -2,6 +2,7 @@ import { Folder, GitBranch, Plus, Square, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -9,7 +10,8 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
-  type SetStateAction
+  type SetStateAction,
+  type UIEvent as ReactUIEvent
 } from "react";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
@@ -33,6 +35,7 @@ import {
   AGENT_MODE_LABELS,
   toggleAgentMode
 } from "../lib/agentMode.js";
+import { leadingSlashCommand } from "../lib/slashHighlight.js";
 import { FilePopover } from "./FilePopover.js";
 import { Mascot } from "./Mascot.js";
 import { ModelSelector } from "./ModelSelector.js";
@@ -124,6 +127,24 @@ export function SessionComposer({
   });
 
   useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
+
+  // Tint a leading `/command` token in the accent colour once it maps to a
+  // real skill. A textarea can't colour a substring, so a mirror div renders
+  // the same text behind a transparent-text textarea — mounted only while a
+  // valid skill is present, so normal typing never routes through the overlay.
+  const skillHighlight = useMemo(() => {
+    const name = leadingSlashCommand(input);
+    if (name === null || !slashAutocomplete.skillNames.has(name.toLowerCase())) {
+      return null;
+    }
+    const head = `/${name}`;
+    return { head, tail: input.slice(head.length) };
+  }, [input, slashAutocomplete.skillNames]);
+  const highlightBackdropRef = useRef<HTMLDivElement | null>(null);
+  const syncHighlightScroll = useCallback((event: ReactUIEvent<HTMLTextAreaElement>): void => {
+    const backdrop = highlightBackdropRef.current;
+    if (backdrop) backdrop.scrollTop = event.currentTarget.scrollTop;
+  }, []);
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
@@ -268,7 +289,14 @@ export function SessionComposer({
         </div>
       ) : null}
       <div className="session-input-field">
+        {skillHighlight ? (
+          <div className="composer-highlight-backdrop" aria-hidden="true" ref={highlightBackdropRef}>
+            <span className="composer-skill-token">{skillHighlight.head}</span>
+            {skillHighlight.tail}
+          </div>
+        ) : null}
         <textarea
+          className={skillHighlight ? "composer-input--highlighting" : undefined}
           aria-label="Session prompt"
           aria-autocomplete="list"
           aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
@@ -286,6 +314,7 @@ export function SessionComposer({
           }}
           onKeyDown={onSessionInputKeyDown}
           onPaste={onComposerPaste}
+          onScroll={syncHighlightScroll}
           onSelect={fileAutocomplete.onSelectionChange}
           onClick={fileAutocomplete.onSelectionChange}
           placeholder={

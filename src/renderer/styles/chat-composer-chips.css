@@ -192,6 +192,42 @@
   min-width: 0;
 }
 
+/* Slash-command highlight. A textarea can't colour a substring, so a mirror
+   div paints the text behind the textarea and the textarea text goes
+   transparent (caret stays visible). Only the leading /command token is
+   tinted; the rest is painted in the normal text colour so the visible text
+   still reads through. Every metric here MUST match the `.session-input
+   textarea` box (font, padding, line-height, wrapping) or the painted text
+   drifts from the caret. The overlay is mounted only while a real skill is
+   typed, so this never affects ordinary input. */
+.composer-highlight-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  padding: 8px 8px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.composer-skill-token {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.session-input-field textarea.composer-input--highlighting {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--text);
+}
+
 .skill-popover {
   position: absolute;
   bottom: calc(100% + 6px);

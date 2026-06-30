@@ -12,6 +12,7 @@ function makeState(selectionIndex: number): SlashAutocompleteState {
       description: `Skill ${index}`,
       source: "user" as const
     })),
+    skillNames: new Set(Array.from({ length: 20 }, (_, index) => `skill-${index}`)),
     selectionIndex,
     setSelectionIndex: vi.fn(),
     selectSkill: vi.fn(),

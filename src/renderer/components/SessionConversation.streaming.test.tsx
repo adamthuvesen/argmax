@@ -630,12 +630,11 @@ describe("SessionConversation — streaming & composer", () => {
     }
   });
 
-  it("does not flash Thinking in the silent gap between two completed tool calls", () => {
+  it("re-shows Thinking after a completed-tool pause lasts long enough", () => {
     // Tool chaining (grep → read → grep) leaves a `command.completed` as the last
-    // significant event while the model picks the next call. That gap must NOT
-    // re-show the verbs — doing so blinked them on for ~1s then hid them the
-    // moment the next tool started, over and over. The completed tool row already
-    // conveys progress. (Only a completed *text* chunk re-shows after a pause.)
+    // significant event while the model picks the next call. Short hand-offs
+    // must stay quiet, but a longer pause needs Thinking; otherwise a live turn
+    // looks frozen under already-completed tool rows.
     vi.useFakeTimers();
     try {
       // Events arrive newest-first (see sessionConversationModel) — the
@@ -659,12 +658,17 @@ describe("SessionConversation — streaming & composer", () => {
 
       expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
 
-      // Well past THINKING_PAUSE_DELAY_MS — still no verbs in the inter-tool gap.
       act(() => {
-        vi.advanceTimersByTime(2000);
+        vi.advanceTimersByTime(1499);
       });
 
       expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+
+      expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

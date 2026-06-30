@@ -8,6 +8,7 @@ import {
   extractToolName,
   extractToolOutput,
   extractToolUseId,
+  getToolTypeBucket,
   type ToolCall
 } from "./toolCalls.js";
 
@@ -33,6 +34,13 @@ function isConversationVisible(event: TimelineEvent): boolean {
     isConversationEventType(event.type) &&
     event.message !== "turn.completed"
   );
+}
+
+function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
+  if (left.rowCursor !== undefined && right.rowCursor !== undefined && left.rowCursor !== right.rowCursor) {
+    return left.rowCursor > right.rowCursor;
+  }
+  return left.createdAt > right.createdAt;
 }
 
 /**
@@ -80,9 +88,13 @@ export function hasRenderableSessionContent(
   );
 }
 
-export function buildSessionToolCalls(events: readonly TimelineEvent[]): ToolCall[] {
+export function buildSessionToolCalls(
+  events: readonly TimelineEvent[],
+  sessionRunning = true
+): ToolCall[] {
   const starts = new Map<string, { event: TimelineEvent; toolUseId: string }>();
   const completions = new Map<string, TimelineEvent>();
+  const visibleProgressEvents = events.filter(isConversationVisible);
   for (const event of events) {
     if (event.type === "command.started") {
       const toolUseId = extractToolUseId(event.payload) ?? event.id;
@@ -100,7 +112,26 @@ export function buildSessionToolCalls(events: readonly TimelineEvent[]): ToolCal
       const completionInput = completion ? extractToolInput(completion.payload) : {};
       const input = Object.keys(startInput).length > 0 ? startInput : completionInput;
       const isError = completion ? detectToolError(completion.payload) : false;
-      const status: ToolCall["status"] = !completion ? "running" : isError ? "error" : "done";
+      const hasLaterVisibleProgress = visibleProgressEvents.some((progress) => eventIsAfter(progress, event));
+      // A started tool with no matching `command.completed` is normally still
+      // running — but a completion can be lost. An image `Read`'s tool_result
+      // embeds a base64 blob that overflows the normalizer's per-line parse cap
+      // (providers/normalizer/mod.rs JSON_PARSE_LINE_CAP), so the whole line —
+      // and the `command.completed` it carried — is dropped, even though the
+      // tool finished upstream. A later visible user/assistant/error event means
+      // the turn has moved past that tool; without that, only a stopped session
+      // can prove the unpaired tool is no longer in flight. Agent tools are the
+      // exception: the parent model can narrate while a spawned agent is still
+      // working, so keep them running until their own completion arrives.
+      const inferredDone =
+        !sessionRunning || (getToolTypeBucket(name) !== "agent" && hasLaterVisibleProgress);
+      const status: ToolCall["status"] = completion
+        ? isError
+          ? "error"
+          : "done"
+        : inferredDone
+          ? "done"
+          : "running";
       const rawParent = event.payload.parent_tool_use_id;
       const parentToolUseId = typeof rawParent === "string" && rawParent.length > 0 ? rawParent : null;
       return {
@@ -112,7 +143,10 @@ export function buildSessionToolCalls(events: readonly TimelineEvent[]): ToolCal
         output: completion ? extractToolOutput(completion.payload) : null,
         status,
         createdAt: event.createdAt,
-        completedAt: completion ? completion.createdAt : null,
+        // No real completion timestamp exists for a dropped completion; anchor
+        // the inferred-done case at the start so the chip shows a check instead
+        // of a stale, ever-climbing timer.
+        completedAt: completion ? completion.createdAt : status === "done" ? event.createdAt : null,
         error: completion && isError ? extractToolError(completion.payload) : null,
         parentToolUseId
       };

@@ -45,6 +45,24 @@ describe("SkillPopover", () => {
     expect(screen.getByRole("option", { selected: true })).toHaveTextContent("/skill-14");
   });
 
+  it("highlights a skill on hover by moving the shared selection index", () => {
+    const state = makeState(0);
+    render(<SkillPopover state={state} inputRef={createRef<HTMLTextAreaElement>()} />);
+
+    fireEvent.mouseMove(screen.getByText("/skill-3"));
+
+    expect(state.setSelectionIndex).toHaveBeenCalledWith(3);
+  });
+
+  it("does not re-set the index when hovering the already-selected skill", () => {
+    const state = makeState(0);
+    render(<SkillPopover state={state} inputRef={createRef<HTMLTextAreaElement>()} />);
+
+    fireEvent.mouseMove(screen.getByText("/skill-0"));
+
+    expect(state.setSelectionIndex).not.toHaveBeenCalled();
+  });
+
   it("keeps wheel scrolling inside the popover instead of bubbling to the page", () => {
     const parentWheel = vi.fn();
     const inputRef = createRef<HTMLTextAreaElement>();

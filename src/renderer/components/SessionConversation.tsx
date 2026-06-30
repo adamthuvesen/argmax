@@ -64,6 +64,7 @@ import {
 // — and quick tool-to-tool hand-offs — don't flash a spinner under finished
 // content.
 const THINKING_PAUSE_DELAY_MS = 600;
+const TOOL_THINKING_PAUSE_DELAY_MS = 1500;
 
 export function SessionConversation({
   checks,
@@ -153,7 +154,15 @@ export function SessionConversation({
     [rawOutputs, session?.id, hasRenderableContent]
   );
 
-  const toolCalls = useMemo(() => buildSessionToolCalls(events), [events]);
+  // Only a running session can hold a genuinely in-flight tool. Passing this
+  // lets buildSessionToolCalls retire a tool whose `command.completed` was
+  // dropped (e.g. an oversized image tool_result) once the session stops,
+  // instead of leaving a tool row spinning forever.
+  const sessionRunning = session?.state === "running";
+  const toolCalls = useMemo(
+    () => buildSessionToolCalls(events, sessionRunning),
+    [events, sessionRunning]
+  );
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),
@@ -232,31 +241,29 @@ export function SessionConversation({
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
     !isStreamingText;
-  // The pre-answer beat shows immediately. A pause *after* completed assistant
-  // text is debounced (THINKING_PAUSE_DELAY_MS): the brief gap between the final
-  // answer completing and the runtime flipping out of `running` would otherwise
-  // flash a spinner under finished content. Genuine multi-second pauses outlast
-  // the delay and surface Thinking.
-  //
-  // A pause after a completed *tool* (`command.completed`) is deliberately NOT a
-  // re-show trigger. Tool chaining is bursty — grep → read → grep — with silent
-  // gaps of up to a couple seconds between steps while the model picks the next
-  // call. Re-showing verbs in those gaps blinked them on for ~1s then hid them
-  // the instant the next tool started, over and over. The just-finished tool row
-  // already conveys that work is happening, so we leave the gap alone.
+  // The pre-answer beat shows immediately. Pauses after completed assistant
+  // text or a completed tool are debounced: quick end-of-turn races and
+  // tool-to-tool hand-offs stay quiet, but a longer silent gap gets Thinking so
+  // the live turn does not look frozen under already-completed rows.
   const isPreAnswerBeat =
     lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
   const inDebouncedPause =
-    agentWorkingSilently && lastSignificantEvent?.type === "message.completed";
+    agentWorkingSilently &&
+    (lastSignificantEvent?.type === "message.completed" ||
+      lastSignificantEvent?.type === "command.completed");
+  const pauseDelayMs =
+    lastSignificantEvent?.type === "command.completed"
+      ? TOOL_THINKING_PAUSE_DELAY_MS
+      : THINKING_PAUSE_DELAY_MS;
   const [pauseSettled, setPauseSettled] = useState(false);
   useEffect(() => {
     if (!inDebouncedPause) {
       setPauseSettled(false);
       return;
     }
-    const timer = window.setTimeout(() => setPauseSettled(true), THINKING_PAUSE_DELAY_MS);
+    const timer = window.setTimeout(() => setPauseSettled(true), pauseDelayMs);
     return () => window.clearTimeout(timer);
-  }, [inDebouncedPause]);
+  }, [inDebouncedPause, pauseDelayMs]);
   const isThinking = agentWorkingSilently && (isPreAnswerBeat || pauseSettled);
 
   const {

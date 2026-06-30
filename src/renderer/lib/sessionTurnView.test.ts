@@ -68,6 +68,20 @@ describe("coalesceAssistantGroups", () => {
     expect(groups[1]).toMatchObject({ text: "Hello world", streaming: true });
   });
 
+  it("keeps streaming answer group ids stable when earlier deltas are capped away", () => {
+    const beforeCap = coalesceAssistantGroups([
+      assistantEvent("a1", "message.delta", "Hello ", "2026-05-12T15:00:01.000Z"),
+      assistantEvent("a2", "message.delta", "world", "2026-05-12T15:00:02.000Z")
+    ]);
+    const afterCap = coalesceAssistantGroups([
+      assistantEvent("a2", "message.delta", "world", "2026-05-12T15:00:02.000Z"),
+      assistantEvent("a3", "message.delta", "!", "2026-05-12T15:00:03.000Z")
+    ]);
+
+    expect(beforeCap[0]?.id).toBe("assistant-answer-0");
+    expect(afterCap[0]?.id).toBe(beforeCap[0]?.id);
+  });
+
   it("folds streamed thinking_delta fragments into ONE growing group", () => {
     // With token streaming, reasoning arrives as many thinking_delta fragments.
     // They must accumulate into a single Thought group, not N tiny ones.

@@ -206,6 +206,7 @@ describe("App sidebar", () => {
         modelLabel: "GPT-5.3 Codex",
         modelId: "gpt-5.3-codex",
         reasoningEffort: "medium",
+        fastMode: false,
         agentMode: "auto",
         attachments: null
       })
@@ -319,6 +320,7 @@ describe("App sidebar", () => {
         modelLabel: "GPT-5.5",
         modelId: "gpt-5.5",
         reasoningEffort: "medium",
+        fastMode: false,
         agentMode: "auto",
         attachments: null
       })

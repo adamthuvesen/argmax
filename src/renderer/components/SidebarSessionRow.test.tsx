@@ -277,6 +277,96 @@ describe("SidebarSessionRow", () => {
     expect(sidebarSessionRowEqual(prev, { ...prev, canDragToGrid: false })).toBe(false);
   });
 
+  it("shows a merged-PR marker when the workspace has a merged pull request", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, prState: "MERGED", prNumber: 42 }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    const row = screen.getByTitle(/merged pull request #42/);
+    expect(row).toBeInTheDocument();
+    expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
+    expect(row.querySelector('[data-pr="open"]')).toBeNull();
+  });
+
+  it("shows an open-PR marker when the workspace has an open pull request", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, prState: "OPEN", prNumber: 7 }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    const row = screen.getByTitle(/open pull request #7/);
+    expect(row).toBeInTheDocument();
+    expect(row.querySelector('[data-pr="open"]')).not.toBeNull();
+    expect(row.querySelector('[data-pr="merged"]')).toBeNull();
+  });
+
+  it("shows the normal check for a closed PR (no PR-specific marker)", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, prState: "CLOSED", prNumber: 9 }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    // The title omits any pull-request text, and no PR-colored marker renders.
+    const row = screen.getByRole("button", { name: /Build the dashboard/ });
+    expect(row.getAttribute("title")).not.toMatch(/pull request/);
+    expect(row.querySelector("[data-pr]")).toBeNull();
+  });
+
+  it("PR marker wins over a failed session state", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, state: "failed", prState: "MERGED", prNumber: 1 }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    const row = screen.getByTitle(/merged pull request #1/);
+    expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
+  });
+
   it("ships sidebar action CSS that reveals on hover and stays keyboard-reachable", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);

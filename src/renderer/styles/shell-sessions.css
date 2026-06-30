@@ -1,19 +1,19 @@
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 5px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
   width: 100%;
-  min-height: 28px;
-  padding: 0 10px 0 8px;
-  color: var(--muted-strong);
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--text);
   text-align: left;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 400;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
@@ -49,34 +49,28 @@
   white-space: nowrap;
 }
 
-/* Every session row gets a small leading marker. Idle/complete rows show a
-   hollow ring; active states fill it with their status color. */
-.status-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
+/* Every session row gets a leading circle marker: a quiet check ring by
+   default, swapped for a red cross (in SidebarSessionRow) when it failed. */
+.status-marker {
   flex: 0 0 auto;
-  border-radius: 999px;
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--line-strong);
-  transition: background var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+  color: var(--muted);
+  transition: color var(--duration-fast) var(--ease);
 }
 
-.session-link[data-status="running"] .status-dot {
-  background: var(--accent);
-  box-shadow: none;
-  animation: status-pulse 1.6s var(--ease) infinite;
+.session-link[data-status="failed"] .status-marker {
+  color: var(--rose);
 }
 
-.session-link[data-status="waiting"] .status-dot {
-  background: var(--amber);
-  box-shadow: none;
+/* A live pull request colors the marker regardless of session state: violet for
+   a merged PR, green for an open one. The `[data-status]` prefix lifts these to
+   a higher specificity than the failed rule above, so a PR icon wins over the
+   rose cross even on a failed session (order alone wouldn't beat specificity). */
+.session-link[data-status] .status-marker[data-pr="merged"] {
+  color: var(--pr-merged);
 }
 
-.session-link[data-status="failed"] .status-dot,
-.session-link[data-status="blocked"] .status-dot {
-  background: var(--rose);
-  box-shadow: none;
+.session-link[data-status] .status-marker[data-pr="open"] {
+  color: var(--pr-open);
 }
 
 .session-row {

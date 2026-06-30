@@ -1,4 +1,15 @@
-import { Archive, ExternalLink, Pencil, Pin, PinOff, Terminal } from "lucide-react";
+import {
+  Archive,
+  CircleCheck,
+  CircleX,
+  ExternalLink,
+  GitMerge,
+  GitPullRequest,
+  Pencil,
+  Pin,
+  PinOff,
+  Terminal
+} from "lucide-react";
 import {
   memo,
   useEffect,
@@ -45,6 +56,27 @@ type SidebarSessionRowProps = {
   defaultIde: IdeId | null;
   showTokens: boolean;
 };
+
+// Leading glyph for a session row. A live pull request takes precedence over
+// session state: a merged PR shows a violet merge glyph, an open PR a green
+// pull-request glyph. With no PR (or a closed one) it falls back to a red cross
+// when the session failed and a calm check ring otherwise.
+function StatusMarker({
+  state,
+  prState
+}: {
+  state: WorkspaceSummary["state"];
+  prState?: WorkspaceSummary["prState"];
+}): JSX.Element {
+  if (prState === "MERGED") {
+    return <GitMerge size={14} aria-hidden className="status-marker" data-pr="merged" />;
+  }
+  if (prState === "OPEN") {
+    return <GitPullRequest size={14} aria-hidden className="status-marker" data-pr="open" />;
+  }
+  const props = { size: 14, "aria-hidden": true, className: "status-marker" } as const;
+  return state === "failed" ? <CircleX {...props} /> : <CircleCheck {...props} />;
+}
 
 function SidebarSessionRowInner({
   workspace,
@@ -176,7 +208,15 @@ function SidebarSessionRowInner({
   };
 
   const displayLabel = workspace.taskLabel.trim() || workspace.branch || "Untitled session";
-  const title = `${displayLabel} — ${workspace.state}${isOpenInGrid ? " — in view" : ""}`;
+  // Surface the PR in the accessible row title so the marker icon has a name —
+  // matched on by the sidebar tests and read aloud by screen readers.
+  const prTitle =
+    workspace.prState === "MERGED" && workspace.prNumber != null
+      ? ` — merged pull request #${workspace.prNumber}`
+      : workspace.prState === "OPEN" && workspace.prNumber != null
+        ? ` — open pull request #${workspace.prNumber}`
+        : "";
+  const title = `${displayLabel} — ${workspace.state}${prTitle}${isOpenInGrid ? " — in view" : ""}`;
 
   const handleContextMenu = (event: ReactMouseEvent): void => {
     if (!onRename) return;
@@ -312,7 +352,7 @@ function SidebarSessionRowInner({
             onDragStart={handleWorkspaceDragStart}
             onDragEnd={handleWorkspaceDragEnd}
           >
-            <span className="status-dot" aria-hidden="true" />
+            <StatusMarker state={workspace.state} prState={workspace.prState} />
             <span>{displayLabel}</span>
           </button>
       {showTokens ? (() => {
@@ -498,7 +538,9 @@ export function sidebarSessionRowEqual(
     pw.taskLabel !== nw.taskLabel ||
     pw.path !== nw.path ||
     pw.lastActivityAt !== nw.lastActivityAt ||
-    pw.pinned !== nw.pinned
+    pw.pinned !== nw.pinned ||
+    pw.prState !== nw.prState ||
+    pw.prNumber !== nw.prNumber
   ) {
     return false;
   }

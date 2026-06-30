@@ -32,6 +32,10 @@
   --amber-soft: #f5edd9;
   --rose: #b85763;
   --rose-soft: #f5e3e4;
+  /* PR status markers in the sidebar. Merged = violet, open = the sage green
+     reused under a clearer name. */
+  --pr-merged: #8250df;
+  --pr-open: var(--sage);
   --stop: #c4726c;
   --stop-hover: #b5645f;
   --stop-fg: #ffffff;
@@ -174,6 +178,9 @@
   --amber-soft: rgba(217, 165, 102, 0.14);
   --rose: #e08591;
   --rose-soft: rgba(224, 133, 145, 0.14);
+  /* Lifted violet so the merged glyph glows on warm charcoal; open reuses sage. */
+  --pr-merged: #b392f0;
+  --pr-open: var(--sage);
   --stop: #c85850;
   --stop-hover: #b04a44;
   --stop-fg: #1a1a17;
@@ -270,6 +277,10 @@
   --amber-soft: rgba(240, 166, 60, 0.18);
   --rose: #fb7199;
   --rose-soft: rgba(251, 113, 153, 0.18);
+  /* The canvas is already violet, so a plain purple merge glyph would vanish.
+     Use a bright orchid that lifts off the nebula; open rides the gold sage. */
+  --pr-merged: #e0a5ff;
+  --pr-open: var(--sage);
   --stop: #e895a8;
   --stop-hover: #d57f94;
   --stop-fg: #3d1a28;

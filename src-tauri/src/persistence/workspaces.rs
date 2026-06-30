@@ -43,6 +43,11 @@ pub struct WorkspaceSummary {
     pub changed_files: i64,
     pub last_activity_at: String,
     pub pinned: bool,
+    /// State of the most-recent PR across this workspace's sessions. Populated
+    /// only on the dashboard snapshot path; `None` everywhere else.
+    pub pr_state: Option<String>,
+    /// PR number paired with `pr_state`.
+    pub pr_number: Option<i64>,
 }
 
 pub fn list_workspaces(
@@ -269,6 +274,10 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         changed_files: row.get("changed_files")?,
         last_activity_at: row.get("last_activity_at")?,
         pinned: row.get::<_, i64>("pinned")? == 1,
+        // PR fields are not workspace columns; the dashboard snapshot fills them
+        // in from gh_pr after the row maps.
+        pr_state: None,
+        pr_number: None,
     })
 }
 

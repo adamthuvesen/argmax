@@ -294,6 +294,10 @@ export interface WorkspaceSummary {
   changedFiles: number;
   lastActivityAt: string;
   pinned: boolean;
+  /** State of the most-recent PR across this workspace's sessions. Null/absent when none. */
+  prState?: GhPrState | null;
+  /** PR number paired with `prState`. */
+  prNumber?: number | null;
 }
 
 export interface SessionSummary {

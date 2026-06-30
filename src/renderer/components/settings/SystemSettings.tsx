@@ -34,7 +34,6 @@ export function SystemSettings({
     <>
       <section className="settings-section" id="settings-knowledge" aria-labelledby="settings-knowledge-h">
         <SectionHeader
-          index={0}
           id="settings-knowledge-h"
           eyebrow="Memory"
           title="Project knowledge"
@@ -45,7 +44,6 @@ export function SystemSettings({
 
       <section className="settings-section" id="settings-diagnostics" aria-labelledby="settings-diagnostics-h">
         <SectionHeader
-          index={1}
           id="settings-diagnostics-h"
           eyebrow="Telemetry"
           title="Diagnostics"
@@ -273,7 +271,6 @@ export function SystemSettings({
 
       <section className="settings-section" id="settings-about" aria-labelledby="settings-about-h">
         <SectionHeader
-          index={2}
           id="settings-about-h"
           eyebrow="Colophon"
           title="About"

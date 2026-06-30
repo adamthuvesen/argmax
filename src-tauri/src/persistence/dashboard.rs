@@ -8,6 +8,7 @@ use super::events::{
     list_dashboard_events, list_dashboard_raw_outputs, list_session_events_since,
     RawProviderOutput, SessionEventsSinceResult, TimelineEvent,
 };
+use super::gh::latest_pr_for_workspace;
 use super::projects::{list_projects, ProjectSummary};
 use super::sessions::{list_sessions_for_dashboard, SessionSummary};
 use super::workspaces::{list_workspaces, WorkspaceSummary};
@@ -77,7 +78,13 @@ pub fn list_workspace_status(
     let ids = workspace_ids.map(dedupe_workspace_ids);
     let ids_ref = ids.as_deref();
 
-    let workspaces = list_workspaces(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
+    let mut workspaces = list_workspaces(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
+    for workspace in &mut workspaces {
+        if let Some((pr_state, pr_number)) = latest_pr_for_workspace(&tx, &workspace.id)? {
+            workspace.pr_state = pr_state;
+            workspace.pr_number = Some(pr_number);
+        }
+    }
     let sessions = list_sessions_for_dashboard(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
     let checks = list_checks(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
     let checkpoints = list_checkpoints(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
@@ -363,6 +370,61 @@ mod tests {
             .sessions
             .iter()
             .any(|session| session.id == "s-old"));
+    }
+
+    #[test]
+    fn dashboard_workspace_carries_most_recent_pr_across_sessions() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_project(&connection);
+        seed_workspace(&connection, "w1", "complete", "2026-05-24T10:00:00.000Z");
+        seed_session(&connection, "s1", "w1", "2026-05-24T10:00:00.000Z");
+        seed_session(&connection, "s2", "w1", "2026-05-24T10:05:00.000Z");
+        // s1 has an older OPEN PR; s2 has a newer MERGED PR. The newer one wins.
+        seed_gh_pr(&connection, "s1", 11, "OPEN", "2026-05-24T10:01:00.000Z");
+        seed_gh_pr(&connection, "s2", 22, "MERGED", "2026-05-24T10:06:00.000Z");
+
+        let snapshot = list_dashboard(&connection).expect("dashboard");
+        let workspace = snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == "w1")
+            .expect("workspace present");
+
+        assert_eq!(workspace.pr_state.as_deref(), Some("MERGED"));
+        assert_eq!(workspace.pr_number, Some(22));
+    }
+
+    #[test]
+    fn dashboard_workspace_without_pr_has_none() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_dashboard(&connection);
+
+        let snapshot = list_dashboard(&connection).expect("dashboard");
+        let workspace = snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == "w1")
+            .expect("workspace present");
+
+        assert_eq!(workspace.pr_state, None);
+        assert_eq!(workspace.pr_number, None);
+    }
+
+    fn seed_gh_pr(
+        connection: &rusqlite::Connection,
+        session_id: &str,
+        pr_number: i64,
+        pr_state: &str,
+        updated_at: &str,
+    ) {
+        connection
+            .execute(
+                "INSERT INTO gh_pr (session_id, pr_number, head_sha, last_seen_check_state, updated_at, pr_state) VALUES (?, ?, 'sha', 'success', ?, ?)",
+                (session_id, pr_number, updated_at, pr_state),
+            )
+            .expect("insert gh_pr");
     }
 
     fn seed_dashboard(connection: &rusqlite::Connection) {

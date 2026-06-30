@@ -326,7 +326,8 @@
   position: relative;
   display: grid;
   gap: 0;
-  margin-bottom: 2px;
+  /* Room to breathe between groups — projects and date buckets share this. */
+  margin-bottom: 4px;
   padding-left: 0;
 }
 
@@ -335,19 +336,6 @@
    exactly. The header isn't draggable, so drop the grab cursor. */
 .project-group.session-date-group > .session-date-row {
   cursor: pointer;
-  /* Small step between the date header and its sessions. */
-  margin-bottom: 3px;
-}
-
-/* Give the date-grouped session list room to breathe between buckets. */
-.project-group.session-date-group {
-  margin-bottom: 7px;
-}
-
-/* Date bucket labels are already title-cased in data; undo the project-name
-   lowercase styling reused from `.project-name-text`. */
-.session-date-label .project-name-text {
-  text-transform: none;
 }
 
 .project-group.dragging {
@@ -378,7 +366,7 @@
   grid-template-columns: minmax(0, 1fr) var(--sidebar-action-size) var(--sidebar-action-size);
   align-items: center;
   gap: 2px;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   /* Keep the … / chevron off the row edge so the rightmost icon isn't tight
      against the hover highlight — matches the session row's action inset. The
      hover background paints the padding box, so the highlight still spans the
@@ -508,7 +496,7 @@
   min-width: 0;
   min-height: 30px;
   padding: 0 6px 0 12px;
-  color: var(--muted-strong);
+  color: var(--muted);
   text-align: left;
   border: 0;
   border-radius: var(--radius-sm);
@@ -536,10 +524,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-transform: lowercase;
+  text-transform: none;
   font-size: 13px;
   font-weight: 400;
-  letter-spacing: 0;
+  letter-spacing: 0.01em;
 }
 
 .project-visibility {

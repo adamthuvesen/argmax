@@ -53,7 +53,6 @@ export function GeneralSettings({
     <>
       <section className="settings-section" id="settings-local" aria-labelledby="settings-local-h">
         <SectionHeader
-          index={0}
           id="settings-local-h"
           eyebrow="Identity"
           title="Local profile"
@@ -84,7 +83,6 @@ export function GeneralSettings({
 
       <section className="settings-section" id="settings-appearance" aria-labelledby="settings-appearance-h">
         <SectionHeader
-          index={1}
           id="settings-appearance-h"
           eyebrow="Look & feel"
           title="Appearance"
@@ -190,7 +188,6 @@ export function GeneralSettings({
 
       <section className="settings-section" id="settings-defaults" aria-labelledby="settings-defaults-h">
         <SectionHeader
-          index={2}
           id="settings-defaults-h"
           eyebrow="Launch"
           title="Launch defaults"

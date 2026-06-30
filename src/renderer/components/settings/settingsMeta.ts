@@ -69,7 +69,3 @@ export const DEFAULT_SETTINGS_GROUP = SETTINGS_GROUPS[0];
 export function settingsGroupById(id: SettingsGroupId): SettingsGroupMeta {
   return SETTINGS_GROUPS.find((group) => group.id === id) ?? DEFAULT_SETTINGS_GROUP;
 }
-
-export function sectionNumber(index: number): string {
-  return String(index + 1).padStart(2, "0");
-}

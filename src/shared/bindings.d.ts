@@ -764,7 +764,16 @@ export type WorkspaceStatFileForProjectInput = { projectId: ProjectId; filePath:
 export type WorkspaceStatFileInput = { workspaceId: WorkspaceId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
-export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean }
+export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean; 
+/**
+ * State of the most-recent PR across this workspace's sessions. Populated
+ * only on the dashboard snapshot path; `None` everywhere else.
+ */
+prState: string | null; 
+/**
+ * PR number paired with `pr_state`.
+ */
+prNumber: number | null }
 export type WorkspaceWriteFileForProjectInput = { projectId: ProjectId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspaceWriteFileInput = { workspaceId: WorkspaceId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }

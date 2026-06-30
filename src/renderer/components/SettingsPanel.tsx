@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type {
   DetectedIde,
   DiagnosticsReport,
@@ -208,26 +208,14 @@ export function SettingsPanel({
     });
   }, []);
 
-  const heroMetaParts = useMemo(() => {
-    const parts: string[] = ["Preferences", "Local"];
-    if (diagnostics) {
-      parts.push(`v${diagnostics.appVersion}`);
-      parts.push(`${diagnostics.platform}/${diagnostics.arch}`);
-    }
-    return parts;
-  }, [diagnostics]);
-
   return (
     <div className="settings-surface" ref={surfaceRef}>
       <SettingsNav active={activeGroup} onChange={handleGroupChange} />
 
       <div className="settings-main">
         <header className="settings-hero">
-          <div className="settings-hero-meta-top">
-            <span className="settings-hero-dot" aria-hidden="true" />
-            <span className="eyebrow settings-hero-eyebrow">
-              {heroMetaParts.join(" · ")}
-            </span>
+          <div className="settings-hero-top">
+            <h1 className="settings-hero-title">Settings</h1>
             <button
               className="settings-hero-close"
               type="button"
@@ -240,16 +228,9 @@ export function SettingsPanel({
               <kbd className="settings-hero-close-kbd" aria-hidden="true">Esc</kbd>
             </button>
           </div>
-          <h1 className="settings-hero-title">
-            Settings<span className="settings-hero-period" aria-hidden="true">.</span>
-          </h1>
           <p className="settings-hero-lede">
-            A hand-built console for tuning Argmax. Everything here lives on this machine —
-            no cloud account, no telemetry, no sync.
+            Runs locally on this machine — no cloud account, no telemetry.
           </p>
-          <div className="settings-hero-rule" aria-hidden="true">
-            <span>└── single user · zero telemetry · ready</span>
-          </div>
         </header>
 
         <SettingsGroupIntro group={activeGroupMeta} />
@@ -327,14 +308,6 @@ export function SettingsPanel({
             />
           ) : null}
         </div>
-
-        <footer className="settings-footer" aria-hidden="true">
-          <span className="settings-footer-prompt">argmax@local</span>
-          <span className="settings-footer-sep">·</span>
-          <span>preferences saved instantly</span>
-          <span className="settings-footer-sep">·</span>
-          <span>zero telemetry</span>
-        </footer>
       </div>
 
       {mcpAuthOpen ? (

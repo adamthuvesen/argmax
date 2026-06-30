@@ -84,6 +84,37 @@ pub fn list_open_gh_pr_session_ids(connection: &Connection) -> ArgmaxResult<Vec<
     Ok(rows)
 }
 
+/// The most-recent PR for a single workspace: the `gh_pr` row with the latest
+/// `updated_at` across every session belonging to the workspace. Returns the
+/// `(pr_state, pr_number)` pair, or `None` when the workspace has no PR.
+pub fn latest_pr_for_workspace(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<Option<(Option<String>, i64)>> {
+    let mut statement = prepared(
+        connection,
+        r#"
+        SELECT gh_pr.pr_state AS pr_state, gh_pr.pr_number AS pr_number
+        FROM gh_pr
+        JOIN sessions ON sessions.id = gh_pr.session_id
+        WHERE sessions.workspace_id = ?
+        ORDER BY gh_pr.updated_at DESC, gh_pr.pr_number DESC
+        LIMIT 1
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    match statement.query_row([workspace_id], |row| {
+        Ok((
+            row.get::<_, Option<String>>("pr_state")?,
+            row.get::<_, i64>("pr_number")?,
+        ))
+    }) {
+        Ok(pair) => Ok(Some(pair)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(sqlite_error(error)),
+    }
+}
+
 pub fn mark_gh_pr_notified(
     connection: &Connection,
     session_id: &str,

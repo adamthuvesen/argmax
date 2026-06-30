@@ -9,9 +9,7 @@ import { useDismissOnOutsideOrEscape } from "../../hooks/useDismissOnOutsideOrEs
 import {
   SETTINGS_GROUPS,
   type SettingsGroupId,
-  type SettingsGroupMeta,
-  sectionNumber,
-  settingsGroupById
+  type SettingsGroupMeta
 } from "./settingsMeta.js";
 
 export const COLD_START_BUDGET_MS = 1500;
@@ -65,22 +63,9 @@ export function RendererPaintRow(): JSX.Element | null {
 export function SettingsGroupIntro({ group }: { group: SettingsGroupMeta }): JSX.Element {
   return (
     <section className="settings-group-intro" aria-labelledby="settings-group-heading">
-      <div>
-        <p className="settings-group-eyebrow">
-          <span className="settings-group-eyebrow-mark" aria-hidden="true" />
-          {group.eyebrow}
-        </p>
-        <h2 id="settings-group-heading">{group.title}</h2>
-        <p>{group.description}</p>
-      </div>
-      <ol className="settings-group-map" aria-label={`${group.label} settings in this group`}>
-        {group.sections.map((section, index) => (
-          <li key={section.id}>
-            <span>{sectionNumber(index)}</span>
-            <span>{section.label}</span>
-          </li>
-        ))}
-      </ol>
+      <p className="settings-group-eyebrow">{group.eyebrow}</p>
+      <h2 id="settings-group-heading">{group.title}</h2>
+      <p className="settings-group-desc">{group.description}</p>
     </section>
   );
 }
@@ -94,9 +79,9 @@ export function SettingsNav({
 }): JSX.Element {
   return (
     <aside className="settings-nav" aria-label="Settings groups">
-      <p className="settings-nav-eyebrow">Settings</p>
+      <p className="settings-nav-eyebrow rail-label">Settings</p>
       <ol className="settings-nav-list">
-        {SETTINGS_GROUPS.map((group, index) => {
+        {SETTINGS_GROUPS.map((group) => {
           const isActive = group.id === active;
           return (
             <li key={group.id} className="settings-nav-item" data-active={isActive ? "true" : "false"}>
@@ -106,8 +91,6 @@ export function SettingsNav({
                 aria-pressed={isActive}
                 onClick={() => onChange(group.id)}
               >
-                <span className="settings-nav-num">{sectionNumber(index)}</span>
-                <span className="settings-nav-rule" aria-hidden="true" />
                 <span className="settings-nav-copy">
                   <span className="settings-nav-label">{group.label}</span>
                   <span className="settings-nav-note">{group.railNote}</span>
@@ -117,22 +100,17 @@ export function SettingsNav({
           );
         })}
       </ol>
-      <p className="settings-nav-foot">
-        <span>{settingsGroupById(active).sections.length} sections · instant save</span>
-      </p>
     </aside>
   );
 }
 
 export function SectionHeader({
-  index,
   id,
   eyebrow,
   title,
   description,
   action
 }: {
-  index: number;
   id: string;
   eyebrow: string;
   title: string;
@@ -141,7 +119,6 @@ export function SectionHeader({
 }): JSX.Element {
   return (
     <header className="settings-section-header">
-      <span className="settings-section-marker" aria-hidden="true">{sectionNumber(index)}</span>
       <div className="settings-section-titles">
         <p className="settings-section-eyebrow">{eyebrow}</p>
         <h2 id={id}>{title}</h2>

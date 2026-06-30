@@ -57,7 +57,6 @@ export function AgentsSettings({
     <>
       <section className="settings-section" id="settings-agent-defaults" aria-labelledby="settings-agent-defaults-h">
         <SectionHeader
-          index={0}
           id="settings-agent-defaults-h"
           eyebrow="Session defaults"
           title="Model defaults"
@@ -127,7 +126,6 @@ export function AgentsSettings({
 
       <section className="settings-section" id="settings-permissions" aria-labelledby="settings-permissions-h">
         <SectionHeader
-          index={1}
           id="settings-permissions-h"
           eyebrow="Approvals"
           title="Permissions"
@@ -162,7 +160,6 @@ export function AgentsSettings({
 
       <section className="settings-section" id="settings-providers" aria-labelledby="settings-providers-h">
         <SectionHeader
-          index={2}
           id="settings-providers-h"
           eyebrow="Discovery"
           title="Providers"

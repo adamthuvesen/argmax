@@ -1,34 +1,4 @@
-/* ---- Footer ribbon ---- */
-
-.settings-footer {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 28px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  background: var(--panel-soft);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  justify-self: start;
-}
-
-.settings-footer-prompt {
-  color: var(--text);
-}
-
-.settings-footer-sep {
-  color: var(--line-strong);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .settings-hero-dot,
-  .settings-status-chip-dot {
-    animation: none;
-  }
   .settings-section { animation: none; }
 }
 

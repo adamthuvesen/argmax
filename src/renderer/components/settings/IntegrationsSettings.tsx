@@ -41,7 +41,6 @@ export function IntegrationsSettings({
     <>
       <section className="settings-section" id="settings-tools" aria-labelledby="settings-tools-h">
         <SectionHeader
-          index={0}
           id="settings-tools-h"
           eyebrow="Editor handoff"
           title="Default IDE"
@@ -77,7 +76,6 @@ export function IntegrationsSettings({
 
       <section className="settings-section" id="settings-mcp" aria-labelledby="settings-mcp-h">
         <SectionHeader
-          index={1}
           id="settings-mcp-h"
           eyebrow="Model Context Protocol"
           title="MCP servers"

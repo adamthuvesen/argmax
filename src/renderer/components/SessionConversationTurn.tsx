@@ -1,8 +1,10 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
+import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
+import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
@@ -16,7 +18,11 @@ import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
-import { sendAfterTerminate, type SessionConversationSendInput } from "./sessionConversationHelpers.js";
+import {
+  sendAfterTerminate,
+  type SessionConversationSendInput,
+  type UserMessageAttachment
+} from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
@@ -336,7 +342,7 @@ export function SessionConversationUserMessage({
   attachments
 }: {
   event: Extract<RenderItem, { kind: "user-message" }>["event"];
-  attachments: { filePath: string; mimeType: string }[];
+  attachments: UserMessageAttachment[];
 }): JSX.Element {
   let displayMessage = event.message;
   for (const a of attachments) {
@@ -344,15 +350,26 @@ export function SessionConversationUserMessage({
   }
   displayMessage = displayMessage.replace(/[ \t]+(?=\n|$)/g, "").trim();
   return (
-    <ChatBubble
-      key={event.id}
-      kind="user"
-      rawMarkdown={displayMessage}
-    >
+    <div className="user-message-group">
       {attachments.length > 0 ? (
-        <div className="user-message-attachments" aria-label="Attached images">
+        <div className="user-message-attachments" aria-label="Attachments">
           {attachments.map((a) => {
             const filename = a.filePath.split("/").pop() || a.filePath;
+            if (isSupportedImageMime(a.mimeType)) {
+              return (
+                <figure
+                  key={a.filePath}
+                  className="user-message-attachment-preview"
+                  title={a.filePath}
+                >
+                  <img
+                    className="user-message-attachment-image"
+                    src={attachmentProtocolUrl(a.filePath)}
+                    alt={`Attached image: ${filename}`}
+                  />
+                </figure>
+              );
+            }
             return (
               <span
                 key={a.filePath}
@@ -365,7 +382,15 @@ export function SessionConversationUserMessage({
           })}
         </div>
       ) : null}
-      {displayMessage ? <p>{displayMessage}</p> : null}
-    </ChatBubble>
+      {displayMessage ? (
+        <ChatBubble
+          key={event.id}
+          kind="user"
+          rawMarkdown={displayMessage}
+        >
+          <p>{displayMessage}</p>
+        </ChatBubble>
+      ) : null}
+    </div>
   );
 }

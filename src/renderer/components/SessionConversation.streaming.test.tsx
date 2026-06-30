@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
 import {
@@ -454,6 +455,36 @@ describe("SessionConversation — streaming & composer", () => {
 
     const bubbleText = screen.getByText("@AGENTS.md", { selector: "p" });
     expect(bubbleText.closest(".chat-bubble.user")).not.toBeNull();
+  });
+
+  it("renders image attachments as previews above user.message bubbles", () => {
+    const imagePath =
+      "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
+    const { container } = renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event(
+          "u1",
+          "user.message",
+          `Check this screenshot @${imagePath}`,
+          "2026-05-12T15:00:00.000Z",
+          {
+            attachments: [{ filePath: imagePath, mimeType: "image/png", sizeBytes: 1234 }]
+          }
+        )
+      ]
+    );
+
+    const image = screen.getByRole("img", { name: "Attached image: screenshot 1.png" });
+    const bubble = screen.getByText("Check this screenshot", { selector: "p" }).closest(".chat-bubble.user");
+    const attachmentStrip = image.closest(".user-message-attachments");
+    expect(image).toHaveAttribute("src", attachmentProtocolUrl(imagePath));
+    expect(bubble).not.toBeNull();
+    expect(attachmentStrip).not.toBeNull();
+    expect(bubble?.contains(image)).toBe(false);
+    expect(attachmentStrip?.nextElementSibling).toBe(bubble);
+    expect(screen.queryByText("screenshot 1.png")).toBeNull();
+    expect(container.querySelector(".chat-bubble.user")?.textContent).not.toContain(`@${imagePath}`);
   });
 
   it("synthesizes a user bubble from session.prompt before the user.message event arrives", () => {

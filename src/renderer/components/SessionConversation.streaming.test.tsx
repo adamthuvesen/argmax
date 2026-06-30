@@ -599,6 +599,46 @@ describe("SessionConversation — streaming & composer", () => {
     }
   });
 
+  it("does not flash Thinking in the silent gap between two completed tool calls", () => {
+    // Tool chaining (grep → read → grep) leaves a `command.completed` as the last
+    // significant event while the model picks the next call. That gap must NOT
+    // re-show the verbs — doing so blinked them on for ~1s then hid them the
+    // moment the next tool started, over and over. The completed tool row already
+    // conveys progress. (Only a completed *text* chunk re-shows after a pause.)
+    vi.useFakeTimers();
+    try {
+      // Events arrive newest-first (see sessionConversationModel) — the
+      // completed tool is the last significant event.
+      renderConversation(
+        baseSession({ provider: "claude", state: "running" }),
+        [
+          event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:02.000Z", {
+            tool_use_id: "tu_grep",
+            content: "match"
+          }),
+          event("c1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+            type: "tool_use",
+            id: "tu_grep",
+            name: "Bash",
+            input: { command: "grep foo" }
+          }),
+          event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+        ]
+      );
+
+      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+      // Well past THINKING_PAUSE_DELAY_MS — still no verbs in the inter-tool gap.
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {
     // When AskUserQuestion has fired and no user.message has landed since,
     // the agent is waiting on the user — even though the probe may still

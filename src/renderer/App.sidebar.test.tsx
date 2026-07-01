@@ -203,6 +203,7 @@ describe("App sidebar", () => {
       expect(sendProviderInput).toHaveBeenCalledWith({
         sessionId: "session-1",
         input: "continue with tests",
+        provider: "codex",
         modelLabel: "GPT-5.3 Codex",
         modelId: "gpt-5.3-codex",
         reasoningEffort: "medium",
@@ -317,6 +318,7 @@ describe("App sidebar", () => {
       expect(sendProviderInput).toHaveBeenCalledWith({
         sessionId: "session-1",
         input: "use the stronger model",
+        provider: "codex",
         modelLabel: "GPT-5.5",
         modelId: "gpt-5.5",
         reasoningEffort: "medium",

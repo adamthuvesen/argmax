@@ -685,7 +685,15 @@ export type ProvidersDiscoverInput = {
 refresh?: boolean }
 export type ProvidersLaunchInput = { workspaceId: WorkspaceId; provider: ProviderId; prompt: Prompt; modelLabel: NonEmptyString; modelId: NonEmptyString; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; permissionMode: PermissionMode | null; cols: TerminalCols; rows: TerminalRows; attachments: ComposerAttachmentInput[] | null }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
-export type ProvidersSendInput = { sessionId: SessionId; input: Prompt; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }
+export type ProvidersSendInput = { sessionId: SessionId; input: Prompt; 
+/**
+ * Provider override for the next turn. When it differs from the session's
+ * current provider, an idle follow-up relaunches under the new provider and
+ * rebuilds context from the visible transcript — the native resume id is
+ * dropped because Claude/Codex/Cursor ids don't translate. Requires
+ * `model_label`/`model_id` for the new provider. Ignored while a turn runs.
+ */
+provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }

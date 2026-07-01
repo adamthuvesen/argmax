@@ -85,6 +85,15 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
   };
 }
 
+/** Same as {@link modelSelectionFromSession} but carries the provider, for the
+ *  cross-provider composer picker that can switch an idle session's agent. */
+export function modelPickerSelectionFromSession(session: SessionSummary | null): ModelPickerSelection {
+  return {
+    provider: session?.provider ?? "codex",
+    ...modelSelectionFromSession(session)
+  };
+}
+
 export function thinkingModelSlug(model: ProviderModelSelection): string {
   const id = model.modelId.toLowerCase().split(":")[0] ?? model.modelId;
   return id.replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";

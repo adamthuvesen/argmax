@@ -356,6 +356,13 @@ pub struct ProvidersLaunchInput {
 pub struct ProvidersSendInput {
     pub session_id: SessionId,
     pub input: Prompt,
+    /// Provider override for the next turn. When it differs from the session's
+    /// current provider, an idle follow-up relaunches under the new provider and
+    /// rebuilds context from the visible transcript — the native resume id is
+    /// dropped because Claude/Codex/Cursor ids don't translate. Requires
+    /// `model_label`/`model_id` for the new provider. Ignored while a turn runs.
+    #[serde(default)]
+    pub provider: Option<ProviderId>,
     pub model_label: Option<NonEmptyString>,
     pub model_id: Option<NonEmptyString>,
     pub reasoning_effort: Option<ReasoningEffort>,

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { AgentMode, ComposerAttachment } from "../../shared/types.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
 
 interface UseSessionCommandsOptions {
@@ -14,7 +14,7 @@ export interface SessionCommands {
   sendSessionInput: (
     sessionId: string,
     input: string,
-    model: ProviderModelSelection,
+    model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
@@ -34,7 +34,7 @@ export function useSessionCommands({
     async (
       sessionId: string,
       input: string,
-      model: ProviderModelSelection,
+      model: ModelPickerSelection,
       agentMode: AgentMode,
       attachments?: ComposerAttachment[]
     ): Promise<void> => {
@@ -45,6 +45,9 @@ export function useSessionCommands({
       const result = await window.argmax.providers.sendInput({
         sessionId,
         input,
+        // Carries the picked provider; the backend only acts on it when it
+        // differs from the session's current provider (and the session is idle).
+        provider: model.provider,
         modelLabel: model.label,
         modelId: model.modelId,
         reasoningEffort: model.reasoningEffort ?? null,

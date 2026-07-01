@@ -29,6 +29,14 @@ pub struct SessionModelInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SessionProviderInput {
+    pub provider: String,
+    pub model_label: String,
+    pub model_id: String,
+    pub reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionAgentModeInput {
     pub agent_mode: String,
 }
@@ -208,6 +216,41 @@ pub fn update_session_model(
     let timestamp = now_iso();
     statement
         .execute((
+            input.model_label.as_str(),
+            input.model_id.as_str(),
+            input.reasoning_effort.as_deref(),
+            input.model_id.as_str(),
+            timestamp.as_str(),
+            session_id,
+        ))
+        .map_err(sqlite_error)?;
+    find_session_by_id(connection, session_id)
+}
+
+/// Switch a session to a different provider. The new provider's model must be
+/// supplied (provider model lists don't overlap), and the old provider's native
+/// resume id is cleared: Claude/Codex/Cursor conversation ids are mutually
+/// unintelligible, so the next launch starts the new provider fresh and rebuilds
+/// context from the visible transcript (`compose_follow_up_prompt`).
+pub fn update_session_provider(
+    connection: &Connection,
+    session_id: &str,
+    input: &SessionProviderInput,
+) -> ArgmaxResult<SessionSummary> {
+    let mut statement = prepared(
+        connection,
+        r#"
+        UPDATE sessions
+        SET provider = ?, model_label = ?, model_id = ?, reasoning_effort = ?,
+            last_model_id = ?, provider_conversation_id = NULL, last_activity_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    let timestamp = now_iso();
+    statement
+        .execute((
+            input.provider.as_str(),
             input.model_label.as_str(),
             input.model_id.as_str(),
             input.reasoning_effort.as_deref(),

@@ -13,7 +13,6 @@ import {
   type SetStateAction,
   type UIEvent as ReactUIEvent
 } from "react";
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   AgentMode,
   ComposerAttachment,
@@ -36,9 +35,10 @@ import {
   toggleAgentMode
 } from "../lib/agentMode.js";
 import { leadingSlashCommand } from "../lib/slashHighlight.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 import { FilePopover } from "./FilePopover.js";
 import { Mascot } from "./Mascot.js";
-import { ModelSelector } from "./ModelSelector.js";
+import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
@@ -74,17 +74,17 @@ export function SessionComposer({
   onSendSessionInput: (
     sessionId: string,
     input: string,
-    model: ProviderModelSelection,
+    model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   pendingMessages: PendingMessage[];
   reviewPanelOpen: boolean;
-  selectedModel: ProviderModelSelection;
+  selectedModel: ModelPickerSelection;
   session: SessionSummary | null;
   setAgentMode: Dispatch<SetStateAction<AgentMode>>;
-  setSelectedModel: Dispatch<SetStateAction<ProviderModelSelection>>;
+  setSelectedModel: Dispatch<SetStateAction<ModelPickerSelection>>;
   setStatus: (message: string | null) => void;
   shouldRefocusInput: MutableRefObject<boolean>;
   status: string | null;
@@ -344,12 +344,24 @@ export function SessionComposer({
         </button>
         {session ? (
           <div className="composer-chips-group composer-chips-model">
-            <ModelSelector
-              provider={session.provider}
-              value={selectedModel}
-              onChange={setSelectedModel}
-              ariaLabel="Session model"
-            />
+            {session.state === "running" ? (
+              // Mid-turn: the next message queues, so provider can't change yet —
+              // keep the picker locked to the session's current provider.
+              <ModelSelector
+                provider={session.provider}
+                value={selectedModel}
+                onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
+                ariaLabel="Session model"
+              />
+            ) : (
+              // Idle: switching provider here relaunches the agent under the new
+              // provider on the next send, carrying context via the transcript.
+              <LaunchModelSelector
+                value={selectedModel}
+                onChange={setSelectedModel}
+                ariaLabel="Session model"
+              />
+            )}
           </div>
         ) : null}
         {session ? (

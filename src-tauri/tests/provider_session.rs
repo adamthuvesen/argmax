@@ -21,7 +21,7 @@ use argmax_lib::error::ArgmaxResult;
 use argmax_lib::ipc::inputs::{
     ProvidersLaunchInput, ProvidersSendInput, ProvidersTerminateInput, TerminalCols, TerminalRows,
 };
-use argmax_lib::ipc::validation::{NonEmptyString, Prompt, SessionId, WorkspaceId};
+use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::persistence::time::now_iso;
 use argmax_lib::persistence::{
     database::Database,
@@ -598,6 +598,7 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
     let send = ProvidersSendInput {
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("follow up".to_owned()).expect("prompt valid"),
+        provider: None,
         model_label: None,
         model_id: None,
         reasoning_effort: None,
@@ -674,6 +675,7 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
         .send_input(ProvidersSendInput {
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("follow up".to_owned()).expect("prompt valid"),
+            provider: None,
             model_label: None,
             model_id: None,
             reasoning_effort: None,
@@ -699,6 +701,91 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
         persisted.provider_conversation_id.as_deref(),
         Some("cursor-resume-1")
     );
+}
+
+// Switching provider on an idle session relaunches under the new provider,
+// drops the old provider's native resume id, and carries context as transcript.
+#[tokio::test]
+async fn provider_switch_relaunches_new_provider_fresh() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(FakeCliLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = {
+        let connection = database.connection();
+        let session = persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "switch-session".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Claude Haiku 4.5".to_owned(),
+                model_id: "claude-haiku-4-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "first".to_owned(),
+                state: "complete".to_owned(),
+                attention: "none".to_owned(),
+            },
+        )
+        .expect("persist claude session");
+        update_session_provider_conversation_id(&connection, &session.id, "claude-resume-1")
+            .expect("seed resume id");
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "switch-assistant-1".to_owned(),
+                session_id: session.id.clone(),
+                r#type: "message.completed".to_owned(),
+                message: "Claude already explained the plan.".to_owned(),
+                payload: json!({}),
+                created_at: None,
+            },
+        )
+        .expect("seed assistant event");
+        session
+    };
+
+    let result = service
+        .send_input(ProvidersSendInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("now in codex".to_owned()).expect("prompt valid"),
+            provider: Some(ProviderId::Codex),
+            model_label: Some(NonEmptyString::try_from("GPT-5.5".to_owned()).expect("label valid")),
+            model_id: Some(NonEmptyString::try_from("gpt-5.5".to_owned()).expect("id valid")),
+            reasoning_effort: None,
+            fast_mode: false,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(result.ok);
+    assert!(!result.queued);
+
+    wait_for_launch_count(&launcher, 1).await;
+    let launches = launcher.launches();
+    assert_eq!(launches[0].provider, ProviderId::Codex);
+    assert_eq!(launches[0].model_id, "gpt-5.5");
+    // The Claude resume id must not bleed into the Codex relaunch.
+    assert_eq!(launches[0].resume_conversation_id, None);
+    // Context still rides along as visible transcript text.
+    assert!(launches[0].prompt.contains("Assistant: Claude already explained the plan."));
+    assert!(launches[0].prompt.contains("New user message:\nnow in codex"));
+
+    // Scope the connection guard: `wait_for_event` below re-locks the single
+    // shared DB connection, so it must not be held across that await.
+    {
+        let connection = database.connection();
+        let persisted = find_session_by_id(&connection, &session.id).expect("find session");
+        assert_eq!(persisted.provider, "codex");
+        assert_eq!(persisted.model_id, "gpt-5.5");
+        assert_eq!(persisted.provider_conversation_id, None);
+    }
+
+    wait_for_event(&database, &session.id, "session.provider-changed", "Codex").await;
 }
 
 #[tokio::test]
@@ -761,6 +848,7 @@ async fn completed_session_follow_up_launch_includes_visible_transcript_context(
         .send_input(ProvidersSendInput {
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("hmm".to_owned()).expect("prompt valid"),
+            provider: None,
             model_label: None,
             model_id: None,
             reasoning_effort: None,
@@ -820,6 +908,7 @@ async fn send_input_routes_to_handle_when_accepting() {
     let send = ProvidersSendInput {
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("- follow-up\nwith context".to_owned()).expect("prompt valid"),
+        provider: None,
         model_label: None,
         model_id: None,
         reasoning_effort: None,
@@ -860,6 +949,7 @@ async fn send_input_queues_when_handle_rejecting() {
     let send = ProvidersSendInput {
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("queued one".to_owned()).expect("prompt valid"),
+        provider: None,
         model_label: None,
         model_id: None,
         reasoning_effort: None,
@@ -897,6 +987,7 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
         .send_input(ProvidersSendInput {
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
             input: Prompt::try_from("queued after done".to_owned()).expect("prompt valid"),
+            provider: None,
             model_label: Some(
                 NonEmptyString::try_from("Claude Sonnet 4.6".to_owned())
                     .expect("model label valid"),
@@ -1006,6 +1097,7 @@ async fn send_input_during_spawn_queues_instead_of_relaunching() {
     let send = ProvidersSendInput {
         session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
         input: Prompt::try_from("during spawn".to_owned()).expect("prompt valid"),
+        provider: None,
         model_label: None,
         model_id: None,
         reasoning_effort: None,

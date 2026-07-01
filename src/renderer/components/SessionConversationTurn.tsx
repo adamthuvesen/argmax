@@ -1,9 +1,9 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
@@ -51,7 +51,7 @@ function SessionConversationTurnInner({
   isLatestTurn: boolean;
   showModelHeader: boolean;
   session: SessionSummary | null;
-  selectedModel: ProviderModelSelection;
+  selectedModel: ModelPickerSelection;
   workspace: WorkspaceSummary | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onTerminateSession: (sessionId: string) => Promise<void>;

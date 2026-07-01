@@ -11,7 +11,7 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 import type {
   AgentMode,
   ApprovalRequest,
@@ -97,7 +97,7 @@ export function SessionPane({
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
-  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode) => Promise<void>;
+  onSendSessionInput: (sessionId: string, input: string, model: ModelPickerSelection, agentMode: AgentMode) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;

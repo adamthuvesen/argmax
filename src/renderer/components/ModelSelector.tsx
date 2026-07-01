@@ -17,15 +17,6 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   cursor: "Cursor"
 };
 
-const FAST_MODE_PROVIDER_LABELS: Partial<Record<ProviderId, string>> = {
-  claude: "Claude",
-  cursor: "Cursor"
-};
-
-function supportsFastMode(provider: ProviderId): boolean {
-  return provider in FAST_MODE_PROVIDER_LABELS;
-}
-
 /** Per-provider install/auth state used to gate the picker. */
 export interface ProviderAvailabilityEntry {
   installed: boolean;
@@ -105,7 +96,6 @@ export function ModelSelector({
       onChange={onChange}
       onFastModeEnabledChange={onFastModeEnabledChange}
       options={options}
-      selectedProvider={provider}
       value={value}
     />
   );
@@ -154,7 +144,6 @@ export function LaunchModelSelector({
       onOpenChange={onOpenChange}
       open={open}
       options={options}
-      selectedProvider={value.provider}
       value={value}
     />
   );
@@ -169,7 +158,6 @@ function ChipModelPicker<T extends PickerValue>({
   onOpenChange,
   open: controlledOpen,
   options,
-  selectedProvider,
   value
 }: {
   ariaLabel: string;
@@ -180,7 +168,6 @@ function ChipModelPicker<T extends PickerValue>({
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
   options: Array<ChipModelOption<T>>;
-  selectedProvider: ProviderId;
   value: T;
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -211,8 +198,6 @@ function ChipModelPicker<T extends PickerValue>({
     selectedShowsEffort && value.reasoningEffort
       ? `${value.label} · ${effortLabel(value.reasoningEffort)}`
       : value.label;
-  const selectedSupportsFastMode = supportsFastMode(selectedProvider);
-  const selectedFastModeEnabled = selectedSupportsFastMode && fastModeEnabled;
 
   // Effort currently in effect for a given row: the live selection for the
   // selected model, otherwise the row's seeded default.
@@ -239,7 +224,6 @@ function ChipModelPicker<T extends PickerValue>({
   };
 
   const selectSpeed = (enabled: boolean): void => {
-    if (enabled && !selectedSupportsFastMode) return;
     onFastModeEnabledChange?.(enabled);
     setOpen(false);
   };
@@ -258,10 +242,10 @@ function ChipModelPicker<T extends PickerValue>({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={selectedFastModeEnabled ? `${selectedLabel} · Fast speed` : selectedLabel}
+        title={fastModeEnabled ? `${selectedLabel} · Fast speed` : selectedLabel}
         onClick={() => setOpen((o) => !o)}
       >
-        {selectedFastModeEnabled ? (
+        {fastModeEnabled ? (
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : (
           <Cpu size={14} aria-hidden="true" />
@@ -348,7 +332,7 @@ function ChipModelPicker<T extends PickerValue>({
               >
                 <span className="model-picker-name">Speed</span>
                 <span className="model-picker-effort">
-                  {selectedFastModeEnabled ? "Fast" : "Standard"}
+                  {fastModeEnabled ? "Fast" : "Standard"}
                 </span>
                 <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
               </button>
@@ -381,27 +365,22 @@ function ChipModelPicker<T extends PickerValue>({
               <li className="project-picker-group-label" role="presentation">
                 Speed
               </li>
-              <li role="option" aria-selected={!selectedFastModeEnabled}>
+              <li role="option" aria-selected={!fastModeEnabled}>
                 <button
                   type="button"
                   className="project-picker-item model-effort-item"
-                  aria-pressed={!selectedFastModeEnabled}
+                  aria-pressed={!fastModeEnabled}
                   onClick={() => selectSpeed(false)}
                 >
                   <span>Standard</span>
                 </button>
               </li>
-              <li role="option" aria-selected={selectedFastModeEnabled} aria-disabled={!selectedSupportsFastMode}>
+              <li role="option" aria-selected={fastModeEnabled}>
                 <button
                   type="button"
                   className="project-picker-item model-effort-item"
-                  aria-pressed={selectedFastModeEnabled}
-                  disabled={!selectedSupportsFastMode}
-                  title={
-                    selectedSupportsFastMode
-                      ? "Faster responses, increased usage"
-                      : `Fast mode is unavailable for ${PROVIDER_GROUP_LABEL[selectedProvider]}`
-                  }
+                  aria-pressed={fastModeEnabled}
+                  title="Faster responses, increased usage"
                   onClick={() => selectSpeed(true)}
                 >
                   <span>Fast</span>

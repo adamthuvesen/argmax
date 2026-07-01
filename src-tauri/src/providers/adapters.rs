@@ -116,6 +116,7 @@ fn codex_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     args.extend(codex_permission_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
     args.extend(codex_reasoning_args(input, true));
+    args.extend(codex_fast_mode_args(input));
     args.push("-".to_string());
     args
 }
@@ -132,6 +133,7 @@ fn codex_structured_resume_args(
     args.extend(codex_permission_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
     args.extend(codex_reasoning_args(input, true));
+    args.extend(codex_fast_mode_args(input));
     args.extend([resume_conversation_id.to_string(), "-".to_string()]);
     args
 }
@@ -255,6 +257,17 @@ fn claude_fast_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
         "--settings".to_string(),
         format!(r#"{{"fastMode":{}}}"#, input.fast_mode),
     ]
+}
+
+// Codex "fast mode" is the priority service tier (1.5× speed), set as a TOML
+// config override like the reasoning effort above — the value needs quotes to
+// parse as a TOML string. Omitted when off so the account default applies.
+fn codex_fast_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
+    if input.fast_mode {
+        vec!["-c".to_string(), r#"service_tier="priority""#.to_string()]
+    } else {
+        Vec::new()
+    }
 }
 
 fn cursor_model_id(input: &ProviderLaunchInput) -> String {
@@ -461,6 +474,28 @@ mod tests {
         };
         let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
         assert!(args.iter().any(|arg| arg == "--ignore-user-config"));
+    }
+
+    #[test]
+    fn codex_fast_mode_is_carried_by_service_tier_override() {
+        let input = ProviderLaunchInput {
+            fast_mode: true,
+            ..launch_input(ProviderId::Codex)
+        };
+        let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+        assert!(args
+            .windows(2)
+            .any(|window| window == ["-c", r#"service_tier="priority""#]));
+
+        let resume_args =
+            (get_provider_definition(ProviderId::Codex).structured_resume_args)(&input, "thread-1");
+        assert!(resume_args
+            .windows(2)
+            .any(|window| window == ["-c", r#"service_tier="priority""#]));
+
+        let off = launch_input(ProviderId::Codex);
+        let off_args = (get_provider_definition(ProviderId::Codex).structured_args)(&off);
+        assert!(!off_args.iter().any(|arg| arg.starts_with("service_tier")));
     }
 
     #[test]

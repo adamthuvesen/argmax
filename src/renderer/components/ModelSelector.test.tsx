@@ -211,7 +211,7 @@ describe("LaunchModelSelector — all providers", () => {
     );
   });
 
-  it("keeps fast unavailable for Codex selections", () => {
+  it("offers fast mode for Codex selections", () => {
     const value: ModelPickerSelection = {
       provider: "codex",
       label: "GPT-5.5",
@@ -224,19 +224,18 @@ describe("LaunchModelSelector — all providers", () => {
         ariaLabel="Launch model"
         value={value}
         onChange={vi.fn()}
-        fastModeEnabled={true}
+        fastModeEnabled={false}
         onFastModeEnabledChange={onFastModeEnabledChange}
       />
     );
 
-    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute(
-      "title",
-      "GPT-5.5 · Medium"
-    );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
     const speedMenu = screen.getByRole("listbox", { name: "Speed" });
-    expect(within(speedMenu).getByRole("button", { name: "Fast" })).toBeDisabled();
+    const fastButton = within(speedMenu).getByRole("button", { name: "Fast" });
+    expect(fastButton).toBeEnabled();
+    fireEvent.click(fastButton);
+    expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
   });
 });
 

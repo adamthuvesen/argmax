@@ -82,6 +82,19 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result.map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
   });
 
+  it("keeps pre-tool narration deltas when the final answer completes later", () => {
+    const events: TimelineEvent[] = [
+      event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
+      event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
+      event("e3", "command.started", "2026-05-12T15:00:02.000Z"),
+      event("e4", "message.delta", "2026-05-12T15:00:03.000Z"),
+      event("e5", "message.completed", "2026-05-12T15:00:04.000Z")
+    ];
+
+    const result = pruneSupersededDeltas(events);
+    expect(result.map((e) => e.id)).toEqual(["e1", "e2", "e3", "e5"]);
+  });
+
   // -------------------------------------------------------------------------
   // audit-2026-05-11 / SPEC P4.06 — mergeDashboardDelta reference stability
   // -------------------------------------------------------------------------

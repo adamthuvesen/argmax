@@ -57,6 +57,28 @@ describe("turnToolItems", () => {
     expect(visible?.kind).toBe("tool-group");
   });
 
+  it("does not merge existing bash groups across assistant-message boundaries", () => {
+    const first = tool({ id: "t1", name: "Bash", inputPreview: "sed -n '1,80p' src/a.ts" });
+    const second = tool({ id: "t2", name: "Bash", inputPreview: "sed -n '1,80p' src/b.ts" });
+    const later = tool({
+      id: "t3",
+      name: "Bash",
+      inputPreview: "sed -n '1,80p' src/c.ts",
+      createdAt: "2026-05-21T10:01:00.000Z"
+    });
+    const existingGroup = buildToolCallGroup([first, second]);
+
+    const folded = foldTurnToolItems([
+      { kind: "tool-group", group: existingGroup },
+      { kind: "tool", tool: later }
+    ]);
+
+    expect(folded).toHaveLength(2);
+    expect(folded[0]).toEqual({ kind: "tool-group", group: existingGroup });
+    expect(folded[1]?.kind).toBe("tool-group");
+    expect(folded[1]?.kind === "tool-group" ? folded[1].group.tools.map((t) => t.id) : []).toEqual(["t3"]);
+  });
+
   it("finds named tools inside individual tools and groups", () => {
     const ask = tool({ id: "ask", name: "AskUserQuestion" });
     const plan = tool({ id: "plan", name: "ExitPlanMode" });

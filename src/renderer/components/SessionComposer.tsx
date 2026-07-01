@@ -47,9 +47,11 @@ export function SessionComposer({
   agentMode,
   canSend,
   events,
+  fastModeEnabled = false,
   inputRef,
   isQueueing,
   isThinking,
+  onFastModeEnabledChange,
   onCancelQueuedMessage,
   onSendSessionInput,
   onTerminateSession,
@@ -67,9 +69,11 @@ export function SessionComposer({
   agentMode: AgentMode;
   canSend: boolean;
   events: TimelineEvent[];
+  fastModeEnabled?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   isQueueing: boolean;
   isThinking: boolean;
+  onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
@@ -351,6 +355,8 @@ export function SessionComposer({
                 provider={session.provider}
                 value={selectedModel}
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
+                fastModeEnabled={fastModeEnabled}
+                onFastModeEnabledChange={onFastModeEnabledChange}
                 ariaLabel="Session model"
               />
             ) : (
@@ -359,6 +365,8 @@ export function SessionComposer({
               <LaunchModelSelector
                 value={selectedModel}
                 onChange={setSelectedModel}
+                fastModeEnabled={fastModeEnabled}
+                onFastModeEnabledChange={onFastModeEnabledChange}
                 ariaLabel="Session model"
               />
             )}

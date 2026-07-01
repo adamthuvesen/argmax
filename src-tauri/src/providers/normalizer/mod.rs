@@ -425,6 +425,17 @@ fn normalize_json_payload(
                 provider_conversation_id,
             };
         }
+        if matches!(
+            provider_type.as_deref(),
+            Some("item.started" | "item.completed")
+        ) && item_type.as_deref() != Some("agent_message")
+        {
+            return NormalizedProviderResult {
+                events,
+                usages,
+                provider_conversation_id,
+            };
+        }
     }
 
     if provider == ProviderId::Cursor {

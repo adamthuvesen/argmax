@@ -6,6 +6,7 @@ import type {
   DashboardDelta,
   DashboardSnapshot,
   SessionSummary,
+  TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
 import { emptySnapshot } from "../lib/snapshot.js";
@@ -624,6 +625,68 @@ describe("useDashboardSession — refresh / delta race", () => {
       rawOutputCursor: null
     });
     expect(result.current.snapshot.events).toHaveLength(2);
+  });
+
+  it("keeps backfilled command rows when the global dashboard tail is already full", async () => {
+    const busyTail: TimelineEvent[] = Array.from({ length: 500 }, (_, i) => ({
+      id: `busy-${i}`,
+      sessionId: "busy-session",
+      type: "message.completed",
+      message: `busy ${i}`,
+      payload: {},
+      createdAt: new Date(Date.parse("2026-05-12T16:00:00.000Z") + i).toISOString(),
+      rowCursor: 1_000 + i
+    }));
+    baseSnapshot = { ...baseSnapshot, events: busyTail };
+
+    const commandRows: TimelineEvent[] = [
+      {
+        id: "codex-edit-start",
+        sessionId: "session-existing",
+        type: "command.started",
+        message: "file_change",
+        payload: {
+          id: "item_4",
+          name: "file_change",
+          input: { changes: [{ kind: "update", path: "/repo/src/ModelSelector.tsx" }] }
+        },
+        createdAt: "2026-05-12T15:00:02.000Z",
+        rowCursor: 10
+      },
+      {
+        id: "codex-edit-end",
+        sessionId: "session-existing",
+        type: "command.completed",
+        message: "file_change",
+        payload: {
+          id: "item_4",
+          name: "file_change",
+          input: { changes: [{ kind: "update", path: "/repo/src/ModelSelector.tsx" }] }
+        },
+        createdAt: "2026-05-12T15:00:03.000Z",
+        rowCursor: 11
+      }
+    ];
+    const eventsSince = window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>;
+    eventsSince.mockResolvedValueOnce({
+      events: commandRows,
+      rawOutputs: [],
+      eventCursor: 11,
+      rawOutputCursor: 0
+    });
+
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    expect(result.current.snapshot.events).toHaveLength(500);
+
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+
+    const ids = new Set(result.current.snapshot.events.map((event) => event.id));
+    expect(ids.has("codex-edit-start")).toBe(true);
+    expect(ids.has("codex-edit-end")).toBe(true);
   });
 
   it("does not reset the cursor for a session that legitimately has no events", async () => {

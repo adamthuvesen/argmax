@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
-const SIDEBAR_MIN = 180;
+const SIDEBAR_MIN = 220;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
+const WORKSPACE_MIN = 320;
+
+function sidebarMaxForViewport(): number {
+  if (typeof window === "undefined") return SIDEBAR_MAX;
+  return Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth - WORKSPACE_MIN));
+}
+
+function clampSidebarWidth(width: number): number {
+  return Math.max(SIDEBAR_MIN, Math.min(sidebarMaxForViewport(), width));
+}
 
 export interface SidebarResizeState {
   /** Current sidebar width in CSS pixels, persisted to localStorage. */
@@ -27,7 +37,7 @@ export function useSidebarResize(): SidebarResizeState {
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(SIDEBAR_WIDTH_KEY) : null;
     const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
+    return clampSidebarWidth(Number.isFinite(n) ? n : SIDEBAR_DEFAULT);
   });
   const [isResizing, setIsResizing] = useState(false);
 
@@ -48,6 +58,13 @@ export function useSidebarResize(): SidebarResizeState {
     window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   }, [sidebarWidth]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onResize = (): void => setSidebarWidth((current) => clampSidebarWidth(current));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const onResizeMouseDown = useCallback(
     (event: ReactMouseEvent): void => {
       event.preventDefault();
@@ -58,8 +75,7 @@ export function useSidebarResize(): SidebarResizeState {
       document.body.style.userSelect = "none";
 
       const onMouseMove = (e: MouseEvent): void => {
-        const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + (e.clientX - startX)));
-        setSidebarWidth(next);
+        setSidebarWidth(clampSidebarWidth(startWidth + (e.clientX - startX)));
       };
       const cleanup = (): void => {
         setIsResizing(false);

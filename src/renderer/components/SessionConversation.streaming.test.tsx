@@ -327,36 +327,28 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getAllByText("Hello world")).toHaveLength(1);
   });
 
-  it("keeps tool calls above a streamed answer whose first token predates them", () => {
-    // Cursor streams the assistant message cumulatively from the turn start, so
-    // the answer's first delta (15:00:02) predates the tool call (15:00:03).
-    // Ordering by the group's last activity keeps the tool above the answer.
+  it("keeps Cursor narration, tools, and later streamed answer in chronological order", () => {
     const { container } = renderConversation(
       baseSession({ provider: "cursor", state: "running" }),
       [
-        event("a2", "message.delta", "world", "2026-05-12T15:00:05.000Z", cursorAssistantPayload("Hello world")),
+        event("a2", "message.delta", "Here is the answer", "2026-05-12T15:00:05.000Z", cursorAssistantPayload("Here is the answer")),
         event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
           id: "c1",
           name: "Read",
           input: { file_path: "architecture.md" }
         }),
-        event("a1", "message.delta", "Hello ", "2026-05-12T15:00:02.000Z", cursorAssistantPayload("Hello ")),
+        event("a1", "message.delta", "Reading the file first.", "2026-05-12T15:00:02.000Z", cursorAssistantPayload("Reading the file first.")),
         event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
       ]
     );
 
-    // The running tool auto-expands the turn, so the row renders alongside the
-    // streamed answer. Tool must come BEFORE the answer in the DOM.
     const text = container.querySelector(".conversation-list")?.textContent ?? "";
     expect(text).toContain("architecture.md");
-    expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Hello world"));
+    expect(text.indexOf("Reading the file first.")).toBeLessThan(text.indexOf("architecture.md"));
+    expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Here is the answer"));
   });
 
-  it("pins a streaming answer below a started tool instead of sliding it down mid-stream", () => {
-    // Mid-stream snapshot: the answer's only token so far (15:00:02) predates the
-    // tool (15:00:03) and the next token hasn't landed. Without the pin the bubble
-    // renders ABOVE the tool now and jumps below once more tokens arrive; the pin
-    // keeps it below the already-started tool from the first token (no slide).
+  it("keeps a still-streaming pre-tool narration above the started tool", () => {
     const { container } = renderConversation(
       baseSession({ provider: "cursor", state: "running" }),
       [
@@ -379,13 +371,12 @@ describe("SessionConversation — streaming & composer", () => {
     const text = container.querySelector(".conversation-list")?.textContent ?? "";
     expect(text).toContain("architecture.md");
     expect(text).toContain("Reading the file");
-    expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Reading the file"));
+    expect(text.indexOf("Reading the file")).toBeLessThan(text.indexOf("architecture.md"));
   });
 
   it("keeps a completed pre-tool narration above the tool it precedes", () => {
     // A narration chunk that COMPLETED before the tool started is anchored at its
-    // own time and must stay above the tool. The streaming-tail pin only applies
-    // to the still-streaming answer, so a finished segment is never dragged down.
+    // own time and must stay above the tool.
     const { container } = renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -405,7 +396,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(text.indexOf("Let me read the file")).toBeLessThan(text.indexOf("architecture.md"));
   });
 
-  it("folds Codex command_execution singletons into the turn command group", () => {
+  it("keeps Codex command groups separated by assistant prose", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
       [
@@ -441,10 +432,11 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    // The current turn's body is expanded by default (it stays open through
-    // completion), so the command group is visible without toggling the chip.
-    expect(screen.getByRole("button", { name: /Ran 3 commands/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Ran 2 commands/ })).not.toBeInTheDocument();
+    // Assistant prose is a real boundary: the first command belongs above the
+    // prose, while the later adjacent commands fold together below it.
+    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).not.toBeInTheDocument();
   });
 
   it("renders a user.message bubble for an @-mention-only prompt while the session is still running", () => {

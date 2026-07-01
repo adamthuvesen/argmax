@@ -51,6 +51,20 @@ describe("buildConversationEvents", () => {
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "delta-1", "delta-2"]);
   });
+
+  it("keeps pre-tool narration when a later completed answer lands", () => {
+    const events = [
+      event("done", "message.completed", "2026-05-12T15:00:05.000Z", "Final answer"),
+      event("tool", "command.started", "2026-05-12T15:00:03.000Z", "", {
+        id: "tool-1",
+        name: "Read"
+      }),
+      event("intro", "message.delta", "2026-05-12T15:00:02.000Z", "Reading the file first."),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "intro", "done"]);
+  });
 });
 
 describe("hasRenderableSessionContent", () => {

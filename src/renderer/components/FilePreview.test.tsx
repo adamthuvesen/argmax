@@ -45,6 +45,15 @@ describe("FilePreview", () => {
     expect(screen.getByLabelText("Editor for src/index.ts")).toBeInTheDocument();
   });
 
+  it("marks only the no-selection prompt as preview-width responsive", () => {
+    const { rerender } = render(<FilePreview state={makeState({ selectedPath: null, activeTabPath: null })} />);
+    expect(screen.getByText("Select a file to preview.")).toHaveClass("review-empty-preview");
+
+    rerender(<FilePreview state={makeState()} />);
+    expect(screen.getByLabelText("Editor for src/index.ts")).toBeInTheDocument();
+    expect(screen.queryByText("Select a file to preview.")).not.toBeInTheDocument();
+  });
+
   it("shows the dirty marker only when isDirty is true", () => {
     const { rerender } = render(<FilePreview state={makeState({ isDirty: false })} />);
     expect(screen.queryByLabelText("Unsaved changes")).not.toBeInTheDocument();

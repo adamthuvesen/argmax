@@ -90,6 +90,15 @@ const LEFT_COL_WIDTH_KEY = "argmax.reviewPanel.leftColumnWidth";
 const LEFT_COL_MIN = 200;
 const LEFT_COL_MAX = 600;
 const LEFT_COL_DEFAULT = 280;
+const PREVIEW_COL_MIN = 160;
+const REVIEW_RESIZE_HANDLE_WIDTH = 5;
+
+function maxLeftColumnWidth(panelWidth: number): number {
+  return Math.max(
+    LEFT_COL_MIN,
+    Math.min(LEFT_COL_MAX, panelWidth - PREVIEW_COL_MIN - REVIEW_RESIZE_HANDLE_WIDTH)
+  );
+}
 
 function readStoredDiffView(): DiffView {
   if (typeof window === "undefined") return "unified";
@@ -133,6 +142,21 @@ export function ReviewPanel({
 
   useEffect(() => {
     if (review.mode !== "files") return undefined;
+    const panel = panelRef.current;
+    if (!panel) return undefined;
+    const clampToPanel = (): void => {
+      const maxW = maxLeftColumnWidth(panel.clientWidth);
+      setLeftColumnWidth((current) => (current > maxW ? maxW : current));
+    };
+    clampToPanel();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(clampToPanel);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [review.mode]);
+
+  useEffect(() => {
+    if (review.mode !== "files") return undefined;
     const activePath = review.workspaceFiles.activeTabPath;
     if (!activePath) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -164,8 +188,7 @@ export function ReviewPanel({
     e.preventDefault();
     const startX = e.clientX;
     const startW = leftColumnWidth;
-    // Cap so the diff column always retains at least half the panel width.
-    const maxW = Math.max(LEFT_COL_MIN, (panelRef.current?.clientWidth ?? 800) * 0.5);
+    const maxW = maxLeftColumnWidth(panelRef.current?.clientWidth ?? 800);
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor = "col-resize";

@@ -35,9 +35,11 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   // Single right-to-left sweep: for each session, track "the next turn-boundary
   // event AFTER my position". A delta at index i is superseded iff that
   // boundary is a message.completed (a later user.message would mean the next
-  // turn started without ever completing this one — keep the delta). O(n) vs
-  // the previous nested-walk O(n²). (audit-2026-05-18 M10)
-  type Boundary = "completed" | "user";
+  // turn started without ever completing this one — keep the delta). A tool
+  // start between the delta and the completion also keeps the delta: Cursor can
+  // emit real narration before tools, then synthesize the final answer later.
+  // O(n) vs the previous nested-walk O(n²). (audit-2026-05-18 M10)
+  type Boundary = "completed" | "tool" | "user";
   const nextBoundary = new Map<string, Boundary>();
   const supersededIndices = new Set<number>();
   for (let i = ascending.length - 1; i >= 0; i--) {
@@ -58,6 +60,10 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
     }
     if (e.type === "message.completed") {
       nextBoundary.set(e.sessionId, "completed");
+    } else if (e.type === "command.started") {
+      if (nextBoundary.get(e.sessionId) === "completed") {
+        nextBoundary.set(e.sessionId, "tool");
+      }
     } else if (e.type === "user.message") {
       nextBoundary.set(e.sessionId, "user");
     }

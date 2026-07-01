@@ -111,6 +111,9 @@ pub fn normalize_tool_item(
     }
 
     let action = object_value(item.get("action"));
+    if !is_tool_like_item(item, action, item_type) {
+        return None;
+    }
     let tool_name = string_value(item.get("name")).unwrap_or(item_type);
     let mut tool_payload = item.clone();
     tool_payload.insert("type".to_string(), Value::String(tool_name.to_string()));
@@ -134,6 +137,42 @@ pub fn normalize_tool_item(
         tool_name,
         Value::Object(tool_payload),
     ))
+}
+
+fn is_tool_like_item(
+    item: &Map<String, Value>,
+    action: Option<&Map<String, Value>>,
+    item_type: &str,
+) -> bool {
+    if matches!(item_type, "reasoning" | "todo_list" | "error") {
+        return false;
+    }
+    if string_value(item.get("name")).is_some() || action.is_some() {
+        return true;
+    }
+    for key in [
+        "query",
+        "queries",
+        "url",
+        "path",
+        "file_path",
+        "command",
+        "cmd",
+        "pattern",
+    ] {
+        let value = item
+            .get(key)
+            .or_else(|| action.and_then(|action| action.get(key)));
+        if value
+            .filter(|value| !value.is_null() && value != &&Value::String(String::new()))
+            .is_some()
+        {
+            return true;
+        }
+    }
+    array_value(item.get("changes"))
+        .or_else(|| action.and_then(|action| array_value(action.get("changes"))))
+        .is_some()
 }
 
 pub fn extract_usage(
@@ -238,6 +277,54 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
+    }
+
+    #[test]
+    fn codex_file_change_item_captures_changed_paths() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": {
+                        "id": "item_4",
+                        "type": "file_change",
+                        "changes": [{ "kind": "update", "path": "/repo/src/ModelSelector.tsx" }]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(result.events[0].message, "file_change");
+        assert_eq!(
+            result.events[0].payload["input"]["changes"][0]["path"],
+            "/repo/src/ModelSelector.tsx"
+        );
+    }
+
+    #[test]
+    fn codex_non_tool_items_do_not_become_command_events() {
+        for item_type in ["reasoning", "todo_list", "error"] {
+            let mut context = NormalizerSessionContext::default();
+            let result = normalize_provider_event(
+                ProviderId::Codex,
+                &output_event(
+                    &json!({
+                        "type": "item.completed",
+                        "item": { "id": "item_1", "type": item_type, "text": "not a tool call" }
+                    })
+                    .to_string(),
+                ),
+                &mut context,
+            );
+            assert!(
+                result.events.is_empty(),
+                "{item_type} should not be normalized as a command"
+            );
+        }
     }
 
     #[test]

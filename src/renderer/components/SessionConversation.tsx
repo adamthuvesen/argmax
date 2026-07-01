@@ -71,8 +71,10 @@ export function SessionConversation({
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   events,
+  fastModeEnabled = false,
   isLogOpen,
   onClose,
+  onFastModeEnabledChange,
   onOpenCommitDialog,
   onSendSessionInput,
   onCancelQueuedMessage,
@@ -96,7 +98,9 @@ export function SessionConversation({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
+  fastModeEnabled?: boolean;
   isLogOpen: boolean;
+  onFastModeEnabledChange?: (enabled: boolean) => void;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   onOpenCommitDialog?: () => void;
@@ -429,9 +433,11 @@ export function SessionConversation({
         agentMode={agentMode}
         canSend={canSend}
         events={events}
+        fastModeEnabled={fastModeEnabled}
         inputRef={inputRef}
         isQueueing={isQueueing}
         isThinking={isThinking}
+        onFastModeEnabledChange={onFastModeEnabledChange}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendSessionInput={onSendSessionInput}
         onTerminateSession={onTerminateSession}

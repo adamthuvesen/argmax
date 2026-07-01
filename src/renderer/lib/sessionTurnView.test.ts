@@ -125,6 +125,18 @@ describe("coalesceAssistantGroups", () => {
     });
   });
 
+  it("splits assistant groups when a tool starts between streamed chunks", () => {
+    const groups = coalesceAssistantGroups(
+      [
+        assistantEvent("a1", "message.delta", "Exploring the repo.", "2026-05-12T15:00:01.000Z"),
+        assistantEvent("a2", "message.delta", "Here is the map.", "2026-05-12T15:00:05.000Z")
+      ],
+      { splitAt: ["2026-05-12T15:00:03.000Z"] }
+    );
+
+    expect(groups.map((group) => group.text)).toEqual(["Exploring the repo.", "Here is the map."]);
+  });
+
   it("flushes the open buffer whenever the kind flips", () => {
     // thinking → answer → thinking yields three groups in order, never merged.
     const groups = coalesceAssistantGroups([

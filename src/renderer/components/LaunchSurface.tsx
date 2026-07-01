@@ -75,9 +75,11 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 }
 
 export function LaunchSurface({
+  fastModeEnabled = false,
   model,
   onAddProject,
   onBranchSwitch,
+  onFastModeEnabledChange,
   onLaunchTask,
   onModelChange,
   onSelectProject,
@@ -87,9 +89,11 @@ export function LaunchSurface({
   registerPaletteFileContext,
   globeEnabled = false
 }: {
+  fastModeEnabled?: boolean;
   model: ModelPickerSelection;
   onAddProject: () => void;
   onBranchSwitch: (updated: ProjectSummary) => void;
+  onFastModeEnabledChange?: (enabled: boolean) => void;
   onLaunchTask: (
     prompt: string,
     model: ModelPickerSelection,
@@ -732,10 +736,12 @@ export function LaunchSurface({
             <LaunchModelSelector
               ariaLabel="Switch model"
               availability={providerAvailability}
+              fastModeEnabled={fastModeEnabled}
               open={modelPickerOpen}
               onOpenChange={setModelPickerOpen}
               value={model}
               onChange={onModelChange}
+              onFastModeEnabledChange={onFastModeEnabledChange}
             />
           </div>
           <button

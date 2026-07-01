@@ -445,7 +445,8 @@ impl ProviderSessionService {
                         created_at: None,
                     },
                 )?);
-            } else if let (Some(model_label), Some(model_id)) = (&input.model_label, &input.model_id)
+            } else if let (Some(model_label), Some(model_id)) =
+                (&input.model_label, &input.model_id)
             {
                 session = update_session_model(
                     &connection,

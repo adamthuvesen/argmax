@@ -772,8 +772,12 @@ async fn provider_switch_relaunches_new_provider_fresh() {
     // The Claude resume id must not bleed into the Codex relaunch.
     assert_eq!(launches[0].resume_conversation_id, None);
     // Context still rides along as visible transcript text.
-    assert!(launches[0].prompt.contains("Assistant: Claude already explained the plan."));
-    assert!(launches[0].prompt.contains("New user message:\nnow in codex"));
+    assert!(launches[0]
+        .prompt
+        .contains("Assistant: Claude already explained the plan."));
+    assert!(launches[0]
+        .prompt
+        .contains("New user message:\nnow in codex"));
 
     // Scope the connection guard: `wait_for_event` below re-locks the single
     // shared DB connection, so it must not be held across that await.

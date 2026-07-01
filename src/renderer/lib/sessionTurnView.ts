@@ -82,11 +82,16 @@ function appendThinking(current: string, incoming: string): string {
  * (thinking renders in the collapsible Thought block); the open buffer is
  * flushed whenever the kind flips so they never concatenate.
  */
-export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[]): AssistantGroup[] {
+export function coalesceAssistantGroups(
+  assistantEvents: readonly TimelineEvent[],
+  options: { splitAt?: readonly string[] } = {}
+): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
   type Buffer = { id: string; createdAt: string; lastCreatedAt: string; text: string };
   let answerBuffer: Buffer | null = null;
   let thinkingBuffer: Buffer | null = null;
+  let previousEventCreatedAt: string | null = null;
+  const splitAt = options.splitAt ?? [];
   let groupIndex = 0;
   const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-${groupIndex++}`;
   const flushAnswer = (): void => {
@@ -112,7 +117,15 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
     });
     thinkingBuffer = null;
   };
+  const splitBefore = (event: TimelineEvent): boolean => {
+    const previous = previousEventCreatedAt;
+    return previous !== null && splitAt.some((time) => time >= previous && time < event.createdAt);
+  };
   for (const event of assistantEvents) {
+    if (splitBefore(event)) {
+      flushThinking();
+      flushAnswer();
+    }
     if (isThinkingDelta(event)) {
       flushAnswer();
       if (!thinkingBuffer) {
@@ -125,6 +138,7 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
       }
       thinkingBuffer.lastCreatedAt = event.createdAt;
       thinkingBuffer.text = appendThinking(thinkingBuffer.text, event.message);
+      previousEventCreatedAt = event.createdAt;
       continue;
     }
     if (event.type === "message.delta") {
@@ -139,6 +153,7 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
       }
       answerBuffer.lastCreatedAt = event.createdAt;
       answerBuffer.text += deltaTextForBuffer(event, answerBuffer.text);
+      previousEventCreatedAt = event.createdAt;
       continue;
     }
     flushThinking();
@@ -150,6 +165,7 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
       last.text === event.message &&
       event.type === "message.completed"
     ) {
+      previousEventCreatedAt = event.createdAt;
       continue;
     }
     assistantGroups.push({
@@ -159,10 +175,25 @@ export function coalesceAssistantGroups(assistantEvents: readonly TimelineEvent[
       text: event.message,
       streaming: false
     });
+    previousEventCreatedAt = event.createdAt;
   }
   flushThinking();
   flushAnswer();
   return assistantGroups;
+}
+
+function toolStartTimes(toolItems: readonly TurnToolItem[]): string[] {
+  const times: string[] = [];
+  for (const item of toolItems) {
+    if (item.kind === "tool") {
+      times.push(item.tool.createdAt);
+      continue;
+    }
+    for (const tool of item.group.tools) {
+      times.push(tool.createdAt);
+    }
+  }
+  return times.sort();
 }
 
 /** Earliest card cutoff when plan/question cards are the turn's authoritative artifact. */
@@ -227,7 +258,9 @@ export function buildTurnRenderState(params: {
   priorItem: RenderItem | null;
   assistantTimestamps: readonly number[];
 }): TurnRenderState {
-  const assistantGroups = coalesceAssistantGroups(params.assistantEvents);
+  const assistantGroups = coalesceAssistantGroups(params.assistantEvents, {
+    splitAt: toolStartTimes(params.toolItems)
+  });
   const { tool: exitPlanTool, hiddenToolIds: exitPlanHiddenToolIds } = collectExitPlanState(
     params.toolItems
   );

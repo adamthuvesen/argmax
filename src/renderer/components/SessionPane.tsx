@@ -46,7 +46,7 @@ const TerminalTabsPanel = lazy(async () => ({
 }));
 
 const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
-const SESSION_RIGHT_PANEL_MIN = 260;
+const SESSION_RIGHT_PANEL_MIN = 360;
 const SESSION_RIGHT_PANEL_MAX = 1400;
 const SESSION_RIGHT_PANEL_DEFAULT = 420;
 
@@ -61,9 +61,11 @@ export function SessionPane({
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   events,
+  fastModeEnabled = false,
   isFocused = true,
   onClose,
   onCreateCheckpoint,
+  onFastModeEnabledChange,
   onLoadSessionEvents,
   onResolveApproval,
   onRunCheck,
@@ -88,11 +90,13 @@ export function SessionPane({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
+  fastModeEnabled?: boolean;
   /** When false, the pane skips its document-level keyboard shortcuts so only the focused pane reacts. */
   isFocused?: boolean;
   /** Close button is shown when provided. Used by the multi-pane grid; absent in single-pane mode. */
   onClose?: () => void;
   onCreateCheckpoint: (workspaceId: string) => Promise<void>;
+  onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
@@ -436,8 +440,10 @@ export function SessionPane({
           defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
           defaultThinkingExpanded={defaultThinkingExpanded}
           events={visibleEvents}
+          fastModeEnabled={fastModeEnabled}
           isLogOpen={isLogOpen}
           onClose={onClose}
+          onFastModeEnabledChange={onFastModeEnabledChange}
           onOpenCommitDialog={handleOpenCommitDialog}
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}

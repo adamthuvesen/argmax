@@ -11,16 +11,17 @@ import {
   getToolTypeBucket,
   type ToolCall
 } from "./toolCalls.js";
+import { advanceTurnBoundary, isSupersededAnswerDelta, type TurnBoundary } from "./turnBoundaries.js";
 
 function isConversationEventType(type: string): boolean {
   return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
 }
 
-export function isPayloadTruncationMarker(event: TimelineEvent): boolean {
+function isPayloadTruncationMarker(event: TimelineEvent): boolean {
   return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
 }
 
-export function isSubAgentProseEcho(event: TimelineEvent): boolean {
+function isSubAgentProseEcho(event: TimelineEvent): boolean {
   if (event.type !== "message.delta" && event.type !== "message.completed") return false;
   const parentToolUseId = event.payload.parent_tool_use_id;
   return typeof parentToolUseId === "string" && parentToolUseId.length > 0;
@@ -58,34 +59,24 @@ export function buildConversationEvents(events: readonly TimelineEvent[]): Timel
   const ascending = events
     .filter((event) => isConversationVisible(event) || isToolBoundaryEvent(event))
     .reverse();
-  type Boundary = "completed" | "tool" | "user";
-  const nextBoundary = new Map<string, Boundary>();
+  // Right-to-left sweep tracking each session's next turn boundary — the same
+  // rule the dashboard merge applies when pruning (see turnBoundaries.ts).
+  const nextBoundary = new Map<string, TurnBoundary>();
   const visibleIds = new Set<string>();
   for (let index = ascending.length - 1; index >= 0; index -= 1) {
     const event = ascending[index];
     if (!event) continue;
-    if (isToolBoundaryEvent(event)) {
-      if (nextBoundary.get(event.sessionId) === "completed") {
-        nextBoundary.set(event.sessionId, "tool");
+    if (event.type === "message.delta") {
+      if (!isSupersededAnswerDelta(event, nextBoundary.get(event.sessionId))) {
+        visibleIds.add(event.id);
       }
       continue;
     }
-    if (!isConversationVisible(event)) continue;
-    if (event.type === "user.message") {
-      nextBoundary.set(event.sessionId, "user");
-      visibleIds.add(event.id);
-      continue;
+    const boundary = advanceTurnBoundary(nextBoundary.get(event.sessionId), event);
+    if (boundary !== undefined) {
+      nextBoundary.set(event.sessionId, boundary);
     }
-    if (event.type === "message.completed") {
-      nextBoundary.set(event.sessionId, "completed");
-      visibleIds.add(event.id);
-      continue;
-    }
-    if (event.type !== "message.delta") {
-      visibleIds.add(event.id);
-      continue;
-    }
-    if (event.payload?.["thinking"] === true || nextBoundary.get(event.sessionId) !== "completed") {
+    if (!isToolBoundaryEvent(event)) {
       visibleIds.add(event.id);
     }
   }

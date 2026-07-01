@@ -1,4 +1,5 @@
 import type { DashboardDelta, DashboardSnapshot, PendingMessage, TimelineEvent } from "../../shared/types.js";
+import { advanceTurnBoundary, isSupersededAnswerDelta, type TurnBoundary } from "./turnBoundaries.js";
 
 export const emptySnapshot: DashboardSnapshot = {
   projects: [],
@@ -33,39 +34,24 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   const ascending = isDescending ? [...events].reverse() : events;
 
   // Single right-to-left sweep: for each session, track "the next turn-boundary
-  // event AFTER my position". A delta at index i is superseded iff that
-  // boundary is a message.completed (a later user.message would mean the next
-  // turn started without ever completing this one — keep the delta). A tool
-  // start between the delta and the completion also keeps the delta: Cursor can
-  // emit real narration before tools, then synthesize the final answer later.
+  // event AFTER my position" (rule shared with buildConversationEvents — see
+  // turnBoundaries.ts). nextBoundary reflects the closest boundary at j > i
+  // because boundaries at j > i were processed in earlier iterations.
   // O(n) vs the previous nested-walk O(n²). (audit-2026-05-18 M10)
-  type Boundary = "completed" | "tool" | "user";
-  const nextBoundary = new Map<string, Boundary>();
+  const nextBoundary = new Map<string, TurnBoundary>();
   const supersededIndices = new Set<number>();
   for (let i = ascending.length - 1; i >= 0; i--) {
     const e = ascending[i];
     if (!e) continue;
     if (e.type === "message.delta") {
-      // nextBoundary reflects the closest boundary at j > i because boundaries
-      // at j > i were processed in earlier iterations of this loop.
-      // Thinking blocks (Claude extended thinking surfaced as message.delta
-      // with payload.thinking === true) are kept even when a later
-      // message.completed exists — they are the only record of Claude's
-      // reasoning step and should remain visible after the final answer.
-      const isThinkingDelta = e.payload?.["thinking"] === true;
-      if (!isThinkingDelta && nextBoundary.get(e.sessionId) === "completed") {
+      if (isSupersededAnswerDelta(e, nextBoundary.get(e.sessionId))) {
         supersededIndices.add(i);
       }
       continue;
     }
-    if (e.type === "message.completed") {
-      nextBoundary.set(e.sessionId, "completed");
-    } else if (e.type === "command.started") {
-      if (nextBoundary.get(e.sessionId) === "completed") {
-        nextBoundary.set(e.sessionId, "tool");
-      }
-    } else if (e.type === "user.message") {
-      nextBoundary.set(e.sessionId, "user");
+    const boundary = advanceTurnBoundary(nextBoundary.get(e.sessionId), e);
+    if (boundary !== undefined) {
+      nextBoundary.set(e.sessionId, boundary);
     }
   }
 

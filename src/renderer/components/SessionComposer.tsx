@@ -432,15 +432,13 @@ export function SessionComposer({
             ? "Queue follow-up — sent when the current turn finishes"
             : "Send follow-up";
           const happy = happyFlashUntilMs > Date.now();
-          const mood: "idle" | "thinking" | "happy" | "sad" | "working" = happy
+          const mood: "idle" | "thinking" | "happy" | "sad" = happy
             ? "happy"
             : sendDisabled
               ? "sad"
               : isThinking
                 ? "thinking"
-                : session?.state === "running"
-                  ? "working"
-                  : "idle";
+                : "idle";
           const bobbing = justSentAt > 0 && Date.now() - justSentAt < MASCOT_BOB_MS;
           return (
             <Mascot

@@ -13,6 +13,7 @@ import type {
   AgentMode,
   ApprovalRequest,
   CheckRun,
+  ComposerAttachment,
   PendingMessage,
   ProjectSummary,
   RawProviderOutput,
@@ -63,7 +64,13 @@ interface SessionMultiGridProps {
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
-  onSendSessionInput: (sessionId: string, input: string, model: ModelPickerSelection, agentMode: AgentMode) => Promise<void>;
+  onSendSessionInput: (
+    sessionId: string,
+    input: string,
+    model: ModelPickerSelection,
+    agentMode: AgentMode,
+    attachments?: ComposerAttachment[]
+  ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;

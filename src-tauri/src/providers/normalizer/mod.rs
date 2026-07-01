@@ -25,7 +25,8 @@ use self::{
     },
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
-        extract_usage as extract_codex_usage, normalize_tool_item as normalize_codex_tool_item,
+        extract_usage as extract_codex_usage, normalize_error_item as normalize_codex_error_item,
+        normalize_tool_item as normalize_codex_tool_item,
         update_turn_context_model as update_codex_turn_context_model,
     },
     cursor::{
@@ -421,6 +422,15 @@ fn normalize_json_payload(
         ) {
             return NormalizedProviderResult {
                 events: vec![tool_event],
+                usages,
+                provider_conversation_id,
+            };
+        }
+        if let Some(error_event) =
+            normalize_codex_error_item(event, provider_type.as_deref(), item, item_type.as_deref())
+        {
+            return NormalizedProviderResult {
+                events: vec![error_event],
                 usages,
                 provider_conversation_id,
             };

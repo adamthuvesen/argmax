@@ -139,6 +139,32 @@ pub fn normalize_tool_item(
     ))
 }
 
+/// A Codex `error` item carries the only human-readable message for a stream
+/// or turn failure — dropping it with the other non-tool items leaves the chat
+/// blank while the session dies. Surface it as an `error` timeline event (the
+/// chat surface renders `error` rows). Emitted on `item.completed` only so a
+/// paired `item.started` can't double-post the same failure.
+pub fn normalize_error_item(
+    event: &ProviderOutputEvent,
+    provider_type: Option<&str>,
+    item: Option<&Map<String, Value>>,
+    item_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if provider_type != Some("item.completed") || item_type != Some("error") {
+        return None;
+    }
+    let item = item?;
+    let message = string_value(item.get("message"))
+        .or_else(|| string_value(item.get("text")))
+        .unwrap_or("Codex reported an error.");
+    Some(timeline_event(
+        event,
+        "error",
+        message,
+        Value::Object(item.clone()),
+    ))
+}
+
 fn is_tool_like_item(
     item: &Map<String, Value>,
     action: Option<&Map<String, Value>>,
@@ -307,7 +333,7 @@ mod tests {
 
     #[test]
     fn codex_non_tool_items_do_not_become_command_events() {
-        for item_type in ["reasoning", "todo_list", "error"] {
+        for item_type in ["reasoning", "todo_list"] {
             let mut context = NormalizerSessionContext::default();
             let result = normalize_provider_event(
                 ProviderId::Codex,
@@ -325,6 +351,42 @@ mod tests {
                 "{item_type} should not be normalized as a command"
             );
         }
+    }
+
+    #[test]
+    fn codex_error_item_surfaces_as_error_event() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": { "id": "item_1", "type": "error", "message": "stream disconnected" }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "error");
+        assert_eq!(result.events[0].message, "stream disconnected");
+    }
+
+    #[test]
+    fn codex_error_item_started_is_not_double_posted() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": { "id": "item_1", "type": "error", "message": "stream disconnected" }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
     }
 
     #[test]

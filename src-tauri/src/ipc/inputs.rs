@@ -360,7 +360,9 @@ pub struct ProvidersSendInput {
     /// current provider, an idle follow-up relaunches under the new provider and
     /// rebuilds context from the visible transcript — the native resume id is
     /// dropped because Claude/Codex/Cursor ids don't translate. Requires
-    /// `model_label`/`model_id` for the new provider. Ignored while a turn runs.
+    /// `model_label`/`model_id` for the new provider. Ignored while a turn runs:
+    /// the message queues under the session's current provider and the switch's
+    /// model metadata is dropped with it.
     #[serde(default)]
     pub provider: Option<ProviderId>,
     pub model_label: Option<NonEmptyString>,

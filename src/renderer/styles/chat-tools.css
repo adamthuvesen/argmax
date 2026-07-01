@@ -226,30 +226,6 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Inside a group, the per-item status chip drops its colored pill —
-   the rail carries the group's state, and each row gets a tiny dot
-   + tabular-nums timing on the right margin. */
-.tool-call-group-body .tool-call-status-chip {
-  background: transparent !important;
-  border-color: transparent !important;
-  padding: 0;
-  gap: 6px;
-  color: var(--muted-strong);
-  font-size: 11px;
-}
-
-.tool-call-group-body .tool-call-item[data-status="done"] .tool-call-status-glyph {
-  color: var(--sage);
-}
-
-.tool-call-group-body .tool-call-item[data-status="running"] .tool-call-status-glyph {
-  color: var(--accent);
-}
-
-.tool-call-group-body .tool-call-item[data-status="error"] .tool-call-status-glyph {
-  color: var(--rose);
-}
-
 .tool-call-item--nested {
   border-radius: var(--radius-md);
   border-color: transparent;

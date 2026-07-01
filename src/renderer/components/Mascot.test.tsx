@@ -14,7 +14,7 @@ describe("Mascot", () => {
     expect(svg.getAttribute("aria-label")).toBe("Invader mascot");
   });
 
-  it.each(["idle", "thinking", "happy", "sad", "working"] as const)(
+  it.each(["idle", "thinking", "happy", "sad"] as const)(
     "renders mood=%s and sets matching data-mood + aria-label",
     (mood) => {
       render(<Mascot mood={mood} />);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent } from "react";
 
-export type MascotMood = "idle" | "thinking" | "happy" | "sad" | "working";
+export type MascotMood = "idle" | "thinking" | "happy" | "sad";
 
 interface MascotProps {
   mood?: MascotMood;
@@ -18,8 +18,7 @@ const MOOD_LABEL: Record<MascotMood, string> = {
   idle: "Invader mascot",
   thinking: "Invader mascot, thinking",
   happy: "Invader mascot, cheering",
-  sad: "Invader mascot, looking concerned",
-  working: "Invader mascot, working"
+  sad: "Invader mascot, looking concerned"
 };
 
 // 16 cols × 12 rows. X = body, E = eye, . = transparent.

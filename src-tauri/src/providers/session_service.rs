@@ -1159,6 +1159,37 @@ impl ProviderSessionService {
         agent_mode: AgentMode,
         input: &ProvidersSendInput,
     ) -> ArgmaxResult<()> {
+        // A drained follow-up always keeps the session's current provider (see
+        // pending_message_to_send_input), so when this send asked for a
+        // different provider its model metadata belongs to that switch and
+        // must not survive the queue either — persisting it would write e.g. a
+        // Codex model id onto a Claude session and relaunch with a foreign
+        // --model flag.
+        let switches_provider = match input.provider {
+            Some(requested) => {
+                let connection = self.database.connection();
+                find_session_by_id(&connection, session_id)?.provider != requested.as_str()
+            }
+            None => false,
+        };
+        let (model_label, model_id, reasoning_effort, fast_mode) = if switches_provider {
+            (None, None, None, false)
+        } else {
+            (
+                input
+                    .model_label
+                    .as_ref()
+                    .map(|value| value.as_str().to_string()),
+                input
+                    .model_id
+                    .as_ref()
+                    .map(|value| value.as_str().to_string()),
+                input
+                    .reasoning_effort
+                    .map(|value| value.as_str().to_string()),
+                input.fast_mode,
+            )
+        };
         let mut queues = self.queues.lock().expect("queues poisoned");
         let queue = queues.entry(session_id.to_string()).or_default();
         if queue.len() >= MAX_PENDING_QUEUE {
@@ -1172,18 +1203,10 @@ impl ProviderSessionService {
             session_id: session_id.to_string(),
             content: content.to_string(),
             agent_mode: agent_mode.as_str().to_string(),
-            model_label: input
-                .model_label
-                .as_ref()
-                .map(|value| value.as_str().to_string()),
-            model_id: input
-                .model_id
-                .as_ref()
-                .map(|value| value.as_str().to_string()),
-            reasoning_effort: input
-                .reasoning_effort
-                .map(|value| value.as_str().to_string()),
-            fast_mode: input.fast_mode,
+            model_label,
+            model_id,
+            reasoning_effort,
+            fast_mode,
             queued_at: now_iso(),
         });
         drop(queues);

@@ -1034,6 +1034,59 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
 }
 
 #[tokio::test]
+async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let launcher = Arc::new(ManualExitLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    // Provider switching only applies to idle sessions; a send that races the
+    // running state queues instead. The queued message must not carry the
+    // foreign provider's model metadata, or the drain would relaunch Claude
+    // with a Codex --model flag.
+    let result = service
+        .send_input(ProvidersSendInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            input: Prompt::try_from("switch please".to_owned()).expect("prompt valid"),
+            provider: Some(ProviderId::Codex),
+            model_label: Some(
+                NonEmptyString::try_from("GPT-5.5 Codex".to_owned()).expect("model label valid"),
+            ),
+            model_id: Some(
+                NonEmptyString::try_from("gpt-5.5-codex".to_owned()).expect("model id valid"),
+            ),
+            reasoning_effort: None,
+            fast_mode: true,
+            agent_mode: None,
+            attachments: None,
+        })
+        .await
+        .expect("send_input ok");
+    assert!(result.queued, "running session should queue the follow-up");
+
+    let launcher_for_thread = Arc::clone(&launcher);
+    let session_id_for_thread = session.id.clone();
+    std::thread::spawn(move || {
+        launcher_for_thread.emit_exit(&session_id_for_thread, 0);
+    })
+    .join()
+    .expect("emit exit");
+    wait_for_manual_launch_count(&launcher, 2).await;
+
+    let launches = launcher.launches();
+    assert_eq!(launches[1].provider, ProviderId::Claude);
+    assert_eq!(launches[1].model_label, "Sonnet 4.6");
+    assert_eq!(launches[1].model_id, "claude-sonnet-4-6");
+    assert!(!launches[1].fast_mode);
+}
+
+#[tokio::test]
 async fn terminate_disposes_handle_and_cancels_session() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace(&database);

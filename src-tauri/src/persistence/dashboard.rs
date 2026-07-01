@@ -8,7 +8,6 @@ use super::events::{
     list_dashboard_events, list_dashboard_raw_outputs, list_session_events_since,
     RawProviderOutput, SessionEventsSinceResult, TimelineEvent,
 };
-use super::gh::latest_pr_for_workspace;
 use super::projects::{list_projects, ProjectSummary};
 use super::sessions::{list_sessions_for_dashboard, SessionSummary};
 use super::workspaces::{list_workspaces, WorkspaceSummary};
@@ -78,13 +77,7 @@ pub fn list_workspace_status(
     let ids = workspace_ids.map(dedupe_workspace_ids);
     let ids_ref = ids.as_deref();
 
-    let mut workspaces = list_workspaces(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
-    for workspace in &mut workspaces {
-        if let Some((pr_state, pr_number)) = latest_pr_for_workspace(&tx, &workspace.id)? {
-            workspace.pr_state = pr_state;
-            workspace.pr_number = Some(pr_number);
-        }
-    }
+    let workspaces = list_workspaces(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
     let sessions = list_sessions_for_dashboard(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
     let checks = list_checks(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
     let checkpoints = list_checkpoints(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;

@@ -2,6 +2,7 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
+use super::gh::latest_pr_for_workspace;
 use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -43,8 +44,10 @@ pub struct WorkspaceSummary {
     pub changed_files: i64,
     pub last_activity_at: String,
     pub pinned: bool,
-    /// State of the most-recent PR across this workspace's sessions. Populated
-    /// only on the dashboard snapshot path; `None` everywhere else.
+    /// State of the most-recent PR across this workspace's sessions. Filled in
+    /// from `gh_pr` on every read path — the renderer merges workspace deltas
+    /// by whole-object replacement, so a summary published with `None` here
+    /// would erase the sidebar PR marker.
     pub pr_state: Option<String>,
     /// PR number paired with `pr_state`.
     pub pr_number: Option<i64>,
@@ -66,7 +69,13 @@ pub fn list_workspaces(
             let rows = statement
                 .query_map((json, limit as i64), workspace_row_to_summary)
                 .map_err(sqlite_error)?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+            let mut workspaces = rows
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sqlite_error)?;
+            for workspace in &mut workspaces {
+                attach_latest_pr(connection, workspace)?;
+            }
+            Ok(workspaces)
         }
         _ => {
             let mut statement = prepared(
@@ -77,7 +86,13 @@ pub fn list_workspaces(
             let rows = statement
                 .query_map([limit as i64], workspace_row_to_summary)
                 .map_err(sqlite_error)?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+            let mut workspaces = rows
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sqlite_error)?;
+            for workspace in &mut workspaces {
+                attach_latest_pr(connection, workspace)?;
+            }
+            Ok(workspaces)
         }
     }
 }
@@ -89,12 +104,26 @@ pub fn find_workspace_by_id(
     let mut statement =
         prepared(connection, "SELECT * FROM workspaces WHERE id = ?").map_err(sqlite_error)?;
     match statement.query_row([workspace_id], workspace_row_to_summary) {
-        Ok(workspace) => Ok(workspace),
+        Ok(mut workspace) => {
+            attach_latest_pr(connection, &mut workspace)?;
+            Ok(workspace)
+        }
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             Err(ArgmaxError::record_not_found("workspace", workspace_id))
         }
         Err(error) => Err(sqlite_error(error)),
     }
+}
+
+fn attach_latest_pr(
+    connection: &Connection,
+    workspace: &mut WorkspaceSummary,
+) -> ArgmaxResult<()> {
+    if let Some((pr_state, pr_number)) = latest_pr_for_workspace(connection, &workspace.id)? {
+        workspace.pr_state = pr_state;
+        workspace.pr_number = Some(pr_number);
+    }
+    Ok(())
 }
 
 pub fn persist_workspace(
@@ -274,8 +303,8 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         changed_files: row.get("changed_files")?,
         last_activity_at: row.get("last_activity_at")?,
         pinned: row.get::<_, i64>("pinned")? == 1,
-        // PR fields are not workspace columns; the dashboard snapshot fills them
-        // in from gh_pr after the row maps.
+        // PR fields are not workspace columns; attach_latest_pr fills them in
+        // from gh_pr after the row maps.
         pr_state: None,
         pr_number: None,
     })

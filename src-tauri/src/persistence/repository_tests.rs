@@ -433,6 +433,40 @@ fn gh_and_learning_repositories_round_trip() {
         .is_empty());
 }
 
+#[test]
+fn workspace_summaries_carry_latest_pr_on_every_read_path() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+    upsert_gh_pr(
+        &connection,
+        &GhPrRecord {
+            session_id: "s1".to_owned(),
+            pr_number: 12,
+            head_sha: "abc".to_owned(),
+            last_seen_check_state: "PENDING".to_owned(),
+            updated_at: "2026-05-24T10:00:00.000Z".to_owned(),
+            pr_state: Some("OPEN".to_owned()),
+            notified_at: None,
+        },
+    )
+    .expect("upsert gh pr");
+
+    // Regression: delta publishers (state flips, pin toggles, watcher status
+    // refreshes) build their WorkspaceSummary from these read paths, and the
+    // renderer merges workspace deltas by whole-object replacement — a summary
+    // with pr_state = None here erased the sidebar PR marker.
+    let after_state = update_workspace_state(&connection, "w1", "complete").expect("update state");
+    assert_eq!(after_state.pr_state.as_deref(), Some("OPEN"));
+    assert_eq!(after_state.pr_number, Some(12));
+
+    let found = find_workspace_by_id(&connection, "w1").expect("find workspace");
+    assert_eq!(found.pr_state.as_deref(), Some("OPEN"));
+    assert_eq!(found.pr_number, Some(12));
+}
+
 fn project_input() -> PersistProjectInput {
     PersistProjectInput {
         id: "p1".to_owned(),

@@ -168,6 +168,115 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByRole("button", { name: "Read package.json" })).toBeInTheDocument();
   });
 
+  it("renders Codex file_change edit rows between assistant updates", () => {
+    const modelSelectorPath =
+      "/Users/adamthuvesen/dev/menti/argmax/src/renderer/components/ModelSelector.tsx";
+    const cssPath =
+      "/Users/adamthuvesen/dev/menti/argmax/src/renderer/styles/chat-chrome.css";
+    renderConversation(
+      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "running" }),
+      [
+        event(
+          "m1",
+          "message.completed",
+          "Agreed, that’s a fair read.",
+          "2026-07-01T08:12:21.551Z"
+        ),
+        event(
+          "m2",
+          "message.completed",
+          "The screenshot makes it clear: the main picker row is fine.",
+          "2026-07-01T08:12:30.999Z"
+        ),
+        event("fc1-start", "command.started", "file_change", "2026-07-01T08:12:34.010Z", {
+          id: "item_4",
+          name: "file_change",
+          input: { changes: [{ kind: "update", path: modelSelectorPath }] }
+        }),
+        event("fc1-end", "command.completed", "file_change", "2026-07-01T08:12:34.010Z", {
+          id: "item_4",
+          name: "file_change",
+          input: { changes: [{ kind: "update", path: modelSelectorPath }] }
+        }),
+        event(
+          "m3",
+          "message.completed",
+          "The submenu rows are now plain.",
+          "2026-07-01T08:12:37.522Z"
+        ),
+        event("fc2-start", "command.started", "file_change", "2026-07-01T08:12:39.515Z", {
+          id: "item_6",
+          name: "file_change",
+          input: { changes: [{ kind: "update", path: cssPath }] }
+        }),
+        event("fc2-end", "command.completed", "file_change", "2026-07-01T08:12:39.516Z", {
+          id: "item_6",
+          name: "file_change",
+          input: { changes: [{ kind: "update", path: cssPath }] }
+        }),
+        event(
+          "m4",
+          "message.completed",
+          "Tests still expect the old descriptive copy.",
+          "2026-07-01T08:12:41.851Z"
+        )
+      ]
+    );
+
+    expect(screen.getByRole("button", { name: "Edited ModelSelector.tsx" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edited chat-chrome.css" })).toBeInTheDocument();
+  });
+
+  it("keeps command bursts separated by assistant prose as separate groups", () => {
+    const commandEvents = (
+      id: string,
+      command: string,
+      startedAt: string,
+      completedAt: string
+    ) => [
+      event(`${id}-start`, "command.started", "command_execution", startedAt, {
+        id,
+        name: "command_execution",
+        input: { command }
+      }),
+      event(`${id}-end`, "command.completed", "command_execution", completedAt, {
+        id,
+        name: "command_execution",
+        input: { command }
+      })
+    ];
+    renderConversation(
+      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "complete" }),
+      [
+        event("m1", "message.completed", "Pass 1A.", "2026-07-01T08:32:00.000Z"),
+        ...commandEvents(
+          "cmd-1",
+          "/bin/zsh -lc \"sed -n '1,80p' src/a.ts\"",
+          "2026-07-01T08:32:01.000Z",
+          "2026-07-01T08:32:01.500Z"
+        ),
+        ...commandEvents(
+          "cmd-2",
+          "/bin/zsh -lc \"sed -n '1,80p' src/b.ts\"",
+          "2026-07-01T08:32:02.000Z",
+          "2026-07-01T08:32:02.500Z"
+        ),
+        event("m2", "message.completed", "Pass 1B.", "2026-07-01T08:32:03.000Z"),
+        ...commandEvents(
+          "cmd-3",
+          "/bin/zsh -lc \"sed -n '1,80p' src/c.ts\"",
+          "2026-07-01T08:32:04.000Z",
+          "2026-07-01T08:32:04.500Z"
+        ),
+        event("m3", "message.completed", "Pass 2A.", "2026-07-01T08:32:05.000Z")
+      ]
+    );
+
+    expect(screen.getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).toBeNull();
+  });
+
   it("leaves external markdown links as anchors (does not call onOpenFile)", () => {
     const onOpenFile = vi.fn();
     renderConversation(

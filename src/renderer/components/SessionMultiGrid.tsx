@@ -8,7 +8,7 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 import type {
   AgentMode,
   ApprovalRequest,
@@ -45,6 +45,7 @@ interface SessionMultiGridProps {
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
+  fastModeEnabled?: boolean;
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
   rightPanelToggleSignal?: number;
@@ -59,9 +60,10 @@ interface SessionMultiGridProps {
   onFocusPane: (coord: GridCoord) => void;
   onClosePane: (coord: GridCoord) => void;
   onDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
+  onFastModeEnabledChange?: (enabled: boolean) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
-  onSendSessionInput: (sessionId: string, input: string, model: ProviderModelSelection, agentMode: AgentMode) => Promise<void>;
+  onSendSessionInput: (sessionId: string, input: string, model: ModelPickerSelection, agentMode: AgentMode) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
@@ -87,6 +89,7 @@ export function SessionMultiGrid({
   defaultToolCallsExpanded,
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
+  fastModeEnabled,
   showCostPanel = true,
   thinkingStyle,
   rightPanelToggleSignal,
@@ -97,6 +100,7 @@ export function SessionMultiGrid({
   onFocusPane,
   onClosePane,
   onDropWorkspace,
+  onFastModeEnabledChange,
   onLoadSessionEvents,
   onResolveApproval,
   onSendSessionInput,
@@ -246,10 +250,12 @@ export function SessionMultiGrid({
                         defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
                         defaultThinkingExpanded={defaultThinkingExpanded}
                         events={events}
+                        fastModeEnabled={fastModeEnabled}
                         showCostPanel={showCostPanel}
                         isFocused={focused}
                         onClose={() => onClosePane({ row: r, col: c })}
                         onCreateCheckpoint={onCreateCheckpoint}
+                        onFastModeEnabledChange={onFastModeEnabledChange}
                         onLoadSessionEvents={onLoadSessionEvents}
                         onResolveApproval={onResolveApproval}
                         onRunCheck={onRunCheck}

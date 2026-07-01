@@ -777,8 +777,10 @@ export function App(): JSX.Element {
     // grid renders launcher cells with explicit project arguments.
     (project: ProjectSummary | null): JSX.Element => (
       <LaunchSurface
+        fastModeEnabled={fastModeEnabled}
         onAddProject={() => void addProject()}
         onBranchSwitch={handleBranchSwitch}
+        onFastModeEnabledChange={setFastModeEnabled}
         onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments)}
         model={launchModel}
         onModelChange={setLaunchModel}
@@ -792,6 +794,7 @@ export function App(): JSX.Element {
     ),
     [
       addProject,
+      fastModeEnabled,
       handleBranchSwitch,
       launchModel,
       launchTask,
@@ -800,6 +803,7 @@ export function App(): JSX.Element {
       registerPaletteFileContext,
       rightPanelToggleSignal,
       selectedProject,
+      setFastModeEnabled,
       snapshot.projects
     ]
   );
@@ -1011,6 +1015,7 @@ export function App(): JSX.Element {
               defaultToolCallsExpanded={toolCallsExpanded}
               defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
               defaultThinkingExpanded={thinkingExpanded}
+              fastModeEnabled={fastModeEnabled}
               showCostPanel={chatCostVisible}
               thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
@@ -1021,6 +1026,7 @@ export function App(): JSX.Element {
               onFocusPane={focusPane}
               onClosePane={closePane}
               onDropWorkspace={handleDropWorkspace}
+              onFastModeEnabledChange={setFastModeEnabled}
               onLoadSessionEvents={loadSessionEvents}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}

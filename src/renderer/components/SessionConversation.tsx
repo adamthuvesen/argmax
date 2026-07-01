@@ -10,7 +10,6 @@ import {
   useState,
   type JSX
 } from "react";
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type {
   AgentMode,
   CheckRun,
@@ -24,7 +23,7 @@ import type {
 } from "../../shared/types.js";
 import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import { modelSelectionFromSession, thinkingModelSlug } from "../lib/models.js";
+import { modelPickerSelectionFromSession, thinkingModelSlug, type ModelPickerSelection } from "../lib/models.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
@@ -72,8 +71,10 @@ export function SessionConversation({
   defaultToolCallGroupsExpanded,
   defaultThinkingExpanded,
   events,
+  fastModeEnabled = false,
   isLogOpen,
   onClose,
+  onFastModeEnabledChange,
   onOpenCommitDialog,
   onSendSessionInput,
   onCancelQueuedMessage,
@@ -97,14 +98,16 @@ export function SessionConversation({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
   events: TimelineEvent[];
+  fastModeEnabled?: boolean;
   isLogOpen: boolean;
+  onFastModeEnabledChange?: (enabled: boolean) => void;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   onOpenCommitDialog?: () => void;
   onSendSessionInput: (
     sessionId: string,
     input: string,
-    model: ProviderModelSelection,
+    model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
@@ -130,7 +133,7 @@ export function SessionConversation({
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<ProviderModelSelection>(() => modelSelectionFromSession(session));
+  const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => modelPickerSelectionFromSession(session));
   const [agentMode, setAgentMode] = useState<AgentMode>(() =>
     session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto"
   );
@@ -280,7 +283,7 @@ export function SessionConversation({
   // SessionSummary references on every dashboard delta, which would otherwise
   // overwrite the user's per-session model pick on every streaming event.
   useEffect(() => {
-    setSelectedModel(modelSelectionFromSession(session));
+    setSelectedModel(modelPickerSelectionFromSession(session));
     setAgentMode(session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
   }, [sessionId]);
@@ -430,9 +433,11 @@ export function SessionConversation({
         agentMode={agentMode}
         canSend={canSend}
         events={events}
+        fastModeEnabled={fastModeEnabled}
         inputRef={inputRef}
         isQueueing={isQueueing}
         isThinking={isThinking}
+        onFastModeEnabledChange={onFastModeEnabledChange}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendSessionInput={onSendSessionInput}
         onTerminateSession={onTerminateSession}

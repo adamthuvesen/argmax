@@ -36,6 +36,10 @@ function isConversationVisible(event: TimelineEvent): boolean {
   );
 }
 
+function isToolBoundaryEvent(event: TimelineEvent): boolean {
+  return event.type === "command.started";
+}
+
 function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
   if (left.rowCursor !== undefined && right.rowCursor !== undefined && left.rowCursor !== right.rowCursor) {
     return left.rowCursor > right.rowCursor;
@@ -46,36 +50,46 @@ function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
 /**
  * Normalize provider timeline events into oldest-first conversation events.
  * Dashboard events arrive newest-first; duplicate streaming deltas are dropped
- * once the completed answer for the same turn has arrived, except for
- * extended-thinking deltas because no completed event carries that text.
+ * once the completed answer for the same turn has arrived. A tool start between
+ * a delta and that completion keeps the delta: providers like Cursor emit real
+ * pre-tool narration before the final answer.
  */
 export function buildConversationEvents(events: readonly TimelineEvent[]): TimelineEvent[] {
-  const ascending = events.filter(isConversationVisible).reverse();
-  let hasCompletedBeforeNextUser = false;
-  const visible: TimelineEvent[] = [];
+  const ascending = events
+    .filter((event) => isConversationVisible(event) || isToolBoundaryEvent(event))
+    .reverse();
+  type Boundary = "completed" | "tool" | "user";
+  const nextBoundary = new Map<string, Boundary>();
+  const visibleIds = new Set<string>();
   for (let index = ascending.length - 1; index >= 0; index -= 1) {
     const event = ascending[index];
     if (!event) continue;
+    if (isToolBoundaryEvent(event)) {
+      if (nextBoundary.get(event.sessionId) === "completed") {
+        nextBoundary.set(event.sessionId, "tool");
+      }
+      continue;
+    }
+    if (!isConversationVisible(event)) continue;
     if (event.type === "user.message") {
-      hasCompletedBeforeNextUser = false;
-      visible.push(event);
+      nextBoundary.set(event.sessionId, "user");
+      visibleIds.add(event.id);
       continue;
     }
     if (event.type === "message.completed") {
-      hasCompletedBeforeNextUser = true;
-      visible.push(event);
+      nextBoundary.set(event.sessionId, "completed");
+      visibleIds.add(event.id);
       continue;
     }
     if (event.type !== "message.delta") {
-      visible.push(event);
+      visibleIds.add(event.id);
       continue;
     }
-    if (event.payload?.["thinking"] === true || !hasCompletedBeforeNextUser) {
-      visible.push(event);
+    if (event.payload?.["thinking"] === true || nextBoundary.get(event.sessionId) !== "completed") {
+      visibleIds.add(event.id);
     }
   }
-  visible.reverse();
-  return visible;
+  return ascending.filter((event) => visibleIds.has(event.id));
 }
 
 export function hasRenderableSessionContent(

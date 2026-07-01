@@ -21,7 +21,7 @@ use specta::Type;
 use uuid::Uuid;
 
 use super::{
-    adapters::prompt_for_agent_mode,
+    adapters::{get_provider_definition, prompt_for_agent_mode},
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
     follow_up::compose_follow_up_prompt,
     normalizer::{NormalizerSessionContext, ProviderOutputEvent},
@@ -50,8 +50,9 @@ use crate::{
         projects::list_projects,
         sessions::{
             find_session_by_id, persist_session, update_session_agent_mode, update_session_model,
-            update_session_provider_conversation_id, update_session_state, PersistSessionInput,
-            SessionAgentModeInput, SessionModelInput, SessionStateInput, SessionSummary,
+            update_session_provider, update_session_provider_conversation_id, update_session_state,
+            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
+            SessionStateInput, SessionSummary,
         },
         time::now_iso,
         workspaces::{find_workspace_by_id, update_workspace_state},
@@ -400,7 +401,53 @@ impl ProviderSessionService {
                 .agent_mode
                 .or_else(|| session.agent_mode.as_deref().and_then(parse_agent_mode))
                 .unwrap_or(AgentMode::Auto);
-            if let (Some(model_label), Some(model_id)) = (&input.model_label, &input.model_id) {
+            // A provider override that differs from the session's current
+            // provider switches the agent for this turn: persist the new provider
+            // + model, drop the (provider-specific) native resume id, and relaunch
+            // fresh — context survives via the visible transcript in the prompt.
+            let current_provider = parse_provider(&session.provider)?;
+            let switched_provider = input
+                .provider
+                .filter(|requested| *requested != current_provider);
+            let mut switch_event = None;
+            if let Some(requested_provider) = switched_provider {
+                let (Some(model_label), Some(model_id)) =
+                    (input.model_label.as_ref(), input.model_id.as_ref())
+                else {
+                    return Err(ArgmaxError::service(
+                        "SWITCH_PROVIDER_REQUIRES_MODEL",
+                        "Switching provider requires a model for the new provider.",
+                    ));
+                };
+                session = update_session_provider(
+                    &connection,
+                    &session_id,
+                    &SessionProviderInput {
+                        provider: requested_provider.as_str().to_string(),
+                        model_label: model_label.as_str().to_string(),
+                        model_id: model_id.as_str().to_string(),
+                        reasoning_effort: input
+                            .reasoning_effort
+                            .map(|effort| effort.as_str().to_string()),
+                    },
+                )?;
+                switch_event = Some(persist_timeline_event(
+                    &connection,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.clone(),
+                        r#type: "session.provider-changed".to_string(),
+                        message: format!(
+                            "Switched provider to {}.",
+                            get_provider_definition(requested_provider).display_name
+                        ),
+                        payload: json!({ "provider": requested_provider.as_str() }),
+                        created_at: None,
+                    },
+                )?);
+            } else if let (Some(model_label), Some(model_id)) =
+                (&input.model_label, &input.model_id)
+            {
                 session = update_session_model(
                     &connection,
                     &session_id,
@@ -425,7 +472,12 @@ impl ProviderSessionService {
             let provider = parse_provider(&session.provider)?;
             let permission_mode = parse_permission_mode(&session.permission_mode)?;
             let mut resume_conversation_id = session.provider_conversation_id.clone();
-            if provider == ProviderId::Cursor && resume_conversation_id.is_none() {
+            // A just-switched session always starts the new provider fresh; never
+            // resurrect a stale Cursor resume id from an earlier Cursor segment.
+            if switch_event.is_none()
+                && provider == ProviderId::Cursor
+                && resume_conversation_id.is_none()
+            {
                 if let Some(provider_conversation_id) =
                     infer_cursor_provider_conversation_id(&connection, &session_id)?
                 {
@@ -460,7 +512,7 @@ impl ProviderSessionService {
                 projects: list_projects(&connection)?,
                 workspaces: vec![running_workspace],
                 sessions: vec![running_session.clone()],
-                events: vec![user_message],
+                events: switch_event.into_iter().chain([user_message]).collect(),
                 ..DashboardDelta::default()
             });
             let launch_input = ProviderLaunchInput {
@@ -1398,6 +1450,9 @@ fn pending_message_to_send_input(
     Ok(ProvidersSendInput {
         session_id,
         input,
+        // Queued follow-ups never switch provider — provider switching is gated to
+        // idle sessions, so a drained message keeps the session's current provider.
+        provider: None,
         model_label: pending_model_metadata(
             &queued_session_id,
             &message_id,

@@ -132,11 +132,12 @@ export function useDashboardSession(
       // eviction (empty snapshot + parked cursor) is recognised as recoverable.
       seeded: (latest?.seeded ?? false) || data.events.length > 0
     });
-    setSnapshot((current) => ({
-      ...current,
-      events: pruneSupersededDeltas(mergeByCreatedAt(current.events, data.events, 500, "desc")),
-      rawOutputs: mergeByCreatedAt(current.rawOutputs, data.rawOutputs, 100, "desc")
-    }));
+    setSnapshot((current) =>
+      mergeDashboardDelta(current, {
+        events: data.events,
+        rawOutputs: data.rawOutputs
+      })
+    );
   }, []);
 
   const loadDashboard = useCallback(async (): Promise<void> => {

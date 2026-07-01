@@ -1,7 +1,7 @@
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { AgentMode } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import type { RenderItem } from "../lib/foldConversation.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 
 export type UserMessageAttachment = {
   filePath: string;
@@ -55,6 +55,6 @@ export function parseUserMessageAttachments(
 export type SessionConversationSendInput = (
   sessionId: string,
   input: string,
-  model: ProviderModelSelection,
+  model: ModelPickerSelection,
   agentMode: AgentMode
 ) => Promise<void>;

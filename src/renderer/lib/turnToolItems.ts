@@ -17,9 +17,13 @@ export function foldTurnToolItems(toolItems: readonly TurnToolItem[]): TurnToolI
   };
 
   for (const item of toolItems) {
-    const tools = item.kind === "tool" ? [item.tool] : item.group.tools;
-    if (tools.every((tool) => isBashLikeTool(tool.name))) {
-      commandRun.push(...tools);
+    if (item.kind === "tool-group") {
+      flushCommandRun();
+      folded.push(item);
+      continue;
+    }
+    if (isBashLikeTool(item.tool.name)) {
+      commandRun.push(item.tool);
       continue;
     }
     flushCommandRun();

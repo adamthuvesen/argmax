@@ -129,6 +129,115 @@ describe("LaunchModelSelector — all providers", () => {
       reasoningEffort: "xhigh"
     });
   });
+
+  it("shows speed in the model picker and toggles fast mode", () => {
+    const value: ModelPickerSelection = {
+      provider: "cursor",
+      label: "GPT-5.5 (Cursor)",
+      modelId: "gpt-5.5-medium",
+      reasoningEffort: "medium"
+    };
+    const onFastModeEnabledChange = vi.fn();
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={value}
+        onChange={vi.fn()}
+        fastModeEnabled={false}
+        onFastModeEnabledChange={onFastModeEnabledChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    const speedMenu = screen.getByRole("listbox", { name: "Speed" });
+    expect(
+      within(speedMenu)
+        .getAllByRole("option")
+        .map((option) => option.textContent)
+    ).toEqual(["Standard", "Fast"]);
+    fireEvent.click(within(speedMenu).getByRole("button", { name: "Fast" }));
+
+    expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("keeps effort and speed submenus mutually exclusive", () => {
+    const value: ModelPickerSelection = {
+      provider: "cursor",
+      label: "Claude Opus 4.8 (Cursor)",
+      modelId: "claude-opus-4-8-medium",
+      reasoningEffort: "medium"
+    };
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={value}
+        onChange={vi.fn()}
+        fastModeEnabled
+        onFastModeEnabledChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    fireEvent.click(screen.getByRole("button", { name: /Speed Fast/ }));
+    expect(screen.getByRole("listbox", { name: "Speed" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8 (Cursor)" }));
+
+    expect(screen.getByRole("listbox", { name: "Reasoning effort" })).toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Speed" })).toBeNull();
+  });
+
+  it("marks fast mode in the closed chip for supported providers", () => {
+    const value: ModelPickerSelection = {
+      provider: "cursor",
+      label: "GPT-5.5 (Cursor)",
+      modelId: "gpt-5.5-medium",
+      reasoningEffort: "medium"
+    };
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={value}
+        onChange={vi.fn()}
+        fastModeEnabled={true}
+        onFastModeEnabledChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute(
+      "title",
+      "GPT-5.5 (Cursor) · Medium · Fast speed"
+    );
+  });
+
+  it("keeps fast unavailable for Codex selections", () => {
+    const value: ModelPickerSelection = {
+      provider: "codex",
+      label: "GPT-5.5",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium"
+    };
+    const onFastModeEnabledChange = vi.fn();
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={value}
+        onChange={vi.fn()}
+        fastModeEnabled={true}
+        onFastModeEnabledChange={onFastModeEnabledChange}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute(
+      "title",
+      "GPT-5.5 · Medium"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    const speedMenu = screen.getByRole("listbox", { name: "Speed" });
+    expect(within(speedMenu).getByRole("button", { name: "Fast" })).toBeDisabled();
+  });
 });
 
 describe("LaunchModelSelector — provider availability gating", () => {

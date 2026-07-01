@@ -93,7 +93,7 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
   }, [state.selectedPath]);
 
   if (!state.selectedPath) {
-    return <p className="review-empty">Select a file to preview.</p>;
+    return <p className="review-empty review-empty-preview">Select a file to preview.</p>;
   }
   if (state.previewState === "loading") {
     return <LinesSkeleton rows={18} label="Loading file" className="review-file-skeleton" />;

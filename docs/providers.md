@@ -30,6 +30,17 @@ prompt also includes a capped transcript of visible `user.message`,
 timeline row remains the raw user follow-up; only the provider launch prompt is
 contextualized.
 
+An idle follow-up can also switch provider. When `providers:send-input` carries
+a `provider` that differs from the session's current one, `send_input` repoints
+the session to the new provider + model, clears the (provider-specific)
+`provider_conversation_id`, and relaunches fresh — Claude/Codex/Cursor resume ids
+don't translate, so the new agent rebuilds context from the same visible
+transcript rather than a native resume. Switching is gated to idle sessions: the
+composer locks the picker to the session's provider while a turn is running (a
+follow-up sent mid-turn queues and keeps the current provider), and a switch
+requires `model_label`/`model_id` for the new provider. A `session.provider-changed`
+timeline marker records the handoff.
+
 Claude structured launches use `--output-format stream-json`, `--verbose`, and
 `--include-partial-messages` so answer and thinking deltas stream live. The
 normalizer unwraps `stream_event` rows and maps a successful `result` row's

@@ -770,7 +770,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: var(--text-base);
+  /* One token below the prose size: on sans-UI themes the monospace target
+     reads optically larger than the body font at the same px, so step it down
+     to sit level with the assistant prose and the sans verb beside it. */
+  font-size: var(--text-sm);
   color: var(--muted);
   opacity: 0.86;
 }

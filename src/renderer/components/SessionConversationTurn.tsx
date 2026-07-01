@@ -1,9 +1,9 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
-import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
+import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
@@ -51,7 +51,7 @@ function SessionConversationTurnInner({
   isLatestTurn: boolean;
   showModelHeader: boolean;
   session: SessionSummary | null;
-  selectedModel: ProviderModelSelection;
+  selectedModel: ModelPickerSelection;
   workspace: WorkspaceSummary | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onTerminateSession: (sessionId: string) => Promise<void>;
@@ -89,18 +89,6 @@ function SessionConversationTurnInner({
     (group) => !group.thinking && group.text.trim().length > 0
   );
   const thinkingLive = isLatestTurn && sessionIsLive && !isPausedOnUserInput && !turnHasAnswerText;
-  // While the trailing answer is still streaming, its `lastActivityAt` keeps
-  // advancing and would cross the tools' start times mid-stream, sliding the
-  // bubble from above the tools to below them — most visible on Cursor, which
-  // streams the whole answer cumulatively from the turn's start. Identify that
-  // live answer tail (the last still-streaming answer group on the active turn)
-  // so the body sort can pin it to its final slot below the tools.
-  const liveAnswerTail =
-    isLatestTurn && sessionIsLive && !isPausedOnUserInput
-      ? visibleAssistantGroups[visibleAssistantGroups.length - 1]
-      : undefined;
-  const liveAnswerTailId =
-    liveAnswerTail && !liveAnswerTail.thinking && liveAnswerTail.streaming ? liveAnswerTail.id : null;
   // Tool groups expand by default for the current turn (you're watching it
   // work, and it stays open through completion so nothing collapses out from
   // under the answer) and collapse to headers for older turns. The turn chip
@@ -289,25 +277,13 @@ function SessionConversationTurnInner({
         )
       };
     });
-  // The live answer tail is pinned to just after the latest tool that has
-  // already started, but only while it would otherwise sort *above* it (its
-  // last token so far still predates that tool). This lands the streaming
-  // answer in its final slot from the first token instead of letting it slide
-  // down as more tokens arrive. Providers whose answer already settles last
-  // never trip the pin, so the change is a no-op for them.
-  const latestToolStartAt = toolChildren.reduce(
-    (latest, child) => (child.createdAt > latest ? child.createdAt : latest),
-    ""
-  );
-  const isPinnedTail = (child: AnnotatedChild): boolean =>
-    child.id === liveAnswerTailId && latestToolStartAt > child.sortAt;
-  const sortKeyOf = (child: AnnotatedChild): string =>
-    isPinnedTail(child) ? latestToolStartAt : child.sortAt;
   const bodyChildren: TurnBodyChild[] = [...assistantChildren, ...toolChildren]
     .sort((a, b) => {
-      const cmp = sortKeyOf(a).localeCompare(sortKeyOf(b));
-      // On a tie with the latest tool, the pinned tail sorts *after* it.
-      return cmp !== 0 ? cmp : (isPinnedTail(a) ? 1 : 0) - (isPinnedTail(b) ? 1 : 0);
+      const cmp = a.sortAt.localeCompare(b.sortAt);
+      if (cmp !== 0) return cmp;
+      // Cursor can emit a narration delta and the tool start in the same
+      // millisecond. The delta is the thing the user should read first.
+      return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
     })
     .map(({ kind, id, node }) => ({ kind, id, node }));
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]

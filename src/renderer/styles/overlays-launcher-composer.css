@@ -43,10 +43,6 @@
   --mascot-rain: var(--muted);
 }
 
-.mascot[data-mood="working"] {
-  animation: mascot-squish 1.4s var(--ease) infinite;
-}
-
 .mascot[data-pet="true"] {
   animation: mascot-hop 0.7s var(--ease) 1;
 }
@@ -182,16 +178,6 @@
 
   100% {
     transform: translateY(0) scaleY(1) scaleX(1);
-  }
-}
-
-@keyframes mascot-squish {
-  0%, 100% {
-    transform: scaleY(1) scaleX(1) translateY(0);
-  }
-
-  50% {
-    transform: scaleY(0.9) scaleX(1.06) translateY(3%);
   }
 }
 

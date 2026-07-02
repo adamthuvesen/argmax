@@ -1,5 +1,5 @@
 import { FileText, PanelRight } from "lucide-react";
-import { useMemo, type JSX } from "react";
+import { useMemo, type JSX, type ReactNode } from "react";
 import { interpretFileChange } from "../lib/fileChange.js";
 import { extractOpenablePath, getToolTypeBucket, isBashLikeTool, type ToolCall } from "../lib/toolCalls.js";
 import { FileChangeCard } from "./FileChangeCard.js";
@@ -35,11 +35,13 @@ function visibleInputForTool(tool: ToolCall): Record<string, unknown> {
 export function ToolCallDetail({
   tool,
   workspaceCwd,
-  onOpenFile
+  onOpenFile,
+  leadingContent
 }: {
   tool: ToolCall;
   workspaceCwd?: string | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  leadingContent?: ReactNode;
 }): JSX.Element | null {
   const openFile = (path: string): void => {
     if (onOpenFile) {
@@ -96,11 +98,13 @@ export function ToolCallDetail({
     Boolean(canShowFilePreview) ||
     Boolean(openable) ||
     showRawInput ||
+    Boolean(leadingContent) ||
     (Boolean(tool.output) && !tool.error);
   if (!hasMainContent) return null;
 
   return (
     <div className="tool-call-detail">
+      {leadingContent}
       {tool.error ? (
         <div className="tool-call-section">
           <p className="tool-call-section-label">Error</p>

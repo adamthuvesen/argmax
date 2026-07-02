@@ -57,7 +57,7 @@ describe("App sidebar", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Claude Sonnet 4.6",
+      modelLabel: "Sonnet 4.6",
       modelId: "claude-sonnet-4-6",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
@@ -94,7 +94,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Claude Sonnet 4.6");
+    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Sonnet 4.6");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-current", "true");
@@ -543,7 +543,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
-    fireEvent.click(within(launchPopover).getByText("Claude Sonnet 4.6"));
+    fireEvent.click(within(launchPopover).getByText("Sonnet 4.6"));
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 

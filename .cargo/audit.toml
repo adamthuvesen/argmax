@@ -1,0 +1,13 @@
+# cargo-audit configuration (read by the dependency-audit CI job).
+
+[advisories]
+# quick-xml < 0.41 DoS-class advisories (2026-06-29), pulled in transitively via
+# tauri -> plist ^1 (1.9.0, latest) which pins quick-xml < 0.41 — no compatible
+# upgrade path exists yet. Both are parsing DoS (quadratic duplicate-attribute
+# check / unbounded namespace allocation) in plist XML handling; argmax only
+# parses its own local bundle files, so exposure is negligible.
+# REMOVE these ignores when plist/tauri release with quick-xml >= 0.41.
+ignore = [
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

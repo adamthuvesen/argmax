@@ -114,7 +114,12 @@ pub fn normalize_tool_item(
     if !is_tool_like_item(item, action, item_type) {
         return None;
     }
-    let tool_name = string_value(item.get("name")).unwrap_or(item_type);
+    // Codex collab items (`collab_tool_call`: spawn_agent / send_message_to_thread /
+    // wait / close_agent) carry the tool under `tool`, not `name` — surface that
+    // as the tool name so the renderer's agent bucket sees `spawn_agent`.
+    let tool_name = string_value(item.get("name"))
+        .or_else(|| string_value(item.get("tool")))
+        .unwrap_or(item_type);
     let mut tool_payload = item.clone();
     tool_payload.insert("type".to_string(), Value::String(tool_name.to_string()));
     tool_payload.insert("name".to_string(), Value::String(tool_name.to_string()));
@@ -173,7 +178,10 @@ fn is_tool_like_item(
     if matches!(item_type, "reasoning" | "todo_list" | "error") {
         return false;
     }
-    if string_value(item.get("name")).is_some() || action.is_some() {
+    if string_value(item.get("name")).is_some()
+        || string_value(item.get("tool")).is_some()
+        || action.is_some()
+    {
         return true;
     }
     for key in [
@@ -274,6 +282,14 @@ fn extract_tool_input(item: &Map<String, Value>, action: Option<&Map<String, Val
     if let Some(changes) = changes {
         input.insert("changes".to_string(), Value::Array(changes.clone()));
     }
+    // Collab tool calls carry the sub-agent prompt and thread linkage at the
+    // item level; copy them into `input` so the renderer's agent row can show
+    // the prompt and receiver threads (`wait` sends `prompt: null` — skip it).
+    for key in ["prompt", "sender_thread_id", "receiver_thread_ids"] {
+        if let Some(value) = item.get(key).filter(|value| !value.is_null()) {
+            input.insert(key.to_string(), value.clone());
+        }
+    }
     Value::Object(input)
 }
 
@@ -329,6 +345,127 @@ mod tests {
             result.events[0].payload["input"]["changes"][0]["path"],
             "/repo/src/ModelSelector.tsx"
         );
+    }
+
+    #[test]
+    fn codex_collab_spawn_agent_item_becomes_agent_command_event() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": {
+                        "id": "item_2",
+                        "type": "collab_tool_call",
+                        "tool": "spawn_agent",
+                        "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
+                        "receiver_thread_ids": [],
+                        "prompt": "Do a quick repo reconnaissance. Read-only only.",
+                        "agents_states": {},
+                        "status": "in_progress"
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        let event = &result.events[0];
+        assert_eq!(event.r#type, "command.started");
+        assert_eq!(event.message, "spawn_agent");
+        assert_eq!(event.payload["name"], "spawn_agent");
+        assert_eq!(event.payload["id"], "item_2");
+        assert_eq!(
+            event.payload["input"]["prompt"],
+            "Do a quick repo reconnaissance. Read-only only."
+        );
+    }
+
+    #[test]
+    fn codex_collab_item_completed_carries_receiver_thread_linkage() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_2",
+                        "type": "collab_tool_call",
+                        "tool": "spawn_agent",
+                        "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
+                        "receiver_thread_ids": ["019f2214-c736-7f60-bb78-75b6ecff57a3"],
+                        "prompt": "Do a quick repo reconnaissance. Read-only only.",
+                        "agents_states": {},
+                        "status": "in_progress"
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        let event = &result.events[0];
+        assert_eq!(event.r#type, "command.completed");
+        // The renderer correlates completion back to the started row via `id`.
+        assert_eq!(event.payload["id"], "item_2");
+        assert_eq!(
+            event.payload["input"]["receiver_thread_ids"][0],
+            "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        );
+    }
+
+    #[test]
+    fn codex_collab_wait_item_normalizes_without_prompt() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": {
+                        "id": "item_14",
+                        "type": "collab_tool_call",
+                        "tool": "wait",
+                        "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
+                        "receiver_thread_ids": ["019f2214-c736-7f60-bb78-75b6ecff57a3"],
+                        "prompt": null,
+                        "agents_states": {},
+                        "status": "in_progress"
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        let event = &result.events[0];
+        assert_eq!(event.r#type, "command.started");
+        assert_eq!(event.message, "wait");
+        assert!(event.payload["input"].get("prompt").is_none());
+        assert_eq!(
+            event.payload["input"]["receiver_thread_ids"][0],
+            "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        );
+    }
+
+    #[test]
+    fn codex_named_item_wins_over_tool_field() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": { "type": "shell", "name": "shell", "tool": "ignored", "action": { "command": "npm test" } }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events[0].message, "shell");
+        assert_eq!(result.events[0].payload["name"], "shell");
     }
 
     #[test]
@@ -485,6 +622,34 @@ mod tests {
         assert_eq!(event.payload["command"], "Apply file changes");
         assert_eq!(event.payload["reason"], "Apply generated patch");
         assert_eq!(event.payload["riskLevel"], "high");
+    }
+
+    /// Replays a real Codex multi-agent session's `collab_tool_call` lines
+    /// (captured from raw_outputs, prompt trimmed and paths anonymized) so the
+    /// spawn_agent tool row survives end-to-end through the dispatcher.
+    #[test]
+    fn codex_collab_spawn_agent_fixture_replays() {
+        let fixture = include_str!("../../../tests/fixtures/codex/collab_spawn_agent.jsonl");
+        let snapshot =
+            include_str!("../../../tests/fixtures/codex/collab_spawn_agent.events.snapshot.json");
+        let mut dispatcher = Dispatcher::new();
+        let result = dispatcher.normalize(ProviderId::Codex, output_event(&format!("{fixture}\n")));
+        assert_eq!(result.events.len(), 2);
+        assert_eq!(
+            stable_event_snapshot(&result.events),
+            serde_json::from_str::<Value>(snapshot).expect("snapshot json")
+        );
+        let started = &result.events[0];
+        assert_eq!(started.r#type, "command.started");
+        assert_eq!(started.message, "spawn_agent");
+        assert_eq!(started.payload["name"], "spawn_agent");
+        let completed = &result.events[1];
+        assert_eq!(completed.r#type, "command.completed");
+        assert_eq!(completed.payload["id"], started.payload["id"]);
+        assert_eq!(
+            completed.payload["input"]["receiver_thread_ids"][0],
+            "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        );
     }
 
     fn stable_event_snapshot(

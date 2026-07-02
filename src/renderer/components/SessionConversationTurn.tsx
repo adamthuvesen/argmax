@@ -254,6 +254,7 @@ function SessionConversationTurnInner({
           node: (
             <ToolCallRow
               tool={tItem.tool}
+              childTools={tItem.children}
               defaultExpanded={toolsExpanded}
               workspaceCwd={workspace?.path ?? null}
               onOpenFile={onOpenFile}

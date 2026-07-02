@@ -18,7 +18,7 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
   // The CLAUDE.md "Critical conventions" section documents these defaults. If
   // a maintainer changes the constant they need to update the doc too — this
   // test is the tripwire.
-  it("matches the documented launch defaults (Claude Opus 4.8 high / GPT-5.5 high)", () => {
+  it("matches the documented launch defaults (Opus 4.8 high / GPT-5.5 high)", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
       modelId: "claude-opus-4-8",
       reasoningEffort: "high",

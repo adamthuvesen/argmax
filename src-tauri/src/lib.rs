@@ -476,7 +476,7 @@ fn provider_defaults(provider: &str) -> ProviderDefaults {
             reasoning_effort: None,
         },
         _ => ProviderDefaults {
-            model_label: "Claude Haiku 4.5",
+            model_label: "Haiku 4.5",
             model_id: "claude-haiku-4-5",
             reasoning_effort: None,
         },

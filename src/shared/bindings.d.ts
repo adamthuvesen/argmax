@@ -691,7 +691,9 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
  * current provider, an idle follow-up relaunches under the new provider and
  * rebuilds context from the visible transcript — the native resume id is
  * dropped because Claude/Codex/Cursor ids don't translate. Requires
- * `model_label`/`model_id` for the new provider. Ignored while a turn runs.
+ * `model_label`/`model_id` for the new provider. Ignored while a turn runs:
+ * the message queues under the session's current provider and the switch's
+ * model metadata is dropped with it.
  */
 provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
@@ -774,8 +776,10 @@ export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
 export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean; 
 /**
- * State of the most-recent PR across this workspace's sessions. Populated
- * only on the dashboard snapshot path; `None` everywhere else.
+ * State of the most-recent PR across this workspace's sessions. Filled in
+ * from `gh_pr` on every read path — the renderer merges workspace deltas
+ * by whole-object replacement, so a summary published with `None` here
+ * would erase the sidebar PR marker.
  */
 prState: string | null; 
 /**

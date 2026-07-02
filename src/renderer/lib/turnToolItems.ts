@@ -1,12 +1,68 @@
 import {
   buildToolCallGroup,
   isBashLikeTool,
+  isAgentToolName,
   type ToolCall,
   type ToolCallGroup,
   type TurnToolItem
 } from "./toolCalls.js";
 
+function allTools(toolItems: readonly TurnToolItem[]): ToolCall[] {
+  const out: ToolCall[] = [];
+  for (const item of toolItems) {
+    if (item.kind === "tool") {
+      out.push(item.tool);
+      continue;
+    }
+    out.push(...item.group.tools);
+  }
+  return out;
+}
+
+function attachAgentChildren(toolItems: readonly TurnToolItem[]): TurnToolItem[] {
+  const tools = allTools(toolItems);
+  const agentToolUseIds = new Set(
+    tools.filter((tool) => isAgentToolName(tool.name)).map((tool) => tool.toolUseId)
+  );
+  if (agentToolUseIds.size === 0) return [...toolItems];
+
+  const childIds = new Set<string>();
+  const childrenByParent = new Map<string, ToolCall[]>();
+  for (const tool of tools) {
+    const parent = tool.parentToolUseId;
+    if (!parent || parent === tool.toolUseId || !agentToolUseIds.has(parent)) continue;
+    childIds.add(tool.id);
+    const children = childrenByParent.get(parent) ?? [];
+    children.push(tool);
+    childrenByParent.set(parent, children);
+  }
+  if (childIds.size === 0) return [...toolItems];
+
+  const withChildren = (tool: ToolCall): TurnToolItem => {
+    const children = childrenByParent.get(tool.toolUseId);
+    return children && children.length > 0 ? { kind: "tool", tool, children } : { kind: "tool", tool };
+  };
+
+  const nested: TurnToolItem[] = [];
+  for (const item of toolItems) {
+    if (item.kind === "tool") {
+      if (!childIds.has(item.tool.id)) nested.push(withChildren(item.tool));
+      continue;
+    }
+    const visibleTools = item.group.tools.filter((tool) => !childIds.has(tool.id));
+    if (visibleTools.length === 0) continue;
+    if (visibleTools.length === 1) {
+      const [tool] = visibleTools;
+      if (tool) nested.push(withChildren(tool));
+      continue;
+    }
+    nested.push({ kind: "tool-group", group: buildToolCallGroup(visibleTools) });
+  }
+  return nested;
+}
+
 export function foldTurnToolItems(toolItems: readonly TurnToolItem[]): TurnToolItem[] {
+  const nestedItems = attachAgentChildren(toolItems);
   const folded: TurnToolItem[] = [];
   let commandRun: ToolCall[] = [];
 
@@ -16,7 +72,7 @@ export function foldTurnToolItems(toolItems: readonly TurnToolItem[]): TurnToolI
     commandRun = [];
   };
 
-  for (const item of toolItems) {
+  for (const item of nestedItems) {
     if (item.kind === "tool-group") {
       flushCommandRun();
       folded.push(item);
@@ -49,6 +105,9 @@ export function toolsNamed(toolItems: readonly TurnToolItem[], name: string): To
   for (const item of toolItems) {
     if (item.kind === "tool") {
       if (item.tool.name === name) matches.push(item.tool);
+      for (const child of item.children ?? []) {
+        if (child.name === name) matches.push(child);
+      }
       continue;
     }
     for (const tool of item.group.tools) {
@@ -63,7 +122,10 @@ export function visibleTurnToolItem(
   hiddenToolIds: ReadonlySet<string>
 ): TurnToolItem | null {
   if (item.kind === "tool") {
-    return hiddenToolIds.has(item.tool.id) ? null : item;
+    if (hiddenToolIds.has(item.tool.id)) return null;
+    const children = (item.children ?? []).filter((tool) => !hiddenToolIds.has(tool.id));
+    if (children.length === (item.children ?? []).length) return item;
+    return children.length > 0 ? { ...item, children } : { kind: "tool", tool: item.tool };
   }
   const filteredGroup = toolGroupWithoutHiddenTools(item.group, hiddenToolIds);
   if (!filteredGroup) return null;

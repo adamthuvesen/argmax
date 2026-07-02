@@ -88,7 +88,7 @@ async fn real_claude_launcher_streams_json_and_exits_cleanly() {
         session_id,
         workspace_path: workspace_root(),
         prompt: "Reply with exactly the word: pong".to_string(),
-        model_label: "Claude Haiku 4.5".to_string(),
+        model_label: "Haiku 4.5".to_string(),
         model_id: "claude-haiku-4-5".to_string(),
         reasoning_effort: None,
         fast_mode: false,

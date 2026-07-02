@@ -405,7 +405,7 @@ mod tests {
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
                     default_provider: "claude".to_string(),
-                    default_model_label: "Claude Haiku 4.5".to_string(),
+                    default_model_label: "Haiku 4.5".to_string(),
                     worktree_location: repo_path.join(".worktrees").to_string_lossy().into_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -440,7 +440,7 @@ mod tests {
                 id: "s1".to_string(),
                 workspace_id: workspace_id.to_string(),
                 provider: "claude".to_string(),
-                model_label: "Claude Haiku 4.5".to_string(),
+                model_label: "Haiku 4.5".to_string(),
                 model_id: "claude-haiku-4-5".to_string(),
                 reasoning_effort: None,
                 permission_mode: Some("auto-approve".to_string()),

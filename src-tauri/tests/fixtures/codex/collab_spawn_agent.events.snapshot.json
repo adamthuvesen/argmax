@@ -1,0 +1,80 @@
+[
+  {
+    "createdAt": "2026-05-24T12:00:00.000Z",
+    "message": "spawn_agent",
+    "payload": {
+      "agents_states": {},
+      "id": "item_2",
+      "input": {
+        "prompt": "In /Users/me/dev/argmax, do a very quick repo reconnaissance. Read-only only; do not edit files.",
+        "receiver_thread_ids": [],
+        "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989"
+      },
+      "name": "spawn_agent",
+      "prompt": "In /Users/me/dev/argmax, do a very quick repo reconnaissance. Read-only only; do not edit files.",
+      "providerEventType": "item.started",
+      "raw": {
+        "item": {
+          "agents_states": {},
+          "id": "item_2",
+          "prompt": "In /Users/me/dev/argmax, do a very quick repo reconnaissance. Read-only only; do not edit files.",
+          "receiver_thread_ids": [],
+          "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
+          "status": "in_progress",
+          "tool": "spawn_agent",
+          "type": "collab_tool_call"
+        },
+        "type": "item.started"
+      },
+      "receiver_thread_ids": [],
+      "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
+      "status": "in_progress",
+      "tool": "spawn_agent",
+      "type": "spawn_agent"
+    },
+    "sessionId": "session-1",
+    "type": "command.started"
+  },
+  {
+    "createdAt": "2026-05-24T12:00:00.000Z",
+    "message": "spawn_agent",
+    "payload": {
+      "agents_states": {},
+      "id": "item_2",
+      "input": {
+        "prompt": "In /Users/me/dev/argmax, do a very quick repo reconnaissance. Read-only only; do not edit files.",
+        "receiver_thread_ids": [
+          "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        ],
+        "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989"
+      },
+      "name": "spawn_agent",
+      "prompt": "In /Users/me/dev/argmax, do a very quick repo reconnaissance. Read-only only; do not edit files.",
+      "providerEventType": "item.completed",
+      "raw": {
+        "item": {
+          "agents_states": {},
+          "id": "item_2",
+          "prompt": "In /Users/me/dev/argmax, do a very quick repo reconnaissance. Read-only only; do not edit files.",
+          "receiver_thread_ids": [
+            "019f2214-c736-7f60-bb78-75b6ecff57a3"
+          ],
+          "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
+          "status": "in_progress",
+          "tool": "spawn_agent",
+          "type": "collab_tool_call"
+        },
+        "type": "item.completed"
+      },
+      "receiver_thread_ids": [
+        "019f2214-c736-7f60-bb78-75b6ecff57a3"
+      ],
+      "sender_thread_id": "019f2214-983b-7f43-958b-7f68e1dba989",
+      "status": "in_progress",
+      "tool": "spawn_agent",
+      "type": "spawn_agent"
+    },
+    "sessionId": "session-1",
+    "type": "command.completed"
+  }
+]

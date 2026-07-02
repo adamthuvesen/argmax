@@ -40,7 +40,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Claude Opus 4.8");
+    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 4.8");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
@@ -115,7 +115,7 @@ describe("App", () => {
         sessions: [
           {
             ...baseSession,
-            modelLabel: "Claude Haiku 4.5",
+            modelLabel: "Haiku 4.5",
             modelId: "claude-haiku-4-5",
             reasoningEffort: undefined,
             lastActivityAt: "2026-05-08T15:55:00.000Z"
@@ -387,7 +387,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Claude Opus 4.8");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 4.8");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -403,7 +403,7 @@ describe("App", () => {
       workspaceId: "workspace-1",
       provider: "claude",
       prompt: "Implement PTY launch",
-      modelLabel: "Claude Opus 4.8",
+      modelLabel: "Opus 4.8",
       modelId: "claude-opus-4-8",
       reasoningEffort: "high",
       fastMode: false,
@@ -737,7 +737,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
     // Sonnet is effort-capable, so picking it seeds the default Medium effort.
-    fireEvent.click(within(launchPopover).getByText("Claude Sonnet 4.6"));
+    fireEvent.click(within(launchPopover).getByText("Sonnet 4.6"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
     });
@@ -748,7 +748,7 @@ describe("App", () => {
         workspaceId: "workspace-1",
         provider: "claude",
         prompt: "Review this change",
-        modelLabel: "Claude Sonnet 4.6",
+        modelLabel: "Sonnet 4.6",
         modelId: "claude-sonnet-4-6",
         reasoningEffort: "medium",
         fastMode: false,

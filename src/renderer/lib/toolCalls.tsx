@@ -30,7 +30,7 @@ export type ToolCallGroup = {
 };
 
 export type TurnToolItem =
-  | { kind: "tool"; tool: ToolCall }
+  | { kind: "tool"; tool: ToolCall; children?: ToolCall[] }
   | { kind: "tool-group"; group: ToolCallGroup };
 
 export type ConversationItem =
@@ -125,11 +125,12 @@ type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bas
  * Bot icon, and a distinct CSS accent so the user can tell at a glance that
  * a different agent is doing the work.
  */
-function isAgentTool(lower: string): boolean {
+export function isAgentToolName(name: string): boolean {
+  const lower = name.toLowerCase();
   // Claude's built-in tool is exactly "Task". Cursor spawns sub-agents via
   // `taskToolCall`; Codex coordinates them via `collab_tool_call`. Neither
   // streams the sub-agent's internal steps, but surfacing the launch as an
-  // Agent (Bot icon + "Spawned N agents") still tells the user a different
+  // Agent (Bot icon + "Started an agent") still tells the user a different
   // agent did the work. Anchor literal matches so we don't sweep up
   // "TaskList" or "agent_id"-style names.
   return lower === "task" || lower === "agent" || lower === "subagent" ||
@@ -139,7 +140,7 @@ function isAgentTool(lower: string): boolean {
 
 function getFineBucket(name: string): FineBucket {
   const lower = name.toLowerCase();
-  if (isAgentTool(lower)) return "agent";
+  if (isAgentToolName(name)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
   if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
   if (/search|grep|find|glob/.test(lower)) return "search";
@@ -405,7 +406,7 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
     if (typeof skill === "string" && skill.trim().length > 0) return skill.slice(0, 72);
     return "";
   }
-  if (isAgentTool(lower)) {
+  if (isAgentToolName(name)) {
     // Claude's Task tool input is `{ description, prompt, subagent_type }`.
     // `description` is the human-friendly 3-5 word title; prefer it over the
     // long prompt body so the collapsed row stays scannable.
@@ -416,6 +417,10 @@ export function extractToolInputPreview(name: string, input: Record<string, unkn
     const subagentType = input.subagent_type ?? input.subagentType;
     if (typeof subagentType === "string" && subagentType.trim().length > 0) {
       return subagentType.slice(0, 72);
+    }
+    const prompt = input.prompt;
+    if (typeof prompt === "string" && prompt.trim().length > 0) {
+      return prompt.slice(0, 72);
     }
     return "";
   }
@@ -507,10 +512,10 @@ export function isBashLikeTool(name: string): boolean {
 }
 
 export function getToolIcon(name: string): JSX.Element {
-  const lower = name.toLowerCase();
-  if (isAgentTool(lower)) {
+  if (isAgentToolName(name)) {
     return <Bot size={13} />;
   }
+  const lower = name.toLowerCase();
   if (lower.includes("bash") || lower.includes("shell") || lower.includes("terminal") || lower.includes("exec")) {
     return <Terminal size={13} />;
   }
@@ -533,7 +538,7 @@ export type ToolTypeBucket = "bash" | "edit" | "read" | "search" | "web" | "agen
 
 export function getToolTypeBucket(name: string): ToolTypeBucket {
   const lower = name.toLowerCase();
-  if (isAgentTool(lower)) return "agent";
+  if (isAgentToolName(name)) return "agent";
   if (/bash|shell|exec|terminal|cmd/.test(lower)) return "bash";
   if (/write|edit|create|patch|file[_-]?change/.test(lower)) return "edit";
   if (/read|view|open|cat|list/.test(lower)) return "read";

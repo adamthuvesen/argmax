@@ -57,10 +57,13 @@ type SidebarSessionRowProps = {
   showTokens: boolean;
 };
 
-// Leading glyph for a session row. A live pull request takes precedence over
-// session state: a merged PR shows a violet merge glyph, an open PR a green
-// pull-request glyph. With no PR (or a closed one) it falls back to a red cross
-// when the session failed and a calm check ring otherwise.
+// Leading glyph for a session row. A turn in flight takes precedence over
+// everything: the marker becomes a working ring (same circle geometry as the
+// check, pulsing center dot) so live agent activity reads at a glance, then
+// reverts to the icons below when the turn ends. Otherwise a live pull
+// request wins over session state: a merged PR shows a violet merge glyph, an
+// open PR a green pull-request glyph. With no PR (or a closed one) it falls
+// back to a red cross when the session failed and a calm check ring otherwise.
 function StatusMarker({
   state,
   prState
@@ -68,6 +71,37 @@ function StatusMarker({
   state: WorkspaceSummary["state"];
   prState?: WorkspaceSummary["prState"];
 }): JSX.Element {
+  if (state === "running") {
+    // Hand-rolled in lucide's 24-unit stroke geometry (circle r=10, stroke 2,
+    // matching CircleCheck's ring) because no lucide icon pairs the ring with
+    // an animatable center dot. The dot's pulse lives in CSS
+    // (.status-marker-working-dot) so prefers-reduced-motion can pin it.
+    return (
+      <svg
+        className="status-marker"
+        data-working="true"
+        width={14}
+        height={14}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <circle
+          className="status-marker-working-dot"
+          cx="12"
+          cy="12"
+          r="3.5"
+          fill="currentColor"
+          stroke="none"
+        />
+      </svg>
+    );
+  }
   if (prState === "MERGED") {
     return <GitMerge size={14} aria-hidden className="status-marker" data-pr="merged" />;
   }

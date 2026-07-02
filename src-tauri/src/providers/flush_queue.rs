@@ -700,7 +700,7 @@ mod tests {
             .expect("insert workspace");
         connection
             .execute(
-                "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode, provider_conversation_id, prompt, state, attention, started_at, completed_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'claude-sonnet-4', NULL, 'auto-approve', 'auto', NULL, 'prompt', 'running', 'none', '2026-05-24T10:00:00.000Z', NULL, '2026-05-24T10:00:00.000Z')",
+                "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode, provider_conversation_id, prompt, state, attention, started_at, completed_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'claude-sonnet-5', NULL, 'auto-approve', 'auto', NULL, 'prompt', 'running', 'none', '2026-05-24T10:00:00.000Z', NULL, '2026-05-24T10:00:00.000Z')",
                 [],
             )
             .expect("insert session");

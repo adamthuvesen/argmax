@@ -28,7 +28,7 @@ describe("ModelSelector — one row per model", () => {
     expect(within(list).getAllByRole("option")).toHaveLength(4);
     expect(within(list).getByText("Fable 5")).toBeInTheDocument();
     expect(within(list).getByText("Opus 4.8")).toBeInTheDocument();
-    expect(within(list).getByText("Sonnet 4.6")).toBeInTheDocument();
+    expect(within(list).getByText("Sonnet 5")).toBeInTheDocument();
     expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
   });
 
@@ -43,7 +43,7 @@ describe("ModelSelector — one row per model", () => {
   it("only shows Edit on the selected model", () => {
     openClaudePicker(OPUS_MEDIUM);
     expect(screen.getByRole("button", { name: "Edit effort for Opus 4.8" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Edit effort for Sonnet 4.6" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit effort for Sonnet 5" })).toBeNull();
   });
 
   it("gives fast models (Haiku) no Edit button and no effort", () => {
@@ -119,6 +119,7 @@ describe("LaunchModelSelector — all providers", () => {
     expect(screen.getByText("Claude")).toBeInTheDocument();
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Cursor")).toBeInTheDocument();
+    expect(screen.getByText("GPT-5.3 Codex Spark")).toBeInTheDocument();
 
     // Cursor effort is UI-only: selecting Extra High keeps the -medium alias id.
     fireEvent.click(screen.getByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" }));
@@ -128,6 +129,25 @@ describe("LaunchModelSelector — all providers", () => {
       label: "GPT-5.5 (Cursor)",
       modelId: "gpt-5.5-medium",
       reasoningEffort: "xhigh"
+    });
+  });
+
+  it("selects GPT-5.3 Codex Spark with the default Medium effort", () => {
+    const value: ModelPickerSelection = {
+      provider: "codex",
+      label: "GPT-5.5",
+      modelId: "gpt-5.5",
+      reasoningEffort: "medium"
+    };
+    const onChange = vi.fn();
+    render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    fireEvent.click(screen.getByText("GPT-5.3 Codex Spark"));
+    expect(onChange).toHaveBeenCalledWith({
+      provider: "codex",
+      label: "GPT-5.3 Codex Spark",
+      modelId: "gpt-5.3-codex-spark",
+      reasoningEffort: "medium"
     });
   });
 

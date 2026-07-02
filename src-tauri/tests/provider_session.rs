@@ -385,7 +385,7 @@ fn seed_project_and_workspace(db: &Database) {
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
                 default_provider: "claude".to_owned(),
-                default_model_label: "Sonnet 4.6".to_owned(),
+                default_model_label: "Sonnet 5".to_owned(),
                 worktree_location: "/tmp/worktrees".to_owned(),
                 setup_command: String::new(),
                 check_commands: vec!["npm test".to_owned()],
@@ -416,8 +416,8 @@ fn build_launch_input() -> ProvidersLaunchInput {
         workspace_id: WorkspaceId::try_from(WORKSPACE_ID.to_owned()).expect("workspace id valid"),
         provider: argmax_lib::ipc::validation::ProviderId::Claude,
         prompt: Prompt::try_from("hello world".to_owned()).expect("prompt valid"),
-        model_label: NonEmptyString::try_from("Sonnet 4.6".to_owned()).expect("label valid"),
-        model_id: NonEmptyString::try_from("claude-sonnet-4-6".to_owned()).expect("id valid"),
+        model_label: NonEmptyString::try_from("Sonnet 5".to_owned()).expect("label valid"),
+        model_id: NonEmptyString::try_from("claude-sonnet-5".to_owned()).expect("id valid"),
         reasoning_effort: None,
         fast_mode: false,
         agent_mode: None,
@@ -993,10 +993,10 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
             input: Prompt::try_from("queued after done".to_owned()).expect("prompt valid"),
             provider: None,
             model_label: Some(
-                NonEmptyString::try_from("Sonnet 4.6".to_owned()).expect("model label valid"),
+                NonEmptyString::try_from("Sonnet 5".to_owned()).expect("model label valid"),
             ),
             model_id: Some(
-                NonEmptyString::try_from("claude-sonnet-4-6".to_owned()).expect("model id valid"),
+                NonEmptyString::try_from("claude-sonnet-5".to_owned()).expect("model id valid"),
             ),
             reasoning_effort: None,
             fast_mode: true,
@@ -1027,8 +1027,8 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
     assert!(launches[1]
         .prompt
         .contains("New user message:\nqueued after done"));
-    assert_eq!(launches[1].model_label, "Sonnet 4.6");
-    assert_eq!(launches[1].model_id, "claude-sonnet-4-6");
+    assert_eq!(launches[1].model_label, "Sonnet 5");
+    assert_eq!(launches[1].model_id, "claude-sonnet-5");
     assert!(launches[1].fast_mode);
 }
 
@@ -1055,11 +1055,9 @@ async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
             input: Prompt::try_from("switch please".to_owned()).expect("prompt valid"),
             provider: Some(ProviderId::Codex),
             model_label: Some(
-                NonEmptyString::try_from("GPT-5.5 Codex".to_owned()).expect("model label valid"),
+                NonEmptyString::try_from("GPT-5.5".to_owned()).expect("model label valid"),
             ),
-            model_id: Some(
-                NonEmptyString::try_from("gpt-5.5-codex".to_owned()).expect("model id valid"),
-            ),
+            model_id: Some(NonEmptyString::try_from("gpt-5.5".to_owned()).expect("model id valid")),
             reasoning_effort: None,
             fast_mode: true,
             agent_mode: None,
@@ -1080,8 +1078,8 @@ async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
 
     let launches = launcher.launches();
     assert_eq!(launches[1].provider, ProviderId::Claude);
-    assert_eq!(launches[1].model_label, "Sonnet 4.6");
-    assert_eq!(launches[1].model_id, "claude-sonnet-4-6");
+    assert_eq!(launches[1].model_label, "Sonnet 5");
+    assert_eq!(launches[1].model_id, "claude-sonnet-5");
     assert!(!launches[1].fast_mode);
 }
 
@@ -1239,8 +1237,8 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
             id: "orphan-1".to_owned(),
             workspace_id: WORKSPACE_ID.to_owned(),
             provider: "claude".to_owned(),
-            model_label: "Sonnet 4.6".to_owned(),
-            model_id: "claude-sonnet-4-6".to_owned(),
+            model_label: "Sonnet 5".to_owned(),
+            model_id: "claude-sonnet-5".to_owned(),
             reasoning_effort: None,
             permission_mode: Some("auto-approve".to_owned()),
             agent_mode: Some("auto".to_owned()),

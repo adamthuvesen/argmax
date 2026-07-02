@@ -47,7 +47,7 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       workspaceId: "workspace-1",
       provider: "codex",
       modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.3-codex",
+      modelId: "gpt-5.5",
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,

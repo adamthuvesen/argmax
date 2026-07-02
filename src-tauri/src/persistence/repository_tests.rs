@@ -119,12 +119,12 @@ fn project_workspace_and_session_repositories_round_trip() {
         "s1",
         &SessionModelInput {
             model_label: "Spark".to_owned(),
-            model_id: "codex-spark".to_owned(),
+            model_id: "gpt-5.5".to_owned(),
             reasoning_effort: Some("medium".to_owned()),
         },
     )
     .expect("update model");
-    assert_eq!(modeled.model_id, "codex-spark");
+    assert_eq!(modeled.model_id, "gpt-5.5");
     assert_eq!(modeled.reasoning_effort.as_deref(), Some("medium"));
 
     let agent_mode = update_session_agent_mode(
@@ -323,7 +323,7 @@ fn event_approval_check_and_usage_repositories_round_trip() {
         &InsertUsageEventInput {
             session_id: "s1".to_owned(),
             event_id: Some("e1".to_owned()),
-            model_id: "codex-spark".to_owned(),
+            model_id: "gpt-5.5".to_owned(),
             tokens: UsageCounts {
                 input: 10,
                 output: 20,
@@ -336,7 +336,7 @@ fn event_approval_check_and_usage_repositories_round_trip() {
     )
     .expect("insert usage");
     let summary = get_session_cost_summary(&connection, "s1").expect("cost summary");
-    assert_eq!(summary.model_id.as_deref(), Some("codex-spark"));
+    assert_eq!(summary.model_id.as_deref(), Some("gpt-5.5"));
     assert_eq!(summary.tokens.output, 20);
     assert_eq!(summary.cost_usd, 0.42);
 }
@@ -505,7 +505,7 @@ fn session_input() -> PersistSessionInput {
         workspace_id: "w1".to_owned(),
         provider: "codex".to_owned(),
         model_label: "Spark".to_owned(),
-        model_id: "codex-spark".to_owned(),
+        model_id: "gpt-5.5".to_owned(),
         reasoning_effort: None,
         permission_mode: None,
         agent_mode: None,

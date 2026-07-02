@@ -21,6 +21,34 @@ pub fn is_lifecycle_event(provider_type: Option<&str>, subtype: Option<&str>) ->
     ) || matches!(provider_type, Some("user" | "thinking"))
 }
 
+pub fn normalize_thinking_delta(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+    provider_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if provider_type != Some("thinking") || string_value(payload.get("subtype")) != Some("delta") {
+        return None;
+    }
+    let text = string_value(payload.get("text"))?;
+    if text.trim().is_empty() {
+        return None;
+    }
+
+    let mut thinking_payload = payload.clone();
+    thinking_payload.insert("thinking".to_string(), Value::Bool(true));
+    thinking_payload.insert(
+        "providerEventType".to_string(),
+        Value::String("thinking".to_string()),
+    );
+
+    Some(timeline_event(
+        event,
+        "message.delta",
+        text,
+        Value::Object(thinking_payload),
+    ))
+}
+
 pub fn normalize_assistant_text(
     text: Option<String>,
     payload: &Map<String, Value>,
@@ -299,6 +327,45 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
+    }
+
+    #[test]
+    fn cursor_thinking_delta_becomes_thinking_message_delta() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                r#"{"type":"thinking","subtype":"delta","text":"Checking the repository"}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(result.events[0].message, "Checking the repository");
+        assert_eq!(result.events[0].payload["thinking"], json!(true));
+        assert_eq!(result.events[0].payload["providerEventType"], "thinking");
+    }
+
+    #[test]
+    fn cursor_empty_thinking_delta_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"thinking","subtype":"delta","text":"   "}"#),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
+    }
+
+    #[test]
+    fn cursor_thinking_completed_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"thinking","subtype":"completed"}"#),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
     }
 
     #[test]

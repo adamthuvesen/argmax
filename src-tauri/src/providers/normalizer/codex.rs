@@ -170,6 +170,38 @@ pub fn normalize_error_item(
     ))
 }
 
+pub fn normalize_reasoning_item(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+    provider_type: Option<&str>,
+    item: Option<&Map<String, Value>>,
+    item_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if provider_type != Some("item.completed") || item_type != Some("reasoning") {
+        return None;
+    }
+    let item = item?;
+    let text = string_value(item.get("text"))?;
+    if text.trim().is_empty() {
+        return None;
+    }
+
+    let mut thinking_payload = item.clone();
+    thinking_payload.insert("thinking".to_string(), Value::Bool(true));
+    thinking_payload.insert(
+        "providerEventType".to_string(),
+        Value::String("item.completed".to_string()),
+    );
+    thinking_payload.insert("raw".to_string(), Value::Object(payload.clone()));
+
+    Some(timeline_event(
+        event,
+        "message.delta",
+        text,
+        Value::Object(thinking_payload),
+    ))
+}
+
 fn is_tool_like_item(
     item: &Map<String, Value>,
     action: Option<&Map<String, Value>>,
@@ -469,25 +501,66 @@ mod tests {
     }
 
     #[test]
-    fn codex_non_tool_items_do_not_become_command_events() {
-        for item_type in ["reasoning", "todo_list"] {
-            let mut context = NormalizerSessionContext::default();
-            let result = normalize_provider_event(
-                ProviderId::Codex,
-                &output_event(
-                    &json!({
-                        "type": "item.completed",
-                        "item": { "id": "item_1", "type": item_type, "text": "not a tool call" }
-                    })
-                    .to_string(),
-                ),
-                &mut context,
-            );
-            assert!(
-                result.events.is_empty(),
-                "{item_type} should not be normalized as a command"
-            );
-        }
+    fn codex_todo_list_item_does_not_become_command_event() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": { "id": "item_1", "type": "todo_list", "text": "not a tool call" }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
+    }
+
+    #[test]
+    fn codex_reasoning_item_becomes_thinking_delta() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_1",
+                        "type": "reasoning",
+                        "text": "**Checking the repo shape**"
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.delta");
+        assert_eq!(result.events[0].message, "**Checking the repo shape**");
+        assert_eq!(result.events[0].payload["thinking"], json!(true));
+        assert_eq!(
+            result.events[0].payload["providerEventType"],
+            "item.completed"
+        );
+        assert_eq!(result.events[0].payload["raw"]["type"], "item.completed");
+    }
+
+    #[test]
+    fn codex_empty_reasoning_item_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": { "id": "item_1", "type": "reasoning", "text": "   " }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert!(result.events.is_empty());
     }
 
     #[test]

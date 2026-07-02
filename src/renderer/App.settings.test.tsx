@@ -84,7 +84,7 @@ describe("App settings", () => {
   it("hides sidebar session tokens by default and shows them when enabled in Settings", async () => {
     sessionCostSummary.mockResolvedValue({
       sessionId: "session-1",
-      modelId: "gpt-5.3-codex",
+      modelId: "gpt-5.5",
       tokens: { input: 12_300, output: 4_500, cacheRead: 50_000, cacheWrite: 0 },
       costUsd: 0.012
     });

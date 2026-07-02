@@ -540,7 +540,7 @@ describe("App", () => {
       workspaceId: "workspace-new",
       provider: "codex",
       modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.3-codex",
+      modelId: "gpt-5.5",
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,
@@ -610,7 +610,7 @@ describe("App", () => {
       workspaceId: "workspace-new",
       provider: "codex",
       modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.3-codex",
+      modelId: "gpt-5.5",
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,
@@ -679,7 +679,7 @@ describe("App", () => {
       workspaceId: "workspace-mention",
       provider: "codex",
       modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.3-codex",
+      modelId: "gpt-5.5",
       reasoningEffort: "medium",
       permissionMode: "auto-approve",
       providerConversationId: null,
@@ -737,7 +737,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
     // Sonnet is effort-capable, so picking it seeds the default Medium effort.
-    fireEvent.click(within(launchPopover).getByText("Sonnet 4.6"));
+    fireEvent.click(within(launchPopover).getByText("Sonnet 5"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
     });
@@ -748,8 +748,8 @@ describe("App", () => {
         workspaceId: "workspace-1",
         provider: "claude",
         prompt: "Review this change",
-        modelLabel: "Sonnet 4.6",
-        modelId: "claude-sonnet-4-6",
+        modelLabel: "Sonnet 5",
+        modelId: "claude-sonnet-5",
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",

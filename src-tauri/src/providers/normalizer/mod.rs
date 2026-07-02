@@ -26,6 +26,7 @@ use self::{
     codex::{
         detect_permission_gate as detect_codex_permission_gate, event_type as codex_event_type,
         extract_usage as extract_codex_usage, normalize_error_item as normalize_codex_error_item,
+        normalize_reasoning_item as normalize_codex_reasoning_item,
         normalize_tool_item as normalize_codex_tool_item,
         update_turn_context_model as update_codex_turn_context_model,
     },
@@ -34,6 +35,7 @@ use self::{
         is_lifecycle_event as is_cursor_lifecycle_event,
         normalize_assistant_text as normalize_cursor_assistant_text,
         normalize_result_success as normalize_cursor_result_success,
+        normalize_thinking_delta as normalize_cursor_thinking_delta,
         normalize_tool_call as normalize_cursor_tool_call,
     },
 };
@@ -365,6 +367,15 @@ fn normalize_json_payload(
             string_value(payload.get("subtype")),
         )
     {
+        if let Some(thinking_event) =
+            normalize_cursor_thinking_delta(event, &payload, provider_type.as_deref())
+        {
+            return NormalizedProviderResult {
+                events: vec![thinking_event],
+                usages,
+                provider_conversation_id,
+            };
+        }
         if provider_type.as_deref() == Some("result")
             && string_value(payload.get("subtype")) == Some("success")
         {
@@ -413,6 +424,19 @@ fn normalize_json_payload(
     }
 
     if provider == ProviderId::Codex {
+        if let Some(reasoning_event) = normalize_codex_reasoning_item(
+            event,
+            &payload,
+            provider_type.as_deref(),
+            item,
+            item_type.as_deref(),
+        ) {
+            return NormalizedProviderResult {
+                events: vec![reasoning_event],
+                usages,
+                provider_conversation_id,
+            };
+        }
         if let Some(tool_event) = normalize_codex_tool_item(
             event,
             &payload,

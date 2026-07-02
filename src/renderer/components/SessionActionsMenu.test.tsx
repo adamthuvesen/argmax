@@ -26,7 +26,7 @@ function session(): SessionSummary {
     workspaceId: "workspace-1",
     provider: "codex",
     modelLabel: "GPT-5.3 Codex",
-    modelId: "gpt-5.3-codex",
+    modelId: "gpt-5.5",
     permissionMode: "auto-approve",
     agentMode: "auto",
     providerConversationId: null,

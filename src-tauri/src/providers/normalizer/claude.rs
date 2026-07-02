@@ -297,7 +297,7 @@ mod tests {
         let assistant = normalize_provider_event(
             ProviderId::Claude,
             &output_event(
-                r#"{"type":"assistant","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4","content":[{"type":"text","text":"Hey!"}],"usage":{"input_tokens":1,"output_tokens":2}}}"#,
+                r#"{"type":"assistant","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-5","content":[{"type":"text","text":"Hey!"}],"usage":{"input_tokens":1,"output_tokens":2}}}"#,
             ),
             &mut context,
         );

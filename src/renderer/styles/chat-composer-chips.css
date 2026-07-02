@@ -7,6 +7,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   padding-left: 0;
   position: relative;
 }
@@ -34,6 +35,113 @@
 .composer-footer.composer-chips-group {
   padding-top: 0;
   padding-bottom: 0;
+}
+
+.session-input-toolbar {
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.session-input-toolbar .composer-chips-model {
+  flex: 1 1 148px;
+  min-width: 0;
+}
+
+.session-input-toolbar .model-picker-anchor,
+.session-input-toolbar .composer-chips-model .composer-context-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.session-input-toolbar .composer-chips-model .composer-context-chip {
+  overflow: hidden;
+}
+
+.session-input-toolbar .model-picker-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-input-toolbar .composer-chips-context {
+  flex: 1 1 120px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Start the compact layout before the pane reaches its resize floor. CSS
+   container queries do not reliably accept var() in the condition, so
+   accentTokens.test.ts pins this literal. */
+@container (max-width: 520px) {
+  .session-input {
+    padding: 8px 10px;
+  }
+
+  .session-input textarea {
+    min-height: 56px;
+  }
+
+  .session-input-toolbar {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto 36px;
+    grid-template-areas:
+      "attach model mode send"
+      "context context context context";
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 6px;
+  }
+
+  .session-input-toolbar .composer-tool {
+    grid-area: attach;
+  }
+
+  .session-input-toolbar .composer-chips-model {
+    grid-area: model;
+    flex-basis: 128px;
+  }
+
+  .session-input-toolbar .composer-chips-mode {
+    grid-area: mode;
+    flex: 0 0 auto;
+  }
+
+  .session-input-toolbar .composer-chips-mode .agent-mode-toggle {
+    min-width: 46px;
+    padding-inline: 8px;
+  }
+
+  .session-input-toolbar .composer-chips-context {
+    grid-area: context;
+    flex: 1 1 100%;
+    padding-left: 0;
+    margin-left: 0;
+  }
+
+  .session-input-toolbar .composer-chips-context::before {
+    display: none;
+  }
+
+  .session-input-toolbar .composer-footer {
+    width: 100%;
+  }
+
+  .session-input-toolbar .composer-footer-chip--branch {
+    flex: 1 1 0;
+  }
+
+  .session-input-toolbar .session-toolbar-spacer {
+    display: none;
+  }
+
+  .session-input-toolbar .session-send-button,
+  .session-input-toolbar .session-send-mascot {
+    grid-area: send;
+    justify-self: end;
+  }
 }
 
 .composer-attachments {
@@ -194,7 +302,8 @@
 }
 
 .session-toolbar-spacer {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .session-input input,

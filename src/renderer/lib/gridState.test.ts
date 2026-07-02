@@ -63,6 +63,21 @@ describe("openWorkspaceInGrid", () => {
     expect(next.focused).toEqual({ row: 0, col: 2 });
   });
 
+  it("opens below when split-right would exceed the measured layout cap", () => {
+    const start: GridState = {
+      rows: [[cell(1), cell(2)]],
+      focused: { row: 0, col: 1 }
+    };
+    const next = openWorkspaceInGrid(
+      start,
+      cell(3),
+      { ctrlOrMeta: true, alt: false },
+      { maxColumns: 2 }
+    );
+    expect(next.rows).toEqual([[cell(1), cell(2)], [cell(3)]]);
+    expect(next.focused).toEqual({ row: 1, col: 0 });
+  });
+
   it("falls back to replace when a split below would exceed the row count cap", () => {
     const start: GridState = {
       rows: [[cell(1)], [cell(2)], [cell(3)]],
@@ -108,6 +123,16 @@ describe("openLauncherInGrid", () => {
     };
     const next = openLauncherInGrid(start, launcher());
     expect(next.rows).toEqual([[cell(1), cell(2), cell(3)], [launcher()]]);
+    expect(next.focused).toEqual({ row: 1, col: 0 });
+  });
+
+  it("adds the launcher below when the measured layout cap is reached", () => {
+    const start: GridState = {
+      rows: [[cell(1), cell(2)]],
+      focused: { row: 0, col: 1 }
+    };
+    const next = openLauncherInGrid(start, launcher(), { maxColumns: 2 });
+    expect(next.rows).toEqual([[cell(1), cell(2)], [launcher()]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 
@@ -198,6 +223,17 @@ describe("dropWorkspaceInGrid", () => {
     // Capped — replaces target at (1, 0) instead of inserting a new row.
     expect(next.rows).toEqual([[cell(1)], [cell(99)], [cell(3)]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
+  });
+
+  it("falls back to replace when a drop would exceed the measured layout cap", () => {
+    const next = dropWorkspaceInGrid(
+      start,
+      cell(9),
+      { row: 0, col: 0, position: "right" },
+      { maxColumns: 2 }
+    );
+    expect(next.rows).toEqual([[cell(9), cell(2)], [cell(3)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 });
 

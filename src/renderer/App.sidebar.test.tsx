@@ -57,8 +57,8 @@ describe("App sidebar", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "Second chat",
@@ -94,7 +94,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Sonnet 4.6");
+    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Sonnet 5");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-current", "true");
@@ -205,7 +205,7 @@ describe("App sidebar", () => {
         input: "continue with tests",
         provider: "codex",
         modelLabel: "GPT-5.3 Codex",
-        modelId: "gpt-5.3-codex",
+        modelId: "gpt-5.5",
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",
@@ -543,7 +543,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
-    fireEvent.click(within(launchPopover).getByText("Sonnet 4.6"));
+    fireEvent.click(within(launchPopover).getByText("Sonnet 5"));
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 

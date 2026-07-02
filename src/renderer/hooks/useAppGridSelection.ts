@@ -28,6 +28,7 @@ export interface UseAppGridSelectionParams {
   selectedProject: ProjectSummary | null;
   selectedWorkspace: WorkspaceSummary | null;
   pendingSelectionRef: MutableRefObject<{ sessionId: string; workspaceId: string } | null>;
+  maxColumnsPerRow: number;
   setSelectedSessionId: (value: string | null) => void;
   setSelectedWorkspaceId: (value: string | null) => void;
   setSelectedProjectId: (value: string | null) => void;
@@ -58,6 +59,7 @@ export function useAppGridSelection({
   selectedProject,
   selectedWorkspace,
   pendingSelectionRef,
+  maxColumnsPerRow,
   setSelectedSessionId,
   setSelectedWorkspaceId,
   setSelectedProjectId,
@@ -162,11 +164,12 @@ export function useAppGridSelection({
         openWorkspaceInGrid(
           current,
           { sessionId: sessionForWorkspace.id, workspaceId },
-          modifiers
+          modifiers,
+          { maxColumns: maxColumnsPerRow }
         )
       );
     },
-    [snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
+    [maxColumnsPerRow, snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
   );
 
   const closePane = useCallback((coord: GridCoord): void => {
@@ -198,11 +201,12 @@ export function useAppGridSelection({
         dropWorkspaceInGrid(
           current,
           { sessionId: sessionForWorkspace.id, workspaceId },
-          target
+          target,
+          { maxColumns: maxColumnsPerRow }
         )
       );
     },
-    [snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
+    [maxColumnsPerRow, snapshot.sessions, workspacesById, setSelectedProjectId, showErrorToast]
   );
 
   const handleWorkspaceDragStart = useCallback((workspaceId: string): void => {
@@ -235,9 +239,10 @@ export function useAppGridSelection({
         projectId = focused.projectId;
       }
       if (!projectId) return current;
-      return openLauncherInGrid(current, { kind: "launcher", projectId });
+      return openLauncherInGrid(current, { kind: "launcher", projectId }, { maxColumns: maxColumnsPerRow });
     });
   }, [
+    maxColumnsPerRow,
     selectedProject?.id,
     selectedWorkspace?.projectId,
     snapshot.projects,

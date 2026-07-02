@@ -721,7 +721,7 @@ mod tests {
             "provider": "codex",
             "prompt": "hello",
             "modelLabel": "Spark",
-            "modelId": "codex-spark",
+            "modelId": "gpt-5.5",
             "cols": 80,
             "rows": 24,
             "surprise": true
@@ -733,7 +733,7 @@ mod tests {
             "provider": "codex",
             "prompt": "- hello\nthere",
             "modelLabel": "Spark",
-            "modelId": "codex-spark",
+            "modelId": "gpt-5.5",
             "cols": 80,
             "rows": 24
         });
@@ -811,7 +811,7 @@ mod tests {
             "provider": "codex",
             "prompt": "hello",
             "modelLabel": "Spark",
-            "modelId": "codex-spark",
+            "modelId": "gpt-5.5",
             "cols": 80,
             "rows": 24,
             "attachments": [{

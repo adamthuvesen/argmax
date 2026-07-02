@@ -401,17 +401,17 @@ export function SessionComposer({
                 }}
               >
                 <Folder size={11} aria-hidden="true" />
-                <span>Worktree</span>
+                <span className="composer-footer-chip-label">Worktree</span>
               </button>
             )}
             <button
               type="button"
-              className="composer-footer-chip"
+              className="composer-footer-chip composer-footer-chip--branch"
               title={`Branch: ${workspace.branch}`}
               aria-label={`Branch ${workspace.branch}`}
             >
               <GitBranch size={11} aria-hidden="true" />
-              <span>{workspace.branch}</span>
+              <span className="composer-footer-chip-label">{workspace.branch}</span>
             </button>
           </div>
         ) : null}

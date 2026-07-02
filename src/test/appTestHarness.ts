@@ -155,7 +155,7 @@ export function setupAppTestMocks(): void {
   });
   sessionCostSummary = vi.fn<ArgmaxApi["session"]["costSummary"]>().mockResolvedValue({
     sessionId: "session-1",
-    modelId: "gpt-5.3-codex",
+    modelId: "gpt-5.5",
     tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 },
     costUsd: 0.012
   });

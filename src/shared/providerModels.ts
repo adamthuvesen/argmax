@@ -48,11 +48,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
     { label: "Fable 5", modelId: "claude-fable-5", supportsReasoningEffort: true },
     { label: "Opus 4.8", modelId: "claude-opus-4-8", supportsReasoningEffort: true },
-    { label: "Sonnet 4.6", modelId: "claude-sonnet-4-6", supportsReasoningEffort: true },
+    { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5" }
   ],
   codex: [
-    { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true }
+    { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true },
+    { label: "GPT-5.3 Codex Spark", modelId: "gpt-5.3-codex-spark", supportsReasoningEffort: true }
   ],
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" },
@@ -109,40 +110,11 @@ export interface ModelPricing {
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   "claude-fable-5":      { input: 10,   output: 50,  cacheRead: 1,     cacheWrite: 12.5 },
   "claude-opus-4-8":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-7":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-6":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-5":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-1":     { input: 15,   output: 75,  cacheRead: 1.5,   cacheWrite: 18.75 },
-  "claude-opus-4":       { input: 15,   output: 75,  cacheRead: 1.5,   cacheWrite: 18.75 },
-  "claude-sonnet-4-6":   { input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
-  "claude-sonnet-4-5":   { input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
-  "claude-sonnet-4":     { input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
-  "claude-3-7-sonnet":   { input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
+  "claude-sonnet-5":     { input: 3,    output: 15,  cacheRead: 0.3,   cacheWrite: 3.75 },
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
-  "claude-3-5-haiku":    { input: 0.8,  output: 4,   cacheRead: 0.08,  cacheWrite: 1 },
-  "claude-3-opus":       { input: 15,   output: 75,  cacheRead: 1.5,   cacheWrite: 18.75 },
-  "claude-3-haiku":      { input: 0.25, output: 1.25, cacheRead: 0.03, cacheWrite: 0.3 },
 
-  "gpt-5":               { input: 1.25, output: 10,  cacheRead: 0.125, cacheWrite: 0 },
-  "gpt-5-codex":         { input: 1.25, output: 10,  cacheRead: 0.125, cacheWrite: 0 },
-  "gpt-5-codex-mini":    { input: 0.25, output: 2,   cacheRead: 0.025, cacheWrite: 0 },
-  "gpt-5.1":             { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.1-codex-max":   { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.1-codex-mini":  { input: 0.25, output: 2,   cacheRead: 0.025, cacheWrite: 0 },
-  "gpt-5.2":             { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.2-codex":       { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3":             { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3-codex":       { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3-codex-spark": { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3-chat-latest": { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.4":             { input: 2.5,  output: 15,  cacheRead: 0.25,  cacheWrite: 0 },
-  "gpt-5.4-codex":       { input: 2.5,  output: 15,  cacheRead: 0.25,  cacheWrite: 0 },
-  "gpt-5.4-mini":        { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
-  "gpt-5.4-nano":        { input: 0.2,  output: 1.25, cacheRead: 0.02, cacheWrite: 0 },
-  "gpt-5.4-pro":         { input: 30,   output: 180, cacheRead: 0,     cacheWrite: 0 },
   "gpt-5.5":             { input: 5,    output: 30,  cacheRead: 0.5,   cacheWrite: 0 },
-  "gpt-5.5-pro":         { input: 30,   output: 180, cacheRead: 0,     cacheWrite: 0 },
-  "o4-mini":             { input: 1.1,  output: 4.4, cacheRead: 0.275, cacheWrite: 0 },
+  "gpt-5.3-codex-spark": { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
 
   // Cursor's bundled models are subscription-billed via Cursor's plan, not
   // per-token through the underlying API. All Cursor-routed ids report $0 so
@@ -152,8 +124,41 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "composer-2.5":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.5-flash":        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-8-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "claude-opus-4-7-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.5-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+};
+
+const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
+  "claude-opus-4-7":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
+  "claude-opus-4-6":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
+  "claude-opus-4-5":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
+  "claude-opus-4-1":      { input: 15,   output: 75,   cacheRead: 1.5,   cacheWrite: 18.75 },
+  "claude-opus-4":        { input: 15,   output: 75,   cacheRead: 1.5,   cacheWrite: 18.75 },
+  "claude-sonnet-4-6":    { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
+  "claude-sonnet-4-5":    { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
+  "claude-sonnet-4":      { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
+  "claude-3-7-sonnet":    { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
+  "claude-3-5-haiku":     { input: 0.8,  output: 4,    cacheRead: 0.08,  cacheWrite: 1 },
+  "claude-3-opus":        { input: 15,   output: 75,   cacheRead: 1.5,   cacheWrite: 18.75 },
+  "claude-3-haiku":       { input: 0.25, output: 1.25, cacheRead: 0.03,  cacheWrite: 0.3 },
+  "gpt-5":                { input: 1.25, output: 10,   cacheRead: 0.125, cacheWrite: 0 },
+  "gpt-5-codex":          { input: 1.25, output: 10,   cacheRead: 0.125, cacheWrite: 0 },
+  "gpt-5-codex-mini":     { input: 0.25, output: 2,    cacheRead: 0.025, cacheWrite: 0 },
+  "gpt-5.1":              { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.1-codex-max":    { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.1-codex-mini":   { input: 0.25, output: 2,    cacheRead: 0.025, cacheWrite: 0 },
+  "gpt-5.2":              { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.2-codex":        { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.3":              { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.3-codex":        { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.3-chat-latest":  { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.4":              { input: 2.5,  output: 15,   cacheRead: 0.25,  cacheWrite: 0 },
+  "gpt-5.4-codex":        { input: 2.5,  output: 15,   cacheRead: 0.25,  cacheWrite: 0 },
+  "gpt-5.4-mini":         { input: 0.75, output: 4.5,  cacheRead: 0.075, cacheWrite: 0 },
+  "gpt-5.4-nano":         { input: 0.2,  output: 1.25, cacheRead: 0.02,  cacheWrite: 0 },
+  "gpt-5.4-pro":          { input: 30,   output: 180,  cacheRead: 0,     cacheWrite: 0 },
+  "gpt-5.5-pro":          { input: 30,   output: 180,  cacheRead: 0,     cacheWrite: 0 },
+  "o4-mini":              { input: 1.1,  output: 4.4,  cacheRead: 0.275, cacheWrite: 0 },
+  "claude-opus-4-7-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 
 export interface UsageCounts {
@@ -177,7 +182,7 @@ const loggedUnknownModels = new BoundedSet<string>(100);
  */
 export function costOf(usage: UsageCounts, modelId: string): number {
   const key = normalizeModelId(modelId);
-  const price = MODEL_PRICING[key];
+  const price = MODEL_PRICING[key] ?? STORED_MODEL_PRICING_ALIASES[key];
   if (!price) {
     if (loggedUnknownModels.add(key)) {
       logger.warn("pricing", "unknown model id", { modelId, normalized: key });

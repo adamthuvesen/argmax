@@ -83,15 +83,13 @@ beacon's only job is suppressing the raw-stdout transcript fallback (via
 
 ## Extended-thinking (Thought block)
 
-Distinct from the pre-answer "Thinking" indicator above: Claude's
-extended-thinking *content* (the reasoning monologue) is surfaced by the
-normalizer ([claude.rs](../../src-tauri/src/providers/normalizer/claude.rs))
-as `message.delta` events with `payload.thinking === true`. Claude is launched
-with `--include-partial-messages` (adapters.rs), so reasoning streams
-token-by-token as `thinking_delta` fragments (text in `delta.thinking`); the
-dispatcher in [mod.rs](../../src-tauri/src/providers/normalizer/mod.rs) stamps
-the `thinking: true` flag onto each. `message.completed` carries the answer text
-only, so these deltas are the sole record of the reasoning.
+Distinct from the pre-answer "Thinking" indicator above: provider-visible
+thinking content is surfaced by the normalizers as `message.delta` events with
+`payload.thinking === true`. Claude streams `thinking_delta` fragments from
+`--include-partial-messages`, Codex emits completed `reasoning` items when
+reasoning summaries are enabled, and Cursor emits `thinking/delta` rows in
+`stream-json` mode. The renderer treats all three the same way. Raw hidden
+reasoning and opaque token counters are never rendered as Thought blocks.
 
 Two layers cooperate to keep it visible and out of the way:
 
@@ -111,7 +109,9 @@ Two layers cooperate to keep it visible and out of the way:
   [SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx)
   routes thinking groups to [ThoughtBlock.tsx](../../src/renderer/components/ThoughtBlock.tsx)
   instead of an inline answer bubble, keeping their chronological position in the
-  turn body (before the tools and answer they preceded).
+  turn body (before the tools and answer they preceded). The block uses a quiet
+  title-case label and keeps the expanded reasoning body aligned to the same
+  turn content edge.
 
 **Expand-while-live, setting-when-done.** The Thought block takes a `live`
 prop, computed per turn in `SessionConversationTurn` as *latest turn + session

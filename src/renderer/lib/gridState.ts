@@ -44,6 +44,16 @@ function totalCells(grid: GridState): number {
   return n;
 }
 
+function maxColumns(layout?: { maxColumns?: number }): number {
+  const requested = layout?.maxColumns;
+  if (!Number.isFinite(requested)) return MAX_COLS;
+  return Math.max(1, Math.min(MAX_COLS, Math.floor(requested ?? MAX_COLS)));
+}
+
+function maxCells(layout?: { maxColumns?: number }): number {
+  return MAX_ROWS * maxColumns(layout);
+}
+
 export function findWorkspaceCell(grid: GridState, workspaceId: string): GridCoord | null {
   for (let r = 0; r < grid.rows.length; r++) {
     const row = grid.rows[r];
@@ -101,7 +111,8 @@ function insertRow(rows: GridCell[][], at: number, cell: GridCell): GridCell[][]
 export function openWorkspaceInGrid(
   grid: GridState,
   cell: SessionGridCell,
-  modifiers: { ctrlOrMeta: boolean; alt: boolean }
+  modifiers: { ctrlOrMeta: boolean; alt: boolean },
+  layout?: { maxColumns?: number }
 ): GridState {
   const existing = findWorkspaceCell(grid, cell.workspaceId);
   if (existing) return { ...grid, focused: existing };
@@ -111,13 +122,28 @@ export function openWorkspaceInGrid(
   }
 
   const { row: fr, col: fc } = grid.focused;
-  const canSplit = totalCells(grid) < MAX_CELLS;
+  const rowCap = maxColumns(layout);
+  const canSplit = totalCells(grid) < maxCells(layout);
   const focusedRow = grid.rows[fr];
 
-  if (modifiers.ctrlOrMeta && canSplit && focusedRow && focusedRow.length < MAX_COLS) {
+  if (modifiers.ctrlOrMeta && canSplit && focusedRow && focusedRow.length < rowCap) {
     return {
       rows: insertCellInRow(grid.rows, fr, fc + 1, cell),
       focused: { row: fr, col: fc + 1 }
+    };
+  }
+
+  if (
+    modifiers.ctrlOrMeta &&
+    canSplit &&
+    focusedRow &&
+    focusedRow.length >= rowCap &&
+    rowCap < MAX_COLS &&
+    grid.rows.length < MAX_ROWS
+  ) {
+    return {
+      rows: insertRow(grid.rows, fr + 1, cell),
+      focused: { row: fr + 1, col: 0 }
     };
   }
 
@@ -136,7 +162,11 @@ export function openWorkspaceInGrid(
  * right of the focused pane; when the focused row is already at 3 columns,
  * insert a new row below. If the grid is full, leave it unchanged.
  */
-export function openLauncherInGrid(grid: GridState, cell: LauncherGridCell): GridState {
+export function openLauncherInGrid(
+  grid: GridState,
+  cell: LauncherGridCell,
+  layout?: { maxColumns?: number }
+): GridState {
   const existing = findLauncherCell(grid);
   if (existing) return { ...grid, focused: existing };
 
@@ -146,10 +176,11 @@ export function openLauncherInGrid(grid: GridState, cell: LauncherGridCell): Gri
 
   const { row: fr, col: fc } = grid.focused;
   const focusedRow = grid.rows[fr];
-  const canSplit = totalCells(grid) < MAX_CELLS;
+  const rowCap = maxColumns(layout);
+  const canSplit = totalCells(grid) < maxCells(layout);
   if (!canSplit || !focusedRow) return grid;
 
-  if (focusedRow.length < MAX_COLS) {
+  if (focusedRow.length < rowCap) {
     return {
       rows: insertCellInRow(grid.rows, fr, fc + 1, cell),
       focused: { row: fr, col: fc + 1 }
@@ -174,7 +205,8 @@ export function openLauncherInGrid(grid: GridState, cell: LauncherGridCell): Gri
 export function dropWorkspaceInGrid(
   grid: GridState,
   cell: SessionGridCell,
-  target: GridCoord & { position: SplitPosition }
+  target: GridCoord & { position: SplitPosition },
+  layout?: { maxColumns?: number }
 ): GridState {
   const existing = findWorkspaceCell(grid, cell.workspaceId);
   if (existing) return { ...grid, focused: existing };
@@ -187,13 +219,14 @@ export function dropWorkspaceInGrid(
   const targetRow = grid.rows[tr];
   if (!targetRow) return { ...grid, focused: { row: 0, col: 0 } };
 
-  const canSplit = totalCells(grid) < MAX_CELLS;
+  const rowCap = maxColumns(layout);
+  const canSplit = totalCells(grid) < maxCells(layout);
 
   if (position === "replace") {
     return { rows: replaceCell(grid.rows, { row: tr, col: tc }, cell), focused: { row: tr, col: tc } };
   }
 
-  if ((position === "left" || position === "right") && canSplit && targetRow.length < MAX_COLS) {
+  if ((position === "left" || position === "right") && canSplit && targetRow.length < rowCap) {
     const insertCol = position === "left" ? tc : tc + 1;
     return {
       rows: insertCellInRow(grid.rows, tr, insertCol, cell),

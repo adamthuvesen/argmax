@@ -34,25 +34,26 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
 
 describe("normalizeModelId", () => {
   it("strips a trailing -YYYYMMDD date suffix", () => {
-    expect(normalizeModelId("claude-sonnet-4-6-20250101")).toBe("claude-sonnet-4-6");
-    expect(normalizeModelId("claude-3-5-haiku-20241022")).toBe("claude-3-5-haiku");
+    expect(normalizeModelId("claude-sonnet-5-20250101")).toBe("claude-sonnet-5");
+    expect(normalizeModelId("claude-haiku-4-5-20241022")).toBe("claude-haiku-4-5");
   });
 
   it("leaves bare ids untouched", () => {
-    expect(normalizeModelId("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
-    expect(normalizeModelId("gpt-5.4-codex")).toBe("gpt-5.4-codex");
+    expect(normalizeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
     expect(normalizeModelId("gpt-5.5")).toBe("gpt-5.5");
+    expect(normalizeModelId("gpt-5.3-codex-spark")).toBe("gpt-5.3-codex-spark");
   });
 
   it("does not strip non-date trailing suffixes", () => {
-    expect(normalizeModelId("gpt-5.4-codex")).toBe("gpt-5.4-codex");
+    expect(normalizeModelId("gpt-5.5-medium")).toBe("gpt-5.5-medium");
+    expect(normalizeModelId("gpt-5.3-codex-spark")).toBe("gpt-5.3-codex-spark");
   });
 });
 
 describe("costOf — golden fixtures", () => {
   beforeEach(() => __resetUnknownModelLog());
 
-  it("prices Opus 4.7 across all four buckets", () => {
+  it("prices Opus 4.8 across all four buckets", () => {
     const usage: UsageCounts = {
       input: 1_000_000,
       output: 1_000_000,
@@ -60,11 +61,11 @@ describe("costOf — golden fixtures", () => {
       cacheWrite: 1_000_000
     };
     // 5 + 25 + 0.5 + 6.25 = 36.75
-    expect(costOf(usage, "claude-opus-4-7")).toBeCloseTo(36.75, 9);
+    expect(costOf(usage, "claude-opus-4-8")).toBeCloseTo(36.75, 9);
   });
 
-  it("prices Sonnet 4.6 input-only at $3/M", () => {
-    expect(costOf(million, "claude-sonnet-4-6")).toBeCloseTo(3.0, 9);
+  it("prices Sonnet 5 input-only at $3/M", () => {
+    expect(costOf(million, "claude-sonnet-5")).toBeCloseTo(3.0, 9);
   });
 
   it("prices Haiku 4.5 input-only at $1/M", () => {
@@ -75,15 +76,25 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(million, "gpt-5.5")).toBeCloseTo(5.0, 9);
   });
 
-  it("prices o4-mini input-only at $1.1/M", () => {
-    expect(costOf(million, "o4-mini")).toBeCloseTo(1.1, 9);
+  it("keeps verified GPT-5.3 Codex Spark pricing", () => {
+    expect(costOf(million, "gpt-5.3-codex-spark")).toBeCloseTo(1.75, 9);
   });
 
   it("strips date suffixes before pricing lookup", () => {
-    const suffixed = costOf(million, "claude-sonnet-4-6-20250101");
-    const bare = costOf(million, "claude-sonnet-4-6");
+    const suffixed = costOf(million, "claude-sonnet-5-20250101");
+    const bare = costOf(million, "claude-sonnet-5");
     expect(suffixed).toBe(bare);
     expect(suffixed).toBeCloseTo(3.0, 9);
+  });
+
+  it("prices stored legacy ids without restoring them to the model table", () => {
+    expect(MODEL_PRICING["claude-sonnet-4-6"]).toBeUndefined();
+    expect(MODEL_PRICING["gpt-5.4-codex"]).toBeUndefined();
+    expect(MODEL_PRICING["o4-mini"]).toBeUndefined();
+    expect(costOf(million, "claude-sonnet-4-6")).toBeCloseTo(3.0, 9);
+    expect(costOf(million, "claude-sonnet-4-6-20250101")).toBeCloseTo(3.0, 9);
+    expect(costOf(million, "gpt-5.4-codex")).toBeCloseTo(2.5, 9);
+    expect(costOf(million, "o4-mini")).toBeCloseTo(1.1, 9);
   });
 });
 
@@ -110,11 +121,10 @@ describe("costOf — unknown model", () => {
 
 describe("MODEL_PRICING coverage", () => {
   it("ships entries for the launch-default model ids", () => {
-    expect(MODEL_PRICING["claude-sonnet-4-6"]).toBeDefined();
+    expect(MODEL_PRICING["claude-sonnet-5"]).toBeDefined();
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
-    expect(MODEL_PRICING["claude-opus-4-7"]).toBeDefined();
     expect(MODEL_PRICING["gpt-5.5"]).toBeDefined();
-    expect(MODEL_PRICING["gpt-5.4-codex"]).toBeDefined();
+    expect(MODEL_PRICING["gpt-5.3-codex-spark"]).toBeDefined();
   });
 
   // audit-2026-05-17 L4 — drift tripwire: a new modelId added to

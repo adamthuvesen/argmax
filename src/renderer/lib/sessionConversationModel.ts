@@ -115,7 +115,9 @@ export function buildSessionToolCalls(
       const completion = completions.get(toolUseId);
       const startInput = extractToolInput(event.payload);
       const completionInput = completion ? extractToolInput(completion.payload) : {};
-      const input = Object.keys(startInput).length > 0 ? startInput : completionInput;
+      const input = Object.keys(completionInput).length > 0
+        ? { ...startInput, ...completionInput }
+        : startInput;
       const isError = completion ? detectToolError(completion.payload) : false;
       const hasLaterVisibleProgress = visibleProgressEvents.some((progress) => eventIsAfter(progress, event));
       // A started tool with no matching `command.completed` is normally still

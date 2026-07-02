@@ -152,10 +152,76 @@ describe("SessionConversation — tools & chrome", () => {
     expect(agentRow).not.toHaveTextContent("🤖");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
     fireEvent.click(agentRow);
-    expect(screen.getByText("Activity")).toBeInTheDocument();
+    expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Read toolCalls.tsx" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Read a file, started an agent/ })).toBeNull();
+  });
+
+  it("keeps live agent activity collapsed while showing the running agent row", () => {
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Sonnet 5", state: "running" }),
+      [
+        event("u1", "user.message", "explore repo with a subagent", "2026-05-12T15:00:00.000Z"),
+        event("task-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "task",
+          name: "Task",
+          input: {
+            description: "Explore repo structure",
+            prompt: "Map the repo."
+          }
+        }),
+        event("child-read-start", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
+          type: "tool_use",
+          id: "child-read",
+          name: "Read",
+          parent_tool_use_id: "task",
+          input: { file_path: "README.md" }
+        })
+      ],
+      { defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false }
+    );
+
+    const agentRow = screen.getByRole("button", { name: "Agent Explore repo structure" });
+    expect(agentRow).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Activity")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Read README.md" })).not.toBeInTheDocument();
+  });
+
+  it("expands Codex spawned-agent rows to show spawn metadata", () => {
+    renderConversation(
+      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "complete" }),
+      [
+        event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
+        event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: {
+            prompt: "Explore repo quickly and report key files.",
+            receiver_thread_ids: [],
+            sender_thread_id: "sender-thread"
+          }
+        }),
+        event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: {
+            prompt: "Explore repo quickly and report key files.",
+            receiver_thread_ids: ["receiver-thread"],
+            sender_thread_id: "sender-thread"
+          }
+        })
+      ]
+    );
+
+    const agentRow = screen.getByRole("button", { name: "Agent Explore repo quickly and report key files." });
+    expect(screen.queryByText("Input")).not.toBeInTheDocument();
+
+    fireEvent.click(agentRow);
+
+    expect(screen.getByText("Input")).toBeInTheDocument();
+    expect(screen.getByText(/receiver-thread/)).toBeInTheDocument();
   });
 
   it("turn chip expands every tool group even after one group was toggled locally", () => {

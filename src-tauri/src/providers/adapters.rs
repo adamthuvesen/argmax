@@ -2,6 +2,7 @@ use super::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, Reasonin
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];
+const CODEX_NO_REASONING_SUMMARY_MODELS: &[&str] = &["gpt-5.3-codex-spark"];
 const CURSOR_BYPASS_PERMISSION_ARGS: &[&str] = &["--force", "--trust"];
 
 pub const PLAN_MODE_PROMPT_PREFIX: &str =
@@ -115,6 +116,7 @@ fn codex_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec!["exec".to_string(), "--json".to_string()];
     args.extend(codex_permission_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
+    args.extend(codex_reasoning_summary_args(input));
     args.extend(codex_reasoning_args(input, true));
     args.extend(codex_fast_mode_args(input));
     args.push("-".to_string());
@@ -132,6 +134,7 @@ fn codex_structured_resume_args(
     ];
     args.extend(codex_permission_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
+    args.extend(codex_reasoning_summary_args(input));
     args.extend(codex_reasoning_args(input, true));
     args.extend(codex_fast_mode_args(input));
     args.extend([resume_conversation_id.to_string(), "-".to_string()]);
@@ -327,6 +330,18 @@ fn codex_reasoning_args(input: &ProviderLaunchInput, structured: bool) -> Vec<St
     ]
 }
 
+fn codex_reasoning_summary_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let summary_mode = if CODEX_NO_REASONING_SUMMARY_MODELS.contains(&input.model_id.as_str()) {
+        "none"
+    } else {
+        "auto"
+    };
+    vec![
+        "-c".to_string(),
+        format!(r#"model_reasoning_summary="{summary_mode}""#),
+    ]
+}
+
 pub(super) fn prompt_for_agent_mode(prompt: &str, agent_mode: AgentMode) -> String {
     if agent_mode == AgentMode::Plan {
         format!("{PLAN_MODE_PROMPT_PREFIX}\n\n{prompt}")
@@ -456,6 +471,8 @@ mod tests {
                 "--model",
                 "gpt-5.5",
                 "-c",
+                "model_reasoning_summary=\"auto\"",
+                "-c",
                 "model_reasoning_effort=\"low\"",
                 "-",
             ]
@@ -474,6 +491,29 @@ mod tests {
         };
         let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
         assert!(args.iter().any(|arg| arg == "--ignore-user-config"));
+    }
+
+    #[test]
+    fn codex_reasoning_summary_args_are_explicit() {
+        let input = ProviderLaunchInput {
+            model_id: "gpt-5.3-codex-spark".to_string(),
+            ..launch_input(ProviderId::Codex)
+        };
+        let definition = get_provider_definition(ProviderId::Codex);
+        let default_args = (definition.structured_args)(&launch_input(ProviderId::Codex));
+        assert!(default_args
+            .windows(2)
+            .any(|window| window == ["-c", r#"model_reasoning_summary="auto""#]));
+
+        let args = (definition.structured_args)(&input);
+        assert!(args
+            .windows(2)
+            .any(|window| window == ["-c", r#"model_reasoning_summary="none""#]));
+
+        let resume_args = (definition.structured_resume_args)(&input, "thread-1");
+        assert!(resume_args
+            .windows(2)
+            .any(|window| window == ["-c", r#"model_reasoning_summary="none""#]));
     }
 
     #[test]
@@ -524,6 +564,8 @@ mod tests {
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
                 "gpt-5.5",
+                "-c",
+                "model_reasoning_summary=\"auto\"",
                 "-c",
                 "model_reasoning_effort=\"low\"",
                 "thread-1",

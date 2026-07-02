@@ -25,11 +25,17 @@ function displayPath(path: string, cwd: string | null | undefined): string {
 }
 
 function visibleInputForTool(tool: ToolCall): Record<string, unknown> {
+  if (isCodexAgentTool(tool)) return tool.inputFull;
   // For Task (sub-agent) tools, drop the `prompt` field — it's a long
   // multi-paragraph instruction that bloats the toggled detail and adds
   // nothing the user can act on. Keep description + subagent_type.
   if (getToolTypeBucket(tool.name) !== "agent") return tool.inputFull;
   return Object.fromEntries(Object.entries(tool.inputFull).filter(([k]) => k !== "prompt"));
+}
+
+function isCodexAgentTool(tool: ToolCall): boolean {
+  const lower = tool.name.toLowerCase();
+  return lower === "spawn_agent" || lower === "collab_tool_call";
 }
 
 export function ToolCallDetail({
@@ -65,10 +71,12 @@ export function ToolCallDetail({
   // The Agent (Task) banner already shows the description; its only "raw input"
   // is description + subagent_type (prompt is dropped), so the box is pure
   // noise — and renders as an empty-looking shell before the sub-agent runs.
-  // Skip it for agents and let the detail collapse to nothing until output
-  // (the sub-agent's result) arrives.
+  // Skip it for Claude-style Task agents and let the detail collapse to
+  // children/output. Codex spawn_agent rows are different: the prompt and
+  // receiver thread ids are the only detail Codex gives us, so keep those
+  // expandable instead of making the row feel dead.
   const isAgent = getToolTypeBucket(tool.name) === "agent";
-  const showRawInput = Object.keys(visibleInput).length > 0 && !isAgent;
+  const showRawInput = Object.keys(visibleInput).length > 0 && (!isAgent || isCodexAgentTool(tool));
 
   if (changes && changes.length > 0) {
     return (

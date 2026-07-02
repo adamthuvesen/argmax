@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
@@ -74,7 +75,6 @@ function ToolCallRowInner({
 
   const localExpanded =
     userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
-  const expanded = localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false));
 
   const action = describeToolAction(tool);
   const baseSplit = splitVerbTarget(action);
@@ -88,9 +88,9 @@ function ToolCallRowInner({
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.target;
   const toolTypeBucket = getToolTypeBucket(tool.name);
+  const expanded = localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false));
   const childToolRows = childTools && childTools.length > 0 ? (
     <div className="tool-call-section tool-call-agent-activity">
-      <p className="tool-call-section-label">Activity</p>
       <div className="tool-call-agent-child-list">
         {childTools.map((child) => (
           <ToolCallRow
@@ -126,6 +126,11 @@ function ToolCallRowInner({
             {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}
             {counts.dels > 0 ? <span className="dels">−{counts.dels}</span> : null}
             {counts.files > 1 ? <span className="files">· {counts.files} files</span> : null}
+          </span>
+        ) : null}
+        {tool.status === "running" ? (
+          <span className="tool-call-row-running" aria-hidden="true">
+            <Loader2 size={11} className="tool-call-spinner" />
           </span>
         ) : null}
       </button>

@@ -20,7 +20,7 @@ describe("SessionConversation — streaming & composer", () => {
   it("does not reset the model picker when the session prop reference changes but id stays the same", () => {
     const v1 = baseSession({
       modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.3-codex",
+      modelId: "gpt-5.5",
       reasoningEffort: "medium"
     });
     const { rerender } = renderConversation(v1);
@@ -62,7 +62,7 @@ describe("SessionConversation — streaming & composer", () => {
     const original = baseSession({
       id: "session-a",
       modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.3-codex",
+      modelId: "gpt-5.5",
       reasoningEffort: "medium"
     });
     const { rerender } = renderConversation(original);
@@ -106,6 +106,16 @@ describe("SessionConversation — streaming & composer", () => {
     expect(
       modelPicker.compareDocumentPosition(workspaceContext) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  it("marks the branch chip label as ellipsis-safe", () => {
+    renderConversation(baseSession());
+
+    const branchChip = screen.getByRole("button", { name: "Branch argmax/dashboard" });
+    expect(branchChip).toHaveClass("composer-footer-chip--branch");
+    expect(branchChip.querySelector(".composer-footer-chip-label")).toHaveTextContent(
+      "argmax/dashboard"
+    );
   });
 
   it("renders repeated Cursor assistant snapshots once while streaming", () => {

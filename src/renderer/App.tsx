@@ -1,10 +1,12 @@
 import { PanelLeft, PanelLeftClose } from "lucide-react";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent as ReactDragEvent,
   type JSX
@@ -24,10 +26,10 @@ import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
 import { PerfOverlay } from "./components/PerfOverlay.js";
-import { SessionMultiGrid } from "./components/SessionMultiGrid.js";
+import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { EMPTY_GRID, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
+import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -43,7 +45,7 @@ import {
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { useOverlays } from "./hooks/useOverlays.js";
-import { useSidebarResize } from "./hooks/useSidebarResize.js";
+import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
 import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
@@ -81,8 +83,16 @@ import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteC
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
+import { isTauriRuntime } from "./lib/tauriBridge.js";
 
 import { withToast, type ToastMessage } from "./lib/withToast.js";
+
+const APP_MIN_HEIGHT_PX = 640;
+const STATIC_APP_MIN_WIDTH_PX = 1024;
+
+function widestGridRowColumnCount(rows: unknown[][]): number {
+  return rows.reduce((max, row) => Math.max(max, row.length), 0);
+}
 
 export function App(): JSX.Element {
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
@@ -103,7 +113,8 @@ export function App(): JSX.Element {
   } = useOverlays();
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
-  const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize();
+  const workspaceRef = useRef<HTMLElement | null>(null);
+  const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [toolCallsExpanded, setToolCallsExpanded] = useBooleanUiPreference(TOOL_CALLS_EXPANDED_KEY, false);
   const [toolCallGroupsExpanded, setToolCallGroupsExpanded] = useBooleanUiPreference(
     TOOL_CALL_GROUPS_EXPANDED_KEY,
@@ -162,6 +173,27 @@ export function App(): JSX.Element {
     setToast({ kind: "error", message });
   }, []);
 
+  useLayoutEffect(() => {
+    const node = workspaceRef.current;
+    if (!node) return undefined;
+    const updateWidth = (): void => {
+      setWorkspaceWidth(node.getBoundingClientRect().width);
+    };
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const maxGridColumnsPerRow = useMemo(() => {
+    if (workspaceWidth <= 0) return MAX_COLS;
+    return Math.max(1, Math.min(MAX_COLS, Math.floor(workspaceWidth / MIN_RESIZABLE_CELL_WIDTH_PX)));
+  }, [workspaceWidth]);
+
   // Paint timing — first useLayoutEffect of <App /> marks "first-paint";
   // the loadState effect below marks "first-content" once the launcher /
   // session / settings surface is about to render for the first time.
@@ -213,11 +245,46 @@ export function App(): JSX.Element {
     selectedProject,
     selectedWorkspace,
     pendingSelectionRef,
+    maxColumnsPerRow: maxGridColumnsPerRow,
     setSelectedSessionId,
     setSelectedWorkspaceId,
     setSelectedProjectId,
     showErrorToast
   });
+
+  const requiredGridColumns = useMemo(() => widestGridRowColumnCount(grid.rows), [grid.rows]);
+  const requiredWorkspaceMinWidth = useMemo(() => {
+    if (requiredGridColumns <= 0) return DEFAULT_WORKSPACE_MIN_WIDTH_PX;
+    return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, requiredGridColumns * MIN_RESIZABLE_CELL_WIDTH_PX);
+  }, [requiredGridColumns]);
+  const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize(requiredWorkspaceMinWidth);
+  const requiredWindowMinWidth = useMemo(() => {
+    const sidebarPart = sidebarCollapsed ? 0 : sidebarWidth;
+    return Math.max(STATIC_APP_MIN_WIDTH_PX, requiredWorkspaceMinWidth + sidebarPart);
+  }, [requiredWorkspaceMinWidth, sidebarCollapsed, sidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (isBrowserPreview()) return undefined;
+    if (!isTauriRuntime()) return undefined;
+
+    let cancelled = false;
+    void (async () => {
+      const appWindow = getCurrentWindow();
+      const minimumSize = new LogicalSize(requiredWindowMinWidth, APP_MIN_HEIGHT_PX);
+      await appWindow.setMinSize(minimumSize);
+      const scaleFactor = await appWindow.scaleFactor();
+      const logicalSize = (await appWindow.innerSize()).toLogical(scaleFactor);
+      if (cancelled || logicalSize.width >= requiredWindowMinWidth) return;
+      await appWindow.setSize(
+        new LogicalSize(requiredWindowMinWidth, Math.max(logicalSize.height, APP_MIN_HEIGHT_PX))
+      );
+    })().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requiredWindowMinWidth]);
   const showWorkspaceDropTarget = draggingWorkspaceId !== null && !isSettingsOpen && (grid.rows.length === 0 || isFullLauncherOpen);
 
   useEffect(() => {
@@ -664,7 +731,8 @@ export function App(): JSX.Element {
         openWorkspaceInGrid(
           current,
           { sessionId: launchedSession.id, workspaceId: workspace.id },
-          { ctrlOrMeta: false, alt: false }
+          { ctrlOrMeta: false, alt: false },
+          { maxColumns: maxGridColumnsPerRow }
         )
       );
       void window.argmax.workspaces
@@ -683,6 +751,7 @@ export function App(): JSX.Element {
     [
       selectedProject,
       snapshot.projects,
+      maxGridColumnsPerRow,
       refreshDashboardStatus,
       loadSessionEvents,
       pendingSelectionRef,
@@ -944,7 +1013,7 @@ export function App(): JSX.Element {
         onPeekLeave={() => setSidebarPeek(false)}
       />
 
-      <section className="workspace">
+      <section className="workspace" ref={workspaceRef}>
         <div className={
           isSettingsOpen
             ? "work-scroll settings-scroll"
@@ -1021,6 +1090,7 @@ export function App(): JSX.Element {
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
               terminalToggleSignal={terminalToggleSignal}
+              maxColumnsPerRow={maxGridColumnsPerRow}
               renderLauncher={renderLaunchSurface}
               dragSourceWorkspaceId={draggingWorkspaceId}
               onFocusPane={focusPane}

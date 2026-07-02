@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
+import { MIN_RESIZABLE_CELL_WIDTH_PX } from "./components/SessionMultiGrid.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import {
   mockDashboardSnapshot,
@@ -43,8 +44,8 @@ describe("App grid", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "Split target",
@@ -106,8 +107,8 @@ describe("App grid", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "Below target",
@@ -264,8 +265,8 @@ describe("App grid", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "Second pane",
@@ -279,8 +280,8 @@ describe("App grid", () => {
       id: "session-3",
       workspaceId: "workspace-3",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-3",
       prompt: "Third pane",
@@ -335,8 +336,8 @@ describe("App grid", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "Drop target",
@@ -415,8 +416,8 @@ describe("App grid", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "Resize target",
@@ -444,17 +445,21 @@ describe("App grid", () => {
     if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
     Object.defineProperty(row, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 900, height: 600, top: 0, right: 900, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({ width: 1200, height: 600, top: 0, right: 1200, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
     });
     const before = row.style.gridTemplateColumns;
 
     fireEvent.mouseDown(handle, { clientX: 450 });
-    fireEvent.mouseMove(document, { clientX: 560 });
+    fireEvent.mouseMove(document, { clientX: 2000 });
     fireEvent.mouseUp(document);
 
     await waitFor(() => {
       expect(row.style.gridTemplateColumns).not.toBe(before);
     });
+    const frWidths = [...row.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
+      Number(match[1])
+    );
+    expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
 
   it("⌘W closes the focused pane", async () => {
@@ -476,8 +481,8 @@ describe("App grid", () => {
       id: "session-2",
       workspaceId: "workspace-2",
       provider: "claude",
-      modelLabel: "Sonnet 4.6",
-      modelId: "claude-sonnet-4-6",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
       permissionMode: "auto-approve",
       providerConversationId: "session-2",
       prompt: "CmdW target",

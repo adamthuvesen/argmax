@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
+  type CSSProperties,
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
@@ -26,12 +27,16 @@ import { MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { SessionPane } from "./SessionPane.js";
 
-/** Minimum width floor when resizing a grid cell (audit-2026-05-18 L6). */
-const MAX_CELL_WIDTH_FLOOR = 220;
+/** Minimum pane width for side-by-side grid splits and divider drags. */
+export const MIN_RESIZABLE_CELL_WIDTH_PX = 460;
 type EdgeDropPosition = Exclude<SplitPosition, "replace">;
 
 function totalCells(grid: GridState): number {
   return grid.rows.reduce((sum, row) => sum + row.length, 0);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 interface SessionMultiGridProps {
@@ -49,6 +54,7 @@ interface SessionMultiGridProps {
   fastModeEnabled?: boolean;
   showCostPanel?: boolean;
   thinkingStyle?: ThinkingStyle;
+  maxColumnsPerRow?: number;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
   terminalToggleSignal?: number;
@@ -99,6 +105,7 @@ export function SessionMultiGrid({
   fastModeEnabled,
   showCostPanel = true,
   thinkingStyle,
+  maxColumnsPerRow = MAX_COLS,
   rightPanelToggleSignal,
   debugLogToggleSignal,
   terminalToggleSignal,
@@ -123,7 +130,8 @@ export function SessionMultiGrid({
   const [isResizing, setIsResizing] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const dragCleanupRef = useRef<(() => void) | null>(null);
-  const canAddGridCell = totalCells(grid) < MAX_CELLS;
+  const rowColumnCap = Math.max(1, Math.min(MAX_COLS, Math.floor(maxColumnsPerRow)));
+  const canAddGridCell = totalCells(grid) < Math.min(MAX_CELLS, MAX_ROWS * rowColumnCap);
 
   useEffect(
     () => () => {
@@ -161,21 +169,23 @@ export function SessionMultiGrid({
       const rowEl = rowRefs.current[rowIndex];
       if (!row || row.length < 2 || !rowEl) return;
 
-      const startX = event.clientX;
-      const rowWidth = rowEl.getBoundingClientRect().width;
+      const rowRect = rowEl.getBoundingClientRect();
+      const startX = clampNumber(event.clientX, rowRect.left, rowRect.right);
+      const rowWidth = rowRect.width;
       const availableWidth = Math.max(1, rowWidth - (row.length - 1));
       const startWeights = rowWeights[rowIndex] ?? row.map(() => 1);
       const totalWeight = startWeights.reduce((sum, value) => sum + Math.max(value, 0.01), 0);
       const startWidths = startWeights.map((weight) => (Math.max(weight, 0.01) / totalWeight) * availableWidth);
       const pairWidth = startWidths[dividerIndex] + startWidths[dividerIndex + 1];
-      const minWidth = Math.min(MAX_CELL_WIDTH_FLOOR, Math.max(120, pairWidth / 3));
+      const minWidth = Math.min(MIN_RESIZABLE_CELL_WIDTH_PX, pairWidth / 2);
 
       setIsResizing(true);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
 
       const onMouseMove = (moveEvent: MouseEvent): void => {
-        const delta = moveEvent.clientX - startX;
+        const clientX = clampNumber(moveEvent.clientX, rowRect.left, rowRect.right);
+        const delta = clientX - startX;
         const minDelta = minWidth - startWidths[dividerIndex];
         const maxDelta = startWidths[dividerIndex + 1] - minWidth;
         const clampedDelta = Math.max(minDelta, Math.min(maxDelta, delta));
@@ -207,6 +217,11 @@ export function SessionMultiGrid({
       role="group"
       aria-label="Session panes"
       data-resizing={isResizing ? "true" : undefined}
+      style={
+        {
+          "--session-pane-min-width": `${MIN_RESIZABLE_CELL_WIDTH_PX}px`
+        } as CSSProperties
+      }
     >
       {grid.rows.map((row, r) => {
         const weights = rowWeights[r] ?? row.map(() => 1);
@@ -234,7 +249,7 @@ export function SessionMultiGrid({
                 : workspace?.taskLabel || workspace?.branch || "Session pane";
               const allowedDropPositions: EdgeDropPosition[] = [
                 ...(canAddGridCell && grid.rows.length < MAX_ROWS ? (["above", "below"] as const) : []),
-                ...(canAddGridCell && row.length < MAX_COLS ? (["left", "right"] as const) : [])
+                ...(canAddGridCell && row.length < rowColumnCap ? (["left", "right"] as const) : [])
               ];
               const cellKey = isLauncher ? `launcher-${cell.projectId}-${r}-${c}` : `${cell.sessionId}-${r}-${c}`;
               return (

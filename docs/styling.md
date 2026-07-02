@@ -112,7 +112,9 @@ User message bubbles (`chat-bubble.user`) use `--user-message-bg` / `--user-mess
 
 ## Conversation content width
 
-`--session-inline-padding` is defined on `.session-main-column` as `clamp(36px, calc((100% - 920px) / 2), 2000px)`, with tighter variants when the review or log panel is open (`clamp(18px, calc((100% - 860px) / 2), 2000px)` and `clamp(10px, calc((100% - 780px) / 2), 2000px)`). This keeps readable content at roughly 920px wide while letting the scrollable container remain full-width (so the scrollbar stays at the panel edge). `.conversation-list` consumes the token as its inline padding.
+`--session-inline-padding` is defined on `.session-main-column` as `clamp(16px, calc((100% - 820px) / 2), 2000px)`, with tighter variants when the review or log panel is open (`clamp(18px, calc((100% - 780px) / 2), 2000px)` and `clamp(10px, calc((100% - 720px) / 2), 2000px)`). This keeps readable content centered in wide panes while giving narrow grid panes enough room to wrap instead of clipping. `.conversation-list` consumes the token as its inline padding.
+
+Side-by-side pane resizing bottoms out at `MIN_RESIZABLE_CELL_WIDTH_PX` in `SessionMultiGrid.tsx`; the session composer switches to its compact container layout before that floor so the controls settle before the app stops shrinking. The app also sets a live window/sidebar minimum from the widest grid row, so an existing three-pane row cannot be squeezed below that floor.
 
 ## Dark theme — Warm Charcoal Editorial
 

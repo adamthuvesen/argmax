@@ -88,4 +88,90 @@ describe("accent CSS contract", () => {
     expect(inputRule).toContain("font-size: var(--text-base);");
     expect(highlightRule).toContain("font-size: var(--text-base);");
   });
+
+  it("keeps the session branch chip ellipsis-safe in narrow grids", () => {
+    const chatComposer = readSource("src/renderer/styles/chat-composer.css");
+    const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
+    const toolbarRule = cssRuleBody(chatComposerChips, ".session-input-toolbar");
+    const modelLabelRule = cssRuleBody(
+      chatComposerChips,
+      ".session-input-toolbar .model-picker-label"
+    );
+    const contextRule = cssRuleBody(
+      chatComposerChips,
+      ".session-input-toolbar .composer-chips-context"
+    );
+    const footerRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer");
+    const chipRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer-chip");
+    const branchRule = cssRuleBody(
+      chatComposer,
+      ".session-input-toolbar .composer-footer-chip--branch"
+    );
+    const labelRule = cssRuleBody(
+      chatComposer,
+      ".session-input-toolbar .composer-footer-chip-label"
+    );
+
+    expect(toolbarRule).toContain("flex-wrap: wrap;");
+    expect(modelLabelRule).toContain("text-overflow: ellipsis;");
+    expect(modelLabelRule).toContain("white-space: nowrap;");
+    expect(contextRule).toContain("min-width: 0;");
+    expect(contextRule).toContain("overflow: hidden;");
+    expect(footerRule).toContain("max-width: 100%;");
+    expect(footerRule).toContain("overflow: hidden;");
+    expect(chipRule).toContain("overflow: hidden;");
+    expect(branchRule).toContain("min-width: 0;");
+    expect(branchRule).toContain("max-width: 100%;");
+    expect(labelRule).toContain("text-overflow: ellipsis;");
+    expect(labelRule).toContain("white-space: nowrap;");
+    expect(chatComposerChips).toContain('"attach model mode send"');
+    expect(chatComposerChips).toContain('"context context context context"');
+    expect(chatComposerChips).toContain(".session-input textarea");
+    expect(chatComposerChips).toContain("min-height: 56px;");
+    expect(chatComposerChips).toContain(".session-input-toolbar .session-send-mascot");
+  });
+
+  it("keeps the changed-files card compact-safe in narrow panes", () => {
+    const chatTools = readSource("src/renderer/styles/chat-tools.css");
+    const headerRule = cssRuleBody(chatTools, ".changed-files-header");
+    const titleRule = cssRuleBody(chatTools, ".changed-files-title");
+    const actionsRule = cssRuleBody(chatTools, ".changed-files-actions");
+
+    expect(headerRule).toContain("min-width: 0;");
+    expect(titleRule).toContain("min-width: 0;");
+    expect(titleRule).toContain("text-overflow: ellipsis;");
+    expect(titleRule).toContain("white-space: nowrap;");
+    expect(actionsRule).toContain("flex: 0 0 auto;");
+    expect(actionsRule).toContain("min-width: max-content;");
+    expect(chatTools).toContain("@container (max-width: 520px)");
+  });
+
+  it("keeps the pane resize floor aligned with the compact composer breakpoint", () => {
+    const gridComponent = readSource("src/renderer/components/SessionMultiGrid.tsx");
+    const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
+    const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
+    const appSource = readSource("src/renderer/App.tsx");
+    const sidebarResize = readSource("src/renderer/hooks/useSidebarResize.ts");
+    const minWidthMatch = /export const MIN_RESIZABLE_CELL_WIDTH_PX = (?<width>\d+);/.exec(
+      gridComponent
+    );
+    expect(minWidthMatch?.groups?.width).toBeDefined();
+    const minWidth = minWidthMatch?.groups?.width ?? "";
+    const multigridRule = cssRuleBody(chatConversation, ".session-multigrid");
+    const rowRule = cssRuleBody(chatConversation, ".session-multigrid-row");
+    const cellRule = cssRuleBody(chatConversation, ".session-multigrid-cell");
+    const sessionGridRule = cssRuleBody(chatConversation, ".session-grid");
+
+    expect(gridComponent).toContain("--session-pane-min-width");
+    expect(multigridRule).toContain("overflow: hidden;");
+    expect(rowRule).toContain("min-width: 0;");
+    expect(rowRule).toContain("overflow: hidden;");
+    expect(cellRule).toContain("container-type: inline-size;");
+    expect(sessionGridRule).toContain("min-width: 0;");
+    expect(Number(minWidth)).toBeLessThan(520);
+    expect(chatComposerChips).toContain("@container (max-width: 520px)");
+    expect(appSource).toContain("requiredGridColumns * MIN_RESIZABLE_CELL_WIDTH_PX");
+    expect(appSource).toContain("appWindow.setMinSize");
+    expect(sidebarResize).toContain("workspaceMinWidth");
+  });
 });

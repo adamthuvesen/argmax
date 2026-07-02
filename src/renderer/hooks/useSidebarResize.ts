@@ -4,15 +4,21 @@ const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
 const SIDEBAR_MIN = 220;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_DEFAULT = 272;
-const WORKSPACE_MIN = 320;
+export const DEFAULT_WORKSPACE_MIN_WIDTH_PX = 320;
 
-function sidebarMaxForViewport(): number {
-  if (typeof window === "undefined") return SIDEBAR_MAX;
-  return Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth - WORKSPACE_MIN));
+function normalizedWorkspaceMinWidth(workspaceMinWidth: number): number {
+  if (!Number.isFinite(workspaceMinWidth)) return DEFAULT_WORKSPACE_MIN_WIDTH_PX;
+  return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, Math.ceil(workspaceMinWidth));
 }
 
-function clampSidebarWidth(width: number): number {
-  return Math.max(SIDEBAR_MIN, Math.min(sidebarMaxForViewport(), width));
+function sidebarMaxForViewport(workspaceMinWidth: number): number {
+  if (typeof window === "undefined") return SIDEBAR_MAX;
+  const workspaceMin = normalizedWorkspaceMinWidth(workspaceMinWidth);
+  return Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth - workspaceMin));
+}
+
+function clampSidebarWidth(width: number, workspaceMinWidth: number): number {
+  return Math.max(SIDEBAR_MIN, Math.min(sidebarMaxForViewport(workspaceMinWidth), width));
 }
 
 export interface SidebarResizeState {
@@ -33,11 +39,12 @@ export interface SidebarResizeState {
  * body-style-reset on unmount so a mid-drag unmount doesn't leak listeners
  * or freeze the body cursor.
  */
-export function useSidebarResize(): SidebarResizeState {
+export function useSidebarResize(workspaceMinWidth = DEFAULT_WORKSPACE_MIN_WIDTH_PX): SidebarResizeState {
+  const workspaceMin = normalizedWorkspaceMinWidth(workspaceMinWidth);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(SIDEBAR_WIDTH_KEY) : null;
     const n = raw ? parseInt(raw, 10) : NaN;
-    return clampSidebarWidth(Number.isFinite(n) ? n : SIDEBAR_DEFAULT);
+    return clampSidebarWidth(Number.isFinite(n) ? n : SIDEBAR_DEFAULT, workspaceMin);
   });
   const [isResizing, setIsResizing] = useState(false);
 
@@ -60,10 +67,14 @@ export function useSidebarResize(): SidebarResizeState {
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onResize = (): void => setSidebarWidth((current) => clampSidebarWidth(current));
+    const onResize = (): void => setSidebarWidth((current) => clampSidebarWidth(current, workspaceMin));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [workspaceMin]);
+
+  useEffect(() => {
+    setSidebarWidth((current) => clampSidebarWidth(current, workspaceMin));
+  }, [workspaceMin]);
 
   const onResizeMouseDown = useCallback(
     (event: ReactMouseEvent): void => {
@@ -75,7 +86,7 @@ export function useSidebarResize(): SidebarResizeState {
       document.body.style.userSelect = "none";
 
       const onMouseMove = (e: MouseEvent): void => {
-        setSidebarWidth(clampSidebarWidth(startWidth + (e.clientX - startX)));
+        setSidebarWidth(clampSidebarWidth(startWidth + (e.clientX - startX), workspaceMin));
       };
       const cleanup = (): void => {
         setIsResizing(false);
@@ -90,7 +101,7 @@ export function useSidebarResize(): SidebarResizeState {
       document.addEventListener("mouseup", onMouseUp);
       dragCleanupRef.current = cleanup;
     },
-    [sidebarWidth]
+    [sidebarWidth, workspaceMin]
   );
 
   return { sidebarWidth, isResizing, onResizeMouseDown };

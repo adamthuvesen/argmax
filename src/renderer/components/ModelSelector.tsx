@@ -250,7 +250,7 @@ function ChipModelPicker<T extends PickerValue>({
         ) : (
           <Cpu size={14} aria-hidden="true" />
         )}
-        {selectedLabel}
+        <span className="model-picker-label">{selectedLabel}</span>
         <ChevronDown size={12} aria-hidden="true" style={{ marginLeft: 2, opacity: 0.6 }} />
       </button>
       {open && (

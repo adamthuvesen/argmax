@@ -62,4 +62,19 @@ describe("useSidebarResize", () => {
 
     expect(result.current.sidebarWidth).toBe(220);
   });
+
+  it("clamps the sidebar against a dynamic workspace minimum", () => {
+    setViewportWidth(1900);
+    window.localStorage.setItem("argmax.sidebar.width", "500");
+
+    const { result, rerender } = renderHook(({ workspaceMin }) => useSidebarResize(workspaceMin), {
+      initialProps: { workspaceMin: 320 }
+    });
+
+    expect(result.current.sidebarWidth).toBe(500);
+
+    rerender({ workspaceMin: 1560 });
+
+    expect(result.current.sidebarWidth).toBe(340);
+  });
 });

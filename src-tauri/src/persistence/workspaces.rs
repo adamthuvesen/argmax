@@ -69,9 +69,7 @@ pub fn list_workspaces(
             let rows = statement
                 .query_map((json, limit as i64), workspace_row_to_summary)
                 .map_err(sqlite_error)?;
-            let mut workspaces = rows
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
+            let mut workspaces = rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
             for workspace in &mut workspaces {
                 attach_latest_pr(connection, workspace)?;
             }
@@ -86,9 +84,7 @@ pub fn list_workspaces(
             let rows = statement
                 .query_map([limit as i64], workspace_row_to_summary)
                 .map_err(sqlite_error)?;
-            let mut workspaces = rows
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
+            let mut workspaces = rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
             for workspace in &mut workspaces {
                 attach_latest_pr(connection, workspace)?;
             }
@@ -115,10 +111,7 @@ pub fn find_workspace_by_id(
     }
 }
 
-fn attach_latest_pr(
-    connection: &Connection,
-    workspace: &mut WorkspaceSummary,
-) -> ArgmaxResult<()> {
+fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -> ArgmaxResult<()> {
     if let Some((pr_state, pr_number)) = latest_pr_for_workspace(connection, &workspace.id)? {
         workspace.pr_state = pr_state;
         workspace.pr_number = Some(pr_number);

@@ -35,7 +35,7 @@ function makeSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
     id: "session-existing",
     workspaceId: "ws-existing",
     provider: "claude",
-    modelLabel: "Claude Haiku 4.5",
+    modelLabel: "Haiku 4.5",
     modelId: "claude-haiku-4-5",
     reasoningEffort: undefined,
     permissionMode: "auto-approve",
@@ -73,7 +73,7 @@ describe("useDashboardSession — refresh / delta race", () => {
           defaultBranch: "main",
           settings: {
             defaultProvider: "claude",
-            defaultModelLabel: "Claude Haiku 4.5",
+            defaultModelLabel: "Haiku 4.5",
             worktreeLocation: "/tmp/wt",
             setupCommand: "",
             checkCommands: []

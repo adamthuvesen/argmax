@@ -2,6 +2,7 @@ import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
 import type { TurnToolItem } from "./toolCalls.js";
 import {
   buildToolCallGroup,
+  isAgentToolName,
   type ConversationItem,
   type ToolCall
 } from "./toolCalls.js";
@@ -38,33 +39,33 @@ export function foldConversationItems(
     item.kind === "message" ? item.event.createdAt : item.tool.createdAt;
   const sorted: ConversationItem[] = items.sort((a, b) => itemTime(a).localeCompare(itemTime(b)));
   const folded: ConversationItem[] = [];
-  let i = 0;
-  while (i < sorted.length) {
-    const item = sorted[i];
-    if (!item) {
-      i++;
-      continue;
-    }
-    if (item.kind !== "tool") {
-      folded.push(item);
-      i++;
-      continue;
-    }
-    const run: ToolCall[] = [item.tool];
-    let j = i + 1;
-    while (j < sorted.length) {
-      const next = sorted[j];
-      if (!next || next.kind !== "tool") break;
-      run.push(next.tool);
-      j++;
-    }
+  let run: ToolCall[] = [];
+
+  const flushRun = (): void => {
+    if (run.length === 0) return;
     if (run.length === 1) {
-      folded.push(item);
+      const [tool] = run;
+      if (tool) folded.push({ kind: "tool", tool });
     } else {
       folded.push({ kind: "tool-group", group: buildToolCallGroup(run) });
     }
-    i = j;
+    run = [];
+  };
+
+  for (const item of sorted) {
+    if (item.kind !== "tool") {
+      flushRun();
+      folded.push(item);
+      continue;
+    }
+    if (isAgentToolName(item.tool.name)) {
+      flushRun();
+      folded.push(item);
+      continue;
+    }
+    run.push(item.tool);
   }
+  flushRun();
   return folded;
 }
 

@@ -6,9 +6,9 @@ import type { ModelPickerSelection } from "../lib/models.js";
 
 afterEach(cleanup);
 
-const HAIKU: ProviderModelSelection = { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" };
+const HAIKU: ProviderModelSelection = { label: "Haiku 4.5", modelId: "claude-haiku-4-5" };
 const OPUS_MEDIUM: ProviderModelSelection = {
-  label: "Claude Opus 4.8",
+  label: "Opus 4.8",
   modelId: "claude-opus-4-8",
   reasoningEffort: "medium"
 };
@@ -24,38 +24,39 @@ describe("ModelSelector — one row per model", () => {
   it("lists one row per model, not one per effort", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Session model" });
-    // Three Claude models (Opus, Sonnet, Haiku) — the old picker had 12 rows.
-    expect(within(list).getAllByRole("option")).toHaveLength(3);
-    expect(within(list).getByText("Claude Opus 4.8")).toBeInTheDocument();
-    expect(within(list).getByText("Claude Sonnet 4.6")).toBeInTheDocument();
-    expect(within(list).getByText("Claude Haiku 4.5")).toBeInTheDocument();
+    // Four Claude models (Fable, Opus, Sonnet, Haiku) — the old picker had 12 rows.
+    expect(within(list).getAllByRole("option")).toHaveLength(4);
+    expect(within(list).getByText("Fable 5")).toBeInTheDocument();
+    expect(within(list).getByText("Opus 4.8")).toBeInTheDocument();
+    expect(within(list).getByText("Sonnet 4.6")).toBeInTheDocument();
+    expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
   });
 
   it("shows a default effort label for effort-capable models", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Session model" });
-    const opusRow = within(list).getByText("Claude Opus 4.8").closest("li");
+    const opusRow = within(list).getByText("Opus 4.8").closest("li");
     // Default effort before any edit is Medium.
     expect(opusRow && within(opusRow).getByText("Medium")).toBeTruthy();
   });
 
   it("only shows Edit on the selected model", () => {
     openClaudePicker(OPUS_MEDIUM);
-    expect(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Edit effort for Claude Sonnet 4.6" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit effort for Opus 4.8" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Edit effort for Sonnet 4.6" })).toBeNull();
   });
 
   it("gives fast models (Haiku) no Edit button and no effort", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Session model" });
-    expect(screen.queryByRole("button", { name: "Edit effort for Claude Haiku 4.5" })).toBeNull();
-    const haikuRow = within(list).getByText("Claude Haiku 4.5").closest("li");
+    expect(screen.queryByRole("button", { name: "Edit effort for Haiku 4.5" })).toBeNull();
+    const haikuRow = within(list).getByText("Haiku 4.5").closest("li");
     expect(haikuRow && within(haikuRow).queryByText(/Medium|Low|High/)).toBeNull();
   });
 
   it("opens an effort submenu spanning Low → Extra High (no Max)", () => {
     openClaudePicker(OPUS_MEDIUM);
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
     const submenu = screen.getByRole("listbox", { name: "Reasoning effort" });
     const labels = within(submenu)
       .getAllByRole("option")
@@ -66,10 +67,10 @@ describe("ModelSelector — one row per model", () => {
 
   it("selecting Extra High emits xhigh for the selected model", () => {
     const onChange = openClaudePicker(OPUS_MEDIUM);
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
     fireEvent.click(screen.getByRole("button", { name: "Extra High" }));
     expect(onChange).toHaveBeenCalledWith({
-      label: "Claude Opus 4.8",
+      label: "Opus 4.8",
       modelId: "claude-opus-4-8",
       reasoningEffort: "xhigh"
     });
@@ -77,18 +78,18 @@ describe("ModelSelector — one row per model", () => {
 
   it("picking a model row selects it with the default Medium effort", () => {
     const onChange = openClaudePicker();
-    fireEvent.click(screen.getByText("Claude Opus 4.8"));
+    fireEvent.click(screen.getByText("Opus 4.8"));
     expect(onChange).toHaveBeenCalledWith({
-      label: "Claude Opus 4.8",
+      label: "Opus 4.8",
       modelId: "claude-opus-4-8",
       reasoningEffort: "medium"
     });
   });
 
   it("picking a fast model selects it with no effort", () => {
-    const onChange = openClaudePicker({ label: "Claude Opus 4.8", modelId: "claude-opus-4-8", reasoningEffort: "high" });
-    fireEvent.click(screen.getByText("Claude Haiku 4.5"));
-    expect(onChange).toHaveBeenCalledWith({ label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" });
+    const onChange = openClaudePicker({ label: "Opus 4.8", modelId: "claude-opus-4-8", reasoningEffort: "high" });
+    fireEvent.click(screen.getByText("Haiku 4.5"));
+    expect(onChange).toHaveBeenCalledWith({ label: "Haiku 4.5", modelId: "claude-haiku-4-5" });
   });
 });
 
@@ -242,7 +243,7 @@ describe("LaunchModelSelector — all providers", () => {
 describe("LaunchModelSelector — provider availability gating", () => {
   const CLAUDE_VALUE: ModelPickerSelection = {
     provider: "claude",
-    label: "Claude Opus 4.8",
+    label: "Opus 4.8",
     modelId: "claude-opus-4-8",
     reasoningEffort: "medium"
   };

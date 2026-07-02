@@ -26,6 +26,7 @@ pub struct UsageCounts {
 }
 
 pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
+    "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-7" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-6" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },

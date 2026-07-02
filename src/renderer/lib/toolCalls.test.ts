@@ -6,6 +6,7 @@ import {
   extractToolInputPreview,
   extractToolUseId,
   getToolTypeBucket,
+  isAgentToolName,
   summarizeToolGroup,
   type ToolCall
 } from "./toolCalls.js";
@@ -80,6 +81,13 @@ describe("Task / sub-agent tools", () => {
     expect(getToolTypeBucket("collab_tool_call")).toBe("agent");
   });
 
+  it("exposes the shared agent classifier for grouping decisions", () => {
+    expect(isAgentToolName("Task")).toBe(true);
+    expect(isAgentToolName("taskToolCall")).toBe(true);
+    expect(isAgentToolName("collab_tool_call")).toBe(true);
+    expect(isAgentToolName("TaskList")).toBe(false);
+  });
+
   it("renders Cursor `taskToolCall` as 'Agent <description>' from its args", () => {
     const t = tool({
       name: "taskToolCall",
@@ -91,6 +99,14 @@ describe("Task / sub-agent tools", () => {
 
   it("renders Codex `collab_tool_call` as a clean 'Agent' when it carries no description", () => {
     expect(describeToolAction(tool({ name: "collab_tool_call" }))).toBe("Agent");
+  });
+
+  it("previews Codex `collab_tool_call` from the spawn prompt when no description exists", () => {
+    expect(
+      extractToolInputPreview("collab_tool_call", {
+        prompt: "Explore the repo quickly and report the key files."
+      })
+    ).toBe("Explore the repo quickly and report the key files.");
   });
 
   it("previews from the `description` field, not the long prompt body", () => {

@@ -529,7 +529,7 @@ mod tests {
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
                     default_provider: "claude".to_string(),
-                    default_model_label: "Claude Haiku 4.5".to_string(),
+                    default_model_label: "Haiku 4.5".to_string(),
                     worktree_location: repo_path.join(".worktrees").to_string_lossy().into_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

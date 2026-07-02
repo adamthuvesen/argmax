@@ -19,7 +19,8 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "id" | "name">): Too
     status: overrides.status ?? "done",
     createdAt: overrides.createdAt ?? "2026-05-21T10:00:00.000Z",
     completedAt: overrides.completedAt ?? "2026-05-21T10:00:01.000Z",
-    error: overrides.error ?? null
+    error: overrides.error ?? null,
+    parentToolUseId: overrides.parentToolUseId ?? null
   };
 }
 
@@ -79,17 +80,49 @@ describe("turnToolItems", () => {
     expect(folded[1]?.kind === "tool-group" ? folded[1].group.tools.map((t) => t.id) : []).toEqual(["t3"]);
   });
 
+  it("attaches sub-agent child tools to the standalone agent row", () => {
+    const agent = tool({ id: "agent", toolUseId: "tu-agent", name: "Agent" });
+    const childRead = tool({
+      id: "child-read",
+      name: "Read",
+      inputPreview: "src/child.ts",
+      parentToolUseId: "tu-agent"
+    });
+    const childBash = tool({
+      id: "child-bash",
+      name: "Bash",
+      inputPreview: "npm test",
+      parentToolUseId: "tu-agent"
+    });
+    const topLevelBash = tool({ id: "top-bash", name: "Bash", inputPreview: "git status" });
+
+    const folded = foldTurnToolItems([
+      { kind: "tool", tool: agent },
+      { kind: "tool", tool: childRead },
+      { kind: "tool", tool: childBash },
+      { kind: "tool", tool: topLevelBash }
+    ]);
+
+    expect(folded).toHaveLength(2);
+    expect(folded[0]).toEqual({ kind: "tool", tool: agent, children: [childRead, childBash] });
+    expect(folded[1]?.kind).toBe("tool-group");
+    expect(folded[1]?.kind === "tool-group" ? folded[1].group.tools.map((t) => t.id) : []).toEqual([
+      "top-bash"
+    ]);
+  });
+
   it("finds named tools inside individual tools and groups", () => {
     const ask = tool({ id: "ask", name: "AskUserQuestion" });
     const plan = tool({ id: "plan", name: "ExitPlanMode" });
+    const childPlan = tool({ id: "child-plan", name: "ExitPlanMode" });
     const read = tool({ id: "read", name: "Read" });
     const items: TurnToolItem[] = [
-      { kind: "tool", tool: ask },
+      { kind: "tool", tool: ask, children: [childPlan] },
       { kind: "tool-group", group: buildToolCallGroup([plan, read]) }
     ];
 
     expect(toolsNamed(items, "AskUserQuestion")).toEqual([ask]);
-    expect(toolsNamed(items, "ExitPlanMode")).toEqual([plan]);
+    expect(toolsNamed(items, "ExitPlanMode")).toEqual([childPlan, plan]);
   });
 
   it("parses valid AskUserQuestion input and rejects oversized option sets", () => {

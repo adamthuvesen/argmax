@@ -720,7 +720,7 @@ async fn provider_switch_relaunches_new_provider_fresh() {
                 id: "switch-session".to_owned(),
                 workspace_id: WORKSPACE_ID.to_owned(),
                 provider: "claude".to_owned(),
-                model_label: "Claude Haiku 4.5".to_owned(),
+                model_label: "Haiku 4.5".to_owned(),
                 model_id: "claude-haiku-4-5".to_owned(),
                 reasoning_effort: None,
                 permission_mode: Some("auto-approve".to_owned()),
@@ -807,7 +807,7 @@ async fn completed_session_follow_up_launch_includes_visible_transcript_context(
                 id: "claude-session".to_owned(),
                 workspace_id: WORKSPACE_ID.to_owned(),
                 provider: "claude".to_owned(),
-                model_label: "Claude Haiku 4.5".to_owned(),
+                model_label: "Haiku 4.5".to_owned(),
                 model_id: "claude-haiku-4-5".to_owned(),
                 reasoning_effort: None,
                 permission_mode: Some("auto-approve".to_owned()),
@@ -993,8 +993,7 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
             input: Prompt::try_from("queued after done".to_owned()).expect("prompt valid"),
             provider: None,
             model_label: Some(
-                NonEmptyString::try_from("Claude Sonnet 4.6".to_owned())
-                    .expect("model label valid"),
+                NonEmptyString::try_from("Sonnet 4.6".to_owned()).expect("model label valid"),
             ),
             model_id: Some(
                 NonEmptyString::try_from("claude-sonnet-4-6".to_owned()).expect("model id valid"),
@@ -1028,7 +1027,7 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
     assert!(launches[1]
         .prompt
         .contains("New user message:\nqueued after done"));
-    assert_eq!(launches[1].model_label, "Claude Sonnet 4.6");
+    assert_eq!(launches[1].model_label, "Sonnet 4.6");
     assert_eq!(launches[1].model_id, "claude-sonnet-4-6");
     assert!(launches[1].fast_mode);
 }

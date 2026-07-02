@@ -24,7 +24,7 @@ function makeSession(i: number): SessionSummary {
     id: `session-${i}`,
     workspaceId: `workspace-${i}`,
     provider: "claude",
-    modelLabel: "Claude Haiku 4.5",
+    modelLabel: "Haiku 4.5",
     modelId: "claude-haiku-4-5",
     permissionMode: "auto-approve",
     providerConversationId: null,

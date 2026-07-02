@@ -45,7 +45,7 @@ describe("PlanCard", () => {
         plan={samplePlan()}
         createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
-        modelLabel="Claude Opus 4.8"
+        modelLabel="Opus 4.8"
         onAccept={() => {}}
         onReject={() => {}}
       />
@@ -54,7 +54,7 @@ describe("PlanCard", () => {
     expect(screen.getByText(/Tighten the onboarding flow/)).toBeInTheDocument();
     expect(screen.getByText("Summary")).toBeInTheDocument();
     expect(screen.getByText("Key Changes")).toBeInTheDocument();
-    expect(screen.getByText("Claude Opus 4.8")).toBeInTheDocument();
+    expect(screen.getByText("Opus 4.8")).toBeInTheDocument();
     expect(screen.getByText("App.tsx").className).toContain("plan-card-chip");
   });
 

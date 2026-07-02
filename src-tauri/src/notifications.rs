@@ -303,7 +303,7 @@ mod tests {
         let fired = sink.fired();
         assert_eq!(fired.len(), 1);
         assert_eq!(fired[0].title, "Session complete");
-        assert!(fired[0].body.contains("Claude Haiku 4.5"));
+        assert!(fired[0].body.contains("Haiku 4.5"));
     }
 
     #[test]
@@ -456,7 +456,7 @@ mod tests {
             id: "session-1".to_string(),
             workspace_id: "workspace-1".to_string(),
             provider: "claude".to_string(),
-            model_label: "Claude Haiku 4.5".to_string(),
+            model_label: "Haiku 4.5".to_string(),
             model_id: "claude-haiku-4-5".to_string(),
             reasoning_effort: None,
             permission_mode: "auto-approve".to_string(),

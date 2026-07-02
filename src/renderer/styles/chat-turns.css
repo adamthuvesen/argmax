@@ -553,6 +553,22 @@
   color: var(--muted);
 }
 
+.tool-call-agent-activity {
+  min-width: 0;
+}
+
+.tool-call-agent-child-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line-soft);
+}
+
+.tool-call-agent-child-list .tool-call-row-button {
+  padding-left: 0;
+}
+
 .tool-call-open-button {
   display: inline-flex;
   align-items: center;
@@ -607,7 +623,7 @@
   background: transparent;
   cursor: pointer;
   color: var(--muted);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   line-height: 1.3;
   transition: color var(--duration-fast) var(--ease);
 }
@@ -640,7 +656,7 @@
 
 .tool-call-group-eyebrow-label {
   font-family: var(--font-ui);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
@@ -654,7 +670,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--muted);
   opacity: 0.86;
 }
@@ -708,7 +724,7 @@
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   line-height: 1.3;
   color: var(--muted);
   transition: background var(--duration-fast) var(--ease);
@@ -802,6 +818,6 @@
    reads naturally beside the sage "Agent" verb. */
 .tool-call-row[data-tool-type="agent"] .tool-call-row-target {
   font-family: inherit;
-  font-size: var(--text-base);
+  font-size: inherit;
   color: var(--muted);
 }

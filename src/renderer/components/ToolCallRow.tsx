@@ -44,11 +44,13 @@ type UserToggle = {
 
 function ToolCallRowInner({
   tool,
+  childTools,
   workspaceCwd,
   defaultExpanded,
   onOpenFile
 }: {
   tool: ToolCall;
+  childTools?: ToolCall[];
   workspaceCwd?: string | null;
   defaultExpanded?: boolean;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
@@ -86,6 +88,22 @@ function ToolCallRowInner({
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.target;
   const toolTypeBucket = getToolTypeBucket(tool.name);
+  const childToolRows = childTools && childTools.length > 0 ? (
+    <div className="tool-call-section tool-call-agent-activity">
+      <p className="tool-call-section-label">Activity</p>
+      <div className="tool-call-agent-child-list">
+        {childTools.map((child) => (
+          <ToolCallRow
+            key={child.id}
+            tool={child}
+            defaultExpanded={false}
+            workspaceCwd={workspaceCwd ?? null}
+            onOpenFile={onOpenFile}
+          />
+        ))}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="tool-call-row" data-status={tool.status} data-tool-type={toolTypeBucket}>
@@ -112,16 +130,43 @@ function ToolCallRowInner({
         ) : null}
       </button>
       {expanded ? (
-        <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
+        <ToolCallDetail
+          tool={tool}
+          workspaceCwd={workspaceCwd ?? null}
+          onOpenFile={onOpenFile}
+          leadingContent={childToolRows}
+        />
       ) : null}
     </div>
   );
+}
+
+function sameChildTools(a: ToolCall[] | undefined, b: ToolCall[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      !left ||
+      !right ||
+      left.id !== right.id ||
+      left.status !== right.status ||
+      left.error !== right.error ||
+      left.completedAt !== right.completedAt ||
+      left.inputPreview !== right.inputPreview
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;
+  if (!sameChildTools(prev.childTools, next.childTools)) return false;
   if (prev.tool === next.tool) return true;
   return (
     prev.tool.id === next.tool.id &&

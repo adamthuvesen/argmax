@@ -70,7 +70,7 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("collapses a single MCP tool row when the turn chip is toggled", () => {
     renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Claude Haiku 4.5", state: "complete" }),
+      baseSession({ provider: "claude", modelLabel: "Haiku 4.5", state: "complete" }),
       [
         event("u1", "user.message", "check memory", "2026-05-12T15:00:00.000Z"),
         event("mcp-start", "command.started", "mcp__engram__recall", "2026-05-12T15:00:01.000Z", {
@@ -98,9 +98,69 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByText("Output")).toBeNull();
   });
 
+  it("renders agent launches as standalone icon rows outside tool groups", () => {
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Opus 4.8", state: "complete" }),
+      [
+        event("u1", "user.message", "send an agent", "2026-05-12T15:00:00.000Z"),
+        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
+          id: "read",
+          name: "Read",
+          input: { file_path: "README.md" }
+        }),
+        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "read",
+          content: "readme"
+        }),
+        event("task-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
+          id: "task",
+          name: "Task",
+          input: {
+            description: "Audit renderer tools",
+            prompt: "Audit renderer tool-call grouping."
+          }
+        }),
+        event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "task",
+          content: "done"
+        }),
+        event("child-read-start", "command.started", "Read", "2026-05-12T15:00:04.200Z", {
+          id: "child-read",
+          name: "Read",
+          parent_tool_use_id: "task",
+          input: { file_path: "src/renderer/lib/toolCalls.tsx" }
+        }),
+        event("child-read-end", "command.completed", "tool_result", "2026-05-12T15:00:04.500Z", {
+          tool_use_id: "child-read",
+          content: "tool calls"
+        }),
+        event("bash-start", "command.started", "Bash", "2026-05-12T15:00:05.000Z", {
+          id: "bash",
+          name: "Bash",
+          input: { command: "git status --short" }
+        }),
+        event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
+          tool_use_id: "bash",
+          content: ""
+        })
+      ]
+    );
+
+    expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
+    const agentRow = screen.getByRole("button", { name: "Agent Audit renderer tools" });
+    expect(agentRow.querySelector("svg")).not.toBeNull();
+    expect(agentRow).not.toHaveTextContent("🤖");
+    expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
+    fireEvent.click(agentRow);
+    expect(screen.getByText("Activity")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read toolCalls.tsx" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Read a file, started an agent/ })).toBeNull();
+  });
+
   it("turn chip expands every tool group even after one group was toggled locally", () => {
     renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Claude Opus 4.8", state: "complete" }),
+      baseSession({ provider: "claude", modelLabel: "Opus 4.8", state: "complete" }),
       [
         event("u1", "user.message", "explore this", "2026-05-12T15:00:00.000Z"),
         event("m1", "message.completed", "I'll explore.", "2026-05-12T15:00:01.000Z"),

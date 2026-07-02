@@ -46,9 +46,10 @@ export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 // these ids from the chosen effort.
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
-    { label: "Claude Opus 4.8", modelId: "claude-opus-4-8", supportsReasoningEffort: true },
-    { label: "Claude Sonnet 4.6", modelId: "claude-sonnet-4-6", supportsReasoningEffort: true },
-    { label: "Claude Haiku 4.5", modelId: "claude-haiku-4-5" }
+    { label: "Fable 5", modelId: "claude-fable-5", supportsReasoningEffort: true },
+    { label: "Opus 4.8", modelId: "claude-opus-4-8", supportsReasoningEffort: true },
+    { label: "Sonnet 4.6", modelId: "claude-sonnet-4-6", supportsReasoningEffort: true },
+    { label: "Haiku 4.5", modelId: "claude-haiku-4-5" }
   ],
   codex: [
     { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true }
@@ -73,7 +74,7 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
-    label: "Claude Opus 4.8",
+    label: "Opus 4.8",
     modelId: "claude-opus-4-8",
     supportsReasoningEffort: true,
     reasoningEffort: "high",
@@ -106,6 +107,7 @@ export interface ModelPricing {
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
+  "claude-fable-5":      { input: 10,   output: 50,  cacheRead: 1,     cacheWrite: 12.5 },
   "claude-opus-4-8":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-7":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-6":     { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },

@@ -33,7 +33,7 @@ describe("SessionConversation — streaming & composer", () => {
     // A new object reference with the same id (and even a freshly-emitted
     // server-side model swap) must NOT clobber the user's local pick.
     const v2 = baseSession({
-      modelLabel: "Claude Haiku 4.5",
+      modelLabel: "Haiku 4.5",
       modelId: "claude-haiku-4-5",
       reasoningEffort: undefined
     });
@@ -70,7 +70,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     const switched = baseSession({
       id: "session-b",
-      modelLabel: "Claude Haiku 4.5",
+      modelLabel: "Haiku 4.5",
       modelId: "claude-haiku-4-5",
       reasoningEffort: undefined
     });
@@ -91,7 +91,7 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     const pickerAfter = screen.getByRole("button", { name: "Session model" });
-    expect(pickerAfter.textContent).toContain("Claude Haiku 4.5");
+    expect(pickerAfter.textContent).toContain("Haiku 4.5");
   });
 
   it("keeps workspace context chips on the same toolbar row as the model picker", () => {

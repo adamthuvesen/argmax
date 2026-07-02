@@ -367,6 +367,110 @@ describe("SidebarSessionRow", () => {
     expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
   });
 
+  it("shows a working marker while the workspace turn is running", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, state: "running" }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    // The row's accessible title carries the state; the marker itself is the
+    // decorative working ring.
+    const row = screen.getByTitle(/Build the dashboard — running/);
+    expect(row.querySelector('[data-working="true"]')).not.toBeNull();
+    expect(row.querySelector("[data-pr]")).toBeNull();
+  });
+
+  it("working marker wins over PR markers while a turn is in flight", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, state: "running", prState: "OPEN", prNumber: 3 }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    // The title still names the PR for screen readers even while the visual
+    // marker shows live activity.
+    const row = screen.getByTitle(/open pull request #3/);
+    expect(row.querySelector('[data-working="true"]')).not.toBeNull();
+    expect(row.querySelector('[data-pr="open"]')).toBeNull();
+  });
+
+  it.each([
+    ["complete", null, null],
+    ["failed", null, null],
+    ["cancelled", null, null],
+    ["complete", "OPEN", 5]
+  ] as const)(
+    "reverts to the normal status icon when the turn ends as %s (pr: %s)",
+    (endState, prState, prNumber) => {
+      const props = {
+        workspaceTokens: null,
+        isSelected: false,
+        isOpenInGrid: false,
+        canDragToGrid: true,
+        onOpenWorkspaceChat: vi.fn(),
+        onArchiveWorkspace: vi.fn(),
+        onOpenInIde: vi.fn(),
+        detectedIdes,
+        defaultIde: "vscode" as const,
+        showTokens: false
+      };
+      const { rerender } = render(
+        <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "running" }} />
+      );
+      expect(document.querySelector('[data-working="true"]')).not.toBeNull();
+
+      rerender(
+        <SidebarSessionRow
+          {...props}
+          workspace={{ ...workspaceBase, state: endState, prState, prNumber }}
+        />
+      );
+      expect(document.querySelector('[data-working="true"]')).toBeNull();
+      if (prState === "OPEN") {
+        expect(document.querySelector('[data-pr="open"]')).not.toBeNull();
+      }
+    }
+  );
+
+  it("ships working-marker CSS that pulses and respects reduced motion", () => {
+    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
+    const css = readBundledCss(cssPath);
+
+    // The running marker is colored with the semantic running token...
+    const colorRule = /\.status-marker\[data-working="true"\]\s*\{[^}]*color:\s*var\(--sage\)/i.exec(css);
+    expect(colorRule, "expected sage color rule for the working marker").not.toBeNull();
+
+    // ...its dot animates with a dedicated keyframe...
+    const dotRule = /\.status-marker-working-dot\s*\{[^}]*animation:\s*status-marker-working-pulse/i.exec(css);
+    expect(dotRule, "expected pulse animation on the working dot").not.toBeNull();
+    expect(css).toContain("@keyframes status-marker-working-pulse");
+
+    // ...and reduced-motion users get a static dot.
+    const reduceBlock = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.status-marker-working-dot\s*\{[^}]*animation:\s*none/i.exec(css);
+    expect(reduceBlock, "expected reduced-motion override for the working dot").not.toBeNull();
+  });
+
   it("ships sidebar action CSS that reveals on hover and stays keyboard-reachable", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);

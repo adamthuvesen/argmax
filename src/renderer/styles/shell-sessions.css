@@ -73,6 +73,40 @@
   color: var(--pr-open);
 }
 
+/* A turn in flight swaps the marker for a working ring: same circle geometry
+   as the check, in the semantic running green, with a center dot that
+   breathes. A running row never carries data-pr (StatusMarker returns the
+   working ring first), so the PR rules above cannot collide. Reduced motion
+   pins the dot; the ring+dot combination still reads as "working" at rest. */
+.session-link[data-status] .status-marker[data-working="true"] {
+  color: var(--sage);
+}
+
+.status-marker-working-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: status-marker-working-pulse 1.8s var(--ease) infinite;
+}
+
+@keyframes status-marker-working-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.35;
+    transform: scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-marker-working-dot {
+    animation: none;
+  }
+}
+
 .session-row {
   position: relative;
 }

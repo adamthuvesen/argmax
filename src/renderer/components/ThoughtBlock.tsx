@@ -6,11 +6,11 @@ import { useState, type JSX, type ReactNode } from "react";
  * payload.thinking === true; the turn folder routes those groups here instead
  * of rendering them as inline answer text.
  *
- * Speaks the same disclosure vocabulary as ToolCallGroupBubble — an uppercase
- * mono eyebrow + a `+`/`−` toggle + a left rail on the body — so reasoning and
- * tool work read as one consistent set of foldable sections within a turn.
- * The eyebrow stays neutral-muted (not the tool groups' sage) so reasoning
- * reads as a quieter sibling, subordinate to the actual work and the answer.
+ * Speaks the same disclosure vocabulary as ToolCallGroupBubble — a quiet label
+ * and a `+`/`−` toggle — so reasoning and tool work read as one consistent set
+ * of foldable sections within a turn. The label stays neutral-muted (not the
+ * tool groups' sage) so reasoning reads as a quieter sibling, subordinate to
+ * the actual work and the answer.
  *
  * While the turn is actively working and hasn't produced its answer yet the
  * parent passes `live`, and the block shows the reasoning expanded (labelled

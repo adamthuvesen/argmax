@@ -139,7 +139,7 @@
   }
 }
 
-/* ThoughtBlock — Claude extended-thinking (reasoning) rendered as a distinct,
+/* ThoughtBlock — provider-visible thinking rendered as a distinct,
    collapsible disclosure inside the turn body. Collapsed by default; the chip
    reads quieter than the answer so reasoning stays available without competing
    with the actual response. Reasoning keeps its own neutral rail so it reads as
@@ -149,40 +149,25 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-left: var(--space-4);
-}
-
-.thought-block::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 1px;
-  background: var(--line-strong);
-  opacity: 0;
-  transition: opacity var(--duration-base) var(--ease);
-}
-
-.thought-block[data-expanded="true"]::before {
-  opacity: 0.85;
+  padding-left: 0;
 }
 
 /* Header mirrors .tool-call-group-header so reasoning and tool work read as the
-   same kind of foldable section. The eyebrow stays neutral-muted (not the tool
+   same kind of foldable section. The label stays neutral-muted (not the tool
    groups' sage) so reasoning reads as a quieter sibling. */
 .thought-block-header {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  padding: 6px 4px 6px 0;
+  padding: 2px 4px 2px 0;
   text-align: left;
   border: 0;
   background: transparent;
   cursor: pointer;
   color: var(--muted-strong);
   font-size: var(--text-sm);
+  line-height: 1.3;
   transition: color var(--duration-fast) var(--ease);
 }
 
@@ -196,17 +181,17 @@
 
 .thought-block-eyebrow {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   flex: 1;
   min-width: 0;
 }
 
 .thought-block-eyebrow-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
   transition: color var(--duration-fast) var(--ease);
 }
@@ -246,9 +231,7 @@
   }
 }
 
-/* Expanded reasoning — muted text reads as a quieter, secondary stream. The
-   left rail and indent come from the .thought-block container, so the body
-   itself carries no rail of its own. */
+/* Expanded reasoning — muted text reads as a quieter, secondary stream. */
 .thought-block-body {
   color: var(--muted);
   font-size: 13px;
@@ -260,6 +243,12 @@
    secondary text it's meant to be (and stays theme-aware). */
 .thought-block-body .markdown {
   color: inherit;
+}
+
+.thought-block-body .markdown strong,
+.thought-block-body .markdown b {
+  color: inherit;
+  font-weight: inherit;
 }
 
 /* Thinking transcript — a single line of mono on paper.
@@ -561,8 +550,6 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding-left: 10px;
-  border-left: 1px solid var(--line-soft);
 }
 
 .tool-call-agent-child-list .tool-call-row-button {
@@ -778,6 +765,13 @@
 
 .tool-call-row[data-status="error"] .tool-call-row-icon {
   color: var(--rose);
+}
+
+.tool-call-row-running {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
 }
 
 .tool-call-row-counts {

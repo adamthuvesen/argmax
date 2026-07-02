@@ -173,6 +173,12 @@
   border-left-color: var(--rose);
 }
 
+.tool-call-row[data-tool-type="agent"] > .tool-call-detail {
+  margin: 2px 0 6px;
+  padding: 4px 0 0;
+  border-left: 0;
+}
+
 .tool-call-file-preview {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -411,6 +417,7 @@
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-width: 0;
   padding: 9px 12px;
   background: none;
   border: none;
@@ -429,6 +436,11 @@
 }
 
 .changed-files-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
   font-size: var(--text-sm);
   line-height: 1.35;
@@ -447,8 +459,10 @@
 .changed-files-actions {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 12px;
   margin-left: auto;
+  min-width: max-content;
 }
 
 .change-count {
@@ -465,6 +479,21 @@
 
 .deletions {
   color: var(--diff-del-gutter-fg);
+}
+
+@container (max-width: 520px) {
+  .changed-files-header {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .changed-files-actions {
+    gap: 8px;
+  }
+
+  .changed-files-card .change-count {
+    font-size: 11px;
+  }
 }
 
 .session-input {

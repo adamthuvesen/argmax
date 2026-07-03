@@ -26,6 +26,8 @@ export function GeneralSettings({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  pixelFieldEnabled,
+  onPixelFieldEnabledChange,
   chatWidth,
   onChatWidthChange,
   newSessionMode,
@@ -45,6 +47,8 @@ export function GeneralSettings({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  pixelFieldEnabled: boolean;
+  onPixelFieldEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
   newSessionMode: NewSessionMode;
@@ -170,6 +174,13 @@ export function GeneralSettings({
             description="Display the session cost card beside the active conversation."
             checked={chatCostVisible}
             onChange={onChatCostVisibleChange}
+          />
+
+          <ToggleRow
+            label="Pixel field in composer"
+            description="As you type a new session, ripple an animated pixel field across the input."
+            checked={pixelFieldEnabled}
+            onChange={onPixelFieldEnabledChange}
           />
 
           <Segmented

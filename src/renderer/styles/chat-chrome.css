@@ -216,6 +216,31 @@
     0 8px 22px rgba(31, 28, 24, 0.055);
 }
 
+/* The argmax field — an animated pixel canvas that fills the composer behind
+   the text while the user types a new-session prompt. Clipped to the composer's
+   radius; never intercepts pointer or focus. `color` is the probe the canvas
+   reads --accent from. See ComposerPixelField.tsx. */
+.composer-pixel-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--accent);
+}
+
+/* Lift the composer's own rows above the field so the pixels stay a backdrop. */
+.composer > .composer-input,
+.composer > .composer-context,
+.composer > .composer-attachments,
+.composer > .composer-status {
+  position: relative;
+  z-index: 1;
+}
+
 .composer-input,
 .composer-context,
 .provider-toggle {

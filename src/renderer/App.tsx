@@ -71,6 +71,7 @@ import {
 } from "./lib/chatWidth.js";
 import {
   CHAT_COST_KEY,
+  COMPOSER_PIXEL_FIELD_KEY,
   FAST_MODE_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_TOKENS_KEY,
@@ -135,6 +136,7 @@ export function App(): JSX.Element {
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
+  const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
@@ -161,6 +163,7 @@ export function App(): JSX.Element {
   // place when ⌘N fires from inside an active grid. The flag is purely local
   // — it never persists; only the user's choice in Settings persists.
   const [isFullLauncherOpen, setIsFullLauncherOpen] = useState<boolean>(false);
+  const [launcherResetSignal, setLauncherResetSignal] = useState(0);
   const [isWorkspaceDropPreviewVisible, setIsWorkspaceDropPreviewVisible] = useState(false);
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
@@ -722,6 +725,7 @@ export function App(): JSX.Element {
   );
   const onOpenLauncherRow = useCallback((): void => {
     setIsSettingsOpen(false);
+    setLauncherResetSignal((signal) => signal + 1);
     openNewSessionPane();
   }, [openNewSessionPane, setIsSettingsOpen]);
 
@@ -913,6 +917,7 @@ export function App(): JSX.Element {
     (project: ProjectSummary | null): JSX.Element => (
       <LaunchSurface
         fastModeEnabled={fastModeEnabled}
+        pixelFieldEnabled={pixelFieldEnabled}
         onAddProject={() => void addProject()}
         onBranchSwitch={handleBranchSwitch}
         onFastModeEnabledChange={setFastModeEnabled}
@@ -922,6 +927,7 @@ export function App(): JSX.Element {
         onSelectProject={openProjectLauncher}
         project={project ?? selectedProject}
         projects={snapshot.projects}
+        resetSignal={launcherResetSignal}
         rightPanelToggleSignal={rightPanelToggleSignal}
         registerPaletteFileContext={registerPaletteFileContext}
       />
@@ -931,9 +937,11 @@ export function App(): JSX.Element {
       fastModeEnabled,
       handleBranchSwitch,
       handleLaunchModelChange,
+      launcherResetSignal,
       launchModel,
       launchTask,
       openProjectLauncher,
+      pixelFieldEnabled,
       registerPaletteFileContext,
       rightPanelToggleSignal,
       selectedProject,
@@ -1108,6 +1116,8 @@ export function App(): JSX.Element {
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
+                pixelFieldEnabled={pixelFieldEnabled}
+                onPixelFieldEnabledChange={setPixelFieldEnabled}
                 chatWidth={chatWidth}
                 onChatWidthChange={setChatWidth}
                 thinkingExpanded={thinkingExpanded}

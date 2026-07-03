@@ -44,6 +44,7 @@ import {
   writeWorkspaceMode,
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
+import { ComposerPixelField } from "./ComposerPixelField.js";
 import { LaunchModelSelector, type ProviderAvailability } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
@@ -69,6 +70,7 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 
 export function LaunchSurface({
   fastModeEnabled = false,
+  pixelFieldEnabled = false,
   model,
   onAddProject,
   onBranchSwitch,
@@ -78,10 +80,12 @@ export function LaunchSurface({
   onSelectProject,
   project,
   projects,
+  resetSignal,
   rightPanelToggleSignal,
   registerPaletteFileContext
 }: {
   fastModeEnabled?: boolean;
+  pixelFieldEnabled?: boolean;
   model: ModelPickerSelection;
   onAddProject: () => void;
   onBranchSwitch: (updated: ProjectSummary) => void;
@@ -97,6 +101,7 @@ export function LaunchSurface({
   onSelectProject: (id: string) => void;
   project: ProjectSummary | null;
   projects: ProjectSummary[];
+  resetSignal?: number;
   rightPanelToggleSignal?: number;
   registerPaletteFileContext?: (
     context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
@@ -168,6 +173,7 @@ export function LaunchSurface({
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewMode = reviewState.mode;
+  const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
   // Register this surface's file source + pick handler with App so the
@@ -216,6 +222,12 @@ export function LaunchSurface({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [project, reviewClosePanel, reviewIsPanelOpen, reviewMode, reviewOpenPanelInFilesMode, toggleReviewPanel]);
+
+  useEffect(() => {
+    if (resetSignal === lastResetSignal.current) return;
+    lastResetSignal.current = resetSignal;
+    reviewClosePanel();
+  }, [resetSignal, reviewClosePanel]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
@@ -536,6 +548,7 @@ export function LaunchSurface({
         onDragOver={onComposerDragOver}
         onDrop={onComposerDrop}
       >
+        {pixelFieldEnabled ? <ComposerPixelField text={prompt} /> : null}
         <input
           ref={attachmentInputRef}
           type="file"

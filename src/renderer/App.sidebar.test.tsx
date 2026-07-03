@@ -660,6 +660,27 @@ describe("App sidebar", () => {
     );
   });
 
+  it("dismisses the launcher review panel when New Agent is clicked", async () => {
+    listProjectFiles.mockResolvedValue([
+      { path: "src-tauri/src/main.ts" },
+      { path: "README.md" }
+    ]);
+
+    render(<App />);
+
+    const prompt = await screen.findByLabelText("Task prompt");
+    prompt.focus();
+    fireEvent.keyDown(prompt, { key: "b", metaKey: true });
+
+    expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
+    );
+    expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
+  });
+
   it("keeps launcher review chrome below the collapsed-sidebar titlebar controls", async () => {
     listProjectFiles.mockResolvedValue([
       { path: "src-tauri/src/main.ts" },

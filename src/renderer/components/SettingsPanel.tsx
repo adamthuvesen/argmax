@@ -50,6 +50,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  pixelFieldEnabled,
+  onPixelFieldEnabledChange,
   chatWidth,
   onChatWidthChange,
   thinkingExpanded,
@@ -84,6 +86,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  pixelFieldEnabled: boolean;
+  onPixelFieldEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
   thinkingExpanded: boolean;
@@ -280,6 +284,8 @@ export function SettingsPanel({
               onSidebarTokensVisibleChange={onSidebarTokensVisibleChange}
               chatCostVisible={chatCostVisible}
               onChatCostVisibleChange={onChatCostVisibleChange}
+              pixelFieldEnabled={pixelFieldEnabled}
+              onPixelFieldEnabledChange={onPixelFieldEnabledChange}
               chatWidth={chatWidth}
               onChatWidthChange={onChatWidthChange}
               newSessionMode={newSessionMode}

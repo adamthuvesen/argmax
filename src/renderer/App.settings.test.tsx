@@ -215,6 +215,22 @@ describe("App settings", () => {
     expect(cell.getAttribute("title")).toContain("50k cached");
   });
 
+  it("disables the composer pixel field by default and persists turning it on", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Pixel field in composer" });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.composer.pixelField.enabled")).toBe("true")
+    );
+  });
+
   it("renders the CostPanel rows and totals on session detail", async () => {
     const costed: DashboardSnapshot = {
       ...snapshot,

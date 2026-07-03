@@ -81,7 +81,6 @@ export function useDashboardSession(
   // refreshes (refresh). Sharing a token caused `refresh` to cancel a
   // concurrent `loadDashboard` (and vice versa) — including `refresh`'s own
   // re-entrant call into `loadDashboard` when `window.argmax` is missing.
-  // (audit-2026-05-18 M12)
   const dashboardLoadToken = useRef(0);
   const dashboardRefreshToken = useRef(0);
   const dashboardDeltaRevision = useRef(0);

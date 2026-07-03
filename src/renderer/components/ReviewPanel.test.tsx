@@ -69,36 +69,6 @@ function reviewStub(): ReviewState {
   };
 }
 
-describe("ReviewPanel side-by-side toggle", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("starts in unified mode, flips DOM to side-by-side on toggle, and round-trips via localStorage", () => {
-    const { container, unmount } = render(<ReviewPanel review={reviewStub()} />);
-
-    expect(container.querySelector(".diff-side-by-side")).toBeNull();
-    expect(container.querySelector(".diff-sbs-grid")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Switch to side-by-side diff" }));
-
-    expect(container.querySelector(".diff-side-by-side")).not.toBeNull();
-    expect(container.querySelector(".diff-sbs-grid")).not.toBeNull();
-    expect(window.localStorage.getItem("argmax.diffView")).toBe("side-by-side");
-
-    unmount();
-    cleanup();
-
-    // Mount a fresh instance — preference should hydrate from localStorage.
-    const next = render(<ReviewPanel review={reviewStub()} />);
-    expect(next.container.querySelector(".diff-sbs-grid")).not.toBeNull();
-  });
-});
-
 describe("ReviewPanel changes layout", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -154,6 +124,28 @@ describe("ReviewPanel changes layout", () => {
     fireEvent.click(within(changedFilesStack).getByRole("button", { name: "Expand src/deep/b.ts diff" }));
 
     expect(openFile).toHaveBeenCalledWith("src/deep/b.ts");
+  });
+
+  it("toggles the diff baseline with one Local/Branch chip", () => {
+    const review = reviewStub();
+    const setChangesComparison = vi.fn();
+    review.setChangesComparison = setChangesComparison;
+
+    const { rerender } = render(<ReviewPanel review={review} />);
+
+    const localChip = screen.getByRole("button", { name: "Diff baseline: Local" });
+    expect(localChip).toHaveTextContent("Local");
+    expect(localChip).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(localChip);
+    expect(setChangesComparison).toHaveBeenCalledWith("branch");
+
+    rerender(<ReviewPanel review={{ ...review, changesComparison: "branch" }} />);
+
+    const branchChip = screen.getByRole("button", { name: "Diff baseline: Branch" });
+    expect(branchChip).toHaveTextContent("Branch");
+    expect(branchChip).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(branchChip);
+    expect(setChangesComparison).toHaveBeenCalledWith("local");
   });
 
   it("collapses the expanded changed file row without changing Files mode state", () => {

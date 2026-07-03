@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import { useRef, useState, type JSX, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type JSX, type ReactNode } from "react";
 import type { DiagnosticsReport } from "../../../shared/types.js";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../../lib/fonts.js";
@@ -220,57 +220,85 @@ export function ToggleRow({
   );
 }
 
+type SettingsListPickerOption<T extends string> = {
+  value: T;
+  label: string;
+  disabled?: boolean;
+  title?: string;
+  labelStyle?: CSSProperties;
+};
 
-export function FontFamilyPicker({
-  value,
+export function SettingsListPicker<T extends string>({
+  ariaLabel,
+  disabled = false,
+  inputId,
   onChange,
-  inputId
+  options,
+  value
 }: {
-  value: FontFamilyId;
-  onChange: (id: FontFamilyId) => void;
+  ariaLabel: string;
+  disabled?: boolean;
   inputId?: string;
+  onChange: (value: T) => void;
+  options: ReadonlyArray<SettingsListPickerOption<T>>;
+  value: T;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
-  const selected: FontOption = FONT_OPTIONS.find((o) => o.id === value) ?? FONT_OPTIONS[0];
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  const isOpen = open && !disabled;
 
   return (
-    <div className="settings-picker" ref={anchorRef}>
+    <div className="settings-picker settings-list-picker" ref={anchorRef}>
       <button
         type="button"
         id={inputId}
         className="settings-picker-trigger"
         aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Font family"
+        aria-expanded={isOpen}
+        aria-label={ariaLabel}
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        <span style={{ fontFamily: selected.stack }}>{selected.label}</span>
+        <span
+          className="settings-picker-trigger-label"
+          style={selected?.labelStyle}
+        >
+          {selected?.label ?? ""}
+        </span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
-      {open ? (
+      {isOpen ? (
         <ul
           className="project-picker-popover settings-picker-popover"
           role="listbox"
-          aria-label="Font family"
+          aria-label={ariaLabel}
           onClick={(event) => {
             if (!(event.target instanceof Element && event.target.closest("button.project-picker-item"))) {
               setOpen(false);
             }
           }}
         >
-          {FONT_OPTIONS.map((option) => {
-            const isSelected = option.id === value;
+          {options.map((option) => {
+            const isSelected = option.value === value;
             return (
-              <li key={option.id} role="option" aria-selected={isSelected}>
+              <li
+                key={option.value}
+                role="option"
+                aria-selected={isSelected}
+                aria-disabled={option.disabled || undefined}
+              >
                 <button
                   type="button"
                   className="project-picker-item"
                   aria-pressed={isSelected}
-                  style={{ fontFamily: option.stack }}
+                  disabled={option.disabled}
+                  title={option.title}
+                  style={option.labelStyle}
                   onClick={() => {
-                    onChange(option.id);
+                    if (option.disabled) return;
+                    onChange(option.value);
                     setOpen(false);
                   }}
                 >
@@ -282,6 +310,30 @@ export function FontFamilyPicker({
         </ul>
       ) : null}
     </div>
+  );
+}
+
+export function FontFamilyPicker({
+  value,
+  onChange,
+  inputId
+}: {
+  value: FontFamilyId;
+  onChange: (id: FontFamilyId) => void;
+  inputId?: string;
+}): JSX.Element {
+  return (
+    <SettingsListPicker
+      ariaLabel="Font family"
+      inputId={inputId}
+      value={value}
+      onChange={onChange}
+      options={FONT_OPTIONS.map((option: FontOption) => ({
+        value: option.id,
+        label: option.label,
+        labelStyle: { fontFamily: option.stack }
+      }))}
+    />
   );
 }
 

@@ -4,6 +4,7 @@ mod cursor;
 
 pub use cursor::synthesize_message_completed_from_exit;
 
+#[cfg(test)]
 use std::collections::HashMap;
 
 use regex::Regex;
@@ -147,6 +148,7 @@ pub struct PermissionGateInfo {
     pub tool_use_id: Option<String>,
 }
 
+#[cfg(test)]
 pub trait EventNormalizer {
     fn normalize(
         &mut self,
@@ -155,12 +157,14 @@ pub trait EventNormalizer {
     ) -> NormalizedProviderResult;
 }
 
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub struct Dispatcher {
     contexts: HashMap<String, NormalizerSessionContext>,
     line_buffers: HashMap<String, String>,
 }
 
+#[cfg(test)]
 impl Dispatcher {
     pub fn new() -> Self {
         Self::default()
@@ -200,6 +204,7 @@ impl Dispatcher {
     }
 }
 
+#[cfg(test)]
 impl EventNormalizer for Dispatcher {
     fn normalize(
         &mut self,

@@ -1,5 +1,4 @@
-// Argmax library crate. The Rust/Tauri runtime is being filled in section by
-// section under openspec/changes/port-to-rust-tauri.
+// Argmax library crate — Rust/Tauri runtime, services, and IPC handlers.
 
 use std::path::Path;
 use std::sync::Arc;

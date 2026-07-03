@@ -63,7 +63,7 @@ pub(super) fn watch(service: &Arc<WorkspaceService>, workspace_id: &str) -> Argm
     if let Err(error) = watcher.watch(Path::new(&workspace.path), RecursiveMode::Recursive) {
         // Some platforms (older Linux kernels) reject recursive watches.
         // Fall back to non-recursive — root-only edits will still fire,
-        // nested ones get missed. Matches the TS fallback log.
+        // nested ones get missed.
         tracing::warn!(
             workspace_id,
             ?error,

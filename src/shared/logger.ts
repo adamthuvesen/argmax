@@ -1,5 +1,5 @@
 /**
- * Centralized structured logger for main + renderer.
+ * Centralized structured logger for renderer-side diagnostics.
  *
  * API: `logger.debug/info/warn/error(scope, message, fields?)`.
  *
@@ -10,10 +10,9 @@
  *   metadata you want to query later (`{ sessionId, ms }` — NOT `${error}`
  *   stringified into the message).
  *
- * In-memory ring buffer (`LOG_BUFFER_SIZE` lines) is per-process. Main
- * process callers can `readBuffer()` to surface entries through diagnostics
- * IPC. The renderer maintains its own buffer; the diagnostics panel reads
- * the main-side buffer through system:diagnostics.
+ * In-memory ring buffer (`LOG_BUFFER_SIZE` lines) is renderer-local. Backend
+ * diagnostics come from the Rust tracing buffer exposed through
+ * `system:diagnostics`.
  *
  * Console mirroring is gated on `process.env.DEBUG === "1"` so prod runs
  * stay quiet. `level === "error"` always mirrors regardless of DEBUG so
@@ -27,8 +26,7 @@ const LOG_BUFFER_SIZE = 1000;
 /**
  * Ring buffer backing `record()` and `readLogBuffer()`. Stored as a fixed-
  * size circular buffer (write index wraps) so eviction is O(1) instead of
- * the O(n) shift the original implementation paid on every log call once
- * full. (audit-2026-05-17 L2)
+ * the O(n) shift a queue would pay on every log call once full.
  */
 const buffer: (LogEntry | undefined)[] = new Array<LogEntry | undefined>(LOG_BUFFER_SIZE);
 let writeIndex = 0;

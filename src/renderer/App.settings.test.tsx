@@ -18,6 +18,11 @@ import {
   snapshot
 } from "../test/appTestHarness.js";
 
+async function openArgmaxMenu(): Promise<HTMLElement> {
+  fireEvent.click(screen.getByRole("button", { name: "Argmax menu" }));
+  return screen.findByRole("menu", { name: "Argmax menu" });
+}
+
 describe("App settings", () => {
   afterEach(() => {
     cleanup();
@@ -40,8 +45,93 @@ describe("App settings", () => {
     // The launcher prompt is hidden while the settings panel is showing.
     expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
+  });
+
+  it("shows a local identity menu instead of a Ready settings footer", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const trigger = screen.getByRole("button", { name: "Argmax menu" });
+    expect(trigger).toHaveTextContent("argmax@local");
+    expect(trigger).not.toHaveTextContent("Local workspace");
+    expect(within(trigger).queryByText(/ready/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+
+    const menu = await openArgmaxMenu();
+    expect(within(menu).getByRole("menuitem", { name: /Command Palette/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /Settings/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /Providers/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /Diagnostics & Logs/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /Keyboard Shortcuts/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /About Argmax/ })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Argmax menu" })).not.toBeInTheDocument());
+  });
+
+  it("opens command palette and keyboard shortcuts from the identity menu", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    let menu = await openArgmaxMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Command Palette/ }));
+    expect(await screen.findByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument());
+
+    menu = await openArgmaxMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Keyboard Shortcuts/ }));
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+  });
+
+  it("deep-links providers, diagnostics, and about from the identity menu", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    let menu = await openArgmaxMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Providers/ }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Providers" })).toBeInTheDocument();
+
+    menu = await openArgmaxMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Diagnostics & Logs/ }));
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
+
+    menu = await openArgmaxMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /About Argmax/ }));
+    expect(await screen.findByRole("heading", { name: "About" })).toBeInTheDocument();
+    expect(screen.getByText("Claude Code · Codex · Cursor")).toBeInTheDocument();
+  });
+
+  it("resets the reused workspace scroller when opening settings", async () => {
+    const { container } = render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    const scroller = container.querySelector(".work-scroll");
+    expect(scroller).toBeInstanceOf(HTMLElement);
+    (scroller as HTMLElement).scrollTop = 96;
+
+    await openSettings();
+
+    const settingsScroller = container.querySelector(".settings-scroll");
+    expect(settingsScroller).toBe(scroller);
+    expect((settingsScroller as HTMLElement).scrollTop).toBe(0);
+  });
+
+  it("resets settings scroll when the active Settings sidebar button is clicked again", async () => {
+    const { container } = render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    await openSettings();
+
+    const settingsScroller = container.querySelector(".settings-scroll");
+    expect(settingsScroller).toBeInstanceOf(HTMLElement);
+    (settingsScroller as HTMLElement).scrollTop = 96;
+
+    await openSettings();
+
+    expect((settingsScroller as HTMLElement).scrollTop).toBe(0);
   });
 
   it("toggles settings with Cmd+, including from the focused launcher prompt", async () => {
@@ -57,16 +147,20 @@ describe("App settings", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
-  it("settings Default model label is wired to the select via htmlFor/id", async () => {
+  it("settings Default model label is wired to the custom picker via htmlFor/id", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Agents");
     await screen.findByRole("heading", { name: "Model defaults" });
 
-    // getByLabelText only resolves the SELECT element when label.htmlFor
-    // matches the select's id — i.e. the wiring is correct end-to-end.
-    const select = screen.getByLabelText("Default model");
-    expect(select.tagName).toBe("SELECT");
+    // getByLabelText only resolves the trigger when label.htmlFor matches the
+    // picker button's id — i.e. the wiring is correct end-to-end.
+    const trigger = screen.getByLabelText("Default model");
+    expect(trigger.tagName).toBe("BUTTON");
+    fireEvent.click(trigger);
+    const listbox = await screen.findByRole("listbox", { name: "Default model" });
+    expect(listbox).toBeInTheDocument();
+    expect(listbox).not.toHaveTextContent("GPT-5.3");
   });
 
   it("settings Thinking blocks default persists to localStorage", async () => {
@@ -119,22 +213,6 @@ describe("App settings", () => {
     const cell = await screen.findByLabelText(/Tokens: 16\.8k/);
     expect(cell).toHaveTextContent("16.8k");
     expect(cell.getAttribute("title")).toContain("50k cached");
-  });
-
-  it("toggles the launcher globe preference and persists it to localStorage", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    await openSettings();
-    await screen.findByRole("heading", { name: "Appearance" });
-
-    const toggle = screen.getByRole("checkbox", { name: "Animated globe on the launcher" });
-    expect(toggle).not.toBeChecked();
-    fireEvent.click(toggle);
-
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.launcher.globe.visible")).toBe("true")
-    );
   });
 
   it("renders the CostPanel rows and totals on session detail", async () => {
@@ -206,7 +284,7 @@ describe("App settings", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.chat.cost.visible")).toBe("false")
     );
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
 
     await screen.findByRole("button", { name: "Build dashboard" });
     expect(screen.queryByRole("region", { name: "Session cost summary" })).not.toBeInTheDocument();
@@ -286,10 +364,20 @@ describe("App settings", () => {
     await openSettings("Integrations");
     await screen.findByRole("heading", { name: "Default IDE" });
 
-    const select = screen.getByRole("combobox", { name: "Default IDE" });
-    fireEvent.change(select, { target: { value: "cursor" } });
+    const trigger = screen.getByRole("button", { name: "Default IDE" });
+    expect(trigger.tagName).toBe("BUTTON");
+    fireEvent.click(trigger);
+    const listbox = await screen.findByRole("listbox", { name: "Default IDE" });
+    fireEvent.click(within(listbox).getByRole("button", { name: "Cursor" }));
 
     await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));
+
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole("listbox", { name: "Default IDE" })).getByRole("button", {
+      name: "Ask each time"
+    }));
+
+    await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBeNull());
   });
 
   it("settings Permissions section persists the chosen mode and propagates it through the next launch", async () => {
@@ -304,8 +392,8 @@ describe("App settings", () => {
       expect(window.localStorage.getItem("argmax.permissionMode")).toBe("ask-each-time")
     );
 
-    // Close Settings to get back to the launcher.
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    // Toggle Settings closed to get back to the launcher.
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
 
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Gate this run" }
@@ -332,7 +420,7 @@ describe("App settings", () => {
     fireEvent.click(toggle);
     await waitFor(() => expect(window.localStorage.getItem(FAST_MODE_KEY)).toBe("true"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Launch quickly" }
     });
@@ -369,7 +457,7 @@ describe("App settings", () => {
     await screen.findByRole("heading", { name: "Appearance" });
 
     const fontSize = screen.getByRole("radiogroup", { name: "Font size" });
-    expect(within(fontSize).getByRole("radio", { name: "Default current" })).toBeChecked();
+    expect(within(fontSize).getByRole("radio", { name: "Default" })).toBeChecked();
 
     fireEvent.click(within(fontSize).getByRole("radio", { name: "Large" }));
     await waitFor(() =>
@@ -418,7 +506,7 @@ describe("App settings", () => {
     await screen.findByRole("heading", { name: "Appearance" });
 
     const chatWidth = screen.getByRole("radiogroup", { name: "Chat width" });
-    expect(within(chatWidth).getByRole("radio", { name: "Standard default" })).toBeChecked();
+    expect(within(chatWidth).getByRole("radio", { name: "Default" })).toBeChecked();
     expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "standard");
 
     fireEvent.click(within(chatWidth).getByRole("radio", { name: "Narrow" }));

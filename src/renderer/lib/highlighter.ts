@@ -134,17 +134,24 @@ export function highlightLine(content: string, lang: string | null): HighlightTo
   }
 }
 
+/** One plain (uncolored) token per line — the highlighter's fallback shape,
+ * reused while a streaming code fence is still growing so we don't run shiki's
+ * synchronous tokenizer on every keystroke. */
+export function plainCodeLines(code: string): HighlightToken[][] {
+  return code.split("\n").map((line) => [{ content: line }]);
+}
+
 export function highlightCode(code: string, lang: string | null): HighlightToken[][] {
-  if (!lang) return code.split("\n").map((line) => [{ content: line }]);
+  if (!lang) return plainCodeLines(code);
   const instance = ensureHighlighter();
-  if (!instance) return code.split("\n").map((line) => [{ content: line }]);
+  if (!instance) return plainCodeLines(code);
   try {
     const result = instance.codeToTokens(code, { theme: activeThemeName(), lang });
     return result.tokens.map((line) =>
       line.map((token) => ({ content: token.content, color: token.color }))
     );
   } catch {
-    return code.split("\n").map((line) => [{ content: line }]);
+    return plainCodeLines(code);
   }
 }
 

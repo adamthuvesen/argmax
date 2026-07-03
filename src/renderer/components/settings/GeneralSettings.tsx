@@ -13,6 +13,7 @@ import {
   ThemePicker,
   ToggleRow
 } from "./settingsPrimitives.js";
+import { Mascot } from "../Mascot.js";
 
 export function GeneralSettings({
   fontFamily,
@@ -27,8 +28,6 @@ export function GeneralSettings({
   onChatCostVisibleChange,
   chatWidth,
   onChatWidthChange,
-  launcherGlobeVisible,
-  onLauncherGlobeVisibleChange,
   newSessionMode,
   onNewSessionModeChange,
   fontSize,
@@ -48,8 +47,6 @@ export function GeneralSettings({
   onChatCostVisibleChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
-  launcherGlobeVisible: boolean;
-  onLauncherGlobeVisibleChange: (v: boolean) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
 }): JSX.Element {
@@ -67,7 +64,7 @@ export function GeneralSettings({
         <div className="settings-card">
           <div className="settings-account">
             <span className="settings-avatar" aria-hidden="true">
-              <span className="settings-avatar-glyph">▲</span>
+              <Mascot size={32} className="settings-avatar-mascot" label="Argmax mascot" />
             </span>
             <div className="settings-account-meta">
               <span className="settings-account-name">Argmax</span>
@@ -154,8 +151,7 @@ export function GeneralSettings({
             onChange={(v) => onFontSizeChange(v as FontSizeId)}
             options={FONT_SIZE_OPTIONS.map((option) => ({
               value: option.id,
-              label: option.label,
-              caption: option.id === "default" ? "current" : undefined
+              label: option.label
             }))}
           />
           <div className="settings-card-sub">
@@ -183,16 +179,9 @@ export function GeneralSettings({
             onChange={(v) => onChatWidthChange(v as ChatWidth)}
             options={[
               { value: "narrow", label: "Narrow" },
-              { value: "standard", label: "Standard", caption: "default" },
+              { value: "standard", label: "Default" },
               { value: "wide", label: "Wide" }
             ]}
-          />
-
-          <ToggleRow
-            label="Animated globe on the launcher"
-            description="Show a rotating dot-globe behind the new-session screen. Pauses when reduced-motion is on."
-            checked={launcherGlobeVisible}
-            onChange={onLauncherGlobeVisibleChange}
           />
 
           <KeyValueList

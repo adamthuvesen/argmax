@@ -1,4 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Command, FileText, Folder, MessageSquare, Quote } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   highlightSegments,
   searchFilePaths,
@@ -20,12 +22,14 @@ const MIN_MESSAGE_QUERY_LENGTH = 3;
 
 const GROUP_ORDER: PaletteGroup[] = ["Actions", "Files", "Projects", "Messages", "Sessions"];
 
-const GROUP_SIGIL: Record<PaletteGroup, string> = {
-  Actions: "A",
-  Sessions: "S",
-  Projects: "P",
-  Files: "F",
-  Messages: "M"
+// Fallback glyph when an item carries no icon of its own. Actions each set their
+// own; the homogeneous groups share one so a row stays typed once results mix.
+const GROUP_ICON: Record<PaletteGroup, LucideIcon> = {
+  Actions: Command,
+  Sessions: MessageSquare,
+  Projects: Folder,
+  Files: FileText,
+  Messages: Quote
 };
 
 export interface PaletteFileSource {
@@ -274,14 +278,6 @@ export function CommandPalette({
     active?.scrollIntoView?.({ block: "nearest" });
   }, [selectedIndex, open]);
 
-  const groupCounts = useMemo(() => {
-    const counts: Partial<Record<PaletteGroup, number>> = {};
-    for (const row of flatRows) {
-      counts[row.group] = (counts[row.group] ?? 0) + 1;
-    }
-    return counts;
-  }, [flatRows]);
-
   if (!open) return null;
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
@@ -329,10 +325,6 @@ export function CommandPalette({
     >
       <div className="command-palette" ref={paletteRef}>
         <div className="command-palette-header" aria-hidden="true">
-          <span className="command-palette-scope">
-            <span className="command-palette-scope-mark">cmd</span>
-            <kbd className="command-palette-scope-kbd">⌘K</kbd>
-          </span>
           <span className="command-palette-count">
             {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) || filesRunning
               ? "searching…"
@@ -385,12 +377,7 @@ export function CommandPalette({
               <Fragment key={key}>
                 {groupHeader ? (
                   <li className="command-palette-group" role="presentation">
-                    <span className="command-palette-group-rule" aria-hidden="true" />
                     <span className="command-palette-group-label">{row.group}</span>
-                    <span className="command-palette-group-count" aria-hidden="true">
-                      / {String(groupCounts[row.group] ?? 0).padStart(2, "0")}
-                    </span>
-                    <span className="command-palette-group-rule" aria-hidden="true" />
                   </li>
                 ) : null}
                 <li
@@ -407,7 +394,9 @@ export function CommandPalette({
                     }
                   }}
                 >
-                  <span className="command-palette-sigil" aria-hidden="true">{GROUP_SIGIL[row.group]}</span>
+                  <RowIcon
+                    icon={(row.kind === "hit" ? row.hit.item.icon : undefined) ?? GROUP_ICON[row.group]}
+                  />
                   <span className="command-palette-result-body">
                     {row.kind === "hit" ? (
                       <PaletteHitRow hit={row.hit} />
@@ -444,6 +433,14 @@ export function CommandPalette({
         </footer>
       </div>
     </div>
+  );
+}
+
+function RowIcon({ icon: Icon }: { icon: LucideIcon }): JSX.Element {
+  return (
+    <span className="command-palette-icon" aria-hidden="true">
+      <Icon size={15} strokeWidth={1.75} />
+    </span>
   );
 }
 

@@ -173,6 +173,10 @@
   padding: 4px 0 0;
 }
 
+.tool-call-row[data-tool-type="agent"] > .tool-call-detail > :not(.tool-call-agent-activity) {
+  margin-left: 24px;
+}
+
 .tool-call-resource-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -254,12 +258,22 @@
   background: var(--muted);
 }
 
-/* Sub-agent work — the tool calls a spawned Task made, sit directly under its
-   "Started agent …" row. No indent or rail: the row above is the only
-   grouping cue needed, and the child rows align flush-left with it. */
+/* Sub-agent work — the tool calls a spawned Task made, sit under its
+   "Started agent …" row. Hide child icons so the action labels align under
+   "Started" without adding a rail. */
 .tool-call-agent-children {
   display: flex;
   flex-direction: column;
+  gap: 3px;
+  margin-top: 1px;
+}
+
+.tool-call-agent-children .tool-call-row-button {
+  padding-left: 24px;
+}
+
+.tool-call-agent-children .tool-call-row-icon {
+  display: none;
 }
 
 .session-meta-cards {
@@ -414,9 +428,9 @@
   margin-inline: var(--session-inline-padding);
   padding: 10px 12px 8px;
   border: 1px solid var(--line);
-  /* Squarer than the default pill-ish radius — reads more like a precise input
-     field and less like a chat bubble. */
-  border-radius: var(--radius-md);
+  /* Matches the launcher composer's corner radius so the two input surfaces
+     read as the same component. */
+  border-radius: var(--radius-xl);
   background: var(--panel);
   /* Quiet, single-layer lift — the field sits on the surface without the
      heavy drop-shadow halo it had before. */

@@ -9,7 +9,6 @@ release/
 .DS_Store
 .claude/
 maestro/
-openspec/
 COMPETITIVE_ANALYSIS.md
 
 # Tauri / Rust port

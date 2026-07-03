@@ -1,5 +1,4 @@
-import { X } from "lucide-react";
-import { Suspense, lazy, useCallback, useEffect, useRef, useState, type JSX } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type {
   DetectedIde,
   DiagnosticsReport,
@@ -34,6 +33,12 @@ const McpAuthDialog = lazy(async () => ({
   default: (await import("./McpAuthDialog.js")).McpAuthDialog
 }));
 
+export type SettingsNavigationTarget = {
+  group: SettingsGroupId;
+  sectionId?: string;
+  requestId: number;
+};
+
 export function SettingsPanel({
   defaultModel,
   onDefaultModelChange,
@@ -47,8 +52,6 @@ export function SettingsPanel({
   onChatCostVisibleChange,
   chatWidth,
   onChatWidthChange,
-  launcherGlobeVisible,
-  onLauncherGlobeVisibleChange,
   thinkingExpanded,
   onThinkingExpandedChange,
   fastModeEnabled,
@@ -69,7 +72,7 @@ export function SettingsPanel({
   newSessionMode,
   onNewSessionModeChange,
   projects,
-  onClose
+  navigationTarget
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
@@ -83,8 +86,6 @@ export function SettingsPanel({
   onChatCostVisibleChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
-  launcherGlobeVisible: boolean;
-  onLauncherGlobeVisibleChange: (v: boolean) => void;
   thinkingExpanded: boolean;
   onThinkingExpandedChange: (v: boolean) => void;
   fastModeEnabled: boolean;
@@ -105,7 +106,7 @@ export function SettingsPanel({
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
   projects: ProjectSummary[];
-  onClose: () => void;
+  navigationTarget?: SettingsNavigationTarget | null;
 }): JSX.Element {
   // First load reuses the cached reports; every explicit "Refresh" (retry)
   // forces a re-probe so a provider installed after boot is actually detected.
@@ -196,48 +197,73 @@ export function SettingsPanel({
   }, []);
 
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+
+  // The panel is lazy-mounted behind Suspense, so App's "scroll settings to top"
+  // reset fires while only the skeleton is present and no-ops. Pin the scroll
+  // container to the top once the real content is in the DOM, otherwise the
+  // Suspense reveal can leave it mid-scroll with the first section under the bar.
+  useLayoutEffect(() => {
+    const scroller = surfaceRef.current?.closest(".settings-scroll");
+    if (scroller instanceof HTMLElement) scroller.scrollTop = 0;
+  }, []);
+
   const [activeGroup, setActiveGroup] = useState<SettingsGroupId>(DEFAULT_SETTINGS_GROUP.id);
+  const handledNavigationRequestRef = useRef<number | null>(null);
   const activeGroupMeta = settingsGroupById(activeGroup);
-  const handleGroupChange = useCallback((next: SettingsGroupId): void => {
-    setActiveGroup(next);
+  const scrollSettings = useCallback((sectionId?: string): void => {
     window.requestAnimationFrame(() => {
       const scroller = surfaceRef.current?.closest(".settings-scroll");
-      if (scroller instanceof HTMLElement) {
+      if (!(scroller instanceof HTMLElement)) return;
+      if (!sectionId) {
         if (typeof scroller.scrollTo === "function") {
           scroller.scrollTo({ top: 0 });
         } else {
           scroller.scrollTop = 0;
         }
+        return;
+      }
+
+      const section = document.getElementById(sectionId);
+      if (!(section instanceof HTMLElement) || !scroller.contains(section)) return;
+      if (typeof scroller.scrollTo === "function") {
+        scroller.scrollTo({ top: section.offsetTop });
+      } else {
+        scroller.scrollTop = section.offsetTop;
       }
     });
   }, []);
 
+  const handleGroupChange = useCallback((next: SettingsGroupId): void => {
+    setActiveGroup(next);
+    scrollSettings();
+  }, [scrollSettings]);
+
+  useEffect(() => {
+    if (!navigationTarget) return;
+    if (handledNavigationRequestRef.current === navigationTarget.requestId) return;
+    if (activeGroup !== navigationTarget.group) {
+      setActiveGroup(navigationTarget.group);
+      return;
+    }
+    handledNavigationRequestRef.current = navigationTarget.requestId;
+    scrollSettings(navigationTarget.sectionId);
+  }, [activeGroup, navigationTarget, scrollSettings]);
+
   return (
-    <div className="settings-surface" ref={surfaceRef}>
-      <SettingsNav active={activeGroup} onChange={handleGroupChange} />
+    <>
+      <header className="settings-topbar" data-window-drag>
+        <div className="settings-topbar-inner">
+          <h1 className="settings-topbar-title">Settings</h1>
+          <span className="settings-topbar-sep" aria-hidden="true">/</span>
+          <span className="settings-topbar-group">{activeGroupMeta.label}</span>
+        </div>
+      </header>
 
-      <div className="settings-main">
-        <header className="settings-hero">
-          <div className="settings-hero-top">
-            <h1 className="settings-hero-title">Settings</h1>
-            <button
-              className="settings-hero-close"
-              type="button"
-              title="Close settings"
-              aria-label="Close settings"
-              onClick={onClose}
-            >
-              <X size={14} aria-hidden="true" />
-              <span className="settings-hero-close-label">close</span>
-              <kbd className="settings-hero-close-kbd" aria-hidden="true">Esc</kbd>
-            </button>
-          </div>
-          <p className="settings-hero-lede">
-            Runs locally on this machine — no cloud account, no telemetry.
-          </p>
-        </header>
+      <div className="settings-surface" ref={surfaceRef}>
+        <SettingsNav active={activeGroup} onChange={handleGroupChange} />
 
-        <SettingsGroupIntro group={activeGroupMeta} />
+        <div className="settings-main">
+          <SettingsGroupIntro group={activeGroupMeta} />
 
         <div className="settings-group-panel" role="region" aria-labelledby="settings-group-heading">
           {activeGroup === "general" ? (
@@ -256,8 +282,6 @@ export function SettingsPanel({
               onChatCostVisibleChange={onChatCostVisibleChange}
               chatWidth={chatWidth}
               onChatWidthChange={onChatWidthChange}
-              launcherGlobeVisible={launcherGlobeVisible}
-              onLauncherGlobeVisibleChange={onLauncherGlobeVisibleChange}
               newSessionMode={newSessionMode}
               onNewSessionModeChange={onNewSessionModeChange}
             />
@@ -327,6 +351,7 @@ export function SettingsPanel({
           />
         </Suspense>
       ) : null}
-    </div>
+      </div>
+    </>
   );
 }

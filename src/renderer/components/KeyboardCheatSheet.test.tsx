@@ -17,6 +17,12 @@ describe("KeyboardCheatSheet", () => {
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
   });
 
+  it("does not show menu commands without a keyboard shortcut", () => {
+    const onClose = vi.fn();
+    render(<KeyboardCheatSheet open={true} onClose={onClose} />);
+    expect(screen.queryByText("Check for Updates")).not.toBeInTheDocument();
+  });
+
   it("closes on Escape even when focus is in a typing target outside the dialog", () => {
     const onClose = vi.fn();
     // External textarea simulating the chat composer holding focus when the

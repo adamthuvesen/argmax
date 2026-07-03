@@ -102,11 +102,15 @@ const baseProps = {
   onArchiveWorkspace: noop,
   onOpenInIde: noop,
   onOpenLauncher: noop,
+  onOpenAbout: noop,
+  onOpenCommandPalette: noop,
+  onOpenDiagnostics: noop,
+  onOpenKeyboardShortcuts: noop,
+  onOpenProviders: noop,
   onOpenProject: noop,
   onOpenSettings: noop,
   onOpenWorkspaceChat: noop,
   onResizeMouseDown: noop,
-  isSettingsActive: false,
   selectedProjectId: null,
   selectedWorkspaceId: null,
   openWorkspaceIds: new Set<string>(),
@@ -157,11 +161,15 @@ describe("Sidebar — localStorage write isolation", () => {
           onArchiveWorkspace={noop}
           onOpenInIde={noop}
           onOpenLauncher={noop}
+          onOpenAbout={noop}
+          onOpenCommandPalette={noop}
+          onOpenDiagnostics={noop}
+          onOpenKeyboardShortcuts={noop}
+          onOpenProviders={noop}
           onOpenProject={noop}
           onOpenSettings={noop}
           onOpenWorkspaceChat={noop}
           onResizeMouseDown={noop}
-          isSettingsActive={false}
           selectedProjectId={null}
           selectedWorkspaceId={null}
           openWorkspaceIds={new Set()}
@@ -199,11 +207,15 @@ describe("Sidebar — localStorage write isolation", () => {
           onArchiveWorkspace={noop}
           onOpenInIde={noop}
           onOpenLauncher={noop}
+          onOpenAbout={noop}
+          onOpenCommandPalette={noop}
+          onOpenDiagnostics={noop}
+          onOpenKeyboardShortcuts={noop}
+          onOpenProviders={noop}
           onOpenProject={noop}
           onOpenSettings={noop}
           onOpenWorkspaceChat={noop}
           onResizeMouseDown={noop}
-          isSettingsActive={false}
           selectedProjectId={null}
           selectedWorkspaceId={null}
           openWorkspaceIds={new Set()}
@@ -543,6 +555,35 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     // No project rows in this view.
     expect(getProjectButtonOrder()).toEqual([]);
+  });
+
+  it("floats a pinned session into a Pinned section and out of its date bucket", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    const pinnedSnapshot: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces: [
+        { ...workspace("w-zebra", "project-zebra", "Zebra task today", TODAY), pinned: true },
+        workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL)
+      ],
+      sessions: [session("w-zebra", TODAY), session("w-argmax", APRIL)]
+    };
+
+    const { container } = render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
+
+    // The pinned session renders inside the Pinned section.
+    const pinnedGroup = container.querySelector(".session-pinned-group");
+    expect(pinnedGroup).not.toBeNull();
+    expect(within(pinnedGroup as HTMLElement).getByText("Pinned")).toBeInTheDocument();
+    expect(
+      within(pinnedGroup as HTMLElement).getByRole("button", { name: /Zebra task today/ })
+    ).toBeInTheDocument();
+
+    // It's pulled out of its date bucket — it was the only Today session, so the
+    // Today bucket is gone, and it appears exactly once (not duplicated).
+    expect(screen.queryByText("Today")).toBeNull();
+    expect(screen.getByText("April")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Zebra task today/ })).toHaveLength(1);
   });
 
   it("collapses a date bucket with the chevron and caps overflow behind Show more", () => {

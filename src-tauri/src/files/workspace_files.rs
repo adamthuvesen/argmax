@@ -360,7 +360,7 @@ async fn write_file_at_path(
 
     // O_NOFOLLOW guards against a symlink-swap between the metadata check
     // and the open. Then we verify inode matches to close the TOCTOU
-    // window where the file was unlinked-and-replaced. (audit-2026-05-17 M3)
+    // window where the file was unlinked-and-replaced.
     let resolved_for_spawn = resolved.clone();
     let buf = content.as_bytes().to_vec();
     let expected_ino = metadata.ino();
@@ -582,6 +582,23 @@ mod tests {
         let preview = svc.read_file(&workspace_id, "README.md").await.unwrap();
         match preview {
             WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "hello\n"),
+            other => panic!("expected text preview, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_file_allows_leading_dash_name() {
+        let repo = TempDir::new().unwrap();
+        init_repo(repo.path());
+        std::fs::write(repo.path().join("-notes.md"), "dash file\n").unwrap();
+
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let svc = WorkspaceFilesService::new(database);
+        let preview = svc.read_file(&workspace_id, "-notes.md").await.unwrap();
+        match preview {
+            WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "dash file\n"),
             other => panic!("expected text preview, got {other:?}"),
         }
     }

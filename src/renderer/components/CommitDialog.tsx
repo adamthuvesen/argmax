@@ -43,7 +43,7 @@ export function CommitDialog({
 
   // Document-level Esc + focus trap. Esc must fire even if focus drifts out
   // of the dialog (Cancel button blur, mouse click on the overlay edge).
-  // Tab cycles within the dialog's focusable elements. (audit-2026-05-17 H15)
+  // Tab cycles within the dialog's focusable elements.
   const dialogRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return;

@@ -15,6 +15,7 @@
 // it in the process-lifetime static `HANDLES` keeps the appender flushing
 // for the lifetime of the program.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -26,6 +27,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
 
 use crate::util::ipc_latency::IpcLatencyRegistry;
+use crate::util::log_buffer::{LogBuffer, LogEntry};
 
 /// Default filter when `RUST_LOG` is unset. Argmax modules at debug,
 /// everything else at info.
@@ -33,6 +35,7 @@ const DEFAULT_FILTER: &str = "info,argmax_lib=debug";
 
 pub struct TracingHandles {
     pub ipc_latency: Arc<IpcLatencyRegistry>,
+    pub logs: Arc<LogBuffer>,
     // Holds the rolling-file appender's flush guard alive. Dropping it
     // would flush pending writes and detach the worker.
     _file_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
@@ -71,12 +74,23 @@ pub fn ipc_latency() -> Arc<IpcLatencyRegistry> {
         .clone()
 }
 
+pub fn recent_logs() -> Vec<LogEntry> {
+    HANDLES
+        .get()
+        .map(|handles| handles.logs.read())
+        .unwrap_or_default()
+}
+
 fn build_subscriber(user_data_dir: Option<&Path>) -> TracingHandles {
     let ipc_latency = Arc::new(IpcLatencyRegistry::new());
+    let logs = Arc::new(LogBuffer::default());
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILTER));
     let latency_layer = IpcLatencyLayer {
         registry: ipc_latency.clone(),
+    };
+    let recent_log_layer = RecentLogLayer {
+        buffer: logs.clone(),
     };
 
     if cfg!(debug_assertions) {
@@ -87,10 +101,12 @@ fn build_subscriber(user_data_dir: Option<&Path>) -> TracingHandles {
         tracing_subscriber::registry()
             .with(env_filter)
             .with(stderr_layer)
+            .with(recent_log_layer)
             .with(latency_layer)
             .init();
         return TracingHandles {
             ipc_latency,
+            logs,
             _file_guard: None,
         };
     }
@@ -125,12 +141,76 @@ fn build_subscriber(user_data_dir: Option<&Path>) -> TracingHandles {
         .with(env_filter)
         .with(stderr_layer)
         .with(file_layer)
+        .with(recent_log_layer)
         .with(latency_layer)
         .init();
 
     TracingHandles {
         ipc_latency,
+        logs,
         _file_guard: file_guard,
+    }
+}
+
+struct RecentLogLayer {
+    buffer: Arc<LogBuffer>,
+}
+
+impl<S> Layer<S> for RecentLogLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = LogVisitor::default();
+        event.record(&mut visitor);
+        let metadata = event.metadata();
+        let message = visitor
+            .message
+            .unwrap_or_else(|| metadata.name().to_owned());
+        self.buffer.record(
+            metadata.level().to_string().to_ascii_lowercase(),
+            metadata.target(),
+            message,
+            visitor.fields,
+        );
+    }
+}
+
+#[derive(Default)]
+struct LogVisitor {
+    message: Option<String>,
+    fields: BTreeMap<String, String>,
+}
+
+impl LogVisitor {
+    fn record_value(&mut self, field: &tracing::field::Field, value: String) {
+        if field.name() == "message" {
+            self.message = Some(value);
+        } else {
+            self.fields.insert(field.name().to_owned(), value);
+        }
+    }
+}
+
+impl tracing::field::Visit for LogVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.record_value(field, value.to_owned());
+    }
+
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.record_value(field, value.to_string());
+    }
+
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.record_value(field, value.to_string());
+    }
+
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.record_value(field, value.to_string());
+    }
+
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.record_value(field, format!("{value:?}"));
     }
 }
 

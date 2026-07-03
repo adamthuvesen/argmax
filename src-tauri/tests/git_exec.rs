@@ -117,19 +117,18 @@ async fn times_out_and_kills_slow_git_process() {
 }
 
 #[tokio::test]
-async fn pathspecs_after_separator_reject_leading_dash() {
-    let repo = seed_git_repo(&[("file.txt", "needle\n")]);
+async fn pathspecs_after_separator_allow_leading_dash_file_names() {
+    let repo = seed_git_repo(&[("-looks-like-flag", "needle\n")]);
 
-    let err = run_git_text(
+    let stdout = run_git_text(
         repo.path(),
         ["diff", "HEAD", "--", "-looks-like-flag"],
         Duration::from_secs(5),
     )
     .await
-    .expect_err("flag-like pathspec rejected");
-    let json = serde_json::to_value(&err).expect("serialize error");
+    .expect("dash-prefixed pathspec is data after --");
 
-    assert_eq!(json["sub_code"], "GIT_ARG_LEADING_DASH");
+    assert_eq!(stdout, "");
 }
 
 #[test]

@@ -37,7 +37,7 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   // event AFTER my position" (rule shared with buildConversationEvents — see
   // turnBoundaries.ts). nextBoundary reflects the closest boundary at j > i
   // because boundaries at j > i were processed in earlier iterations.
-  // O(n) vs the previous nested-walk O(n²). (audit-2026-05-18 M10)
+  // O(n) vs the previous nested-walk O(n²).
   const nextBoundary = new Map<string, TurnBoundary>();
   const supersededIndices = new Set<number>();
   for (let i = ascending.length - 1; i >= 0; i--) {

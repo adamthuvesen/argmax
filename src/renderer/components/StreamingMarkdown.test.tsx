@@ -34,6 +34,23 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
+  it("keeps completed blocks formatted while a later block is still streaming", () => {
+    vi.useFakeTimers();
+    // A finished heading, then a paragraph still being typed. The committed
+    // prefix ("# Title\n\n") must render as a real heading even before the
+    // trailing paragraph finishes.
+    const text = "# Title\n\nStreaming the rest of the answer now, one chunk at a time.";
+
+    render(<StreamingMarkdown text={text} streaming />);
+
+    act(() => {
+      // Reveal past the heading and into the paragraph, but not to the end.
+      vi.advanceTimersByTime(32 * 6);
+    });
+
+    expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
+  });
+
   it("renders completed text immediately", () => {
     const text = "Completed answers should not be delayed.";
 

@@ -49,7 +49,7 @@ fn project_workspace_and_session_repositories_round_trip() {
 
     let updated_settings = ProjectSettings {
         default_provider: "codex".to_owned(),
-        default_model_label: "Spark".to_owned(),
+        default_model_label: "GPT-5.5".to_owned(),
         worktree_location: "~/.argmax/worktrees".to_owned(),
         setup_command: "npm install".to_owned(),
         check_commands: vec!["npm test".to_owned(), "npm run lint".to_owned()],
@@ -118,7 +118,7 @@ fn project_workspace_and_session_repositories_round_trip() {
         &connection,
         "s1",
         &SessionModelInput {
-            model_label: "Spark".to_owned(),
+            model_label: "GPT-5.5".to_owned(),
             model_id: "gpt-5.5".to_owned(),
             reasoning_effort: Some("medium".to_owned()),
         },
@@ -237,6 +237,28 @@ fn event_approval_check_and_usage_repositories_round_trip() {
     let tail = list_session_events_since(&connection, "s1", None, None).expect("read tail");
     assert_eq!(tail.events[0].payload["role"], "assistant");
     assert_eq!(tail.raw_outputs[0].content, "{\"type\":\"assistant\"}");
+
+    connection
+        .execute(
+            "INSERT INTO events (id, session_id, type, message, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "e-bad",
+                "s1",
+                "message.delta",
+                "corrupt payload",
+                "{not valid json",
+                "2026-05-24T10:00:01.000Z",
+            ),
+        )
+        .expect("insert corrupt payload");
+    let tail = list_session_events_since(&connection, "s1", None, None).expect("read corrupt tail");
+    let corrupt = tail
+        .events
+        .iter()
+        .find(|event| event.id == "e-bad")
+        .expect("corrupt event returned");
+    assert_eq!(corrupt.payload["parseError"], true);
+    assert_eq!(corrupt.payload["rawPayload"], "{not valid json");
 
     let approval = persist_approval(
         &connection,
@@ -504,7 +526,7 @@ fn session_input() -> PersistSessionInput {
         id: "s1".to_owned(),
         workspace_id: "w1".to_owned(),
         provider: "codex".to_owned(),
-        model_label: "Spark".to_owned(),
+        model_label: "GPT-5.5".to_owned(),
         model_id: "gpt-5.5".to_owned(),
         reasoning_effort: None,
         permission_mode: None,

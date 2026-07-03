@@ -108,7 +108,6 @@ where
     S: AsRef<OsStr>,
 {
     let args = collect_args(args);
-    validate_pathspec_args(&args)?;
     let output = run_git_command(
         workspace_path.as_ref(),
         &args,
@@ -182,7 +181,6 @@ where
     S: AsRef<OsStr>,
 {
     let args = collect_args(args);
-    validate_pathspec_args(&args)?;
     let output = run_git_command(workspace_path, &args, options.clone()).await?;
     let exit_code = output.status.code().unwrap_or(-1);
 
@@ -327,21 +325,6 @@ where
     args.into_iter()
         .map(|arg| arg.as_ref().to_os_string())
         .collect()
-}
-
-fn validate_pathspec_args(args: &[OsString]) -> ArgmaxResult<()> {
-    let mut after_separator = false;
-    for arg in args {
-        if arg == "--" {
-            after_separator = true;
-            continue;
-        }
-        if after_separator {
-            let value = arg.to_string_lossy();
-            reject_leading_dash("git pathspec", &value)?;
-        }
-    }
-    Ok(())
 }
 
 fn decode_stdout(stdout: Vec<u8>) -> ArgmaxResult<String> {

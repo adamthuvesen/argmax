@@ -203,7 +203,7 @@ describe("accent CSS contract", () => {
     const bubbleRule = cssRuleBody(chatConversation, ".chat-bubble");
     const userBubbleRule = cssRuleBody(chatConversation, ".chat-bubble.user");
     const userBubbleBodyRule = cssRuleBody(chatConversation, ".chat-bubble.user .chat-bubble-body");
-    const composerFocusRule = cssRuleBody(chatChrome, ".composer-input:focus-within");
+    const composerFocusRule = cssRuleBody(chatChrome, ".launcher-surface .composer:focus-within");
     const launchSendButtonRule = cssRuleBody(chatChrome, ".send-button");
     const sessionInputFocusRule = cssRuleBody(chatTools, ".session-input:focus-within");
 
@@ -482,14 +482,17 @@ describe("accent CSS contract", () => {
       ".session-input-toolbar .composer-footer-chip-label"
     );
 
-    expect(toolbarRule).toContain("flex-wrap: wrap;");
+    // The toolbar stays a single row (nowrap): the spacer collapses and the
+    // model label ellipsizes under pressure, so the send button never wraps to
+    // its own line. Below the compact breakpoint the grid layout takes over.
+    expect(toolbarRule).toContain("flex-wrap: nowrap;");
     expect(modelLabelRule).toContain("text-overflow: ellipsis;");
     expect(modelLabelRule).toContain("white-space: nowrap;");
     expect(contextRule).toContain("min-width: 0;");
     expect(contextRule).toContain("overflow: hidden;");
     expect(contextRule).toContain("flex: 0 1 auto;");
     expect(toolbarSpacerRule).toContain("flex: 1 1 0;");
-    expect(toolbarSpacerRule).toContain("min-width: 8px;");
+    expect(toolbarSpacerRule).toContain("min-width: 0;");
     expect(footerRule).toContain("max-width: 100%;");
     expect(footerRule).toContain("overflow: hidden;");
     expect(footerRule).toContain("flex: 0 1 auto;");

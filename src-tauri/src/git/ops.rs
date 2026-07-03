@@ -136,7 +136,6 @@ impl GitOpsService {
             .collect();
         // `git commit -m -- msg` is not valid syntax; reject leading `-`
         // so a message that looks like a flag never reaches git.
-        // (audit-2026-05-17 M13)
         if message.starts_with('-') {
             return Err(ArgmaxError::service(
                 "GIT_COMMIT_MESSAGE_LEADING_DASH",

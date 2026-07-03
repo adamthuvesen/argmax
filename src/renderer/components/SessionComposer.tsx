@@ -346,16 +346,6 @@ export function SessionComposer({
         <FilePopover state={fileAutocomplete} inputRef={inputRef} />
       </div>
       <div className="session-input-toolbar">
-        <button
-          className="composer-tool"
-          type="button"
-          title="Attach file"
-          aria-label="Attach file"
-          disabled={!canSend || isSending}
-          onClick={openFilePicker}
-        >
-          <Plus size={16} />
-        </button>
         {session ? (
           <div className="composer-chips-group composer-chips-model">
             {session.state === "running" ? (
@@ -380,21 +370,6 @@ export function SessionComposer({
                 ariaLabel="Session model"
               />
             )}
-          </div>
-        ) : null}
-        {session ? (
-          <div className="composer-chips-group composer-chips-mode">
-            <button
-              type="button"
-              className="composer-context-chip agent-mode-toggle"
-              aria-label="Agent mode"
-              aria-pressed={agentMode === "plan"}
-              title="Toggle agent mode (Shift+Tab)"
-              disabled={!canSend || isSending}
-              onClick={toggleMode}
-            >
-              {AGENT_MODE_LABELS[agentMode]}
-            </button>
           </div>
         ) : null}
         {workspace ? (
@@ -437,7 +412,32 @@ export function SessionComposer({
             ) : null}
           </div>
         ) : null}
+        <button
+          className="composer-tool"
+          type="button"
+          title="Attach file"
+          aria-label="Attach file"
+          disabled={!canSend || isSending}
+          onClick={openFilePicker}
+        >
+          <Plus size={14} />
+        </button>
         <span className="session-toolbar-spacer" />
+        {session ? (
+          <div className="composer-chips-group composer-chips-mode">
+            <button
+              type="button"
+              className="composer-context-chip agent-mode-toggle"
+              aria-label="Agent mode"
+              aria-pressed={agentMode === "plan"}
+              title="Toggle agent mode (Shift+Tab)"
+              disabled={!canSend || isSending}
+              onClick={toggleMode}
+            >
+              {AGENT_MODE_LABELS[agentMode]}
+            </button>
+          </div>
+        ) : null}
         {session && session.state === "running" ? (
           <button
             className="session-send-button session-stop-button"
@@ -461,7 +461,7 @@ export function SessionComposer({
               title={sendTitle}
               aria-label={sendTitle}
             >
-              <Play size={11} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+              <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
             </button>
           );
         })()}

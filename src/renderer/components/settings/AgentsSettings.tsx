@@ -138,7 +138,7 @@ export function AgentsSettings({
             value={permissionMode}
             onChange={(v) => onPermissionModeChange(v as PermissionMode)}
             options={[
-              { value: "auto-approve", label: "Auto-approve", caption: "default" },
+              { value: "auto-approve", label: "Auto-approve" },
               { value: "ask-each-time", label: "Ask each time" }
             ]}
           />

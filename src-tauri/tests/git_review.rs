@@ -129,6 +129,24 @@ async fn lists_changed_files_and_loads_diffs() {
 }
 
 #[tokio::test]
+async fn loads_diff_for_leading_dash_file_name() {
+    let repo = seed_git_repo(&[("-notes.md", "before\n")]);
+    std::fs::write(repo.path().join("-notes.md"), "after\n").unwrap();
+
+    let files = list_changed_files_at_path(repo.path(), None).await.unwrap();
+    let diff = load_diff_at_path(repo.path(), "workspace-1", Some("-notes.md"), None)
+        .await
+        .unwrap();
+
+    assert!(files.iter().any(|file| file.path == "-notes.md"));
+    assert_eq!(diff.file_path.as_deref(), Some("-notes.md"));
+    assert!(diff.content.contains("--- a/-notes.md"));
+    assert!(diff.content.contains("+++ b/-notes.md"));
+    assert!(diff.content.contains("-before"));
+    assert!(diff.content.contains("+after"));
+}
+
+#[tokio::test]
 async fn branch_mode_single_file_diff_renders_committed_rename() {
     // A rename committed on the branch is clean in the working tree, so the
     // single-file diff path can't learn the old path from `git status`. In

@@ -179,14 +179,14 @@ describe("App grid", () => {
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
   });
 
-  it("keeps the current session and opens a launcher pane to the right from New session", async () => {
+  it("keeps the current session and opens a launcher pane to the right from New Agent", async () => {
     window.localStorage.setItem("argmax.newSessionMode", "embedded");
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("heading", { name: "Argmax" });
 
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
 
     expect(await screen.findByRole("region", { name: "New session for Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
@@ -207,7 +207,7 @@ describe("App grid", () => {
     await openSettings();
     fireEvent.click(await screen.findByRole("radio", { name: "Open full view" }));
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    fireEvent.keyDown(document, { key: ",", metaKey: true });
     await screen.findByRole("group", { name: "Session panes" });
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });

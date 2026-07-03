@@ -105,10 +105,6 @@ export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
   window.localStorage.clear();
-  // The launcher globe defaults on in production but pulls in three.js/WebGL,
-  // which jsdom can't render. Keep it off for the broad App suite so the lazy
-  // chunk never loads; the settings + LauncherGlobe tests opt in explicitly.
-  window.localStorage.setItem("argmax.launcher.globe.visible", "false");
   // Pre-seed the boot-collapse marker so existing App tests render the
   // sidebar with projects expanded (the pre-fix behavior). Sidebar tests
   // that exercise the boot-collapse seed clear this marker themselves.
@@ -291,7 +287,7 @@ export function setupAppTestMocks(): void {
       list: () => Promise.resolve(snapshot.projects),
       pickFolder: pickProjectFolder,
       register: () => Promise.resolve(primaryProject()),
-      remove: ({ projectId }) => Promise.resolve({ projectId }),
+      remove: () => Promise.resolve(),
       updateSettings: () => Promise.resolve(primaryProject()),
       listBranches,
       refreshBranch: () => Promise.resolve(primaryProject()),
@@ -440,7 +436,9 @@ export function mockDashboardSnapshot(data: DashboardSnapshot): void {
 }
 
 export async function openSettings(group: SettingsGroup = "General"): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Argmax menu" }));
+  const menu = await screen.findByRole("menu", { name: "Argmax menu" });
+  fireEvent.click(within(menu).getByRole("menuitem", { name: /Settings/ }));
   await screen.findByRole("heading", { name: "Settings" });
   if (group === "General") return;
 

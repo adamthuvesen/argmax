@@ -1,4 +1,18 @@
-import { Check, ChevronRight, MoreHorizontal, Plus, Settings, Trash2 } from "lucide-react";
+import {
+  Activity,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Command,
+  Cpu,
+  Info,
+  Keyboard,
+  MoreHorizontal,
+  Navigation,
+  Plus,
+  Settings,
+  Trash2
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -115,6 +129,11 @@ export function Sidebar({
   onArchiveWorkspace,
   onOpenInIde,
   onOpenLauncher,
+  onOpenAbout,
+  onOpenCommandPalette,
+  onOpenDiagnostics,
+  onOpenKeyboardShortcuts,
+  onOpenProviders,
   onOpenProject,
   onOpenSettings,
   onOpenWorkspaceChat,
@@ -124,7 +143,6 @@ export function Sidebar({
   onToggleWorkspacePinned,
   onWorkspaceDragStart,
   onWorkspaceDragEnd,
-  isSettingsActive,
   selectedProjectId,
   selectedWorkspaceId,
   openWorkspaceIds,
@@ -141,6 +159,11 @@ export function Sidebar({
   onArchiveWorkspace: (workspaceId: string) => void;
   onOpenInIde: (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }) => void;
   onOpenLauncher: () => void;
+  onOpenAbout: () => void;
+  onOpenCommandPalette: () => void;
+  onOpenDiagnostics: () => void;
+  onOpenKeyboardShortcuts: () => void;
+  onOpenProviders: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenSettings: () => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
@@ -152,7 +175,6 @@ export function Sidebar({
   onWorkspaceDragStart?: (workspaceId: string) => void;
   /** Notifies the parent that a sidebar drag finished (drop or cancel). */
   onWorkspaceDragEnd?: () => void;
-  isSettingsActive: boolean;
   selectedProjectId: string | null;
   selectedWorkspaceId: string | null;
   openWorkspaceIds: Set<string>;
@@ -201,6 +223,8 @@ export function Sidebar({
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
+  const identityMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   // Per-project actions menu. `mode === "confirm"` swaps the menu in-place
   // for a "Remove '{name}'?" prompt — no separate modal needed. The popover
   // is portaled to <body> because both `.sidebar` and `.project-list` clip
@@ -219,6 +243,11 @@ export function Sidebar({
     setSortMenuOpen(false);
   }, []);
   useDismissOnOutsideOrEscape(sortMenuAnchorRef, sortMenuOpen, closeSortMenu);
+
+  const closeIdentityMenu = useCallback((): void => {
+    setIdentityMenuOpen(false);
+  }, []);
+  useDismissOnOutsideOrEscape(identityMenuAnchorRef, identityMenuOpen, closeIdentityMenu);
 
   const closeProjectMenu = useCallback((): void => {
     setProjectMenuState(null);
@@ -287,14 +316,37 @@ export function Sidebar({
     return ids;
   }, [snapshot.sessions]);
 
-  // Flat, date-bucketed list for the "sessions" view mode — every non-archived
-  // workspace that has a session, regardless of project.
+  // Pinned workspaces float into a dedicated section at the top of the list,
+  // above the date buckets (sessions view) and above the project groups
+  // (projects view). They're pulled out of their normal bucket while pinned and
+  // drop straight back the moment they're unpinned. Shared by both view modes.
+  const pinnedWorkspaces = useMemo(
+    () =>
+      snapshot.workspaces
+        .filter(
+          (workspace) =>
+            workspace.pinned &&
+            workspace.state !== "archived" &&
+            workspaceIdsWithSessions.has(workspace.id)
+        )
+        .sort((a, b) => {
+          if (a.lastActivityAt === b.lastActivityAt) return 0;
+          return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
+        }),
+    [snapshot.workspaces, workspaceIdsWithSessions]
+  );
+
+  // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
+  // unpinned workspace that has a session, regardless of project. Pinned ones
+  // live in the pinned section above instead.
   const dateGroups = useMemo(
     () =>
       groupWorkspacesByDate(
         snapshot.workspaces.filter(
           (workspace) =>
-            workspace.state !== "archived" && workspaceIdsWithSessions.has(workspace.id)
+            !workspace.pinned &&
+            workspace.state !== "archived" &&
+            workspaceIdsWithSessions.has(workspace.id)
         )
       ),
     [snapshot.workspaces, workspaceIdsWithSessions]
@@ -487,6 +539,15 @@ export function Sidebar({
   }, [onWorkspaceDragEnd]);
 
   const nameplateDate = useMemo(() => formatNameplateDate(), []);
+  const identitySubLabel = loadState === "loading"
+    ? "Booting..."
+    : loadState === "error"
+      ? "Needs attention"
+      : null;
+  const runIdentityAction = useCallback((action: () => void): void => {
+    setIdentityMenuOpen(false);
+    action();
+  }, []);
 
   return (
     <aside
@@ -506,14 +567,14 @@ export function Sidebar({
         <button
           className="rail-nav-item rail-nav-cta"
           type="button"
-          title="New session"
-          aria-label="New session"
+          title="New Agent"
+          aria-label="New Agent"
           onClick={onOpenLauncher}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
-            <Plus size={14} />
+            <Navigation size={14} />
           </span>
-          <span className="rail-nav-label">New session</span>
+          <span className="rail-nav-label">New Agent</span>
         </button>
       </nav>
 
@@ -598,6 +659,38 @@ export function Sidebar({
             <Plus size={14} />
           </button>
         </div>
+        {pinnedWorkspaces.length > 0 ? (
+          <div className="project-group session-date-group session-pinned-group">
+            <div className="project-row session-date-row session-pinned-row">
+              <span className="project-name session-date-label session-pinned-label">
+                <span className="project-name-text">Pinned</span>
+              </span>
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+            </div>
+            {pinnedWorkspaces.map((workspace) => (
+              <div key={workspace.id} className="session-row-wrap">
+                <SidebarSessionRow
+                  workspace={workspace}
+                  workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
+                  isSelected={selectedWorkspaceId === workspace.id}
+                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                  canDragToGrid={canDragWorkspaceToGrid}
+                  onOpenWorkspaceChat={onOpenWorkspaceChat}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onOpenInIde={onOpenInIde}
+                  onTogglePin={onToggleWorkspacePinned}
+                  onRename={onRenameWorkspace}
+                  onWorkspaceDragStart={onWorkspaceDragStart}
+                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                  showTokens={showSessionTokens}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
         {viewMode === "sessions"
           ? dateGroups.map((group) => {
               const isCollapsed = collapsedDateGroups.has(group.key);
@@ -688,6 +781,7 @@ export function Sidebar({
               const liveWorkspaces = sortWorkspaceGroup(
                 snapshot.workspaces.filter(
                   (workspace) =>
+                    !workspace.pinned &&
                     workspace.projectId === project.id &&
                     workspace.state !== "archived" &&
                     workspaceIdsWithSessions.has(workspace.id)
@@ -908,28 +1002,109 @@ export function Sidebar({
         : null}
 
       <div className="sidebar-footer">
-        <div className="identity-chip" data-state={loadState}>
-          <span className="identity-avatar" aria-hidden="true">
-            <Mascot size={26} className="identity-avatar-mascot" />
-          </span>
-          <span className="identity-meta">
-            <span className="identity-name">argmax@local</span>
-            <span className="identity-sub">
-              <span className="identity-sub-dot" aria-hidden="true" />
-              {loadState === "ready" ? "ready" : loadState === "loading" ? "booting" : "issue"}
+        <div className="project-picker-anchor identity-menu-anchor" ref={identityMenuAnchorRef}>
+          <button
+            className="identity-chip identity-chip-button"
+            data-state={loadState}
+            type="button"
+            aria-label="Argmax menu"
+            aria-haspopup="menu"
+            aria-expanded={identityMenuOpen}
+            onClick={() => setIdentityMenuOpen((open) => !open)}
+          >
+            <span className="identity-avatar" aria-hidden="true">
+              <Mascot size={26} className="identity-avatar-mascot" />
             </span>
-          </span>
+            <span className="identity-meta">
+              <span className="identity-name">argmax@local</span>
+              {identitySubLabel ? (
+                <span className="identity-sub">
+                  <span className="identity-sub-dot" aria-hidden="true" />
+                  {identitySubLabel}
+                </span>
+              ) : null}
+            </span>
+            <ChevronDown className="identity-menu-chevron" size={14} aria-hidden="true" />
+          </button>
+          {identityMenuOpen ? (
+            <ul className="project-picker-popover identity-menu-popover" role="menu" aria-label="Argmax menu">
+              <li className="identity-menu-header" role="presentation">
+                <span className="identity-menu-title">argmax@local</span>
+                <span className="identity-menu-subtitle">Local workspace · {APP_VERSION_LABEL}</span>
+              </li>
+              <li className="project-picker-divider" role="separator" />
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(onOpenCommandPalette)}
+                >
+                  <Command size={14} aria-hidden="true" />
+                  <span>Command Palette</span>
+                  <kbd>⌘K</kbd>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(onOpenSettings)}
+                >
+                  <Settings size={14} aria-hidden="true" />
+                  <span>Settings</span>
+                  <kbd>⌘,</kbd>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(onOpenProviders)}
+                >
+                  <Cpu size={14} aria-hidden="true" />
+                  <span>Providers</span>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(onOpenDiagnostics)}
+                >
+                  <Activity size={14} aria-hidden="true" />
+                  <span>Diagnostics & Logs</span>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(onOpenKeyboardShortcuts)}
+                >
+                  <Keyboard size={14} aria-hidden="true" />
+                  <span>Keyboard Shortcuts</span>
+                  <kbd>⌘/</kbd>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(onOpenAbout)}
+                >
+                  <Info size={14} aria-hidden="true" />
+                  <span>About Argmax</span>
+                </button>
+              </li>
+            </ul>
+          ) : null}
         </div>
-        <button
-          className="small-icon"
-          type="button"
-          title="Settings"
-          aria-label="Settings"
-          aria-pressed={isSettingsActive}
-          onClick={onOpenSettings}
-        >
-          <Settings size={16} />
-        </button>
       </div>
       <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
     </aside>

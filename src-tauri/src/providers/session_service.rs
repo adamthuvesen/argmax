@@ -563,12 +563,19 @@ impl ProviderSessionService {
         {
             Ok(handle) => handle,
             Err(error) => {
-                self.handles
+                let prior = self
+                    .handles
                     .lock()
                     .expect("handles poisoned")
                     .remove(&session_id);
-                self.record_launch_failure(&session_id, provider, error.clone())?;
-                return Err(error);
+                if matches!(prior, Some(HandleEntry::Pending(_))) {
+                    self.record_launch_failure(&session_id, provider, error.clone())?;
+                    return Err(error);
+                }
+                return Ok(SendInputResult {
+                    ok: true,
+                    queued: false,
+                });
             }
         };
         // Drain ops the renderer queued while the launch future was in
@@ -580,9 +587,21 @@ impl ProviderSessionService {
                 session_id.clone(),
                 HandleEntry::Resolved(Arc::clone(&handle)),
             ) {
-                Some(HandleEntry::Pending(ops)) => ops,
-                _ => Vec::new(),
+                Some(HandleEntry::Pending(ops)) => Some(ops),
+                _ => {
+                    handles.remove(&session_id);
+                    None
+                }
             }
+        };
+        let Some(pending_ops) = pending_ops else {
+            if let Err(error) = handle.terminate().await {
+                tracing::error!(?error, "failed to dispose follow-up handle cancelled during spawn");
+            }
+            return Ok(SendInputResult {
+                ok: true,
+                queued: false,
+            });
         };
         for op in pending_ops {
             self.apply_op(&handle, op).await?;

@@ -33,7 +33,6 @@ function warnRateLimited(context: string | undefined, error: unknown): void {
   // row hit via `safeJsonParse(value)` (no context arg) gave zero
   // observability. Treat undefined as a single shared "unknown" bucket so
   // the warning still fires (rate-limited like any other context).
-  // (audit-2026-05-17 L3)
   const key = context ?? "<unknown>";
   const now = Date.now();
   const last = lastWarnedAt.get(key) ?? 0;

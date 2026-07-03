@@ -3,6 +3,7 @@
 pub mod app_nap;
 pub mod gh_runner;
 pub mod ipc_latency;
+pub mod log_buffer;
 pub mod process_control;
 pub mod startup_timer;
 pub mod stream_reader;

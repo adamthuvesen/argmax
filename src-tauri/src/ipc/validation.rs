@@ -430,12 +430,6 @@ pub fn validate_relative_path(
     non_empty(field, value).and_then(|value| {
         if value.starts_with('/') {
             Err(InvalidInputIssue::file_path_absolute(field))
-        } else if value.starts_with('-') {
-            Err(issue(
-                field,
-                "FILE_PATH_LEADING_DASH",
-                "file path must not start with '-'",
-            ))
         } else if value.split(['/', '\\']).any(|segment| segment == "..") {
             Err(InvalidInputIssue::file_path_traversal(field))
         } else if value.contains('\0') {
@@ -605,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn relative_path_rejects_absolute_traversal_and_dash() {
+    fn relative_path_rejects_absolute_and_traversal_but_allows_dash_names() {
         assert!(matches!(
             validate_relative_path("filePath", "/tmp/x".to_owned())
                 .unwrap_err()
@@ -618,12 +612,10 @@ mod tests {
                 .code,
             "FILE_PATH_TRAVERSAL"
         ));
-        assert!(matches!(
-            validate_relative_path("filePath", "-flag".to_owned())
-                .unwrap_err()
-                .code,
-            "FILE_PATH_LEADING_DASH"
-        ));
+        assert_eq!(
+            validate_relative_path("filePath", "-flag".to_owned()).expect("dash path valid"),
+            "-flag"
+        );
     }
 
     #[test]

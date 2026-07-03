@@ -322,8 +322,8 @@
 /* CodeMirror ships its own light-theme baseline (.cm-editor + .cm-content
    default to white). Without these explicit overrides the editor surface
    ignores the page theme — code reads white-on-white in dark mode. Scoping
-   to .file-preview-editor keeps the side-by-side review diff (which uses a
-   different DOM path) untouched. */
+   to .file-preview-editor keeps the review diff (which uses a different DOM
+   path) untouched. */
 .file-preview-editor .cm-editor,
 .file-preview-editor .cm-scroller,
 .file-preview-editor .cm-content,
@@ -767,44 +767,6 @@
 .diff-line .hl-token,
 .file-preview-content .hl-token {
   white-space: pre;
-}
-
-.diff-sbs-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  border-top: 1px solid var(--line-soft);
-}
-
-.diff-sbs-cell {
-  /* Override .diff-line's three-column template (which assumes both line
-     numbers in a unified row): each side-by-side cell carries only one
-     line number, so collapse to two columns. */
-  grid-template-columns: 40px minmax(0, 1fr);
-  /* Override .diff-line's `min-width: max-content` — that's needed for
-     unified rows to horizontal-scroll, but in side-by-side it forces each
-     cell past its outer track width and the code overflows into the
-     adjacent cell. */
-  min-width: 0;
-  overflow: hidden;
-  border-top: 1px solid var(--line-soft);
-}
-
-.diff-sbs-cell > code {
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.diff-sbs-cell:first-of-type,
-.diff-sbs-cell:nth-of-type(2) {
-  border-top: 0;
-}
-
-.diff-sbs-cell.diff-sbs-old {
-  border-right: 1px solid var(--line-soft);
-}
-
-.diff-sbs-empty {
-  background: rgba(0, 0, 0, 0.02);
 }
 
 .skeleton-pane {

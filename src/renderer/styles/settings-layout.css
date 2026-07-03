@@ -6,7 +6,6 @@
 
 .settings-scroll {
   overflow: auto;
-  padding: clamp(56px, 8dvh, 92px) clamp(28px, 5vw, 64px) 0;
   scrollbar-gutter: stable;
 }
 
@@ -16,7 +15,7 @@
   gap: clamp(32px, 5vw, 72px);
   width: min(100%, 1160px);
   margin: 0 auto;
-  padding: 0 0 96px;
+  padding: 28px clamp(28px, 5vw, 64px) 96px;
   animation: surface-in 320ms var(--ease) both;
 }
 
@@ -31,7 +30,7 @@
 
 .settings-nav {
   position: sticky;
-  top: 8px;
+  top: 54px;
   align-self: start;
   display: grid;
   gap: 12px;
@@ -129,7 +128,6 @@
 .settings-nav-item[data-active="true"] .settings-nav-link {
   color: var(--text);
   background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .settings-nav-item[data-active="true"] .settings-nav-note {
@@ -144,79 +142,52 @@
   min-width: 0;
 }
 
-/* ---- Hero ---- */
+/* ---- Pinned top bar ----
+   A slim, opaque bar that sticks to the top of the scroll area so the sections
+   scroll underneath it instead of clipping raw against the window titlebar —
+   mirrors the chat surface's pinned `.section-heading`. */
 
-.settings-hero {
-  position: relative;
-  display: grid;
-  gap: 8px;
-  padding-bottom: 20px;
+.settings-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--panel);
   border-bottom: 0.5px solid var(--line);
 }
 
-.settings-hero-top {
+.settings-topbar-inner {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  width: min(100%, 1160px);
+  margin: 0 auto;
+  min-height: 46px;
+  padding: 0 clamp(28px, 5vw, 64px);
 }
 
-.settings-hero-close {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 6px;
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--muted-strong);
-  font: inherit;
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease);
+/* Sidebar collapsed: the bar doubles as the titlebar strip, so pad past the
+   macOS traffic lights (matches the chat header's collapsed inset). */
+.app-shell[data-sidebar-collapsed="true"] .settings-topbar-inner {
+  padding-left: 124px;
 }
 
-.settings-hero-close:hover {
-  color: var(--text);
-  border-color: var(--line-strong);
-  background: var(--panel-sunken);
-}
-
-.settings-hero-close-label {
-  line-height: 1;
-}
-
-.settings-hero-close-kbd {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.06em;
-  padding: 1px 5px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  color: var(--muted);
-  box-shadow: 0 1px 0 var(--line);
-}
-
-.settings-hero-title {
+.settings-topbar-title {
   margin: 0;
-  font-size: var(--text-lg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text);
+}
+
+.settings-topbar-sep {
+  color: var(--line-strong);
+  font-size: var(--text-sm);
+}
+
+.settings-topbar-group {
+  font-size: var(--text-sm);
   font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-
-.settings-hero-lede {
-  margin: 0;
-  max-width: 56ch;
-  font-size: var(--text-sm-plus);
-  line-height: 1.5;
-  color: var(--muted);
+  color: var(--muted-strong);
 }
 
 /* ---- Group landing strip ---- */
@@ -341,7 +312,7 @@
   border: 0.5px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--panel);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .settings-card > * {
@@ -390,28 +361,24 @@
   width: 44px;
   height: 44px;
   border-radius: var(--radius-md);
-  background: var(--ink);
-  color: var(--bubble-on-ink);
+  background: transparent;
+  color: var(--text);
   flex: 0 0 auto;
-  box-shadow: var(--shadow-1);
   position: relative;
   overflow: hidden;
 }
 
 .settings-avatar::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(120% 90% at 30% 20%, rgba(255, 255, 255, 0.18), transparent 60%);
-  pointer-events: none;
+  content: none;
 }
 
-.settings-avatar-glyph {
+.settings-avatar-mascot {
   position: relative;
-  font-size: var(--text-md-plus);
-  line-height: 1;
-  font-weight: 500;
-  letter-spacing: 0;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  animation: none;
+  transform: translateY(3px);
 }
 
 .settings-account-meta {
@@ -501,18 +468,19 @@
 /* ---- Metric grid (DB stats) ---- */
 
 .settings-metric-grid {
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  column-gap: 18px;
-  row-gap: 12px;
-  margin-top: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .settings-metric-grid > div {
   display: grid !important;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
+  align-content: start;
+  gap: 5px;
+  min-height: 72px;
+  padding: 10px 11px;
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-md);
   background: var(--panel-soft);
 }
 
@@ -525,16 +493,19 @@
 .settings-metric-grid dt {
   order: 2;
   font-size: var(--text-2xs);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  color: var(--muted);
 }
 
 .settings-metric-grid dd {
   order: 1;
-  font-size: var(--text-2xl);
-  font-weight: 500;
-  letter-spacing: -0.012em;
+  font-size: var(--text-lg-tight);
+  font-weight: 550;
+  letter-spacing: 0;
   color: var(--text);
-  line-height: 1.05;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 /* ---- Segmented controls (replace .settings-radio-group) ---- */

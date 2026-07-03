@@ -231,7 +231,7 @@ impl McpAuthService {
 
         // First chunk from Claude may be a banner / color setup written
         // BEFORE the prompt is ready for input. Wait ~200 ms then auto-type
-        // `/mcp\r`. Matches the TS audit-2026-05-17 M17 behavior.
+        // `/mcp\r`.
         let prime_session = session_id.clone();
         let prime_service = Arc::clone(self);
         tokio::spawn(async move {
@@ -242,8 +242,8 @@ impl McpAuthService {
         Ok(StartAuthOutput { session_id })
     }
 
-    /// Forward `data` to the session's PTY. Silently no-ops on unknown ids
-    /// — matches the TS service which treats stale ids as a benign race.
+    /// Forward `data` to the session's PTY. Silently no-ops on unknown ids;
+    /// stale ids are a benign renderer/runtime race.
     pub fn write(&self, session_id: &str, data: &[u8]) {
         self.write_internal(session_id, data);
     }

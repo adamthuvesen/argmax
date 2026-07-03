@@ -95,8 +95,8 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
 };
 
 // ---------------------------------------------------------------------------
-// Pricing — USD per 1M tokens. Sourced from each provider's public pricing
-// page; last verified 2026-04.
+// Pricing — USD per 1M tokens. Keep this table in sync with the Rust pricing
+// mirror and the providers' published pricing.
 // ---------------------------------------------------------------------------
 
 export interface ModelPricing {
@@ -117,8 +117,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Cursor's bundled models are subscription-billed via Cursor's plan, not
   // per-token through the underlying API. All Cursor-routed ids report $0 so
   // cost telemetry doesn't claim charges that aren't incurred at the API
-  // layer. (audit-2026-05-17 H2 — the `-medium` aliased ids previously
-  // mirrored base pricing, contradicting this rule.)
+  // layer.
   "composer-2.5":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.5-flash":        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-8-medium":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -148,7 +147,6 @@ const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "gpt-5.2-codex":        { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
   "gpt-5.3":              { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
   "gpt-5.3-codex":        { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3-codex-spark":  { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
   "gpt-5.3-chat-latest":  { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
   "gpt-5.4":              { input: 2.5,  output: 15,   cacheRead: 0.25,  cacheWrite: 0 },
   "gpt-5.4-codex":        { input: 2.5,  output: 15,   cacheRead: 0.25,  cacheWrite: 0 },

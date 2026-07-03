@@ -88,8 +88,7 @@ pub async fn serve_attachment(base_dir: &Path, url: &str) -> AttachmentResponse 
         Ok(path) => path,
         Err(_) => return AttachmentResponse::not_found(),
     };
-    // File paths must live strictly inside base, not at the base dir
-    // itself (matches the TS `isFileUnderBase`).
+    // File paths must live strictly inside base, not at the base dir itself.
     if canonical == base_real || !canonical.starts_with(&base_real) {
         return AttachmentResponse::forbidden();
     }

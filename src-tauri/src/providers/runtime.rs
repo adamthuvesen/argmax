@@ -450,7 +450,7 @@ impl Drop for ProviderSessionHandle {
         }
         // Synchronous best-effort cleanup. The graceful timed escalation
         // lives on the async `terminate` path; Drop is the panic-and-leak
-        // safety net (see openspec port task 5.15). Skip when the wait
+        // safety net when async terminate never runs. Skip when the wait
         // thread already reaped: signaling a recycled PID would hit an
         // unrelated process.
         if self.reaped.load(Ordering::SeqCst) {

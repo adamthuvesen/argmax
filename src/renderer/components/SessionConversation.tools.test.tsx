@@ -167,7 +167,9 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
     fireEvent.click(agentRow);
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Read toolCalls.tsx" })).toBeInTheDocument();
+    const childRow = screen.getByRole("button", { name: "Read toolCalls.tsx" });
+    expect(childRow).toBeInTheDocument();
+    expect(childRow.closest(".tool-call-agent-child-list")).not.toBeNull();
     expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Read a file, started an agent/ })).toBeNull();
   });

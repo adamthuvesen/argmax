@@ -24,7 +24,7 @@ pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Bound on concurrent `gh pr view` calls per tick. Without it, a single
 /// slow `gh` (15s default timeout) holds the re-entrancy guard for 15s × N
-/// sessions — far past the 60s tick. (audit-2026-05-17 H10)
+/// sessions — far past the 60s tick.
 const TICK_CONCURRENCY: usize = 4;
 
 /// Capacity of the in-memory transition ledger. 500 keys covers thousands
@@ -199,7 +199,7 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     }
 
     // Bounded-concurrency fanout — one stuck `gh` no longer holds the
-    // remaining sessions hostage. (audit-2026-05-17 H10)
+    // remaining sessions hostage.
     let mut transitions: Vec<Transition> = Vec::new();
     for chunk in session_ids.chunks(TICK_CONCURRENCY) {
         let mut join_set = tokio::task::JoinSet::new();

@@ -573,7 +573,11 @@
 }
 
 .tool-call-agent-child-list .tool-call-row-button {
-  padding-left: 0;
+  padding-left: 24px;
+}
+
+.tool-call-agent-child-list .tool-call-row-icon {
+  display: none;
 }
 
 .tool-call-open-button {
@@ -711,8 +715,8 @@
 
 /* Codex-style compact rows: one line per tool ("Read foo.ts", "Ran git
    status"). Click to expand into the same Error/Open/Input/Output panel a
-   ToolCallBubble would show. No icon, no chip, no chevron — just the verb
-   + target. Used both inside groups and as a standalone turn-level row. */
+   ToolCallBubble would show. No chip, no chevron — just the icon, verb,
+   and target. Used both inside groups and as a standalone turn-level row. */
 .tool-call-row {
   display: flex;
   flex-direction: column;

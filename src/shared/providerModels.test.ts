@@ -84,12 +84,10 @@ describe("costOf — golden fixtures", () => {
   it("prices stored legacy ids without restoring them to the model table", () => {
     expect(MODEL_PRICING["claude-sonnet-4-6"]).toBeUndefined();
     expect(MODEL_PRICING["gpt-5.4-codex"]).toBeUndefined();
-    expect(MODEL_PRICING["gpt-5.3-codex-spark"]).toBeUndefined();
     expect(MODEL_PRICING["o4-mini"]).toBeUndefined();
     expect(costOf(million, "claude-sonnet-4-6")).toBeCloseTo(3.0, 9);
     expect(costOf(million, "claude-sonnet-4-6-20250101")).toBeCloseTo(3.0, 9);
     expect(costOf(million, "gpt-5.4-codex")).toBeCloseTo(2.5, 9);
-    expect(costOf(million, "gpt-5.3-codex-spark")).toBeCloseTo(1.75, 9);
     expect(costOf(million, "o4-mini")).toBeCloseTo(1.1, 9);
   });
 });

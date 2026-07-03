@@ -34,7 +34,7 @@ export function WorkspaceTree({
 }): JSX.Element {
   const tree = useMemo(() => buildFileTree(state.entries), [state.entries]);
   // Stable fingerprint so streaming refreshes that rebuild `entries` with the
-  // same paths don't reset scroll (audit-2026-05-18 M19).
+  // same paths don't reset scroll.
   const entriesShapeKey = useMemo(() => {
     const paths = state.entries.map((entry) => entry.path);
     if (paths.length === 0) return "0";

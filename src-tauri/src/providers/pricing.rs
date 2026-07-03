@@ -60,7 +60,6 @@ static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_
     "gpt-5.2-codex" => ModelPricing { input: 1.75, output: 14.0, cache_read: 0.175, cache_write: 0.0 },
     "gpt-5.3" => ModelPricing { input: 1.75, output: 14.0, cache_read: 0.175, cache_write: 0.0 },
     "gpt-5.3-codex" => ModelPricing { input: 1.75, output: 14.0, cache_read: 0.175, cache_write: 0.0 },
-    "gpt-5.3-codex-spark" => ModelPricing { input: 1.75, output: 14.0, cache_read: 0.175, cache_write: 0.0 },
     "gpt-5.3-chat-latest" => ModelPricing { input: 1.75, output: 14.0, cache_read: 0.175, cache_write: 0.0 },
     "gpt-5.4" => ModelPricing { input: 2.5, output: 15.0, cache_read: 0.25, cache_write: 0.0 },
     "gpt-5.4-codex" => ModelPricing { input: 2.5, output: 15.0, cache_read: 0.25, cache_write: 0.0 },
@@ -148,7 +147,6 @@ mod tests {
     fn prices_stored_legacy_ids_without_restoring_them_to_the_model_table() {
         assert!(MODEL_PRICING.get("claude-sonnet-4-6").is_none());
         assert!(MODEL_PRICING.get("gpt-5.4-codex").is_none());
-        assert!(MODEL_PRICING.get("gpt-5.3-codex-spark").is_none());
         assert!(MODEL_PRICING.get("o4-mini").is_none());
         assert_eq!(
             cost_of(
@@ -185,18 +183,6 @@ mod tests {
                 "gpt-5.4-codex",
             ),
             2.5,
-        );
-        assert_eq!(
-            cost_of(
-                UsageCounts {
-                    input: 1_000_000,
-                    output: 0,
-                    cache_read: 0,
-                    cache_write: 0,
-                },
-                "gpt-5.3-codex-spark",
-            ),
-            1.75,
         );
         assert_eq!(
             cost_of(

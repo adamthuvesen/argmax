@@ -109,6 +109,15 @@
 
 .session-row {
   position: relative;
+  /* Off-screen rows skip layout + paint — a no-JS, no-dependency windowing for
+     long session lists. Rows stay in the DOM, so keyboard nav and the sidebar's
+     `.session-link` queries still work; hover popovers/menus are portaled to the
+     body, so paint containment never clips them. `auto 34px` seeds the row
+     height (matching .session-link's min-height) so the scrollbar stays stable,
+     then remembers each row's real size once rendered. Unsupported engines just
+     ignore it and render the full list. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
 }
 
 .session-row:has(.session-ide-popover) {
@@ -161,13 +170,6 @@
 .session-row:hover:has(.session-pin-btn):has(.session-archive-btn) .session-link,
 .session-row:focus-within:has(.session-pin-btn):has(.session-archive-btn) .session-link {
   padding-right: 92px;
-}
-
-/* A pinned (pressed) pin stays visible at rest. Alone it sits in the inset lane
-   the base padding already clears; paired with an archive button it shifts one
-   lane out, so keep that lane reserved even before hover. */
-.session-row:not(:hover):not(:focus-within):has(.session-pin-btn[aria-pressed="true"]):has(.session-archive-btn) .session-link {
-  padding-right: 70px;
 }
 
 .session-ide-cluster {
@@ -288,28 +290,17 @@
 }
 
 /*
- * Unpressed pin is hidden at rest — it would otherwise poke out past the
- * tokens badge on rows with short labels ("0", "0.1k") and read as a stray
- * artifact. Hover/focus reveals it as a discoverable action. Pressed pins
- * stay visible: the gold thumbtack is an intentional "this is pinned" badge.
+ * The pin is hidden at rest and revealed on hover/focus as a discoverable
+ * action — for pinned rows too. The dedicated Pinned section at the top of the
+ * list is what signals a session is pinned, so the row keeps no standing badge.
  */
-.session-pin-btn:not([aria-pressed="true"]) {
+.session-pin-btn {
   opacity: 0;
 }
 
-.session-row:hover .session-pin-btn:not([aria-pressed="true"]),
-.session-row:focus-within .session-pin-btn:not([aria-pressed="true"]) {
+.session-row:hover .session-pin-btn,
+.session-row:focus-within .session-pin-btn {
   opacity: 0.85;
-}
-
-.session-pin-btn[aria-pressed="true"] {
-  opacity: 0.85;
-  color: var(--amber);
-}
-
-.session-row:hover .session-pin-btn[aria-pressed="true"],
-.session-row:focus-within .session-pin-btn[aria-pressed="true"] {
-  opacity: 1;
 }
 
 .session-row:has(.session-pin-btn) .session-ide-cluster {
@@ -463,7 +454,6 @@
 .sidebar-footer {
   display: flex;
   align-items: center;
-  gap: 10px;
   min-height: 40px;
   margin-top: auto;
   padding: 14px 6px 4px;
@@ -472,14 +462,33 @@
   font-size: var(--text-sm);
 }
 
+.identity-menu-anchor {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .identity-chip {
   position: relative;
   display: flex;
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
   align-items: center;
   gap: 10px;
-  padding: 4px 4px 4px 0;
+  padding: 4px 7px 4px 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.identity-chip-button:hover,
+.identity-chip-button[aria-expanded="true"] {
+  background: var(--panel-sunken);
+  color: var(--text);
 }
 
 .identity-avatar {
@@ -500,6 +509,7 @@
 
 .identity-meta {
   display: grid;
+  flex: 1 1 auto;
   min-width: 0;
   line-height: 1.2;
   gap: 1px;
@@ -523,8 +533,7 @@
   font-family: var(--font-mono);
   color: var(--muted);
   font-size: var(--text-2xs-plus);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -540,9 +549,7 @@
 }
 
 .identity-chip[data-state="ready"] .identity-sub-dot {
-  background: var(--sage);
-  box-shadow: 0 0 0 2px var(--sage-soft);
-  animation: status-pulse 2.6s var(--ease) infinite;
+  background: var(--muted);
 }
 
 .identity-chip[data-state="loading"] .identity-sub-dot {
@@ -554,8 +561,70 @@
   background: var(--rose);
 }
 
-.sidebar-footer .small-icon {
+.identity-menu-chevron {
   margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform var(--duration-base) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.identity-chip-button:hover .identity-menu-chevron,
+.identity-chip-button[aria-expanded="true"] .identity-menu-chevron {
+  color: var(--text-soft);
+}
+
+.identity-chip-button[aria-expanded="true"] .identity-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.identity-menu-popover {
+  left: 0;
+  right: 0;
+  min-width: 0;
+  width: 100%;
+  max-height: min(320px, calc(100dvh - 96px));
+  overflow-y: auto;
+}
+
+.identity-menu-header {
+  display: grid;
+  gap: 2px;
+  padding: 7px 9px 5px;
+}
+
+.identity-menu-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-menu-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-menu-item svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.identity-menu-item:hover svg {
+  color: var(--text-soft);
+}
+
+.identity-menu-item kbd {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
 }
 
 .workspace::before {
@@ -610,55 +679,6 @@
   display: grid;
   place-items: center;
   padding: 48px 36px;
-}
-
-/* Animated globe backdrop (LauncherGlobe). The canvas + scrim are rendered inside
-   the centered .launcher-shell but positioned against the full .launcher-scroll
-   area so the globe fills the launcher rather than the content-sized shell. Both
-   sit below .launcher-surface (z-index 26) and never take pointer events. */
-/* Deep-space pocket behind the canvas: a dark radial centered on the globe that
-   fades to the page before reaching the UI, so the additive atmosphere/dots glow
-   reads against darkness while the rest of the launcher stays light. */
-.launcher-globe-space {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      ellipse 30% 47% at 61% 33%,
-      #000 0%,
-      #000 56%,
-      rgba(4, 4, 4, 0.82) 74%,
-      rgba(8, 8, 8, 0.26) 88%,
-      transparent 100%
-    );
-}
-
-.launcher-globe {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none;
-}
-
-.launcher-globe-scrim {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  /* Just a whisper of edge falloff now — the space pocket provides the contrast,
-     so the scrim must not mute the glow it sits above. */
-  background: radial-gradient(ellipse 70% 64% at 61% 34%, transparent 64%, rgba(0, 0, 0, 0.05) 100%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .launcher-globe-scrim {
-    opacity: 0.8;
-  }
 }
 
 .launcher-scroll:has(.launcher-shell[data-review-open="true"]) {

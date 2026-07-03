@@ -39,7 +39,11 @@
 
 .session-input-toolbar {
   min-width: 0;
-  flex-wrap: wrap;
+  /* Single row: the spacer between the attach (+) and the mode/send cluster
+     absorbs the squeeze first (collapsing to nothing), then the model label
+     ellipsizes — so the send button never wraps onto its own line. Below the
+     container's compact breakpoint the grid layout takes over instead. */
+  flex-wrap: nowrap;
   row-gap: 4px;
 }
 
@@ -56,6 +60,13 @@
 
 .session-input-toolbar .composer-chips-model .composer-context-chip {
   overflow: hidden;
+}
+
+/* Match the launcher: the model is the headline chip, carrying a touch more
+   weight than the quiet context chips around it. */
+.composer-chips-model .composer-context-chip {
+  color: var(--muted-strong);
+  font-weight: 500;
 }
 
 .session-input-toolbar .model-picker-label {
@@ -301,8 +312,10 @@
 }
 
 .session-toolbar-spacer {
+  /* Grows to right-align the mode/send cluster when there's room; collapses to
+     nothing when the row is tight, so the toolbar stays one line. */
   flex: 1 1 0;
-  min-width: 8px;
+  min-width: 0;
 }
 
 .session-input input,
@@ -518,9 +531,15 @@
   transform: scale(0.96);
 }
 
+/* Empty state matches the launcher send button: a quiet outlined disc rather
+   than a loud gray fill, blooming back to the solid ink CTA once there's text. */
 .session-send-button:disabled {
   cursor: default;
-  opacity: 0.4;
+  opacity: 1;
+  color: var(--muted);
+  background: transparent;
+  background-image: none;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .session-stop-button {

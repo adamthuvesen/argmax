@@ -60,12 +60,6 @@ import { SkillPopover } from "./SkillPopover.js";
 const WelcomePane = lazy(async () => ({
   default: (await import("./WelcomePane.js")).WelcomePane
 }));
-// LauncherGlobe pulls in three.js — only needed when the animated backdrop is
-// enabled. Lazy-mounted so the WebGL globe never ships in the launcher's first
-// paint for users who keep it off.
-const LauncherGlobe = lazy(async () => ({
-  default: (await import("./LauncherGlobe.js")).LauncherGlobe
-}));
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
@@ -85,8 +79,7 @@ export function LaunchSurface({
   project,
   projects,
   rightPanelToggleSignal,
-  registerPaletteFileContext,
-  globeEnabled = false
+  registerPaletteFileContext
 }: {
   fastModeEnabled?: boolean;
   model: ModelPickerSelection;
@@ -108,7 +101,6 @@ export function LaunchSurface({
   registerPaletteFileContext?: (
     context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
   ) => void;
-  globeEnabled?: boolean;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -503,13 +495,6 @@ export function LaunchSurface({
     }
   };
 
-  const heroEyebrowDate = useMemo(() => {
-    const d = new Date();
-    const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${month} ${day}`;
-  }, []);
-
   if (!project) {
     // Fresh-install surface: setup checklist + provider discovery + the
     // disabled-until-a-provider-is-detected Add Project CTA. The component
@@ -529,11 +514,6 @@ export function LaunchSurface({
       className="launcher-shell"
       data-review-open={isReviewOpen ? "true" : undefined}
     >
-      {globeEnabled && !isReviewOpen ? (
-        <Suspense fallback={null}>
-          <LauncherGlobe enabled={globeEnabled} />
-        </Suspense>
-      ) : null}
       <div className="launcher-surface">
       {anyContextPickerOpen && createPortal(
         <div
@@ -546,9 +526,7 @@ export function LaunchSurface({
       <header className="launcher-hero">
         <div className="launcher-hero-meta">
           <span className="launcher-hero-dot" aria-hidden="true" />
-          <span className="launcher-hero-eyebrow">
-            New session · {project.currentBranch} · {heroEyebrowDate}
-          </span>
+          <span className="launcher-hero-eyebrow">New session</span>
         </div>
       </header>
       <form
@@ -614,25 +592,28 @@ export function LaunchSurface({
           <SkillPopover state={slashAutocomplete} inputRef={promptInputRef} />
           <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
           <button
-            className="composer-tool"
-            type="button"
-            title="Attach file"
-            aria-label="Attach file"
-            onClick={openFilePicker}
-          >
-            <Plus size={18} />
-          </button>
-          <button
             className="send-button"
             type="submit"
             disabled={isSubmitting || !prompt.trim()}
             title="Start agent"
             aria-label="Start agent"
           >
-            <Play size={11} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
           </button>
         </div>
         <div className="composer-context">
+          <div className="composer-context-group composer-context-group--model">
+            <LaunchModelSelector
+              ariaLabel="Switch model"
+              availability={providerAvailability}
+              fastModeEnabled={fastModeEnabled}
+              open={modelPickerOpen}
+              onOpenChange={setModelPickerOpen}
+              value={model}
+              onChange={onModelChange}
+              onFastModeEnabledChange={onFastModeEnabledChange}
+            />
+          </div>
           <div className="composer-context-group composer-context-group--workspace">
           <div className="project-picker-anchor" ref={projectPickerRef}>
             <button
@@ -732,42 +713,45 @@ export function LaunchSurface({
             )}
           </div>
           </div>
-          <div className="composer-context-group composer-context-group--model">
-            <LaunchModelSelector
-              ariaLabel="Switch model"
-              availability={providerAvailability}
-              fastModeEnabled={fastModeEnabled}
-              open={modelPickerOpen}
-              onOpenChange={setModelPickerOpen}
-              value={model}
-              onChange={onModelChange}
-              onFastModeEnabledChange={onFastModeEnabledChange}
-            />
+          <button
+            className="composer-tool"
+            type="button"
+            title="Attach file"
+            aria-label="Attach file"
+            onClick={openFilePicker}
+          >
+            <Plus size={14} />
+          </button>
+          <div className="composer-context-group composer-context-group--behavior">
+            <button
+              type="button"
+              className="composer-context-chip agent-mode-toggle"
+              aria-label="Agent mode"
+              aria-pressed={agentMode === "plan"}
+              title={
+                agentMode === "plan"
+                  ? "Plan — the agent drafts a plan before touching anything. Shift+Tab for Auto."
+                  : "Auto — the agent works and approves its own steps. Shift+Tab for Plan."
+              }
+              onClick={toggleMode}
+            >
+              {AGENT_MODE_LABELS[agentMode]}
+            </button>
+            <button
+              type="button"
+              className="composer-context-chip workspace-mode-toggle"
+              aria-label="Worktree"
+              aria-pressed={workspaceMode === "worktree"}
+              title={
+                workspaceMode === "worktree"
+                  ? "On — agent runs in an isolated git worktree on a new branch"
+                  : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
+              }
+              onClick={toggleWorkspace}
+            >
+              Worktree
+            </button>
           </div>
-          <button
-            type="button"
-            className="composer-context-chip agent-mode-toggle"
-            aria-label="Agent mode"
-            aria-pressed={agentMode === "plan"}
-            title="Toggle agent mode (Shift+Tab)"
-            onClick={toggleMode}
-          >
-            {AGENT_MODE_LABELS[agentMode]}
-          </button>
-          <button
-            type="button"
-            className="composer-context-chip workspace-mode-toggle"
-            aria-label="Worktree"
-            aria-pressed={workspaceMode === "worktree"}
-            title={
-              workspaceMode === "worktree"
-                ? "On — agent runs in an isolated git worktree on a new branch"
-                : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
-            }
-            onClick={toggleWorkspace}
-          >
-            Worktree
-          </button>
         </div>
         {status ? (
           <p className="composer-status" role="status">

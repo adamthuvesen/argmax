@@ -1226,6 +1226,98 @@ async fn terminate_during_spawn_disposes_handle_on_resolve() {
     assert_eq!(persisted.state, "cancelled");
 }
 
+#[tokio::test]
+async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(true);
+    let release = Arc::new(tokio::sync::Notify::new());
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(GatedLauncher {
+            handle: handle.clone(),
+            release: release.clone(),
+        }),
+        |_| {},
+    );
+
+    let session = {
+        let connection = database.connection();
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "follow-up-cancel".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Sonnet 5".to_owned(),
+                model_id: "claude-sonnet-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "before".to_owned(),
+                state: "complete".to_owned(),
+                attention: "none".to_owned(),
+            },
+        )
+        .expect("persist completed session")
+    };
+    let session_id = session.id.clone();
+
+    let send_task = {
+        let service = Arc::clone(&service);
+        let session_id = session_id.clone();
+        tokio::spawn(async move {
+            service
+                .send_input(ProvidersSendInput {
+                    session_id: SessionId::try_from(session_id).expect("session id valid"),
+                    input: Prompt::try_from("follow-up before stop".to_owned())
+                        .expect("prompt valid"),
+                    provider: None,
+                    model_label: None,
+                    model_id: None,
+                    reasoning_effort: None,
+                    fast_mode: false,
+                    agent_mode: None,
+                    attachments: None,
+                })
+                .await
+        })
+    };
+
+    for _ in 0..500 {
+        if service.open_handle_count() == 1 && !service.is_handle_resolved(&session_id) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert_eq!(service.open_handle_count(), 1, "follow-up handle is pending");
+    assert!(
+        !service.is_handle_resolved(&session_id),
+        "follow-up handle should still be spawning",
+    );
+
+    service
+        .terminate(ProvidersTerminateInput {
+            session_id: SessionId::try_from(session_id.clone()).expect("session id valid"),
+        })
+        .await
+        .expect("terminate ok");
+
+    release.notify_one();
+    let send_result = send_task.await.expect("send task joined");
+    assert!(send_result.expect("send_input ok").ok);
+
+    assert!(
+        handle.disposed.load(Ordering::SeqCst),
+        "follow-up handle spawned after terminate must be disposed",
+    );
+    assert_eq!(service.open_handle_count(), 0);
+
+    let connection = database.connection();
+    let persisted = find_session_by_id(&connection, &session_id).expect("find session");
+    assert_eq!(persisted.state, "cancelled");
+}
+
 #[test]
 fn recover_orphaned_sessions_marks_running_rows_failed() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));

@@ -17,7 +17,7 @@ export function useCopyToClipboard(flashMs: number = DEFAULT_FLASH_MS): [boolean
 
   // Clear the pending flash on unmount so React doesn't warn about a state
   // update after unmount and the timeout callback doesn't fire against a
-  // gone component. (audit-2026-05-17 M18)
+  // gone component.
   useEffect(() => {
     return () => {
       if (timer.current) {

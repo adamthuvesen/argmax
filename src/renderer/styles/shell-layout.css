@@ -92,8 +92,7 @@
    collapsed, surfaces without their own top chrome still need to clear the
    traffic lights + show-sidebar button. The conversation surface opts out
    below because its repo-title row becomes the titlebar itself. */
-.app-shell[data-sidebar-collapsed="true"] .launcher-scroll,
-.app-shell[data-sidebar-collapsed="true"] .settings-scroll {
+.app-shell[data-sidebar-collapsed="true"] .launcher-scroll {
   padding-top: 38px;
 }
 
@@ -337,6 +336,12 @@
    exactly. The header isn't draggable, so drop the grab cursor. */
 .project-group.session-date-group > .session-date-row {
   cursor: pointer;
+}
+
+/* Pinned section header: same chrome as a date/project label, but it's a
+   static marker — not collapsible — so it takes no pointer cursor. */
+.project-group.session-pinned-group > .session-pinned-row {
+  cursor: default;
 }
 
 .project-group.dragging {

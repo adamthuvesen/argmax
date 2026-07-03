@@ -196,8 +196,8 @@ impl TerminalService {
         Ok(TerminalSpawnResult { terminal_id })
     }
 
-    /// Forward `data` to the PTY. Silently no-ops on unknown ids —
-    /// matches the TS service which treats stale ids as a benign race.
+    /// Forward `data` to the PTY. Silently no-ops on unknown ids; stale ids
+    /// are a benign renderer/runtime race.
     pub fn write(&self, terminal_id: &str, data: &[u8]) {
         let mut terminals = self.terminals.lock().expect("terminals poisoned");
         if let Some(entry) = terminals.get_mut(terminal_id) {

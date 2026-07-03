@@ -1,10 +1,10 @@
-import { Columns2, Folder, FolderOpen, GitBranch, PanelRightClose, Rows3, X } from "lucide-react";
+import { Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState, WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
-import { DiffBlocks, type DiffView } from "./DiffBlocks.js";
+import { DiffBlocks } from "./DiffBlocks.js";
 import { FilePreview } from "./FilePreview.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
@@ -85,7 +85,6 @@ function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | 
   );
 }
 
-const DIFF_VIEW_KEY = "argmax.diffView";
 const LEFT_COL_WIDTH_KEY = "argmax.reviewPanel.leftColumnWidth";
 const LEFT_COL_MIN = 200;
 const LEFT_COL_MAX = 600;
@@ -98,12 +97,6 @@ function maxLeftColumnWidth(panelWidth: number): number {
     LEFT_COL_MIN,
     Math.min(LEFT_COL_MAX, panelWidth - PREVIEW_COL_MIN - REVIEW_RESIZE_HANDLE_WIDTH)
   );
-}
-
-function readStoredDiffView(): DiffView {
-  if (typeof window === "undefined") return "unified";
-  const raw = window.localStorage.getItem(DIFF_VIEW_KEY);
-  return raw === "side-by-side" ? "side-by-side" : "unified";
 }
 
 function readStoredLeftColumnWidth(): number {
@@ -126,14 +119,8 @@ export function ReviewPanel({
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
   const [leftColumnWidth, setLeftColumnWidth] = useState<number>(() => readStoredLeftColumnWidth());
-  const [diffView, setDiffView] = useState<DiffView>(() => readStoredDiffView());
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(DIFF_VIEW_KEY, diffView);
-  }, [diffView]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -210,6 +197,14 @@ export function ReviewPanel({
   };
 
   const isChanges = review.mode === "changes";
+  const branchComparison = review.changesComparison === "branch";
+  const comparisonLabel = branchComparison ? "Branch" : "Local";
+  const nextComparison = branchComparison ? "local" : "branch";
+  const nextComparisonTitle = branchComparison
+    ? "Switch to working-tree changes (uncommitted, vs HEAD)"
+    : review.comparisonBaseLabel
+      ? `Switch to all changes vs ${review.comparisonBaseLabel}`
+      : "Switch to all changes vs base branch";
   const subtitle = isChanges
     ? `${review.files.length} ${review.files.length === 1 ? "file" : "files"} changed`
     : "Files";
@@ -267,39 +262,19 @@ export function ReviewPanel({
         </div>
         <div className="review-toolbar-actions">
           {isChanges ? (
-            <div className="review-comparison-tabs" role="group" aria-label="Diff baseline">
+            <div className="review-comparison-toggle-wrap">
               <button
                 type="button"
-                aria-pressed={review.changesComparison === "local"}
-                title="Working-tree changes (uncommitted, vs HEAD)"
-                onClick={() => review.setChangesComparison("local")}
+                className="review-comparison-toggle"
+                aria-label={`Diff baseline: ${comparisonLabel}`}
+                aria-pressed={branchComparison}
+                title={nextComparisonTitle}
+                onClick={() => review.setChangesComparison(nextComparison)}
               >
-                Local
-              </button>
-              <button
-                type="button"
-                aria-pressed={review.changesComparison === "branch"}
-                title={
-                  review.comparisonBaseLabel
-                    ? `All changes vs ${review.comparisonBaseLabel}`
-                    : "All changes vs base branch"
-                }
-                onClick={() => review.setChangesComparison("branch")}
-              >
-                Branch
+                {comparisonLabel}
               </button>
             </div>
           ) : null}
-          <button
-            className="small-icon"
-            type="button"
-            title={diffView === "unified" ? "Switch to side-by-side diff" : "Switch to unified diff"}
-            aria-label={diffView === "unified" ? "Switch to side-by-side diff" : "Switch to unified diff"}
-            aria-pressed={diffView === "side-by-side"}
-            onClick={() => setDiffView((current) => (current === "unified" ? "side-by-side" : "unified"))}
-          >
-            {diffView === "unified" ? <Columns2 size={16} strokeWidth={1.75} /> : <Rows3 size={16} strokeWidth={1.75} />}
-          </button>
           <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
             <PanelRightClose size={16} strokeWidth={1.75} />
           </button>
@@ -379,7 +354,7 @@ export function ReviewPanel({
                               </p>
                             ) : null}
                             {review.diffState === "ready" && diffBlocks.length > 0 ? (
-                              <DiffBlocks blocks={diffBlocks} filePath={file.path} view={diffView} />
+                              <DiffBlocks blocks={diffBlocks} filePath={file.path} />
                             ) : null}
                           </div>
                         ) : null}

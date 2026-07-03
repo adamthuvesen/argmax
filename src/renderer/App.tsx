@@ -20,6 +20,8 @@ import type {
 } from "../shared/types.js";
 import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
 import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
+import type { SettingsNavigationTarget } from "./components/SettingsPanel.js";
+import type { SettingsGroupId } from "./components/settings/settingsMeta.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
 import { EmptyState } from "./components/EmptyState.js";
@@ -70,7 +72,6 @@ import {
 import {
   CHAT_COST_KEY,
   FAST_MODE_KEY,
-  LAUNCHER_GLOBE_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_TOKENS_KEY,
   THINKING_EXPANDED_KEY,
@@ -114,6 +115,8 @@ export function App(): JSX.Element {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
+  const settingsNavigationRequestRef = useRef(0);
+  const [settingsNavigationTarget, setSettingsNavigationTarget] = useState<SettingsNavigationTarget | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [toolCallsExpanded, setToolCallsExpanded] = useBooleanUiPreference(TOOL_CALLS_EXPANDED_KEY, false);
   const [toolCallGroupsExpanded, setToolCallGroupsExpanded] = useBooleanUiPreference(
@@ -130,7 +133,6 @@ export function App(): JSX.Element {
     setSidebarCollapsed(!sidebarCollapsed);
   }, [sidebarCollapsed, setSidebarCollapsed]);
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
-  const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, false);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const handleLaunchModelChange = useCallback(
@@ -302,6 +304,42 @@ export function App(): JSX.Element {
     if (!showWorkspaceDropTarget) setIsWorkspaceDropPreviewVisible(false);
   }, [showWorkspaceDropTarget]);
 
+  const scrollSettingsToTop = useCallback((): void => {
+    const scroller = workspaceRef.current?.querySelector(".settings-scroll");
+    if (scroller instanceof HTMLElement) {
+      scroller.scrollTop = 0;
+    }
+  }, []);
+
+  const openSettingsTarget = useCallback(
+    (group: SettingsGroupId = "general", sectionId?: string): void => {
+      setIsPaletteOpen(false);
+      setIsFullLauncherOpen(false);
+      settingsNavigationRequestRef.current += 1;
+      setSettingsNavigationTarget({
+        group,
+        ...(sectionId ? { sectionId } : {}),
+        requestId: settingsNavigationRequestRef.current
+      });
+      if (isSettingsOpen && group === "general" && !sectionId) {
+        scrollSettingsToTop();
+      }
+      setIsSettingsOpen(true);
+    },
+    [
+      isSettingsOpen,
+      scrollSettingsToTop,
+      setIsFullLauncherOpen,
+      setIsPaletteOpen,
+      setIsSettingsOpen
+    ]
+  );
+
+  useLayoutEffect(() => {
+    if (!isSettingsOpen) return;
+    scrollSettingsToTop();
+  }, [isSettingsOpen, scrollSettingsToTop]);
+
   useEffect(() => {
     // First non-loading render is the renderer's "first content" mark.
     // markFirstContent() is idempotent — flipping back to "loading" later
@@ -330,9 +368,11 @@ export function App(): JSX.Element {
     (command: MenuCommand): void => {
       switch (command) {
         case "open-settings":
-          setIsPaletteOpen(false);
-          setIsFullLauncherOpen(false);
-          setIsSettingsOpen(!isSettingsOpen);
+          if (isSettingsOpen) {
+            setIsSettingsOpen(false);
+            return;
+          }
+          openSettingsTarget("general");
           return;
         case "new-session":
           setIsPaletteOpen(false);
@@ -355,7 +395,7 @@ export function App(): JSX.Element {
           return;
       }
     },
-    [isSettingsOpen, openNewSessionPane, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
+    [isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
   const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
@@ -655,9 +695,23 @@ export function App(): JSX.Element {
     [openProjectLauncher, setIsSettingsOpen, setIsFullLauncherOpen, setGrid]
   );
   const onOpenSettingsRow = useCallback((): void => {
-    setIsFullLauncherOpen(false);
-    setIsSettingsOpen(true);
-  }, [setIsFullLauncherOpen, setIsSettingsOpen]);
+    openSettingsTarget("general");
+  }, [openSettingsTarget]);
+  const onOpenProvidersRow = useCallback((): void => {
+    openSettingsTarget("agents", "settings-providers");
+  }, [openSettingsTarget]);
+  const onOpenDiagnosticsRow = useCallback((): void => {
+    openSettingsTarget("system", "settings-diagnostics");
+  }, [openSettingsTarget]);
+  const onOpenAboutRow = useCallback((): void => {
+    openSettingsTarget("system", "settings-about");
+  }, [openSettingsTarget]);
+  const onOpenCommandPaletteRow = useCallback((): void => {
+    setIsPaletteOpen(true);
+  }, [setIsPaletteOpen]);
+  const onOpenKeyboardShortcutsRow = useCallback((): void => {
+    setIsCheatSheetOpen(true);
+  }, [setIsCheatSheetOpen]);
   const onOpenWorkspaceChatRow = useCallback(
     (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
       setIsSettingsOpen(false);
@@ -780,7 +834,7 @@ export function App(): JSX.Element {
         snapshot,
         selectedSession,
         onNewSession: () => handleMenuCommand("new-session"),
-        onOpenSettings: () => setIsSettingsOpen(true),
+        onOpenSettings: () => openSettingsTarget("general"),
         onOpenSearch: () => setIsSearchOpen(true),
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
@@ -792,6 +846,7 @@ export function App(): JSX.Element {
       snapshot,
       selectedSession,
       handleMenuCommand,
+      openSettingsTarget,
       terminateSession,
       openWorkspaceChat,
       setIsSearchOpen,
@@ -869,7 +924,6 @@ export function App(): JSX.Element {
         projects={snapshot.projects}
         rightPanelToggleSignal={rightPanelToggleSignal}
         registerPaletteFileContext={registerPaletteFileContext}
-        globeEnabled={launcherGlobeVisible}
       />
     ),
     [
@@ -879,7 +933,6 @@ export function App(): JSX.Element {
       handleLaunchModelChange,
       launchModel,
       launchTask,
-      launcherGlobeVisible,
       openProjectLauncher,
       registerPaletteFileContext,
       rightPanelToggleSignal,
@@ -1009,11 +1062,15 @@ export function App(): JSX.Element {
         onOpenInIde={onOpenInIdeRow}
         onOpenProject={onOpenProjectRow}
         onOpenSettings={onOpenSettingsRow}
+        onOpenProviders={onOpenProvidersRow}
+        onOpenDiagnostics={onOpenDiagnosticsRow}
+        onOpenAbout={onOpenAboutRow}
+        onOpenCommandPalette={onOpenCommandPaletteRow}
+        onOpenKeyboardShortcuts={onOpenKeyboardShortcutsRow}
         onOpenWorkspaceChat={onOpenWorkspaceChatRow}
         onWorkspaceDragStart={handleWorkspaceDragStart}
         onWorkspaceDragEnd={handleWorkspaceDragEnd}
         onResizeMouseDown={onResizeMouseDown}
-        isSettingsActive={isSettingsOpen}
         selectedProjectId={selectedProject?.id ?? null}
         selectedWorkspaceId={selectedWorkspace?.id ?? null}
         openWorkspaceIds={openWorkspaceIds}
@@ -1053,8 +1110,6 @@ export function App(): JSX.Element {
                 onChatCostVisibleChange={setChatCostVisible}
                 chatWidth={chatWidth}
                 onChatWidthChange={setChatWidth}
-                launcherGlobeVisible={launcherGlobeVisible}
-                onLauncherGlobeVisibleChange={setLauncherGlobeVisible}
                 thinkingExpanded={thinkingExpanded}
                 onThinkingExpandedChange={setThinkingExpanded}
                 fastModeEnabled={fastModeEnabled}
@@ -1081,7 +1136,7 @@ export function App(): JSX.Element {
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={setNewSessionMode}
                 projects={snapshot.projects}
-                onClose={() => setIsSettingsOpen(false)}
+                navigationTarget={settingsNavigationTarget}
               />
             </Suspense>
           ) : isFullLauncherOpen ? (

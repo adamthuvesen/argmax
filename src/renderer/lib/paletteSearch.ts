@@ -1,4 +1,5 @@
 import uFuzzy from "@leeoniya/ufuzzy";
+import type { LucideIcon } from "lucide-react";
 
 export type PaletteGroup = "Actions" | "Sessions" | "Projects" | "Files" | "Messages";
 
@@ -7,6 +8,12 @@ export interface PaletteItem {
   label: string;
   subtitle?: string;
   group: PaletteGroup;
+  /**
+   * Per-item glyph. Actions each carry their own (New Session → Plus, etc.);
+   * homogeneous groups (Projects, Sessions, Files) fall back to a group icon
+   * so a row's type stays legible once results interleave and headers scroll off.
+   */
+  icon?: LucideIcon;
   run: () => void;
 }
 

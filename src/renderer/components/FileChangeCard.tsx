@@ -71,7 +71,7 @@ export function FileChangeCard({
           <p className="file-change-card-empty">{note ?? "No content to display."}</p>
         ) : (
           <>
-            <DiffBlocks blocks={change.hunks} filePath={change.path} view="unified" />
+            <DiffBlocks blocks={change.hunks} filePath={change.path} />
             {note ? <p className="file-change-card-note">{note}</p> : null}
           </>
         )}

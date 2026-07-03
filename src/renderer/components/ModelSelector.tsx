@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Cpu, Zap } from "lucide-react";
 import { Fragment, useRef, useState, type CSSProperties, type JSX } from "react";
 import {
   DEFAULT_REASONING_EFFORT,
+  PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   REASONING_EFFORTS,
   type ProviderModelSelection,
@@ -117,8 +118,10 @@ export function ModelSelector({
 
 export function LaunchModelSelector({
   ariaLabel,
+  anchorClassName,
   availability,
   fastModeEnabled = false,
+  inputId,
   onOpenChange,
   onChange,
   onFastModeEnabledChange,
@@ -126,8 +129,10 @@ export function LaunchModelSelector({
   value
 }: {
   ariaLabel: string;
+  anchorClassName?: string;
   availability?: ProviderAvailability;
   fastModeEnabled?: boolean;
+  inputId?: string;
   onOpenChange?: (open: boolean) => void;
   onChange: (model: ModelPickerSelection) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
@@ -151,7 +156,9 @@ export function LaunchModelSelector({
   return (
     <ChipModelPicker
       ariaLabel={ariaLabel}
+      anchorClassName={anchorClassName}
       fastModeEnabled={fastModeEnabled}
+      inputId={inputId}
       isSelected={(model) => model.provider === value.provider && model.modelId === value.modelId}
       onChange={onChange}
       onFastModeEnabledChange={onFastModeEnabledChange}
@@ -170,7 +177,9 @@ function alwaysSupportsFastMode(): boolean {
 
 function ChipModelPicker<T extends PickerValue>({
   ariaLabel,
+  anchorClassName,
   fastModeEnabled,
+  inputId,
   isSelected,
   onChange,
   onFastModeEnabledChange,
@@ -181,7 +190,9 @@ function ChipModelPicker<T extends PickerValue>({
   value
 }: {
   ariaLabel: string;
+  anchorClassName?: string;
   fastModeEnabled: boolean;
+  inputId?: string;
   isSelected: (value: T) => boolean;
   onChange: (value: T) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
@@ -287,9 +298,13 @@ function ChipModelPicker<T extends PickerValue>({
     : null;
 
   return (
-    <div className="project-picker-anchor model-picker-anchor" ref={anchorRef}>
+    <div
+      className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
+      ref={anchorRef}
+    >
       <button
         type="button"
+        id={inputId}
         className="composer-context-chip"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
@@ -491,50 +506,34 @@ export function CombinedModelSelector({
   onChange: (model: ModelPickerSelection) => void;
   value: ModelPickerSelection;
 }): JSX.Element {
-  const fallbackKey = allModelOptions[0] ? modelValue(allModelOptions[0]) : "";
   const matched = allModelOptions.find(
     (model) => model.provider === value.provider && model.modelId === value.modelId
   );
-  const selectedValue = matched ? modelValue(matched) : fallbackKey;
+  const selectedReasoningEffort = value.reasoningEffort ?? matched?.reasoningEffort;
+  const selectedValue: ModelPickerSelection = matched
+    ? {
+        provider: matched.provider,
+        label: matched.label,
+        modelId: matched.modelId,
+        ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {})
+      }
+    : {
+        provider: "codex",
+        label: PROVIDER_MODEL_DEFAULTS.codex.label,
+        modelId: PROVIDER_MODEL_DEFAULTS.codex.modelId,
+        ...(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort
+          ? { reasoningEffort: PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort }
+          : {})
+      };
 
   return (
-    <span className="model-selector model-selector-combined">
-      <select
-        id={inputId}
-        aria-label={ariaLabel}
-        value={selectedValue}
-        onChange={(event) => {
-          const model = allModelOptions.find((option) => modelValue(option) === event.target.value);
-          if (model) {
-            onChange({
-              provider: model.provider,
-              label: model.label,
-              modelId: model.modelId,
-              ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
-            });
-          }
-        }}
-      >
-        {(Object.keys(PROVIDER_GROUP_LABEL) as ProviderId[]).map((provider) => {
-          const { disabled, annotation } = availabilityAnnotation(availability, provider);
-          const groupLabel = annotation
-            ? `${PROVIDER_GROUP_LABEL[provider]} — ${annotation}`
-            : PROVIDER_GROUP_LABEL[provider];
-          return (
-            <optgroup key={provider} label={groupLabel}>
-              {PROVIDER_MODELS[provider].map((model) => (
-                <option
-                  key={optionKey(model)}
-                  value={modelValue({ provider, modelId: model.modelId })}
-                  disabled={disabled}
-                >
-                  {model.label}
-                </option>
-              ))}
-            </optgroup>
-          );
-        })}
-      </select>
-    </span>
+    <LaunchModelSelector
+      ariaLabel={ariaLabel}
+      anchorClassName="settings-model-picker"
+      availability={availability}
+      inputId={inputId}
+      value={selectedValue}
+      onChange={onChange}
+    />
   );
 }

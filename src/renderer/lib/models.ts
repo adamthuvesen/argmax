@@ -62,14 +62,6 @@ export function modelDefaultForProvider(provider: ProviderId): ProviderModelSele
   };
 }
 
-const REMOVED_SESSION_MODEL_FALLBACKS: Partial<Record<ProviderId, ReadonlySet<string>>> = {
-  codex: new Set(["gpt-5.3-codex-spark"])
-};
-
-function sessionModelNeedsFallback(provider: ProviderId, modelId: string): boolean {
-  return REMOVED_SESSION_MODEL_FALLBACKS[provider]?.has(modelId) ?? false;
-}
-
 /** Launch-default provider order: Claude first, then Codex, then Cursor. */
 export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = ["claude", "codex", "cursor"];
 
@@ -93,9 +85,6 @@ export function preferredLaunchProvider(providers: DiscoveredProvider[]): Provid
 export function modelSelectionFromSession(session: SessionSummary | null): ProviderModelSelection {
   if (!session) {
     return modelDefaultForProvider("codex");
-  }
-  if (sessionModelNeedsFallback(session.provider, session.modelId)) {
-    return modelDefaultForProvider(session.provider);
   }
   return {
     label: session.modelLabel,

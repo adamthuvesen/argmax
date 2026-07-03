@@ -16,6 +16,7 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::persistence::database::vacuum_database;
 use crate::state::AppState;
+use crate::util::log_buffer::LogEntry;
 
 const LIGHT_BG: tauri::utils::config::Color = tauri::utils::config::Color(251, 251, 250, 255);
 const DARK_BG: tauri::utils::config::Color = tauri::utils::config::Color(14, 14, 12, 255);
@@ -87,16 +88,6 @@ pub struct RuntimeDiagnostics {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct LogEntry {
-    pub timestamp: String,
-    pub level: String,
-    pub scope: String,
-    pub message: String,
-    pub fields: std::collections::BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
 pub struct DiagnosticsReport {
     pub app_version: String,
     pub sqlite_version: String,
@@ -161,7 +152,7 @@ pub fn system_diagnostics(
         startup_phases: startup_phases(&state),
         database_stats,
         ipc_stats: ipc_stats(),
-        recent_logs: Vec::new(),
+        recent_logs: crate::util::tracing_init::recent_logs(),
         sqlite_pragmas,
         runtime: RuntimeDiagnostics {
             rss_bytes: rss_bytes(),

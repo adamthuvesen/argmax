@@ -11,8 +11,7 @@ export type TreeNode = {
  * Build a directory tree from a flat list of `path/to/file`-shaped entries.
  *
  * Per-cursor `Map<segment, TreeNode>` index keeps the inner lookup O(1).
- * The prior `cursor.children.find(...)` shape was O(n²) on wide directories
- * (audit-2026-05-11 / SPEC P1.11).
+ * The prior `cursor.children.find(...)` shape was O(n²) on wide directories.
  */
 export function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
   const root: TreeNode = { name: "", path: "", kind: "dir", children: [] };

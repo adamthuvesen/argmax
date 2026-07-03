@@ -199,7 +199,21 @@
 
 .composer {
   display: grid;
-  gap: 10px;
+  position: relative;
+  gap: 4px;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
+  transition: border-color var(--duration-base) var(--ease),
+    box-shadow var(--duration-base) var(--ease);
+}
+
+.launcher-surface .composer:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent),
+    0 8px 22px rgba(31, 28, 24, 0.055);
 }
 
 .composer-input,
@@ -211,39 +225,32 @@
 
 .composer-input {
   position: relative;
-  gap: 8px;
-  min-height: 56px;
-  padding: 8px 10px 8px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  box-shadow: var(--shadow-1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  transition: border-color var(--duration-fast) var(--ease),
-    box-shadow var(--duration-fast) var(--ease);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
 }
 
 .composer-input:focus-within {
-  border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent),
-    0 8px 22px rgba(31, 28, 24, 0.055),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: none;
 }
 
 .composer-input input,
 .composer-input textarea {
   min-width: 0;
   flex: 1;
-  min-height: 34px;
+  min-height: 36px;
   max-height: 140px;
-  padding: 0 8px 0 2px;
+  padding: 0 8px;
   color: var(--text);
   border: 0;
   outline: 0;
   background: transparent;
-  font-family: inherit;
+  font-family: var(--font-prose);
   font-size: var(--text-base);
-  line-height: 34px;
+  line-height: 1.55;
   resize: none;
   overflow-x: hidden;
   overflow-y: hidden;
@@ -251,13 +258,13 @@
 
 .composer-input textarea {
   box-sizing: border-box;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   line-height: 1.55;
 }
 
 .composer-input input {
-  line-height: 34px;
+  line-height: 1.55;
 }
 
 .composer-input input::placeholder,
@@ -276,19 +283,22 @@
     color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
 }
 
+/* Attach (+), shared by the launcher and session composers: a quiet, chip-sized
+   icon button. Hover shifts its color like the surrounding chips — no filled
+   box or border — so it reads as a sibling of the toolbar, not a raised control. */
 .composer-tool {
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
 }
 
 .composer-tool:hover {
   color: var(--text);
-  background: var(--panel-sunken);
-  border-color: var(--line);
+  background: transparent;
+  border-color: transparent;
 }
 
 .send-button {
@@ -331,17 +341,39 @@
   opacity: 0.4;
 }
 
+/* Empty state: with no prompt to send, the button shouldn't be the loudest,
+   highest-contrast thing on an otherwise airy composer — especially while it's
+   not actionable. Recede to a quiet outlined disc; the solid ink CTA (base
+   .send-button) blooms back the moment there's text. */
+.launcher-surface .send-button:disabled {
+  opacity: 1;
+  color: var(--muted);
+  background: transparent;
+  background-image: none;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
 
 
 .composer-context {
   gap: 4px;
-  min-height: 32px;
-  /* Left padding matches the textarea's text inset above (.composer-input
-     padding-left 14px + textarea padding-left 2px) so the row reads as if it
-     extends from the prompt itself rather than from the input's outer edge. */
-  padding: 0 6px 0 14px;
+  min-height: 34px;
+  /* Right padding clears the absolute-positioned send button; the left no
+     longer reserves space for the attach (+), which now sits inline. */
+  padding: 0 42px 0 0;
   color: var(--muted);
   font-size: var(--text-sm-plus);
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+/* Send stays anchored to .composer-input's bottom edge but sits on the chip row
+   below it, whose optical center lands at -35px for a 28px control. */
+.launcher-surface .composer > .composer-input > .send-button {
+  position: absolute;
+  right: 0;
+  bottom: -35px;
+  z-index: 1;
 }
 
 .composer-context-group {
@@ -350,10 +382,23 @@
   gap: 4px;
 }
 
-/* Mode toggle gets pushed to the right edge of the row, mirroring the send
-   control's right-anchored position on the input above. */
-.composer-context .agent-mode-toggle {
+/* The behavior toggles (agent mode + worktree) cluster at the right edge of
+   the row, mirroring the send control's right-anchored position on the input
+   above. Whitespace alone sets them off from the context pickers — no divider,
+   no borders; they stay quiet until switched on. */
+.composer-context-group--behavior {
   margin-left: auto;
+}
+
+/* The model is the launch's headline decision — the one bit of text weight in
+   an otherwise quiet toolbar. Everything else stays muted so this reads first. */
+.composer-context-group--model .composer-context-chip {
+  color: var(--muted-strong);
+  font-weight: 500;
+}
+
+.composer-context-group--model .composer-context-chip:hover {
+  color: var(--text);
 }
 
 /* Shared metadata-pill family (with .turn-block-chip / .composer-footer-chip):
@@ -404,17 +449,24 @@
    .composer-context-chip including the quiet hover). Only the non-default Plan
    mode (aria-pressed) gets a subtle accent fill as an active-state cue. min-width
    keeps the row from jumping as the label toggles Auto ↔ Plan. */
+/* Behavior toggles are distinguished from the context pickers by structure, not
+   weight: they carry no dropdown caret and no leading icon, just a word. At rest
+   they're plain quiet chips; when enabled (aria-pressed) they fill with the
+   accent so the two launch toggles read as a family and their state is legible
+   at a glance. min-width keeps the row from jumping as Auto ↔ Plan toggles. */
 .agent-mode-toggle {
-  min-width: 56px;
+  min-width: 52px;
   justify-content: center;
 }
 
-.agent-mode-toggle[aria-pressed="true"] {
+.agent-mode-toggle[aria-pressed="true"],
+.workspace-mode-toggle[aria-pressed="true"] {
   color: var(--accent-deep);
   background: var(--accent-soft);
 }
 
-.agent-mode-toggle[aria-pressed="true"]:hover {
+.agent-mode-toggle[aria-pressed="true"]:hover,
+.workspace-mode-toggle[aria-pressed="true"]:hover {
   background: var(--accent-soft);
   color: var(--accent-deep);
   filter: brightness(0.97);
@@ -423,21 +475,6 @@
 .agent-mode-toggle:disabled {
   cursor: default;
   opacity: 0.45;
-}
-
-/* Worktree toggle — a single on/off chip, off by default. At rest it's a plain
-   ghost chip identical to its siblings; when enabled (aria-pressed) it picks up
-   the same subtle accent fill as the Plan mode chip, so the two launch toggles
-   read as a family. The label is fixed ("Worktree"), so no min-width is needed. */
-.workspace-mode-toggle[aria-pressed="true"] {
-  color: var(--accent-deep);
-  background: var(--accent-soft);
-}
-
-.workspace-mode-toggle[aria-pressed="true"]:hover {
-  background: var(--accent-soft);
-  color: var(--accent-deep);
-  filter: brightness(0.97);
 }
 
 .composer-context svg {

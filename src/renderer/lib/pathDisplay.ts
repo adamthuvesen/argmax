@@ -12,7 +12,7 @@ const HOME_PREFIX = /^\/(?:Users|home)\/[^/]+(?=\/|$)/;
 // Past this length a path token is collapsed; below it, paths read fine as-is.
 const MAX_PATH_LEN = 40;
 
-function collapseHome(path: string): string {
+export function collapseHome(path: string): string {
   return path.replace(HOME_PREFIX, "~");
 }
 

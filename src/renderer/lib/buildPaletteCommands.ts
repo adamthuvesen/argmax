@@ -1,6 +1,8 @@
+import { Folder, MessageSquare, Plus, Search, Settings, Square } from "lucide-react";
 import type { PaletteCommand } from "../components/CommandPalette.js";
 import type { DashboardSnapshot, SessionSummary } from "../../shared/types.js";
 import { titleFromPrompt } from "./projects.js";
+import { collapseHome } from "./pathDisplay.js";
 
 export type BuildPaletteCommandsInput = {
   snapshot: DashboardSnapshot;
@@ -38,6 +40,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       label: "New Session",
       subtitle: "Open the launcher",
       group: "Actions",
+      icon: Plus,
       run: onNewSession
     },
     {
@@ -45,6 +48,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       label: "Open Settings",
       subtitle: "Defaults, providers, tools",
       group: "Actions",
+      icon: Settings,
       run: onOpenSettings
     },
     {
@@ -52,6 +56,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       label: "Search Sessions",
       subtitle: "Full-text search across every session timeline",
       group: "Actions",
+      icon: Search,
       run: onOpenSearch
     },
     ...(selectedSession && selectedSession.state === "running"
@@ -61,6 +66,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
             label: "Stop Current Session",
             subtitle: selectedSession.modelLabel,
             group: "Actions" as const,
+            icon: Square,
             run: () => onStopSession(selectedSession.id)
           }
         ]
@@ -83,6 +89,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       label,
       subtitle: parts.filter(Boolean).join(" · "),
       group: "Sessions",
+      icon: MessageSquare,
       run: () => {
         closeOverlays();
         onOpenWorkspace(session.workspaceId);
@@ -93,8 +100,9 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   const projects: PaletteCommand[] = snapshot.projects.slice(0, 40).map((project) => ({
     id: `project:${project.id}`,
     label: project.name,
-    subtitle: [project.currentBranch, project.repoPath].filter(Boolean).join(" · "),
+    subtitle: [project.currentBranch, collapseHome(project.repoPath)].filter(Boolean).join(" · "),
     group: "Projects",
+    icon: Folder,
     run: () => {
       closeOverlays();
       onSelectProject(project.id);

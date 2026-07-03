@@ -1,10 +1,13 @@
 use rusqlite::{Connection, Row};
 use serde::Serialize;
+use serde_json::{json, Value};
 use specta::Type;
 
 use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
+
+const INVALID_PAYLOAD_PREVIEW_CHARS: usize = 512;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PersistTimelineEventInput {
@@ -12,7 +15,7 @@ pub struct PersistTimelineEventInput {
     pub session_id: String,
     pub r#type: String,
     pub message: String,
-    pub payload: serde_json::Value,
+    pub payload: Value,
     pub created_at: Option<String>,
 }
 
@@ -32,7 +35,7 @@ pub struct TimelineEvent {
     pub session_id: String,
     pub r#type: String,
     pub message: String,
-    pub payload: serde_json::Value,
+    pub payload: Value,
     pub created_at: String,
     pub row_cursor: Option<i64>,
 }
@@ -270,10 +273,31 @@ fn event_row_to_timeline_event(row: &Row<'_>) -> rusqlite::Result<TimelineEvent>
         session_id: row.get("session_id")?,
         r#type: row.get("type")?,
         message: row.get("message")?,
-        payload: serde_json::from_str(&payload_json).unwrap_or_else(|_| serde_json::json!({})),
+        payload: parse_event_payload(&payload_json),
         created_at: row.get("created_at")?,
         row_cursor: Some(row.get("row_cursor")?),
     })
+}
+
+fn parse_event_payload(payload_json: &str) -> Value {
+    match serde_json::from_str(payload_json) {
+        Ok(payload) => payload,
+        Err(error) => {
+            let raw_payload: String = payload_json
+                .chars()
+                .take(INVALID_PAYLOAD_PREVIEW_CHARS)
+                .collect();
+            let raw_payload_truncated =
+                payload_json.chars().count() > INVALID_PAYLOAD_PREVIEW_CHARS;
+            tracing::warn!(?error, "invalid timeline event payload json");
+            json!({
+                "parseError": true,
+                "error": error.to_string(),
+                "rawPayload": raw_payload,
+                "rawPayloadTruncated": raw_payload_truncated,
+            })
+        }
+    }
 }
 
 fn raw_output_row_to_provider_output(row: &Row<'_>) -> rusqlite::Result<RawProviderOutput> {

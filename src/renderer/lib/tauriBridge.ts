@@ -132,7 +132,7 @@ function createTauriArgmaxApi(): ArgmaxApi {
       list: () => invokeLegacy<ProjectSummary[]>("projects:list"),
       pickFolder: () => invokeLegacy<ProjectFolderPickResult>("projects:pick-folder"),
       register: (input: RegisterProjectInput) => invokeLegacy<ProjectSummary>("projects:register", input),
-      remove: (input: RemoveProjectInput) => invokeLegacy<{ projectId: string }>("projects:remove", input),
+      remove: (input: RemoveProjectInput) => invokeLegacy<void>("projects:remove", input),
       updateSettings: (input: UpdateProjectSettingsInput) =>
         invokeLegacy<ProjectSummary>("projects:update-settings", input),
       listBranches: (projectId: string) =>

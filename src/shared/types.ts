@@ -438,7 +438,7 @@ export interface ArgmaxApi {
     list: () => Promise<ProjectSummary[]>;
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
-    remove: (input: RemoveProjectInput) => Promise<{ projectId: string }>;
+    remove: (input: RemoveProjectInput) => Promise<void>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
     listBranches: (projectId: string) => Promise<string[]>;
     refreshBranch: (projectId: string) => Promise<ProjectSummary>;

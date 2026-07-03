@@ -6,8 +6,8 @@ const BASE_SESSION: SessionSummary = {
   id: "session-1",
   workspaceId: "workspace-1",
   provider: "codex",
-  modelLabel: "GPT-5.3 Codex Spark",
-  modelId: "gpt-5.3-codex-spark",
+  modelLabel: "GPT-5.5",
+  modelId: "gpt-5.5",
   permissionMode: "auto-approve",
   providerConversationId: null,
   prompt: "Review this",
@@ -19,17 +19,15 @@ const BASE_SESSION: SessionSummary = {
 };
 
 describe("modelSelectionFromSession", () => {
-  it("falls back to the provider default when a stored model was removed", () => {
+  it("preserves the stored session model", () => {
     expect(modelSelectionFromSession(BASE_SESSION)).toEqual({
       label: "GPT-5.5",
       modelId: "gpt-5.5",
-      reasoningEffort: "high"
     });
     expect(modelPickerSelectionFromSession(BASE_SESSION)).toEqual({
       provider: "codex",
       label: "GPT-5.5",
       modelId: "gpt-5.5",
-      reasoningEffort: "high"
     });
   });
 });

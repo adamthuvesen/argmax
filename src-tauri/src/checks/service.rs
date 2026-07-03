@@ -42,8 +42,7 @@ pub struct RunWorkspaceCheckInput {
     pub timeout_ms: Option<u64>,
 }
 
-/// Callback shape that lets a caller observe streaming check output.
-/// Matches the TS `onOutput?: (chunk: string) => void`.
+/// Callback shape that lets callers observe streaming check output.
 pub type OutputSink = Arc<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Default)]
@@ -130,7 +129,7 @@ impl CheckService {
         // spawning. `sh -c` interprets the full command string, so
         // without this gate a check like `rm -rf $HOME` runs
         // unconditionally. `medium` risk (npm install, git push) is
-        // legitimate in CI scripts. (audit-2026-05-17 C1/C2)
+        // legitimate in CI scripts.
         let risk = classify_command_risk(&input.command);
         if matches!(risk.risk_level, CommandRiskLevel::High) {
             return Err(ArgmaxError::service(

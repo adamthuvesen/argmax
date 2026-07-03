@@ -1,12 +1,37 @@
 import { FileText, PanelRight } from "lucide-react";
 import { useMemo, type JSX, type ReactNode } from "react";
 import { interpretFileChange } from "../lib/fileChange.js";
-import { extractOpenablePath, getToolTypeBucket, isBashLikeTool, type ToolCall } from "../lib/toolCalls.js";
+import {
+  displayBashCommand,
+  extractOpenablePath,
+  getToolTypeBucket,
+  isBashLikeTool,
+  type ToolCall
+} from "../lib/toolCalls.js";
 import { FileChangeCard } from "./FileChangeCard.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 
 const MAX_INLINE_CONTENT_CHARS = 2400;
 const MAX_OUTPUT_CHARS = 3000;
+const REDUNDANT_INPUT_KEYS = new Set([
+  "absolute_path",
+  "content",
+  "file_path",
+  "filepath",
+  "path",
+  "relative_path",
+  "streamContent",
+  "text"
+]);
+const BASH_COMMAND_INPUT_KEYS = ["command", "cmd", "shell_command", "script"] as const;
+const REDUNDANT_BASH_INPUT_KEYS = new Set([
+  ...REDUNDANT_INPUT_KEYS,
+  ...BASH_COMMAND_INPUT_KEYS,
+  "cwd",
+  "max_output_tokens",
+  "timeout_ms",
+  "yield_time_ms"
+]);
 
 function pickString(input: Record<string, unknown>, keys: readonly string[]): string | null {
   for (const key of keys) {
@@ -33,9 +58,22 @@ function visibleInputForTool(tool: ToolCall): Record<string, unknown> {
   return Object.fromEntries(Object.entries(tool.inputFull).filter(([k]) => k !== "prompt"));
 }
 
+function hasNonRedundantInput(
+  input: Record<string, unknown>,
+  redundantKeys: ReadonlySet<string> = REDUNDANT_INPUT_KEYS
+): boolean {
+  return Object.keys(input).some((key) => !redundantKeys.has(key));
+}
+
 function isCodexAgentTool(tool: ToolCall): boolean {
   const lower = tool.name.toLowerCase();
   return lower === "spawn_agent" || lower === "collab_tool_call";
+}
+
+function displayCommand(command: string, cwd: string | null | undefined): string {
+  const unwrapped = displayBashCommand(command);
+  if (!cwd) return unwrapped;
+  return unwrapped.split(cwd.replace(/\/$/, "")).join(".");
 }
 
 export function ToolCallDetail({
@@ -64,11 +102,14 @@ export function ToolCallDetail({
     [tool.name, tool.inputFull]
   );
   const visibleInput = visibleInputForTool(tool);
+  const bashCommand = isBashLikeTool(tool.name)
+    ? pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview
+    : null;
   const openable = tool.status !== "error" ? extractOpenablePath(tool.name, tool.inputFull) : null;
   const filePath = openable ?? pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
   const streamContent = pickString(tool.inputFull, ["streamContent", "content", "text"]);
   const canShowFilePreview = !changes && filePath && streamContent;
-  // The Agent (Task) banner already shows the description; its only "raw input"
+  // The Started-agent row already shows the description; its only "raw input"
   // is description + subagent_type (prompt is dropped), so the box is pure
   // noise — and renders as an empty-looking shell before the sub-agent runs.
   // Skip it for Claude-style Task agents and let the detail collapse to
@@ -76,7 +117,16 @@ export function ToolCallDetail({
   // receiver thread ids are the only detail Codex gives us, so keep those
   // expandable instead of making the row feel dead.
   const isAgent = getToolTypeBucket(tool.name) === "agent";
-  const showRawInput = Object.keys(visibleInput).length > 0 && (!isAgent || isCodexAgentTool(tool));
+  const showRawInput =
+    Object.keys(visibleInput).length > 0 &&
+    hasNonRedundantInput(visibleInput, bashCommand ? REDUNDANT_BASH_INPUT_KEYS : REDUNDANT_INPUT_KEYS) &&
+    (!isAgent || isCodexAgentTool(tool));
+  const rawInput = showRawInput ? (
+    <details className="tool-call-raw-input">
+      <summary>Input</summary>
+      <pre className="tool-call-code">{JSON.stringify(visibleInput, null, 2)}</pre>
+    </details>
+  ) : null;
 
   if (changes && changes.length > 0) {
     return (
@@ -87,6 +137,7 @@ export function ToolCallDetail({
             <pre className="tool-call-code tool-call-code--error">{tool.error}</pre>
           </div>
         ) : null}
+        {rawInput}
         {changes.map((change, index) => (
           <FileChangeCard
             change={change}
@@ -105,6 +156,7 @@ export function ToolCallDetail({
     Boolean(tool.error) ||
     Boolean(canShowFilePreview) ||
     Boolean(openable) ||
+    Boolean(bashCommand) ||
     showRawInput ||
     Boolean(leadingContent) ||
     (Boolean(tool.output) && !tool.error);
@@ -113,6 +165,14 @@ export function ToolCallDetail({
   return (
     <div className="tool-call-detail">
       {leadingContent}
+      {bashCommand ? (
+        <div className="tool-call-section">
+          <p className="tool-call-section-label">Command</p>
+          <div className="tool-call-command-line" title={displayCommand(bashCommand, workspaceCwd)}>
+            <code>{displayCommand(bashCommand, workspaceCwd)}</code>
+          </div>
+        </div>
+      ) : null}
       {tool.error ? (
         <div className="tool-call-section">
           <p className="tool-call-section-label">Error</p>
@@ -120,42 +180,28 @@ export function ToolCallDetail({
         </div>
       ) : null}
       {canShowFilePreview ? (
-        <section className="tool-call-file-preview" aria-label={`Preview of ${filePath}`}>
-          <header className="tool-call-file-preview-header">
-            <FileText size={14} aria-hidden="true" />
-            <code title={filePath}>{displayPath(filePath, workspaceCwd)}</code>
-            <button
-              className="tool-call-open-button"
-              type="button"
-              onClick={() => openFile(filePath)}
-              aria-label={`Open ${filePath}`}
-            >
-              <PanelRight size={11} aria-hidden="true" />
-              <span>Open</span>
-            </button>
-          </header>
-          <pre className="tool-call-file-preview-content">
+        <section className="tool-call-section tool-call-file-preview" aria-label={`Preview of ${filePath}`}>
+          <p className="tool-call-section-label">Preview</p>
+          <pre className="tool-call-code tool-call-code--file-preview">
             {streamContent.length > MAX_INLINE_CONTENT_CHARS
               ? `${streamContent.slice(0, MAX_INLINE_CONTENT_CHARS)}\n...`
               : streamContent}
           </pre>
         </section>
-      ) : openable ? (
-        <button
-          className="tool-call-open-button"
-          type="button"
-          onClick={() => openFile(openable)}
-          aria-label={`Open ${openable}`}
-          title={openable}
-        >
-          <PanelRight size={11} aria-hidden="true" />
-          <span>Open</span>
-        </button>
-      ) : null}
-      {showRawInput ? (
-        <div className="tool-call-section">
-          <p className="tool-call-section-label">Input</p>
-          <pre className="tool-call-code">{JSON.stringify(visibleInput, null, 2)}</pre>
+      ) : openable && !tool.output ? (
+        <div className="tool-call-resource-row">
+          <FileText size={14} aria-hidden="true" />
+          <code title={openable}>{displayPath(openable, workspaceCwd)}</code>
+          <button
+            className="tool-call-open-button"
+            type="button"
+            onClick={() => openFile(openable)}
+            aria-label={`Open ${openable}`}
+            title={openable}
+          >
+            <PanelRight size={11} aria-hidden="true" />
+            <span>Open</span>
+          </button>
         </div>
       ) : null}
       {tool.output && !tool.error ? (
@@ -175,6 +221,7 @@ export function ToolCallDetail({
           </pre>
         </div>
       ) : null}
+      {rawInput}
     </div>
   );
 }

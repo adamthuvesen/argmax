@@ -40,7 +40,6 @@ import {
 } from "../lib/sessionConversationModel.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CostPanel } from "./CostPanel.js";
-import { computeTurnModelHeaderMap } from "../lib/turnHeaderModel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import { parseQuestionsFromToolInput } from "../lib/questions.js";
 import { hasOutstandingCardAsk as sessionHasOutstandingCardAsk } from "../lib/turnInteractiveCards.js";
@@ -56,14 +55,15 @@ import {
   SessionConversationUserMessage
 } from "./SessionConversationTurn.js";
 
-// How long a mid-turn pause (the agent finished a chunk and is silently working
-// on the next step) must persist before the Thinking indicator reappears. Short
-// enough to cover a real "few seconds" gap, long enough that the brief window
-// between the final answer completing and the runtime flipping out of `running`
-// — and quick tool-to-tool hand-offs — don't flash a spinner under finished
-// content.
-const THINKING_PAUSE_DELAY_MS = 600;
-const TOOL_THINKING_PAUSE_DELAY_MS = 1500;
+const SCROLL_INTENT_KEYS = new Set([
+  "ArrowDown",
+  "ArrowUp",
+  "End",
+  "Home",
+  "PageDown",
+  "PageUp",
+  " "
+]);
 
 export function SessionConversation({
   checks,
@@ -176,14 +176,6 @@ export function SessionConversation({
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
     [conversationItems, session]
   );
-  // Computed once per render-item change rather than inline in the render loop.
-  // An inline call rebuilt this Map on every render (every keystroke in the
-  // composer included), and a fresh Map prop would defeat the memoized turn.
-  const turnShowsModelHeader = useMemo(
-    () => computeTurnModelHeaderMap(renderItems, selectedModel.label),
-    [renderItems, selectedModel.label]
-  );
-
   // Composer is enabled whenever the session is alive — `running` no longer
   // blocks: typed messages get queued in main and drain when the current turn
   // finishes. `complete` and `cancelled` are also enabled because main's
@@ -244,30 +236,14 @@ export function SessionConversation({
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
     !isStreamingText;
-  // The pre-answer beat shows immediately. Pauses after completed assistant
-  // text or a completed tool are debounced: quick end-of-turn races and
-  // tool-to-tool hand-offs stay quiet, but a longer silent gap gets Thinking so
-  // the live turn does not look frozen under already-completed rows.
+  // Generic thinking is only for the empty pre-answer gap. Once a turn has
+  // produced any durable item (tool rows, answer text, cards, or a Thought
+  // block), the stable "Working for…" turn header carries the live state. This
+  // avoids the transcript rhythm where verbs appear after a command, disappear
+  // when the next command starts, then appear again.
   const isPreAnswerBeat =
     lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
-  const inDebouncedPause =
-    agentWorkingSilently &&
-    (lastSignificantEvent?.type === "message.completed" ||
-      lastSignificantEvent?.type === "command.completed");
-  const pauseDelayMs =
-    lastSignificantEvent?.type === "command.completed"
-      ? TOOL_THINKING_PAUSE_DELAY_MS
-      : THINKING_PAUSE_DELAY_MS;
-  const [pauseSettled, setPauseSettled] = useState(false);
-  useEffect(() => {
-    if (!inDebouncedPause) {
-      setPauseSettled(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setPauseSettled(true), pauseDelayMs);
-    return () => window.clearTimeout(timer);
-  }, [inDebouncedPause, pauseDelayMs]);
-  const isThinking = agentWorkingSilently && (isPreAnswerBeat || pauseSettled);
+  const isThinking = agentWorkingSilently && isPreAnswerBeat;
 
   const {
     conversationListRef,
@@ -275,6 +251,7 @@ export function SessionConversation({
     showScrollToBottom,
     newBelowCount,
     scrollToBottom: scrollConversationToBottom,
+    handleUserScrollIntent: handleConversationScrollIntent,
     handleScroll: handleConversationScroll
   } = useSmartFollowScroll(sessionId, conversationItems, isThinking);
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
@@ -324,7 +301,23 @@ export function SessionConversation({
           ) : null}
         </div>
       </div>
-      <div className="conversation-list" ref={conversationListRef} onScroll={handleConversationScroll}>
+      <div
+        className="conversation-list"
+        ref={conversationListRef}
+        onScroll={handleConversationScroll}
+        onWheel={handleConversationScrollIntent}
+        onTouchMove={handleConversationScrollIntent}
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) {
+            handleConversationScrollIntent();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget && SCROLL_INTENT_KEYS.has(event.key)) {
+            handleConversationScrollIntent();
+          }
+        }}
+      >
         {renderItems.length > 0 ? (
           renderItems.map((item, index) => {
             if (item.kind === "user-message") {
@@ -342,7 +335,6 @@ export function SessionConversation({
                 item={item}
                 priorItem={index > 0 ? renderItems[index - 1] ?? null : null}
                 isLatestTurn={index === renderItems.length - 1}
-                showModelHeader={turnShowsModelHeader.get(index) ?? false}
                 session={session}
                 selectedModel={selectedModel}
                 workspace={workspace}

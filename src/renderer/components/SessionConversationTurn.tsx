@@ -31,7 +31,6 @@ function SessionConversationTurnInner({
   item,
   priorItem,
   isLatestTurn,
-  showModelHeader,
   session,
   selectedModel,
   workspace,
@@ -49,7 +48,6 @@ function SessionConversationTurnInner({
   item: TurnRenderItem;
   priorItem: RenderItem | null;
   isLatestTurn: boolean;
-  showModelHeader: boolean;
   session: SessionSummary | null;
   selectedModel: ModelPickerSelection;
   workspace: WorkspaceSummary | null;
@@ -296,7 +294,6 @@ function SessionConversationTurnInner({
       key={item.id}
       toolItems={visibleToolItems}
       assistantTimestamps={item.assistantTimestamps}
-      {...(showModelHeader ? { modelLabel: selectedModel.label } : {})}
       {...(Number.isFinite(turnStartedAtMs) ? { turnStartedAtMs } : {})}
       isTurnActive={isTurnLiveTicking}
       toolsExpanded={toolsExpanded}

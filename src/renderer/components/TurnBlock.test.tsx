@@ -46,10 +46,10 @@ describe("TurnBlock", () => {
         toolItems={items}
         assistantTimestamps={[]}
         body={body(assistantChild("assistant"), toolChild("tools"))}
-        modelLabel="Composer 2"
       />
     );
     expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
+    expect(screen.queryByText("Composer 2")).toBeNull();
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
     // Tools expanded while running.
     expect(screen.getByTestId("tools")).toBeInTheDocument();
@@ -139,7 +139,7 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("tools")).toBeInTheDocument();
   });
 
-  it("omits the chip when the turn is complete and had no tool items (pure text reply)", () => {
+  it("shows static turn metadata when the turn is complete and had no tool items", () => {
     render(
       <TurnBlock
         toolItems={[]}
@@ -148,6 +148,7 @@ describe("TurnBlock", () => {
       />
     );
     expect(screen.queryByRole("button", { name: /Worked|Working/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Worked for 0s")).toHaveClass("turn-block-chip-static");
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 

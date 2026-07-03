@@ -1,38 +1,38 @@
 /* ---- File change card (in-chat Write/Edit/Delete affordance) ---- */
 
 .file-change-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, var(--line-soft) 88%, transparent);
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  background: var(--panel);
+  background: transparent;
   margin-top: var(--space-2);
   animation: surface-in var(--motion-base) var(--ease-out);
 }
 
 .file-change-card[data-kind="create"] {
-  border-left: 3px solid var(--sage-deep);
+  border-left: 2px solid color-mix(in oklab, var(--sage-deep) 58%, var(--line-soft));
 }
 
 .file-change-card[data-kind="edit"] {
-  border-left: 3px solid var(--amber);
+  border-left: 2px solid color-mix(in oklab, var(--amber) 58%, var(--line-soft));
 }
 
 .file-change-card[data-kind="delete"] {
-  border-left: 3px solid var(--rose);
+  border-left: 2px solid color-mix(in oklab, var(--rose) 58%, var(--line-soft));
 }
 
-/* Neutral header for every kind — the coloured 3px left rail + icon carry the
+/* Neutral header for every kind — the coloured left rail + icon carry the
    create/edit/delete signal, so a tinted header background was redundant. */
 .file-change-card-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  font-family: var(--font-mono);
+  padding: 7px 9px;
+  font-family: var(--font-ui);
   font-size: var(--text-sm);
   color: var(--text);
-  background: var(--panel-soft);
-  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+  border-bottom: 1px solid color-mix(in oklab, var(--line-soft) 82%, transparent);
 }
 
 .file-change-card-header svg {
@@ -58,8 +58,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   font-size: var(--text-sm);
+  color: color-mix(in oklab, var(--accent) 14%, var(--muted));
   background: transparent;
   padding: 0;
 }
@@ -71,7 +72,7 @@
   gap: 4px;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in oklab, var(--line-soft) 88%, transparent);
   background: transparent;
   color: var(--muted-strong);
   font-family: var(--font-ui);
@@ -83,8 +84,8 @@
 }
 
 .file-change-card-open:hover {
-  background: var(--panel);
-  border-color: var(--line);
+  background: color-mix(in oklab, var(--panel-soft) 78%, transparent);
+  border-color: color-mix(in oklab, var(--line) 86%, transparent);
   color: var(--text);
 }
 
@@ -95,9 +96,10 @@
 
 .file-change-card-body {
   position: relative;
-  max-height: calc(16 * 1.5em);
+  max-height: calc(18 * 1.65em);
   overflow-y: auto;
   overscroll-behavior: contain;
+  background: color-mix(in oklab, var(--code-surface) 66%, transparent);
 }
 
 .file-change-card-body .diff-blocks {
@@ -149,82 +151,58 @@
 
 .file-change-card-note {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  background: var(--panel-soft);
-  border-top: 1px solid var(--line-soft);
+  padding: 7px 9px;
+  background: transparent;
+  border-top: 1px solid color-mix(in oklab, var(--line-soft) 82%, transparent);
   color: var(--muted-strong);
   font-size: var(--text-xs);
 }
 
 /* Expanded detail under a row reuses the same .tool-call-detail block as
-   the bubble; just add a left rail accent so the panel reads as a child
-   of the row above it. */
+   the bubble, but stays flush so row details do not alternate between
+   railed and unrailed layouts. */
 .tool-call-row > .tool-call-detail {
   margin: 2px 6px 6px;
-  padding: 8px 10px;
+  padding: 7px 0 8px;
   border-top: 0;
-  /* 1px to match the group + thinking rails — every quiet left rail is the
-     same weight. */
-  border-left: 1px solid var(--line-strong);
   border-radius: 0;
-}
-
-.tool-call-row[data-status="error"] > .tool-call-detail {
-  border-left-color: var(--rose);
 }
 
 .tool-call-row[data-tool-type="agent"] > .tool-call-detail {
   margin: 2px 0 6px;
   padding: 4px 0 0;
-  border-left: 0;
 }
 
-.tool-call-file-preview {
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--amber);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-}
-
-.tool-call-file-preview-header {
-  display: flex;
+.tool-call-resource-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--panel-soft);
-  color: color-mix(in oklab, var(--accent) 10%, var(--muted));
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+  color: var(--muted);
 }
 
-.tool-call-file-preview-header svg {
-  flex: 0 0 auto;
-  color: var(--amber);
+.tool-call-resource-row > svg {
+  color: color-mix(in oklab, var(--muted) 82%, transparent);
 }
 
-.tool-call-file-preview-header code {
-  flex: 1 1 auto;
+.tool-call-resource-row code {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   font-size: var(--text-sm);
   color: color-mix(in oklab, var(--accent) 14%, var(--muted));
 }
 
-.tool-call-file-preview-content {
-  max-height: calc(18 * 1.5em);
-  margin: 0;
-  padding: var(--space-3);
-  overflow: auto;
-  background: var(--code-surface);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
+.tool-call-file-preview {
+  min-width: 0;
+}
+
+.tool-call-code--file-preview {
+  max-height: calc(18 * 1.65em);
 }
 
 @keyframes tool-row-in {
@@ -277,7 +255,7 @@
 }
 
 /* Sub-agent work — the tool calls a spawned Task made, sit directly under its
-   "Agent …" banner. No indent or rail: the green banner above is the only
+   "Started agent …" row. No indent or rail: the row above is the only
    grouping cue needed, and the child rows align flush-left with it. */
 .tool-call-agent-children {
   display: flex;
@@ -521,10 +499,9 @@
 }
 
 .session-input:focus-within {
-  border-color: color-mix(in oklab, var(--accent) 55%, var(--line-strong));
-  /* A faint accent ring on focus — a clean, modern signal that stays subtle. */
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent),
-    0 10px 28px rgba(31, 28, 24, 0.07);
+  border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent),
+    0 8px 22px rgba(31, 28, 24, 0.055);
 }
 
 .session-input-toolbar {

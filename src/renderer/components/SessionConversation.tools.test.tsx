@@ -68,6 +68,20 @@ describe("SessionConversation — tools & chrome", () => {
     expect(onOpenFile).toHaveBeenCalledWith("src/foo.ts", { line: null, preferIde: true });
   });
 
+  it("keeps normal turn headers to time and duration, not the selected model name", () => {
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Opus 4.8", state: "complete" }),
+      [
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+        event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:01.000Z")
+      ]
+    );
+
+    expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
+    expect(screen.getByText("Worked for 1s")).toBeInTheDocument();
+    expect(screen.queryByText("Opus 4.8")).toBeNull();
+  });
+
   it("collapses a single MCP tool row when the turn chip is toggled", () => {
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Haiku 4.5", state: "complete" }),
@@ -147,7 +161,7 @@ describe("SessionConversation — tools & chrome", () => {
     );
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
-    const agentRow = screen.getByRole("button", { name: "Agent Audit renderer tools" });
+    const agentRow = screen.getByRole("button", { name: "Started agent Audit renderer tools" });
     expect(agentRow.querySelector("svg")).not.toBeNull();
     expect(agentRow).not.toHaveTextContent("🤖");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
@@ -183,7 +197,7 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false }
     );
 
-    const agentRow = screen.getByRole("button", { name: "Agent Explore repo structure" });
+    const agentRow = screen.getByRole("button", { name: "Started agent Explore repo structure" });
     expect(agentRow).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Read README.md" })).not.toBeInTheDocument();
@@ -215,7 +229,7 @@ describe("SessionConversation — tools & chrome", () => {
       ]
     );
 
-    const agentRow = screen.getByRole("button", { name: "Agent Explore repo quickly and report key files." });
+    const agentRow = screen.getByRole("button", { name: "Started agent Explore repo quickly and report key files." });
     expect(screen.queryByText("Input")).not.toBeInTheDocument();
 
     fireEvent.click(agentRow);

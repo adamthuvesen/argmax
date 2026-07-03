@@ -115,7 +115,6 @@ export function TurnBlock({
   toolItems,
   assistantTimestamps,
   body,
-  modelLabel,
   turnStartedAtMs,
   isTurnActive,
   toolsExpanded,
@@ -125,7 +124,6 @@ export function TurnBlock({
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
   body: TurnBodyChild[];
-  modelLabel?: string;
   // When provided, the live ticker anchors here instead of the earliest
   // tool/assistant timestamp. The parent passes the preceding user.message
   // timestamp so the chip starts ticking from the moment the turn began —
@@ -167,7 +165,6 @@ export function TurnBlock({
   // and flips it; collapsing folds groups to their headers — never removes them.
   const toolsAreExpanded = toolsExpanded ?? true;
 
-  const subtitle = modelLabel ?? "";
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
   const staticChipLabel = running ? "Working" : elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked";
   const hasTools = toolItems.length > 0;
@@ -186,10 +183,11 @@ export function TurnBlock({
     }
     return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }, [headerTimestampIso]);
-  // Show the chip whenever the turn is in flight (so the ticker is visible
-  // during pure-thinking phases too) or after completion if there was tool
-  // work worth labelling. Pure-text completed turns stay chip-less.
-  const showChip = running || hasTools;
+  // Show a quiet turn marker for every assistant turn so long chats get the
+  // same visual reset as Codex. Tool turns remain clickable/collapsible; pure
+  // text turns render static metadata.
+  const showChip = running || hasTools || body.length > 0;
+  const interactiveChip = running || hasTools;
 
   const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;
   const liveRef = useRef<HTMLSpanElement | null>(null);
@@ -218,7 +216,6 @@ export function TurnBlock({
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>
       <div className="turn-block-header">
-        {subtitle ? <span className="turn-block-subtitle">{subtitle}</span> : null}
         {headerTimestampLabel ? (
           <span
             className="turn-block-timestamp"
@@ -227,7 +224,7 @@ export function TurnBlock({
             {headerTimestampLabel}
           </span>
         ) : null}
-        {showChip ? (
+        {showChip && interactiveChip ? (
           <button
             type="button"
             className="turn-block-chip"
@@ -251,6 +248,8 @@ export function TurnBlock({
               />
             ) : null}
           </button>
+        ) : showChip ? (
+          <span className="turn-block-chip turn-block-chip-static">{staticChipLabel}</span>
         ) : null}
       </div>
       <div

@@ -24,7 +24,7 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe("ToolCallDetail", () => {
-  it("renders Cursor streamContent as a file preview before raw input", () => {
+  it("renders Cursor streamContent as a file preview without repeating the path chrome", () => {
     render(
       <ToolCallDetail
         workspaceCwd="/repo"
@@ -38,11 +38,54 @@ describe("ToolCallDetail", () => {
     );
 
     const preview = screen.getByLabelText("Preview of /repo/poem.md");
-    expect(within(preview).getByText("poem.md")).toBeInTheDocument();
+    expect(within(preview).getByText("Preview")).toBeInTheDocument();
     expect(within(preview).getByText(/The loop begins/)).toBeInTheDocument();
-    expect(within(preview).getByRole("button", { name: "Open /repo/poem.md" })).toBeInTheDocument();
+    expect(within(preview).queryByRole("button", { name: "Open /repo/poem.md" })).toBeNull();
 
-    expect(screen.getByText("Input")).toBeInTheDocument();
+    expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText("Raw input")).not.toBeInTheDocument();
+  });
+
+  it("does not repeat an openable file row when read output is already shown", () => {
+    render(
+      <ToolCallDetail
+        workspaceCwd="/repo"
+        tool={tool({
+          name: "Read",
+          inputFull: { file_path: "/repo/README.md" },
+          output: "# llm-infer\n\nREADME body"
+        })}
+      />
+    );
+
+    expect(screen.getByText("Output")).toBeInTheDocument();
+    expect(screen.getByText(/README body/)).toBeInTheDocument();
+    expect(screen.queryByText("README.md")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open /repo/README.md" })).toBeNull();
+  });
+
+  it("renders bash command input as a quiet command line instead of raw JSON", () => {
+    render(
+      <ToolCallDetail
+        workspaceCwd="/Users/adam/dev/argmax"
+        tool={tool({
+          name: "command_execution",
+          inputPreview: "/bin/zsh -lc \"npm run lint\"",
+          inputFull: {
+            command: "/bin/zsh -lc \"find /Users/adam/dev/argmax/src -type f\"",
+            timeout_ms: 30000
+          },
+          output: "ok"
+        })}
+      />
+    );
+
+    expect(screen.getByText("Command")).toBeInTheDocument();
+    expect(screen.getByText("find ./src -type f")).toBeInTheDocument();
+    expect(screen.getByText("Output")).toBeInTheDocument();
+    expect(screen.getByText("ok")).toBeInTheDocument();
+    expect(screen.queryByText("Input")).toBeNull();
+    expect(screen.queryByText(/"command"/)).toBeNull();
+    expect(screen.queryByText(/\/bin\/zsh/)).toBeNull();
   });
 });

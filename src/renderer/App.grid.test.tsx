@@ -462,6 +462,101 @@ describe("App grid", () => {
     expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
 
+  it("rebalances a row when adding another pane after a manual resize", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Wide pane",
+      branch: "argmax/wide-pane",
+      baseRef: "main",
+      path: "/tmp/worktrees/wide-pane",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-3",
+      projectId: "project-1",
+      taskLabel: "Dropped pane",
+      branch: "argmax/dropped-pane",
+      baseRef: "main",
+      path: "/tmp/worktrees/dropped-pane",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:05:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Wide pane",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+    };
+    const thirdSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-3",
+      workspaceId: "workspace-3",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-3",
+      prompt: "Dropped pane",
+      state: "complete",
+      attention: "review-ready",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:05:00.000Z",
+      lastActivityAt: "2026-05-08T16:05:00.000Z",
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace, thirdWorkspace],
+      sessions: [...snapshot.sessions, secondSession, thirdSession]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.click(screen.getByRole("button", { name: "Wide pane" }), { metaKey: true });
+
+    const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
+    const grid = screen.getByRole("group", { name: "Session panes" });
+    const row = grid.firstElementChild;
+    if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
+    Object.defineProperty(row, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 1200, height: 600, top: 0, right: 1200, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+    });
+
+    fireEvent.mouseDown(handle, { clientX: 450 });
+    fireEvent.mouseMove(document, { clientX: 2000 });
+    fireEvent.mouseUp(document);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dropped pane" }), { metaKey: true });
+
+    await waitFor(() => {
+      expect(row.querySelectorAll(".session-multigrid-cell")).toHaveLength(3);
+      const frWidths = [...row.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
+        Number(match[1])
+      );
+      expect(frWidths).toEqual([1, 1, 1]);
+    });
+  });
+
   it("⌘W closes the focused pane", async () => {
     const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-2",

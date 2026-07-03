@@ -316,15 +316,7 @@ export function LaunchSurface({
       setStatus(error instanceof Error ? error.message : "Could not switch branch.");
     }
   }, [project, onBranchSwitch]);
-  const placeholderText = useMemo(() => {
-    const options = [
-      "Coffee and code time?",
-      "What's on your mind?",
-      "Time to ship.",
-      "What are we hacking on?",
-    ];
-    return options[Math.floor(Math.random() * options.length)];
-  }, []);
+  const placeholderText = "Ask your agent to inspect, build, or fix something";
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);

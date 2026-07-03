@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
@@ -178,7 +178,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     // The Thought disclosure survives the turn's completion (not pruned), and
     // the answer renders normally alongside it. Done → collapsed, "Thought".
-    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    const toggle = screen.getByRole("button", { name: "Thought" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle.textContent).toContain("Thought");
     expect(screen.getByText(answer)).toBeTruthy();
@@ -204,7 +204,7 @@ describe("SessionConversation — streaming & composer", () => {
       { defaultThinkingExpanded: true }
     );
 
-    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    const toggle = screen.getByRole("button", { name: "Thought" });
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(toggle.textContent).toContain("Thought");
     expect(screen.getByText(thinking)).toBeTruthy();
@@ -224,7 +224,7 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    const toggle = screen.getByRole("button", { name: "Thinking" });
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(toggle.textContent).toContain("Thinking");
     expect(screen.getByText(thinking)).toBeTruthy();
@@ -241,7 +241,7 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    const toggle = screen.getByRole("button", { name: "Reasoning" });
+    const toggle = screen.getByRole("button", { name: "Thought" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle.textContent).toContain("Thought");
     expect(screen.getByText("Here we go")).toBeTruthy();
@@ -265,13 +265,13 @@ describe("SessionConversation — streaming & composer", () => {
       { defaultThinkingExpanded: true, defaultToolCallsExpanded: true, defaultToolCallGroupsExpanded: true }
     );
 
-    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(thinking)).toBeTruthy();
 
     // The turn chip folds the whole turn — tool groups AND the Thought block.
     fireEvent.click(screen.getByRole("button", { name: /Worked/ }));
 
-    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText(thinking)).toBeNull();
   });
 
@@ -293,14 +293,14 @@ describe("SessionConversation — streaming & composer", () => {
       { defaultThinkingExpanded: false, defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false }
     );
 
-    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText(thinking)).toBeNull();
 
     // Chip starts collapsed (tool defaults off); expanding it reveals the
     // Thought block too, not just the tool rows.
     fireEvent.click(screen.getByRole("button", { name: /Worked/ }));
 
-    expect(screen.getByRole("button", { name: "Reasoning" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 
@@ -444,9 +444,10 @@ describe("SessionConversation — streaming & composer", () => {
 
     // Assistant prose is a real boundary: the first command belongs above the
     // prose, while the later adjacent commands fold together below it.
-    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran a command: sed/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran 2 commands: rg · npm run/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/bin\/zsh/)).not.toBeInTheDocument();
   });
 
   it("renders a user.message bubble for an @-mention-only prompt while the session is still running", () => {
@@ -535,7 +536,7 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    expect(screen.getByLabelText("Agent Map documentation structure and identify gaps")).toBeInTheDocument();
+    expect(screen.getByLabelText("Started agent Map documentation structure and identify gaps")).toBeInTheDocument();
     expect(screen.queryByText("Explore the documentation in this Tauri/React Argmax project.")).not.toBeInTheDocument();
   });
   it("keeps Thinking for Claude when session.streaming fired before assistant text", () => {
@@ -604,76 +605,48 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
-  it("re-shows Thinking after a mid-turn pause once a completed chunk stops streaming", () => {
-    // The agent finishes a chunk ("now I'll edit the file") then spends a few
-    // seconds silently generating the next step. Thinking is debounced: hidden
-    // immediately (so end-of-turn races and quick tool hand-offs don't flash),
-    // then surfaced once the pause outlasts THINKING_PAUSE_DELAY_MS so the turn
-    // never looks idle while the agent is still working.
-    vi.useFakeTimers();
-    try {
-      renderConversation(
-        baseSession({ provider: "claude", state: "running" }),
-        [
-          event("m1", "message.completed", "Now I'll edit the file.", "2026-05-12T15:00:01.000Z"),
-          event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z")
-        ]
-      );
+  it("keeps generic Thinking hidden after a completed assistant chunk", () => {
+    // Once a durable assistant chunk exists, the transcript should not insert a
+    // transient Thinking row below it during a silent mid-turn pause. The stable
+    // turn header keeps saying the agent is working.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("m1", "message.completed", "Now I'll edit the file.", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z")
+      ]
+    );
 
-      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-
-      act(() => {
-        vi.advanceTimersByTime(600);
-      });
-
-      expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(screen.getByText("Now I'll edit the file.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
-  it("re-shows Thinking after a completed-tool pause lasts long enough", () => {
-    // Tool chaining (grep → read → grep) leaves a `command.completed` as the last
-    // significant event while the model picks the next call. Short hand-offs
-    // must stay quiet, but a longer pause needs Thinking; otherwise a live turn
-    // looks frozen under already-completed tool rows.
-    vi.useFakeTimers();
-    try {
-      // Events arrive newest-first (see sessionConversationModel) — the
-      // completed tool is the last significant event.
-      renderConversation(
-        baseSession({ provider: "claude", state: "running" }),
-        [
-          event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:02.000Z", {
-            tool_use_id: "tu_grep",
-            content: "match"
-          }),
-          event("c1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
-            type: "tool_use",
-            id: "tu_grep",
-            name: "Bash",
-            input: { command: "grep foo" }
-          }),
-          event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
-        ]
-      );
+  it("keeps generic Thinking hidden after a completed tool row", () => {
+    // Tool chaining (grep → read → grep) leaves a `command.completed` as the
+    // last significant event while the model picks the next call. Do not insert
+    // a generic Thinking row between durable command rows; the turn header
+    // carries the ongoing work state.
+    renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "tu_grep",
+          content: "match"
+        }),
+        event("c1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
+          type: "tool_use",
+          id: "tu_grep",
+          name: "Bash",
+          input: { command: "grep foo" }
+        }),
+        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+      ]
+    );
 
-      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-
-      act(() => {
-        vi.advanceTimersByTime(1499);
-      });
-
-      expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-
-      act(() => {
-        vi.advanceTimersByTime(1);
-      });
-
-      expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Working/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {

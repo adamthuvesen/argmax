@@ -26,6 +26,30 @@ const detectedIdes = [
   { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true }
 ];
 
+function testRect({
+  left,
+  top,
+  right,
+  bottom
+}: {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}): DOMRect {
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+    top,
+    right,
+    bottom,
+    left,
+    toJSON: () => ({})
+  };
+}
+
 describe("SidebarSessionRow", () => {
   afterEach(() => cleanup());
 
@@ -135,6 +159,80 @@ describe("SidebarSessionRow", () => {
     // End jumps to the last menuitem.
     fireEvent.keyDown(screen.getByRole("menuitem", { name: /Cursor/ }), { key: "End" });
     expect(screen.getByRole("menuitem", { name: /Cursor/ })).toHaveFocus();
+  });
+
+  it("keeps the IDE picker inside the left viewport edge", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 500 });
+    const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.classList.contains("session-ide-cluster")) {
+        return testRect({ left: 28, top: 20, right: 52, bottom: 40 });
+      }
+      return testRect({ left: 0, top: 0, right: 0, bottom: 0 });
+    });
+
+    try {
+      render(
+        <SidebarSessionRow
+          workspace={workspaceBase}
+          workspaceTokens={null}
+          isSelected={false}
+          isOpenInGrid={false}
+          canDragToGrid={true}
+          onOpenWorkspaceChat={vi.fn()}
+          onArchiveWorkspace={vi.fn()}
+          onOpenInIde={vi.fn()}
+          detectedIdes={detectedIdes}
+          defaultIde="cursor"
+          showTokens={false}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
+
+      const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
+      expect(menu).toHaveStyle({ position: "fixed", left: "8px", right: "auto" });
+    } finally {
+      rectSpy.mockRestore();
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: originalInnerHeight });
+    }
+  });
+
+  it("dismisses the IDE picker when the pointer leaves it", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="cursor"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose IDE" }));
+    const menu = await screen.findByRole("menu", { name: "Open this worktree in" });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.mouseLeave(menu);
+      act(() => {
+        vi.advanceTimersByTime(130);
+      });
+      expect(screen.queryByRole("menu", { name: "Open this worktree in" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("right-click → Rename edits the label in place and commits on Enter", async () => {

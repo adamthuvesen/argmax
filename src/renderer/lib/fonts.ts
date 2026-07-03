@@ -25,7 +25,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
   {
     id: "lilex",
     label: "Lilex",
-    hint: "Default. Nerd-Font–patched mono with the icon set Argmax was designed around.",
+    hint: "Original Argmax mono. Nerd-Font-patched so terminal-style glyphs still render.",
     stack: `"Lilex Nerd Font", "Lilex Nerd Font Mono", ${SYSTEM_MONO_FALLBACK}`
   },
   {

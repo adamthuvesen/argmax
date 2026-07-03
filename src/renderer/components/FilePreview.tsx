@@ -8,11 +8,21 @@ import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { yaml } from "@codemirror/lang-yaml";
-import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { search } from "@codemirror/search";
 import { tags as t } from "@lezer/highlight";
+import type { SyntaxNode } from "@lezer/common";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  Decoration,
+  EditorView,
+  keymap,
+  MatchDecorator,
+  ViewPlugin,
+  type DecorationSet,
+  type ViewUpdate
+} from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import { Code, Eye, RotateCcw, Save } from "lucide-react";
@@ -261,14 +271,14 @@ function StaleBanner({
  */
 const editorTheme = EditorView.theme({
   "&": {
-    fontSize: "12.5px",
+    fontSize: "var(--text-sm)",
     backgroundColor: "transparent",
     height: "100%",
     color: "var(--text)"
   },
   ".cm-scroller": {
-    fontFamily: "var(--font-mono)",
-    lineHeight: "1.5"
+    fontFamily: "var(--font-code)",
+    lineHeight: "1.65"
   },
   ".cm-content": {
     caretColor: "var(--text)",
@@ -280,7 +290,7 @@ const editorTheme = EditorView.theme({
     color: "var(--muted)"
   },
   ".cm-activeLine": {
-    backgroundColor: "var(--overlay-soft)"
+    backgroundColor: "transparent"
   },
   ".cm-activeLineGutter": {
     backgroundColor: "transparent",
@@ -289,42 +299,125 @@ const editorTheme = EditorView.theme({
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
     background: "var(--selection-bg) !important"
   },
+  ".cm-searchMatch": {
+    backgroundColor: "color-mix(in oklab, var(--amber) 34%, transparent)",
+    outline: "1px solid color-mix(in oklab, var(--amber) 48%, transparent)"
+  },
+  ".cm-searchMatch-selected": {
+    backgroundColor: "color-mix(in oklab, var(--accent) 36%, transparent)",
+    outline: "1px solid color-mix(in oklab, var(--accent) 58%, transparent)"
+  },
+  ".cm-codex-definition": {
+    color: "var(--syntax-definition)"
+  },
+  ".cm-codex-type": {
+    color: "var(--syntax-type)"
+  },
+  ".cm-codex-constant": {
+    color: "var(--syntax-constant)"
+  },
+  ".cm-codex-variable": {
+    color: "var(--syntax-variable)"
+  },
+  ".cm-codex-keyword": {
+    color: "var(--syntax-keyword)"
+  },
   "&.cm-focused": {
     outline: "none"
   }
 });
 
 /**
- * Syntax highlight palette wired to design tokens. The same style serves both
- * themes — `--sage` etc. resolve to the lifted dark-mode variants in dark and
- * the deeper light-mode variants in light, so we never need a second style.
- * Choices favor muted, editorial color over the saturated rainbow CodeMirror
- * ships by default (which reads as bright pastels against warm charcoal).
+ * Codex-like syntax palette wired to theme tokens: red imports/flow, violet
+ * definitions and calls, green strings, blue builtins/types, orange constants
+ * and self-like bindings.
  */
 const editorHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: "var(--rose)", fontWeight: "500" },
-  { tag: [t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: "var(--rose)" },
-  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "var(--text)" },
-  { tag: [t.function(t.variableName), t.labelName], color: "var(--amber)" },
-  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "var(--amber)" },
-  { tag: [t.definition(t.name), t.separator], color: "var(--text-soft)" },
-  { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace],
-    color: "var(--amber)" },
-  { tag: [t.operator, t.special(t.string), t.punctuation], color: "var(--muted-strong)" },
-  { tag: [t.url, t.escape, t.regexp, t.link], color: "var(--sage)" },
-  { tag: [t.meta, t.comment], color: "var(--muted)", fontStyle: "italic" },
-  { tag: t.tagName, color: "var(--rose)" },
-  { tag: [t.attributeName], color: "var(--amber)" },
-  { tag: [t.attributeValue, t.string], color: "var(--sage)" },
+  {
+    tag: [t.moduleKeyword, t.controlKeyword, t.operatorKeyword, t.keyword],
+    color: "var(--syntax-keyword)"
+  },
+  {
+    tag: [t.definitionKeyword, t.definition(t.name), t.definition(t.variableName), t.function(t.variableName)],
+    color: "var(--syntax-definition)"
+  },
+  { tag: [t.className, t.labelName, t.annotation], color: "var(--syntax-definition)" },
+  { tag: [t.typeName, t.standard(t.name), t.standard(t.variableName)], color: "var(--syntax-type)" },
+  { tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom, t.unit], color: "var(--syntax-type)" },
+  { tag: [t.self, t.constant(t.name), t.constant(t.variableName)], color: "var(--syntax-variable)" },
+  { tag: [t.color, t.changed, t.modifier, t.macroName], color: "var(--syntax-constant)" },
+  { tag: [t.attributeName, t.special(t.variableName)], color: "var(--syntax-constant)" },
+  { tag: [t.attributeValue, t.string, t.docString, t.character], color: "var(--syntax-string)" },
+  { tag: [t.url, t.escape, t.regexp, t.link], color: "var(--syntax-type)" },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syntax-comment)", fontStyle: "italic" },
+  { tag: [t.meta, t.processingInstruction], color: "var(--syntax-comment)" },
+  { tag: [t.name, t.variableName, t.deleted, t.propertyName, t.namespace], color: "var(--text)" },
+  { tag: [t.operator, t.punctuation, t.separator, t.derefOperator], color: "var(--muted-strong)" },
+  { tag: t.tagName, color: "var(--syntax-keyword)" },
   { tag: t.heading, fontWeight: "600", color: "var(--text)" },
-  { tag: [t.atom, t.bool, t.special(t.variableName)], color: "var(--amber)" },
-  { tag: t.invalid, color: "var(--rose)" },
+  { tag: t.invalid, color: "var(--syntax-keyword)" },
   { tag: t.strong, fontWeight: "600" },
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strikethrough, textDecoration: "line-through" }
 ]);
 
 const editorSyntaxHighlighting = syntaxHighlighting(editorHighlightStyle);
+
+const pythonDefinitionDecoration = Decoration.mark({ class: "cm-codex-definition" });
+const pythonKeywordDecoration = Decoration.mark({ class: "cm-codex-keyword" });
+const pythonTypeDecoration = Decoration.mark({ class: "cm-codex-type" });
+const pythonConstantDecoration = Decoration.mark({ class: "cm-codex-constant" });
+const pythonVariableDecoration = Decoration.mark({ class: "cm-codex-variable" });
+const pythonSemanticPattern =
+  /@[A-Za-z_]\w*|\b[A-Z][A-Z0-9_]{2,}\b|\b(?:from|str|int|bool|dict|list|tuple|set|float|bytes|object|type|None|True|False|self)\b/g;
+
+function isInsideStringOrComment(view: EditorView, from: number): boolean {
+  for (let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(from, 1); node; node = node.parent) {
+    if (/String|Comment/.test(node.name)) return true;
+  }
+  return false;
+}
+
+const pythonSemanticDecorator = new MatchDecorator({
+  regexp: pythonSemanticPattern,
+  decorate(add, from, to, match, view) {
+    if (isInsideStringOrComment(view, from)) return;
+    const token = match[0];
+    if (token.startsWith("@")) {
+      add(from + 1, to, pythonDefinitionDecoration);
+    } else if (token === "from") {
+      add(from, to, pythonKeywordDecoration);
+    } else if (token === "self") {
+      add(from, to, pythonVariableDecoration);
+    } else if (/^[A-Z][A-Z0-9_]{2,}$/.test(token)) {
+      add(from, to, pythonConstantDecoration);
+    } else {
+      add(from, to, pythonTypeDecoration);
+    }
+  },
+  boundary: /[^@\w]/
+});
+
+const pythonSemanticHighlighting = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = pythonSemanticDecorator.createDeco(view);
+    }
+
+    update(update: ViewUpdate): void {
+      this.decorations = pythonSemanticDecorator.updateDeco(update, this.decorations);
+    }
+  },
+  {
+    decorations: (plugin) => plugin.decorations
+  }
+);
+
+function semanticHighlightingFor(path: string): Extension[] {
+  return path.endsWith(".py") ? [pythonSemanticHighlighting] : [];
+}
 
 function SourceEditor({
   path,
@@ -354,12 +447,21 @@ function SourceEditor({
       editable
         ? [
             ...editorLanguageFor(path),
+            ...semanticHighlightingFor(path),
             keymap.of([{ key: "Mod-s", preventDefault: true, run: handleSave }]),
+            search({ top: true }),
             editorTheme,
             editorSyntaxHighlighting,
             EditorView.lineWrapping
           ]
-        : [...editorLanguageFor(path), editorTheme, editorSyntaxHighlighting, EditorView.lineWrapping],
+        : [
+            ...editorLanguageFor(path),
+            ...semanticHighlightingFor(path),
+            search({ top: true }),
+            editorTheme,
+            editorSyntaxHighlighting,
+            EditorView.lineWrapping
+          ],
     [path, handleSave, editable]
   );
 
@@ -369,12 +471,14 @@ function SourceEditor({
         value={value}
         onChange={onChange}
         editable={editable}
+        readOnly={!editable}
         extensions={extensions}
         basicSetup={{
           lineNumbers: true,
           foldGutter: false,
-          highlightActiveLine: editable,
+          highlightActiveLine: false,
           highlightSelectionMatches: false,
+          syntaxHighlighting: false,
           autocompletion: false
         }}
         aria-label={`Editor for ${path}`}

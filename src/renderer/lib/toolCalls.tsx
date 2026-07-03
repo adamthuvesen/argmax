@@ -121,9 +121,9 @@ type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bas
 
 /**
  * The sub-agent / Task tool gets its own bucket so a parent agent spawning a
- * Task isn't lumped under "other" — instead it renders with the Agent label,
- * Bot icon, and a distinct CSS accent so the user can tell at a glance that
- * a different agent is doing the work.
+ * Task isn't lumped under "other" — instead it renders as "Started agent",
+ * with the Bot icon and a distinct CSS accent so the user can tell at a
+ * glance that a different agent is doing the work.
  */
 export function isAgentToolName(name: string): boolean {
   const lower = name.toLowerCase();
@@ -210,12 +210,12 @@ export function describeToolAction(tool: ToolCall): string {
   };
   switch (bucket) {
     case "agent":
-      // Sage "Agent" verb + the sub-agent's description (when the provider
-      // gives one — Claude/Cursor do; Codex's collab call doesn't) make it
-      // obvious a different agent is doing this work. No bland "task" filler.
-      return preview ? `Agent ${preview}` : "Agent";
+      // Make agent delegation read like an action in the transcript. "Agent X"
+      // looked like a label; "Started agent X" tells the user work was handed
+      // to another agent without turning the row into a banner.
+      return preview ? `Started agent ${preview}` : "Started agent";
     case "bash":
-      return preview ? `Ran ${preview}` : "Ran command";
+      return preview ? `Ran ${displayBashCommand(preview)}` : "Ran command";
     case "edit":
       return preview ? `Edited ${basename(preview)}` : "Edited file";
     case "read-files":
@@ -264,19 +264,50 @@ function extractBashCommandName(input: string): string | null {
   // surfaces. Handles `zsh -lc 'rg foo'`, `bash -c "git status"`, and the
   // common `sh -c <cmd>` shape. Falls back to the first whitespace-delimited
   // word for plain commands.
-  let s = input.trim();
-  s = s.replace(/^(?:zsh|bash|sh)\s+-l?c\s+/, "");
-  s = s.replace(/^['"`]|['"`]$/g, "").trim();
+  const s = unwrapShellCommand(input);
   // After unwrapping, take the first meaningful word.
-  const firstWord = s.split(/[\s|;&]/, 1)[0] ?? "";
+  const firstWordRaw = s.split(/[\s|;&]/, 1)[0] ?? "";
+  const firstWord = commandBasename(firstWordRaw);
   if (!firstWord) return null;
   // For `git status --short`, the user reads it as "git status" — surface a
   // two-word hint when the first word is a known multiverb command driver.
-  if (firstWord === "git" || firstWord === "npm" || firstWord === "yarn" || firstWord === "pnpm") {
+  if (firstWord === "git" || firstWord === "npm" || firstWord === "yarn" || firstWord === "pnpm" || firstWord === "uv" || firstWord === "cargo") {
     const second = s.split(/[\s|;&]/)[1] ?? "";
     return second ? `${firstWord} ${second}`.slice(0, 28) : firstWord;
   }
   return firstWord.slice(0, 28);
+}
+
+export function displayBashCommand(input: string): string {
+  return unwrapShellCommand(input).slice(0, 72);
+}
+
+function unwrapShellCommand(input: string): string {
+  let s = stripOuterQuotes(input.trim());
+  for (let i = 0; i < 2; i++) {
+    const match = /^(?:[\w./-]+\/)?(?:zsh|bash|sh)\s+-l?c\s+(?<inner>[\s\S]+)$/i.exec(s);
+    if (!match?.groups?.inner) break;
+    const inner = stripOuterQuotes(match.groups.inner.trim());
+    if (!inner || inner === s) break;
+    s = inner;
+  }
+  return s;
+}
+
+function stripOuterQuotes(input: string): string {
+  const first = input[0];
+  const last = input[input.length - 1];
+  if ((first === "'" || first === "\"" || first === "`") && first === last) {
+    return input.slice(1, -1).trim();
+  }
+  return input;
+}
+
+function commandBasename(input: string): string {
+  const stripped = stripOuterQuotes(input).trim();
+  if (!stripped) return "";
+  const parts = stripped.split("/");
+  return parts[parts.length - 1] ?? stripped;
 }
 
 export function summarizeToolGroup(tools: ToolCall[]): {
@@ -307,7 +338,7 @@ export function summarizeToolGroup(tools: ToolCall[]): {
   // The prior shape joined raw shell text ("zsh -lc 'git status --short'…")
   // which was a wall, not a preview.
   // Agent (Task) tools are excluded from the token preview: their full
-  // description already headlines the group as the "Agent …" banner row, and
+  // description already headlines the group as the "Started agent …" row, and
   // splicing a sentence fragment in among filenames produced run-ons like
   // "Explore agent structure and , find, ls, …". The eyebrow stat line
   // ("Spawned 1 agent") carries the count; the preview stays scannable tokens.
@@ -337,7 +368,7 @@ export function summarizeToolGroup(tools: ToolCall[]): {
       break;
     }
   }
-  const preview = previewParts.join(", ") + (truncated ? ", …" : "");
+  const preview = previewParts.join(" · ") + (truncated ? " · …" : "");
 
   let hasError = false;
   let allErrors = tools.length > 0;

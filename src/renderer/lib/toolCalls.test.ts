@@ -88,17 +88,17 @@ describe("Task / sub-agent tools", () => {
     expect(isAgentToolName("TaskList")).toBe(false);
   });
 
-  it("renders Cursor `taskToolCall` as 'Agent <description>' from its args", () => {
+  it("renders Cursor `taskToolCall` as 'Started agent <description>' from its args", () => {
     const t = tool({
       name: "taskToolCall",
       inputPreview: "Map renderer surface",
       inputFull: { description: "Map renderer surface", subagentType: { unspecified: {} } }
     });
-    expect(describeToolAction(t)).toBe("Agent Map renderer surface");
+    expect(describeToolAction(t)).toBe("Started agent Map renderer surface");
   });
 
-  it("renders Codex `collab_tool_call` as a clean 'Agent' when it carries no description", () => {
-    expect(describeToolAction(tool({ name: "collab_tool_call" }))).toBe("Agent");
+  it("renders Codex `collab_tool_call` as a clean started-agent action when it carries no description", () => {
+    expect(describeToolAction(tool({ name: "collab_tool_call" }))).toBe("Started agent");
   });
 
   it("previews Codex `collab_tool_call` from the spawn prompt when no description exists", () => {
@@ -119,13 +119,13 @@ describe("Task / sub-agent tools", () => {
     ).toBe("Audit shared + scripts");
   });
 
-  it("describeToolAction renders the Agent verb so the row reads as 'Agent <description>'", () => {
+  it("describeToolAction renders a launch action so the row reads as 'Started agent <description>'", () => {
     const t = tool({
       name: "Task",
       inputPreview: "Audit shared + scripts",
       inputFull: { description: "Audit shared + scripts" }
     });
-    expect(describeToolAction(t)).toBe("Agent Audit shared + scripts");
+    expect(describeToolAction(t)).toBe("Started agent Audit shared + scripts");
   });
 
   it("group headline uses a quiet started-agent phrase", () => {
@@ -167,6 +167,28 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
       tool({ name: "exec", id: "id-3" })
     ]);
     expect(out.headline).toBe("Ran 3 commands");
+  });
+
+  it("unwraps shell launchers from command previews", () => {
+    const out = summarizeToolGroup([
+      tool({
+        name: "command_execution",
+        id: "cmd-1",
+        inputPreview: "/bin/zsh -lc \"sed -n '1,80p' src/a.ts\""
+      }),
+      tool({
+        name: "command_execution",
+        id: "cmd-2",
+        inputPreview: "/bin/zsh -lc \"rg -n useReviewState src\""
+      }),
+      tool({
+        name: "command_execution",
+        id: "cmd-3",
+        inputPreview: "/bin/zsh -lc \"npm run lint\""
+      })
+    ]);
+    expect(out.headline).toBe("Ran 3 commands");
+    expect(out.preview).toBe("sed · rg · npm run");
   });
 
   it("edit-only → Edited N files", () => {
@@ -268,6 +290,12 @@ describe("describeToolAction", () => {
     expect(describeToolAction(tool({ name: "Bash", inputPreview: "git status --short" }))).toBe(
       "Ran git status --short"
     );
+  });
+
+  it("bash strips /bin/zsh launch wrappers from action text", () => {
+    expect(
+      describeToolAction(tool({ name: "command_execution", inputPreview: "/bin/zsh -lc \"npm run lint\"" }))
+    ).toBe("Ran npm run lint");
   });
 
   it("edit → 'Edited <basename>'", () => {

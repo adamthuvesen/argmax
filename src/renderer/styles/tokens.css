@@ -1,7 +1,9 @@
 :root {
   color-scheme: light;
-  --font-ui: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --font-mono: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-ui: "Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: "Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --font-code: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
 
   --bg: #fdfdfd;
   --sidebar: #fafbfb;
@@ -32,6 +34,13 @@
   --amber-soft: #f5edd9;
   --rose: #b85763;
   --rose-soft: #f5e3e4;
+  --syntax-keyword: #dc5b66;
+  --syntax-definition: #8a5ad8;
+  --syntax-string: #2f8b3b;
+  --syntax-type: #3f7fd8;
+  --syntax-constant: #bd7437;
+  --syntax-variable: #bd7437;
+  --syntax-comment: #817b72;
   /* PR status markers in the sidebar. Merged = violet, open = the sage green
      reused under a clearer name. */
   --pr-merged: #8250df;
@@ -178,6 +187,13 @@
   --amber-soft: rgba(217, 165, 102, 0.14);
   --rose: #e08591;
   --rose-soft: rgba(224, 133, 145, 0.14);
+  --syntax-keyword: #e88995;
+  --syntax-definition: #b99aea;
+  --syntax-string: #94ca82;
+  --syntax-type: #8aaef2;
+  --syntax-constant: #d99b62;
+  --syntax-variable: #d99b62;
+  --syntax-comment: #a29c92;
   /* Lifted violet so the merged glyph glows on warm charcoal; open reuses sage. */
   --pr-merged: #b392f0;
   --pr-open: var(--sage);
@@ -277,6 +293,13 @@
   --amber-soft: rgba(240, 166, 60, 0.18);
   --rose: #fb7199;
   --rose-soft: rgba(251, 113, 153, 0.18);
+  --syntax-keyword: #ee90a8;
+  --syntax-definition: #d2a7ef;
+  --syntax-string: #a8d982;
+  --syntax-type: #a2c0f5;
+  --syntax-constant: #ecb276;
+  --syntax-variable: #ecad72;
+  --syntax-comment: #d0c7e8;
   /* The canvas is already violet, so a plain purple merge glyph would vanish.
      Use a bright orchid that lifts off the nebula; open rides the gold sage. */
   --pr-merged: #e0a5ff;
@@ -499,6 +522,11 @@
   }
 }
 
+:root[data-font="lilex"] {
+  --font-ui: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-mono: "Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
 :root[data-font="system-mono"] {
   --font-ui: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
@@ -536,21 +564,25 @@
 
 :root[data-font="inter"] {
   --font-ui: "Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 
 :root[data-font="geist-sans"] {
   --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 
 :root[data-font="ibm-plex-sans"] {
   --font-ui: "IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 
 :root[data-font="manrope"] {
   --font-ui: "Manrope Variable", Manrope, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }
 

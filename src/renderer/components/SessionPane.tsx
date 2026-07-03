@@ -25,6 +25,7 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
+import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
@@ -50,6 +51,7 @@ const SESSION_RIGHT_PANEL_WIDTH_KEY = "argmax.session.rightPanel.width";
 const SESSION_RIGHT_PANEL_MIN = 360;
 const SESSION_RIGHT_PANEL_MAX = 1400;
 const SESSION_RIGHT_PANEL_DEFAULT = 420;
+const SESSION_LOG_PANEL_MIN = 300;
 
 const TERMINAL_HEIGHT_KEY = "argmax.terminal.height";
 const TERMINAL_MIN_HEIGHT = 120;
@@ -68,6 +70,7 @@ export function SessionPane({
   onCreateCheckpoint,
   onFastModeEnabledChange,
   onLoadSessionEvents,
+  onRightPanelWidthChange,
   onResolveApproval,
   onRunCheck,
   onSendSessionInput,
@@ -100,6 +103,7 @@ export function SessionPane({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
+  onRightPanelWidthChange?: (width: number | null) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onSendSessionInput: (
@@ -190,13 +194,18 @@ export function SessionPane({
     }
   };
 
-  const gridClass = ["session-grid", reviewState.isPanelOpen && "review-open", isLogOpen && "log-open"]
+  const gridClass = [
+    "session-grid",
+    reviewState.isPanelOpen && "review-open",
+    isLogOpen && "log-open"
+  ]
     .filter(Boolean)
     .join(" ");
   const reviewColumnWidth = `${rightPanelWidth}px`;
   const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : `${rightPanelWidth}px`;
   const terminalOpen = isTerminalOpen && workspace !== null;
   const gridStyle = {
+    "--session-main-column-min-width": `${CHAT_PANE_MIN_WIDTH_PX}px`,
     "--session-review-panel-width": reviewColumnWidth,
     "--session-log-panel-width": logColumnWidth,
     "--session-terminal-height": terminalOpen ? `${terminalHeight}px` : "0px"
@@ -222,6 +231,23 @@ export function SessionPane({
   const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewMode = reviewState.mode;
+  const onRightPanelWidthChangeRef = useRef(onRightPanelWidthChange);
+  useEffect(() => {
+    onRightPanelWidthChangeRef.current = onRightPanelWidthChange;
+  }, [onRightPanelWidthChange]);
+  const dockedRightPanelWidth =
+    (reviewIsPanelOpen ? rightPanelWidth : 0) +
+    (isLogOpen ? (reviewIsPanelOpen ? SESSION_LOG_PANEL_MIN : rightPanelWidth) : 0);
+  useEffect(() => {
+    onRightPanelWidthChangeRef.current?.(dockedRightPanelWidth > 0 ? dockedRightPanelWidth : null);
+  }, [dockedRightPanelWidth]);
+  useEffect(
+    () => () => {
+      onRightPanelWidthChangeRef.current?.(null);
+    },
+    []
+  );
+
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
   const workspaceId = workspace?.id ?? null;

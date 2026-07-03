@@ -2,6 +2,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
@@ -22,13 +23,14 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
-import type { GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
+import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
 import { MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
+import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { SessionPane } from "./SessionPane.js";
 
 /** Minimum pane width for side-by-side grid splits and divider drags. */
-export const MIN_RESIZABLE_CELL_WIDTH_PX = 460;
+export const MIN_RESIZABLE_CELL_WIDTH_PX = SESSION_CELL_MIN_WIDTH_PX;
 type EdgeDropPosition = Exclude<SplitPosition, "replace">;
 
 function totalCells(grid: GridState): number {
@@ -37,6 +39,16 @@ function totalCells(grid: GridState): number {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function gridCellKey(cell: GridCell, rowIndex: number, colIndex: number): string {
+  return cell.kind === "launcher"
+    ? `launcher-${cell.projectId}-${rowIndex}-${colIndex}`
+    : `${cell.sessionId}-${rowIndex}-${colIndex}`;
+}
+
+function balancedRowWeights(cellCount: number): number[] {
+  return Array.from({ length: Math.max(1, cellCount) }, () => 1);
 }
 
 interface SessionMultiGridProps {
@@ -69,6 +81,7 @@ interface SessionMultiGridProps {
   onDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
+  onWorkspaceMinWidthChange?: (width: number) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
@@ -116,6 +129,7 @@ export function SessionMultiGrid({
   onDropWorkspace,
   onFastModeEnabledChange,
   onLoadSessionEvents,
+  onWorkspaceMinWidthChange,
   onResolveApproval,
   onSendSessionInput,
   onCancelQueuedMessage,
@@ -127,6 +141,7 @@ export function SessionMultiGrid({
 }: SessionMultiGridProps): JSX.Element {
   const dragActive = dragSourceWorkspaceId !== null;
   const [rowWeights, setRowWeights] = useState<Record<number, number[]>>({});
+  const [rightPanelWidthByCell, setRightPanelWidthByCell] = useState<Record<string, number>>({});
   const [isResizing, setIsResizing] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const dragCleanupRef = useRef<(() => void) | null>(null);
@@ -152,14 +167,63 @@ export function SessionMultiGrid({
           return;
         }
         changed = true;
-        const weights = existing ? existing.slice(0, row.length) : [];
-        while (weights.length < row.length) weights.push(1);
-        next[rowIndex] = weights.length > 0 ? weights : [1];
+        next[rowIndex] = balancedRowWeights(row.length);
       });
       if (Object.keys(current).length !== Object.keys(next).length) changed = true;
       return changed ? next : current;
     });
   }, [grid.rows]);
+
+  useEffect(() => {
+    const liveKeys = new Set<string>();
+    grid.rows.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        liveKeys.add(gridCellKey(cell, rowIndex, colIndex));
+      });
+    });
+    setRightPanelWidthByCell((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([key]) => liveKeys.has(key)));
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [grid.rows]);
+
+  const cellMinWidthForKey = useCallback((cellKey: string): number => {
+    const rightPanelWidth = rightPanelWidthByCell[cellKey];
+    return rightPanelWidth ? CHAT_PANE_MIN_WIDTH_PX + rightPanelWidth : MIN_RESIZABLE_CELL_WIDTH_PX;
+  }, [rightPanelWidthByCell]);
+
+  const requiredWorkspaceMinWidth = useMemo(() => {
+    return grid.rows.reduce((maxWidth, row, rowIndex) => {
+      const rowWidth = row.reduce((sum, cell, colIndex) => {
+        return sum + cellMinWidthForKey(gridCellKey(cell, rowIndex, colIndex));
+      }, 0);
+      return Math.max(maxWidth, rowWidth);
+    }, 0);
+  }, [cellMinWidthForKey, grid.rows]);
+
+  useEffect(() => {
+    onWorkspaceMinWidthChange?.(requiredWorkspaceMinWidth);
+  }, [onWorkspaceMinWidthChange, requiredWorkspaceMinWidth]);
+
+  useEffect(
+    () => () => {
+      onWorkspaceMinWidthChange?.(0);
+    },
+    [onWorkspaceMinWidthChange]
+  );
+
+  const setCellRightPanelWidth = useCallback((cellKey: string, width: number | null): void => {
+    setRightPanelWidthByCell((current) => {
+      if (!width) {
+        if (!(cellKey in current)) return current;
+        const next = { ...current };
+        delete next[cellKey];
+        return next;
+      }
+      if (current[cellKey] === width) return current;
+      return { ...current, [cellKey]: width };
+    });
+  }, []);
 
   const onResizeMouseDown = useCallback(
     (event: ReactMouseEvent, rowIndex: number, dividerIndex: number): void => {
@@ -177,7 +241,19 @@ export function SessionMultiGrid({
       const totalWeight = startWeights.reduce((sum, value) => sum + Math.max(value, 0.01), 0);
       const startWidths = startWeights.map((weight) => (Math.max(weight, 0.01) / totalWeight) * availableWidth);
       const pairWidth = startWidths[dividerIndex] + startWidths[dividerIndex + 1];
-      const minWidth = Math.min(MIN_RESIZABLE_CELL_WIDTH_PX, pairWidth / 2);
+      const leftCell = row[dividerIndex];
+      const rightCell = row[dividerIndex + 1];
+      const leftMinWidth = leftCell
+        ? cellMinWidthForKey(gridCellKey(leftCell, rowIndex, dividerIndex))
+        : MIN_RESIZABLE_CELL_WIDTH_PX;
+      const rightMinWidth = rightCell
+        ? cellMinWidthForKey(gridCellKey(rightCell, rowIndex, dividerIndex + 1))
+        : MIN_RESIZABLE_CELL_WIDTH_PX;
+      const minScale = pairWidth < leftMinWidth + rightMinWidth
+        ? pairWidth / (leftMinWidth + rightMinWidth)
+        : 1;
+      const effectiveLeftMinWidth = leftMinWidth * minScale;
+      const effectiveRightMinWidth = rightMinWidth * minScale;
 
       setIsResizing(true);
       document.body.style.cursor = "col-resize";
@@ -186,8 +262,8 @@ export function SessionMultiGrid({
       const onMouseMove = (moveEvent: MouseEvent): void => {
         const clientX = clampNumber(moveEvent.clientX, rowRect.left, rowRect.right);
         const delta = clientX - startX;
-        const minDelta = minWidth - startWidths[dividerIndex];
-        const maxDelta = startWidths[dividerIndex + 1] - minWidth;
+        const minDelta = effectiveLeftMinWidth - startWidths[dividerIndex];
+        const maxDelta = startWidths[dividerIndex + 1] - effectiveRightMinWidth;
         const clampedDelta = Math.max(minDelta, Math.min(maxDelta, delta));
         const nextWidths = [...startWidths];
         nextWidths[dividerIndex] = startWidths[dividerIndex] + clampedDelta;
@@ -208,7 +284,7 @@ export function SessionMultiGrid({
       document.addEventListener("mouseup", onMouseUp);
       dragCleanupRef.current = cleanup;
     },
-    [grid.rows, rowWeights]
+    [cellMinWidthForKey, grid.rows, rowWeights]
   );
 
   return (
@@ -224,7 +300,10 @@ export function SessionMultiGrid({
       }
     >
       {grid.rows.map((row, r) => {
-        const weights = rowWeights[r] ?? row.map(() => 1);
+        const storedWeights = rowWeights[r];
+        const weights = storedWeights?.length === row.length
+          ? storedWeights
+          : balancedRowWeights(row.length);
         const templateColumns = weights
           .map((weight) => `minmax(0, ${Math.max(weight, 0.01)}fr)`)
           .join(" minmax(1px, 1px) ");
@@ -251,7 +330,7 @@ export function SessionMultiGrid({
                 ...(canAddGridCell && grid.rows.length < MAX_ROWS ? (["above", "below"] as const) : []),
                 ...(canAddGridCell && row.length < rowColumnCap ? (["left", "right"] as const) : [])
               ];
-              const cellKey = isLauncher ? `launcher-${cell.projectId}-${r}-${c}` : `${cell.sessionId}-${r}-${c}`;
+              const cellKey = gridCellKey(cell, r, c);
               return (
                 <Fragment key={cellKey}>
                   <div
@@ -279,6 +358,7 @@ export function SessionMultiGrid({
                         onCreateCheckpoint={onCreateCheckpoint}
                         onFastModeEnabledChange={onFastModeEnabledChange}
                         onLoadSessionEvents={onLoadSessionEvents}
+                        onRightPanelWidthChange={(width) => setCellRightPanelWidth(cellKey, width)}
                         onResolveApproval={onResolveApproval}
                         onRunCheck={onRunCheck}
                         onSendSessionInput={onSendSessionInput}

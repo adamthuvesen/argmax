@@ -1,4 +1,3 @@
-import { Code2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { formatFileChipLabel } from "../lib/fileChipPath.js";
@@ -108,7 +107,6 @@ export function FileChip({
         onFocus={handleFocus}
         onBlur={handleMouseLeave}
       >
-        <Code2 size={11} aria-hidden="true" />
         <span className="file-chip-path">{label}</span>
       </button>
       {anchorRect

@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 
 /**
@@ -6,11 +7,11 @@ import { useState, type JSX, type ReactNode } from "react";
  * payload.thinking === true; the turn folder routes those groups here instead
  * of rendering them as inline answer text.
  *
- * Speaks the same disclosure vocabulary as ToolCallGroupBubble — a quiet label
- * and a `+`/`−` toggle — so reasoning and tool work read as one consistent set
- * of foldable sections within a turn. The label stays neutral-muted (not the
- * tool groups' sage) so reasoning reads as a quieter sibling, subordinate to
- * the actual work and the answer.
+ * Speaks the same disclosure vocabulary as the turn/tool rows — a quiet label
+ * and chevron — so reasoning and tool work read as one consistent set of
+ * foldable sections within a turn. The label stays neutral-muted (not the tool
+ * groups' sage) so reasoning reads as a quieter sibling, subordinate to the
+ * actual work and the answer.
  *
  * While the turn is actively working and hasn't produced its answer yet the
  * parent passes `live`, and the block shows the reasoning expanded (labelled
@@ -40,6 +41,7 @@ export function ThoughtBlock({
       ? userToggle.value
       : null;
   const expanded = localExpanded ?? (live || defaultExpanded);
+  const label = live ? "Thinking" : "Thought";
   return (
     <div
       className="thought-block"
@@ -50,19 +52,18 @@ export function ThoughtBlock({
         type="button"
         className="thought-block-header"
         aria-expanded={expanded}
-        aria-label="Reasoning"
-        title={expanded ? "Hide reasoning" : "Show reasoning"}
+        aria-label={label}
+        title={expanded ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
         onClick={() => setUserToggle({ value: !expanded, defaultExpanded, live })}
       >
-        <span className="thought-block-eyebrow" aria-hidden="true">
-          <span className="thought-block-eyebrow-label">{live ? "Thinking" : "Thought"}</span>
+        <span className="thought-block-eyebrow">
+          <span className="thought-block-eyebrow-label">{label}</span>
         </span>
-        <span
-          className={`thought-block-toggle${expanded ? " expanded" : ""}`}
+        <ChevronRight
+          size={12}
+          className={`thought-block-chevron${expanded ? " expanded" : ""}`}
           aria-hidden="true"
-        >
-          {expanded ? "−" : "+"}
-        </span>
+        />
       </button>
       {expanded ? <div className="thought-block-body">{children}</div> : null}
     </div>

@@ -6,14 +6,18 @@ vi.mock("@uiw/react-codemirror", () => ({
   default: ({
     value,
     onChange,
+    readOnly,
     "aria-label": ariaLabel
   }: {
     value: string;
     onChange: (next: string) => void;
+    readOnly?: boolean;
     "aria-label"?: string;
   }) => (
     <textarea
       aria-label={ariaLabel}
+      data-readonly={readOnly ? "true" : "false"}
+      readOnly={readOnly}
       value={value}
       onChange={(event) => onChange(event.target.value)}
     />

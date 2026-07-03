@@ -242,7 +242,7 @@ relevant `it(...)` titles:
 - "still renders the QuestionCard when AskUserQuestion retries fold into a tool-group"
 - "hides the ExitPlanMode tool row immediately, even while still running (no flicker)"
 - "renders an AskUserQuestion card immediately from command.started and hides the raw row"
-- "hides the Thinking indicator once a completed assistant answer is visible"
+- "shows Thinking after a completed assistant chunk while the session is still running"
 - "suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)"
 - "restores Thinking once the user submits and a new user.message arrives"
 - "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"

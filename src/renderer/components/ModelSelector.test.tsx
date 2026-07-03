@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
@@ -301,7 +301,7 @@ describe("LaunchModelSelector — all providers", () => {
     );
   });
 
-  it("hides speed and clears fast mode for Cursor selections", async () => {
+  it("hides speed without clearing the stored fast preference for Cursor selections", () => {
     const value: ModelPickerSelection = {
       provider: "cursor",
       label: "GPT-5.5 (Cursor)",
@@ -325,10 +325,10 @@ describe("LaunchModelSelector — all providers", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     expect(screen.queryByRole("button", { name: /Speed/ })).toBeNull();
-    await waitFor(() => expect(onFastModeEnabledChange).toHaveBeenCalledWith(false));
+    expect(onFastModeEnabledChange).not.toHaveBeenCalled();
   });
 
-  it("selecting a Cursor model clears fast mode", () => {
+  it("selecting a Cursor model keeps the stored fast preference", () => {
     const value: ModelPickerSelection = {
       provider: "claude",
       label: "Opus 4.8",
@@ -350,7 +350,7 @@ describe("LaunchModelSelector — all providers", () => {
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     fireEvent.click(screen.getByText("GPT-5.5 (Cursor)"));
 
-    expect(onFastModeEnabledChange).toHaveBeenCalledWith(false);
+    expect(onFastModeEnabledChange).not.toHaveBeenCalled();
     expect(onChange).toHaveBeenCalledWith({
       provider: "cursor",
       label: "GPT-5.5 (Cursor)",

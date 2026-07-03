@@ -785,7 +785,7 @@ describe("App", () => {
     expect(branchToggle).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("does not open an empty branch picker when there are no alternate branches", async () => {
+  it("shows an empty branch picker state when there are no alternate branches", async () => {
     listBranches.mockResolvedValue(["main"]);
     render(<App />);
 
@@ -793,8 +793,8 @@ describe("App", () => {
     fireEvent.click(branchToggle);
 
     await waitFor(() => expect(listBranches).toHaveBeenCalledTimes(1));
-    expect(branchToggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("listbox", { name: "Select branch" })).toBeNull();
+    expect(branchToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("listbox", { name: "Select branch" })).toHaveTextContent("No other branches");
   });
 
   it("dismisses open pickers via the global dismiss layer", async () => {

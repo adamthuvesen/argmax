@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Cpu, Zap } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type JSX } from "react";
+import { Fragment, useRef, useState, type CSSProperties, type JSX } from "react";
 import {
   DEFAULT_REASONING_EFFORT,
   PROVIDER_MODELS,
@@ -215,15 +215,6 @@ function ChipModelPicker<T extends PickerValue>({
   const canChangeSpeed = Boolean(onFastModeEnabledChange) && selectedSupportsFastMode;
   const effectiveFastModeEnabled = fastModeEnabled && selectedSupportsFastMode;
 
-  useEffect(() => {
-    if (!selectedSupportsFastMode) {
-      setSpeedMenuOpen(false);
-      if (fastModeEnabled) {
-        onFastModeEnabledChange?.(false);
-      }
-    }
-  }, [fastModeEnabled, onFastModeEnabledChange, selectedSupportsFastMode]);
-
   const selectedOption = options.find((option) => isSelected(option.value));
   // Show the chosen effort whenever the selection carries one. Only suppress it
   // when we positively know the selected model is fast/no-effort (e.g. an old
@@ -255,9 +246,6 @@ function ChipModelPicker<T extends PickerValue>({
     // is also disabled, this is just belt-and-suspenders.
     if (option.disabled) return;
     const nextValue = selectionForOption(option);
-    if (fastModeEnabled && !supportsFastModeForValue(nextValue)) {
-      onFastModeEnabledChange?.(false);
-    }
     onChange(nextValue);
     setOpen(false);
   };

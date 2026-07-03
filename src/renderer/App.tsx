@@ -136,11 +136,8 @@ export function App(): JSX.Element {
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
-      if (fastModeEnabled && !modelSupportsFastMode(model)) {
-        setFastModeEnabled(false);
-      }
     },
-    [fastModeEnabled, setFastModeEnabled]
+    []
   );
   const {
     themeMode,

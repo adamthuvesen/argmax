@@ -299,7 +299,7 @@ export function LaunchSurface({
       const list = await window.argmax.projects.listBranches(project.id);
       const otherBranches = list.filter((branch) => branch !== project.currentBranch);
       setBranches(otherBranches);
-      setBranchPickerOpen(otherBranches.length > 0);
+      setBranchPickerOpen(true);
     } catch (error) {
       setBranchPickerOpen(false);
       setStatus(error instanceof Error ? error.message : "Could not load branches.");
@@ -707,19 +707,27 @@ export function LaunchSurface({
                   }
                 }}
               >
-                {branches.map((b) => (
-                  <li key={b} role="option" aria-selected={b === project.currentBranch}>
-                    <button
-                      type="button"
-                      className="project-picker-item"
-                      aria-pressed={b === project.currentBranch}
-                      onClick={() => void switchBranch(b)}
-                    >
-                      <GitBranch size={13} aria-hidden="true" />
-                      {b}
+                {branches.length > 0 ? (
+                  branches.map((b) => (
+                    <li key={b} role="option" aria-selected={b === project.currentBranch}>
+                      <button
+                        type="button"
+                        className="project-picker-item"
+                        aria-pressed={b === project.currentBranch}
+                        onClick={() => void switchBranch(b)}
+                      >
+                        <GitBranch size={13} aria-hidden="true" />
+                        {b}
+                      </button>
+                    </li>
+                  ))
+                ) : (
+                  <li role="option" aria-selected={false} aria-disabled="true">
+                    <button type="button" className="project-picker-item" disabled>
+                      No other branches
                     </button>
                   </li>
-                ))}
+                )}
               </ul>
             )}
           </div>

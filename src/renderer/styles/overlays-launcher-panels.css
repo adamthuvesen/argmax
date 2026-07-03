@@ -286,33 +286,6 @@
   }
 }
 
-@media (max-width: 1080px) {
-  .session-grid.review-open,
-  .session-grid.log-open,
-  .session-grid.review-open.log-open {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .launcher-shell[data-review-open="true"] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .review-panel,
-  .log-panel {
-    position: fixed;
-    inset: 0;
-    z-index: 120;
-    border-left: 0;
-  }
-
-  .launcher-shell[data-review-open="true"] .review-panel {
-    position: absolute;
-    inset: 0;
-    z-index: 120;
-    border-left: 0;
-  }
-}
-
 @media (max-width: 760px) {
   body {
     min-width: 0;

@@ -318,9 +318,9 @@
   border-radius: var(--radius-xl);
   outline: 0;
   background: transparent;
-  font-family: inherit;
+  font-family: var(--font-prose);
   font-size: var(--text-base);
-  line-height: 1.4;
+  line-height: 1.55;
   resize: none;
   overflow-y: hidden;
 }
@@ -351,9 +351,9 @@
   z-index: 0;
   overflow: hidden;
   padding: 8px 8px;
-  font-family: inherit;
+  font-family: var(--font-prose);
   font-size: var(--text-base);
-  line-height: 1.4;
+  line-height: 1.55;
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: break-word;

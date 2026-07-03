@@ -155,6 +155,7 @@ export function App(): JSX.Element {
   const [rightPanelToggleSignal, setRightPanelToggleSignal] = useState(0);
   const [debugLogToggleSignal, setDebugLogToggleSignal] = useState(0);
   const [terminalToggleSignal, setTerminalToggleSignal] = useState(0);
+  const [sessionGridRequiredWorkspaceMinWidth, setSessionGridRequiredWorkspaceMinWidth] = useState(0);
   // The active surface (focused SessionPane, or the LaunchSurface when no
   // session is open) registers its file source + pick handler here so the
   // command palette can surface Files for that surface's scope.
@@ -254,9 +255,11 @@ export function App(): JSX.Element {
 
   const requiredGridColumns = useMemo(() => widestGridRowColumnCount(grid.rows), [grid.rows]);
   const requiredWorkspaceMinWidth = useMemo(() => {
-    if (requiredGridColumns <= 0) return DEFAULT_WORKSPACE_MIN_WIDTH_PX;
-    return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, requiredGridColumns * MIN_RESIZABLE_CELL_WIDTH_PX);
-  }, [requiredGridColumns]);
+    const gridColumnWidth = requiredGridColumns > 0
+      ? requiredGridColumns * MIN_RESIZABLE_CELL_WIDTH_PX
+      : DEFAULT_WORKSPACE_MIN_WIDTH_PX;
+    return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth);
+  }, [requiredGridColumns, sessionGridRequiredWorkspaceMinWidth]);
   const { sidebarWidth, isResizing, onResizeMouseDown } = useSidebarResize(requiredWorkspaceMinWidth);
   const requiredWindowMinWidth = useMemo(() => {
     const sidebarPart = sidebarCollapsed ? 0 : sidebarWidth;
@@ -1098,6 +1101,7 @@ export function App(): JSX.Element {
               onDropWorkspace={handleDropWorkspace}
               onFastModeEnabledChange={setFastModeEnabled}
               onLoadSessionEvents={loadSessionEvents}
+              onWorkspaceMinWidthChange={setSessionGridRequiredWorkspaceMinWidth}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
               onCancelQueuedMessage={cancelQueuedMessage}

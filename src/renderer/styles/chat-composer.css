@@ -8,9 +8,8 @@
   flex-wrap: wrap;
 }
 
-/* Part of the shared metadata-pill family (with .turn-block-chip /
-   .composer-context-chip): borderless 999px pill, --text-xs mono, quiet until
-   hover fills it. */
+/* Part of the shared metadata-chip family (with .turn-block-chip /
+   .composer-context-chip): borderless, prose-sized, and quiet until hover. */
 .composer-footer-chip {
   display: inline-flex;
   align-items: center;
@@ -21,16 +20,16 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--muted-strong);
+  color: var(--muted);
   font-size: var(--text-xs);
-  font-family: var(--font-mono);
+  font-family: var(--font-prose);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .composer-footer-chip:hover {
-  background: var(--panel-sunken);
-  color: var(--text);
+  background: transparent;
+  color: var(--muted-strong);
 }
 
 .composer-footer-chip svg {
@@ -117,33 +116,36 @@
 .file-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   max-width: min(100%, 34ch);
-  padding: 1px 8px 2px;
+  padding: 0 1px;
   margin: 0 1px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-  background: var(--panel-sunken);
-  color: var(--muted-strong);
-  font-family: var(--font-mono);
+  border: 0;
+  border-radius: 0;
+  appearance: none;
+  background: transparent;
+  color: color-mix(in oklab, var(--accent-deep) 22%, var(--muted-strong));
+  font-family: var(--font-code);
   font-size: var(--text-sm);
   line-height: 1.35;
   cursor: pointer;
-  text-decoration: none;
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  text-decoration-line: none;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color var(--duration-fast) var(--ease), text-decoration-color var(--duration-fast) var(--ease);
   vertical-align: middle;
 }
 
 .file-chip:hover {
-  background: var(--panel-soft);
-  border-color: var(--line);
-  color: var(--text);
+  color: var(--accent-deep);
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in oklab, var(--accent) 62%, transparent);
 }
 
-.file-chip svg {
-  opacity: 0.6;
-  flex-shrink: 0;
-  align-self: center;
+.file-chip:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .file-chip-path {

@@ -154,8 +154,10 @@
 }
 
 .session-grid {
+  --session-main-column-min-width: 520px;
   --session-review-panel-width: clamp(320px, 34vw, 520px);
   --session-log-panel-width: clamp(300px, 32vw, 480px);
+  position: relative;
   display: grid;
   height: 100%;
   min-width: 0;
@@ -166,19 +168,19 @@
 }
 
 .session-grid.review-open {
-  grid-template-columns: minmax(0, 1fr) var(--session-review-panel-width);
+  grid-template-columns: minmax(var(--session-main-column-min-width), 1fr) var(--session-review-panel-width);
 }
 
 .session-grid.log-open {
-  grid-template-columns: minmax(0, 1fr) var(--session-log-panel-width);
+  grid-template-columns: minmax(var(--session-main-column-min-width), 1fr) var(--session-log-panel-width);
 }
 
 .session-grid.review-open.log-open {
-  grid-template-columns: minmax(0, 1fr) var(--session-review-panel-width) var(--session-log-panel-width);
+  grid-template-columns: minmax(var(--session-main-column-min-width), 1fr) var(--session-review-panel-width) var(--session-log-panel-width);
 }
 
 .session-main-column {
-  --session-inline-padding: clamp(16px, calc((100% - 820px) / 2), 2000px);
+  --session-inline-padding: clamp(28px, calc((100% - 820px) / 2), 2000px);
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -191,11 +193,11 @@
 
 .session-grid.review-open .session-main-column,
 .session-grid.log-open .session-main-column {
-  --session-inline-padding: clamp(18px, calc((100% - 780px) / 2), 2000px);
+  --session-inline-padding: clamp(22px, calc((100% - 780px) / 2), 2000px);
 }
 
 .session-grid.review-open.log-open .session-main-column {
-  --session-inline-padding: clamp(10px, calc((100% - 720px) / 2), 2000px);
+  --session-inline-padding: clamp(20px, calc((100% - 720px) / 2), 2000px);
 }
 
 .conversation-surface {
@@ -340,7 +342,8 @@
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.55;
+  font-family: var(--font-prose);
+  line-height: 1.68;
   font-size: var(--text-base);
   color: var(--text);
 }
@@ -356,9 +359,11 @@
 }
 
 .markdown {
+  font-family: var(--font-prose);
   font-size: var(--text-base);
-  line-height: 1.8;
-  color: var(--text);
+  line-height: 1.9;
+  font-weight: 400;
+  color: color-mix(in oklab, var(--text) 91%, var(--text-soft) 9%);
 }
 
 .markdown > *:first-child {
@@ -367,6 +372,10 @@
 
 .markdown > *:last-child {
   margin-bottom: 0;
+}
+
+.markdown > :where(p, ul, ol, blockquote, h1, h2, h3, h4) {
+  max-width: 780px;
 }
 
 .markdown p {
@@ -382,18 +391,19 @@
    structure:" → bullets). Pull it tight to its list so the two read as one
    group, while ordinary paragraph-to-paragraph spacing stays open. This is the
    tight-within / loose-between rhythm that lets the eye see what belongs to
-   what. Elevate it a touch (size + tighter tracking) so it registers as a
+   what. Keep it only lightly lifted so it registers as a
    section header when skimming a long answer, not just bold body text. */
 .markdown p:has(+ ul),
 .markdown p:has(+ ol) {
-  margin-bottom: 8px;
-  font-size: 14px;
-  letter-spacing: -0.01em;
+  margin-bottom: 10px;
+  font-size: var(--text-base);
+  font-weight: 520;
+  letter-spacing: 0;
 }
 
 .markdown strong {
-  font-weight: 600;
-  color: var(--text-soft);
+  font-weight: 520;
+  color: color-mix(in oklab, var(--text) 96%, var(--text-soft) 4%);
 }
 
 .markdown em {
@@ -415,14 +425,14 @@
 }
 
 .markdown code {
-  padding: 0 4px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
+  padding: 0 1px;
+  border-radius: 0;
+  background: transparent;
   border: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   font-size: var(--text-sm);
   font-variant-ligatures: none;
-  color: var(--accent-deep);
+  color: color-mix(in oklab, var(--accent-deep) 32%, var(--text-soft) 68%);
 }
 
 .markdown pre {
@@ -446,9 +456,9 @@
 
 .markdown ul,
 .markdown ol {
-  /* Hug the lead-in above (8px, matched to p:has) and leave a clear gap below
-     (22px) so the bulleted group separates from the next section. */
-  margin: 8px 0 22px;
+  /* Hug the lead-in above and leave a clear gap below so the bulleted group
+     separates from the next section without becoming a ladder of rows. */
+  margin: 8px 0 20px;
   padding-left: 24px;
 }
 
@@ -464,17 +474,17 @@
 }
 
 .markdown ol > li:only-child {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
+  font-size: 14px;
+  font-weight: 520;
+  letter-spacing: 0;
   color: var(--text);
-  margin: 28px 0 6px;
-  line-height: 1.35;
+  margin: 22px 0 5px;
+  line-height: 1.4;
 }
 
 .markdown ol > li:only-child::marker {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 520;
 }
 
 .markdown ol:has(> li:only-child) + ul {
@@ -487,20 +497,18 @@
 }
 
 .markdown li {
-  /* Items sit tight and read denser than body prose so the list reads as one
-     cohesive unit instead of a stack of floating mini-paragraphs (multi-line
-     bullets in particular). */
   margin: 5px 0;
-  line-height: 1.7;
+  padding-left: 2px;
+  line-height: 1.6;
 }
 
 .markdown ul > li::marker {
-  color: var(--accent);
+  color: color-mix(in oklab, var(--accent) 55%, var(--muted));
 }
 
 .markdown ol > li::marker {
-  color: var(--muted-strong);
-  font-weight: 600;
+  color: color-mix(in oklab, var(--muted-strong) 82%, var(--accent));
+  font-weight: 520;
 }
 
 .markdown li > p {
@@ -509,39 +517,39 @@
 
 .markdown li > ul,
 .markdown li > ol {
-  margin: 2px 0;
+  margin: 3px 0;
 }
 
 .markdown h1,
 .markdown h2,
 .markdown h3,
 .markdown h4 {
-  margin: 30px 0 12px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
+  margin: 28px 0 10px;
+  font-weight: 450;
+  letter-spacing: 0;
   line-height: 1.3;
-  color: var(--text-soft);
+  color: color-mix(in oklab, var(--text-soft) 82%, var(--muted) 18%);
 }
 
 .markdown h1 {
-  font-size: 20px;
+  font-size: var(--text-lg);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--line-soft);
 }
 
 .markdown h2 {
-  font-size: 17px;
+  font-size: var(--text-md);
 }
 
 .markdown h3 {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .markdown h4 {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--muted-strong);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .markdown blockquote {
@@ -569,23 +577,24 @@
   border-collapse: collapse;
   border-spacing: 0;
   font-size: 13px;
+  line-height: 1.5;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px var(--line-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--line-soft) 68%, transparent);
 }
 
 .markdown th,
 .markdown td {
-  padding: 8px 14px;
+  padding: 7px 14px;
   text-align: left;
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid color-mix(in oklab, var(--line-soft) 74%, transparent);
 }
 
 .markdown th {
-  background: var(--panel-soft);
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: 0.01em;
+  background: color-mix(in oklab, var(--panel-soft) 72%, transparent);
+  font-weight: 520;
+  color: var(--text-soft);
+  letter-spacing: 0;
 }
 
 .markdown tr:last-child td {
@@ -597,7 +606,7 @@
 }
 
 .markdown tr:nth-child(even) td {
-  background: rgba(0, 0, 0, 0.012);
+  background: color-mix(in oklab, var(--panel-soft) 35%, transparent);
 }
 
 .markdown hr {
@@ -683,15 +692,16 @@
   margin-right: 6px;
   appearance: none;
   -webkit-appearance: none;
-  border: 0;
+  border: 1px solid color-mix(in oklab, var(--line) 88%, transparent);
   border-radius: 999px;
-  background: var(--user-bubble-bg);
-  color: var(--user-bubble-fg);
-  box-shadow: 0 6px 18px rgba(31, 28, 24, 0.16);
+  background: color-mix(in oklab, var(--panel) 88%, transparent);
+  color: var(--muted-strong);
+  box-shadow: 0 4px 14px rgba(31, 28, 24, 0.10);
   cursor: pointer;
   line-height: 0;
   overflow: hidden;
   transition: transform var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease),
     box-shadow var(--duration-fast) var(--ease);
   z-index: 2;
@@ -699,5 +709,7 @@
 
 .scroll-to-bottom-fab:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(31, 28, 24, 0.2);
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 7px 18px rgba(31, 28, 24, 0.15);
 }

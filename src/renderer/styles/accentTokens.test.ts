@@ -106,6 +106,10 @@ describe("accent CSS contract", () => {
     const review = readSource("src/renderer/styles/overlays-review.css");
     const reviewFiles = readSource("src/renderer/styles/overlays-review-files.css");
     const treeRule = cssRuleBody(reviewFiles, ".workspace-tree");
+    const treeLabelRule = cssRuleBody(reviewFiles, ".workspace-tree-row span");
+    const treeIconRule = cssRuleBody(reviewFiles, ".workspace-tree-row > svg");
+    const treeChevronRule = cssRuleBody(reviewFiles, ".workspace-tree-chevron");
+    const treeChevronSpacerRule = cssRuleBody(reviewFiles, ".workspace-tree-chevron-spacer");
     const tabRule = cssRuleBody(reviewFiles, ".file-tab");
     const editorScrollerRule = cssRuleBody(reviewFiles, ".file-preview-editor .cm-scroller");
     const previewBodyRule = cssRuleBody(reviewFiles, ".file-preview-body");
@@ -114,6 +118,12 @@ describe("accent CSS contract", () => {
 
     expect(treeRule).toContain("font-family: var(--font-ui);");
     expect(treeRule).toContain("font-size: var(--text-sm);");
+    expect(treeLabelRule).toContain("flex: 1 1 auto;");
+    expect(treeIconRule).toContain("flex: 0 0 13px;");
+    expect(treeChevronRule).toContain("flex: 0 0 12px;");
+    expect(treeChevronRule).toContain("min-width: 12px;");
+    expect(treeChevronSpacerRule).toContain("flex: 0 0 12px;");
+    expect(treeChevronSpacerRule).toContain("min-width: 12px;");
     expect(tabRule).toContain("font-family: var(--font-ui);");
     expect(tabRule).toContain("font-size: var(--text-sm);");
     expect(editorScrollerRule).toContain("font-family: var(--font-code);");

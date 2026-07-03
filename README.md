@@ -8,7 +8,7 @@ A local desktop app with a Rust core and React UI for running Claude Code, Codex
 
 Single-user, on-device, no cloud, no auth. Built for sessions that need real repo context: persistent transcripts, review tools, checks, approvals, and optional worktree isolation for running agents in parallel.
 
-![Argmax new session launcher](assets/screenshots/demo-dashboard.png)
+![Argmax running agent sessions across parallel git worktrees](assets/screenshots/hero.png)
 
 ## Status
 
@@ -55,7 +55,7 @@ Open `http://127.0.0.1:5173/`.
 
 Outside Tauri there is no Rust backend. The renderer uses `src/renderer/demoSnapshot.ts` instead of live IPC. The fixture uses sample paths and sample session text only.
 
-The screenshot above shows the new-session launcher in the macOS app.
+The screenshot above shows the macOS app running agent sessions across parallel git worktrees — the review queue, an active session's conversation with file changes and passing checks, and the diff review pane.
 
 ## Reproducible Check
 

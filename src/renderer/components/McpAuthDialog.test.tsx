@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { McpAuthDialog } from "./McpAuthDialog.js";
 import type { ArgmaxApi, McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
 
+const terminalMockState = vi.hoisted(() => ({
+  instances: [] as Array<{ options: Record<string, unknown> }>
+}));
+
 // xterm.js does enough DOM work that we'd rather assert on the dialog's own
 // contract than against the inner xterm internals. Stub it: Terminal and
 // FitAddon become inert objects so the component mounts cleanly in jsdom.
@@ -17,6 +21,12 @@ vi.mock("@xterm/xterm", () => {
       write = vi.fn();
       focus = vi.fn();
       dispose = vi.fn();
+      options: Record<string, unknown>;
+
+      constructor(options: Record<string, unknown> = {}) {
+        this.options = options;
+        terminalMockState.instances.push(this);
+      }
     }
   };
 });
@@ -77,6 +87,9 @@ function installArgmaxStub(overrides: Partial<ArgmaxApi["mcp"]["auth"]> = {}) {
 
 describe("McpAuthDialog", () => {
   beforeEach(() => {
+    terminalMockState.instances = [];
+    document.documentElement.style.removeProperty("--font-mono");
+    document.documentElement.style.removeProperty("--text-terminal");
     // ResizeObserver is not implemented in jsdom; stub a noop so the
     // component's `new ResizeObserver(...)` call doesn't throw on mount.
     class StubResizeObserver implements ResizeObserver {
@@ -89,6 +102,8 @@ describe("McpAuthDialog", () => {
 
   afterEach(() => {
     cleanup();
+    document.documentElement.style.removeProperty("--font-mono");
+    document.documentElement.style.removeProperty("--text-terminal");
     vi.restoreAllMocks();
   });
 
@@ -107,6 +122,20 @@ describe("McpAuthDialog", () => {
 
     await waitFor(() => {
       expect(stub.start).toHaveBeenCalledWith(expect.objectContaining({ cols: 80, rows: 24 }));
+    });
+  });
+
+  it("uses typography tokens when constructing the auth terminal", async () => {
+    document.documentElement.style.setProperty("--font-mono", '"Token Mono", monospace');
+    document.documentElement.style.setProperty("--text-terminal", "15px");
+    installArgmaxStub();
+
+    render(<McpAuthDialog open={true} onClose={() => {}} />);
+
+    await waitFor(() => expect(terminalMockState.instances).toHaveLength(1));
+    expect(terminalMockState.instances[0]?.options).toMatchObject({
+      fontFamily: '"Token Mono", monospace',
+      fontSize: 15
     });
   });
 

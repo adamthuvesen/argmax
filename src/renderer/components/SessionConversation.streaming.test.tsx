@@ -119,6 +119,46 @@ describe("SessionConversation — streaming & composer", () => {
     );
   });
 
+  it("shows changed-file totals as a compact composer action and opens the review panel", () => {
+    const toggleChangesPanel = vi.fn();
+    renderConversation(baseSession(), [], {
+      review: reviewStub({
+        files: [
+          { path: "src/a.ts", status: "modified", additions: 3, deletions: 1 },
+          { path: "src/b.ts", status: "added", additions: 7, deletions: 0 }
+        ],
+        toggleChangesPanel
+      })
+    });
+
+    expect(screen.queryByText("2 files changed")).not.toBeInTheDocument();
+    const changesButton = screen.getByRole("button", {
+      name: "Open changed files in review panel: 2 files changed, 10 additions, 1 deletion"
+    });
+    expect(changesButton).toHaveTextContent("+10");
+    expect(changesButton).toHaveTextContent("-1");
+    expect(changesButton).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(changesButton);
+    expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the compact changed-file action pressed when Changes is open", () => {
+    renderConversation(baseSession(), [], {
+      review: reviewStub({
+        files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1 }],
+        isPanelOpen: true,
+        mode: "changes"
+      })
+    });
+
+    expect(
+      screen.getByRole("button", {
+        name: "Open changed files in review panel: 1 file changed, 1 addition, 1 deletion"
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("renders repeated Cursor assistant snapshots once while streaming", () => {
     const text = "Reading the repo's key documentation and structure.";
     renderConversation(

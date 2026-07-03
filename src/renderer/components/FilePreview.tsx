@@ -31,7 +31,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
-import { formatBytes } from "../lib/formatBytes.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 
 function isMarkdownPath(path: string | null): boolean {
@@ -118,9 +117,9 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
   if (preview.kind === "skipped") {
     const message =
       preview.reason === "binary"
-        ? `Binary file${preview.size !== undefined ? ` (${formatBytes(preview.size)})` : ""} — not previewable.`
+        ? "Binary file — not previewable."
         : preview.reason === "too-large"
-          ? `File too large to preview${preview.size !== undefined ? ` (${formatBytes(preview.size)})` : ""}.`
+          ? "File too large to preview."
           : "Not a regular file.";
     return <p className="review-empty">{message}</p>;
   }
@@ -146,7 +145,6 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
           ) : null}
         </strong>
         <div className="file-preview-heading-meta">
-          <span className="file-preview-size">{formatBytes(preview.size)}</span>
           {state.canEdit ? (
             <button
               type="button"

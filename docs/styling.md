@@ -9,6 +9,7 @@ Pure CSS in [src/renderer/styles.css](../src/renderer/styles.css). No CSS-in-JS,
 | Add configurable chrome tint | `--accent`, `--accent-soft`, `--accent-deep` in [Tokens](#tokens) |
 | Add an animation | [Patterns](#patterns) — reuse `--ease`, respect `prefers-reduced-motion` |
 | Add a font | `src/renderer/lib/fonts.ts` + matching `:root[data-font="…"]` block |
+| Adjust the font-size setting | `src/renderer/lib/fonts.ts` + matching `:root[data-font-size="…"]` block |
 | Style markdown | `.markdown <selector>` rules (defined for headings, lists, code, etc.) |
 | Style overlays (⌘K, ⌘P, review, session chrome) | [overlays-*.css](#overlay-stylesheets) — keep import order in `overlays.css` |
 | Style app shell / sidebar | [shell-*.css](#shell-stylesheets) — `shell.css` aggregator |
@@ -67,9 +68,10 @@ Keep each stylesheet module under **1000 lines**. Split further by surface if a 
 
 ## Hard constraints
 
-- **Four themes: Light / Dark / System / Purple.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Purple ("Nebula") is a dark-family theme — deep amethyst canvas, a gold-spark hero action, aurora glow. Tokens live in `:root` (light), `:root[data-theme="dark"]`, and `:root[data-theme="purple"]`. Purple resolves to the **dark** palettes for code/terminal via `themeAppearance()` in [theme.ts](../src/renderer/lib/theme.ts). Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Tauri-side for no-flash startup). See [src/renderer/lib/theme.ts](../src/renderer/lib/theme.ts).
+- **Three themes: Light / Dark / System.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Tokens live in `:root` (light) and `:root[data-theme="dark"]`. Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Tauri-side for no-flash startup). See [src/renderer/lib/theme.ts](../src/renderer/lib/theme.ts).
 - **Accent tint is chrome-only.** Settings → Appearance lets users pick `green`, `purple`, `neutral`, `orange`, or `blue`; the choice persists under `argmax.accent.tint` and sets `<html data-accent="…">`. Use `--accent`, `--accent-soft`, and `--accent-deep` for decorative brand/chrome tint: focus rings, selection, picker states, command palette selection, launcher decoration, and transcript metadata.
 - **Fonts flow through tokens.** Never hardcode a family — chrome reads `--font-ui`, long-form chat prose and the session composer read `--font-prose`, terminal reads `--font-mono`, and review/editor code plus inline markdown code/file refs and transcript tool targets read `--font-code` (Codex-like system mono by default). Mono font picks set UI/mono variables to the same stack while chat prose stays proportional; sans picks keep a system mono stack for code/terminal.
+- **Font sizes flow through tokens.** Never hardcode a text `font-size` in px. Use the type scale on `:root`; Settings → Appearance exposes Small / Default / Large whole-app modes by flipping `<html data-font-size="small|default|large">`, persisted under `argmax.font.size`. Terminal/xterm surfaces must resolve `--text-terminal` through the helpers in `src/renderer/lib/fonts.ts`, because canvas text cannot inherit CSS variables directly.
 - **Inter is the default** (`@fontsource-variable/inter`, loaded on cold launch since it's the default). Lilex remains available, kept Nerd-Font–patched so terminal-style glyphs still render. Mono alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) and the other sans options (Geist Sans, IBM Plex Sans, Manrope) are lazy-loaded via `@fontsource` / `@fontsource-variable` only when picked, and selected from Settings → Appearance. System fonts (System Mono, Menlo, Monaco) need no JS asset load. New fonts live in [src/renderer/lib/fonts.ts](../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
 
 ## Tokens
@@ -90,10 +92,10 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 | Radii | `--radius-xs` (3px), `--radius-sm` (4px), `--radius-md` (6px), `--radius-lg` (8px), `--radius-xl` (10px). Prefer tokens; reserve `999px` / `50%` for truly circular elements only (status dots, toggle knobs). |
 | Motion | `--ease` (cubic-bezier), `--duration-fast` (140ms), `--duration-base` (220ms); newer code prefers `--motion-fast` (120ms), `--motion-base` (180ms), `--motion-slow` (240ms), `--ease-out`, `--ease-in-out` |
 | Spacing | `--space-1` (4px) through `--space-8` (32px). Use these for paddings, gaps, and margins; reserve raw `px` for one-off optical adjustments. |
-| Type | `--text-xs` (11px) → `--text-sm` (12px) → `--text-base` (13px) → `--text-md` (15px) → `--text-lg` (18px). |
+| Type | `--text-4xs` (9px), `--text-3xs` (9.5px), `--text-2xs` (10px), `--text-xs` (11px), `--text-sm` (12px), `--text-base` (13px), `--text-md` (15px), `--text-lg` (18px), `--text-xl` (20px), `--text-2xl` (22px), `--text-display` (23px), and `--text-terminal` (13px). Half-step `*-plus` / `*-tight` tokens exist only where legacy surfaces need them. |
 | Focus | `--ring` — single source of truth for every `:focus-visible` ring. |
 
-A loop-wide sweep replacing every existing raw value would land 700+ line edits. The tokens above were introduced in the 2026-05-14 quality sweep; future changes should reach for the token first, and legacy raw values get migrated incrementally as files are touched. Reduced-motion users get a zero override on the motion tokens via `@media (prefers-reduced-motion: reduce)`.
+Future text-size changes should update the type tokens or the `data-font-size` mode blocks, not individual component rules. Reduced-motion users get a zero override on the motion tokens via `@media (prefers-reduced-motion: reduce)`.
 
 ## Patterns
 
@@ -109,7 +111,7 @@ A loop-wide sweep replacing every existing raw value would land 700+ line edits.
 
 ## Chat bubbles
 
-User message bubbles (`chat-bubble.user`) use `--user-message-bg` / `--user-message-fg` / `--user-message-shadow`. Light mode uses a borderless light gray surface; dark and Purple swap in theme-matched elevated surfaces so long user prompts do not become harsh slabs.
+User message bubbles (`chat-bubble.user`) use `--user-message-bg` / `--user-message-fg` / `--user-message-shadow`. Light mode uses a borderless light gray surface; dark swaps in a theme-matched elevated surface so long user prompts do not become harsh slabs.
 
 `::selection` uses a translucent accent tint globally. Inside user bubbles, `.chat-bubble.user ::selection` uses `--user-message-selection-bg` so the highlight stays visible against each theme's user-message surface.
 
@@ -129,19 +131,7 @@ Same room with the lights off. Five rules:
 4. **Depth from edges, not shadows.** Dark elevation uses a 1px inset top-highlight + heavier drop in `--shadow-1/2/3`. The pixel of warm light at the top of an elevated card is the signature detail.
 5. **`color-scheme` follows.** `:root` declares `light`, `:root[data-theme="dark"]` declares `dark`, so native form controls + scrollbars track.
 
-Status colors keep semantic meaning across modes; values differ. Add new tokens to all three theme blocks (`:root`, `[data-theme="dark"]`, `[data-theme="purple"]`) at the same time.
-
-## Purple theme — Nebula
-
-Cosmic, premium, dark-family. Same room, lit by a violet nebula:
-
-1. **Warm royal-purple surfaces.** `--bg #5c4187` → `--panel #6d509b` (a clearly-visible true violet — red lifted so it reads purple, not indigo/blue; matched to the reference's lit canvas, not near-black); lines and overlays are violet-tinted, text is lavender-white.
-2. **Purple + gold, no green.** This theme has no green accent (matching the reference). The `--sage` slot — running / online / success / approve / selected-glow — is a luminous golden **yellow**; `--amber` (waiting) stays a warmer orange so the two hues stay distinct. The primary submit blooms gold on hover via a `:root[data-theme="purple"]` polish block. Diff add/delete keep conventional green/red (code-review signal), and the few hard-coded status reds (checks-failed, delete-hover) are re-pointed at `--rose` in a purple-scoped block so they stay legible on violet.
-3. **Aurora canvas.** `--grain-image` layers violet-tinted film grain over two radial blooms (it has one consumer, `body`), so the workspace glows at the top edge.
-4. **Bloom, not just drop.** `--shadow-2/3` keep dark's inset top-highlight + drop and add a soft violet outer glow so panels float in the nebula.
-5. **Dark-family for code.** `color-scheme: dark`; native window chrome maps to `tauri::Theme::Dark` with a `PURPLE_BG` (#5c4187) cold-start color; shiki/xterm use the dark palettes through `themeAppearance()`. The window uses an **Overlay** titlebar (`tauri.conf.json`) so the app's own chrome (and bg) fills the top — no native title bar — matching whatever theme is active.
-
-`--ink` stays light (lavender-white), like dark, so every `var(--ink)` fill/border/text usage keeps its contrast — the violet identity comes from rings/selection/glow/grain + retuned accents, not from repurposing `--ink`.
+Status colors keep semantic meaning across modes; values differ. Add new tokens to both theme blocks (`:root`, `[data-theme="dark"]`) at the same time.
 
 ## Don't
 

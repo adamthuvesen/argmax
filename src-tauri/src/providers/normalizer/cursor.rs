@@ -330,6 +330,44 @@ mod tests {
     }
 
     #[test]
+    fn cursor_ask_user_question_args_flatten_for_question_card() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "started",
+                    "call_id": "call_q",
+                    "tool_call": {
+                        "askQuestionToolCall": {
+                            "args": {
+                                "questions": [
+                                    {
+                                        "question": "Which path?",
+                                        "header": "Path",
+                                        "multiSelect": false,
+                                        "options": [{ "label": "Fast fix" }, { "label": "Deeper cleanup" }]
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(result.events[0].message, "askQuestionToolCall");
+        assert_eq!(result.events[0].payload["call_id"], "call_q");
+        assert_eq!(
+            result.events[0].payload["input"]["questions"][0]["question"],
+            "Which path?"
+        );
+    }
+
+    #[test]
     fn cursor_thinking_delta_becomes_thinking_message_delta() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(

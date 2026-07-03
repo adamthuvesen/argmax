@@ -31,6 +31,7 @@ import {
   sessionAgentModeKey,
   writeStoredAgentMode
 } from "../lib/agentMode.js";
+import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import {
   buildConversationEvents,
   buildSessionToolCalls,
@@ -40,8 +41,11 @@ import {
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CostPanel } from "./CostPanel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
-import { parseQuestionsFromToolInput } from "../lib/questions.js";
-import { hasOutstandingCardAsk as sessionHasOutstandingCardAsk } from "../lib/turnInteractiveCards.js";
+import {
+  hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
+  isAskUserQuestionToolName,
+  isExitPlanModeToolName
+} from "../lib/turnInteractiveCards.js";
 import { foldTurnToolItems } from "../lib/turnToolItems.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { SessionComposer } from "./SessionComposer.js";
@@ -175,6 +179,19 @@ export function SessionConversation({
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
     [conversationItems, session]
   );
+  const changeSummary = useMemo(() => {
+    if (review.filesState !== "ready" || review.files.length === 0) {
+      return null;
+    }
+    const totals = summarizeChangedFiles(review.files);
+    return {
+      fileCount: review.files.length,
+      additions: totals.additions,
+      deletions: totals.deletions,
+      isOpen: review.isPanelOpen && review.mode === "changes",
+      onOpen: review.toggleChangesPanel
+    };
+  }, [review.files, review.filesState, review.isPanelOpen, review.mode, review.toggleChangesPanel]);
   // Composer is enabled whenever the session is alive — `running` no longer
   // blocks: typed messages get queued in main and drain when the current turn
   // finishes. `complete` and `cancelled` are also enabled because main's
@@ -208,8 +225,8 @@ export function SessionConversation({
       toolCalls.some(
         (tool) =>
           tool.status === "running" &&
-          tool.name !== "ExitPlanMode" &&
-          (tool.name !== "AskUserQuestion" || !parseQuestionsFromToolInput(tool))
+          !isExitPlanModeToolName(tool.name) &&
+          !isAskUserQuestionToolName(tool.name)
       ),
     [toolCalls]
   );
@@ -445,7 +462,6 @@ export function SessionConversation({
         ref={metaCardsRef}
       >
         <ChangedFilesCard
-          review={review}
           workspaceId={workspace?.id}
           checkCommands={project?.settings.checkCommands ?? []}
           checks={checks ?? []}
@@ -481,6 +497,7 @@ export function SessionConversation({
         <SessionComposer
           agentMode={agentMode}
           canSend={canSend}
+          changeSummary={changeSummary}
           fastModeEnabled={fastModeEnabled}
           inputRef={inputRef}
           isQueueing={isQueueing}

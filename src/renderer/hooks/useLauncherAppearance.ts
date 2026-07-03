@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  applyFontSizeToDocument,
   applyFontToDocument,
+  FONT_SIZE_STORAGE_KEY,
   FONT_STORAGE_KEY,
   loadFontAssets,
+  readStoredFontSize,
   readStoredFont,
+  type FontSizeId,
   type FontFamilyId
 } from "../lib/fonts.js";
 import {
@@ -32,6 +36,8 @@ export function useLauncherAppearance(): {
   setAccentId: (accentId: AccentId) => void;
   fontFamily: FontFamilyId;
   setFontFamily: (font: FontFamilyId) => void;
+  fontSize: FontSizeId;
+  setFontSize: (fontSize: FontSizeId) => void;
   defaultIde: IdeId | null;
   setDefaultIde: (ide: IdeId | null) => void;
   detectedIdes: DetectedIde[];
@@ -39,6 +45,7 @@ export function useLauncherAppearance(): {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
+  const [fontSize, setFontSize] = useState<FontSizeId>(() => readStoredFontSize());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const ideListLoadedRef = useRef(false);
@@ -49,6 +56,12 @@ export function useLauncherAppearance(): {
     applyFontToDocument(fontFamily);
     void loadFontAssets(fontFamily);
   }, [fontFamily]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, fontSize);
+    applyFontSizeToDocument(fontSize);
+  }, [fontSize]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -116,6 +129,8 @@ export function useLauncherAppearance(): {
     setAccentId,
     fontFamily,
     setFontFamily,
+    fontSize,
+    setFontSize,
     defaultIde,
     setDefaultIde,
     detectedIdes

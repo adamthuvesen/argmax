@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import type { ChatWidth } from "../../lib/chatWidth.js";
-import { FONT_OPTIONS, type FontFamilyId } from "../../lib/fonts.js";
+import { FONT_OPTIONS, FONT_SIZE_OPTIONS, type FontFamilyId, type FontSizeId } from "../../lib/fonts.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import {
@@ -30,10 +30,14 @@ export function GeneralSettings({
   launcherGlobeVisible,
   onLauncherGlobeVisibleChange,
   newSessionMode,
-  onNewSessionModeChange
+  onNewSessionModeChange,
+  fontSize,
+  onFontSizeChange
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
+  fontSize: FontSizeId;
+  onFontSizeChange: (id: FontSizeId) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -49,6 +53,8 @@ export function GeneralSettings({
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
 }): JSX.Element {
+  const selectedFontSize = FONT_SIZE_OPTIONS.find((o) => o.id === fontSize) ?? FONT_SIZE_OPTIONS[1];
+
   return (
     <>
       <section className="settings-section" id="settings-local" aria-labelledby="settings-local-h">
@@ -139,6 +145,21 @@ export function GeneralSettings({
             >
               <span>const argmax = (∑) ⇒ argmax · 0123456789</span>
             </p>
+          </div>
+
+          <Segmented
+            legend="Font size"
+            name="font-size"
+            value={fontSize}
+            onChange={(v) => onFontSizeChange(v as FontSizeId)}
+            options={FONT_SIZE_OPTIONS.map((option) => ({
+              value: option.id,
+              label: option.label,
+              caption: option.id === "default" ? "current" : undefined
+            }))}
+          />
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">{selectedFontSize.hint}</p>
           </div>
 
           <ToggleRow

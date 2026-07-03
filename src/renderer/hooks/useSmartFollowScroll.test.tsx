@@ -257,4 +257,40 @@ describe("useSmartFollowScroll", () => {
     expect(scrollTo).not.toHaveBeenCalled();
     expect(state.scrollTop).toBe(940);
   });
+
+  it("hides the scroll-to-bottom button when collapsing content brings the bottom into view", () => {
+    let triggerResize: (() => void) | null = null;
+    class StubResizeObserver implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        triggerResize = () => callback([], this);
+      }
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", StubResizeObserver);
+    const state: ScrollBoxState = { scrollHeight: 1400, clientHeight: 200, scrollTop: 900 };
+    const el = makeScrollBox(state);
+    el.appendChild(document.createElement("article"));
+    const { result, rerender } = renderHook(
+      ({ items }: { items: readonly string[] }) => useSmartFollowScroll("session-a", items, false),
+      { initialProps: { items: ["turn-with-tools"] } }
+    );
+    attachListRef(result.current.conversationListRef, el);
+
+    act(() => {
+      rerender({ items: ["turn-with-tools"] });
+      result.current.handleUserScrollIntent();
+      result.current.handleScroll();
+    });
+
+    expect(result.current.showScrollToBottom).toBe(true);
+
+    act(() => {
+      state.scrollHeight = 1100;
+      triggerResize?.();
+    });
+
+    expect(result.current.showScrollToBottom).toBe(false);
+  });
 });

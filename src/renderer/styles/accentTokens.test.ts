@@ -1,9 +1,20 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 function readSource(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
+}
+
+function readCssSources(): Array<{ path: string; source: string }> {
+  const stylesDir = resolve(process.cwd(), "src/renderer/styles");
+  const moduleFiles = readdirSync(stylesDir)
+    .filter((file) => file.endsWith(".css"))
+    .map((file) => `src/renderer/styles/${file}`);
+  return ["src/renderer/styles.css", ...moduleFiles].map((path) => ({
+    path,
+    source: readSource(path)
+  }));
 }
 
 function cssRuleBody(source: string, selector: string): string {
@@ -14,11 +25,33 @@ function cssRuleBody(source: string, selector: string): string {
 }
 
 describe("accent CSS contract", () => {
-  it("keeps light-theme scrollbars soft while dark themes keep contrast", () => {
+  it("keeps text sizes and font families behind typography tokens", () => {
+    const rawFontSizes: string[] = [];
+    const hardcodedFamilies: string[] = [];
+
+    for (const { path, source } of readCssSources()) {
+      for (const match of source.matchAll(/font-size:\s*\d+(?:\.\d+)?px\b/g)) {
+        rawFontSizes.push(`${path}: ${match[0]}`);
+      }
+
+      for (const match of source.matchAll(/font-family:\s*(?<family>[^;]+);/g)) {
+        const family = (match.groups?.family ?? "").trim();
+        const before = source.slice(0, match.index ?? 0);
+        const isFontFace = before.lastIndexOf("@font-face") > before.lastIndexOf("}");
+        if (!isFontFace && !family.startsWith("var(") && family !== "inherit") {
+          hardcodedFamilies.push(`${path}: font-family: ${family};`);
+        }
+      }
+    }
+
+    expect(rawFontSizes).toEqual([]);
+    expect(hardcodedFamilies).toEqual([]);
+  });
+
+  it("keeps light-theme scrollbars soft while dark theme keeps contrast", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     const rootRule = cssRuleBody(tokens, ":root");
     const darkRule = cssRuleBody(tokens, ':root[data-theme="dark"]');
-    const purpleRule = cssRuleBody(tokens, ':root[data-theme="purple"]');
     const scrollbarThumbRule = cssRuleBody(tokens, "::-webkit-scrollbar-thumb");
     const scrollbarHoverRule = cssRuleBody(tokens, "::-webkit-scrollbar-thumb:hover");
 
@@ -26,8 +59,6 @@ describe("accent CSS contract", () => {
     expect(rootRule).toContain("--scrollbar-thumb-hover: #cfd5d8;");
     expect(darkRule).toContain("--scrollbar-thumb: var(--line-strong);");
     expect(darkRule).toContain("--scrollbar-thumb-hover: var(--muted);");
-    expect(purpleRule).toContain("--scrollbar-thumb: var(--line-strong);");
-    expect(purpleRule).toContain("--scrollbar-thumb-hover: var(--muted);");
     expect(scrollbarThumbRule).toContain("background: var(--scrollbar-thumb);");
     expect(scrollbarHoverRule).toContain("background: var(--scrollbar-thumb-hover);");
   });
@@ -154,11 +185,14 @@ describe("accent CSS contract", () => {
     expect(changedFileRule).toContain("font-size: var(--text-sm);");
   });
 
-  it("keeps checks status colors semantic while Purple can still override accent", () => {
+  it("keeps purple as an accent, not a theme", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
-    expect(tokens).toContain('.checks-row[data-status="passed"] .checks-row-status');
-    expect(tokens).toContain("color: var(--sage);");
-    expect(tokens).toContain(':root[data-theme="purple"][data-accent="blue"]');
+    const theme = readSource("src/renderer/lib/theme.ts");
+
+    expect(tokens).toContain(':root[data-accent="purple"]');
+    expect(tokens).toContain(':root[data-theme="dark"][data-accent="blue"]');
+    expect(tokens).not.toContain('data-theme="purple"');
+    expect(theme).not.toContain('"purple"');
   });
 
   it("uses themed user bubble surfaces and launch composer focus", () => {
@@ -177,7 +211,6 @@ describe("accent CSS contract", () => {
     expect(tokens).toContain("--user-message-selection-bg:");
     expect(tokens).not.toContain("--user-message-border:");
     expect(tokens).toContain(':root[data-theme="dark"]');
-    expect(tokens).toContain(':root[data-theme="purple"]');
     expect(bubbleRule).toContain("box-sizing: border-box;");
     expect(bubbleRule).toContain("min-width: 0;");
     expect(userBubbleRule).toContain("background: var(--user-message-bg);");
@@ -299,7 +332,7 @@ describe("accent CSS contract", () => {
     expect(modelSubmenuTriggerRule).toContain("column-gap: 8px;");
     expect(modelEditRule).toContain("width: 24px;");
     expect(modelEditRule).toContain("height: 24px;");
-    expect(groupLabelRule).toContain("font-size: 10px;");
+    expect(groupLabelRule).toContain("font-size: var(--text-2xs);");
     expect(groupLabelRule).toContain("line-height: 1.2;");
   });
 
@@ -315,6 +348,9 @@ describe("accent CSS contract", () => {
 
     expect(tokens).toContain("--font-prose: \"Inter Variable\", Inter, ui-sans-serif");
     expect(tokens).toContain(':root[data-font="lilex"]');
+    expect(tokens).toContain(':root[data-font-size="small"]');
+    expect(tokens).toContain(':root[data-font-size="large"]');
+    expect(tokens).toContain("--text-terminal: 13px;");
     expect(tokens).toContain("--font-ui: \"Inter Variable\", Inter, ui-sans-serif");
     expect(bubbleParagraphRule).toContain("font-family: var(--font-prose);");
     expect(bubbleParagraphRule).toContain("font-size: var(--text-base);");
@@ -377,7 +413,7 @@ describe("accent CSS contract", () => {
     expect(listRule).toContain("padding-left: 24px;");
     expect(listItemRule).toContain("margin: 5px 0;");
     expect(listItemRule).toContain("line-height: 1.6;");
-    expect(singleItemHeadingRule).toContain("font-size: 14px;");
+    expect(singleItemHeadingRule).toContain("font-size: var(--text-base-plus);");
     expect(singleItemHeadingRule).toContain("font-weight: 520;");
     expect(headingRule).toContain("font-weight: 450;");
     expect(headingRule).toContain("letter-spacing: 0;");
@@ -476,19 +512,35 @@ describe("accent CSS contract", () => {
     expect(sessionSendButtonRule).toContain("border-radius: 999px;");
   });
 
-  it("keeps the changed-files card compact-safe in narrow panes", () => {
-    const chatTools = readSource("src/renderer/styles/chat-tools.css");
-    const headerRule = cssRuleBody(chatTools, ".changed-files-header");
-    const titleRule = cssRuleBody(chatTools, ".changed-files-title");
-    const actionsRule = cssRuleBody(chatTools, ".changed-files-actions");
+  it("keeps the composer changed-file summary compact-safe in narrow panes", () => {
+    const chatComposer = readSource("src/renderer/styles/chat-composer.css");
+    const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
+    const changeButtonRule = cssRuleBody(
+      chatComposer,
+      ".session-input-toolbar .composer-footer-chip--changes"
+    );
+    const changeCountRule = cssRuleBody(
+      chatComposer,
+      ".session-input-toolbar .composer-footer-chip--changes .change-count"
+    );
+    const changeSeparatorRule = cssRuleBody(
+      chatComposer,
+      ".session-input-toolbar .composer-footer-chip--changes::before"
+    );
 
-    expect(headerRule).toContain("min-width: 0;");
-    expect(titleRule).toContain("min-width: 0;");
-    expect(titleRule).toContain("text-overflow: ellipsis;");
-    expect(titleRule).toContain("white-space: nowrap;");
-    expect(actionsRule).toContain("flex: 0 0 auto;");
-    expect(actionsRule).toContain("min-width: max-content;");
-    expect(chatTools).toContain("@container (max-width: 520px)");
+    expect(changeButtonRule).toContain("position: relative;");
+    expect(changeButtonRule).toContain("flex: 0 0 auto;");
+    expect(changeButtonRule).toContain("margin-left: 10px;");
+    expect(changeButtonRule).toContain("max-width: none;");
+    expect(changeButtonRule).toContain("overflow: visible;");
+    expect(changeButtonRule).toContain("font-family: var(--font-mono);");
+    expect(changeButtonRule).toContain("font-variant-numeric: tabular-nums;");
+    expect(changeSeparatorRule).toContain("width: 1px;");
+    expect(changeSeparatorRule).toContain("background: var(--line);");
+    expect(changeSeparatorRule).toContain("opacity: 0.6;");
+    expect(changeCountRule).toContain("gap: 5px;");
+    expect(chatComposerChips).toContain("@container (max-width: 520px)");
+    expect(chatComposerChips).toContain(".session-input-toolbar .composer-footer-chip--branch");
   });
 
   it("keeps the pane resize floor aligned with the compact composer breakpoint", () => {

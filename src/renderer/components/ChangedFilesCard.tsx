@@ -1,18 +1,13 @@
 import { ChevronRight, Play } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
-import type { ReviewState } from "../hooks/useReviewState.js";
-import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import type { CheckRun } from "../../shared/types.js";
-import { ChangeCount } from "./ChangeCount.js";
 
 export function ChangedFilesCard({
-  review,
   workspaceId,
   checkCommands = [],
   checks = [],
   onRunCheck
 }: {
-  review: ReviewState;
   workspaceId?: string;
   checkCommands?: string[];
   checks?: CheckRun[];
@@ -20,56 +15,18 @@ export function ChangedFilesCard({
 }): JSX.Element | null {
   const showChecks = checkCommands.length > 0;
 
-  let filesSection: JSX.Element | null = null;
-  if (review.filesState === "loading") {
-    filesSection = (
-      <div className="changed-files-header changed-files-header-static">
-        <span className="changed-files-title">Loading changed files</span>
-      </div>
-    );
-  } else if (review.filesState === "error") {
-    filesSection = (
-      <div className="changed-files-header changed-files-header-static">
-        <span className="changed-files-title">Changed files unavailable</span>
-        <span className="review-error">{review.filesError}</span>
-      </div>
-    );
-  } else if (review.filesState === "idle" || review.files.length === 0) {
-    filesSection = null;
-  } else {
-    const totals = summarizeChangedFiles(review.files);
-    const isChangesOpen = review.isPanelOpen && review.mode === "changes";
-    filesSection = (
-      <button
-        className="changed-files-header"
-        type="button"
-        aria-label="Open changed files in review panel"
-        aria-pressed={isChangesOpen}
-        onClick={review.toggleChangesPanel}
-      >
-        <span className="changed-files-title">{review.files.length} {review.files.length === 1 ? "file" : "files"} changed</span>
-        <span className="changed-files-actions">
-          <ChangeCount additions={totals.additions} deletions={totals.deletions} />
-        </span>
-      </button>
-    );
-  }
-
-  if (!filesSection && !showChecks) {
+  if (!showChecks) {
     return null;
   }
 
   return (
-    <section className="changed-files-card" aria-label="Changed files">
-      {filesSection}
-      {showChecks ? (
-        <ChecksList
-          workspaceId={workspaceId ?? null}
-          checkCommands={checkCommands}
-          checks={checks}
-          onRunCheck={onRunCheck}
-        />
-      ) : null}
+    <section className="changed-files-card" aria-label="Workspace checks">
+      <ChecksList
+        workspaceId={workspaceId ?? null}
+        checkCommands={checkCommands}
+        checks={checks}
+        onRunCheck={onRunCheck}
+      />
     </section>
   );
 }

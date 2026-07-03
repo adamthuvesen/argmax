@@ -228,7 +228,7 @@
   text-align: center;
   background: var(--amber-soft);
   border-bottom: 1px solid #e6cc8b;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   letter-spacing: 0.005em;
 }
 
@@ -243,7 +243,7 @@
   padding: 10px 14px;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
-  font-size: 13px;
+  font-size: var(--text-base);
   animation: msg-in 220ms var(--ease) both;
 }
 
@@ -263,7 +263,7 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--text-lg);
   line-height: 1;
   color: inherit;
   opacity: 0.7;

@@ -54,7 +54,12 @@ describe("PlanCard", () => {
     expect(screen.getByText(/Tighten the onboarding flow/)).toBeInTheDocument();
     expect(screen.getByText("Summary")).toBeInTheDocument();
     expect(screen.getByText("Key Changes")).toBeInTheDocument();
-    expect(screen.getByText("Opus 4.8")).toBeInTheDocument();
+    expect(screen.queryByText("Opus 4.8")).toBeNull();
+    expect(screen.getByRole("button", { name: "Download plan" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy plan" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse plan" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark helpful" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mark unhelpful" })).toBeNull();
     expect(screen.getByText("App.tsx").className).toContain("plan-card-chip");
   });
 
@@ -288,6 +293,69 @@ describe("PlanCard", () => {
       await Promise.resolve();
     });
     expect(button).toHaveAttribute("title", "Copied!");
+  });
+
+  it("downloads the raw markdown when the download button is clicked", () => {
+    const urlApi = URL as unknown as {
+      createObjectURL?: (object: Blob | MediaSource) => string;
+      revokeObjectURL?: (url: string) => void;
+    };
+    const originalCreateObjectURL = urlApi.createObjectURL;
+    const originalRevokeObjectURL = urlApi.revokeObjectURL;
+    const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>().mockReturnValue("blob:plan");
+    const revokeObjectURL = vi.fn<(url: string) => void>();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL
+    });
+
+    try {
+      render(
+        <PlanCard
+          plan={samplePlan()}
+          createdAt="2026-05-16T14:30:00.000Z"
+          rawMarkdown={"# Plan\n\nbody"}
+          onAccept={() => {}}
+          onReject={() => {}}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Download plan" }));
+
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0]?.[0];
+      expect(blob).toBeInstanceOf(Blob);
+      expect((blob as Blob).type).toBe("text/markdown");
+      expect((blob as Blob).size).toBe("# Plan\n\nbody".length);
+      expect(click).toHaveBeenCalledTimes(1);
+      const anchor = click.mock.contexts[0] as HTMLAnchorElement;
+      expect(anchor.href).toBe("blob:plan");
+      expect(anchor.download).toBe("plan.md");
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:plan");
+    } finally {
+      click.mockRestore();
+      if (originalCreateObjectURL) {
+        Object.defineProperty(URL, "createObjectURL", {
+          configurable: true,
+          value: originalCreateObjectURL
+        });
+      } else {
+        delete urlApi.createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(URL, "revokeObjectURL", {
+          configurable: true,
+          value: originalRevokeObjectURL
+        });
+      } else {
+        delete urlApi.revokeObjectURL;
+      }
+    }
   });
 
   it("renders markdown in a section label without leaking ** or swallowing a leading number", () => {

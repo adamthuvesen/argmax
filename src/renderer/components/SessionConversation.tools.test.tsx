@@ -438,27 +438,30 @@ describe("SessionConversation — tools & chrome", () => {
     expect(onOpenFile).not.toHaveBeenCalled();
   });
 
-  it("renders an assistant message produced in plan mode as a PlanCard", () => {
-    const plan = [
-      "# Plan: Tidy chat header",
-      "",
-      "Make the header lighter and clearer.",
-      "",
-      "## Key Changes",
-      "",
-      "- Update the badge color",
-      "- Shrink the avatar"
-    ].join("\n");
+  it.each(["claude", "cursor", "codex"] as const)(
+    "renders an assistant message produced in custom plan mode as a PlanCard for %s",
+    (provider) => {
+      const plan = [
+        "# Plan: Tidy chat header",
+        "",
+        "Make the header lighter and clearer.",
+        "",
+        "## Key Changes",
+        "",
+        "- Update the badge color",
+        "- Shrink the avatar"
+      ].join("\n");
 
-    renderConversation(baseSession({ state: "complete" }), [
-      event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "plan" }),
-      event("m1", "message.completed", plan, "2026-05-12T15:00:01.000Z")
-    ]);
+      renderConversation(baseSession({ provider, state: "complete" }), [
+        event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "plan" }),
+        event("m1", "message.completed", plan, "2026-05-12T15:00:01.000Z")
+      ]);
 
-    expect(screen.getByRole("article", { name: /Plan: Tidy chat header/ })).toBeInTheDocument();
-    expect(screen.getByRole("listbox", { name: "Plan response" })).toBeInTheDocument();
-    expect(screen.getByText("Key Changes")).toBeInTheDocument();
-  });
+      expect(screen.getByRole("article", { name: /Plan: Tidy chat header/ })).toBeInTheDocument();
+      expect(screen.getByRole("listbox", { name: "Plan response" })).toBeInTheDocument();
+      expect(screen.getByText("Key Changes")).toBeInTheDocument();
+    }
+  );
 
   it("renders the same content as a ChatBubble when the turn was sent in edit mode", () => {
     const plan = [

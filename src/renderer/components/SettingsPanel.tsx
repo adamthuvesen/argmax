@@ -8,7 +8,7 @@ import type {
   McpClientListing,
   ProjectSummary
 } from "../../shared/types.js";
-import type { FontFamilyId } from "../lib/fonts.js";
+import type { FontFamilyId, FontSizeId } from "../lib/fonts.js";
 import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
@@ -55,6 +55,8 @@ export function SettingsPanel({
   onFastModeEnabledChange,
   fontFamily,
   onFontFamilyChange,
+  fontSize,
+  onFontSizeChange,
   themeMode,
   onThemeModeChange,
   accentId,
@@ -89,6 +91,8 @@ export function SettingsPanel({
   onFastModeEnabledChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
+  fontSize: FontSizeId;
+  onFontSizeChange: (id: FontSizeId) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -240,6 +244,8 @@ export function SettingsPanel({
             <GeneralSettings
               fontFamily={fontFamily}
               onFontFamilyChange={onFontFamilyChange}
+              fontSize={fontSize}
+              onFontSizeChange={onFontSizeChange}
               themeMode={themeMode}
               onThemeModeChange={onThemeModeChange}
               accentId={accentId}

@@ -28,7 +28,7 @@
 }
 
 .launcher-hero-eyebrow {
-  font-size: 10.5px;
+  font-size: var(--text-2xs-plus);
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;

@@ -146,6 +146,8 @@ export function App(): JSX.Element {
     setAccentId,
     fontFamily,
     setFontFamily,
+    fontSize,
+    setFontSize,
     defaultIde,
     setDefaultIde,
     detectedIdes
@@ -874,6 +876,7 @@ export function App(): JSX.Element {
       addProject,
       fastModeEnabled,
       handleBranchSwitch,
+      handleLaunchModelChange,
       launchModel,
       launchTask,
       launcherGlobeVisible,
@@ -1058,6 +1061,8 @@ export function App(): JSX.Element {
                 onFastModeEnabledChange={setFastModeEnabled}
                 fontFamily={fontFamily}
                 onFontFamilyChange={setFontFamily}
+                fontSize={fontSize}
+                onFontSizeChange={setFontSize}
                 themeMode={themeMode}
                 onThemeModeChange={(mode) => {
                   animateThemeChange();

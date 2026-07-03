@@ -418,14 +418,24 @@ export function extractToolName(payload: Record<string, unknown>): string {
   return "tool";
 }
 
-export function extractToolInput(payload: Record<string, unknown>): Record<string, unknown> {
-  if (payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)) {
-    return payload.input as Record<string, unknown>;
+function inputRecord(value: unknown, context: string): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
   }
-  if (typeof payload.arguments === "string") {
-    return safeJsonParseRecord(payload.arguments, "toolCalls.arguments");
+  if (typeof value === "string") {
+    return safeJsonParseRecord(value, context);
   }
   return {};
+}
+
+export function extractToolInput(payload: Record<string, unknown>): Record<string, unknown> {
+  const args = {
+    ...inputRecord(payload.parameters, "toolCalls.parameters"),
+    ...inputRecord(payload.arguments, "toolCalls.arguments"),
+    ...inputRecord(payload.args, "toolCalls.args")
+  };
+  const input = inputRecord(payload.input, "toolCalls.input");
+  return { ...args, ...input };
 }
 
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {

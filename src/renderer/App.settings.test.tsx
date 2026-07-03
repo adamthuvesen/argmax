@@ -357,6 +357,31 @@ describe("App settings", () => {
       expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
     );
     expect(document.documentElement.getAttribute("data-font")).toBe("jetbrains-mono");
+    expect(window.localStorage.getItem("argmax.font.size")).toBe("default");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("default");
+  });
+
+  it("settings Appearance section switches the font size and persists it", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const fontSize = screen.getByRole("radiogroup", { name: "Font size" });
+    expect(within(fontSize).getByRole("radio", { name: "Default current" })).toBeChecked();
+
+    fireEvent.click(within(fontSize).getByRole("radio", { name: "Large" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.font.size")).toBe("large")
+    );
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("large");
+
+    fireEvent.click(within(fontSize).getByRole("radio", { name: "Small" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.font.size")).toBe("small")
+    );
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("small");
   });
 
   it("settings Appearance section renders the Accent picker and persists accent changes", async () => {

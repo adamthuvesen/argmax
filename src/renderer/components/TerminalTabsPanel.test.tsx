@@ -7,6 +7,7 @@ const terminalMockState = vi.hoisted(() => ({
   instances: [] as Array<{
     cols: number;
     rows: number;
+    options: Record<string, unknown>;
     write: ReturnType<typeof vi.fn>;
   }>,
   nextSize: null as { cols: number; rows: number } | null
@@ -25,8 +26,10 @@ vi.mock("@xterm/xterm", () => ({
     write = vi.fn();
     focus = vi.fn();
     dispose = vi.fn();
+    options: Record<string, unknown>;
 
-    constructor() {
+    constructor(options: Record<string, unknown> = {}) {
+      this.options = options;
       terminalMockState.instances.push(this);
       terminalMockState.nextSize = null;
     }
@@ -106,6 +109,8 @@ describe("TerminalTabsPanel", () => {
   beforeEach(() => {
     terminalMockState.instances = [];
     terminalMockState.nextSize = null;
+    document.documentElement.style.removeProperty("--font-mono");
+    document.documentElement.style.removeProperty("--text-terminal");
     class StubResizeObserver implements ResizeObserver {
       observe(): void {}
       unobserve(): void {}
@@ -117,6 +122,8 @@ describe("TerminalTabsPanel", () => {
 
   afterEach(() => {
     cleanup();
+    document.documentElement.style.removeProperty("--font-mono");
+    document.documentElement.style.removeProperty("--text-terminal");
     delete (window as { argmax?: unknown }).argmax;
     vi.restoreAllMocks();
   });
@@ -136,6 +143,26 @@ describe("TerminalTabsPanel", () => {
     expect(stub.spawn).toHaveBeenCalledWith(
       expect.objectContaining({ workspaceId: "ws-1" })
     );
+  });
+
+  it("uses typography tokens when constructing xterm", async () => {
+    document.documentElement.style.setProperty("--font-mono", '"Token Mono", monospace');
+    document.documentElement.style.setProperty("--text-terminal", "15px");
+
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+
+    await waitFor(() => expect(terminalMockState.instances).toHaveLength(1));
+    expect(terminalMockState.instances[0]?.options).toMatchObject({
+      fontFamily: '"Token Mono", monospace',
+      fontSize: 15
+    });
   });
 
   it("bounds the initial PTY size before spawning", async () => {

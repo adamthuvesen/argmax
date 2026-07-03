@@ -41,10 +41,12 @@ follow-up sent mid-turn queues and keeps the current provider), and a switch
 requires `model_label`/`model_id` for the new provider. A `session.provider-changed`
 timeline marker records the handoff.
 
-Claude structured launches use `--output-format stream-json`, `--verbose`, and
-`--include-partial-messages` so answer and thinking deltas stream live. The
-normalizer unwraps `stream_event` rows and maps a successful `result` row's
-`result` field to `message.completed`.
+Claude structured launches use `--output-format stream-json`, `--verbose`,
+`--include-partial-messages`, and `--brief` so answer/thinking deltas stream
+live and Claude can send explicit user-facing messages through `SendUserMessage`.
+The normalizer unwraps `stream_event` rows, maps `SendUserMessage` tool calls to
+`message.completed`, and maps a successful `result` row's `result` field to
+`message.completed`.
 
 Fast mode is an Argmax launch preference, not a persisted provider edit:
 Claude receives it via `--settings {"fastMode":true|false}` and Codex receives

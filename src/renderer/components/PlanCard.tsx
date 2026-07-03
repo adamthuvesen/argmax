@@ -1,13 +1,11 @@
-import { ChevronDown, ChevronUp, Copy, Download, ThumbsDown, ThumbsUp } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
+import { ChevronDown, ChevronUp, Copy, Download } from "lucide-react";
+import { memo, useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Plan, PlanItem } from "../lib/parsePlan.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 
 const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
-
-type FeedbackState = "none" | "up" | "down";
 
 export type PlanCardProps = {
   plan: Plan;
@@ -17,23 +15,6 @@ export type PlanCardProps = {
   onAccept: () => void | Promise<boolean>;
   onReject: () => void;
 };
-
-function formatFolioDate(iso: string): string {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return "";
-  const d = new Date(ms);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}·${mm}·${yy}`;
-}
-
-function formatFolioTime(iso: string): string {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return "";
-  const d = new Date(ms);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
 
 // PlanInlineMarkdown renders inline-only, but remark still parses its input as
 // a block document. A label like "1. **README.md**" or "- **Foo**" would be
@@ -53,6 +34,7 @@ function PlanInlineMarkdown({ children }: { children: string }): JSX.Element {
         // Render the wrapping paragraph as a span so this stays inline-safe
         // when nested inside list items, headings, etc.
         p: ({ children: kids }) => <>{kids}</>,
+        strong: ({ children: kids }) => <strong className="plan-card-strong">{kids}</strong>,
         code: ({ className, children: kids, ...rest }) => {
           const isFenced = typeof className === "string" && className.includes("language-");
           if (isFenced) {
@@ -97,9 +79,7 @@ function PlanChangeItem({ item, marker }: { item: PlanItem; marker: string }): J
 
 function PlanCardInner({
   plan,
-  createdAt,
   rawMarkdown,
-  modelLabel,
   onAccept,
   onReject
 }: PlanCardProps): JSX.Element {
@@ -107,11 +87,7 @@ function PlanCardInner({
   const [collapsed, setCollapsed] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [copied, copy] = useCopyToClipboard();
-  const [feedback, setFeedback] = useState<FeedbackState>("none");
   const optionsRef = useRef<HTMLUListElement | null>(null);
-
-  const folioDate = useMemo(() => formatFolioDate(createdAt), [createdAt]);
-  const folioTime = useMemo(() => formatFolioTime(createdAt), [createdAt]);
 
   const options = plan.action.options;
   const optionCount = options.length;
@@ -206,9 +182,6 @@ function PlanCardInner({
     URL.revokeObjectURL(url);
   }, [rawMarkdown]);
 
-  const totalSections = plan.sections.length + 1; // +1 for the summary section
-  const folioLabel = `§01 of §${String(totalSections).padStart(2, "0")}`;
-
   if (collapsed) {
     return (
       <article className="plan-card plan-card-collapsed" aria-label={`Plan: ${plan.title}`}>
@@ -234,41 +207,15 @@ function PlanCardInner({
   }
 
   return (
-    <article className="plan-card" aria-label={`Plan: ${plan.title}`}>
-      <aside className="plan-card-rail">
-        <div className="plan-card-eyebrow-block">
-          <span className="plan-card-eyebrow">
-            <span className="plan-card-eyebrow-dot" aria-hidden="true" />
-            Plan
-          </span>
-          <span className="plan-card-eyebrow-rule" aria-hidden="true" />
-        </div>
-
-        {modelLabel ? (
-          <div className="plan-card-meta-group">
-            <span className="plan-card-meta-label">Model</span>
-            <span className="plan-card-meta-value">{modelLabel}</span>
-          </div>
-        ) : null}
-
-        <div className="plan-card-meta-group">
-          <span className="plan-card-meta-label">Sections</span>
-          <span className="plan-card-meta-value">{plan.sections.length}</span>
-        </div>
-
-        <div className="plan-card-rail-foot">
-          {folioDate ? <span className="plan-card-folio">{folioDate}</span> : null}
-          {folioTime ? <span className="plan-card-folio plan-card-folio-time">{folioTime}</span> : null}
-        </div>
-      </aside>
-
+    <article className="plan-card plan-card--inline-meta" aria-label={`Plan: ${plan.title}`}>
       <div className="plan-card-content">
         <header className="plan-card-header">
-          <span className="plan-card-spine">
-            Folio
-            <span className="plan-card-spine-dot" aria-hidden="true" />
-            {folioLabel}
-          </span>
+          <div className="plan-card-header-main">
+            <span className="plan-card-eyebrow">
+              <span className="plan-card-eyebrow-dot" aria-hidden="true" />
+              Plan
+            </span>
+          </div>
           <div className="plan-card-actions">
             <button
               type="button"
@@ -287,24 +234,6 @@ function PlanCardInner({
               onClick={handleCopy}
             >
               <Copy size={14} />
-            </button>
-            <button
-              type="button"
-              className={`plan-card-icon-btn${feedback === "up" ? " is-active" : ""}`}
-              aria-label="Mark helpful"
-              aria-pressed={feedback === "up"}
-              onClick={() => setFeedback((f) => (f === "up" ? "none" : "up"))}
-            >
-              <ThumbsUp size={14} />
-            </button>
-            <button
-              type="button"
-              className={`plan-card-icon-btn${feedback === "down" ? " is-active" : ""}`}
-              aria-label="Mark unhelpful"
-              aria-pressed={feedback === "down"}
-              onClick={() => setFeedback((f) => (f === "down" ? "none" : "down"))}
-            >
-              <ThumbsDown size={14} />
             </button>
             <button
               type="button"
@@ -407,20 +336,11 @@ function PlanCardInner({
               );
             })}
           </ul>
-          <div className="plan-card-action-foot">
-            {submitted ? (
+          {submitted ? (
+            <div className="plan-card-action-foot">
               <span className="plan-card-key-hint">Submitted</span>
-            ) : (
-              <>
-                <span className="plan-card-key-hint">
-                  <span className="plan-card-key-cap">↑↓</span> move
-                </span>
-                <span className="plan-card-key-hint">
-                  <span className="plan-card-key-cap">↵</span> submit
-                </span>
-              </>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </article>

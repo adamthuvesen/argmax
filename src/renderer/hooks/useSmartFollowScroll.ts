@@ -194,6 +194,27 @@ export function useSmartFollowScroll(
     setShowScrollToBottom(decision.showFab);
   }, [clearUserScrollIntent, followOffsetFor]);
 
+  const reconcileScrollAffordance = useCallback((el: HTMLDivElement): void => {
+    const decision = decideSmartFollow(
+      el.scrollHeight,
+      el.scrollTop,
+      el.clientHeight,
+      followOffsetFor(el)
+    );
+
+    if (decision.pinToBottom) {
+      wasNearBottomRef.current = true;
+      clearUserScrollIntent();
+      setShowScrollToBottom(false);
+      setNewBelowCount(0);
+      return;
+    }
+
+    if (!wasNearBottomRef.current) {
+      setShowScrollToBottom(decision.showFab);
+    }
+  }, [clearUserScrollIntent, followOffsetFor]);
+
   const scrollToBottom = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
@@ -250,14 +271,17 @@ export function useSmartFollowScroll(
     const cards = metaCardsRef.current;
     if (!cards || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (!wasNearBottomRef.current) return;
       const el = conversationListRef.current;
       if (!el) return;
-      scrollToFollowTarget(el, { force: true });
+      if (wasNearBottomRef.current) {
+        scrollToFollowTarget(el, { force: true });
+      } else {
+        reconcileScrollAffordance(el);
+      }
     });
     observer.observe(cards);
     return () => observer.disconnect();
-  }, [scrollToFollowTarget]);
+  }, [reconcileScrollAffordance, scrollToFollowTarget]);
 
   // Smooth text reveal grows an existing bubble without adding a new timeline
   // item, so `conversationItems` does not change. Observe direct children so
@@ -266,8 +290,11 @@ export function useSmartFollowScroll(
     const el = conversationListRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (!wasNearBottomRef.current) return;
-      scrollToFollowTarget(el, { smooth: liveFollowRef.current, live: liveFollowRef.current });
+      if (wasNearBottomRef.current) {
+        scrollToFollowTarget(el, { smooth: liveFollowRef.current, live: liveFollowRef.current });
+      } else {
+        reconcileScrollAffordance(el);
+      }
     });
     for (const child of Array.from(el.children)) {
       if (child instanceof HTMLElement) {
@@ -275,7 +302,7 @@ export function useSmartFollowScroll(
       }
     }
     return () => observer.disconnect();
-  }, [conversationItems, scrollToFollowTarget]);
+  }, [conversationItems, reconcileScrollAffordance, scrollToFollowTarget]);
 
   return {
     conversationListRef,

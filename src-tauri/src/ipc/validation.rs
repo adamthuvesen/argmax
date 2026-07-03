@@ -70,7 +70,6 @@ pub enum ThemeMode {
     Light,
     Dark,
     System,
-    Purple,
 }
 
 macro_rules! string_newtype {

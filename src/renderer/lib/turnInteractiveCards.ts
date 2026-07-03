@@ -1,6 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
 import { parseQuestionsFromToolInput, type Question } from "./questions.js";
-import { toolsNamed } from "./turnToolItems.js";
 import type { ToolCall, TurnToolItem } from "./toolCalls.js";
 
 export type ResolvedExitPlanTool = {
@@ -15,13 +14,50 @@ export type ResolvedAskUserQuestionTool = {
   questions: Question[];
 };
 
+function normalizedInteractiveToolName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export function isExitPlanModeToolName(name: string): boolean {
+  return normalizedInteractiveToolName(name) === "exitplanmode";
+}
+
+export function isAskUserQuestionToolName(name: string): boolean {
+  const normalized = normalizedInteractiveToolName(name);
+  return (
+    normalized === "askuserquestion" ||
+    normalized === "askquestiontoolcall" ||
+    normalized === "sendusermessage"
+  );
+}
+
+function toolsMatching(
+  toolItems: readonly TurnToolItem[],
+  predicate: (tool: ToolCall) => boolean
+): ToolCall[] {
+  const matches: ToolCall[] = [];
+  for (const item of toolItems) {
+    if (item.kind === "tool") {
+      if (predicate(item.tool)) matches.push(item.tool);
+      for (const child of item.children ?? []) {
+        if (predicate(child)) matches.push(child);
+      }
+      continue;
+    }
+    for (const tool of item.group.tools) {
+      if (predicate(tool)) matches.push(tool);
+    }
+  }
+  return matches;
+}
+
 export function collectExitPlanState(toolItems: readonly TurnToolItem[]): {
   tool: ResolvedExitPlanTool | null;
   hiddenToolIds: Set<string>;
 } {
   const hiddenToolIds = new Set<string>();
   let tool: ResolvedExitPlanTool | null = null;
-  for (const candidate of toolsNamed(toolItems, "ExitPlanMode")) {
+  for (const candidate of toolsMatching(toolItems, (tool) => isExitPlanModeToolName(tool.name))) {
     hiddenToolIds.add(candidate.id);
     if (candidate.status === "running") continue;
     const planArg = candidate.inputFull?.plan;
@@ -39,7 +75,7 @@ export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]):
 } {
   const candidateIds = new Set<string>();
   let tool: ResolvedAskUserQuestionTool | null = null;
-  for (const candidate of toolsNamed(toolItems, "AskUserQuestion")) {
+  for (const candidate of toolsMatching(toolItems, (tool) => isAskUserQuestionToolName(tool.name))) {
     candidateIds.add(candidate.id);
     const questions = parseQuestionsFromToolInput(candidate);
     if (!questions) continue;
@@ -47,8 +83,7 @@ export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]):
       tool = { id: candidate.id, createdAt: candidate.createdAt, questions };
     }
   }
-  const hiddenToolIds = tool ? candidateIds : new Set<string>();
-  return { tool, hiddenToolIds };
+  return { tool, hiddenToolIds: candidateIds };
 }
 
 export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCall[]): boolean {
@@ -60,8 +95,8 @@ export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCa
   }
   return toolCalls.some(
     (tool) =>
-      ((tool.name === "AskUserQuestion" && parseQuestionsFromToolInput(tool)) ||
-        tool.name === "ExitPlanMode") &&
+      ((isAskUserQuestionToolName(tool.name) && parseQuestionsFromToolInput(tool)) ||
+        isExitPlanModeToolName(tool.name)) &&
       tool.createdAt > lastUserMessageTime
   );
 }

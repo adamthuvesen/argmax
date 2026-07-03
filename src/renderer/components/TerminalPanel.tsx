@@ -2,7 +2,7 @@ import { useEffect, useRef, type JSX } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { tryFit } from "../lib/xtermFit.js";
-import { resolveMonoFontStack } from "../lib/fonts.js";
+import { resolveMonoFontStack, resolveTerminalFontSize } from "../lib/fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { getXtermTheme, readActiveXtermTheme } from "../lib/xtermTheme.js";
 import { themeAppearance } from "../lib/theme.js";
@@ -26,6 +26,13 @@ function boundedTerminalSize(term: Terminal): { cols: number; rows: number } {
 function boundedDimension(value: number, min: number, max: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function syncTerminalAppearance(term: Terminal): void {
+  const attr = document.documentElement.getAttribute("data-theme");
+  term.options.theme = getXtermTheme(themeAppearance(attr));
+  term.options.fontFamily = resolveMonoFontStack();
+  term.options.fontSize = resolveTerminalFontSize();
 }
 
 /**
@@ -59,7 +66,7 @@ export function TerminalInstance({
 
     const term = new Terminal({
       fontFamily: resolveMonoFontStack(),
-      fontSize: 13,
+      fontSize: resolveTerminalFontSize(),
       lineHeight: 1.2,
       cursorBlink: true,
       theme: readActiveXtermTheme(),
@@ -73,15 +80,19 @@ export function TerminalInstance({
     fitRef.current = fit;
 
     // Watch <html data-theme="..."> so the terminal palette flips live when
-    // the user toggles theme in Settings (or the OS preference changes under
-    // "System"). MutationObserver is the smallest hammer here.
-    const themeObserver = new MutationObserver(() => {
-      const attr = document.documentElement.getAttribute("data-theme");
-      term.options.theme = getXtermTheme(themeAppearance(attr));
+    // the user toggles theme in Settings. data-font/data-font-size also feed
+    // xterm because it renders text outside normal CSS inheritance.
+    const appearanceObserver = new MutationObserver(() => {
+      syncTerminalAppearance(term);
+      tryFit(fit);
+      const terminalId = terminalIdRef.current;
+      if (terminalId) {
+        void window.argmax?.terminal.resize({ terminalId, ...boundedTerminalSize(term) });
+      }
     });
-    themeObserver.observe(document.documentElement, {
+    appearanceObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"]
+      attributeFilter: ["data-theme", "data-font", "data-font-size"]
     });
 
     // Initial fit before spawn so cols/rows match what the user will see.
@@ -169,7 +180,7 @@ export function TerminalInstance({
     return () => {
       disposed = true;
       ro.disconnect();
-      themeObserver.disconnect();
+      appearanceObserver.disconnect();
       unsubscribeData?.();
       unsubscribeExit?.();
       inputSub?.dispose();

@@ -486,6 +486,12 @@ fn normalize_json_payload(
 
     if provider == ProviderId::Claude {
         events.extend(extract_claude_inline_tool_blocks(event, &payload));
+        if events
+            .iter()
+            .any(|event| event.r#type == "message.completed")
+        {
+            context.claude_turn_answer_emitted = true;
+        }
     }
 
     if provider == ProviderId::Claude && provider_type.as_deref() == Some("result") {

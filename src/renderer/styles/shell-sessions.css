@@ -13,7 +13,7 @@
   border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 400;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
@@ -128,7 +128,7 @@
   min-height: 28px;
   padding: 0 10px 0 8px;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   font-weight: 400;
   background: var(--panel);
   border: 1px solid var(--ink);
@@ -331,7 +331,7 @@
   transform: translateY(-50%);
   z-index: 1;
   padding: 1px 4px;
-  font-size: 10.5px;
+  font-size: var(--text-2xs-plus);
   color: var(--muted-strong);
   background: var(--sidebar);
   border-radius: var(--radius-xs);
@@ -372,7 +372,7 @@
   cursor: pointer;
   font: inherit;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .cost-panel-title {
@@ -396,7 +396,7 @@
   width: 100%;
   margin-top: 6px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -469,7 +469,7 @@
   padding: 14px 6px 4px;
   color: var(--muted-strong);
   border-top: 1px solid var(--line-soft);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .identity-chip {
@@ -508,7 +508,7 @@
 .identity-name {
   font-family: var(--font-mono);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 400;
   letter-spacing: -0.003em;
   overflow: hidden;
@@ -522,7 +522,7 @@
   gap: 6px;
   font-family: var(--font-mono);
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: var(--text-2xs-plus);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   overflow: hidden;

@@ -237,6 +237,101 @@ describe("SessionConversation — cards", () => {
     expect(call?.[3]).toBe("plan");
   });
 
+  it.each([
+    {
+      provider: "claude" as const,
+      toolMessage: "AskUserQuestion",
+      payload: {
+        type: "tool_use",
+        id: "tu_q_claude",
+        name: "AskUserQuestion",
+        input: {
+          questions: [
+            {
+              question: "Which path should I take?",
+              header: "Path",
+              multiSelect: false,
+              options: [{ label: "Fast fix" }, { label: "Deeper cleanup" }]
+            }
+          ]
+        }
+      }
+    },
+    {
+      provider: "cursor" as const,
+      toolMessage: "askQuestionToolCall",
+      payload: {
+        call_id: "call_q_cursor",
+        name: "askQuestionToolCall",
+        input: {
+          questions: [
+            {
+              question: "Which path should I take?",
+              header: "Path",
+              multiSelect: false,
+              options: [{ label: "Fast fix" }, { label: "Deeper cleanup" }]
+            }
+          ]
+        }
+      }
+    },
+    {
+      provider: "codex" as const,
+      toolMessage: "AskUserQuestion",
+      payload: {
+        type: "tool_call",
+        id: "item_q_codex",
+        name: "ask_user_question",
+        arguments: JSON.stringify({
+          questions: [
+            {
+              question: "Which path should I take?",
+              header: "Path",
+              multiSelect: false,
+              options: [{ label: "Fast fix" }, { label: "Deeper cleanup" }]
+            }
+          ]
+        })
+      }
+    }
+  ])("renders AskUserQuestion as a QuestionCard for $provider payloads", ({ provider, toolMessage, payload }) => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SessionConversation
+        events={[
+          event("u1", "user.message", "choose a path", "2026-05-12T15:00:00.000Z", {
+            agentMode: "plan"
+          }),
+          event("tu-start", "command.started", toolMessage, "2026-05-12T15:00:01.000Z", payload)
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={onSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
+        onCancelQueuedMessage={vi.fn().mockResolvedValue(undefined)}
+        pendingMessages={[]}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider, state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
+    expect(screen.getByText("Which path should I take?")).toBeInTheDocument();
+    expect(screen.queryByText(toolMessage)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("option", { name: /Fast fix/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const call = onSend.mock.calls[0] as [string, string, unknown, string] | undefined;
+    expect(call?.[1]).toContain("**Path**: Fast fix");
+    expect(call?.[3]).toBe("plan");
+  });
+
   it("terminates the in-flight probe before sending the QuestionCard answer (no queue wait)", async () => {
     // While Haiku is still emitting fallback narration after a denied
     // AskUserQuestion, session.state === "running". A naive send would queue
@@ -555,7 +650,7 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
   });
 
-  it("shows the raw AskUserQuestion row when the only ask is invalid", () => {
+  it("hides the raw AskUserQuestion row when the only ask is invalid", () => {
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -587,8 +682,8 @@ describe("SessionConversation — cards", () => {
     );
 
     expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
-    expect(screen.getByText("AskUserQuestion")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    expect(screen.queryByText("AskUserQuestion")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
   it("renders a running AskUserQuestion card when it is mixed into an active tool group", () => {

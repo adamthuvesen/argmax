@@ -312,7 +312,7 @@
 .section-heading h2 {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 19px;
+  font-size: var(--text-lg-plus);
   font-weight: 560;
   line-height: 1.2;
   letter-spacing: -0.012em;
@@ -495,7 +495,7 @@
 }
 
 .markdown ol > li:only-child {
-  font-size: 14px;
+  font-size: var(--text-base-plus);
   font-weight: 520;
   letter-spacing: 0;
   color: var(--text);
@@ -563,7 +563,7 @@
 }
 
 .markdown h3 {
-  font-size: 14px;
+  font-size: var(--text-base-plus);
 }
 
 .markdown h4 {
@@ -597,7 +597,7 @@
   margin: 20px 0;
   border-collapse: collapse;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.5;
   border-radius: var(--radius-sm);
   overflow: hidden;

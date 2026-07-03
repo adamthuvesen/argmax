@@ -357,11 +357,15 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByText("2 files changed")).toBeInTheDocument();
-    expect(screen.getByLabelText("2 additions, 17 deletions")).toBeInTheDocument();
+    const changesButton = await screen.findByRole("button", {
+      name: "Open changed files in review panel: 2 files changed, 2 additions, 17 deletions"
+    });
+    expect(changesButton).toHaveTextContent("+2");
+    expect(changesButton).toHaveTextContent("-17");
+    expect(screen.queryByText("2 files changed")).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open changed files in review panel" }));
+    fireEvent.click(changesButton);
 
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
     expect(reviewPanel).toBeInTheDocument();

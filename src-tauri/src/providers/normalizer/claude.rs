@@ -78,6 +78,20 @@ pub fn extract_inline_tool_blocks(
         };
         match string_value(block.get("type")) {
             Some("tool_use") => {
+                if let Some(text) = send_user_message_text(block) {
+                    let mut payload = block.clone();
+                    payload.insert(
+                        "synthesizedFromTool".to_string(),
+                        Value::String("SendUserMessage".to_string()),
+                    );
+                    events.push(timeline_event(
+                        event,
+                        "message.completed",
+                        text,
+                        Value::Object(payload),
+                    ));
+                    continue;
+                }
                 // `parent_tool_use_id` lives on the outer assistant-message
                 // payload (a sibling of `message`), but flattening the content
                 // blocks into per-tool `command.started` events would drop it.
@@ -127,6 +141,19 @@ pub fn extract_inline_tool_blocks(
         }
     }
     events
+}
+
+fn send_user_message_text(block: &Map<String, Value>) -> Option<String> {
+    if string_value(block.get("name")) != Some("SendUserMessage") {
+        return None;
+    }
+    let input = object_value(block.get("input"))?;
+    ["message", "text", "content"]
+        .iter()
+        .filter_map(|key| string_value(input.get(*key)))
+        .map(str::trim)
+        .find(|text| !text.is_empty())
+        .map(str::to_string)
 }
 
 pub fn extract_message_content(payload: &Map<String, Value>) -> Option<String> {
@@ -384,6 +411,48 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[1].r#type, "command.completed");
+    }
+
+    #[test]
+    fn claude_send_user_message_tool_surfaces_as_assistant_message() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "toolu_msg",
+                                "name": "SendUserMessage",
+                                "input": { "message": "Which path should I take?" }
+                            }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.completed");
+        assert_eq!(result.events[0].message, "Which path should I take?");
+        assert_eq!(
+            result.events[0].payload["synthesizedFromTool"],
+            "SendUserMessage"
+        );
+        assert!(context.claude_turn_answer_emitted);
+
+        let trailing = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"result","subtype":"success","result":"Which path should I take?"}"#,
+            ),
+            &mut context,
+        );
+        assert!(trailing.events.is_empty());
     }
 
     #[test]

@@ -62,7 +62,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
 ];
 
 fn claude_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
-    let mut args = vec!["-p".to_string()];
+    let mut args = vec!["-p".to_string(), "--brief".to_string()];
     args.extend(claude_permission_args(input));
     args.extend(claude_reasoning_args(input));
     args.extend(claude_fast_mode_args(input));
@@ -90,6 +90,7 @@ fn claude_structured_resume_args(
 ) -> Vec<String> {
     let mut args = vec![
         "-p".to_string(),
+        "--brief".to_string(),
         "--resume".to_string(),
         resume_conversation_id.to_string(),
     ];
@@ -321,6 +322,7 @@ mod tests {
             (definition.structured_args)(&input),
             vec![
                 "-p",
+                "--brief",
                 "--permission-mode",
                 "bypassPermissions",
                 "--settings",
@@ -349,6 +351,7 @@ mod tests {
             (definition.structured_resume_args)(&input, "conv-7"),
             vec![
                 "-p",
+                "--brief",
                 "--resume",
                 "conv-7",
                 "--permission-mode",
@@ -548,7 +551,10 @@ mod tests {
             .iter()
             .position(|arg| arg == "--model")
             .expect("model flag");
-        assert_eq!(args[index + 1], "claude-opus-4-8[context=1m,fast=false,effort=high]");
+        assert_eq!(
+            args[index + 1],
+            "claude-opus-4-8[context=1m,fast=false,effort=high]"
+        );
     }
 
     #[test]

@@ -88,7 +88,9 @@ export function PerfOverlay(): JSX.Element | null {
         zIndex: 9999,
         background: "var(--ink)",
         color: "var(--bubble-on-ink)",
-        font: "11px/1.3 'Lilex', ui-monospace, Menlo, monospace",
+        fontFamily: "var(--font-mono)",
+        fontSize: "var(--text-xs)",
+        lineHeight: 1.3,
         padding: "8px 10px",
         borderRadius: 8,
         boxShadow: "var(--shadow-2)",
@@ -96,7 +98,7 @@ export function PerfOverlay(): JSX.Element | null {
         minWidth: 220
       }}
     >
-      <div style={{ opacity: 0.7, marginBottom: 4, fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" }}>
+      <div style={{ opacity: 0.7, marginBottom: 4, fontSize: "var(--text-2xs)", letterSpacing: 0.4, textTransform: "uppercase" }}>
         IPC p50 / p99
       </div>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>

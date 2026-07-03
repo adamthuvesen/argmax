@@ -288,8 +288,46 @@ pub fn extract_usage(
     })
 }
 
+fn object_from_value(value: Option<&Value>) -> Option<Map<String, Value>> {
+    match value {
+        Some(Value::Object(map)) => Some(map.clone()),
+        Some(Value::String(text)) => {
+            serde_json::from_str::<Value>(text)
+                .ok()
+                .and_then(|parsed| match parsed {
+                    Value::Object(map) => Some(map),
+                    _ => None,
+                })
+        }
+        _ => None,
+    }
+}
+
+fn merge_input_object(input: &mut Map<String, Value>, source: Option<Map<String, Value>>) {
+    let Some(source) = source else {
+        return;
+    };
+    for (key, value) in source {
+        if !value.is_null() {
+            input.insert(key, value);
+        }
+    }
+}
+
 fn extract_tool_input(item: &Map<String, Value>, action: Option<&Map<String, Value>>) -> Value {
     let mut input = Map::new();
+    for source in [
+        action.and_then(|action| object_from_value(action.get("input"))),
+        action.and_then(|action| object_from_value(action.get("parameters"))),
+        action.and_then(|action| object_from_value(action.get("arguments"))),
+        action.and_then(|action| object_from_value(action.get("args"))),
+        object_from_value(item.get("input")),
+        object_from_value(item.get("parameters")),
+        object_from_value(item.get("arguments")),
+        object_from_value(item.get("args")),
+    ] {
+        merge_input_object(&mut input, source);
+    }
     for key in [
         "query",
         "queries",
@@ -299,6 +337,13 @@ fn extract_tool_input(item: &Map<String, Value>, action: Option<&Map<String, Val
         "command",
         "cmd",
         "pattern",
+        "question",
+        "questions",
+        "header",
+        "options",
+        "multiSelect",
+        "multi_select",
+        "plan",
     ] {
         let value = item
             .get(key)
@@ -351,6 +396,44 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "command.started");
         assert_eq!(result.events[0].payload["input"]["command"], "npm test");
+    }
+
+    #[test]
+    fn codex_tool_arguments_populate_interactive_card_input() {
+        let mut context = NormalizerSessionContext::default();
+        let arguments = json!({
+            "questions": [
+                {
+                    "question": "Which path?",
+                    "header": "Path",
+                    "multiSelect": false,
+                    "options": [{ "label": "Fast fix" }, { "label": "Deeper cleanup" }]
+                }
+            ]
+        })
+        .to_string();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.started",
+                    "item": {
+                        "id": "item_q",
+                        "type": "tool_call",
+                        "name": "AskUserQuestion",
+                        "arguments": arguments
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(result.events[0].message, "AskUserQuestion");
+        assert_eq!(
+            result.events[0].payload["input"]["questions"][0]["question"],
+            "Which path?"
+        );
     }
 
     #[test]

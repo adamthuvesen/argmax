@@ -2,7 +2,9 @@
 
 The chat surface renders two kinds of *interactive cards* on top of the normal
 assistant bubble stream: **PlanCard** (Claude Code plan mode) and
-**QuestionCard** (Claude Code `AskUserQuestion`). Turn detection and card
+**QuestionCard** (Claude Code `AskUserQuestion`, Cursor `askQuestionToolCall`).
+Claude's newer `--brief` `SendUserMessage` tool is plain assistant text, not a
+picker, so the normalizer maps it to `message.completed` instead of a card. Turn detection and card
 state live in [turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts)
 and [turnToolItems.ts](../src/renderer/lib/turnToolItems.ts); question parsing
 in [questions.ts](../src/renderer/lib/questions.ts). Rendering still flows
@@ -36,6 +38,11 @@ has no interactive stdin. The CLI handles this by returning a
 `tool_result { is_error: true, content: "Exit plan mode?" / "Answer questions?" }`
 and ending the turn.
 
+Claude Code's `--brief` mode exposes `SendUserMessage` instead. That tool only
+carries text for the user, so it is normalized into an assistant bubble rather
+than a `QuestionCard`; old persisted raw `SendUserMessage` tool rows are hidden
+if they reach the renderer.
+
 The plan / question content the model wanted to deliver still arrives — it's
 in the tool's `input.plan` or `input.questions`. We extract that and render it
 ourselves as a card. The user clicks an option; the answer becomes the next
@@ -52,8 +59,8 @@ consumes `buildTurnRenderState` and renders cards through
 | Rule | Applies to | Why |
 |---|---|---|
 | **First valid wins** | `AskUserQuestion` | Haiku retries on validation/deny errors. Pinning the card key to the first valid tool keeps the user's in-progress selections alive across retries. |
-| **All matching ids hidden** | both tools | Every `ExitPlanMode` / `AskUserQuestion` tool id (any status) goes into a filter set so the raw tool row never renders. |
-| **Flatten tool-groups** | `AskUserQuestion` | Two retries inside the 75 ms parallel window fold into a `tool-group`. Detection looks inside groups; if the group is *only* `AskUserQuestion`s the group row is hidden too. |
+| **All matching ids hidden** | both tools | Every `ExitPlanMode` / ask-question tool id (any status) goes into a filter set so the raw tool row never renders. |
+| **Flatten tool-groups** | ask-question tools | Two retries inside the 75 ms parallel window fold into a `tool-group`. Detection looks inside groups; if the group is *only* ask-question tools the group row is hidden too. |
 | **Card renders on `error` too** | both tools | The tool reliably ends in `error` in `-p` mode. Card-render path skips only `status === "running"`, never `done`-vs-`error`. |
 | **Post-card text suppressed** | both tools | Assistant text with `createdAt > tool.createdAt` is filtered out. For PlanCards the model re-emits the plan as a duplicate bubble; for QuestionCards it confabulates "Thanks based on your input" with fabricated answers BEFORE the user has touched the card. The card already conveys the ask in both cases. The cutoff is per-turn, so genuine follow-up scan results in the *next* turn (after the user submits) still come through. Pre-tool intro narration always stays. |
 
@@ -63,7 +70,7 @@ The "Thinking" bubble is suppressed when any of these are true:
 
 - `session.state !== "running"`
 - the last significant event is `message.delta` (visible assistant text is actively streaming)
-- a *visible* tool is running (`tool.name` is not `ExitPlanMode` / `AskUserQuestion`; the tool's own spinner is the indicator)
+- a *visible* tool is running (`tool.name` is not `ExitPlanMode` / an ask-question tool; the tool's own spinner is the indicator)
 - **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts) /
 [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx))
 

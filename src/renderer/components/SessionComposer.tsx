@@ -34,15 +34,25 @@ import {
 } from "../lib/agentMode.js";
 import { leadingSlashCommand } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
+import { ChangeCount } from "./ChangeCount.js";
 import { FilePopover } from "./FilePopover.js";
 import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
 
 const PROMPT_MAX_HEIGHT_PX = 140;
 
+export interface ComposerChangeSummary {
+  fileCount: number;
+  additions: number;
+  deletions: number;
+  isOpen: boolean;
+  onOpen: () => void;
+}
+
 export function SessionComposer({
   agentMode,
   canSend,
+  changeSummary = null,
   fastModeEnabled = false,
   inputRef,
   isQueueing,
@@ -63,6 +73,7 @@ export function SessionComposer({
 }: {
   agentMode: AgentMode;
   canSend: boolean;
+  changeSummary?: ComposerChangeSummary | null;
   fastModeEnabled?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   isQueueing: boolean;
@@ -141,6 +152,14 @@ export function SessionComposer({
     const backdrop = highlightBackdropRef.current;
     if (backdrop) backdrop.scrollTop = event.currentTarget.scrollTop;
   }, []);
+  const changeSummaryText = changeSummary
+    ? `${changeSummary.fileCount} ${changeSummary.fileCount === 1 ? "file" : "files"} changed`
+    : null;
+  const changeSummaryAriaLabel = changeSummary
+    ? `Open changed files in review panel: ${changeSummaryText}, ${changeSummary.additions} ` +
+      `${changeSummary.additions === 1 ? "addition" : "additions"}, ${changeSummary.deletions} ` +
+      `${changeSummary.deletions === 1 ? "deletion" : "deletions"}`
+    : undefined;
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
@@ -404,6 +423,18 @@ export function SessionComposer({
               <GitBranch size={11} aria-hidden="true" />
               <span className="composer-footer-chip-label">{workspace.branch}</span>
             </button>
+            {changeSummary ? (
+              <button
+                type="button"
+                className="composer-footer-chip composer-footer-chip--changes"
+                title={changeSummaryText ?? undefined}
+                aria-label={changeSummaryAriaLabel}
+                aria-pressed={changeSummary.isOpen}
+                onClick={changeSummary.onOpen}
+              >
+                <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+              </button>
+            ) : null}
           </div>
         ) : null}
         <span className="session-toolbar-spacer" />

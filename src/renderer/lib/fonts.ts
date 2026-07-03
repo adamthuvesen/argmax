@@ -19,6 +19,14 @@ export type FontOption = {
   stack: string;
 };
 
+export type FontSizeId = "small" | "default" | "large";
+
+export type FontSizeOption = {
+  id: FontSizeId;
+  label: string;
+  hint: string;
+};
+
 const SYSTEM_MONO_FALLBACK = '"Lilex Nerd Font", ui-monospace, "SFMono-Regular", Consolas, monospace';
 
 export const FONT_OPTIONS: readonly FontOption[] = [
@@ -98,8 +106,29 @@ export const FONT_OPTIONS: readonly FontOption[] = [
 
 export const DEFAULT_FONT_ID: FontFamilyId = "inter";
 export const FONT_STORAGE_KEY = "argmax.font.family";
+export const DEFAULT_FONT_SIZE_ID: FontSizeId = "default";
+export const FONT_SIZE_STORAGE_KEY = "argmax.font.size";
+
+export const FONT_SIZE_OPTIONS: readonly FontSizeOption[] = [
+  {
+    id: "small",
+    label: "Small",
+    hint: "Denser text across the whole app."
+  },
+  {
+    id: "default",
+    label: "Default",
+    hint: "Argmax's current type scale."
+  },
+  {
+    id: "large",
+    label: "Large",
+    hint: "Larger text across the whole app."
+  }
+] as const;
 
 const ALL_FONT_IDS = new Set<string>(FONT_OPTIONS.map((option) => option.id));
+const ALL_FONT_SIZE_IDS = new Set<string>(FONT_SIZE_OPTIONS.map((option) => option.id));
 
 export function readStoredFont(): FontFamilyId {
   if (typeof window === "undefined") return DEFAULT_FONT_ID;
@@ -110,13 +139,31 @@ export function readStoredFont(): FontFamilyId {
   return DEFAULT_FONT_ID;
 }
 
+export function readStoredFontSize(): FontSizeId {
+  if (typeof window === "undefined") return DEFAULT_FONT_SIZE_ID;
+  const raw = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+  if (raw && ALL_FONT_SIZE_IDS.has(raw)) {
+    return raw as FontSizeId;
+  }
+  return DEFAULT_FONT_SIZE_ID;
+}
+
 export function getFontOption(id: FontFamilyId): FontOption {
   return FONT_OPTIONS.find((option) => option.id === id) ?? FONT_OPTIONS[0];
+}
+
+export function getFontSizeOption(id: FontSizeId): FontSizeOption {
+  return FONT_SIZE_OPTIONS.find((option) => option.id === id) ?? FONT_SIZE_OPTIONS[1];
 }
 
 export function applyFontToDocument(id: FontFamilyId): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-font", id);
+}
+
+export function applyFontSizeToDocument(id: FontSizeId): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-font-size", id);
 }
 
 /**
@@ -132,6 +179,18 @@ export function resolveMonoFontStack(): string {
     .getPropertyValue("--font-mono")
     .trim();
   return computed || '"Lilex Nerd Font", "Lilex Nerd Font Mono", ui-monospace, monospace';
+}
+
+export function resolveCssPxVariable(name: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!raw.endsWith("px")) return fallback;
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function resolveTerminalFontSize(): number {
+  return resolveCssPxVariable("--text-terminal", 13);
 }
 
 // Per-font CSS loaders. Lilex + system fonts (system-mono, menlo, monaco)

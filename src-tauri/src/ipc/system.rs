@@ -19,8 +19,6 @@ use crate::state::AppState;
 
 const LIGHT_BG: tauri::utils::config::Color = tauri::utils::config::Color(251, 251, 250, 255);
 const DARK_BG: tauri::utils::config::Color = tauri::utils::config::Color(14, 14, 12, 255);
-// Purple "Nebula" canvas (#5c4187) so cold-start window matches the theme's --bg.
-const PURPLE_BG: tauri::utils::config::Color = tauri::utils::config::Color(92, 65, 135, 255);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -254,8 +252,6 @@ fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<
     let theme = match mode {
         ThemeMode::Light => Some(tauri::Theme::Light),
         ThemeMode::Dark => Some(tauri::Theme::Dark),
-        // Purple is a dark-family theme — keep the native window chrome dark.
-        ThemeMode::Purple => Some(tauri::Theme::Dark),
         ThemeMode::System => None,
     };
     app.set_theme(theme);
@@ -277,7 +273,6 @@ fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<
 fn background_for_mode(mode: ThemeMode) -> tauri::utils::config::Color {
     match mode {
         ThemeMode::Dark => DARK_BG,
-        ThemeMode::Purple => PURPLE_BG,
         ThemeMode::Light | ThemeMode::System => LIGHT_BG,
     }
 }
@@ -287,7 +282,6 @@ fn theme_mode_str(mode: ThemeMode) -> &'static str {
         ThemeMode::Light => "light",
         ThemeMode::Dark => "dark",
         ThemeMode::System => "system",
-        ThemeMode::Purple => "purple",
     }
 }
 
@@ -496,6 +490,5 @@ mod tests {
         assert_eq!(theme_mode_str(ThemeMode::Light), "light");
         assert_eq!(theme_mode_str(ThemeMode::Dark), "dark");
         assert_eq!(theme_mode_str(ThemeMode::System), "system");
-        assert_eq!(theme_mode_str(ThemeMode::Purple), "purple");
     }
 }

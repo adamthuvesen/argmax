@@ -10,7 +10,7 @@ import type {
 import type { ReviewState } from "../renderer/hooks/useReviewState.js";
 import { SessionConversation } from "../renderer/components/SessionConversation.js";
 
-export function reviewStub(): ReviewState {
+export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
   return {
     files: [],
     filesState: "ready",
@@ -60,7 +60,8 @@ export function reviewStub(): ReviewState {
     openInFilesView: () => {},
     closePanel: () => {},
     togglePanel: () => {},
-    toggleChangesPanel: () => {}
+    toggleChangesPanel: () => {},
+    ...overrides
   };
 }
 
@@ -152,6 +153,7 @@ export function renderConversation(
     pendingMessages?: PendingMessage[];
     onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
+    review?: ReviewState;
   } = {}
 ) {
   return render(
@@ -170,7 +172,7 @@ export function renderConversation(
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
       project={project}
       rawOutputs={[]}
-      review={reviewStub()}
+      review={options.review ?? reviewStub()}
       session={session}
       workspace={workspace}
     />

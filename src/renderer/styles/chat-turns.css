@@ -23,7 +23,7 @@
 
 .turn-block-timestamp {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--font-prose);
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
@@ -225,7 +225,7 @@
 /* Expanded reasoning — muted text reads as a quieter, secondary stream. */
 .thought-block-body {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 /* The reasoning renders through `.markdown`, which sets its own near-black
@@ -322,7 +322,7 @@
 .conversation-empty {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-base);
   font-style: italic;
 }
 
@@ -409,7 +409,7 @@
   white-space: nowrap;
   flex: 1;
   font-family: var(--font-code);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--muted);
   background: transparent;
   padding: 0;
@@ -590,7 +590,7 @@
   background: transparent;
   color: var(--muted-strong);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
@@ -802,7 +802,7 @@
   display: inline-flex;
   gap: 6px;
   font-family: var(--font-code);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }

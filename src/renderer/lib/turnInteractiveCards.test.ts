@@ -53,6 +53,82 @@ describe("turnInteractiveCards", () => {
     expect(hiddenToolIds).toEqual(new Set(["q1", "q2"]));
   });
 
+  it("hides malformed AskUserQuestion attempts even when no card can render", () => {
+    const items: TurnToolItem[] = [
+      {
+        kind: "tool",
+        tool: tool({
+          id: "bad",
+          inputFull: {
+            questions: [{ question: "Too many?", header: "Bad", options: [{ label: "1" }, { label: "2" }, { label: "3" }, { label: "4" }, { label: "5" }] }]
+          }
+        })
+      }
+    ];
+
+    const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
+
+    expect(resolved).toBeNull();
+    expect(hiddenToolIds).toEqual(new Set(["bad"]));
+  });
+
+  it("hides legacy SendUserMessage tool rows when they cannot render a picker", () => {
+    const items: TurnToolItem[] = [
+      {
+        kind: "tool",
+        tool: tool({
+          id: "send-message",
+          name: "SendUserMessage",
+          inputFull: { message: "Which path should I take?" }
+        })
+      }
+    ];
+
+    const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
+
+    expect(resolved).toBeNull();
+    expect(hiddenToolIds).toEqual(new Set(["send-message"]));
+  });
+
+  it("accepts provider-style aliases for interactive tool names", () => {
+    const items: TurnToolItem[] = [
+      {
+        kind: "tool",
+        tool: tool({
+          id: "q-alias",
+          name: "ask_user_question",
+          inputFull: {
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
+          }
+        })
+      },
+      {
+        kind: "tool",
+        tool: tool({
+          id: "cursor-q",
+          name: "askQuestionToolCall",
+          inputFull: {
+            questions: [{ question: "Pick from Cursor?", header: "Cursor", options: [{ label: "C" }] }]
+          }
+        })
+      },
+      {
+        kind: "tool",
+        tool: tool({
+          id: "plan-alias",
+          name: "exit_plan_mode",
+          inputFull: { plan: "# Plan\n" }
+        })
+      }
+    ];
+
+    expect(collectAskUserQuestionState(items).tool?.id).toBe("q-alias");
+    expect(collectAskUserQuestionState(items).hiddenToolIds).toEqual(
+      new Set(["q-alias", "cursor-q"])
+    );
+    expect(collectExitPlanState(items).tool?.id).toBe("plan-alias");
+  });
+
   it("collects the first completed ExitPlanMode plan", () => {
     const items: TurnToolItem[] = [
       {

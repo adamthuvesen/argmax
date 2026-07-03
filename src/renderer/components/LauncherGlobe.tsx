@@ -3,8 +3,7 @@
  * launcher, built on `three-globe` (the WebGL globe-visualization library that
  * powers globe.gl). three-globe renders the dark orb, the lat/long graticules,
  * the dotted continents (hex-polygons drawn as dots), and the atmosphere glow;
- * we add a slow spin, a drifting "plexus" network around it, and theme-aware
- * colors.
+ * we add a slow spin and orbital telemetry around it.
  *
  * Design constraints (see CLAUDE.md / styling.md):
  * - Renders only when `enabled` (the user pref) is on. Mounts behind the
@@ -17,19 +16,10 @@
  * The glowing earth itself comes from a vetted library rather than hand-rolled
  * geometry; only the surrounding network + lifecycle glue live here.
  */
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useRef, type JSX } from "react";
 import * as THREE from "three";
 import ThreeGlobe from "three-globe";
 import landPolygons from "../lib/landPolygons.json";
-import { subscribeToThemeChange } from "../lib/theme.js";
-
-type ThemeAttr = "light" | "dark" | "purple";
-
-function readThemeAttr(): ThemeAttr {
-  if (typeof document === "undefined") return "dark";
-  const attr = document.documentElement.getAttribute("data-theme");
-  return attr === "light" || attr === "purple" ? attr : "dark";
-}
 
 interface Palette {
   orb: number;
@@ -227,11 +217,6 @@ function tuneGlobeMaterials(globe: ThreeGlobe, palette: Palette): void {
 
 export function LauncherGlobe({ enabled }: { enabled: boolean }): JSX.Element | null {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [theme, setTheme] = useState<ThemeAttr>(() => readThemeAttr());
-
-  // The subscribe callback's resolved arg collapses purple → dark, so re-read the
-  // raw attribute to tell the three apart.
-  useEffect(() => subscribeToThemeChange(() => setTheme(readThemeAttr())), []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -503,7 +488,7 @@ export function LauncherGlobe({ enabled }: { enabled: boolean }): JSX.Element | 
       dotTex?.dispose();
       renderer.dispose();
     };
-  }, [enabled, theme]);
+  }, [enabled]);
 
   if (!enabled) return null;
   return (

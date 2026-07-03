@@ -164,7 +164,7 @@ export function LaunchModelSelector({
   );
 }
 
-function alwaysSupportsFastMode<T>(_value: T): boolean {
+function alwaysSupportsFastMode(): boolean {
   return true;
 }
 

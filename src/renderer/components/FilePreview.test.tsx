@@ -45,6 +45,11 @@ describe("FilePreview", () => {
     expect(screen.getByLabelText("Editor for src/index.ts")).toBeInTheDocument();
   });
 
+  it("does not show file size metadata", () => {
+    render(<FilePreview state={makeState()} />);
+    expect(screen.queryByText("24 B")).not.toBeInTheDocument();
+  });
+
   it("marks only the no-selection prompt as preview-width responsive", () => {
     const { rerender } = render(<FilePreview state={makeState({ selectedPath: null, activeTabPath: null })} />);
     expect(screen.getByText("Select a file to preview.")).toHaveClass("review-empty-preview");
@@ -125,6 +130,7 @@ describe("FilePreview", () => {
       />
     );
     expect(screen.getByText(/Binary file/)).toBeInTheDocument();
+    expect(screen.queryByText("4.0 KB")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Editor for src/index.ts")).not.toBeInTheDocument();
   });
 

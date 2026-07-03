@@ -4,12 +4,20 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { AlertCircle } from "lucide-react";
 import { tryFit } from "../lib/xtermFit.js";
-import { resolveMonoFontStack } from "../lib/fonts.js";
+import { resolveMonoFontStack, resolveTerminalFontSize } from "../lib/fonts.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { McpAuthDataEvent, McpAuthExitEvent } from "../../shared/types.js";
-import { readActiveXtermTheme } from "../lib/xtermTheme.js";
+import { getXtermTheme, readActiveXtermTheme } from "../lib/xtermTheme.js";
+import { themeAppearance } from "../lib/theme.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import "@xterm/xterm/css/xterm.css";
+
+function syncTerminalAppearance(term: Terminal): void {
+  const attr = document.documentElement.getAttribute("data-theme");
+  term.options.theme = getXtermTheme(themeAppearance(attr));
+  term.options.fontFamily = resolveMonoFontStack();
+  term.options.fontSize = resolveTerminalFontSize();
+}
 
 /**
  * Modal that hosts an interactive `claude` PTY for completing MCP OAuth via
@@ -64,7 +72,7 @@ export function McpAuthDialog({
 
     const term = new Terminal({
       fontFamily: resolveMonoFontStack(),
-      fontSize: 13,
+      fontSize: resolveTerminalFontSize(),
       lineHeight: 1.2,
       cursorBlink: true,
       theme: readActiveXtermTheme(),
@@ -80,6 +88,19 @@ export function McpAuthDialog({
     term.focus();
     xtermRef.current = term;
     fitRef.current = fit;
+
+    const appearanceObserver = new MutationObserver(() => {
+      syncTerminalAppearance(term);
+      tryFit(fit);
+      const sessionId = sessionIdRef.current;
+      if (sessionId) {
+        void window.argmax?.mcp.auth.resize({ sessionId, cols: term.cols, rows: term.rows });
+      }
+    });
+    appearanceObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-font", "data-font-size"]
+    });
 
     // ResizeObserver below retries once the container has dimensions.
     tryFit(fit);
@@ -141,6 +162,7 @@ export function McpAuthDialog({
     return () => {
       disposed = true;
       ro.disconnect();
+      appearanceObserver.disconnect();
       unsubscribeData?.();
       unsubscribeExit?.();
       inputSub?.dispose();

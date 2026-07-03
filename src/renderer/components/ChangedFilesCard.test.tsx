@@ -1,63 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CheckRun } from "../../shared/types.js";
-import type { ReviewState } from "../hooks/useReviewState.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
-
-function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
-  return {
-    files: [],
-    filesState: "ready",
-    filesError: null,
-    selectedFilePath: null,
-    diff: null,
-    diffState: "idle",
-    diffError: null,
-    isPanelOpen: false,
-    mode: "changes",
-    setMode: () => {},
-    changesComparison: "local",
-    setChangesComparison: () => {},
-    comparisonBaseLabel: "main",
-    workspaceFiles: {
-      entries: [],
-      listState: "idle",
-      listError: null,
-      tabs: [],
-      activeTabPath: null,
-      selectedPath: null,
-      rootPath: null,
-      preview: null,
-      previewState: "idle",
-      previewError: null,
-      openFile: () => {},
-      selectTab: () => {},
-      closeTab: () => {},
-      dirtyClosePrompt: null,
-      saveDirtyTabAndClose: () => Promise.resolve(),
-      discardDirtyTabAndClose: () => {},
-      cancelDirtyTabClose: () => {},
-      buffer: null,
-      isDirty: false,
-      diskMtimeMs: null,
-      externalChange: false,
-      saveState: "idle",
-      saveError: null,
-      canEdit: true,
-      editFile: () => {},
-      saveFile: () => Promise.resolve(),
-      reloadFile: () => {},
-      dismissExternalChange: () => {}
-    },
-    openFile: () => {},
-    openPanelInFilesMode: () => {},
-    openInFilesView: () => {},
-    closePanel: () => {},
-    togglePanel: () => {},
-    toggleChangesPanel: () => {},
-    ...overrides
-  };
-}
 
 const PASSED_RUN: CheckRun = {
   id: "check-1",
@@ -81,49 +25,6 @@ const FAILED_RUN: CheckRun = {
   completedAt: "2026-05-12T10:00:34.000Z"
 };
 
-describe("ChangedFilesCard summary header", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("opens the review panel in Changes mode when clicked", () => {
-    const toggleChangesPanel = vi.fn();
-    render(
-      <ChangedFilesCard
-        review={reviewStub({
-          files: [
-            { path: "src/a.ts", status: "modified", additions: 3, deletions: 1 },
-            { path: "src/b.ts", status: "added", additions: 7, deletions: 0 }
-          ],
-          toggleChangesPanel
-        })}
-      />
-    );
-
-    const header = screen.getByRole("button", { name: "Open changed files in review panel" });
-    expect(header).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(header);
-    expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
-  });
-
-  it("marks itself pressed when the panel is open in Changes mode and renders no inline file list", () => {
-    render(
-      <ChangedFilesCard
-        review={reviewStub({
-          files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1 }],
-          isPanelOpen: true,
-          mode: "changes"
-        })}
-      />
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Open changed files in review panel" })
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByText("src/a.ts")).toBeNull();
-  });
-});
-
 describe("ChangedFilesCard checks list", () => {
   afterEach(() => {
     cleanup();
@@ -132,7 +33,6 @@ describe("ChangedFilesCard checks list", () => {
   it("renders one row per registered check and surfaces last status + duration", () => {
     render(
       <ChangedFilesCard
-        review={reviewStub()}
         workspaceId="workspace-1"
         checkCommands={["npm test", "npm run lint"]}
         checks={[PASSED_RUN, FAILED_RUN]}
@@ -162,7 +62,6 @@ describe("ChangedFilesCard checks list", () => {
 
     render(
       <ChangedFilesCard
-        review={reviewStub()}
         workspaceId="workspace-1"
         checkCommands={["npm test"]}
         checks={[]}
@@ -184,7 +83,6 @@ describe("ChangedFilesCard checks list", () => {
   it("renders the summary log only when expanded", () => {
     render(
       <ChangedFilesCard
-        review={reviewStub()}
         workspaceId="workspace-1"
         checkCommands={["npm test"]}
         checks={[PASSED_RUN]}
@@ -198,10 +96,9 @@ describe("ChangedFilesCard checks list", () => {
     expect(screen.getByLabelText("Log for npm test").textContent).toContain("2 tests passed");
   });
 
-  it("renders nothing when there are no registered checks and no changed files", () => {
+  it("renders nothing when there are no registered checks", () => {
     const { container } = render(
       <ChangedFilesCard
-        review={reviewStub({ filesState: "idle" })}
         workspaceId="workspace-1"
         checkCommands={[]}
         checks={[]}

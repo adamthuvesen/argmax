@@ -69,6 +69,12 @@ describe("FilePreview", () => {
     expect(editFile).toHaveBeenCalledWith("export const ok = false;\n");
   });
 
+  it("marks the source editor read-only when file editing is unavailable", () => {
+    render(<FilePreview state={makeState({ canEdit: false })} />);
+    const editor = screen.getByLabelText("Editor for src/index.ts");
+    expect(editor).toHaveAttribute("data-readonly", "true");
+  });
+
   it("calls saveFile from the header save button when the file is dirty", () => {
     const saveFile = vi.fn().mockResolvedValue(undefined);
     render(<FilePreview state={makeState({ isDirty: true, saveFile })} />);

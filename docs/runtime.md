@@ -10,16 +10,16 @@ npm run tauri:build
 npm run test:rust
 ```
 
-`npm run tauri:dev` starts Vite through Tauri's `beforeDevCommand`, builds `src-tauri`, and opens the app webview. `npx vite --host 127.0.0.1` remains useful for browser-preview UI work; without `window.__TAURI_INTERNALS__`, [tauriBridge.ts](../../src/renderer/lib/tauriBridge.ts) leaves `window.argmax` unset and the renderer uses demo data.
+`npm run tauri:dev` starts Vite through Tauri's `beforeDevCommand`, builds `src-tauri`, and opens the app webview. `npx vite --host 127.0.0.1` remains useful for browser-preview UI work; without `window.__TAURI_INTERNALS__`, [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) leaves `window.argmax` unset and the renderer uses demo data.
 
 ## Rust Layout
 
-- [src-tauri/src/lib.rs](../../src-tauri/src/lib.rs) wires app setup, state, services, menu, protocols, and shutdown.
-- [src-tauri/src/state.rs](../../src-tauri/src/state.rs) stores shared service handles.
-- [src-tauri/src/ipc](../../src-tauri/src/ipc) contains Tauri commands.
-- [src-tauri/src/persistence](../../src-tauri/src/persistence) owns SQLite and migrations.
-- [src-tauri/src/providers](../../src-tauri/src/providers) owns provider launch, PTYs, event normalization, and flush queues.
-- [src-tauri/src/workspaces](../../src-tauri/src/workspaces), [review](../../src-tauri/src/review), [files](../../src-tauri/src/files), [git](../../src-tauri/src/git), [gh](../../src-tauri/src/gh), [terminal](../../src-tauri/src/terminal), [mcp](../../src-tauri/src/mcp), [approvals](../../src-tauri/src/approvals), [checks](../../src-tauri/src/checks), [memory](../../src-tauri/src/memory), and [skills](../../src-tauri/src/skills) map to user-facing subsystems.
+- [src-tauri/src/lib.rs](../src-tauri/src/lib.rs) wires app setup, state, services, menu, protocols, and shutdown.
+- [src-tauri/src/state.rs](../src-tauri/src/state.rs) stores shared service handles.
+- [src-tauri/src/ipc](../src-tauri/src/ipc) contains Tauri commands.
+- [src-tauri/src/persistence](../src-tauri/src/persistence) owns SQLite and migrations.
+- [src-tauri/src/providers](../src-tauri/src/providers) owns provider launch, PTYs, event normalization, and flush queues.
+- [src-tauri/src/workspaces](../src-tauri/src/workspaces), [review](../src-tauri/src/review), [files](../src-tauri/src/files), [git](../src-tauri/src/git), [gh](../src-tauri/src/gh), [terminal](../src-tauri/src/terminal), [mcp](../src-tauri/src/mcp), [approvals](../src-tauri/src/approvals), [checks](../src-tauri/src/checks), [memory](../src-tauri/src/memory), and [skills](../src-tauri/src/skills) map to user-facing subsystems.
 
 ## Event delivery
 
@@ -27,10 +27,10 @@ Live updates reach the renderer as `dashboard:delta` events, fanned in from prov
 
 - **Emit on the main thread (load-bearing for streaming).** An event emitted from a background thread does **not** reliably wake the macOS `NSApp` event loop, so `dashboard:delta` pushes sit undelivered until some unrelated UI event pumps the loop — mid-turn streaming stalls and the chat fills in only when the turn ends (process exit pumps the loop). Symptoms that confirm this: snapshot/debug counts stay flat during the turn, focus doesn't matter, and navigating to another session and back instantly populates (because *pulls* via IPC invoke stay reliable). The delta worker wraps each emit in `app.run_on_main_thread(...)`, which dispatches the webview eval as a main-thread task the loop processes promptly. See [tao#625](https://github.com/tauri-apps/tao/issues/625) / [winit#219](https://github.com/rust-windowing/winit/issues/219).
 - **Running-only pull safety net.** Because that macOS wake-up is historically flaky, `useDashboardSession` polls the *selected, running* session every 250 ms. Each tick pulls the cheap event tail (`session.eventsSince`, deduped by `mergeByCreatedAt`) so streamed text keeps flowing. The heavier session/workspace state pull (`workspace:status`, upserted via `mergeDashboardDelta`) runs on two cadences: a **throttled mid-turn refresh (~2 s)** so `changedFiles` and dirty markers track the agent's edits live rather than freezing until the turn ends, and a **guaranteed pull at turn end** — when the event poll has pulled the turn's terminal event (`session.completed`/`error`) but the `state: running → complete` push (the *last* emit of the turn, the one most likely to lag) hasn't arrived yet; without it the chat finishes streaming but the header stays stuck on "Working". Both IPC handlers are synchronous Rust commands sharing one DB mutex with the provider's event ingestion, so pulling `workspace:status` *every* 250 ms tick (and letting `setInterval` ticks overlap) starved a busy turn (e.g. a Codex multi-file read) — hence the status pull is throttled far below the event tick (~2 s) and an in-flight guard keeps ticks from piling up. Scoped to running sessions only — idle sessions never poll, and the effect tears down the instant state flips off "running", so steady state stays delta-driven. Keep the status pull throttled; don't drop it to the event cadence or turn it into a dashboard-wide poll.
-- **App Nap** (process level) suspends the whole WebContent process when the app is backgrounded. [util/app_nap.rs](../../src-tauri/src/util/app_nap.rs) holds an `NSProcessInfo` activity assertion for the process lifetime.
-- **WKWebView inactive-window throttling** (webview level) freezes JS/rendering for an inactive window. `app.windows[].backgroundThrottling: "disabled"` in [tauri.conf.json](../../src-tauri/tauri.conf.json) maps to `WKInactiveSchedulingPolicy::None`.
+- **App Nap** (process level) suspends the whole WebContent process when the app is backgrounded. [util/app_nap.rs](../src-tauri/src/util/app_nap.rs) holds an `NSProcessInfo` activity assertion for the process lifetime.
+- **WKWebView inactive-window throttling** (webview level) freezes JS/rendering for an inactive window. `app.windows[].backgroundThrottling: "disabled"` in [tauri.conf.json](../src-tauri/tauri.conf.json) maps to `WKInactiveSchedulingPolicy::None`.
 
-Claude (and Cursor) stream token-by-token, so a turn can emit hundreds of `message.delta` rows. `mergeDashboardDelta`'s event cap (`mergeEventsBounded` in [snapshot.ts](../../src/renderer/lib/snapshot.ts)) caps *droppable answer deltas* and *protected rows* (user message, tool rows, approvals, errors, thinking deltas) independently — so a long streamed answer never evicts the current turn's tool rows or the user bubble, which would otherwise flicker out until the completion prunes the deltas.
+Claude (and Cursor) stream token-by-token, so a turn can emit hundreds of `message.delta` rows. `mergeDashboardDelta`'s event cap (`mergeEventsBounded` in [snapshot.ts](../src/renderer/lib/snapshot.ts)) caps *droppable answer deltas* and *protected rows* (user message, tool rows, approvals, errors, thinking deltas) independently — so a long streamed answer never evicts the current turn's tool rows or the user bubble, which would otherwise flicker out until the completion prunes the deltas.
 
 ## Bindings
 

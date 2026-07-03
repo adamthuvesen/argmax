@@ -28,7 +28,6 @@ import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
-import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
@@ -85,7 +84,6 @@ export function SessionPane({
   terminalToggleSignal,
   session,
   showCostPanel = true,
-  thinkingStyle,
   workspace
 }: {
   approvals: ApprovalRequest[];
@@ -123,7 +121,6 @@ export function SessionPane({
   terminalToggleSignal?: number;
   session: SessionSummary | null;
   showCostPanel?: boolean;
-  thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
   /** When this pane is focused, it registers its workspace file source +
       review-pane file-pick handler with the command palette so its Files
@@ -492,7 +489,6 @@ export function SessionPane({
           review={reviewState}
           session={session}
           showCostPanel={showCostPanel}
-          {...(thinkingStyle ? { thinkingStyle } : {})}
           workspace={workspace}
         />
 

@@ -30,7 +30,7 @@ Behavior, the SQLite schema, and the UI can change between versions. There are n
 
 ## Prerequisites
 
-- **Node.js** 18+ and npm
+- **Node.js** 20.19+ or 22.12+ and npm
 - **Rust** 1.95+ ([install rustup](https://rustup.rs))
 - **macOS**. The first public Rust/Tauri release is macOS-only; Linux and Windows are not release targets yet.
 

@@ -1,6 +1,6 @@
 # Styling
 
-Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-JS, no Tailwind, no preprocessors. The look is hand-built on purpose — see the [hard constraints](#hard-constraints) before touching it.
+Pure CSS in [src/renderer/styles.css](../src/renderer/styles.css). No CSS-in-JS, no Tailwind, no preprocessors. The look is hand-built on purpose — see the [hard constraints](#hard-constraints) before touching it.
 
 | Want to… | Look here |
 |---|---|
@@ -17,7 +17,7 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 
 ## Shell stylesheets
 
-`styles.css` imports [shell.css](../../src/renderer/styles/shell.css) (aggregator only). **Import order is part of the cascade contract.**
+`styles.css` imports [shell.css](../src/renderer/styles/shell.css) (aggregator only). **Import order is part of the cascade contract.**
 
 | File | Scope |
 |---|---|
@@ -26,7 +26,7 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 
 ## Settings stylesheets
 
-`styles.css` imports [settings.css](../../src/renderer/styles/settings.css) (aggregator only).
+`styles.css` imports [settings.css](../src/renderer/styles/settings.css) (aggregator only).
 
 | File | Scope |
 |---|---|
@@ -36,7 +36,7 @@ Pure CSS in [src/renderer/styles.css](../../src/renderer/styles.css). No CSS-in-
 
 ## Chat stylesheets
 
-`styles.css` imports [chat.css](../../src/renderer/styles/chat.css) (aggregator only).
+`styles.css` imports [chat.css](../src/renderer/styles/chat.css) (aggregator only).
 
 | File | Scope |
 |---|---|
@@ -51,7 +51,7 @@ Keep each module under **1000 lines**. Add rules to the matching surface file; d
 
 ## Overlay stylesheets
 
-`styles.css` imports [overlays.css](../../src/renderer/styles/overlays.css), which is only an aggregator (<200 lines). Surface rules live in sibling files under `src/renderer/styles/`; **import order in `overlays.css` is part of the cascade contract** (mirrors the old monolithic file).
+`styles.css` imports [overlays.css](../src/renderer/styles/overlays.css), which is only an aggregator (<200 lines). Surface rules live in sibling files under `src/renderer/styles/`; **import order in `overlays.css` is part of the cascade contract** (mirrors the old monolithic file).
 
 | File | Scope |
 |---|---|
@@ -67,10 +67,10 @@ Keep each stylesheet module under **1000 lines**. Split further by surface if a 
 
 ## Hard constraints
 
-- **Four themes: Light / Dark / System / Purple.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Purple ("Nebula") is a dark-family theme — deep amethyst canvas, a gold-spark hero action, aurora glow. Tokens live in `:root` (light), `:root[data-theme="dark"]`, and `:root[data-theme="purple"]`. Purple resolves to the **dark** palettes for code/terminal via `themeAppearance()` in [theme.ts](../../src/renderer/lib/theme.ts). Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Tauri-side for no-flash startup). See [src/renderer/lib/theme.ts](../../src/renderer/lib/theme.ts).
+- **Four themes: Light / Dark / System / Purple.** System is the default and tracks `prefers-color-scheme` live. Dark is **warm charcoal** — yellow-leaning grays (`oklch(15% 0.005 80)` family), never cool/midnight blue. Purple ("Nebula") is a dark-family theme — deep amethyst canvas, a gold-spark hero action, aurora glow. Tokens live in `:root` (light), `:root[data-theme="dark"]`, and `:root[data-theme="purple"]`. Purple resolves to the **dark** palettes for code/terminal via `themeAppearance()` in [theme.ts](../src/renderer/lib/theme.ts). Active mode persists under `argmax.theme.mode` localStorage and `userData/theme.json` (Tauri-side for no-flash startup). See [src/renderer/lib/theme.ts](../src/renderer/lib/theme.ts).
 - **Accent tint is chrome-only.** Settings → Appearance lets users pick `green`, `purple`, `neutral`, `orange`, or `blue`; the choice persists under `argmax.accent.tint` and sets `<html data-accent="…">`. Use `--accent`, `--accent-soft`, and `--accent-deep` for decorative brand/chrome tint: focus rings, selection, picker states, command palette selection, launcher decoration, and transcript metadata.
 - **Fonts flow through tokens.** Never hardcode a family — chrome reads `--font-ui`, long-form chat prose and the session composer read `--font-prose`, terminal reads `--font-mono`, and review/editor code plus inline markdown code/file refs and transcript tool targets read `--font-code` (Codex-like system mono by default). Mono font picks set UI/mono variables to the same stack while chat prose stays proportional; sans picks keep a system mono stack for code/terminal.
-- **Inter is the default** (`@fontsource-variable/inter`, loaded on cold launch since it's the default). Lilex remains available, kept Nerd-Font–patched so terminal-style glyphs still render. Mono alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) and the other sans options (Geist Sans, IBM Plex Sans, Manrope) are lazy-loaded via `@fontsource` / `@fontsource-variable` only when picked, and selected from Settings → Appearance. System fonts (System Mono, Menlo, Monaco) need no JS asset load. New fonts live in [src/renderer/lib/fonts.ts](../../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
+- **Inter is the default** (`@fontsource-variable/inter`, loaded on cold launch since it's the default). Lilex remains available, kept Nerd-Font–patched so terminal-style glyphs still render. Mono alternates (JetBrains Mono, Fira Code, Geist Mono, IBM Plex Mono) and the other sans options (Geist Sans, IBM Plex Sans, Manrope) are lazy-loaded via `@fontsource` / `@fontsource-variable` only when picked, and selected from Settings → Appearance. System fonts (System Mono, Menlo, Monaco) need no JS asset load. New fonts live in [src/renderer/lib/fonts.ts](../src/renderer/lib/fonts.ts) and get a matching `:root[data-font="…"]` block in `styles.css`. The active choice persists under the `argmax.font.family` localStorage key.
 
 ## Tokens
 
@@ -83,6 +83,7 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 | Ink | `--text`, `--text-soft`, `--muted`, `--muted-strong`, `--ink`, `--ink-soft` |
 | Fonts | `--font-ui`, `--font-prose`, `--font-mono`, `--font-code` |
 | Chrome accent | `--accent`, `--accent-soft`, `--accent-deep` — configurable brand/decorative tint, defaults to the green `--sage*` values |
+| Scrollbars | `--scrollbar-thumb`, `--scrollbar-thumb-hover` — global scrollbar thumb colors; light mode stays pale gray, dark-family themes keep contrast |
 | Status | `--sage` (running/online/success/approve), `--amber` (waiting), `--rose` (error/risk) — each with a `*-soft` companion. Keep status chips, running/error states, diffs, checks, file-change cards, code additions, and logs on semantic tokens; do not migrate them to `--accent*`. |
 | Syntax | `--syntax-keyword`, `--syntax-definition`, `--syntax-string`, `--syntax-type`, `--syntax-constant`, `--syntax-variable`, `--syntax-comment` for CodeMirror file previews |
 | Elevation | `--shadow-1`, `--shadow-2`, `--shadow-3` |
@@ -98,9 +99,9 @@ A loop-wide sweep replacing every existing raw value would land 700+ line edits.
 
 - **Status-driven coloring** — components carry `data-status` / `data-state` / `data-risk` attributes; CSS picks the color via attribute selectors. Don't conditionally swap classes in JSX.
 - **Status edges, not per-type colors** — a running `.tool-call-item` gets one amber left `inset box-shadow`; an errored one gets rose. The tool *type* is signalled by the icon, not color. `data-tool-type` (`bash | edit | read | search | web | other`, set by `getToolTypeBucket()` in `App.tsx`) is still carried for the icon and the agent-row treatment (`.tool-call-row[data-tool-type="agent"]`), but no longer drives a per-type accent bar — that was redundant noise.
-- **Motion is purposeful** — `surface-in` / `fade-in` on mount, `msg-in` (and `msg-in-right` for user bubbles) on chat additions, `status-pulse` on running indicators, `status-marker-working-pulse` on the sidebar row's working marker while a turn is in flight, `tool-call-flash` on new tool arrivals, `detail-expand` when a tool call row opens, and the thinking indicator complex (`command-scan`, `command-caret`, `command-tick`, `command-trace`). New animations: define a keyframe, reuse `--ease`, and respect the `prefers-reduced-motion` block at the bottom of the file.
+- **Motion is purposeful** — `surface-in` / `fade-in` on mount, `msg-in` (and `msg-in-right` for user bubbles) on chat additions, `status-pulse` on running indicators, `status-marker-working-pulse` on the sidebar row's working marker while a turn is in flight, `tool-call-flash` on new tool arrivals, `detail-expand` when a tool call row opens, and the thinking indicator pulse/typing affordances. New animations: define a keyframe, reuse `--ease`, and respect the `prefers-reduced-motion` block at the bottom of the file.
 - **Markdown rendering** — assistant bubbles render via `react-markdown` inside a `.markdown` wrapper. Style markdown elements through `.markdown <selector>` rules (already defined for `p`, `ul/ol`, `code`, `pre`, `a`, `blockquote`, `hr`, `table`, `h1-h4`). Keep prose on `--font-prose`; reserve `--font-code` for inline code, file refs, fenced code, transcript tool targets, and editor surfaces so agent output reads like writing with code in it, not a terminal transcript. Top-level prose blocks are capped to a readable measure while tables and fenced code keep the full available width. Inline file refs are text-only `FileChip` buttons — no leading code icon in prose.
-- **Thinking indicator timing** — the thinking bubble is not a transcript item. Render it while a session is running and the latest user turn has no newer visible assistant output; raw provider output alone must not hide it. Remove it once a visible `message.delta`, `message.completed`, or `error` event arrives for that turn.
+- **Thinking indicator timing** — the thinking bubble is not a transcript item. Render it during silent gaps in a running turn: before the first answer, after completed answer chunks, and after completed tool rows while the model chooses the next step. Hide it while text is actively streaming, while a visible tool row is running, or while an interactive card is waiting on the user; raw provider output alone must not hide it. The initial empty beat appears immediately; mid-turn gaps wait 700 ms before showing and stay visible for at least 600 ms once shown.
 
 ## Background atmosphere
 

@@ -1,21 +1,21 @@
 # IPC
 
-Renderer app IPC talks to Rust only through `window.argmax`. Tauri commands use stable channel names (`"providers:launch"`, `"session:events-since"`, etc.) so renderer code and the generated bridge stay in lockstep. Window chrome is separate: [windowChrome.ts](../../src/renderer/lib/windowChrome.ts) uses Tauri's window API directly for overlay-titlebar drag/zoom behavior.
+Renderer app IPC talks to Rust only through `window.argmax`. Tauri commands use stable channel names (`"providers:launch"`, `"session:events-since"`, etc.) so renderer code and the generated bridge stay in lockstep. Window chrome is separate: [windowChrome.ts](../src/renderer/lib/windowChrome.ts) uses Tauri's window API directly for overlay-titlebar drag/zoom behavior.
 
 ## Files
 
 | File | Role |
 |---|---|
-| [src-tauri/src/ipc](../../src-tauri/src/ipc) | `#[tauri::command(rename = "...")]` handlers, grouped by namespace |
-| [src-tauri/src/ipc/inputs.rs](../../src-tauri/src/ipc/inputs.rs) | Input structs and validated newtypes |
-| [src-tauri/tests/fixtures/channels.txt](../../src-tauri/tests/fixtures/channels.txt) | Stable request/response channel inventory |
-| [src/shared/bindings.d.ts](../../src/shared/bindings.d.ts) | Generated command/input/output types |
-| [src/shared/ipcSchemas.ts](../../src/shared/ipcSchemas.ts) | TypeScript channel-name union for the bridge |
-| [src/renderer/lib/tauriBridge.ts](../../src/renderer/lib/tauriBridge.ts) | Installs `window.argmax` with `invoke`/`listen` calls |
+| [src-tauri/src/ipc](../src-tauri/src/ipc) | `#[tauri::command(rename = "...")]` handlers, grouped by namespace |
+| [src-tauri/src/ipc/inputs.rs](../src-tauri/src/ipc/inputs.rs) | Input structs and validated newtypes |
+| [src-tauri/tests/fixtures/channels.txt](../src-tauri/tests/fixtures/channels.txt) | Stable request/response channel inventory |
+| [src/shared/bindings.d.ts](../src/shared/bindings.d.ts) | Generated command/input/output types |
+| [src/shared/ipcSchemas.ts](../src/shared/ipcSchemas.ts) | TypeScript channel-name union for the bridge |
+| [src/renderer/lib/tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) | Installs `window.argmax` with `invoke`/`listen` calls |
 
 ## Request Channels
 
-Every request handler is registered in [src-tauri/src/ipc/mod.rs](../../src-tauri/src/ipc/mod.rs) through `tauri-specta`'s command collection. The Rust inventory test checks the fixture against the collected command surface; `npm run check:tauri-bridge` checks the renderer invokes the same channels.
+Every request handler is registered in [src-tauri/src/ipc/mod.rs](../src-tauri/src/ipc/mod.rs) through `tauri-specta`'s command collection. The Rust inventory test checks the fixture against the collected command surface; `npm run check:tauri-bridge` checks the renderer invokes the same channels.
 
 Runtime validation belongs in Rust input structs/newtypes. Do not add Zod schemas or renderer-side validation for trusted app IPC.
 

@@ -14,6 +14,24 @@ function cssRuleBody(source: string, selector: string): string {
 }
 
 describe("accent CSS contract", () => {
+  it("keeps light-theme scrollbars soft while dark themes keep contrast", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const rootRule = cssRuleBody(tokens, ":root");
+    const darkRule = cssRuleBody(tokens, ':root[data-theme="dark"]');
+    const purpleRule = cssRuleBody(tokens, ':root[data-theme="purple"]');
+    const scrollbarThumbRule = cssRuleBody(tokens, "::-webkit-scrollbar-thumb");
+    const scrollbarHoverRule = cssRuleBody(tokens, "::-webkit-scrollbar-thumb:hover");
+
+    expect(rootRule).toContain("--scrollbar-thumb: #dce1e4;");
+    expect(rootRule).toContain("--scrollbar-thumb-hover: #cfd5d8;");
+    expect(darkRule).toContain("--scrollbar-thumb: var(--line-strong);");
+    expect(darkRule).toContain("--scrollbar-thumb-hover: var(--muted);");
+    expect(purpleRule).toContain("--scrollbar-thumb: var(--line-strong);");
+    expect(purpleRule).toContain("--scrollbar-thumb-hover: var(--muted);");
+    expect(scrollbarThumbRule).toContain("background: var(--scrollbar-thumb);");
+    expect(scrollbarHoverRule).toContain("background: var(--scrollbar-thumb-hover);");
+  });
+
   it("keeps tool-summary labels neutral and quieter than assistant prose", () => {
     const chatTurns = readSource("src/renderer/styles/chat-turns.css");
     const chatTools = readSource("src/renderer/styles/chat-tools.css");
@@ -147,7 +165,9 @@ describe("accent CSS contract", () => {
     const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
     const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
     const chatTools = readSource("src/renderer/styles/chat-tools.css");
+    const bubbleRule = cssRuleBody(chatConversation, ".chat-bubble");
     const userBubbleRule = cssRuleBody(chatConversation, ".chat-bubble.user");
+    const userBubbleBodyRule = cssRuleBody(chatConversation, ".chat-bubble.user .chat-bubble-body");
     const composerFocusRule = cssRuleBody(chatChrome, ".composer-input:focus-within");
     const sessionInputFocusRule = cssRuleBody(chatTools, ".session-input:focus-within");
 
@@ -156,9 +176,13 @@ describe("accent CSS contract", () => {
     expect(tokens).not.toContain("--user-message-border:");
     expect(tokens).toContain(':root[data-theme="dark"]');
     expect(tokens).toContain(':root[data-theme="purple"]');
+    expect(bubbleRule).toContain("box-sizing: border-box;");
+    expect(bubbleRule).toContain("min-width: 0;");
     expect(userBubbleRule).toContain("background: var(--user-message-bg);");
     expect(userBubbleRule).toContain("box-shadow: var(--user-message-shadow);");
     expect(userBubbleRule).not.toContain("border:");
+    expect(userBubbleBodyRule).toContain("padding-right: 4px;");
+    expect(userBubbleBodyRule).toContain("margin-right: -4px;");
     expect(composerFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));");
     expect(composerFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent)");
     expect(sessionInputFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));");

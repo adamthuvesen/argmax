@@ -1,6 +1,6 @@
 # Terminal
 
-User-spawned integrated terminals are independent from provider PTYs. They live in [src-tauri/src/terminal/service.rs](../../src-tauri/src/terminal/service.rs).
+User-spawned integrated terminals are independent from provider PTYs. They live in [src-tauri/src/terminal/service.rs](../src-tauri/src/terminal/service.rs).
 
 IPC:
 

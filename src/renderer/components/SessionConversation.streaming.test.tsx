@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
@@ -15,6 +15,7 @@ import {
 
 describe("SessionConversation — streaming & composer", () => {
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
   it("does not reset the model picker when the session prop reference changes but id stays the same", () => {
@@ -219,7 +220,7 @@ describe("SessionConversation — streaming & composer", () => {
       [
         event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
         // Thinking has landed but no answer text yet → the turn is live, so the
-        // reasoning shows expanded in place of the thinking-verb animation.
+        // reasoning shows expanded in place of the generic Thinking indicator.
         event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
       ]
     );
@@ -567,6 +568,17 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it("renders the pulsing Thinking label while the agent thinks", () => {
+    const { container } = renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")]
+    );
+
+    expect(screen.getByLabelText("Thinking")).toHaveTextContent("Thinking");
+    expect(screen.getByTestId("thinking-label")).toHaveTextContent("Thinking");
+    expect(container.querySelector(".thinking-label")).not.toBeNull();
+  });
+
   it("hides Thinking for Codex once a visible tool starts running", () => {
     renderConversation(
       baseSession({ provider: "codex", state: "running" }),
@@ -584,11 +596,11 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
-  it("hides the Thinking indicator once a completed assistant answer is visible", () => {
-    // Provider answer events and runtime completion state arrive in separate
-    // dashboard deltas. If the answer has landed but the session row still
-    // says running, the answer should win; otherwise the appended Thinking
-    // bubble pins the scroll and makes the reply look missing until Stop.
+  it("shows Thinking after a completed assistant chunk while the session is still running", () => {
+    vi.useFakeTimers();
+    // Completed assistant chunks can be followed by more silent work. Keep a
+    // quiet live marker below the chunk until the next visible thing arrives or
+    // the session leaves running.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -598,17 +610,17 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.getByText("Done.")).toBeInTheDocument();
-    // Immediate window only: a completed answer at the very end of a turn flips
-    // the runtime to `complete` within ~a frame, so we never flash Thinking
-    // under the finished reply. The mid-turn-pause test below covers the
-    // debounced re-show for genuine multi-second gaps.
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
-  it("keeps generic Thinking hidden after a completed assistant chunk", () => {
-    // Once a durable assistant chunk exists, the transcript should not insert a
-    // transient Thinking row below it during a silent mid-turn pause. The stable
-    // turn header keeps saying the agent is working.
+  it("shows generic Thinking after a completed assistant chunk", () => {
+    vi.useFakeTimers();
+    // Once a durable assistant chunk exists, the transcript still needs a live
+    // marker during a silent mid-turn pause.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -620,13 +632,17 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText("Now I'll edit the file.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
-  it("keeps generic Thinking hidden after a completed tool row", () => {
+  it("shows generic Thinking after a completed tool row", () => {
+    vi.useFakeTimers();
     // Tool chaining (grep → read → grep) leaves a `command.completed` as the
-    // last significant event while the model picks the next call. Do not insert
-    // a generic Thinking row between durable command rows; the turn header
-    // carries the ongoing work state.
+    // last significant event while the model picks the next call. Show Thinking
+    // during that silent gap.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -647,6 +663,10 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Working/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {

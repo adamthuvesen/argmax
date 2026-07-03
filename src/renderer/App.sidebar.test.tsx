@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
@@ -31,6 +31,7 @@ import {
 
 describe("App sidebar", () => {
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
 
@@ -118,19 +119,19 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     expect(await screen.findByLabelText("Thinking")).toBeInTheDocument();
-    expect(screen.getByTestId("command-stream")).toBeInTheDocument();
+    expect(screen.getByTestId("thinking-label")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Waiting for agent")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Send a follow-up")).not.toBeInTheDocument();
   });
 
-  it("hides the thinking indicator once assistant output is visible", async () => {
+  it("keeps the thinking indicator visible briefly after assistant output while the session is still running", async () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     expect(await screen.findByText("Dashboard ready.")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("command-stream")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+    expect(screen.getByTestId("thinking-label")).toBeInTheDocument();
   });
 
   it("shows a thinking indicator for a follow-up turn after earlier assistant output", async () => {
@@ -175,7 +176,7 @@ describe("App sidebar", () => {
     expect(await screen.findByText("Dashboard ready.")).toBeInTheDocument();
     expect(screen.getByText("very good!")).toBeInTheDocument();
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-    expect(screen.getByTestId("command-stream")).toBeInTheDocument();
+    expect(screen.getByTestId("thinking-label")).toBeInTheDocument();
   });
 
   it("sends follow-up prompts to the selected live session", async () => {

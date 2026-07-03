@@ -3,36 +3,36 @@
 The chat surface renders two kinds of *interactive cards* on top of the normal
 assistant bubble stream: **PlanCard** (Claude Code plan mode) and
 **QuestionCard** (Claude Code `AskUserQuestion`). Turn detection and card
-state live in [turnInteractiveCards.ts](../../src/renderer/lib/turnInteractiveCards.ts)
-and [turnToolItems.ts](../../src/renderer/lib/turnToolItems.ts); question parsing
-in [questions.ts](../../src/renderer/lib/questions.ts). Rendering still flows
+state live in [turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts)
+and [turnToolItems.ts](../src/renderer/lib/turnToolItems.ts); question parsing
+in [questions.ts](../src/renderer/lib/questions.ts). Rendering still flows
 through the turn body in
-[SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx),
-[SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx),
-[PlanCard.tsx](../../src/renderer/components/PlanCard.tsx), and
-[QuestionCard.tsx](../../src/renderer/components/QuestionCard.tsx).
+[SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx),
+[SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx),
+[PlanCard.tsx](../src/renderer/components/PlanCard.tsx), and
+[QuestionCard.tsx](../src/renderer/components/QuestionCard.tsx).
 
 ## Chat surface ownership
 
-[SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+[SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx)
 is the shell: it derives the timeline projections, thinking state, turn model,
 card handlers, scroll behavior, and pane chrome. Pure timeline plumbing lives in
-[sessionConversationModel.ts](../../src/renderer/lib/sessionConversationModel.ts):
+[sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts):
 conversation-event filtering, raw transcript suppression checks, tool-call
 pairing, and last-significant-event selection. The prompt box, attachment flow,
 model/mode chips, queued follow-ups, stop/send controls, focus behavior, and
 mascot state live in
-[SessionComposer.tsx](../../src/renderer/components/SessionComposer.tsx).
+[SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx).
 Header actions, PR refresh state, checkpoint browsing, git actions, and debug-log
 toggling live in
-[SessionActionsMenu.tsx](../../src/renderer/components/SessionActionsMenu.tsx).
+[SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx).
 
 ## Why cards exist
 
 Claude Code's `ExitPlanMode` and `AskUserQuestion` tools are designed for
 interactive sessions. Argmax launches Claude in **structured-json** mode
 (`-p --output-format stream-json` — see
-[providerAdapters.ts](../../src-tauri/src/providers/adapters.rs)), which
+[adapters.rs](../src-tauri/src/providers/adapters.rs)), which
 has no interactive stdin. The CLI handles this by returning a
 `tool_result { is_error: true, content: "Exit plan mode?" / "Answer questions?" }`
 and ending the turn.
@@ -45,10 +45,10 @@ user message; Claude's next turn picks it up via `--resume`.
 ## Detection rules (per turn)
 
 Turn view-model prep (assistant group fold, card cutoff, hidden tool ids) lives in
-[sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts). The turn branch
-in [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+[sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts). The turn branch
+in [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx)
 consumes `buildTurnRenderState` and renders cards through
-[SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx).
+[SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx).
 
 | Rule | Applies to | Why |
 |---|---|---|
@@ -63,10 +63,10 @@ consumes `buildTurnRenderState` and renders cards through
 The "Thinking" bubble is suppressed when any of these are true:
 
 - `session.state !== "running"`
-- the last significant event is `message.delta` or `message.completed` (visible assistant text is the indicator)
+- the last significant event is `message.delta` (visible assistant text is actively streaming)
 - a *visible* tool is running (`tool.name` is not `ExitPlanMode` / `AskUserQuestion`; the tool's own spinner is the indicator)
-- **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../../src/renderer/lib/turnInteractiveCards.ts) /
-[SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx))
+- **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts) /
+[SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx))
 
 The outstanding-card gate is the load-bearing one for cards: while a card is
 on screen waiting for the user, the agent is *waiting on the user*, not
@@ -74,12 +74,49 @@ on screen waiting for the user, the agent is *waiting on the user*, not
 `user.message` lands → `lastUserMessageTime` advances past the tool's
 `createdAt` → Thinking resumes for the new turn.
 
+Otherwise, if the session is still running, the bubble is shown during any
+silent gap: before the first answer, after a completed answer chunk, and after a
+completed tool row while the model decides what to do next.
+The first empty beat appears immediately. Mid-turn silent gaps use a 700 ms
+show delay, and once the label is visible it stays up for at least 600 ms, so
+rapid delta/tool chatter does not make it blink.
+
 These conditions are provider-agnostic. Do **not** suppress Thinking on the
 `session.streaming` first-byte beacon for Codex (an earlier heuristic did): the
 beacon fires on raw child bytes, but Codex then reasons for seconds before any
 visible item lands, so suppressing on it blanked the entire initial wait. The
 beacon's only job is suppressing the raw-stdout transcript fallback (via
 `hasRenderableContent`), not the Thinking indicator.
+
+## Smooth answer reveal
+
+Provider deltas are not equally fine-grained. Claude and Cursor often stream
+small `message.delta` fragments, but either can still deliver a larger paragraph
+or block, and Codex frequently surfaces completed protocol items. The renderer
+does not split or rewrite persisted events. Instead,
+[StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx)
+reveals large *visible* streaming backlogs at a fixed character cadence. Small
+token-like deltas render immediately; large chunks are paced. When the group is
+no longer streaming, the component snaps to the exact final text so history and
+copy/paste stay faithful. Reduced-motion users skip the paced reveal.
+
+## Live auto-scroll
+
+The conversation list uses [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts)
+to follow live output without hard-pinning every text growth to the physical
+bottom. While a session is running, `.conversation-list[data-live-follow="true"]`
+adds a bottom reserve. Catch-up scrolls to the physical bottom of that padded
+list, which keeps the latest rendered text above the composer; the reserve is
+only used for the near-latest decision. Streaming text grows into the empty
+space first; only after enough of the reserve is consumed does the viewport
+catch up. Live catch-up uses one `requestAnimationFrame` follower that reads the
+latest bottom each frame, so rapid text growth updates a moving target instead
+of restarting native smooth-scroll animations. If the user scrolls up with real
+input, auto-follow pauses and the scroll-to-latest FAB appears as before. When
+the turn stops running, the hook snaps back to the exact bottom so history does
+not keep an artificial tail. The hook also observes direct conversation-list
+children with `ResizeObserver`, because smooth text reveal grows an existing
+assistant turn without changing the `conversationItems` array.
 
 ## Extended-thinking (Thought block)
 
@@ -93,21 +130,21 @@ reasoning and opaque token counters are never rendered as Thought blocks.
 
 Two layers cooperate to keep it visible and out of the way:
 
-- **Survival.** `pruneSupersededDeltas` ([snapshot.ts](../../src/renderer/lib/snapshot.ts))
+- **Survival.** `pruneSupersededDeltas` ([snapshot.ts](../src/renderer/lib/snapshot.ts))
   and `buildConversationEvents`
-  ([sessionConversationModel.ts](../../src/renderer/lib/sessionConversationModel.ts))
+  ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts))
   both make an exception for thinking deltas, so they are *not* dropped when the
   turn's `message.completed` lands. (These must stay in sync — a thinking delta
   kept by one and dropped by the other produces a flash-then-vanish.)
 - **Fold + dedup + rendering.** `coalesceAssistantGroups`
-  ([sessionTurnView.ts](../../src/renderer/lib/sessionTurnView.ts)) folds the
+  ([sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts)) folds the
   streamed thinking fragments into ONE growing `AssistantGroup` (`thinking:
   true`), kept in a buffer separate from the answer (flushed whenever the kind
   flips). The whole assistant message later re-sends the *full* reasoning as one
   block; a cumulative-aware append (`appendThinking`) dedups it to a no-op
   instead of doubling the text.
-  [SessionConversationTurn.tsx](../../src/renderer/components/SessionConversationTurn.tsx)
-  routes thinking groups to [ThoughtBlock.tsx](../../src/renderer/components/ThoughtBlock.tsx)
+  [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx)
+  routes thinking groups to [ThoughtBlock.tsx](../src/renderer/components/ThoughtBlock.tsx)
   instead of an inline answer bubble, keeping their chronological position in the
   turn body (before the tools and answer they preceded). The block uses a quiet
   title-case label and keeps the expanded reasoning body aligned to the same
@@ -117,8 +154,8 @@ Two layers cooperate to keep it visible and out of the way:
 prop, computed per turn in `SessionConversationTurn` as *latest turn + session
 running + not paused on a card + no answer text yet*. While `live`, the block is
 **expanded** and labelled "Thinking" — the reasoning streams in token-by-token,
-in place of the generic thinking-verb animation (the verbs still cover the gap
-before any assistant content arrives). The instant the first answer token lands
+in place of the generic Thinking indicator (the pulsing label still covers the
+gap before any assistant content arrives). The instant the first answer token lands
 (or the turn stops being the active one, or it pauses for input), `live` flips
 off and the block follows the saved `argmax.thinking.expanded` default from
 Settings → Agents → Thinking blocks. A manual toggle overrides the auto behavior
@@ -143,7 +180,7 @@ if (session.state === "running") {
 ```
 
 Main's `sendInput` already relaunches the agent when no live handle exists
-(see [session_service.rs](../../src-tauri/src/providers/session_service.rs)),
+(see [session_service.rs](../src-tauri/src/providers/session_service.rs)),
 so the terminated session resumes via `--resume <conversationId>` and sends a
 capped visible transcript plus the answer as the next user message. The UI
 timeline still stores only the raw answer text.
@@ -158,8 +195,8 @@ short header is enough context.
 ## Keyboard contract (PlanCard + QuestionCard, and any future ask-user card)
 
 One contract; deviations are bugs. Locked by component tests in
-[PlanCard.test.tsx](../../src/renderer/components/PlanCard.test.tsx) and
-[QuestionCard.test.tsx](../../src/renderer/components/QuestionCard.test.tsx).
+[PlanCard.test.tsx](../src/renderer/components/PlanCard.test.tsx) and
+[QuestionCard.test.tsx](../src/renderer/components/QuestionCard.test.tsx).
 
 | Key            | Effect                                                                    |
 | -------------- | ------------------------------------------------------------------------- |
@@ -174,7 +211,7 @@ chevron so the chat history stays scannable. Once collapsed, the user can
 still expand to review what they answered.
 
 Cards autofocus their listbox on mount, but never steal focus from a text
-input the user is typing in (the [useEffect typing-target guard](../../src/renderer/components/PlanCard.tsx) skips
+input the user is typing in (the [useEffect typing-target guard](../src/renderer/components/PlanCard.tsx) skips
 when `document.activeElement` is an `INPUT`/`TEXTAREA`/contenteditable).
 
 The footer surfaces the contract visually as decorative `aria-hidden` key
@@ -188,13 +225,14 @@ hints, so sighted keyboard users don't have to discover it.
 - **`exitPlanCard.onReject`** focuses the composer for free-form feedback.
 - Cards re-use Plan-card CSS via the `.plan-card` class.
   Question-specific tweaks (denser type, lighter dividers, integrated submit
-  pill) live under `.question-card` in [styles.css](../../src/renderer/styles.css).
+  pill) live under `.question-card` in
+  [overlays-launcher-cards.css](../src/renderer/styles/overlays-launcher-cards.css).
 
 ## Tests
 
 All of the above is locked in by
-[src/renderer/components/SessionConversation.cards.test.tsx](../../src/renderer/components/SessionConversation.cards.test.tsx) and
-[src/renderer/components/SessionConversation.streaming.test.tsx](../../src/renderer/components/SessionConversation.streaming.test.tsx) — search for the
+[src/renderer/components/SessionConversation.cards.test.tsx](../src/renderer/components/SessionConversation.cards.test.tsx) and
+[src/renderer/components/SessionConversation.streaming.test.tsx](../src/renderer/components/SessionConversation.streaming.test.tsx) — search for the
 relevant `it(...)` titles:
 
 - "renders an ExitPlanMode tool call as a PlanCard, hiding the raw tool row"
@@ -230,7 +268,7 @@ Not card-specific, but living next to cards in the same conversation surface
   the per-bubble timestamp was removed when the turn header took over.
 - **Mascot happy-flash.** The composer mascot pops to its "happy" expression
   after each new `message.completed`.
-  [SessionComposer.tsx](../../src/renderer/components/SessionComposer.tsx)
+  [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx)
   owns the mascot state via `useMascotFlash`, which prevents re-renders from
   re-firing the flash and skips the first observation per session (stale
   completions on open).
@@ -241,12 +279,13 @@ Not card-specific, but living next to cards in the same conversation surface
   `basename` (+ optional `:line`) — full path lives in `aria-label`, the
   tooltip, and the hover-intent popover. After 500 ms of hover (or
   immediately on focus) a `FilePreviewPopover` mounts and fetches a
-  `useFilePreview` snippet via `workspace:readFile`; module-level cache
+  `useFilePreview` snippet via `window.argmax.workspace.readFile`
+  (`workspace:read-file`); module-level cache
   keyed by `workspaceId|path|line`. The popover stays out of IPC traffic
   during passive scroll-by because the timer never fires.
 - **Submit terminate helper.** `sendAfterTerminate(sessionId, isRunning,
   onTerminateSession, send, onError)` in
-  [sessionConversationHelpers.ts](../../src/renderer/components/sessionConversationHelpers.ts)
+  [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts)
   factors out the "terminate-then-send" dance that
-  [SessionConversation.tsx](../../src/renderer/components/SessionConversation.tsx)
+  [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx)
   uses for PlanCard / QuestionCard submits and other card-style flows.

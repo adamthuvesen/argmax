@@ -15,7 +15,7 @@ import { useState, type JSX, type ReactNode } from "react";
  *
  * While the turn is actively working and hasn't produced its answer yet the
  * parent passes `live`, and the block shows the reasoning expanded (labelled
- * "Thinking") in place of the generic thinking-verb animation. Once the answer
+ * "Thinking") in place of the generic Thinking indicator. Once the answer
  * lands (or the turn ends) `live` flips off and the block follows the saved
  * expanded-by-default setting. A manual toggle overrides the auto behavior
  * (same pattern as the turn chip).

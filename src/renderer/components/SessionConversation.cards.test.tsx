@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionConversation } from "./SessionConversation.js";
 import {
@@ -12,6 +12,7 @@ import {
 
 describe("SessionConversation — cards", () => {
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
   it("hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble", () => {
@@ -296,11 +297,11 @@ describe("SessionConversation — cards", () => {
     expect(terminateOrder).toBeLessThan(sendOrder);
   });
 
-  it("hides the Thinking indicator once a completed assistant answer is visible", () => {
+  it("shows Thinking after a completed assistant chunk while the session is still running", () => {
+    vi.useFakeTimers();
     // Provider answer events and runtime completion state arrive in separate
-    // dashboard deltas. If the answer has landed but the session row still
-    // says running, the answer should win; otherwise the appended Thinking
-    // bubble pins the scroll and makes the reply look missing until Stop.
+    // dashboard deltas. While the session row still says running, keep the
+    // quiet live marker visible under the completed chunk.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -311,6 +312,10 @@ describe("SessionConversation — cards", () => {
 
     expect(screen.getByText("Done.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
   it("suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)", () => {

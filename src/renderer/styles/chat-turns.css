@@ -205,7 +205,7 @@
 }
 
 /* While the agent is actively thinking, the eyebrow is fully present and softly
-   pulses to read as live, in place of the generic thinking-verb animation. */
+   pulses to read as live, in place of the generic Thinking indicator. */
 .thought-block[data-live="true"] .thought-block-eyebrow-label {
   color: var(--muted-strong);
   animation: thought-pulse 1600ms var(--ease) infinite;
@@ -266,79 +266,57 @@
   margin-top: -16px;
 }
 
-.command-stream {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  min-height: 0;
-  padding: 4px 0 2px;
-}
-
-.thinking-pulse {
-  position: relative;
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  align-self: center;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
-  animation: thinking-pulse 0.9s var(--ease) infinite;
-}
-
-.thinking-line {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: 1.2;
-  letter-spacing: 0.005em;
-}
-
-.thinking-prompt {
-  color: var(--accent-deep);
-  font-weight: 600;
-}
-
-.thinking-text {
-  color: var(--text-soft);
-  white-space: pre;
-}
-
 @keyframes thinking-fade-in {
   from { opacity: 0; transform: translateY(2px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes thinking-pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.7;
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent);
-  }
-  50% {
-    transform: scale(1.15);
-    opacity: 1;
-    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
-  }
+/* Simple label variant — one quiet word, pulsing while the turn is live. */
+.thinking-label-stream {
+  display: inline-flex;
+  align-items: baseline;
+  min-height: 0;
+  padding: 4px 0 2px;
 }
 
-/* Playful-verb variant — keyed remount per verb runs this swap animation. */
-.thinking-verb {
-  font-family: var(--font-mono);
+.thinking-label {
+  display: inline-flex;
+  font-family: var(--font-ui);
   font-size: var(--text-sm);
   line-height: 1.2;
-  letter-spacing: 0.005em;
-  color: var(--accent-deep);
-  font-weight: 600;
-  animation: thinking-verb-swap 160ms var(--ease) both;
+  letter-spacing: 0;
+  color: var(--muted-strong);
+  font-weight: 500;
 }
 
-@keyframes thinking-verb-swap {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+.thinking-label-letter {
+  color: color-mix(in oklab, var(--muted) 72%, var(--muted-strong));
+  opacity: 0.58;
+  animation: thinking-label-wave 1450ms var(--ease) infinite;
+  animation-delay: calc(var(--thinking-letter-index) * 85ms);
+}
+
+@keyframes thinking-label-wave {
+  0%, 100% {
+    color: color-mix(in oklab, var(--muted) 72%, var(--muted-strong));
+    opacity: 0.58;
+  }
+  35% {
+    color: var(--muted-strong);
+    opacity: 1;
+  }
+  70% {
+    color: color-mix(in oklab, var(--accent-deep) 42%, var(--muted-strong));
+    opacity: 0.82;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-label-letter {
+    animation: none;
+    opacity: 0.78;
+    color: var(--muted-strong);
+  }
 }
 
 .conversation-empty {

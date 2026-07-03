@@ -3,7 +3,6 @@ import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
 import { FONT_OPTIONS, type FontFamilyId } from "../../lib/fonts.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
-import type { ThinkingStyle } from "../../lib/thinkingStyle.js";
 import {
   AccentPicker,
   FontFamilyPicker,
@@ -21,8 +20,6 @@ export function GeneralSettings({
   onThemeModeChange,
   accentId,
   onAccentChange,
-  thinkingStyle,
-  onThinkingStyleChange,
   sidebarTokensVisible,
   onSidebarTokensVisibleChange,
   chatCostVisible,
@@ -38,8 +35,6 @@ export function GeneralSettings({
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
   onAccentChange: (accentId: AccentId) => void;
-  thinkingStyle: ThinkingStyle;
-  onThinkingStyleChange: (style: ThinkingStyle) => void;
   sidebarTokensVisible: boolean;
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
@@ -140,22 +135,6 @@ export function GeneralSettings({
               <span>const argmax = (∑) ⇒ argmax · 0123456789</span>
             </p>
           </div>
-
-          <Segmented
-            legend="Thinking indicator"
-            name="thinking-style"
-            value={thinkingStyle}
-            onChange={(v) => onThinkingStyleChange(v as ThinkingStyle)}
-            options={[
-              { value: "terminal", label: "Terminal command", caption: "default" },
-              { value: "verbs", label: "Playful verbs" }
-            ]}
-          />
-          <p className="settings-hint">
-            {thinkingStyle === "verbs"
-              ? "Shows a rotating verb (“Gusting…”, “Pondering…”) while the model thinks."
-              : "Types “argmax run --model …” as a terminal-style command while the model thinks."}
-          </p>
 
           <ToggleRow
             label="Show session tokens in sidebar"

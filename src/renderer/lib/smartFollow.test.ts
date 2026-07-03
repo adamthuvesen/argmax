@@ -59,6 +59,13 @@ describe("decideSmartFollow", () => {
     expect(d.showFab).toBe(false);
   });
 
+  it("treats the follow offset as live bottom space", () => {
+    const d = decideSmartFollow(1160, 800, 200, 160);
+    expect(d.distanceFromBottom).toBe(0);
+    expect(d.pinToBottom).toBe(true);
+    expect(d.showFab).toBe(false);
+  });
+
   it("handles a short list (clientHeight >= scrollHeight) as pinned", () => {
     // List fits in the viewport — nothing to scroll.
     const d = decideSmartFollow(150, 0, 200);

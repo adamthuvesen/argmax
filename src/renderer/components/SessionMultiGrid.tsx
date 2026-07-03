@@ -26,7 +26,6 @@ import type {
 import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
 import { MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
-import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { SessionPane } from "./SessionPane.js";
 
 /** Minimum pane width for side-by-side grid splits and divider drags. */
@@ -65,7 +64,6 @@ interface SessionMultiGridProps {
   defaultThinkingExpanded?: boolean;
   fastModeEnabled?: boolean;
   showCostPanel?: boolean;
-  thinkingStyle?: ThinkingStyle;
   maxColumnsPerRow?: number;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
@@ -117,7 +115,6 @@ export function SessionMultiGrid({
   defaultThinkingExpanded,
   fastModeEnabled,
   showCostPanel = true,
-  thinkingStyle,
   maxColumnsPerRow = MAX_COLS,
   rightPanelToggleSignal,
   debugLogToggleSignal,
@@ -371,7 +368,6 @@ export function SessionMultiGrid({
                         debugLogToggleSignal={debugLogToggleSignal}
                         terminalToggleSignal={terminalToggleSignal}
                         session={session}
-                        thinkingStyle={thinkingStyle}
                         workspace={workspace}
                         registerPaletteFileContext={registerPaletteFileContext}
                       />

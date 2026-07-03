@@ -63,11 +63,6 @@ import {
   type NewSessionMode
 } from "./lib/newSessionMode.js";
 import {
-  THINKING_STYLE_KEY,
-  readStoredThinkingStyle,
-  type ThinkingStyle
-} from "./lib/thinkingStyle.js";
-import {
   CHAT_COST_KEY,
   FAST_MODE_KEY,
   LAUNCHER_GLOBE_KEY,
@@ -145,7 +140,6 @@ export function App(): JSX.Element {
     detectedIdes
   } = useLauncherAppearance();
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
-  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>(() => readStoredThinkingStyle());
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   // `full` new-session mode hides the grid and renders LaunchSurface in its
   // place when ⌘N fires from inside an active grid. The flag is purely local
@@ -410,7 +404,6 @@ export function App(): JSX.Element {
   });
 
   usePersistedSetting(PERMISSION_MODE_KEY, permissionMode);
-  usePersistedSetting(THINKING_STYLE_KEY, thinkingStyle);
   usePersistedSetting(NEW_SESSION_MODE_KEY, newSessionMode);
 
   // Esc closes the standalone full launcher (only meaningful when the grid
@@ -1064,8 +1057,6 @@ export function App(): JSX.Element {
                 onDefaultIdeChange={setDefaultIde}
                 permissionMode={permissionMode}
                 onPermissionModeChange={setPermissionMode}
-                thinkingStyle={thinkingStyle}
-                onThinkingStyleChange={setThinkingStyle}
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={setNewSessionMode}
                 projects={snapshot.projects}
@@ -1089,7 +1080,6 @@ export function App(): JSX.Element {
               defaultThinkingExpanded={thinkingExpanded}
               fastModeEnabled={fastModeEnabled}
               showCostPanel={chatCostVisible}
-              thinkingStyle={thinkingStyle}
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
               terminalToggleSignal={terminalToggleSignal}

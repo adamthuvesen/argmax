@@ -15,7 +15,6 @@ import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
-import type { ThinkingStyle } from "../lib/thinkingStyle.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { GeneralSettings } from "./settings/GeneralSettings.js";
 import { IntegrationsSettings } from "./settings/IntegrationsSettings.js";
@@ -62,8 +61,6 @@ export function SettingsPanel({
   onDefaultIdeChange,
   permissionMode,
   onPermissionModeChange,
-  thinkingStyle,
-  onThinkingStyleChange,
   newSessionMode,
   onNewSessionModeChange,
   projects,
@@ -96,8 +93,6 @@ export function SettingsPanel({
   onDefaultIdeChange: (ide: IdeId | null) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
-  thinkingStyle: ThinkingStyle;
-  onThinkingStyleChange: (style: ThinkingStyle) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
   projects: ProjectSummary[];
@@ -244,8 +239,6 @@ export function SettingsPanel({
               onThemeModeChange={onThemeModeChange}
               accentId={accentId}
               onAccentChange={onAccentChange}
-              thinkingStyle={thinkingStyle}
-              onThinkingStyleChange={onThinkingStyleChange}
               sidebarTokensVisible={sidebarTokensVisible}
               onSidebarTokensVisibleChange={onSidebarTokensVisibleChange}
               chatCostVisible={chatCostVisible}

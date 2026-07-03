@@ -77,7 +77,7 @@ function SessionConversationTurnInner({
     turnStartedAtMs,
     isPausedOnUserInput
   } = turnView;
-  // A Thought block is "live" (shown expanded, in place of the thinking verbs)
+  // A Thought block is "live" (shown expanded, in place of the generic indicator)
   // while this turn is actively working and hasn't produced its answer yet.
   // Once any answer text lands — or the turn stops being the active one, or it
   // pauses for user input — it falls back to the saved expanded-by-default

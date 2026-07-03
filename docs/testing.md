@@ -20,13 +20,13 @@ npm run check:tauri-bridge
 
 ## TypeScript Tests
 
-Vitest config lives in [vitest.config.ts](../../vitest.config.ts); setup lives in [src/test/setup.ts](../../src/test/setup.ts). Prefer role/label/title queries. Browser-preview and app-shell tests mock `window.argmax` through [appTestHarness.ts](../../src/test/appTestHarness.ts).
+Vitest config lives in [vitest.config.ts](../vitest.config.ts); setup lives in [src/test/setup.ts](../src/test/setup.ts). Prefer role/label/title queries. Browser-preview and app-shell tests mock `window.argmax` through [appTestHarness.ts](../src/test/appTestHarness.ts).
 
-Perf microbenches are isolated through [vitest.perf.config.ts](../../vitest.perf.config.ts) and [src/test/perf.test.ts](../../src/test/perf.test.ts).
+Perf microbenches are isolated through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
 
 ## Rust Tests
 
-Rust tests live next to the code and under [src-tauri/tests](../../src-tauri/tests). They cover IPC inventory, git/review/workspace services, provider sessions, persistence, and command validation. Use focused Cargo filters while iterating, then `npm run test:rust` before calling runtime work done.
+Rust tests live next to the code and under [src-tauri/tests](../src-tauri/tests). They cover IPC inventory, git/review/workspace services, provider sessions, persistence, and command validation. Use focused Cargo filters while iterating, then `npm run test:rust` before calling runtime work done.
 
 ### Rust Test Iteration
 

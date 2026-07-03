@@ -23,10 +23,9 @@ import type {
 } from "../../shared/types.js";
 import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import { modelPickerSelectionFromSession, thinkingModelSlug, type ModelPickerSelection } from "../lib/models.js";
+import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
-import { DEFAULT_THINKING_STYLE, type ThinkingStyle } from "../lib/thinkingStyle.js";
 import {
   readStoredAgentMode,
   sessionAgentModeKey,
@@ -47,8 +46,7 @@ import { foldTurnToolItems } from "../lib/turnToolItems.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { SessionComposer } from "./SessionComposer.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
-import { ThinkingTranscript } from "./ThinkingTranscript.js";
-import { ThinkingVerbs } from "./ThinkingVerbs.js";
+import { ThinkingLabel } from "./ThinkingLabel.js";
 import { parseUserMessageAttachments } from "./sessionConversationHelpers.js";
 import {
   SessionConversationTurn,
@@ -64,6 +62,9 @@ const SCROLL_INTENT_KEYS = new Set([
   "PageUp",
   " "
 ]);
+
+const THINKING_SHOW_DELAY_MS = 700;
+const THINKING_MIN_VISIBLE_MS = 600;
 
 export function SessionConversation({
   checks,
@@ -90,7 +91,6 @@ export function SessionConversation({
   review,
   session,
   showCostPanel = true,
-  thinkingStyle = DEFAULT_THINKING_STYLE,
   workspace
 }: {
   checks?: CheckRun[];
@@ -129,7 +129,6 @@ export function SessionConversation({
   review: ReviewState;
   session: SessionSummary | null;
   showCostPanel?: boolean;
-  thinkingStyle?: ThinkingStyle;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
@@ -236,14 +235,77 @@ export function SessionConversation({
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
     !isStreamingText;
-  // Generic thinking is only for the empty pre-answer gap. Once a turn has
-  // produced any durable item (tool rows, answer text, cards, or a Thought
-  // block), the stable "Working for…" turn header carries the live state. This
-  // avoids the transcript rhythm where verbs appear after a command, disappear
-  // when the next command starts, then appear again.
-  const isPreAnswerBeat =
+  // Show the generic indicator for any silent gap in a running turn. It stays
+  // hidden while text is actively streaming, a visible tool row is running, or
+  // the agent is waiting on an interactive card.
+  const isThinking = agentWorkingSilently;
+  const isInitialThinkingBeat =
     lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
-  const isThinking = agentWorkingSilently && isPreAnswerBeat;
+  const [isThinkingVisible, setIsThinkingVisible] = useState(false);
+  const thinkingVisibleSinceRef = useRef(0);
+  const thinkingShowTimerRef = useRef<number | null>(null);
+  const thinkingHideTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setIsThinkingVisible(false);
+    thinkingVisibleSinceRef.current = 0;
+    if (thinkingShowTimerRef.current !== null) {
+      window.clearTimeout(thinkingShowTimerRef.current);
+      thinkingShowTimerRef.current = null;
+    }
+    if (thinkingHideTimerRef.current !== null) {
+      window.clearTimeout(thinkingHideTimerRef.current);
+      thinkingHideTimerRef.current = null;
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (isThinking) {
+      if (thinkingHideTimerRef.current !== null) {
+        window.clearTimeout(thinkingHideTimerRef.current);
+        thinkingHideTimerRef.current = null;
+      }
+      if (!isThinkingVisible && thinkingShowTimerRef.current === null) {
+        if (isInitialThinkingBeat) {
+          thinkingVisibleSinceRef.current = performance.now();
+          setIsThinkingVisible(true);
+          return;
+        }
+        thinkingShowTimerRef.current = window.setTimeout(() => {
+          thinkingShowTimerRef.current = null;
+          thinkingVisibleSinceRef.current = performance.now();
+          setIsThinkingVisible(true);
+        }, THINKING_SHOW_DELAY_MS);
+      }
+      return;
+    }
+
+    if (thinkingShowTimerRef.current !== null) {
+      window.clearTimeout(thinkingShowTimerRef.current);
+      thinkingShowTimerRef.current = null;
+    }
+    if (!isThinkingVisible || thinkingHideTimerRef.current !== null) return;
+
+    const elapsed = performance.now() - thinkingVisibleSinceRef.current;
+    const hideDelay = Math.max(0, THINKING_MIN_VISIBLE_MS - elapsed);
+    if (hideDelay === 0) {
+      setIsThinkingVisible(false);
+      thinkingVisibleSinceRef.current = 0;
+      return;
+    }
+    thinkingHideTimerRef.current = window.setTimeout(() => {
+      thinkingHideTimerRef.current = null;
+      thinkingVisibleSinceRef.current = 0;
+      setIsThinkingVisible(false);
+    }, hideDelay);
+  }, [isInitialThinkingBeat, isThinking, isThinkingVisible]);
+
+  useEffect(() => {
+    return () => {
+      if (thinkingShowTimerRef.current !== null) window.clearTimeout(thinkingShowTimerRef.current);
+      if (thinkingHideTimerRef.current !== null) window.clearTimeout(thinkingHideTimerRef.current);
+    };
+  }, []);
 
   const {
     conversationListRef,
@@ -253,7 +315,7 @@ export function SessionConversation({
     scrollToBottom: scrollConversationToBottom,
     handleUserScrollIntent: handleConversationScrollIntent,
     handleScroll: handleConversationScroll
-  } = useSmartFollowScroll(sessionId, conversationItems, isThinking);
+  } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, sessionRunning);
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
   // Depend on session.id rather than the session object: the parent rebuilds
@@ -303,6 +365,7 @@ export function SessionConversation({
       </div>
       <div
         className="conversation-list"
+        data-live-follow={sessionRunning ? "true" : undefined}
         ref={conversationListRef}
         onScroll={handleConversationScroll}
         onWheel={handleConversationScrollIntent}
@@ -374,13 +437,7 @@ export function SessionConversation({
             <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
           </button>
         ) : null}
-        {isThinking ? (
-          thinkingStyle === "verbs" ? (
-            <ThinkingVerbs />
-          ) : (
-            <ThinkingTranscript command={`run --model ${thinkingModelSlug(selectedModel)}`} />
-          )
-        ) : null}
+        {isThinkingVisible ? <ThinkingLabel /> : null}
       </div>
       <div
         className="session-meta-cards"
@@ -428,7 +485,7 @@ export function SessionConversation({
         fastModeEnabled={fastModeEnabled}
         inputRef={inputRef}
         isQueueing={isQueueing}
-        isThinking={isThinking}
+        isThinking={isThinkingVisible}
         onFastModeEnabledChange={onFastModeEnabledChange}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendSessionInput={onSendSessionInput}

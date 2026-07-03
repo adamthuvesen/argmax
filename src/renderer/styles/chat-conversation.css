@@ -310,21 +310,21 @@
 }
 
 .conversation-list {
+  --conversation-live-follow-reserve: 56px;
   display: flex;
   min-height: 0;
   flex-direction: column;
   gap: var(--space-8);
   overflow: auto;
   padding: var(--space-2) var(--session-inline-padding) var(--space-7);
-  /* Intentionally NOT smooth. The pin-to-bottom effect in
-     useSmartFollowScroll sets el.scrollTop = el.scrollHeight on every
-     conversationItems change (every streaming token). With smooth scroll
-     the browser animates each assignment, but the next token arrives
-     before the animation finishes, so the browser interrupts and
-     restarts the animation repeatedly — the viewport oscillates up and
-     down chasing a moving target. Instant scroll snaps to the new bottom
-     without fighting. The scroll-to-bottom FAB still gets smooth behavior
-     because it calls el.scrollTo({ behavior: "smooth" }) explicitly. */
+  transition: padding-bottom var(--duration-base) var(--ease);
+  /* Live turns add tail room below the latest text. New text grows into that
+     space first; the hook scrolls to the padded bottom only after the reserve
+     has been used. */
+}
+
+.conversation-list[data-live-follow="true"] {
+  padding-bottom: calc(var(--space-7) + var(--conversation-live-follow-reserve));
 }
 
 /* Base layout only. The fill is owned by the variants: .user paints the ink
@@ -332,6 +332,8 @@
    inset border + shadow only ever rendered as dead, overridden layering. */
 .chat-bubble {
   position: relative;
+  box-sizing: border-box;
+  min-width: 0;
   max-width: min(78%, 920px);
   padding: 12px 16px;
   border-radius: var(--radius-lg);
@@ -654,6 +656,11 @@
    the copy button (anchored at top: 100%) isn't clipped by the scroll container.
    The scrollbar inherits the app's global ::-webkit-scrollbar styling. */
 .chat-bubble.user .chat-bubble-body {
+  /* The body is a scroll container for long pasted prompts. Give text a tiny
+     paint gutter inside the bubble padding so the final glyph is not clipped
+     by the scrollport edge when a short prompt fits on one line. */
+  padding-right: 4px;
+  margin-right: -4px;
   max-height: 40vh;
   overflow-y: auto;
 }

@@ -41,12 +41,10 @@ describe("normalizeModelId", () => {
   it("leaves bare ids untouched", () => {
     expect(normalizeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
     expect(normalizeModelId("gpt-5.5")).toBe("gpt-5.5");
-    expect(normalizeModelId("gpt-5.3-codex-spark")).toBe("gpt-5.3-codex-spark");
   });
 
   it("does not strip non-date trailing suffixes", () => {
     expect(normalizeModelId("gpt-5.5-medium")).toBe("gpt-5.5-medium");
-    expect(normalizeModelId("gpt-5.3-codex-spark")).toBe("gpt-5.3-codex-spark");
   });
 });
 
@@ -74,10 +72,6 @@ describe("costOf — golden fixtures", () => {
 
   it("prices GPT-5.5 input-only at $5/M", () => {
     expect(costOf(million, "gpt-5.5")).toBeCloseTo(5.0, 9);
-  });
-
-  it("keeps verified GPT-5.3 Codex Spark pricing", () => {
-    expect(costOf(million, "gpt-5.3-codex-spark")).toBeCloseTo(1.75, 9);
   });
 
   it("strips date suffixes before pricing lookup", () => {
@@ -124,7 +118,6 @@ describe("MODEL_PRICING coverage", () => {
     expect(MODEL_PRICING["claude-sonnet-5"]).toBeDefined();
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
     expect(MODEL_PRICING["gpt-5.5"]).toBeDefined();
-    expect(MODEL_PRICING["gpt-5.3-codex-spark"]).toBeDefined();
   });
 
   // audit-2026-05-17 L4 — drift tripwire: a new modelId added to

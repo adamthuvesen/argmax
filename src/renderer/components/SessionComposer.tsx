@@ -1,4 +1,4 @@
-import { Folder, GitBranch, Plus, Square, X } from "lucide-react";
+import { Folder, GitBranch, Play, Plus, Square, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -18,13 +18,11 @@ import type {
   ComposerAttachment,
   PendingMessage,
   SessionSummary,
-  TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
-import { MASCOT_BOB_MS, useMascotFlash } from "../hooks/useMascotFlash.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import {
   appendReferencesToPrompt,
@@ -37,7 +35,6 @@ import {
 import { leadingSlashCommand } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { FilePopover } from "./FilePopover.js";
-import { Mascot } from "./Mascot.js";
 import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
 
@@ -46,11 +43,9 @@ const PROMPT_MAX_HEIGHT_PX = 140;
 export function SessionComposer({
   agentMode,
   canSend,
-  events,
   fastModeEnabled = false,
   inputRef,
   isQueueing,
-  isThinking,
   onFastModeEnabledChange,
   onCancelQueuedMessage,
   onSendSessionInput,
@@ -68,11 +63,9 @@ export function SessionComposer({
 }: {
   agentMode: AgentMode;
   canSend: boolean;
-  events: TimelineEvent[];
   fastModeEnabled?: boolean;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   isQueueing: boolean;
-  isThinking: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onSendSessionInput: (
@@ -98,7 +91,6 @@ export function SessionComposer({
   const [isSending, setIsSending] = useState(false);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
   const sessionId = session?.id ?? null;
-  const { happyFlashUntilMs, justSentAt, markSent } = useMascotFlash(sessionId, events);
   const {
     pendingAttachments,
     attachmentInputRef,
@@ -202,7 +194,6 @@ export function SessionComposer({
     setIsSending(true);
     setStatus(null);
     shouldRefocusInput.current = true;
-    markSent();
     try {
       await onSendSessionInput(
         session.id,
@@ -424,32 +415,23 @@ export function SessionComposer({
             aria-label="Stop session"
             onClick={() => void onTerminateSession(session.id)}
           >
-            <Square size={16} />
+            <Square size={9} fill="currentColor" strokeWidth={0} />
           </button>
         ) : (() => {
           const sendDisabled = !canSend || isSending || !input.trim();
           const sendTitle = isQueueing
             ? "Queue follow-up — sent when the current turn finishes"
             : "Send follow-up";
-          const happy = happyFlashUntilMs > Date.now();
-          const mood: "idle" | "thinking" | "happy" | "sad" = happy
-            ? "happy"
-            : sendDisabled
-              ? "sad"
-              : isThinking
-                ? "thinking"
-                : "idle";
-          const bobbing = justSentAt > 0 && Date.now() - justSentAt < MASCOT_BOB_MS;
           return (
-            <Mascot
-              size={36}
-              mood={mood}
+            <button
+              className="session-send-button"
               type="submit"
               disabled={sendDisabled}
               title={sendTitle}
-              label={sendTitle}
-              buttonClassName={`session-send-mascot${bobbing ? " session-send-mascot--bob" : ""}`}
-            />
+              aria-label={sendTitle}
+            >
+              <Play size={11} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            </button>
           );
         })()}
       </div>

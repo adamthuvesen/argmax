@@ -265,25 +265,24 @@
   color: var(--muted);
 }
 
-.composer-tool,
-.send-button {
+.composer-tool {
   position: relative;
   display: grid;
-  width: 40px;
-  height: 40px;
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
 }
 
 .composer-tool {
+  width: 40px;
+  height: 40px;
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
+  border-radius: var(--radius-xl);
 }
 
 .composer-tool:hover {
@@ -293,13 +292,24 @@
 }
 
 .send-button {
+  position: relative;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
   color: var(--bubble-on-ink);
+  border: 0;
+  border-radius: 999px;
   background: var(--ink);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+  cursor: pointer;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
     0 1px 2px rgba(31, 28, 24, 0.20),
     0 8px 18px -10px rgba(31, 28, 24, 0.45);
+  transition: transform var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
 }
 
 .send-button:hover:not(:disabled) {
@@ -340,9 +350,8 @@
   gap: 4px;
 }
 
-/* Mode toggle gets pushed to the right edge of the row, mirroring the mascot's
-   right-anchored position on the input above — creates a left/right rhythm
-   across the two stacked rows. */
+/* Mode toggle gets pushed to the right edge of the row, mirroring the send
+   control's right-anchored position on the input above. */
 .composer-context .agent-mode-toggle {
   margin-left: auto;
 }
@@ -525,7 +534,7 @@
   min-width: 200px;
   max-height: 260px;
   margin: 0;
-  padding: 6px;
+  padding: 5px;
   list-style: none;
   overflow-y: auto;
   background: var(--panel);
@@ -556,12 +565,12 @@
 
 .model-picker-popover .project-picker-item {
   white-space: nowrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .model-picker-popover {
   min-width: 300px;
-  --model-picker-action-column: 48px;
+  --model-picker-action-column: 42px;
   /* Taller than the generic picker so the full model list fits with little or
      no scrolling. Opens upward in-session, so there's room above the composer. */
   max-height: 440px;
@@ -600,10 +609,23 @@
 
 .model-effort-popover {
   min-width: 160px;
+  margin-bottom: var(--model-submenu-bottom, 0);
 }
 
 .model-speed-popover {
   min-width: 230px;
+  margin-bottom: var(--model-submenu-bottom, 0);
+}
+
+.composer-context .model-effort-popover {
+  margin-top: var(--model-submenu-top, 0);
+  margin-bottom: 0;
+}
+
+.composer-context .model-speed-popover {
+  align-self: flex-end;
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .model-picker-row {
@@ -630,7 +652,7 @@
 
 .model-picker-divider {
   height: 1px;
-  margin: 6px 8px;
+  margin: 5px 8px;
   background: var(--line);
 }
 
@@ -671,8 +693,8 @@
   grid-template-columns:
     minmax(0, 1fr)
     auto
-    calc(var(--model-picker-action-column) - 10px);
-  column-gap: 10px;
+    calc(var(--model-picker-action-column) - 8px);
+  column-gap: 8px;
 }
 
 .model-picker-submenu-caret {
@@ -706,16 +728,16 @@
 
 .model-picker-edit {
   position: absolute;
-  right: 4px;
+  right: 3px;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -735,15 +757,16 @@
 .project-picker-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 5px 9px;
   color: var(--text-soft);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-sm);
+  line-height: 1.35;
   text-align: left;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
@@ -774,7 +797,7 @@
 .project-picker-divider {
   height: 1px;
   background: var(--line-soft);
-  margin: 4px 6px;
+  margin: 3px 6px;
 }
 
 /* Sidebar "sort projects" menu — opens downward from the rail-heading
@@ -1014,11 +1037,12 @@
 }
 
 .project-picker-group-label {
-  padding: 4px 10px 2px;
+  padding: 3px 9px 1px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   list-style: none;
 }

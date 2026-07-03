@@ -20,8 +20,7 @@ card handlers, scroll behavior, and pane chrome. Pure timeline plumbing lives in
 [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts):
 conversation-event filtering, raw transcript suppression checks, tool-call
 pairing, and last-significant-event selection. The prompt box, attachment flow,
-model/mode chips, queued follow-ups, stop/send controls, focus behavior, and
-mascot state live in
+model/mode chips, queued follow-ups, stop/send controls, and focus behavior live in
 [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx).
 Header actions, PR refresh state, checkpoint browsing, git actions, and debug-log
 toggling live in
@@ -96,9 +95,11 @@ or block, and Codex frequently surfaces completed protocol items. The renderer
 does not split or rewrite persisted events. Instead,
 [StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx)
 reveals large *visible* streaming backlogs at a fixed character cadence. Small
-token-like deltas render immediately; large chunks are paced. When the group is
-no longer streaming, the component snaps to the exact final text so history and
-copy/paste stay faithful. Reduced-motion users skip the paced reveal.
+token-like deltas render immediately; large chunks are paced. Only the latest
+turn of a running session is treated as streaming. When a session stops before a
+`message.completed` row arrives, its stored delta-only answer is rendered as
+history and snaps to the exact final text on reopen, so copy/paste stays
+faithful. Reduced-motion users skip the paced reveal.
 
 ## Live auto-scroll
 
@@ -266,12 +267,6 @@ Not card-specific, but living next to cards in the same conversation surface
   `headerTimestampIso` in its header (same-day → `HH:mm`, otherwise short
   date + time). `ChatBubble` no longer renders a `chat-bubble-timestamp` —
   the per-bubble timestamp was removed when the turn header took over.
-- **Mascot happy-flash.** The composer mascot pops to its "happy" expression
-  after each new `message.completed`.
-  [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx)
-  owns the mascot state via `useMascotFlash`, which prevents re-renders from
-  re-firing the flash and skips the first observation per session (stale
-  completions on open).
 - **Thinking → answered reveal.** `TurnBlock` sets `data-just-revealed` on
   `.turn-block-body` for 280 ms the first time the turn gains any visible
   child, so the first element animates in instead of popping.

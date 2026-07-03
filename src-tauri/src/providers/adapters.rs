@@ -2,7 +2,6 @@ use super::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, Reasonin
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];
-const CODEX_NO_REASONING_SUMMARY_MODELS: &[&str] = &["gpt-5.3-codex-spark"];
 const CURSOR_BYPASS_PERMISSION_ARGS: &[&str] = &["--force", "--trust"];
 
 pub const PLAN_MODE_PROMPT_PREFIX: &str =
@@ -145,10 +144,9 @@ fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
     Some(prompt_for_agent_mode(&input.prompt, input.agent_mode))
 }
 
-// Cursor's CLI has no separate reasoning-effort flag, so `input.reasoning_effort`
-// is intentionally ignored here. Fast mode is different: Cursor exposes it as
-// a model parameter override (`model[fast=true]`), so Argmax merges only that
-// parameter into the selected model id when the user opts in.
+// Cursor's CLI has no separate reasoning-effort or fast-mode flag, so both are
+// intentionally ignored here. The renderer hides Speed for Cursor models, and
+// this keeps stale persisted fast-mode state from changing the model id.
 fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
@@ -161,7 +159,7 @@ fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     args.extend(cursor_permission_args(input));
     args.extend([
         "--model".to_string(),
-        cursor_model_id(input),
+        input.model_id.clone(),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -185,7 +183,7 @@ fn cursor_structured_resume_args(
     args.extend(cursor_permission_args(input));
     args.extend([
         "--model".to_string(),
-        cursor_model_id(input),
+        input.model_id.clone(),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -273,48 +271,6 @@ fn codex_fast_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
     }
 }
 
-fn cursor_model_id(input: &ProviderLaunchInput) -> String {
-    if input.fast_mode {
-        cursor_model_with_fast_mode(&input.model_id)
-    } else {
-        input.model_id.clone()
-    }
-}
-
-fn cursor_model_with_fast_mode(model_id: &str) -> String {
-    let fast_override = "fast=true";
-    let Some((base, params)) = model_id
-        .strip_suffix(']')
-        .and_then(|without_suffix| without_suffix.rsplit_once('['))
-    else {
-        return format!("{model_id}[{fast_override}]");
-    };
-
-    let mut has_fast = false;
-    let mut merged_params = params
-        .split(',')
-        .filter_map(|part| {
-            let trimmed = part.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            let Some((key, _)) = trimmed.split_once('=') else {
-                return Some(trimmed.to_string());
-            };
-            if key.trim() == "fast" {
-                has_fast = true;
-                Some(fast_override.to_string())
-            } else {
-                Some(trimmed.to_string())
-            }
-        })
-        .collect::<Vec<_>>();
-    if !has_fast {
-        merged_params.push(fast_override.to_string());
-    }
-    format!("{base}[{}]", merged_params.join(","))
-}
-
 fn codex_reasoning_args(input: &ProviderLaunchInput, structured: bool) -> Vec<String> {
     let Some(reasoning_effort) = input.reasoning_effort else {
         return if structured {
@@ -330,15 +286,10 @@ fn codex_reasoning_args(input: &ProviderLaunchInput, structured: bool) -> Vec<St
     ]
 }
 
-fn codex_reasoning_summary_args(input: &ProviderLaunchInput) -> Vec<String> {
-    let summary_mode = if CODEX_NO_REASONING_SUMMARY_MODELS.contains(&input.model_id.as_str()) {
-        "none"
-    } else {
-        "auto"
-    };
+fn codex_reasoning_summary_args(_input: &ProviderLaunchInput) -> Vec<String> {
     vec![
         "-c".to_string(),
-        format!(r#"model_reasoning_summary="{summary_mode}""#),
+        r#"model_reasoning_summary="auto""#.to_string(),
     ]
 }
 
@@ -494,29 +445,6 @@ mod tests {
     }
 
     #[test]
-    fn codex_reasoning_summary_args_are_explicit() {
-        let input = ProviderLaunchInput {
-            model_id: "gpt-5.3-codex-spark".to_string(),
-            ..launch_input(ProviderId::Codex)
-        };
-        let definition = get_provider_definition(ProviderId::Codex);
-        let default_args = (definition.structured_args)(&launch_input(ProviderId::Codex));
-        assert!(default_args
-            .windows(2)
-            .any(|window| window == ["-c", r#"model_reasoning_summary="auto""#]));
-
-        let args = (definition.structured_args)(&input);
-        assert!(args
-            .windows(2)
-            .any(|window| window == ["-c", r#"model_reasoning_summary="none""#]));
-
-        let resume_args = (definition.structured_resume_args)(&input, "thread-1");
-        assert!(resume_args
-            .windows(2)
-            .any(|window| window == ["-c", r#"model_reasoning_summary="none""#]));
-    }
-
-    #[test]
     fn codex_fast_mode_is_carried_by_service_tier_override() {
         let input = ProviderLaunchInput {
             fast_mode: true,
@@ -609,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_fast_mode_merges_into_model_parameters_when_enabled() {
+    fn cursor_fast_mode_does_not_change_model_id() {
         let input = ProviderLaunchInput {
             model_id: "claude-opus-4-8[context=1m,fast=false,effort=high]".to_string(),
             fast_mode: true,
@@ -620,10 +548,7 @@ mod tests {
             .iter()
             .position(|arg| arg == "--model")
             .expect("model flag");
-        assert_eq!(
-            args[index + 1],
-            "claude-opus-4-8[context=1m,fast=true,effort=high]"
-        );
+        assert_eq!(args[index + 1], "claude-opus-4-8[context=1m,fast=false,effort=high]");
     }
 
     #[test]

@@ -79,6 +79,29 @@ const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; 
   { value: "manual", label: "Manual", description: "Drag to reorder" }
 ];
 
+function visibleSidebarItems<T extends { id: string }>(
+  items: T[],
+  selectedId: string | null,
+  expanded: boolean
+): T[] {
+  if (expanded || items.length <= SIDEBAR_SESSION_LIMIT) {
+    return items;
+  }
+
+  const compact = items.slice(0, SIDEBAR_SESSION_LIMIT);
+  if (!selectedId) {
+    return compact;
+  }
+
+  const selectedIndex = items.findIndex((item) => item.id === selectedId);
+  if (selectedIndex < SIDEBAR_SESSION_LIMIT) {
+    return compact;
+  }
+
+  const selectedItem = items[selectedIndex];
+  return selectedItem ? [...items.slice(0, SIDEBAR_SESSION_LIMIT - 1), selectedItem] : compact;
+}
+
 function formatNameplateDate(): string {
   const d = new Date();
   const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
@@ -580,12 +603,8 @@ export function Sidebar({
               const isCollapsed = collapsedDateGroups.has(group.key);
               const totalCount = group.items.length;
               const isExpanded = expandedDateGroups.has(group.key);
-              const selectedIndex = selectedWorkspaceId
-                ? group.items.findIndex((workspace) => workspace.id === selectedWorkspaceId)
-                : -1;
-              const forceExpand = selectedIndex >= SIDEBAR_SESSION_LIMIT;
-              const showAll = isExpanded || forceExpand;
-              const visibleItems = showAll ? group.items : group.items.slice(0, SIDEBAR_SESSION_LIMIT);
+              const showAll = isExpanded;
+              const visibleItems = visibleSidebarItems(group.items, selectedWorkspaceId, showAll);
               const hiddenCount = totalCount - visibleItems.length;
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
               return (
@@ -621,28 +640,28 @@ export function Sidebar({
                   {isCollapsed ? null : (
                     <>
                       {visibleItems.map((workspace) => (
-                          <div
-                            key={workspace.id}
-                            className="session-row-wrap"
-                          >
-                            <SidebarSessionRow
-                              workspace={workspace}
-                              workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
-                              isSelected={selectedWorkspaceId === workspace.id}
-                              isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                              canDragToGrid={canDragWorkspaceToGrid}
-                              onOpenWorkspaceChat={onOpenWorkspaceChat}
-                              onArchiveWorkspace={onArchiveWorkspace}
-                              onOpenInIde={onOpenInIde}
-                              onTogglePin={onToggleWorkspacePinned}
-                              onRename={onRenameWorkspace}
-                              onWorkspaceDragStart={onWorkspaceDragStart}
-                              onWorkspaceDragEnd={onWorkspaceDragEnd}
-                              detectedIdes={detectedIdes}
-                              defaultIde={defaultIde}
-                              showTokens={showSessionTokens}
-                            />
-                          </div>
+                        <div
+                          key={workspace.id}
+                          className="session-row-wrap"
+                        >
+                          <SidebarSessionRow
+                            workspace={workspace}
+                            workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
+                            isSelected={selectedWorkspaceId === workspace.id}
+                            isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                            canDragToGrid={canDragWorkspaceToGrid}
+                            onOpenWorkspaceChat={onOpenWorkspaceChat}
+                            onArchiveWorkspace={onArchiveWorkspace}
+                            onOpenInIde={onOpenInIde}
+                            onTogglePin={onToggleWorkspacePinned}
+                            onRename={onRenameWorkspace}
+                            onWorkspaceDragStart={onWorkspaceDragStart}
+                            onWorkspaceDragEnd={onWorkspaceDragEnd}
+                            detectedIdes={detectedIdes}
+                            defaultIde={defaultIde}
+                            showTokens={showSessionTokens}
+                          />
+                        </div>
                       ))}
                       {hasOverflow ? (
                         <button
@@ -665,34 +684,28 @@ export function Sidebar({
               );
             })
           : orderedProjects.map((project) => {
-          const manualOrder = workspaceOrders[project.id] ?? [];
-          const liveWorkspaces = sortWorkspaceGroup(
-            snapshot.workspaces.filter(
-              (workspace) =>
-                workspace.projectId === project.id &&
-                workspace.state !== "archived" &&
-                workspaceIdsWithSessions.has(workspace.id)
-            ),
-            manualOrder
-          );
-          const projectWorkspaces = liveWorkspaces;
-          const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
-          const isCollapsed = collapsedProjectIds.has(project.id);
-          const totalCount = projectWorkspaces.length;
-          const isExpanded = expandedProjectIds.has(project.id);
-          const selectedIndex = selectedWorkspaceId
-            ? projectWorkspaces.findIndex((workspace) => workspace.id === selectedWorkspaceId)
-            : -1;
-          const forceExpand = selectedIndex >= SIDEBAR_SESSION_LIMIT;
-          const showAll = isExpanded || forceExpand;
-          const visibleWorkspaces = showAll
-            ? projectWorkspaces
-            : projectWorkspaces.slice(0, SIDEBAR_SESSION_LIMIT);
-          const hiddenCount = totalCount - visibleWorkspaces.length;
-          const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
-          const isDragging = draggingId === project.id;
-          const isDragOver = dragOverId === project.id && !isDragging;
-          return (
+              const manualOrder = workspaceOrders[project.id] ?? [];
+              const liveWorkspaces = sortWorkspaceGroup(
+                snapshot.workspaces.filter(
+                  (workspace) =>
+                    workspace.projectId === project.id &&
+                    workspace.state !== "archived" &&
+                    workspaceIdsWithSessions.has(workspace.id)
+                ),
+                manualOrder
+              );
+              const projectWorkspaces = liveWorkspaces;
+              const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
+              const isCollapsed = collapsedProjectIds.has(project.id);
+              const totalCount = projectWorkspaces.length;
+              const isExpanded = expandedProjectIds.has(project.id);
+              const showAll = isExpanded;
+              const visibleWorkspaces = visibleSidebarItems(projectWorkspaces, selectedWorkspaceId, showAll);
+              const hiddenCount = totalCount - visibleWorkspaces.length;
+              const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
+              const isDragging = draggingId === project.id;
+              const isDragOver = dragOverId === project.id && !isDragging;
+              return (
             <div
               className={`project-group${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
               data-collapsed={isCollapsed ? "true" : undefined}
@@ -772,35 +785,35 @@ export function Sidebar({
               {isCollapsed ? null : (
                 <>
                   {visibleWorkspaces.map((workspace) => (
-                      <div
-                        key={workspace.id}
-                        className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
-                        draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
-                        onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
-                        onDragOver={handleWorkspaceDragOver}
-                        onDrop={(event) =>
-                          handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
-                        }
-                        onDragEnd={handleWorkspaceDragEnd}
-                      >
-                        <SidebarSessionRow
-                          workspace={workspace}
-                          workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
-                          isSelected={selectedWorkspaceId === workspace.id}
-                          isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                          canDragToGrid={canDragWorkspaceToGrid}
-                          onOpenWorkspaceChat={onOpenWorkspaceChat}
-                          onArchiveWorkspace={onArchiveWorkspace}
-                          onOpenInIde={onOpenInIde}
-                          onTogglePin={onToggleWorkspacePinned}
-                          onRename={onRenameWorkspace}
-                          onWorkspaceDragStart={onWorkspaceDragStart}
-                          onWorkspaceDragEnd={onWorkspaceDragEnd}
-                          detectedIdes={detectedIdes}
-                          defaultIde={defaultIde}
-                          showTokens={showSessionTokens}
-                        />
-                      </div>
+                    <div
+                      key={workspace.id}
+                      className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                      draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
+                      onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
+                      onDragOver={handleWorkspaceDragOver}
+                      onDrop={(event) =>
+                        handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
+                      }
+                      onDragEnd={handleWorkspaceDragEnd}
+                    >
+                      <SidebarSessionRow
+                        workspace={workspace}
+                        workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
+                        isSelected={selectedWorkspaceId === workspace.id}
+                        isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                        canDragToGrid={canDragWorkspaceToGrid}
+                        onOpenWorkspaceChat={onOpenWorkspaceChat}
+                        onArchiveWorkspace={onArchiveWorkspace}
+                        onOpenInIde={onOpenInIde}
+                        onTogglePin={onToggleWorkspacePinned}
+                        onRename={onRenameWorkspace}
+                        onWorkspaceDragStart={onWorkspaceDragStart}
+                        onWorkspaceDragEnd={onWorkspaceDragEnd}
+                        detectedIdes={detectedIdes}
+                        defaultIde={defaultIde}
+                        showTokens={showSessionTokens}
+                      />
+                    </div>
                   ))}
                   {hasOverflow ? (
                     <button

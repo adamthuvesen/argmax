@@ -62,11 +62,13 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded?: boolean;
   defaultThinkingExpanded?: boolean;
 }): JSX.Element {
+  const sessionIsLive = session?.state === "running";
   const turnView = buildTurnRenderState({
     assistantEvents: item.assistantEvents,
     toolItems: item.toolItems,
     priorItem,
-    assistantTimestamps: item.assistantTimestamps
+    assistantTimestamps: item.assistantTimestamps,
+    isStreamingTurn: isLatestTurn && sessionIsLive
   });
   const {
     visibleAssistantGroups,
@@ -82,7 +84,6 @@ function SessionConversationTurnInner({
   // Once any answer text lands — or the turn stops being the active one, or it
   // pauses for user input — it falls back to the saved expanded-by-default
   // setting for quiet, persistent "Thought" history.
-  const sessionIsLive = session?.state === "running";
   const turnHasAnswerText = visibleAssistantGroups.some(
     (group) => !group.thinking && group.text.trim().length > 0
   );

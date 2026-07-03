@@ -285,7 +285,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const stopButton = await screen.findByRole("button", { name: "Stop session" });
-    // Stop replaces the send/queue mascot in the same slot while running.
+    // Stop replaces the send/queue button in the same slot while running.
     // Follow-ups are queued via Enter in the textarea, not via a visible button.
     expect(
       screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })

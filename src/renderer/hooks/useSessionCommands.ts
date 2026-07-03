@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { AgentMode, ComposerAttachment } from "../../shared/types.js";
-import type { ModelPickerSelection } from "../lib/models.js";
+import { modelSupportsFastMode, type ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
 
 interface UseSessionCommandsOptions {
@@ -51,7 +51,7 @@ export function useSessionCommands({
         modelLabel: model.label,
         modelId: model.modelId,
         reasoningEffort: model.reasoningEffort ?? null,
-        fastMode,
+        fastMode: fastMode && modelSupportsFastMode(model),
         agentMode,
         attachments: attachments?.length ? attachments : null
       });

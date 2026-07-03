@@ -31,7 +31,6 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "claude-sonnet-5" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.75 },
     "claude-haiku-4-5" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 },
     "gpt-5.5" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 0.0 },
-    "gpt-5.3-codex-spark" => ModelPricing { input: 1.75, output: 14.0, cache_read: 0.175, cache_write: 0.0 },
     "composer-2.5" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gemini-3.5-flash" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-4-8-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
@@ -142,20 +141,6 @@ mod tests {
             "gpt-5.5",
         );
         assert_eq!(cost, 20.05);
-    }
-
-    #[test]
-    fn keeps_verified_codex_spark_pricing() {
-        let cost = cost_of(
-            UsageCounts {
-                input: 1_000_000,
-                output: 500_000,
-                cache_read: 100_000,
-                cache_write: 10_000,
-            },
-            "gpt-5.3-codex-spark",
-        );
-        assert_eq!(cost, 8.7675);
     }
 
     #[test]

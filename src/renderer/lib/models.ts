@@ -33,6 +33,14 @@ export function optionKey(model: Pick<ProviderModelSelection, "modelId">): strin
   return model.modelId;
 }
 
+export function providerSupportsFastMode(provider: ProviderId): boolean {
+  return provider !== "cursor";
+}
+
+export function modelSupportsFastMode(model: Pick<ModelPickerSelection, "provider">): boolean {
+  return providerSupportsFastMode(model.provider);
+}
+
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: "Low",
   medium: "Medium",

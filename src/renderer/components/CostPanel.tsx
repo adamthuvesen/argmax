@@ -1,4 +1,3 @@
-import { ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState, type JSX } from "react";
 import type { SessionCostSummary, SessionSummary } from "../../shared/types.js";
 import { formatCostUsd } from "../formatCost.js";
@@ -60,7 +59,6 @@ export function CostPanel({
         >
           {formatCostUsd(summary.costUsd)}
         </span>
-        <ChevronRight size={11} className={`cost-panel-chevron${expanded ? " expanded" : ""}`} />
       </button>
       {expanded ? (
         <table className="cost-panel-table" aria-label="Per-bucket usage">

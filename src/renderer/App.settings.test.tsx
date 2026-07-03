@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
+import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { FAST_MODE_KEY } from "./lib/uiPreferences.js";
 import {
   dashboardDeltaListener,
@@ -325,7 +326,7 @@ describe("App settings", () => {
     await openSettings("Agents");
     await screen.findByRole("heading", { name: "Model defaults" });
 
-    const toggle = screen.getByRole("checkbox", { name: "Fast mode for Claude and Cursor" });
+    const toggle = screen.getByRole("checkbox", { name: "Fast mode for Claude and Codex" });
     expect(toggle).not.toBeChecked();
 
     fireEvent.click(toggle);
@@ -382,6 +383,30 @@ describe("App settings", () => {
       expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue")
     );
     expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
+  });
+
+  it("settings Appearance section switches chat width and persists it", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const chatWidth = screen.getByRole("radiogroup", { name: "Chat width" });
+    expect(within(chatWidth).getByRole("radio", { name: "Standard default" })).toBeChecked();
+    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "standard");
+
+    fireEvent.click(within(chatWidth).getByRole("radio", { name: "Narrow" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("narrow")
+    );
+    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "narrow");
+
+    fireEvent.click(within(chatWidth).getByRole("radio", { name: "Wide" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("wide")
+    );
+    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "wide");
   });
 
   it("settings Appearance section wires the macOS-native options through to the document attribute", async () => {

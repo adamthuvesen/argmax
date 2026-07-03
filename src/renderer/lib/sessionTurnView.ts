@@ -84,7 +84,7 @@ function appendThinking(current: string, incoming: string): string {
  */
 export function coalesceAssistantGroups(
   assistantEvents: readonly TimelineEvent[],
-  options: { splitAt?: readonly string[] } = {}
+  options: { splitAt?: readonly string[]; streaming?: boolean } = {}
 ): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
   type Buffer = { id: string; createdAt: string; lastCreatedAt: string; text: string };
@@ -92,6 +92,7 @@ export function coalesceAssistantGroups(
   let thinkingBuffer: Buffer | null = null;
   let previousEventCreatedAt: string | null = null;
   const splitAt = options.splitAt ?? [];
+  const streaming = options.streaming ?? true;
   let groupIndex = 0;
   const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-${groupIndex++}`;
   const flushAnswer = (): void => {
@@ -101,7 +102,7 @@ export function coalesceAssistantGroups(
       createdAt: answerBuffer.createdAt,
       lastActivityAt: answerBuffer.lastCreatedAt,
       text: answerBuffer.text,
-      streaming: true
+      streaming
     });
     answerBuffer = null;
   };
@@ -257,9 +258,11 @@ export function buildTurnRenderState(params: {
   toolItems: readonly TurnToolItem[];
   priorItem: RenderItem | null;
   assistantTimestamps: readonly number[];
+  isStreamingTurn?: boolean;
 }): TurnRenderState {
   const assistantGroups = coalesceAssistantGroups(params.assistantEvents, {
-    splitAt: toolStartTimes(params.toolItems)
+    splitAt: toolStartTimes(params.toolItems),
+    streaming: params.isStreamingTurn ?? true
   });
   const { tool: exitPlanTool, hiddenToolIds: exitPlanHiddenToolIds } = collectExitPlanState(
     params.toolItems

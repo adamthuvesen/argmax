@@ -12,6 +12,7 @@ import {
   dashboardList,
   dashboardListSnapshot,
   launchProvider,
+  listBranches,
   listProjectFiles,
   mockDashboardSnapshot,
   pickProjectFolder,
@@ -773,6 +774,7 @@ describe("App", () => {
   });
 
   it("dismisses the branch picker when clicking inside the popover chrome", async () => {
+    listBranches.mockResolvedValue(["main", "feature/tidy"]);
     render(<App />);
 
     const branchToggle = await screen.findByRole("button", { name: "Switch branch" });
@@ -781,6 +783,18 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("listbox", { name: "Select branch" }));
     expect(branchToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("does not open an empty branch picker when there are no alternate branches", async () => {
+    listBranches.mockResolvedValue(["main"]);
+    render(<App />);
+
+    const branchToggle = await screen.findByRole("button", { name: "Switch branch" });
+    fireEvent.click(branchToggle);
+
+    await waitFor(() => expect(listBranches).toHaveBeenCalledTimes(1));
+    expect(branchToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("listbox", { name: "Select branch" })).toBeNull();
   });
 
   it("dismisses open pickers via the global dismiss layer", async () => {

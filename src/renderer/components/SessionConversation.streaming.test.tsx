@@ -147,6 +147,25 @@ describe("SessionConversation — streaming & composer", () => {
     expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
+  it("does not replay stored delta-only answers when a cancelled session is reopened", () => {
+    const text = [
+      "Here are 100 items you can buy in a store:",
+      "1. Milk 2. Eggs 3. Bread 4. Butter 5. Cheese 6. Yogurt",
+      "7. Bananas 8. Apples 9. Oranges 10. Potatoes 11. Onions"
+    ].join(" ");
+    const { container } = renderConversation(
+      baseSession({ state: "cancelled" }),
+      [
+        event("u1", "user.message", "list 100 items you can buy in a store", "2026-05-12T15:00:00.000Z"),
+        event("d1", "message.delta", text, "2026-05-12T15:00:01.000Z")
+      ]
+    );
+
+    expect(container.querySelector(".markdown-streaming")).toBeNull();
+    expect(screen.getByText(/Here are 100 items/)).toBeInTheDocument();
+    expect(screen.getByText(/11\. Onions/)).toBeInTheDocument();
+  });
+
   it("drops the streaming class once the assistant message completes", () => {
     const text = "1. First\n2. Second";
 

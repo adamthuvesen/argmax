@@ -70,11 +70,12 @@
   z-index: 60;
   transform: translateX(-100%);
   transition: transform var(--duration-base) var(--ease);
-  box-shadow: 0 16px 48px rgba(31, 28, 24, 0.20);
+  box-shadow: none;
 }
 
 .app-shell[data-sidebar-peek="true"] .sidebar {
   transform: translateX(0);
+  box-shadow: 0 16px 48px rgba(31, 28, 24, 0.20);
 }
 
 /* Thin hot-zone pinned to the left edge — entering it begins the peek. */

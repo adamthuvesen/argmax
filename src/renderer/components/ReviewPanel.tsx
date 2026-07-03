@@ -298,10 +298,10 @@ export function ReviewPanel({
             aria-pressed={diffView === "side-by-side"}
             onClick={() => setDiffView((current) => (current === "unified" ? "side-by-side" : "unified"))}
           >
-            {diffView === "unified" ? <Columns2 size={18} /> : <Rows3 size={18} />}
+            {diffView === "unified" ? <Columns2 size={16} strokeWidth={1.75} /> : <Rows3 size={16} strokeWidth={1.75} />}
           </button>
           <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
-            <PanelRightClose size={18} />
+            <PanelRightClose size={16} strokeWidth={1.75} />
           </button>
         </div>
       </div>

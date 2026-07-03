@@ -478,15 +478,13 @@ export function SessionConversation({
           </button>
         </div>
       ) : null}
-      <SessionComposer
-        agentMode={agentMode}
-        canSend={canSend}
-        events={events}
-        fastModeEnabled={fastModeEnabled}
-        inputRef={inputRef}
-        isQueueing={isQueueing}
-        isThinking={isThinkingVisible}
-        onFastModeEnabledChange={onFastModeEnabledChange}
+        <SessionComposer
+          agentMode={agentMode}
+          canSend={canSend}
+          fastModeEnabled={fastModeEnabled}
+          inputRef={inputRef}
+          isQueueing={isQueueing}
+          onFastModeEnabledChange={onFastModeEnabledChange}
         onCancelQueuedMessage={onCancelQueuedMessage}
         onSendSessionInput={onSendSessionInput}
         onTerminateSession={onTerminateSession}

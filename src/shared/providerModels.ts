@@ -52,8 +52,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5" }
   ],
   codex: [
-    { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true },
-    { label: "GPT-5.3 Codex Spark", modelId: "gpt-5.3-codex-spark", supportsReasoningEffort: true }
+    { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true }
   ],
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" },
@@ -114,7 +113,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
 
   "gpt-5.5":             { input: 5,    output: 30,  cacheRead: 0.5,   cacheWrite: 0 },
-  "gpt-5.3-codex-spark": { input: 1.75, output: 14,  cacheRead: 0.175, cacheWrite: 0 },
 
   // Cursor's bundled models are subscription-billed via Cursor's plan, not
   // per-token through the underlying API. All Cursor-routed ids report $0 so

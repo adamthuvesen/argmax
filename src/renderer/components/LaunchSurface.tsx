@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, GitBranch, Plus, X } from "lucide-react";
+import { ChevronDown, Folder, GitBranch, Play, Plus, X } from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -44,7 +44,6 @@ import {
   writeWorkspaceMode,
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
-import { Mascot } from "./Mascot.js";
 import { LaunchModelSelector, type ProviderAvailability } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
@@ -298,8 +297,9 @@ export function LaunchSurface({
     if (!window.argmax || !project) return;
     try {
       const list = await window.argmax.projects.listBranches(project.id);
-      setBranches(list);
-      setBranchPickerOpen(true);
+      const otherBranches = list.filter((branch) => branch !== project.currentBranch);
+      setBranches(otherBranches);
+      setBranchPickerOpen(otherBranches.length > 0);
     } catch (error) {
       setBranchPickerOpen(false);
       setStatus(error instanceof Error ? error.message : "Could not load branches.");
@@ -622,15 +622,15 @@ export function LaunchSurface({
           >
             <Plus size={18} />
           </button>
-          <Mascot
-            size={40}
-            mood={isSubmitting || !prompt.trim() ? "sad" : "idle"}
+          <button
+            className="send-button"
             type="submit"
             disabled={isSubmitting || !prompt.trim()}
             title="Start agent"
-            label="Start agent"
-            buttonClassName="launcher-send-mascot"
-          />
+            aria-label="Start agent"
+          >
+            <Play size={11} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+          </button>
         </div>
         <div className="composer-context">
           <div className="composer-context-group composer-context-group--workspace">

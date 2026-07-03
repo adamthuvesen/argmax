@@ -124,7 +124,7 @@ describe("accent CSS contract", () => {
     const review = readSource("src/renderer/styles/overlays-review.css");
     const reviewFiles = readSource("src/renderer/styles/overlays-review-files.css");
     const treeRule = cssRuleBody(reviewFiles, ".workspace-tree");
-    const treeLabelRule = cssRuleBody(reviewFiles, ".workspace-tree-row span");
+    const treeLabelRule = cssRuleBody(reviewFiles, ".workspace-tree-label");
     const treeIconRule = cssRuleBody(reviewFiles, ".workspace-tree-row > svg");
     const treeChevronRule = cssRuleBody(reviewFiles, ".workspace-tree-chevron");
     const treeChevronSpacerRule = cssRuleBody(reviewFiles, ".workspace-tree-chevron-spacer");
@@ -136,6 +136,7 @@ describe("accent CSS contract", () => {
 
     expect(treeRule).toContain("font-family: var(--font-ui);");
     expect(treeRule).toContain("font-size: var(--text-sm);");
+    expect(reviewFiles).not.toContain(".workspace-tree-row span");
     expect(treeLabelRule).toContain("flex: 1 1 auto;");
     expect(treeIconRule).toContain("flex: 0 0 13px;");
     expect(treeChevronRule).toContain("flex: 0 0 12px;");
@@ -169,6 +170,7 @@ describe("accent CSS contract", () => {
     const userBubbleRule = cssRuleBody(chatConversation, ".chat-bubble.user");
     const userBubbleBodyRule = cssRuleBody(chatConversation, ".chat-bubble.user .chat-bubble-body");
     const composerFocusRule = cssRuleBody(chatChrome, ".composer-input:focus-within");
+    const launchSendButtonRule = cssRuleBody(chatChrome, ".send-button");
     const sessionInputFocusRule = cssRuleBody(chatTools, ".session-input:focus-within");
 
     expect(tokens).toContain("--user-message-bg: color-mix(in oklab, var(--panel-sunken) 72%, var(--panel) 28%);");
@@ -185,6 +187,9 @@ describe("accent CSS contract", () => {
     expect(userBubbleBodyRule).toContain("margin-right: -4px;");
     expect(composerFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));");
     expect(composerFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent)");
+    expect(launchSendButtonRule).toContain("width: 28px;");
+    expect(launchSendButtonRule).toContain("height: 28px;");
+    expect(launchSendButtonRule).toContain("border-radius: 999px;");
     expect(sessionInputFocusRule).toContain("border-color: color-mix(in oklab, var(--accent) 34%, var(--line-strong));");
     expect(sessionInputFocusRule).toContain("0 0 0 2px color-mix(in oklab, var(--accent) 8%, transparent)");
   });
@@ -202,6 +207,50 @@ describe("accent CSS contract", () => {
     expect(highlightRule).toContain("line-height: 1.55;");
   });
 
+  it("keeps the cost table bucket header aligned with bucket labels", () => {
+    const shellSessions = readSource("src/renderer/styles/shell-sessions.css");
+    const cellsRule = cssRuleBody(shellSessions, ".cost-panel-table th,\n.cost-panel-table td");
+    const rowHeaderRule = cssRuleBody(shellSessions, '.cost-panel-table th[scope="row"]');
+    const bucketHeaderRule = cssRuleBody(shellSessions, ".cost-panel-table thead th:first-child");
+
+    expect(cellsRule).toContain("text-align: right;");
+    expect(rowHeaderRule).toContain("text-align: left;");
+    expect(bucketHeaderRule).toContain("text-align: left;");
+  });
+
+  it("keeps chat content width modes wired to session padding", () => {
+    const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
+    const shellSessions = readSource("src/renderer/styles/shell-sessions.css");
+    const appSource = readSource("src/renderer/App.tsx");
+    const narrowRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="narrow"]');
+    const standardRule = cssRuleBody(chatConversation, ".app-shell,\n.app-shell[data-chat-width=\"standard\"]");
+    const wideRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="wide"]');
+    const mainColumnRule = cssRuleBody(chatConversation, ".session-main-column");
+    const launcherShellRule = cssRuleBody(shellSessions, ".launcher-shell");
+    const launcherSurfaceRule = cssRuleBody(chatConversation, ".session-multigrid-cell .launcher-surface");
+    const dockedRule = cssRuleBody(
+      chatConversation,
+      ".session-grid.review-open .session-main-column,\n.session-grid.log-open .session-main-column"
+    );
+    const tightRule = cssRuleBody(chatConversation, ".session-grid.review-open.log-open .session-main-column");
+
+    expect(appSource).toContain('data-chat-width={chatWidth}');
+    expect(narrowRule).toContain("--chat-content-width: 640px;");
+    expect(narrowRule).toContain("--chat-content-width-docked: 600px;");
+    expect(narrowRule).toContain("--chat-content-width-tight: 560px;");
+    expect(standardRule).toContain("--chat-content-width: 780px;");
+    expect(standardRule).toContain("--chat-content-width-docked: 740px;");
+    expect(standardRule).toContain("--chat-content-width-tight: 680px;");
+    expect(wideRule).toContain("--chat-content-width: 940px;");
+    expect(wideRule).toContain("--chat-content-width-docked: 900px;");
+    expect(wideRule).toContain("--chat-content-width-tight: 840px;");
+    expect(mainColumnRule).toContain("clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px)");
+    expect(launcherShellRule).toContain("width: min(100%, var(--chat-content-width));");
+    expect(launcherSurfaceRule).toContain("width: min(100%, var(--chat-content-width));");
+    expect(dockedRule).toContain("clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px)");
+    expect(tightRule).toContain("clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px)");
+  });
+
   it("keeps launch composer copy and context chips calm", () => {
     const launchSurface = readSource("src/renderer/components/LaunchSurface.tsx");
     const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
@@ -217,6 +266,41 @@ describe("accent CSS contract", () => {
     expect(contextChipRule).toContain("font-size: var(--text-xs);");
     expect(contextChipHoverRule).toContain("background: transparent;");
     expect(contextChipHoverRule).toContain("color: var(--muted-strong);");
+  });
+
+  it("keeps speed submenu opening upward in launcher model picker", () => {
+    const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
+    const speedRule = cssRuleBody(chatChrome, ".composer-context .model-speed-popover");
+    const effortRule = cssRuleBody(chatChrome, ".composer-context .model-effort-popover");
+
+    expect(speedRule).toContain("align-self: flex-end;");
+    expect(speedRule).toContain("margin-top: 0;");
+    expect(speedRule).toContain("margin-bottom: 0;");
+    expect(effortRule).toContain("margin-top: var(--model-submenu-top, 0);");
+  });
+
+  it("keeps project and model picker menus dense", () => {
+    const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
+    const popoverRule = cssRuleBody(chatChrome, ".project-picker-popover");
+    const projectItemRule = cssRuleBody(chatChrome, ".project-picker-item");
+    const modelPopoverRule = cssRuleBody(chatChrome, ".model-picker-popover");
+    const modelItemRule = cssRuleBody(chatChrome, ".model-picker-popover .project-picker-item");
+    const modelSubmenuTriggerRule = cssRuleBody(chatChrome, ".model-picker-item.model-picker-submenu-trigger");
+    const modelEditRule = cssRuleBody(chatChrome, ".model-picker-edit");
+    const groupLabelRule = cssRuleBody(chatChrome, ".project-picker-group-label");
+
+    expect(popoverRule).toContain("padding: 5px;");
+    expect(projectItemRule).toContain("padding: 5px 9px;");
+    expect(projectItemRule).toContain("font-size: var(--text-sm);");
+    expect(projectItemRule).toContain("line-height: 1.35;");
+    expect(modelPopoverRule).toContain("--model-picker-action-column: 42px;");
+    expect(modelItemRule).toContain("gap: 8px;");
+    expect(modelSubmenuTriggerRule).toContain("calc(var(--model-picker-action-column) - 8px)");
+    expect(modelSubmenuTriggerRule).toContain("column-gap: 8px;");
+    expect(modelEditRule).toContain("width: 24px;");
+    expect(modelEditRule).toContain("height: 24px;");
+    expect(groupLabelRule).toContain("font-size: 10px;");
+    expect(groupLabelRule).toContain("line-height: 1.2;");
   });
 
   it("keeps chat paragraphs airy without changing text size", () => {
@@ -267,9 +351,9 @@ describe("accent CSS contract", () => {
     expect(launcherPanels).not.toContain("@media (max-width: 1080px)");
     expect(launcherPanels).not.toContain("width: min(420px, max(300px, calc(100% - 320px)));");
     expect(launcherPanels).not.toContain(".review-panel,\n  .log-panel {\n    position: fixed;");
-    expect(mainColumnRule).toContain("--session-inline-padding: clamp(28px, calc((100% - 820px) / 2), 2000px);");
-    expect(dockedColumnRule).toContain("--session-inline-padding: clamp(22px, calc((100% - 780px) / 2), 2000px);");
-    expect(fullyDockedColumnRule).toContain("--session-inline-padding: clamp(20px, calc((100% - 720px) / 2), 2000px);");
+    expect(mainColumnRule).toContain("--session-inline-padding: clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px);");
+    expect(dockedColumnRule).toContain("--session-inline-padding: clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px);");
+    expect(fullyDockedColumnRule).toContain("--session-inline-padding: clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px);");
   });
 
   it("keeps markdown hierarchy restrained in chat", () => {
@@ -347,6 +431,7 @@ describe("accent CSS contract", () => {
       chatComposerChips,
       ".session-input-toolbar .composer-chips-context"
     );
+    const toolbarSpacerRule = cssRuleBody(chatComposerChips, ".session-toolbar-spacer");
     const footerRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer");
     const chipRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer-chip");
     const baseChipRule = cssRuleBody(chatComposer, ".composer-footer-chip");
@@ -355,6 +440,7 @@ describe("accent CSS contract", () => {
       chatComposer,
       ".session-input-toolbar .composer-footer-chip--branch"
     );
+    const sessionSendButtonRule = cssRuleBody(chatComposerChips, ".session-send-button");
     const labelRule = cssRuleBody(
       chatComposer,
       ".session-input-toolbar .composer-footer-chip-label"
@@ -365,8 +451,12 @@ describe("accent CSS contract", () => {
     expect(modelLabelRule).toContain("white-space: nowrap;");
     expect(contextRule).toContain("min-width: 0;");
     expect(contextRule).toContain("overflow: hidden;");
+    expect(contextRule).toContain("flex: 0 1 auto;");
+    expect(toolbarSpacerRule).toContain("flex: 1 1 0;");
+    expect(toolbarSpacerRule).toContain("min-width: 8px;");
     expect(footerRule).toContain("max-width: 100%;");
     expect(footerRule).toContain("overflow: hidden;");
+    expect(footerRule).toContain("flex: 0 1 auto;");
     expect(chipRule).toContain("overflow: hidden;");
     expect(baseChipRule).toContain("font-family: var(--font-prose);");
     expect(baseChipRule).toContain("color: var(--muted);");
@@ -380,7 +470,10 @@ describe("accent CSS contract", () => {
     expect(chatComposerChips).toContain('"context context context context"');
     expect(chatComposerChips).toContain(".session-input textarea");
     expect(chatComposerChips).toContain("min-height: 56px;");
-    expect(chatComposerChips).toContain(".session-input-toolbar .session-send-mascot");
+    expect(chatComposerChips).toContain(".session-input-toolbar .session-send-button");
+    expect(sessionSendButtonRule).toContain("width: 28px;");
+    expect(sessionSendButtonRule).toContain("height: 28px;");
+    expect(sessionSendButtonRule).toContain("border-radius: 999px;");
   });
 
   it("keeps the changed-files card compact-safe in narrow panes", () => {

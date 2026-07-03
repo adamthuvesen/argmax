@@ -15,6 +15,7 @@ import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
+import type { ChatWidth } from "../lib/chatWidth.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { GeneralSettings } from "./settings/GeneralSettings.js";
 import { IntegrationsSettings } from "./settings/IntegrationsSettings.js";
@@ -44,6 +45,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  chatWidth,
+  onChatWidthChange,
   launcherGlobeVisible,
   onLauncherGlobeVisibleChange,
   thinkingExpanded,
@@ -76,6 +79,8 @@ export function SettingsPanel({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  chatWidth: ChatWidth;
+  onChatWidthChange: (width: ChatWidth) => void;
   launcherGlobeVisible: boolean;
   onLauncherGlobeVisibleChange: (v: boolean) => void;
   thinkingExpanded: boolean;
@@ -243,6 +248,8 @@ export function SettingsPanel({
               onSidebarTokensVisibleChange={onSidebarTokensVisibleChange}
               chatCostVisible={chatCostVisible}
               onChatCostVisibleChange={onChatCostVisibleChange}
+              chatWidth={chatWidth}
+              onChatWidthChange={onChatWidthChange}
               launcherGlobeVisible={launcherGlobeVisible}
               onLauncherGlobeVisibleChange={onLauncherGlobeVisibleChange}
               newSessionMode={newSessionMode}

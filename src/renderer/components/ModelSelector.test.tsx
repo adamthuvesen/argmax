@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import { LaunchModelSelector, ModelSelector, type ProviderAvailability } from "./ModelSelector.js";
@@ -40,10 +41,12 @@ describe("ModelSelector — one row per model", () => {
     expect(opusRow && within(opusRow).getByText("Medium")).toBeTruthy();
   });
 
-  it("only shows Edit on the selected model", () => {
+  it("shows Edit on every effort-capable model", () => {
     openClaudePicker(OPUS_MEDIUM);
     expect(screen.getByRole("button", { name: "Edit effort for Opus 4.8" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Edit effort for Sonnet 5" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit effort for Fable 5" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Edit effort for Sonnet 5" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Edit effort for Haiku 4.5" })).toBeNull();
   });
 
   it("gives fast models (Haiku) no Edit button and no effort", () => {
@@ -76,6 +79,36 @@ describe("ModelSelector — one row per model", () => {
     });
   });
 
+  it("clicking Edit on an unselected model selects it and opens effort", () => {
+    const onChange = vi.fn();
+    function Harness() {
+      const [value, setValue] = useState<ProviderModelSelection>(HAIKU);
+      return (
+        <ModelSelector
+          ariaLabel="Session model"
+          provider="claude"
+          value={value}
+          onChange={(next) => {
+            onChange(next);
+            setValue(next);
+          }}
+        />
+      );
+    }
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      label: "Opus 4.8",
+      modelId: "claude-opus-4-8",
+      reasoningEffort: "medium"
+    });
+    expect(screen.getByRole("button", { name: "Session model" })).toHaveAttribute("title", "Opus 4.8 · Medium");
+    expect(screen.getByRole("listbox", { name: "Reasoning effort" })).toBeInTheDocument();
+  });
+
   it("picking a model row selects it with the default Medium effort", () => {
     const onChange = openClaudePicker();
     fireEvent.click(screen.getByText("Opus 4.8"));
@@ -94,13 +127,14 @@ describe("ModelSelector — one row per model", () => {
 });
 
 describe("ModelSelector — Cursor", () => {
-  it("treats Composer 2.5 as fast (no Edit) and hides Edit on unselected effort models", () => {
+  it("treats fast Cursor models as no-effort and keeps effort model edits available", () => {
     const value: ProviderModelSelection = { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" };
     render(<ModelSelector ariaLabel="Session model" provider="cursor" value={value} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Session model" }));
     expect(screen.queryByRole("button", { name: "Edit effort for Composer 2.5 (Cursor)" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Edit effort for Claude Opus 4.8 (Cursor)" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit effort for Gemini 3.5 Flash (Cursor)" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8 (Cursor)" })).toBeEnabled();
   });
 });
 
@@ -119,7 +153,7 @@ describe("LaunchModelSelector — all providers", () => {
     expect(screen.getByText("Claude")).toBeInTheDocument();
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Cursor")).toBeInTheDocument();
-    expect(screen.getByText("GPT-5.3 Codex Spark")).toBeInTheDocument();
+    expect(screen.getByText("GPT-5.5")).toBeInTheDocument();
 
     // Cursor effort is UI-only: selecting Extra High keeps the -medium alias id.
     fireEvent.click(screen.getByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" }));
@@ -132,30 +166,11 @@ describe("LaunchModelSelector — all providers", () => {
     });
   });
 
-  it("selects GPT-5.3 Codex Spark with the default Medium effort", () => {
-    const value: ModelPickerSelection = {
-      provider: "codex",
-      label: "GPT-5.5",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium"
-    };
-    const onChange = vi.fn();
-    render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={onChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByText("GPT-5.3 Codex Spark"));
-    expect(onChange).toHaveBeenCalledWith({
-      provider: "codex",
-      label: "GPT-5.3 Codex Spark",
-      modelId: "gpt-5.3-codex-spark",
-      reasoningEffort: "medium"
-    });
-  });
-
   it("shows speed in the model picker and toggles fast mode", () => {
     const value: ModelPickerSelection = {
-      provider: "cursor",
-      label: "GPT-5.5 (Cursor)",
-      modelId: "gpt-5.5-medium",
+      provider: "claude",
+      label: "Opus 4.8",
+      modelId: "claude-opus-4-8",
       reasoningEffort: "medium"
     };
     const onFastModeEnabledChange = vi.fn();
@@ -184,9 +199,9 @@ describe("LaunchModelSelector — all providers", () => {
 
   it("keeps effort and speed submenus mutually exclusive", () => {
     const value: ModelPickerSelection = {
-      provider: "cursor",
-      label: "Claude Opus 4.8 (Cursor)",
-      modelId: "claude-opus-4-8-medium",
+      provider: "claude",
+      label: "Opus 4.8",
+      modelId: "claude-opus-4-8",
       reasoningEffort: "medium"
     };
     render(
@@ -203,17 +218,71 @@ describe("LaunchModelSelector — all providers", () => {
     fireEvent.click(screen.getByRole("button", { name: /Speed Fast/ }));
     expect(screen.getByRole("listbox", { name: "Speed" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8 (Cursor)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
 
     expect(screen.getByRole("listbox", { name: "Reasoning effort" })).toBeInTheDocument();
     expect(screen.queryByRole("listbox", { name: "Speed" })).toBeNull();
   });
 
+  it("anchors the speed submenu to the speed row instead of the selected model row", () => {
+    const value: ModelPickerSelection = {
+      provider: "claude",
+      label: "Opus 4.8",
+      modelId: "claude-opus-4-8",
+      reasoningEffort: "high"
+    };
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const rect = (top: number, bottom: number) => ({
+        x: 0,
+        y: top,
+        width: 300,
+        height: bottom - top,
+        top,
+        right: 300,
+        bottom,
+        left: 0,
+        toJSON: () => ({})
+      });
+
+      if (this.classList.contains("model-picker-popover")) return rect(100, 500);
+      if (this.classList.contains("model-picker-submenu-trigger")) return rect(420, 460);
+      if (this.getAttribute("aria-label") === "Edit effort for Opus 4.8") return rect(180, 220);
+      return rect(0, 0);
+    });
+
+    try {
+      render(
+        <LaunchModelSelector
+          ariaLabel="Launch model"
+          value={value}
+          onChange={vi.fn()}
+          fastModeEnabled={false}
+          onFastModeEnabledChange={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+      fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+
+      const speedMenu = screen.getByRole("listbox", { name: "Speed" });
+      expect(speedMenu.getAttribute("style") ?? "").toContain("--model-submenu-top: 320px");
+      expect(speedMenu.getAttribute("style") ?? "").toContain("--model-submenu-bottom: 40px");
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
+
+      const effortMenu = screen.getByRole("listbox", { name: "Reasoning effort" });
+      expect(effortMenu.getAttribute("style") ?? "").toContain("--model-submenu-top: 80px");
+      expect(effortMenu.getAttribute("style") ?? "").toContain("--model-submenu-bottom: 280px");
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
   it("marks fast mode in the closed chip for supported providers", () => {
     const value: ModelPickerSelection = {
-      provider: "cursor",
-      label: "GPT-5.5 (Cursor)",
-      modelId: "gpt-5.5-medium",
+      provider: "claude",
+      label: "Opus 4.8",
+      modelId: "claude-opus-4-8",
       reasoningEffort: "medium"
     };
     render(
@@ -228,8 +297,66 @@ describe("LaunchModelSelector — all providers", () => {
 
     expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute(
       "title",
-      "GPT-5.5 (Cursor) · Medium · Fast speed"
+      "Opus 4.8 · Medium · Fast speed"
     );
+  });
+
+  it("hides speed and clears fast mode for Cursor selections", async () => {
+    const value: ModelPickerSelection = {
+      provider: "cursor",
+      label: "GPT-5.5 (Cursor)",
+      modelId: "gpt-5.5-medium",
+      reasoningEffort: "medium"
+    };
+    const onFastModeEnabledChange = vi.fn();
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={value}
+        onChange={vi.fn()}
+        fastModeEnabled={true}
+        onFastModeEnabledChange={onFastModeEnabledChange}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute(
+      "title",
+      "GPT-5.5 (Cursor) · Medium"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    expect(screen.queryByRole("button", { name: /Speed/ })).toBeNull();
+    await waitFor(() => expect(onFastModeEnabledChange).toHaveBeenCalledWith(false));
+  });
+
+  it("selecting a Cursor model clears fast mode", () => {
+    const value: ModelPickerSelection = {
+      provider: "claude",
+      label: "Opus 4.8",
+      modelId: "claude-opus-4-8",
+      reasoningEffort: "medium"
+    };
+    const onChange = vi.fn();
+    const onFastModeEnabledChange = vi.fn();
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={value}
+        onChange={onChange}
+        fastModeEnabled={true}
+        onFastModeEnabledChange={onFastModeEnabledChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    fireEvent.click(screen.getByText("GPT-5.5 (Cursor)"));
+
+    expect(onFastModeEnabledChange).toHaveBeenCalledWith(false);
+    expect(onChange).toHaveBeenCalledWith({
+      provider: "cursor",
+      label: "GPT-5.5 (Cursor)",
+      modelId: "gpt-5.5-medium",
+      reasoningEffort: "medium"
+    });
   });
 
   it("offers fast mode for Codex selections", () => {

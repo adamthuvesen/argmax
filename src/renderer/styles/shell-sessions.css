@@ -413,19 +413,13 @@
   font-weight: 400;
 }
 
+.cost-panel-table thead th:first-child {
+  text-align: left;
+}
+
 .cost-panel-table thead th {
   font-weight: 500;
   border-bottom: 1px solid var(--line);
-}
-
-.cost-panel-chevron {
-  flex: 0 0 auto;
-  color: var(--muted);
-  transition: transform var(--duration-fast) var(--ease);
-}
-
-.cost-panel-chevron.expanded {
-  transform: rotate(90deg);
 }
 
 @keyframes status-pulse {
@@ -674,7 +668,7 @@
 }
 
 .launcher-shell {
-  width: min(100%, 820px);
+  width: min(100%, var(--chat-content-width));
 }
 
 .launcher-surface {

@@ -44,7 +44,7 @@
 }
 
 .session-input-toolbar .composer-chips-model {
-  flex: 1 1 148px;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -66,7 +66,7 @@
 }
 
 .session-input-toolbar .composer-chips-context {
-  flex: 1 1 120px;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -137,8 +137,7 @@
     display: none;
   }
 
-  .session-input-toolbar .session-send-button,
-  .session-input-toolbar .session-send-mascot {
+  .session-input-toolbar .session-send-button {
     grid-area: send;
     justify-self: end;
   }
@@ -303,7 +302,7 @@
 
 .session-toolbar-spacer {
   flex: 1 1 0;
-  min-width: 0;
+  min-width: 8px;
 }
 
 .session-input input,
@@ -494,13 +493,13 @@
 .session-send-button {
   position: relative;
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   place-items: center;
   color: var(--bubble-on-ink);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   background: var(--ink);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
   cursor: pointer;

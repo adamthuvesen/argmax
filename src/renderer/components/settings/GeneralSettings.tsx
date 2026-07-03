@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
+import type { ChatWidth } from "../../lib/chatWidth.js";
 import { FONT_OPTIONS, type FontFamilyId } from "../../lib/fonts.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
@@ -24,6 +25,8 @@ export function GeneralSettings({
   onSidebarTokensVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  chatWidth,
+  onChatWidthChange,
   launcherGlobeVisible,
   onLauncherGlobeVisibleChange,
   newSessionMode,
@@ -39,6 +42,8 @@ export function GeneralSettings({
   onSidebarTokensVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  chatWidth: ChatWidth;
+  onChatWidthChange: (width: ChatWidth) => void;
   launcherGlobeVisible: boolean;
   onLauncherGlobeVisibleChange: (v: boolean) => void;
   newSessionMode: NewSessionMode;
@@ -148,6 +153,18 @@ export function GeneralSettings({
             description="Display the session cost card beside the active conversation."
             checked={chatCostVisible}
             onChange={onChatCostVisibleChange}
+          />
+
+          <Segmented
+            legend="Chat width"
+            name="chat-width"
+            value={chatWidth}
+            onChange={(v) => onChatWidthChange(v as ChatWidth)}
+            options={[
+              { value: "narrow", label: "Narrow" },
+              { value: "standard", label: "Standard", caption: "default" },
+              { value: "wide", label: "Wide" }
+            ]}
           />
 
           <ToggleRow

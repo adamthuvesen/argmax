@@ -116,8 +116,8 @@ export function AgentsSettings({
             Live thinking still expands while the agent is actively reasoning.
           </p>
           <ToggleRow
-            label="Fast mode for Claude and Cursor"
-            description="Launch Claude Code with fast mode and pass Cursor's fast model override."
+            label="Fast mode for Claude and Codex"
+            description="Launch Claude Code with fast mode and run Codex on the priority service tier."
             checked={fastModeEnabled}
             onChange={onFastModeEnabledChange}
           />

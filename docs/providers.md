@@ -47,10 +47,10 @@ normalizer unwraps `stream_event` rows and maps a successful `result` row's
 `result` field to `message.completed`.
 
 Fast mode is an Argmax launch preference, not a persisted provider edit:
-Claude receives it via `--settings {"fastMode":true|false}`, Cursor receives a
-merged model override (`model[fast=true]`) only when enabled, and Codex
-receives the priority service tier (`-c service_tier="priority"`) only when
-enabled.
+Claude receives it via `--settings {"fastMode":true|false}` and Codex receives
+the priority service tier (`-c service_tier="priority"`) only when enabled.
+Cursor models do not support Fast mode in Argmax; the picker hides Speed for
+Cursor and the runtime ignores stale fast-mode state for Cursor launches.
 
 Cursor's provider conversation id is the `session_id` from its `system/init`
 JSON row; persist it so follow-ups can resume with `cursor-agent --resume`.

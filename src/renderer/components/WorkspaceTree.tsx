@@ -221,7 +221,7 @@ function TreeRow({
       >
         <ChevronRight size={12} className={`workspace-tree-chevron${isOpen ? " expanded" : ""}`} />
         <Folder size={13} />
-        <span>{node.name}</span>
+        <span className="workspace-tree-label">{node.name}</span>
       </button>
     );
   }
@@ -239,7 +239,7 @@ function TreeRow({
     >
       <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
       <FileText size={13} />
-      <span>{node.name}</span>
+      <span className="workspace-tree-label">{node.name}</span>
     </button>
   );
 }

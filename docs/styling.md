@@ -59,7 +59,7 @@ Keep each module under **1000 lines**. Add rules to the matching surface file; d
 | `overlays-review.css` | Review panel chrome — toolbar, diff list, commit dialog, mode tabs, composer toolbar overrides in review |
 | `overlays-review-files.css` | Review file surface — workspace tree, file tabs, file preview (CodeMirror), diff blocks, project-knowledge rows |
 | `overlays-launcher.css` | Launcher/session shell — session rows, sidebar tree chrome, approval surface, diff line gutters |
-| `overlays-launcher-composer.css` | Composer affordances — mascot/send buttons, empty state, bridge banner, toasts |
+| `overlays-launcher-composer.css` | Composer affordances — send buttons, empty state, bridge banner, toasts |
 | `overlays-launcher-panels.css` | Session panels — debug log, integrated terminal, responsive review/log stacking |
 | `overlays-launcher-cards.css` | Chat cards in session — plan card and question card |
 
@@ -115,7 +115,7 @@ User message bubbles (`chat-bubble.user`) use `--user-message-bg` / `--user-mess
 
 ## Conversation content width
 
-`--session-inline-padding` is defined on `.session-main-column` as `clamp(28px, calc((100% - 820px) / 2), 2000px)`, with tighter variants when the review or log panel is open (`clamp(22px, calc((100% - 780px) / 2), 2000px)` and `clamp(20px, calc((100% - 720px) / 2), 2000px)`). This keeps readable content centered in wide panes while preserving a real gutter in narrow grid panes. `.conversation-list` consumes the token as its inline padding.
+Settings → Appearance exposes Chat width as Narrow, Standard, or Wide, persisted under `argmax.chat.width` and mirrored on `.app-shell[data-chat-width]`. The modes set `--chat-content-width` / `--chat-content-width-docked` / `--chat-content-width-tight` to `640/600/560px`, `780/740/680px`, or `940/900/840px`. `--session-inline-padding` is defined on `.session-main-column` as `clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px)`, with tighter gutters when the review or log panel is open (`22px`) or both are open (`20px`). This keeps readable content centered in wide panes while preserving a real gutter in narrow grid panes. `.conversation-list` consumes the token as its inline padding.
 
 Side-by-side pane resizing bottoms out at `MIN_RESIZABLE_CELL_WIDTH_PX` in `SessionMultiGrid.tsx`; the session composer switches to its compact container layout before that floor so the controls settle before the app stops shrinking. When a review/log panel is docked, that cell's floor becomes `CHAT_PANE_MIN_WIDTH_PX + <active panel width>`, so window resizing shrinks the chat pane first while preserving the side panel width. The app also sets a live window/sidebar minimum from the grid row width, so an existing row cannot be squeezed below its active pane floors.
 

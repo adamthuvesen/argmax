@@ -43,6 +43,7 @@ export type AppTestMocks = {
   approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
   approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
   pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
+  listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
   listChangedFiles: AppTestMockFn<ArgmaxApi["review"]["listChangedFiles"]>;
   loadDiff: AppTestMockFn<ArgmaxApi["review"]["loadDiff"]>;
   listChangedFilesForProject: AppTestMockFn<ArgmaxApi["review"]["listChangedFilesForProject"]>;
@@ -78,6 +79,7 @@ export let launchProvider: AppTestMocks["launchProvider"];
 export let approvalsPending: AppTestMocks["approvalsPending"];
 export let approvalsResolve: AppTestMocks["approvalsResolve"];
 export let pickProjectFolder: AppTestMocks["pickProjectFolder"];
+export let listBranches: AppTestMocks["listBranches"];
 export let listChangedFiles: AppTestMocks["listChangedFiles"];
 export let loadDiff: AppTestMocks["loadDiff"];
 export let listChangedFilesForProject: AppTestMocks["listChangedFilesForProject"];
@@ -147,6 +149,7 @@ export function setupAppTestMocks(): void {
     cancelled: false,
     project: primaryProject()
   });
+  listBranches = vi.fn<ArgmaxApi["projects"]["listBranches"]>().mockResolvedValue(["main"]);
   sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue({
     events: snapshot.events,
     rawOutputs: snapshot.rawOutputs,
@@ -290,7 +293,7 @@ export function setupAppTestMocks(): void {
       register: () => Promise.resolve(primaryProject()),
       remove: ({ projectId }) => Promise.resolve({ projectId }),
       updateSettings: () => Promise.resolve(primaryProject()),
-      listBranches: () => Promise.resolve(["main"]),
+      listBranches,
       refreshBranch: () => Promise.resolve(primaryProject()),
       switchBranch: () => Promise.resolve(primaryProject())
     },

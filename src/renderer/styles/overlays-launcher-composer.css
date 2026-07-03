@@ -86,40 +86,6 @@
   height: 24px;
 }
 
-.mascot-button.launcher-send-mascot {
-  width: 34px;
-  height: 34px;
-  padding: 3px 0 0;
-  border-radius: var(--radius-xl);
-}
-
-.mascot-button.launcher-send-mascot .mascot {
-  width: 28px;
-  height: 28px;
-}
-
-/* Composer send-button variant — replaces the old dark-circle .session-send-button.
-   Sized to match the previous 36px footprint so the composer layout stays put. */
-.mascot-button.session-send-mascot {
-  width: 36px;
-  height: 36px;
-  /* Proportional top padding: 3/30 ≈ 4/36 to keep the body optically centered. */
-  padding: 4px 0 0;
-  border-radius: var(--radius-sm);
-}
-
-.mascot-button.session-send-mascot .mascot {
-  width: 30px;
-  height: 30px;
-}
-
-/* Submit bob — keyboard-submitted sends miss the Mascot's built-in click
-   pet animation. This re-creates the same beat on the wrapper button so an
-   Enter submission still feels kinetic. */
-.mascot-button.session-send-mascot--bob {
-  animation: mascot-bob 320ms var(--ease);
-}
-
 @keyframes mascot-bob {
   0%   { transform: translateY(0) scale(1); }
   30%  { transform: translateY(-3px) scale(1.04); }

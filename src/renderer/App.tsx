@@ -50,7 +50,7 @@ import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
-import { modelDefaultForProvider, type ModelPickerSelection } from "./lib/models.js";
+import { modelDefaultForProvider, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
   PERMISSION_MODE_KEY,
@@ -62,6 +62,11 @@ import {
   readStoredNewSessionMode,
   type NewSessionMode
 } from "./lib/newSessionMode.js";
+import {
+  CHAT_WIDTH_KEY,
+  readStoredChatWidth,
+  type ChatWidth
+} from "./lib/chatWidth.js";
 import {
   CHAT_COST_KEY,
   FAST_MODE_KEY,
@@ -128,6 +133,15 @@ export function App(): JSX.Element {
   const [launcherGlobeVisible, setLauncherGlobeVisible] = useBooleanUiPreference(LAUNCHER_GLOBE_KEY, false);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
+  const handleLaunchModelChange = useCallback(
+    (model: ModelPickerSelection): void => {
+      setLaunchModel(model);
+      if (fastModeEnabled && !modelSupportsFastMode(model)) {
+        setFastModeEnabled(false);
+      }
+    },
+    [fastModeEnabled, setFastModeEnabled]
+  );
   const {
     themeMode,
     setThemeMode,
@@ -141,6 +155,7 @@ export function App(): JSX.Element {
   } = useLauncherAppearance();
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
+  const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
   // `full` new-session mode hides the grid and renders LaunchSurface in its
   // place when ⌘N fires from inside an active grid. The flag is purely local
   // — it never persists; only the user's choice in Settings persists.
@@ -405,6 +420,7 @@ export function App(): JSX.Element {
 
   usePersistedSetting(PERMISSION_MODE_KEY, permissionMode);
   usePersistedSetting(NEW_SESSION_MODE_KEY, newSessionMode);
+  usePersistedSetting(CHAT_WIDTH_KEY, chatWidth);
 
   // Esc closes the standalone full launcher (only meaningful when the grid
   // has active panes — when the grid is empty, the LaunchSurface is the only
@@ -700,7 +716,7 @@ export function App(): JSX.Element {
         modelLabel: model.label,
         modelId: model.modelId,
         reasoningEffort: model.reasoningEffort ?? null,
-        fastMode: fastModeEnabled,
+        fastMode: fastModeEnabled && modelSupportsFastMode(model),
         agentMode,
         permissionMode,
         cols: 120,
@@ -848,7 +864,7 @@ export function App(): JSX.Element {
         onFastModeEnabledChange={setFastModeEnabled}
         onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments)}
         model={launchModel}
-        onModelChange={setLaunchModel}
+        onModelChange={handleLaunchModelChange}
         onSelectProject={openProjectLauncher}
         project={project ?? selectedProject}
         projects={snapshot.projects}
@@ -903,6 +919,7 @@ export function App(): JSX.Element {
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
       data-resizing={isResizing ? "true" : undefined}
+      data-chat-width={chatWidth}
       data-sidebar-collapsed={sidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
@@ -913,7 +930,7 @@ export function App(): JSX.Element {
         aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
         onClick={toggleSidebarCollapsed}
       >
-        {sidebarCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+        {sidebarCollapsed ? <PanelLeft size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
       </button>
       {sidebarCollapsed ? (
         <div
@@ -1025,7 +1042,7 @@ export function App(): JSX.Element {
             <Suspense fallback={<SkeletonPane />}>
               <SettingsPanel
                 defaultModel={launchModel}
-                onDefaultModelChange={setLaunchModel}
+                onDefaultModelChange={handleLaunchModelChange}
                 toolCallsExpanded={toolCallsExpanded}
                 onToolCallsExpandedChange={setToolCallsExpanded}
                 toolCallGroupsExpanded={toolCallGroupsExpanded}
@@ -1034,6 +1051,8 @@ export function App(): JSX.Element {
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
+                chatWidth={chatWidth}
+                onChatWidthChange={setChatWidth}
                 launcherGlobeVisible={launcherGlobeVisible}
                 onLauncherGlobeVisibleChange={setLauncherGlobeVisible}
                 thinkingExpanded={thinkingExpanded}

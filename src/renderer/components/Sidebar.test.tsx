@@ -573,6 +573,56 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify(["today"]));
   });
 
+  it("show less returns an overflowed date bucket to five rows when the selected session is older", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    const workspaces = Array.from({ length: 12 }, (_, i) =>
+      workspace(`w-${i}`, "project-zebra", `Today task ${i}`, new Date(2026, 5, 5, 6, i).toISOString())
+    );
+    const overflowSnapshot: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces,
+      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt))
+    };
+
+    render(<Sidebar {...baseProps} selectedWorkspaceId="w-0" snapshot={overflowSnapshot} />);
+
+    expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(5);
+    expect(screen.getByRole("button", { name: /Today task 0/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Show 7 more Today sessions/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Show 7 more Today sessions/ }));
+    expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(12);
+
+    fireEvent.click(screen.getByRole("button", { name: /Show fewer Today sessions/ }));
+    expect(screen.getAllByRole("button", { name: /Today task/ })).toHaveLength(5);
+    expect(screen.getByRole("button", { name: /Today task 0/ })).toBeInTheDocument();
+  });
+
+  it("show less returns an overflowed project to five rows when the selected session is older", () => {
+    const workspaces = Array.from({ length: 12 }, (_, i) =>
+      workspace(`w-${i}`, "project-zebra", `Zebra task ${i}`, new Date(2026, 5, 5, 6, i).toISOString())
+    );
+    const overflowSnapshot: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces,
+      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt))
+    };
+
+    render(<Sidebar {...baseProps} selectedWorkspaceId="w-0" snapshot={overflowSnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Zebra sessions" }));
+    expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(5);
+    expect(screen.getByRole("button", { name: /Zebra task 0/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Show 7 more Zebra sessions/ }));
+    expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(12);
+
+    fireEvent.click(screen.getByRole("button", { name: /Show fewer Zebra sessions/ }));
+    expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(5);
+    expect(screen.getByRole("button", { name: /Zebra task 0/ })).toBeInTheDocument();
+  });
+
   it("toggles a date bucket by clicking the row, not just the chevron", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 

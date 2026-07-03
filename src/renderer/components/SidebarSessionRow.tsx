@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   memo,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -56,6 +57,24 @@ type SidebarSessionRowProps = {
   defaultIde: IdeId | null;
   showTokens: boolean;
 };
+
+const IDE_POPOVER_WIDTH = 200;
+const IDE_POPOVER_MAX_HEIGHT = 260;
+const IDE_POPOVER_GUTTER = 8;
+const IDE_POPOVER_DISMISS_DELAY_MS = 120;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function idePopoverPosition(rect: Pick<DOMRect, "bottom" | "right">): { top: number; left: number } {
+  const maxLeft = Math.max(IDE_POPOVER_GUTTER, window.innerWidth - IDE_POPOVER_WIDTH - IDE_POPOVER_GUTTER);
+  const maxTop = Math.max(IDE_POPOVER_GUTTER, window.innerHeight - IDE_POPOVER_MAX_HEIGHT - IDE_POPOVER_GUTTER);
+  return {
+    top: clamp(rect.bottom + 6, IDE_POPOVER_GUTTER, maxTop),
+    left: clamp(rect.right - IDE_POPOVER_WIDTH, IDE_POPOVER_GUTTER, maxLeft)
+  };
+}
 
 // Leading glyph for a session row. A turn in flight takes precedence over
 // everything: the marker becomes a working ring (same circle geometry as the
@@ -130,15 +149,34 @@ function SidebarSessionRowInner({
   showTokens
 }: SidebarSessionRowProps): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLUListElement | null>(null);
+  const pickerCloseTimerRef = useRef<number | null>(null);
   // Keep direct refs to every menuitem so ↑/↓ keyboard nav can move focus.
   // The map is rebuilt every render from the `detectedIdes` list; reading
   // `current` after layout is fine because the popover only mounts when
   // `pickerOpen && popoverPos`.
   const menuItemRefs = useRef(new Map<string, HTMLButtonElement | null>());
-  useDismissOnOutsideOrEscape(pickerRef, pickerOpen, () => setPickerOpen(false), popoverRef);
+  const clearPickerCloseTimer = useCallback((): void => {
+    if (pickerCloseTimerRef.current === null) return;
+    window.clearTimeout(pickerCloseTimerRef.current);
+    pickerCloseTimerRef.current = null;
+  }, []);
+  const closePicker = useCallback((): void => {
+    clearPickerCloseTimer();
+    setPickerOpen(false);
+  }, [clearPickerCloseTimer]);
+  const schedulePickerClose = useCallback((): void => {
+    clearPickerCloseTimer();
+    pickerCloseTimerRef.current = window.setTimeout(() => {
+      pickerCloseTimerRef.current = null;
+      setPickerOpen(false);
+    }, IDE_POPOVER_DISMISS_DELAY_MS);
+  }, [clearPickerCloseTimer]);
+  useDismissOnOutsideOrEscape(pickerRef, pickerOpen, closePicker, popoverRef);
+
+  useEffect(() => clearPickerCloseTimer, [clearPickerCloseTimer]);
 
   // Right-click "Rename" → inline edit. The context menu is portaled at the
   // cursor; committing writes the new label through onRename.
@@ -202,10 +240,7 @@ function SidebarSessionRowInner({
     const cluster = pickerRef.current;
     if (!cluster) return;
     const rect = cluster.getBoundingClientRect();
-    setPopoverPos({
-      top: rect.bottom + 6,
-      right: Math.max(8, window.innerWidth - rect.right)
-    });
+    setPopoverPos(idePopoverPosition(rect));
   }, [pickerOpen]);
 
   const showArchive =
@@ -238,6 +273,7 @@ function SidebarSessionRowInner({
   const handleChevronClick = (event: ReactMouseEvent): void => {
     event.stopPropagation();
     if (buttonDisabled) return;
+    clearPickerCloseTimer();
     setPickerOpen((open) => !open);
   };
 
@@ -407,7 +443,12 @@ function SidebarSessionRowInner({
           </span>
         );
       })() : null}
-      <div className="session-ide-cluster" ref={pickerRef}>
+      <div
+        className="session-ide-cluster"
+        ref={pickerRef}
+        onMouseEnter={clearPickerCloseTimer}
+        onMouseLeave={schedulePickerClose}
+      >
         <button
           className="session-row-action session-ide-open"
           aria-label="Choose IDE"
@@ -426,11 +467,13 @@ function SidebarSessionRowInner({
             className="project-picker-popover session-ide-popover"
             role="menu"
             aria-label="Open this worktree in"
+            onMouseEnter={clearPickerCloseTimer}
+            onMouseLeave={schedulePickerClose}
             style={{
               position: "fixed",
               top: popoverPos.top,
-              right: popoverPos.right,
-              left: "auto",
+              left: popoverPos.left,
+              right: "auto",
               bottom: "auto"
             }}
           >
@@ -453,7 +496,7 @@ function SidebarSessionRowInner({
                     onKeyDown={handleMenuKeyDown(entry.id)}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setPickerOpen(false);
+                      closePicker();
                       onOpenInIde(workspace.id, entry.id, {
                         pinAsDefault: defaultIde === null && effectiveDefault === null
                       });

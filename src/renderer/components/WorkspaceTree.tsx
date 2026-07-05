@@ -47,6 +47,7 @@ export function WorkspaceTree({
   // rows before the ResizeObserver fires (it yields 0 for one frame on mount).
   const [measuredHeight, setMeasuredHeight] = useState(400);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingRevealPathRef = useRef<string | null>(null);
 
   const toggleDir = useCallback((path: string): void => {
     setExpanded((current) => {
@@ -93,6 +94,12 @@ export function WorkspaceTree({
   const effectiveHeight = height ?? measuredHeight;
   const visibleRows = useMemo(() => flattenVisible(tree, expanded), [tree, expanded]);
 
+  // `visibleRows` also changes on folder toggles; only selected-file reveals
+  // should move scroll, otherwise expansion steals the user's place.
+  useEffect(() => {
+    pendingRevealPathRef.current = state.selectedPath;
+  }, [state.selectedPath, effectiveHeight]);
+
   // Recompute window bounds whenever scroll or content changes. The slice is
   // small (height/ROW_HEIGHT + overscan); 10k entries collapse to ~30 rendered
   // DOM nodes at default viewport sizes.
@@ -119,6 +126,7 @@ export function WorkspaceTree({
   useEffect(() => {
     const path = state.selectedPath;
     const node = scrollRef.current;
+    if (pendingRevealPathRef.current !== path) return;
     if (!path || !node) return;
     const index = visibleRows.findIndex((row) => row.node.path === path);
     if (index < 0) return;
@@ -126,10 +134,12 @@ export function WorkspaceTree({
     const rowBottom = rowTop + ROW_HEIGHT;
     const viewTop = node.scrollTop;
     const viewBottom = viewTop + effectiveHeight;
-    if (rowTop >= viewTop && rowBottom <= viewBottom) return;
-    const target = Math.max(0, rowTop - effectiveHeight / 2);
-    node.scrollTop = target;
-    setScrollTop(target);
+    pendingRevealPathRef.current = null;
+    if (rowTop < viewTop || rowBottom > viewBottom) {
+      const target = Math.max(0, rowTop - effectiveHeight / 2);
+      node.scrollTop = target;
+      setScrollTop(target);
+    }
   }, [state.selectedPath, visibleRows, effectiveHeight]);
 
   // When the parent provides an explicit height (e.g. the command palette pop-out),

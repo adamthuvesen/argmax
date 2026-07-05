@@ -111,4 +111,23 @@ describe("WorkspaceTree virtualization", () => {
     expect(screen.getByText("components")).toBeTruthy();
     expect(screen.getByText("FilePreview.tsx")).toBeTruthy();
   });
+
+  it("does not recenter a selected file when the user expands a folder above it", () => {
+    const entries: WorkspaceFileEntry[] = [
+      ...Array.from({ length: 8 }, (_, i) => ({ path: `docs/file-${i}.md` })),
+      { path: "scripts/build.ts" },
+      { path: "AGENTS.md" }
+    ];
+    const state = { ...makeState(entries), selectedPath: "AGENTS.md" };
+
+    render(<WorkspaceTree state={state} height={72} />);
+
+    const scroller = screen.getByRole("tree");
+    expect(scroller.scrollTop).toBe(0);
+
+    fireEvent.click(screen.getByRole("treeitem", { name: "docs" }));
+
+    expect(scroller.scrollTop).toBe(0);
+    expect(screen.getByRole("treeitem", { name: "docs" })).toBeVisible();
+  });
 });

@@ -83,9 +83,12 @@ on screen waiting for the user, the agent is *waiting on the user*, not
 Otherwise, if the session is still running, the bubble is shown during any
 silent gap: before the first answer, after a completed answer chunk, and after a
 completed tool row while the model decides what to do next.
-The first empty beat appears immediately. Mid-turn silent gaps use a 700 ms
-show delay, and once the label is visible it stays up for at least 600 ms, so
-rapid delta/tool chatter does not make it blink.
+The first empty beat appears immediately. Most mid-turn silent gaps use a 700 ms
+show delay. Gaps after completed assistant text use a longer 1800 ms grace
+period, because final answer events often arrive just before the terminal
+session-state delta; this prevents a bogus one-second tail Thinking bubble when
+the turn is already done. Once the label is visible it stays up for at least
+600 ms, so rapid delta/tool chatter does not make it blink.
 
 These conditions are provider-agnostic. Do **not** suppress Thinking on the
 `session.streaming` first-byte beacon for Codex (an earlier heuristic did): the
@@ -249,7 +252,8 @@ relevant `it(...)` titles:
 - "still renders the QuestionCard when AskUserQuestion retries fold into a tool-group"
 - "hides the ExitPlanMode tool row immediately, even while still running (no flicker)"
 - "renders an AskUserQuestion card immediately from command.started and hides the raw row"
-- "shows Thinking after a completed assistant chunk while the session is still running"
+- "delays Thinking after a completed assistant chunk while the session is still running"
+- "does not flash Thinking when the session completes during the post-answer grace period"
 - "suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)"
 - "restores Thinking once the user submits and a new user.message arrives"
 - "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"

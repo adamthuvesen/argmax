@@ -392,11 +392,11 @@ describe("SessionConversation — cards", () => {
     expect(terminateOrder).toBeLessThan(sendOrder);
   });
 
-  it("shows Thinking after a completed assistant chunk while the session is still running", () => {
+  it("delays Thinking after a completed assistant chunk while the session is still running", () => {
     vi.useFakeTimers();
     // Provider answer events and runtime completion state arrive in separate
-    // dashboard deltas. While the session row still says running, keep the
-    // quiet live marker visible under the completed chunk.
+    // dashboard deltas. Do not flash a tail Thinking bubble during that short
+    // handoff; only show the marker if the session stays silent longer.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -409,6 +409,10 @@ describe("SessionConversation — cards", () => {
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     act(() => {
       vi.advanceTimersByTime(700);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1100);
     });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });

@@ -68,6 +68,7 @@ const SCROLL_INTENT_KEYS = new Set([
 ]);
 
 const THINKING_SHOW_DELAY_MS = 700;
+const THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS = 1800;
 const THINKING_MIN_VISIBLE_MS = 600;
 
 export function SessionConversation({
@@ -258,6 +259,10 @@ export function SessionConversation({
   const isThinking = agentWorkingSilently;
   const isInitialThinkingBeat =
     lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
+  const thinkingShowDelayMs =
+    lastSignificantEvent?.type === "message.completed"
+      ? THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS
+      : THINKING_SHOW_DELAY_MS;
   const [isThinkingVisible, setIsThinkingVisible] = useState(false);
   const thinkingVisibleSinceRef = useRef(0);
   const thinkingShowTimerRef = useRef<number | null>(null);
@@ -292,7 +297,7 @@ export function SessionConversation({
           thinkingShowTimerRef.current = null;
           thinkingVisibleSinceRef.current = performance.now();
           setIsThinkingVisible(true);
-        }, THINKING_SHOW_DELAY_MS);
+        }, thinkingShowDelayMs);
       }
       return;
     }
@@ -315,7 +320,7 @@ export function SessionConversation({
       thinkingVisibleSinceRef.current = 0;
       setIsThinkingVisible(false);
     }, hideDelay);
-  }, [isInitialThinkingBeat, isThinking, isThinkingVisible]);
+  }, [isInitialThinkingBeat, isThinking, isThinkingVisible, thinkingShowDelayMs]);
 
   useEffect(() => {
     return () => {

@@ -655,11 +655,12 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
 
-  it("shows Thinking after a completed assistant chunk while the session is still running", () => {
+  it("delays Thinking after a completed assistant chunk while the session is still running", () => {
     vi.useFakeTimers();
-    // Completed assistant chunks can be followed by more silent work. Keep a
-    // quiet live marker below the chunk until the next visible thing arrives or
-    // the session leaves running.
+    // A completed assistant chunk is often the final answer, with the backend
+    // state flip arriving in the next delta. Give that terminal update a
+    // longer grace period so the UI does not flash a bogus tail Thinking
+    // bubble, while still marking genuinely long mid-turn silences.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -673,13 +674,61 @@ describe("SessionConversation — streaming & composer", () => {
     act(() => {
       vi.advanceTimersByTime(700);
     });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
-  it("shows generic Thinking after a completed assistant chunk", () => {
+  it("does not flash Thinking when the session completes during the post-answer grace period", () => {
+    vi.useFakeTimers();
+    const events = [
+      event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+    ];
+    const baseProps = {
+      events,
+      isLogOpen: false,
+      onSendSessionInput: vi.fn().mockResolvedValue(undefined),
+      onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onCreateCheckpoint: vi.fn().mockResolvedValue(undefined),
+      onToggleLog: vi.fn(),
+      project,
+      rawOutputs: [],
+      review: reviewStub(),
+      workspace
+    };
+
+    const { rerender } = render(
+      <SessionConversation
+        {...baseProps}
+        session={baseSession({ provider: "claude", state: "running" })}
+      />
+    );
+
+    expect(screen.getByText("Done.")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+    rerender(
+      <SessionConversation
+        {...baseProps}
+        session={baseSession({ provider: "claude", state: "complete" })}
+      />
+    );
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("shows generic Thinking after a long completed assistant chunk pause", () => {
     vi.useFakeTimers();
     // Once a durable assistant chunk exists, the transcript still needs a live
-    // marker during a silent mid-turn pause.
+    // marker during a long silent mid-turn pause.
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [
@@ -693,6 +742,10 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     act(() => {
       vi.advanceTimersByTime(700);
+    });
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1100);
     });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });

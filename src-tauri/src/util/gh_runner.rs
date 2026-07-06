@@ -1,21 +1,11 @@
-// Shared `gh` CLI invocation shape.
-//
-// Both `gh::service` (PR row refresh) and `git::ops` (PR create) shell
-// out to the `gh` binary. They used to carry their own copy of the same
-// closure type + default constructor — that drift was deliberate per
-// the section-8 spec, but folding it into one helper closes the gap and
-// gives both call sites the 15s timeout (which `git::ops`'s copy was
-// previously missing — a latent hang on a slow `gh pr create`).
-//
-// Tests in either subsystem stub `GhRunner` directly; the production
-// path goes through `default_gh_runner()`.
+// Shared `gh` CLI runner for PR refresh and PR creation. Production calls go
+// through `default_gh_runner()`; tests stub `GhRunner` directly.
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use crate::error::{ArgmaxError, ArgmaxResult};
 
-/// `gh` is invoked via this closure so tests can stub the binary the
-/// same way the TS code injects a fake `ghRunner`.
+/// `gh` is invoked via this closure so tests can stub the binary.
 pub type GhRunner = Arc<
     dyn Fn(String, Vec<String>) -> Pin<Box<dyn Future<Output = ArgmaxResult<String>> + Send>>
         + Send

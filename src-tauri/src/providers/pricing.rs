@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn prices_stored_legacy_ids_without_restoring_them_to_the_model_table() {
+    fn prices_persisted_model_ids_missing_from_the_picker_table() {
         assert!(MODEL_PRICING.get("claude-sonnet-4-6").is_none());
         assert!(MODEL_PRICING.get("gpt-5.4-codex").is_none());
         assert!(MODEL_PRICING.get("o4-mini").is_none());

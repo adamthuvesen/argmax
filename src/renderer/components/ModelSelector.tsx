@@ -26,7 +26,7 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   cursor: "Cursor"
 };
 
-/** Per-provider install/auth state used to gate the picker. */
+/** Per-provider install/auth state for picker gating. */
 export interface ProviderAvailabilityEntry {
   installed: boolean;
   authenticated: boolean | null;
@@ -227,9 +227,8 @@ function ChipModelPicker<T extends PickerValue>({
   const effectiveFastModeEnabled = fastModeEnabled && selectedSupportsFastMode;
 
   const selectedOption = options.find((option) => isSelected(option.value));
-  // Show the chosen effort whenever the selection carries one. Only suppress it
-  // when we positively know the selected model is fast/no-effort (e.g. an old
-  // session that stored an effort for Haiku before effort was removed there).
+  // Show the chosen effort whenever the selection carries one. Suppress it when
+  // the selected model is known to be fast/no-effort.
   const selectedShowsEffort =
     value.reasoningEffort != null && (selectedOption ? selectedOption.supportsReasoningEffort : true);
   const selectedLabel =

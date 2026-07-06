@@ -102,8 +102,8 @@ export function useDashboardSession(
     // rowid. A cursored `eventsSince` then returns only rows NEWER than the
     // cursor — none, for an idle session — so the conversation re-renders empty
     // (often just the user message that happened to survive the cap) and never
-    // recovers. If we previously loaded content for this session (`seeded`) but
-    // the snapshot now holds none of its events, the rows were evicted: drop the
+    // recovers. If this session is seeded but the snapshot now holds none of
+    // its events, the rows were evicted: drop the
     // cursor and re-pull the tail from scratch. The `seeded` guard keeps a
     // genuinely event-less session from looping on full re-reads.
     if (
@@ -484,11 +484,9 @@ export function useDashboardSession(
     };
   }, [selectedSession?.state, selectedSessionId, selectedWorkspaceId, loadSessionEvents]);
 
-  // Per-session backfill is owned by SessionPane's mount-effect (one call
-  // per visible pane). The hook used to also fire loadSessionEvents on
-  // every selection change; with the multi-pane grid that doubled the IPC
-  // for the focused pane. Removed — the visibility-change effect above
-  // still refreshes the currently selected session on tab refocus.
+  // Per-session backfill is owned by SessionPane's mount-effect (one call per
+  // visible pane). The visibility-change effect above refreshes the currently
+  // selected session on tab refocus.
 
   const openWorkspaceChat = useCallback(
     (workspaceId: string): void => {

@@ -1,4 +1,4 @@
-# AGENTS.md — Argmax
+# AGENTS.md: Argmax
 
 Argmax is a local Tauri desktop app that orchestrates AI coding agents (Claude Code, Codex, Cursor) in parallel git worktrees. Single-user, on-device, no cloud, no auth.
 
@@ -14,7 +14,7 @@ src/
 
 src-tauri/        Rust runtime, services, IPC handlers, persistence, packaging
 scripts/          Lightweight CI/check scripts
-docs/             Deeper subsystem docs — see Index
+docs/             Deeper subsystem docs; see Index
 assets/           App icon (icns + png) bundled into release builds
 dist/             Renderer build output (gitignored)
 release/          Packaged distributable output (gitignored)

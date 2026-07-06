@@ -116,12 +116,9 @@ pub fn extract_inline_tool_blocks(
                 "tool_result",
                 Value::Object(block.clone()),
             )),
-            // Extended-thinking blocks. The terminal Claude CLI shows
-            // these in a collapsed box; the Rust port used to drop them
-            // entirely, leaving the chat on "Polishing…" for the full
-            // thinking phase. Emit as a message.delta with a `thinking:
-            // true` payload flag so the renderer can style or hide them
-            // (default: render the text inline so the user sees activity).
+            // Extended-thinking blocks arrive as visible reasoning content.
+            // Emit them as message.delta rows with a `thinking: true` payload
+            // flag so the renderer can style or hide them.
             Some("thinking") => {
                 let text = string_value(block.get("thinking"))
                     .unwrap_or("")

@@ -1,3 +1,3 @@
-/* App shell + sidebar — import order mirrors the former monolithic file. */
+/* App shell + sidebar — import order is part of the cascade contract. */
 @import url("./shell-layout.css");
 @import url("./shell-sessions.css");

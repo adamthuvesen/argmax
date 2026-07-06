@@ -106,8 +106,7 @@ pub async fn serve_attachment(base_dir: &Path, url: &str) -> AttachmentResponse 
 }
 
 fn extract_url_path(url: &str) -> Option<String> {
-    // Accept both `scheme://host/path` and `scheme:/path` forms. The
-    // Tauri protocol surface usually passes the former.
+    // Accept both `scheme://host/path` and `scheme:/path` forms.
     let prefix = format!("{ATTACHMENT_PROTOCOL_SCHEME}://");
     if let Some(rest) = url.strip_prefix(&prefix) {
         // Drop the host segment (typically "localhost" on Tauri).

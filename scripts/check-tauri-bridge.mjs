@@ -23,7 +23,7 @@ const fixtureChannels = readFileSync(CHANNELS, "utf8")
 
 const bridge = readFileSync(BRIDGE, "utf8");
 const invokedChannels = uniq(
-  [...bridge.matchAll(/invokeLegacy(?:<[^>]+>)?\(\s*"([^"]+)"/g)].map((match) => match[1])
+  [...bridge.matchAll(/invokeCommand(?:<[^>]+>)?\(\s*"([^"]+)"/g)].map((match) => match[1])
 );
 
 const duplicateFixtureChannels = fixtureChannels.filter(

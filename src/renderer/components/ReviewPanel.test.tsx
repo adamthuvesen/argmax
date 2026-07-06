@@ -321,10 +321,7 @@ describe("ReviewPanel file tabs", () => {
 });
 
 /**
- * audit-2026-05-11 / SPEC P1.10 — mid-drag unmount used to leave document
- * mousemove/mouseup listeners attached and the body cursor frozen at
- * `ns-resize`. The fix tracks the active drag in a ref; the unmount effect
- * replays the cleanup so listeners detach and body styles reset.
+ * Mid-drag unmount cleanup detaches document listeners and resets body styles.
  */
 describe("ReviewPanel — drag listener cleanup on unmount", () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
-// Legacy IPC channel names preserved by the Tauri bridge. Runtime validation
-// now lives in Rust input newtypes and command structs; this module remains as
-// a tiny TypeScript type source for renderer calls.
+// IPC request channel names used by the Tauri bridge. Runtime validation lives
+// in Rust input newtypes and command structs; this module is a tiny TypeScript
+// type source for renderer calls.
 
 export const MAX_STREAM_CHUNK_BYTES = 64 * 1024;
 export const MAX_FILE_CONTENT_BYTES = 4 * 1024 * 1024;

@@ -1,4 +1,4 @@
-/* Settings panel — import order mirrors the former monolithic file. */
+/* Settings panel — import order is part of the cascade contract. */
 @import url("./settings-layout.css");
 @import url("./settings-controls.css");
 @import url("./settings-diagnostics.css");

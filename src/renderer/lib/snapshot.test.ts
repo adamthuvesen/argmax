@@ -21,11 +21,8 @@ function event(
 }
 
 /**
- * audit-2026-05-11 / SPEC P1.12 — `pruneSupersededDeltas` previously
- * always returned a new array. Downstream identity checks (notably
- * `mergeDashboardDelta`) treated that as a real change and forced a
- * snapshot rebuild + re-render per streamed event. The fix returns the
- * input reference when nothing was pruned.
+ * `pruneSupersededDeltas` preserves the input array reference when nothing is
+ * pruned so downstream identity checks can skip no-op snapshot rebuilds.
  */
 describe("pruneSupersededDeltas — reference stability", () => {
   it("returns the same array reference when there is nothing to prune", () => {
@@ -65,11 +62,9 @@ describe("pruneSupersededDeltas — reference stability", () => {
   });
 
   it("keeps thinking-flagged message.delta even when a message.completed follows", () => {
-    // Claude extended-thinking content is surfaced by the normalizer as
-    // a message.delta with payload.thinking === true. The pruner used to
-    // drop these the moment the final text answer arrived, leaving the
-    // user with no record of the reasoning step. Regression for
-    // adam/rust-port streaming-feedback fix.
+    // Claude extended-thinking content is surfaced by the normalizer as a
+    // message.delta with payload.thinking === true and must survive final text
+    // answer pruning.
     const events: TimelineEvent[] = [
       event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
       {
@@ -96,7 +91,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
   });
 
   // -------------------------------------------------------------------------
-  // audit-2026-05-11 / SPEC P4.06 — mergeDashboardDelta reference stability
+  // mergeDashboardDelta reference stability
   // -------------------------------------------------------------------------
 
   it("mergeDashboardDelta returns the same snapshot reference for an empty delta", () => {

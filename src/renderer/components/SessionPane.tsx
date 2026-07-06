@@ -152,7 +152,7 @@ export function SessionPane({
   // True once the user has opened the terminal in the current workspace.
   // Lets the panel stay mounted (PTYs alive) across ⌘J collapses while
   // still keeping the heavy xterm bundle off the initial render. Resets on
-  // workspace change so old PTYs are torn down with the leaf components.
+  // workspace change so stale PTYs are torn down with the leaf components.
   const [terminalOnceOpened, setTerminalOnceOpened] = useState(false);
   const [isTerminalResizing, setIsTerminalResizing] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState<number>(() => {

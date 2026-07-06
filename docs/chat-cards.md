@@ -1,13 +1,14 @@
-# Chat — interactive cards
+# Chat: Interactive Cards
 
 The chat surface renders two kinds of *interactive cards* on top of the normal
 assistant bubble stream: **PlanCard** (Claude Code plan mode) and
 **QuestionCard** (Claude Code `AskUserQuestion`, Cursor `askQuestionToolCall`).
-Claude's newer `--brief` `SendUserMessage` tool is plain assistant text, not a
-picker, so the normalizer maps it to `message.completed` instead of a card. Turn detection and card
-state live in [turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts)
-and [turnToolItems.ts](../src/renderer/lib/turnToolItems.ts); question parsing
-in [questions.ts](../src/renderer/lib/questions.ts). Rendering still flows
+Claude's newer `--brief` `SendUserMessage` tool is plain assistant text, so
+the normalizer maps it to `message.completed` instead of a card.
+Turn detection and card state live in
+[turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts)
+and [turnToolItems.ts](../src/renderer/lib/turnToolItems.ts). Question parsing
+lives in [questions.ts](../src/renderer/lib/questions.ts). Rendering still flows
 through the turn body in
 [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx),
 [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx),
@@ -32,21 +33,21 @@ toggling live in
 
 Claude Code's `ExitPlanMode` and `AskUserQuestion` tools are designed for
 interactive sessions. Argmax launches Claude in **structured-json** mode
-(`-p --output-format stream-json` — see
-[adapters.rs](../src-tauri/src/providers/adapters.rs)), which
-has no interactive stdin. The CLI handles this by returning a
+(`-p --output-format stream-json`; see
+[adapters.rs](../src-tauri/src/providers/adapters.rs)), which has no
+interactive stdin. The CLI handles this by returning a
 `tool_result { is_error: true, content: "Exit plan mode?" / "Answer questions?" }`
 and ending the turn.
 
 Claude Code's `--brief` mode exposes `SendUserMessage` instead. That tool only
 carries text for the user, so it is normalized into an assistant bubble rather
-than a `QuestionCard`; old persisted raw `SendUserMessage` tool rows are hidden
-if they reach the renderer.
+than a `QuestionCard`; persisted raw `SendUserMessage` tool rows are hidden if
+they reach the renderer.
 
-The plan / question content the model wanted to deliver still arrives — it's
-in the tool's `input.plan` or `input.questions`. We extract that and render it
-ourselves as a card. The user clicks an option; the answer becomes the next
-user message; Claude's next turn picks it up via `--resume`.
+The plan / question content the model wanted to deliver still arrives in the
+tool's `input.plan` or `input.questions`. We extract that and render it as a
+card. The user clicks an option, the answer becomes the next user message, and
+Claude's next turn picks it up via `--resume`.
 
 ## Detection rules (per turn)
 
@@ -71,10 +72,10 @@ The "Thinking" bubble is suppressed when any of these are true:
 - `session.state !== "running"`
 - the last significant event is `message.delta` (visible assistant text is actively streaming)
 - a *visible* tool is running (`tool.name` is not `ExitPlanMode` / an ask-question tool; the tool's own spinner is the indicator)
-- **there is an outstanding card ask** — the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts) /
+- **there is an outstanding card ask**: the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts) /
 [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx))
 
-The outstanding-card gate is the load-bearing one for cards: while a card is
+The outstanding-card check is the one cards depend on: while a card is
 on screen waiting for the user, the agent is *waiting on the user*, not
 "thinking". Showing Thinking would mislead. When the user submits, a new
 `user.message` lands → `lastUserMessageTime` advances past the tool's
@@ -85,7 +86,7 @@ silent gap: before the first answer, after a completed answer chunk, and after a
 completed tool row while the model decides what to do next.
 The first empty beat appears immediately. Most mid-turn silent gaps use a 700 ms
 show delay. Gaps after completed assistant text use a longer 1800 ms grace
-period, because final answer events often arrive just before the terminal
+period, because final answer events often arrive shortly before the terminal
 session-state delta; this prevents a bogus one-second tail Thinking bubble when
 the turn is already done. Once the label is visible it stays up for at least
 600 ms, so rapid delta/tool chatter does not make it blink.
@@ -145,11 +146,11 @@ Two layers cooperate to keep it visible and out of the way:
   and `buildConversationEvents`
   ([sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts))
   both make an exception for thinking deltas, so they are *not* dropped when the
-  turn's `message.completed` lands. (These must stay in sync — a thinking delta
-  kept by one and dropped by the other produces a flash-then-vanish.)
+  turn's `message.completed` lands. Keep these in sync: a thinking delta kept by
+  one and dropped by the other produces a flash-then-vanish.
 - **Fold + dedup + rendering.** `coalesceAssistantGroups`
   ([sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts)) folds the
-  streamed thinking fragments into ONE growing `AssistantGroup` (`thinking:
+  streamed thinking fragments into one growing `AssistantGroup` (`thinking:
   true`), kept in a buffer separate from the answer (flushed whenever the kind
   flips). The whole assistant message later re-sends the *full* reasoning as one
   block; a cumulative-aware append (`appendThinking`) dedups it to a no-op
@@ -161,10 +162,10 @@ Two layers cooperate to keep it visible and out of the way:
   title-case label and keeps the expanded reasoning body aligned to the same
   turn content edge.
 
-**Expand-while-live, setting-when-done.** The Thought block takes a `live`
+**Expand while live, setting when done.** The Thought block takes a `live`
 prop, computed per turn in `SessionConversationTurn` as *latest turn + session
 running + not paused on a card + no answer text yet*. While `live`, the block is
-**expanded** and labelled "Thinking" — the reasoning streams in token-by-token,
+**expanded** and labeled "Thinking". The reasoning streams in token-by-token,
 in place of the generic Thinking indicator (the pulsing label still covers the
 gap before any assistant content arrives). The instant the first answer token lands
 (or the turn stops being the active one, or it pauses for input), `live` flips
@@ -212,10 +213,10 @@ One contract; deviations are bugs. Locked by component tests in
 | Key            | Effect                                                                    |
 | -------------- | ------------------------------------------------------------------------- |
 | `↑` / `↓`      | Move selection between options                                            |
-| `1`–`9`        | Pick the nth option (also moves selection)                                |
-| `Space`        | Toggle the focused option — multi-select questions only                   |
+| `1`-`9`        | Pick the nth option (also moves selection)                                |
+| `Space`        | Toggle the focused option; multi-select questions only                    |
 | `Enter`        | Submit. Triggers `onAccept`/`onReject` (PlanCard) or `onAnswer` (QuestionCard) |
-| `Escape`       | **No-op.** Cards are not dismissable; the answer is the dismiss.          |
+| `Escape`       | **No-op.** Cards are not dismissible; the answer dismisses the card.      |
 
 On submit the card collapses to a one-line summary header with an Expand
 chevron so the chat history stays scannable. Once collapsed, the user can
@@ -231,7 +232,7 @@ hints, so sighted keyboard users don't have to discover it.
 ## Other knobs
 
 - **`exitPlanCard.onAccept`** writes `agentMode = "auto"` back to local
-  storage and sends `"Proceed with the plan above."` — leaving plan mode for
+  storage and sends `"Proceed with the plan above."`, leaving plan mode for
   the next turn.
 - **`exitPlanCard.onReject`** focuses the composer for free-form feedback.
 - Cards re-use Plan-card CSS via the `.plan-card` class.
@@ -243,8 +244,8 @@ hints, so sighted keyboard users don't have to discover it.
 
 All of the above is locked in by
 [src/renderer/components/SessionConversation.cards.test.tsx](../src/renderer/components/SessionConversation.cards.test.tsx) and
-[src/renderer/components/SessionConversation.streaming.test.tsx](../src/renderer/components/SessionConversation.streaming.test.tsx) — search for the
-relevant `it(...)` titles:
+[src/renderer/components/SessionConversation.streaming.test.tsx](../src/renderer/components/SessionConversation.streaming.test.tsx).
+Search for the relevant `it(...)` titles:
 
 - "renders an ExitPlanMode tool call as a PlanCard, hiding the raw tool row"
 - "renders a PlanCard from ExitPlanMode even when the tool ended in error (denied in structured-json mode)"
@@ -265,7 +266,7 @@ relevant `it(...)` titles:
 If Claude Code ever supports `AskUserQuestion` / `ExitPlanMode` *non-interactively*
 in `-p` mode (i.e. returns success instead of erroring), all the
 "render-card-on-error" logic still works but the outstanding-card gate would
-need refinement — the tool's `command.completed` would arrive with success
+need refinement: the tool's `command.completed` would arrive with success
 content rather than the user's eventual answer. Today the gate releases only
 when a new `user.message` lands, which is correct for the current behavior.
 
@@ -275,14 +276,14 @@ Not card-specific, but living next to cards in the same conversation surface
 (file these here so they aren't lost):
 
 - **Per-turn timestamps, not per-bubble.** `TurnBlock` renders a single
-  `headerTimestampIso` in its header (same-day → `HH:mm`, otherwise short
-  date + time). `ChatBubble` no longer renders a `chat-bubble-timestamp` —
-  the per-bubble timestamp was removed when the turn header took over.
-- **Thinking → answered reveal.** `TurnBlock` sets `data-just-revealed` on
+  `headerTimestampIso` in its header. Same-day timestamps use `HH:mm`;
+  older ones use short date + time. `ChatBubble` no longer renders a
+  `chat-bubble-timestamp` because the turn header owns timing.
+- **Thinking to answered reveal.** `TurnBlock` sets `data-just-revealed` on
   `.turn-block-body` for 280 ms the first time the turn gains any visible
   child, so the first element animates in instead of popping.
 - **FileChip basename + hover-intent preview.** `FileChip` shows
-  `basename` (+ optional `:line`) — full path lives in `aria-label`, the
+  `basename` (+ optional `:line`). Full path lives in `aria-label`, the
   tooltip, and the hover-intent popover. After 500 ms of hover (or
   immediately on focus) a `FilePreviewPopover` mounts and fetches a
   `useFilePreview` snippet via `window.argmax.workspace.readFile`

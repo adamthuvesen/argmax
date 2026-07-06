@@ -55,7 +55,7 @@ Open `http://127.0.0.1:5173/`.
 
 Outside Tauri there is no Rust backend. The renderer uses `src/renderer/demoSnapshot.ts` instead of live IPC. The fixture uses sample paths and sample session text only.
 
-The screenshot above shows the macOS app running agent sessions across parallel git worktrees — the review queue, an active session's conversation with file changes and passing checks, and the diff review pane.
+The screenshot above shows the macOS app running agent sessions across parallel git worktrees: the review queue, an active session's conversation with file changes and passing checks, and the diff review pane.
 
 ## Reproducible Check
 

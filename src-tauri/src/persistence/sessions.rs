@@ -228,8 +228,8 @@ pub fn update_session_model(
 }
 
 /// Switch a session to a different provider. The new provider's model must be
-/// supplied (provider model lists don't overlap), and the old provider's native
-/// resume id is cleared: Claude/Codex/Cursor conversation ids are mutually
+/// supplied (provider model lists don't overlap), and the source provider's
+/// native resume id is cleared: Claude/Codex/Cursor conversation ids are mutually
 /// unintelligible, so the next launch starts the new provider fresh and rebuilds
 /// context from the visible transcript (`compose_follow_up_prompt`).
 pub fn update_session_provider(

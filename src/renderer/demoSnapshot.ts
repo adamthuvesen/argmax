@@ -266,7 +266,7 @@ export const demoSnapshot: DashboardSnapshot = {
     {
       id: "approval-delete-worktree",
       sessionId: "session-approval-gate",
-      command: "git worktree remove ~/code/.argmax/worktrees/old-attempt",
+      command: "git worktree remove ~/code/.argmax/worktrees/draft-attempt",
       cwd: "~/code/sample-project",
       provider: "codex",
       riskLevel: "high",

@@ -33,11 +33,9 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   const isDescending = !!first && !!last && isAfter(first, last);
   const ascending = isDescending ? [...events].reverse() : events;
 
-  // Single right-to-left sweep: for each session, track "the next turn-boundary
-  // event AFTER my position" (rule shared with buildConversationEvents — see
-  // turnBoundaries.ts). nextBoundary reflects the closest boundary at j > i
-  // because boundaries at j > i were processed in earlier iterations.
-  // O(n) vs the previous nested-walk O(n²).
+  // Single right-to-left sweep: for each session, track the next turn-boundary
+  // event after this position. nextBoundary reflects the closest boundary at
+  // j > i because those rows were processed in earlier iterations.
   const nextBoundary = new Map<string, TurnBoundary>();
   const supersededIndices = new Set<number>();
   for (let i = ascending.length - 1; i >= 0; i--) {
@@ -81,12 +79,8 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
 //     large multi-agent turn (hundreds of tool calls) without eviction
 // The current turn's rows are always the newest of their kind, so they survive.
 //
-// Why three buckets and not two: thinking deltas used to be lumped with the
-// protected rows. A long extended-thinking run emitted enough thinking deltas
-// to blow past the protected cap, evicting the oldest tool calls; because each
-// delta added a varying number of thinking deltas, the eviction boundary
-// oscillated and tool rows blinked in and out. Isolating thinking deltas fixes
-// the blink.
+// Three buckets keep answer streaming, extended thinking, and durable rows from
+// evicting one another under bursty provider output.
 const EVENT_DELTA_LIMIT = 500;
 const EVENT_THINKING_LIMIT = 1000;
 const EVENT_PROTECTED_LIMIT = 2000;

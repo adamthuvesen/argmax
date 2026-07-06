@@ -52,7 +52,7 @@ function freshTabId(): string {
  * between tabs and ⌘J collapse.
  *
  * Tabs are per-workspace: the parent should `key={workspaceId}` this
- * component so changing workspaces remounts and tears down old PTYs.
+ * component so changing workspaces remounts and tears down stale PTYs.
  *
  * Two close paths:
  * - `onCollapse` — header × (or any "hide panel" affordance). PTYs stay

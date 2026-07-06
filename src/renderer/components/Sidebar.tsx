@@ -58,9 +58,8 @@ import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessio
 
 // Marker stored in sessionStorage (cleared on app quit / window close in
 // Tauri) so the "collapse every project on launch" seed fires exactly
-// once per real app launch — not on every Sidebar mount. Tests that want
-// the old "respect persisted localStorage" behavior pre-set this marker
-// in their beforeEach.
+// once per real app launch, not on every Sidebar mount. Tests can pre-set this
+// marker when they need to bypass boot seeding.
 const BOOT_COLLAPSE_SEED_KEY = "argmax.sidebar.bootCollapseSeeded";
 
 function readBootCollapseSeeded(): boolean {

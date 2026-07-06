@@ -123,7 +123,7 @@ describe("useFileAutocomplete", () => {
     delete (window as unknown as { argmax?: unknown }).argmax;
   });
 
-  it("does not apply listFiles after unmount (audit-2026-05-18 H1)", async () => {
+  it("does not apply listFiles after unmount", async () => {
     let resolveList!: (entries: WorkspaceFileEntry[]) => void;
     listFiles.mockImplementation(
       () =>
@@ -178,7 +178,7 @@ describe("useFileAutocomplete", () => {
     expect(screen.queryAllByTestId("entry-dir")).toHaveLength(3);
   });
 
-  it("shows project-scoped files after the bridge resolves (audit-2026-05-18 H2)", async () => {
+  it("shows project-scoped files after the bridge resolves", async () => {
     listFilesForProject.mockResolvedValue([{ path: "packages/shared/index.ts" }]);
 
     render(<Harness initialInput="@" source={{ kind: "project", id: "project-1" }} />);

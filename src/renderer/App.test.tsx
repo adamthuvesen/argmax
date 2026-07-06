@@ -105,10 +105,8 @@ describe("App", () => {
     const initialLabel = modelButton.textContent ?? "";
     expect(initialLabel).toContain("GPT-5.3 Codex");
 
-    // A delta that bumps lastActivityAt and reports a different modelLabel for
-    // the same session id used to overwrite the user's local pick because the
-    // effect depended on the session object reference. With the fix the effect
-    // is gated on session.id, so the selector text must not change.
+    // Model selection is session-id scoped. Deltas for the same session must
+    // not overwrite a local picker choice while the session stays selected.
     const baseSession = snapshot.sessions[0];
     if (!baseSession) throw new Error("snapshot must include session-1");
     act(() => {
@@ -498,27 +496,6 @@ describe("App", () => {
       )
     );
     expect(window.localStorage.getItem("argmax.launch.agentMode")).toBeNull();
-  });
-
-  it("starts new sessions in auto mode even when the old launcher preference was plan", async () => {
-    window.localStorage.setItem("argmax.launch.agentMode", "plan");
-
-    render(<App />);
-
-    expect(await screen.findByRole("button", { name: "Agent mode" })).toHaveTextContent("Auto");
-    fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Implement the thing" }
-    });
-    fireEvent.click(screen.getByTitle("Start agent"));
-
-    await waitFor(() =>
-      expect(launchProvider).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: "Implement the thing",
-          agentMode: "auto"
-        })
-      )
-    );
   });
 
   it("keeps a newly launched chat selected while the dashboard refresh catches up", async () => {

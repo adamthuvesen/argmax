@@ -8,7 +8,7 @@ import { mergeDashboardDelta, emptySnapshot } from "../renderer/lib/snapshot.js"
 import type { DashboardSnapshot, SessionSummary, TimelineEvent } from "../shared/types.js";
 
 /**
- * SPEC P4.10 — bench harness. Each assertion pins a property documented in
+ * Bench harness. Each assertion pins a property documented in
  * `docs/performance.md`. A regression that pushes any of these past
  * the documented budget fails this suite in CI so we notice before users do.
  *
@@ -160,8 +160,8 @@ describe("perf budgets", () => {
     }
     durations.sort((a, b) => a - b);
     const p95 = percentile(durations, 0.95);
-    // 20 ms slack: p95 stays ~3–8 ms in isolation but can spike when the full
-    // suite runs hot on a shared CI runner (audit-2026-05-18 perf flake).
+    // 20 ms slack: p95 stays ~3-8 ms in isolation but can spike when the full
+    // suite runs hot on a shared CI runner.
     expect(p95).toBeLessThan(20);
   });
 });

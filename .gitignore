@@ -19,3 +19,4 @@ src-tauri/gen/
 tmp.txt
 *.tmp
 scratch/
+openspec/

@@ -163,8 +163,7 @@ fn is_whitelisted_image(path: &Path) -> bool {
 }
 
 fn extract_url_path(url: &str) -> Option<String> {
-    // Accept both `scheme://host/path` and `scheme:/path` forms; the Tauri
-    // protocol surface usually passes the former (host is typically "file").
+    // Accept both `scheme://host/path` and `scheme:/path` forms.
     let prefix = format!("{WORKSPACE_ASSET_PROTOCOL_SCHEME}://");
     if let Some(rest) = url.strip_prefix(&prefix) {
         let after_host = rest.split_once('/').map(|(_, path)| path).unwrap_or(rest);

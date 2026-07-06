@@ -255,10 +255,10 @@
   align-items: center;
   margin-bottom: 16px;
   padding-block: 0;
-  /* Break out of the centered conversation column: the title hugs the left
-     panel edge and the actions hug the right, with a comfortable fixed
-     inset — like the app-chrome headers in Cursor / HQ. */
-  padding-inline: 20px;
+  /* Keep the title on the same responsive gutter as the transcript while the
+     actions stay pinned to the pane chrome. */
+  padding-left: var(--session-inline-padding);
+  padding-right: 20px;
   min-height: 0;
 }
 
@@ -287,15 +287,18 @@
   color: var(--text-soft);
 }
 
-/* Sidebar hidden: the repo-title row doubles as the macOS titlebar. Pad its
-   left so the title sits just right of the traffic lights + hide button, and
-   lift the surface so the title aligns with the window controls instead of
-   dropping below them. */
+/* Sidebar hidden: the top-left repo-title row doubles as the macOS titlebar.
+   Pad it past the traffic lights + hide button, and lift the surface so the
+   title aligns with the window controls instead of dropping below them. */
 .app-shell[data-sidebar-collapsed="true"] .conversation-surface {
   padding-top: 5px;
 }
 
-.app-shell[data-sidebar-collapsed="true"] .conversation-surface .section-heading {
+.app-shell[data-sidebar-collapsed="true"]
+  .session-multigrid-row:first-child
+  .session-multigrid-cell:first-child
+  .conversation-surface
+  .section-heading {
   padding-left: 124px;
 }
 

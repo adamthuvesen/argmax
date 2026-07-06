@@ -193,15 +193,15 @@ export function SessionConversation({
       onOpen: review.toggleChangesPanel
     };
   }, [review.files, review.filesState, review.isPanelOpen, review.mode, review.toggleChangesPanel]);
-  // Composer is enabled whenever the session is alive — `running` no longer
-  // blocks: typed messages get queued in main and drain when the current turn
+  // Composer is enabled whenever the session is alive. During `running`,
+  // typed messages get queued in main and drain when the current turn
   // finishes. `complete` and `cancelled` are also enabled because main's
   // sendInput re-launches the agent when no live handle exists, so the user
   // can keep chatting after a turn ends or they hit Stop. `failed` is enabled
   // for the same reason: a session marked failed (most commonly because its
   // provider process didn't survive an app restart — orphan recovery) has no
   // live handle, so sending input takes the same relaunch-with-resume path and
-  // continues the old conversation rather than stranding it.
+  // continues the conversation.
   const canSend = Boolean(
     session && ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state)
   );
@@ -214,10 +214,9 @@ export function SessionConversation({
   // "work is happening" are:
   //   (a) assistant text actively streaming (the latest event is a delta), and
   //   (b) the running spinner on a visible tool row.
-  // Note we key on a *streaming* delta, not on any completed message: a
-  // finished chunk ("now I'll edit the file") followed by a few seconds of
-  // silent work used to suppress Thinking entirely, leaving the turn looking
-  // idle. The `ExitPlanMode` / `AskUserQuestion` tools are *hidden* (rendered
+  // Note we key on a *streaming* delta, not on any completed message: after a
+  // finished chunk ("now I'll edit the file"), silent work should still show
+  // Thinking. The `ExitPlanMode` / `AskUserQuestion` tools are *hidden* (rendered
   // as cards), so a running instance of either gives no on-screen indicator —
   // treat them as "no visible tool running" and let Thinking show.
   const isStreamingText = lastSignificantEvent?.type === "message.delta";
@@ -243,11 +242,10 @@ export function SessionConversation({
   );
   // The turn is live and nothing visible is progressing this instant. True both
   // for the pre-answer beat (nothing emitted yet) and for mid-turn pauses (the
-  // agent finished a chunk and is silently working on the next step). We used to
-  // suppress the Codex `session.streaming` first-byte beacon here, but that
-  // blanked the whole initial wait — Codex reasons for seconds before any item
-  // lands, and the beacon (raw bytes) isn't user-visible progress. The beacon
-  // still suppresses the raw-stdout transcript via `hasRenderableContent`.
+  // agent finished a chunk and is silently working on the next step). The Codex
+  // `session.streaming` first-byte beacon is raw bytes, not user-visible
+  // progress; it still suppresses the raw-stdout transcript via
+  // `hasRenderableContent`.
   const agentWorkingSilently =
     session?.state === "running" &&
     !anyVisibleToolRunning &&

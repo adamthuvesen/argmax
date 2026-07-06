@@ -2,10 +2,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauriRuntime } from "./tauriBridge.js";
 
 // The macOS overlay titlebar (titleBarStyle: "Overlay") leaves the top strip to
-// the web content. The Electron version made it draggable with Chromium's
-// `-webkit-app-region: drag`, but WebKit (Tauri's WKWebView) ignores that
-// property — so after the Rust/Tauri port the titlebar was neither draggable nor
-// double-click-to-zoom. Re-implement both with the Tauri window API.
+// the web content. WKWebView ignores Chromium's `-webkit-app-region: drag`, so
+// Argmax implements drag and double-click zoom through the Tauri window API.
 //
 // We act only when the mousedown target *is* a marked element (exact match, not
 // a descendant), so interactive children inside a header stay clickable without

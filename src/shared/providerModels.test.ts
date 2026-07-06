@@ -81,7 +81,7 @@ describe("costOf — golden fixtures", () => {
     expect(suffixed).toBeCloseTo(3.0, 9);
   });
 
-  it("prices stored legacy ids without restoring them to the model table", () => {
+  it("prices persisted model ids without restoring them to the model table", () => {
     expect(MODEL_PRICING["claude-sonnet-4-6"]).toBeUndefined();
     expect(MODEL_PRICING["gpt-5.4-codex"]).toBeUndefined();
     expect(MODEL_PRICING["o4-mini"]).toBeUndefined();
@@ -120,9 +120,8 @@ describe("MODEL_PRICING coverage", () => {
     expect(MODEL_PRICING["gpt-5.5"]).toBeDefined();
   });
 
-  // audit-2026-05-17 L4 — drift tripwire: a new modelId added to
-  // PROVIDER_MODELS without a matching MODEL_PRICING entry would otherwise
-  // silently surface as $0 cost in the UI.
+  // Drift tripwire: every picker model must have a matching pricing entry so
+  // usage cannot silently show as $0 in the UI.
   it("covers every modelId in PROVIDER_MODELS", () => {
     for (const [provider, options] of Object.entries(PROVIDER_MODELS)) {
       for (const option of options) {

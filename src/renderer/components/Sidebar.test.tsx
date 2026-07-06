@@ -144,10 +144,8 @@ describe("Sidebar — localStorage write isolation", () => {
   });
 
   it("writes the collapsed-projects key exactly once per chevron click under StrictMode", () => {
-    // audit-2026-05-11 / SPEC P1.08 — saving inside the setState updater
-    // would persist twice when StrictMode double-invokes the updater in
-    // dev. The fix computes `next` outside the updater and calls the
-    // storage writer exactly once per user action.
+    // Compute `next` outside the state updater so StrictMode's development
+    // double-invoke still writes storage exactly once per user action.
     //
     // The sidebar boots every project collapsed (so no sessions are visible
     // on launch), so we first expand the project, then collapse it again

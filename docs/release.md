@@ -2,7 +2,7 @@
 
 Tauri is the release pipeline. Tauri publishes `latest.json` for updates.
 
-The first public Rust/Tauri release is macOS-only and uses the new Tauri app id/data directory. It does not import Electron-era app data.
+The public release is macOS-only and uses the Tauri app id/data directory.
 
 ## Environment
 

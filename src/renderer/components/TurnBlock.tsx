@@ -104,9 +104,7 @@ function renderPhaseChildren(children: TurnBodyChild[]): ReactNode {
 // Render the turn body as a plain stream of children. Every child always
 // renders — tool calls are NEVER removed when "collapsed". Collapsing a turn
 // folds each tool group to its header (the group's own `defaultExpanded`,
-// driven by the parent), so the work the agent did stays in the chat. We
-// previously split into Plan / Work / Result phases with a left rail, but the
-// rail read as noisy chrome rather than helpful navigation.
+// driven by the parent), so the work the agent did stays in the chat.
 function renderBody(children: TurnBodyChild[]): ReactNode {
   return renderPhaseChildren(children);
 }
@@ -130,9 +128,8 @@ export function TurnBlock({
   // including the thinking phase before any tools fire.
   turnStartedAtMs?: number;
   // Authoritative "agent is still working" signal from the parent. The parent
-  // knows about session state and any user-input pauses (PlanCard,
-  // QuestionCard); we used to infer this purely from tool status, which
-  // missed the thinking-only phase.
+  // knows about session state and user-input pauses (PlanCard, QuestionCard),
+  // including thinking-only phases without active tools.
   isTurnActive?: boolean;
   // Whether this turn's tool groups are expanded. Owned by the parent (which
   // builds the tool nodes) so the chip and the per-group toggles share one
@@ -149,8 +146,7 @@ export function TurnBlock({
   // `running` controls the chip's "Working" label and live ticker —
   // the parent's isTurnActive flag is authoritative because it also knows
   // about thinking phases and user-input pauses (PlanCard / QuestionCard).
-  // Fall back to tool status so back-compat callers without the prop still
-  // get a "Working" chip while their tools are mid-flight.
+  // Fall back to tool status for isolated component tests and narrow callers.
   const running = isTurnActive ?? toolRunning;
   const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
   const startedAtMs =

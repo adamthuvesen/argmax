@@ -1,17 +1,7 @@
 /**
- * Regression tests for audit-2026-05-17 C3.
- *
- * The audit flagged the assistant chat markdown renderer as potentially
- * vulnerable to XSS via agent-emitted `[click](javascript:alert(1))` links.
- * In react-markdown v10 the default `urlTransform` already strips any scheme
- * outside the safe-protocol allowlist (`/^(https?|ircs?|mailto|xmpp)$/i`), so
- * the audit was a false positive — BUT the protection is implicit. These
- * tests pin the behavior so a future config change (e.g. someone passes
- * `urlTransform={null}` to support a custom scheme) is caught loudly.
- *
- * If these tests fail, do not "fix" them by changing the assertions — the
- * underlying scheme-stripping has been disabled and the assistant chat is
- * now exploitable.
+ * Pins ReactMarkdown's default URL sanitization for assistant chat links.
+ * If these tests fail, the scheme-stripping guard has been disabled and the
+ * assistant chat can render unsafe links.
  */
 import { render, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";

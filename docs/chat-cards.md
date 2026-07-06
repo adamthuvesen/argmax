@@ -40,8 +40,8 @@ and ending the turn.
 
 Claude Code's `--brief` mode exposes `SendUserMessage` instead. That tool only
 carries text for the user, so it is normalized into an assistant bubble rather
-than a `QuestionCard`; old persisted raw `SendUserMessage` tool rows are hidden
-if they reach the renderer.
+than a `QuestionCard`; persisted raw `SendUserMessage` tool rows are hidden if
+they reach the renderer.
 
 The plan / question content the model wanted to deliver still arrives — it's
 in the tool's `input.plan` or `input.questions`. We extract that and render it

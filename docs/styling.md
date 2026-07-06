@@ -52,7 +52,7 @@ Keep each module under **1000 lines**. Add rules to the matching surface file; d
 
 ## Overlay stylesheets
 
-`styles.css` imports [overlays.css](../src/renderer/styles/overlays.css), which is only an aggregator (<200 lines). Surface rules live in sibling files under `src/renderer/styles/`; **import order in `overlays.css` is part of the cascade contract** (mirrors the old monolithic file).
+`styles.css` imports [overlays.css](../src/renderer/styles/overlays.css), which is only an aggregator (<200 lines). Surface rules live in sibling files under `src/renderer/styles/`; **import order in `overlays.css` is part of the cascade contract**.
 
 | File | Scope |
 |---|---|
@@ -92,7 +92,7 @@ Defined on `:root` in `styles.css`. Always reference these — don't hardcode he
 | Radii | `--radius-xs` (3px), `--radius-sm` (4px), `--radius-md` (6px), `--radius-lg` (8px), `--radius-xl` (10px). Prefer tokens; reserve `999px` / `50%` for truly circular elements only (status dots, toggle knobs). |
 | Motion | `--ease` (cubic-bezier), `--duration-fast` (140ms), `--duration-base` (220ms); newer code prefers `--motion-fast` (120ms), `--motion-base` (180ms), `--motion-slow` (240ms), `--ease-out`, `--ease-in-out` |
 | Spacing | `--space-1` (4px) through `--space-8` (32px). Use these for paddings, gaps, and margins; reserve raw `px` for one-off optical adjustments. |
-| Type | `--text-4xs` (9px), `--text-3xs` (9.5px), `--text-2xs` (10px), `--text-xs` (11px), `--text-sm` (12px), `--text-base` (13px), `--text-md` (15px), `--text-lg` (18px), `--text-xl` (20px), `--text-2xl` (22px), `--text-display` (23px), and `--text-terminal` (13px). Half-step `*-plus` / `*-tight` tokens exist only where legacy surfaces need them. |
+| Type | `--text-4xs` (9px), `--text-3xs` (9.5px), `--text-2xs` (10px), `--text-xs` (11px), `--text-sm` (12px), `--text-base` (13px), `--text-md` (15px), `--text-lg` (18px), `--text-xl` (20px), `--text-2xl` (22px), `--text-display` (23px), and `--text-terminal` (13px). Half-step `*-plus` / `*-tight` tokens support dense surfaces. |
 | Focus | `--ring` — single source of truth for every `:focus-visible` ring. |
 
 Future text-size changes should update the type tokens or the `data-font-size` mode blocks, not individual component rules. Reduced-motion users get a zero override on the motion tokens via `@media (prefers-reduced-motion: reduce)`.

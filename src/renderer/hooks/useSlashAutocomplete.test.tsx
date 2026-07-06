@@ -50,9 +50,8 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
   });
 
   it("advances the selection by two when ArrowDown fires twice in rapid succession", async () => {
-    // audit-2026-05-11 / SPEC P1.06 — the previous code captured
-    // `selectionIndex` directly, so two ArrowDown events batched together
-    // would lose the second update. The functional updater fixes that.
+    // Functional state updates keep batched ArrowDown events from collapsing
+    // into a single selection move.
     const skills: SkillSummary[] = [
       { name: "review", description: "review code", source: "user" },
       { name: "refactor", description: "refactor code", source: "user" },
@@ -74,11 +73,10 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     expect(screen.getByTestId("selection-index").textContent).toBe("2");
   });
 
-  it("fires exactly one skills.list IPC for repeated keystrokes during an in-flight fetch (audit-2026-05-14 A7)", async () => {
-    // SPEC A7 — `fetchedFor.current = cacheKey` must be set *before* `api.list`,
-    // not inside `.then`, otherwise every keystroke during the in-flight window
-    // would re-enter the effect and refire IPC. We hold the first promise open
-    // so the effect's cache-latch is the only thing preventing duplicate calls.
+  it("fires exactly one skills.list IPC for repeated keystrokes during an in-flight fetch", async () => {
+    // `fetchedFor.current = cacheKey` must be set before `api.list`. We hold
+    // the first promise open so the effect's cache-latch is the only thing
+    // preventing duplicate calls.
     let resolveFirst: (skills: SkillSummary[]) => void = () => undefined;
     skillsList.mockReturnValueOnce(
       new Promise<SkillSummary[]>((resolve) => {
@@ -106,11 +104,8 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
   });
 
   it("retries the skills fetch after a transient failure (no permanent latch)", async () => {
-    // audit-2026-05-11 / SPEC P1.07 — `fetchedFor.current = cacheKey` was
-    // set before the promise resolved and never cleared in `.catch`, so
-    // a transient IPC failure left the popover empty forever for that
-    // cacheKey. Fix: clear `fetchedFor.current` in `.catch` so the next
-    // effect invocation can retry.
+    // A transient IPC failure clears `fetchedFor.current` in `.catch` so the
+    // next effect invocation can retry the same cacheKey.
     skillsList.mockRejectedValueOnce(new Error("transient"));
     skillsList.mockResolvedValueOnce([
       { name: "review", description: "review code", source: "user" },
@@ -123,10 +118,7 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     await waitFor(() => expect(skillsList).toHaveBeenCalledTimes(1));
 
     // The user keeps typing — input changes from `/r` to `/re`. That changes
-    // slashQuery's identity, refiring the effect. Before the fix, the
-    // cache-latch was still set to the original cacheKey and the fetch was
-    // skipped permanently; now the latch is cleared by the prior catch,
-    // and the effect issues a fresh IPC call that resolves successfully.
+    // slashQuery's identity, refiring the effect after the latch is cleared.
     const probe = screen.getByLabelText("probe");
     fireEvent.change(probe, { target: { value: "/re" } });
 

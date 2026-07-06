@@ -6,7 +6,7 @@ SQLite is owned by Rust under [src-tauri/src/persistence](../src-tauri/src/persi
 
 [migrations.rs](../src-tauri/src/persistence/migrations.rs) contains the consolidated schema and checksum runner. Migrations are append-only. Never edit an applied migration: the boot path recomputes stored SHA-256 checksums and refuses drift.
 
-FTS5 sidecars index timeline events and learnings. The initial Rust migration is the baseline for the Rust/Tauri app id. This public release does not import Electron-era app data.
+FTS5 sidecars index timeline events and learnings. The initial Rust migration is the schema baseline for the Tauri app data directory.
 
 ## Repositories
 

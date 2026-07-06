@@ -99,10 +99,8 @@ export function CommandPalette({
   const messageTokenRef = useRef(0);
   const filesTokenRef = useRef(0);
 
-  // Document-level Esc + outside-click via the shared hook. Esc previously
-  // depended on the input's onKeyDown which only fires while the input has
-  // focus — adopting the hook means Esc works even if focus drifted to a
-  // result row (e.g. via screen-reader navigation).
+  // Document-level Esc + outside-click via the shared hook means Esc works even
+  // if focus drifts to a result row (e.g. via screen-reader navigation).
   useDismissOnOutsideOrEscape(paletteRef, open, onClose, undefined, { trapFocus: true });
   // Cache the loaded path list across keystrokes within a single palette
   // session. Keyed by `${kind}:${id}` so switching workspace/project between

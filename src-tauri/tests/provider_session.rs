@@ -704,7 +704,7 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
 }
 
 // Switching provider on an idle session relaunches under the new provider,
-// drops the old provider's native resume id, and carries context as transcript.
+// drops the source provider's native resume id, and carries context as transcript.
 #[tokio::test]
 async fn provider_switch_relaunches_new_provider_fresh() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));

@@ -115,10 +115,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("does not refetch listChangedFiles when only `lastActivityAt` ticks (50 chat tokens)", async () => {
-    // audit-2026-05-11 / SPEC P1.05 — the changed-files effect depended on
-    // `workspace.lastActivityAt`, which bumps once per streamed token; that
-    // caused ~1 IPC roundtrip per token. Fix: depend on stable signals
-    // (workspace.id + changedFiles count + lifecycle state).
+    // The changed-files effect depends on stable signals (workspace id,
+    // changedFiles count, and lifecycle state), not token-level activity ticks.
     const initial = makeWorkspace({ lastActivityAt: "2026-05-12T15:54:00.000Z" });
     const { rerender } = renderHook(({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)), {
       initialProps: { ws: initial }
@@ -133,8 +131,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       rerender({ ws: makeWorkspace({ lastActivityAt: tickedAt }) });
     }
 
-    // Still exactly one call: the unstable `lastActivityAt` no longer
-    // appears in the effect's dependency list.
+    // Still exactly one call: `lastActivityAt` is not an effect dependency.
     expect(listChangedFiles).toHaveBeenCalledTimes(1);
   });
 
@@ -214,8 +211,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("does not refetch workspace.listFiles when lastActivityAt ticks while in Files mode", async () => {
-    // Same audit class, sibling effect: the Files-mode list previously
-    // re-fetched on every `lastActivityAt` change too.
+    // Files-mode list loading also ignores token-level `lastActivityAt` ticks.
     const initial = makeWorkspace();
     const { result, rerender } = renderHook(
       ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),

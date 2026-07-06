@@ -1,4 +1,4 @@
-/* Session conversation + composer — import order mirrors the former monolithic file. */
+/* Session conversation + composer — import order is part of the cascade contract. */
 @import url("./chat-chrome.css");
 @import url("./chat-conversation.css");
 @import url("./chat-composer.css");

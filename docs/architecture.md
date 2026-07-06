@@ -50,5 +50,5 @@ Heavy panels are lazy-loaded. Renderer tests use [src/test/appTestHarness.ts](..
 
 - [bindings.d.ts](../src/shared/bindings.d.ts) — generated Rust types.
 - [types.ts](../src/shared/types.ts) — hand-written `ArgmaxApi` and renderer domain aliases.
-- [ipcSchemas.ts](../src/shared/ipcSchemas.ts) — preserved channel-name union for the bridge; runtime validation lives in Rust.
+- [ipcSchemas.ts](../src/shared/ipcSchemas.ts) — request channel-name union for the bridge; runtime validation lives in Rust.
 - [providerModels.ts](../src/shared/providerModels.ts) — model lists, defaults, and pricing.

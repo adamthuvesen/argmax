@@ -7,9 +7,8 @@ const DEFAULT_FLASH_MS = 1500;
  *
  * Returns `[copied, copy]`. The boolean flips to true on success and back to
  * false after `flashMs`. The callback returns a promise that resolves true on
- * success or false on permission/focus failure — the previous fire-and-forget
- * pattern silently dropped errors, leaving the user with no signal that the
- * paste-buffer never received the text.
+ * success or false on permission/focus failure so callers can show failure
+ * state when the paste buffer rejects the write.
  */
 export function useCopyToClipboard(flashMs: number = DEFAULT_FLASH_MS): [boolean, (text: string) => Promise<boolean>] {
   const [copied, setCopied] = useState(false);

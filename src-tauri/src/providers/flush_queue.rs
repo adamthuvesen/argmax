@@ -182,11 +182,9 @@ impl ProviderEventFlushQueue {
             &normalized_event.session_id,
             &mut session.buffer,
         )?;
-        // The events in `delta` are already persisted to SQLite. Always
-        // publish non-empty deltas: throttling here used to drop streaming
-        // chunks in flight — they sat in the DB invisible to the renderer
-        // until end-of-turn flushed a single bulk delta. Rate bounding lives
-        // in the emit worker, which conflates queued deltas per cycle.
+        // The events in `delta` are already persisted to SQLite. Always publish
+        // non-empty deltas immediately; rate bounding lives in the emit worker,
+        // which conflates queued deltas per cycle.
         Ok(QueueOutputResult {
             delta: (!delta.is_empty()).then_some(delta),
             provider_conversation_id,

@@ -36,7 +36,7 @@ export interface DiscoveredProvider {
   /**
    * Tri-state auth signal: `null` = not installed or inconclusive probe,
    * `true` = logged in, `false` = installed but not authenticated. Advisory
-   * only — never used to hard-block.
+   * only; launches are never blocked by this value.
    */
   authenticated: boolean | null;
   modes: ProviderMode[];

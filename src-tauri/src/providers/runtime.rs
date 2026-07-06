@@ -253,10 +253,9 @@ fn launch_structured_via_pty(
 
     let mut master_file = File::from(master);
 
-    // Write the prompt payload (Codex reads its prompt from stdin) then
-    // send Ctrl-D so the child sees EOF and starts work. Claude/Cursor
-    // pass their prompt via argv and don't read stdin, but the EOF is
-    // harmless for them and matches the previous pipes-closed semantics.
+    // Write the prompt payload (Codex reads its prompt from stdin) then send
+    // Ctrl-D so the child sees EOF and starts work. Claude/Cursor pass their
+    // prompt via argv and ignore stdin, so the EOF is harmless for them.
     if let Some(payload) = (definition.structured_stdin)(input) {
         if let Err(error) = master_file.write_all(payload.as_bytes()) {
             let _ = child.kill();

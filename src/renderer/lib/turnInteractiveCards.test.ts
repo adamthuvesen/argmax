@@ -72,7 +72,7 @@ describe("turnInteractiveCards", () => {
     expect(hiddenToolIds).toEqual(new Set(["bad"]));
   });
 
-  it("hides legacy SendUserMessage tool rows when they cannot render a picker", () => {
+  it("hides raw SendUserMessage tool rows when they cannot render a picker", () => {
     const items: TurnToolItem[] = [
       {
         kind: "tool",

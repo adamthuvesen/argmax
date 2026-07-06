@@ -1,6 +1,6 @@
 /**
- * Safe JSON parsing helpers used to tolerate malformed JSON in stored DB
- * columns and other untrusted strings without crashing the surrounding
+ * Safe JSON parsing helpers for malformed JSON in stored DB columns and other
+ * untrusted strings without crashing the surrounding
  * pipeline. Designed for the dashboard read path where one corrupt row
  * should not blow up the whole snapshot.
  *
@@ -29,10 +29,8 @@ export function resetSafeJsonWarningsForTesting(): void {
 }
 
 function warnRateLimited(context: string | undefined, error: unknown): void {
-  // Context-less callers used to be silently dropped, which meant a corrupt
-  // row hit via `safeJsonParse(value)` (no context arg) gave zero
-  // observability. Treat undefined as a single shared "unknown" bucket so
-  // the warning still fires (rate-limited like any other context).
+  // Context-less callers share one warning bucket so syntax errors still get
+  // logged without flooding repeated dashboard reads.
   const key = context ?? "<unknown>";
   const now = Date.now();
   const last = lastWarnedAt.get(key) ?? 0;
@@ -44,11 +42,8 @@ function warnRateLimited(context: string | undefined, error: unknown): void {
 }
 
 /**
- * Returns the parsed JSON as `unknown` (never `T`). The previous `<T>`
- * generic was an unsafe cast that lied about runtime shape — every caller
- * already used `safeJsonParseArray` / `safeJsonParseRecord` (which narrow
- * properly) or `safeJsonParse<unknown>`. Drop the trap and force callers
- * through a narrowing helper.
+ * Returns the parsed JSON as `unknown`. Callers that need a typed shape should
+ * narrow through `safeJsonParseArray` or `safeJsonParseRecord`.
  */
 export function safeJsonParse(
   value: string | null | undefined,

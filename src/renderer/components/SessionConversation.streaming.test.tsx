@@ -567,7 +567,7 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getAllByText("@AGENTS.md", { selector: "p" })).toHaveLength(1);
   });
 
-  it("hides legacy sub-agent prompt echoes tagged with parent_tool_use_id", () => {
+  it("hides sub-agent prompt echoes tagged with parent_tool_use_id", () => {
     renderConversation(
       baseSession({ provider: "claude", state: "running" }),
       [

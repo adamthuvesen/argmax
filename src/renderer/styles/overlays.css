@@ -1,4 +1,4 @@
-/* Overlay surfaces — import order preserves the original monolithic cascade.
+/* Overlay surfaces — import order is part of the cascade contract.
    Inkwell (command palette + search) → review panel chrome → launcher/session. */
 
 @import url("./overlays-inkwell.css");

@@ -31,11 +31,9 @@ function ToolCallGroupBubbleInner({
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
   const rows = useMemo(() => buildGroupRows(group.tools), [group.tools]);
   const leadingTool = rows[0]?.tool ?? group.tools[0] ?? null;
-  // Collapsed by default to match Codex — the user clicks the chevron to
-  // reveal per-tool rows. defaultExpanded (from Settings) overrides. The
-  // error case used to auto-expand; that made groups inconsistent (failed
-  // groups open, successful groups closed) which read as noisy, so the
-  // error state now just colors the chevron + status dot on the header.
+  // Collapsed by default to match Codex — the user clicks the chevron to reveal
+  // per-tool rows. defaultExpanded (from Settings) overrides. Error state colors
+  // the chevron + status dot on the header without changing expansion.
   const localExpanded =
     userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
   const expanded = localExpanded ?? (defaultExpanded ?? false);

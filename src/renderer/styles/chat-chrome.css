@@ -644,7 +644,7 @@
 }
 
 /* Two-panel model picker: a flat model list plus a right-side effort submenu
-   opened by a row's "Edit" button (replaces the old one-row-per-effort list). */
+   opened by a row's "Edit" button. */
 .model-picker-flyout {
   position: absolute;
   bottom: calc(100% + 6px);

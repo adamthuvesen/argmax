@@ -5,9 +5,8 @@ import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
 import { themeAppearance } from "./theme.js";
 
-// Eager-loaded curated grammars per Ralph SPEC P4.04. Importing each language
-// module explicitly lets Vite tree-shake every grammar shiki bundles by default
-// (asciidoc, mdx, wolfram, etc) out of the renderer bundle.
+// Import each curated language module explicitly so Vite can tree-shake the
+// rest of Shiki's bundled grammars out of the renderer bundle.
 import typescript from "shiki/langs/typescript.mjs";
 import tsx from "shiki/langs/tsx.mjs";
 import javascript from "shiki/langs/javascript.mjs";

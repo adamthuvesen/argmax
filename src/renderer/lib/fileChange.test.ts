@@ -53,7 +53,7 @@ describe("interpretFileChange — Claude Write", () => {
     expect(change.hunks.length).toBeGreaterThan(0);
   });
 
-  it("renders text with spaces as a normal create preview (audit-2026-05-18 C1)", () => {
+  it("renders text with spaces as a normal create preview", () => {
     const { change } = firstChange("Write", {
       file_path: "/tmp/hello.ts",
       content: "export const hello = 'world';\n"
@@ -199,4 +199,3 @@ describe("interpretFileChange — fallback", () => {
     expect(interpretFileChange("Write", { content: "hi" })).toBeNull();
   });
 });
-

@@ -155,11 +155,10 @@
   min-width: 140px;
 }
 
-/* The IDE / pin / archive actions are hidden until hover or focus, yet the
-   resting label used to reserve their full clearance — stranding the truncated
-   "…" ~90px from the edge. Reserve the wide clearance only while those actions
-   are on screen; at rest the base padding (which already clears the tokens
-   badge) is enough, so the label runs close to the edge. */
+/* The IDE / pin / archive actions are hidden until hover or focus. Reserve the
+   wide clearance only while those actions are on screen; at rest the base
+   padding (which already clears the tokens badge) lets the label run close to
+   the edge. */
 .session-row:hover:has(.session-archive-btn) .session-link,
 .session-row:focus-within:has(.session-archive-btn) .session-link,
 .session-row:hover:has(.session-pin-btn) .session-link,

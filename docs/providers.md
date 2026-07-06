@@ -21,8 +21,8 @@ Provider protocol output is persisted for debugging but must not render as chat.
 On startup, orphan recovery marks sessions left in `running` as failed and
 terminates any detached provider CLI whose argv still references the Argmax
 session id or stored provider conversation id. Without that cleanup, an
-unobserved old Claude/Codex/Cursor process can keep working on the same resume
-id while the user tries to continue the session again.
+unobserved Claude/Codex/Cursor process can keep working on the same resume id
+while the user tries to continue the session again.
 
 Follow-up launches still use the provider resume id when available, but the
 prompt also includes a capped transcript of visible `user.message`,

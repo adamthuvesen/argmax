@@ -143,10 +143,10 @@ mod tests {
     }
 
     #[test]
-    fn strips_leading_colon_from_legacy_records() {
-        let raw = "src/foo.rs\0\x31\0:legacy content\0";
+    fn strips_leading_colon_from_match_preview() {
+        let raw = "src/foo.rs\0\x31\0:matched content\0";
         let parsed = parse_git_grep_output(raw, &options());
-        assert_eq!(parsed.files[0].matches[0].preview, "legacy content");
+        assert_eq!(parsed.files[0].matches[0].preview, "matched content");
     }
 
     #[test]

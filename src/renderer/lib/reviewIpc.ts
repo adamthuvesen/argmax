@@ -32,22 +32,17 @@ export interface ReviewIpcDispatch {
 
 /**
  * Factory that returns IPC callables already bound to a `target` (workspace
- * or project root). Centralizes the `if workspace then X else Y` branch that
- * was previously repeated across six free functions in `useReviewState`.
+ * or project root). Centralizes the `if workspace then X else Y` branch.
  *
  * Call sites that do not yet have an active target keep using `target` as a
  * gate — `target === null` ⇒ skip the call.
  */
 export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
   const { kind, id } = target;
-  // Consistent contract: every async method *rejects* when the bridge is
-  // missing instead of resolving with an empty default. The list flavors
-  // previously resolved `[]` while the diff/read flavors rejected, which
-  // made jsdom callers that forget to mock get silent empty lists from one
-  // call and visible errors from another. Sync flavors (`statFile`,
-  // `writeFile`) keep returning `null` so callers can gate the work without
-  // catching — the editor never wants to hit "save failed" because vitest
-  // didn't install a bridge.
+  // Consistent contract: async reads reject when the bridge is missing. Sync
+  // flavors (`statFile`, `writeFile`) return `null` so callers can gate work
+  // without catching; the editor should not show "save failed" in jsdom when
+  // a test intentionally does not install a bridge.
   const noBridge = (): Promise<never> => Promise.reject(new Error("bridge unavailable"));
   return {
     listChangedFiles: (comparison) => {

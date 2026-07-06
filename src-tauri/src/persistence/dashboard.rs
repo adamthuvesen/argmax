@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn load_dashboard_includes_compat_tail_and_approvals() {
+    fn load_dashboard_includes_event_tail_raw_tail_and_pending_approvals() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();
         seed_dashboard(&connection);
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn attention_counts_and_running_sessions_match_legacy_filters() {
+    fn attention_counts_and_running_sessions_match_dashboard_filters() {
         let database = Database::open_in_memory().expect("open db");
         let connection = database.connection();
         seed_dashboard(&connection);

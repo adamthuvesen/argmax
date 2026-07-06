@@ -56,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn approval_resolution_matches_legacy_statuses() {
+    fn approval_resolution_uses_persisted_status_strings() {
         assert_eq!(
             approval_resolution_as_str(ApprovalResolution::Approved),
             "approved"

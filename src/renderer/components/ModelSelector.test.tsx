@@ -25,7 +25,7 @@ describe("ModelSelector — one row per model", () => {
   it("lists one row per model, not one per effort", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Session model" });
-    // Four Claude models (Fable, Opus, Sonnet, Haiku) — the old picker had 12 rows.
+    // Four Claude models: Fable, Opus, Sonnet, Haiku.
     expect(within(list).getAllByRole("option")).toHaveLength(4);
     expect(within(list).getByText("Fable 5")).toBeInTheDocument();
     expect(within(list).getByText("Opus 4.8")).toBeInTheDocument();

@@ -461,11 +461,6 @@ fn apply_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
         if let Err(error) = window.set_zoom(zoom) {
             tracing::warn!(?error, zoom, "failed to set webview zoom");
         }
-        // Clear the old CSS-zoom implementation if the app was hot-reloaded
-        // from a build that had already touched body.style.zoom.
-        if let Err(error) = window.eval("document.body.style.zoom = ''") {
-            tracing::warn!(?error, "failed to clear old CSS body zoom");
-        }
     }
 }
 

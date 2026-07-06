@@ -75,18 +75,16 @@
   --duration-fast: 140ms;
   --duration-base: 220ms;
 
-  /* Motion tokens (Ralph SPEC F1). Future migrations should reference these
-     instead of inlining a duration + easing in each `transition:` declaration.
-     Existing `--duration-fast`/`--duration-base` predate the audit; keeping
-     them as aliases avoids a sweep through 90+ call sites this loop. */
+  /* Motion tokens. Prefer these over inlining a duration + easing in each
+     `transition:` declaration. */
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-slow: 240ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Spacing tokens (Ralph SPEC F2). New code should prefer these over raw
-     pixel values. docs/styling.md documents the full scale. */
+  /* Spacing tokens. Prefer these over raw pixel values. docs/styling.md
+     documents the full scale. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -96,10 +94,9 @@
   --space-7: 28px;
   --space-8: 32px;
 
-  /* Type-size tokens. Defaults preserve the historical Argmax scale, including
-     a few half steps from older surfaces. Whole-app font-size modes override
-     this block through concrete values on [data-font-size], so future settings
-     code only has to flip one html attribute. */
+  /* Type-size tokens. Whole-app font-size modes override this block through
+     concrete values on [data-font-size], so settings code only flips one html
+     attribute. */
   --text-4xs: 9px;
   --text-3xs: 9.5px;
   --text-2xs: 10px;
@@ -121,7 +118,7 @@
   --text-display: 23px;
   --text-terminal: 13px;
 
-  /* Focus ring (Ralph SPEC F4). Single source for every focus-visible style. */
+  /* Focus ring. Single source for every focus-visible style. */
   --ring: 0 0 0 2px color-mix(in oklab, var(--accent) 50%, transparent);
 
   /* Body grain — swapped per theme so the paper texture inverts to film grain

@@ -5,8 +5,8 @@ import { PROVIDER_INSTALL_HINTS } from "../lib/providerInstallHints.js";
 
 /**
  * Fresh-install onboarding surface. Renders when the user has no projects
- * registered yet — replaces the previous bare "Add a project" empty state
- * with a setup checklist that surfaces detected providers + install hints.
+ * registered yet, with a setup checklist that surfaces detected providers and
+ * install hints.
  *
  * The "Add Project" CTA is disabled until at least one provider is detected —
  * Argmax launches a CLI agent per session, so a project with zero installed

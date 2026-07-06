@@ -27,9 +27,8 @@ export function foldConversationItems(
   conversationEvents: readonly TimelineEvent[],
   toolCalls: readonly ToolCall[]
 ): ConversationItem[] {
-  // Pre-fold items hold only message/tool kinds — `tool-group` is built by
-  // the folding pass below. Narrowing the array type lets `itemTime` drop
-  // its previously-unreachable `tool-group` branch.
+  // Pre-fold items hold only message/tool kinds; `tool-group` is built by the
+  // folding pass below, so `itemTime` only handles concrete event/tool rows.
   type PreFoldItem = Extract<ConversationItem, { kind: "message" } | { kind: "tool" }>;
   const items: PreFoldItem[] = [
     ...conversationEvents.map((event) => ({ kind: "message" as const, event })),

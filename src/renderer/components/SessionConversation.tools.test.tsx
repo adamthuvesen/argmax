@@ -359,7 +359,7 @@ describe("SessionConversation — tools & chrome", () => {
         event(
           "m4",
           "message.completed",
-          "Tests still expect the old descriptive copy.",
+          "Tests still expect the descriptive copy.",
           "2026-07-01T08:12:41.851Z"
         )
       ]

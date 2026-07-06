@@ -11,9 +11,8 @@ export interface ToastMessage {
  * follow-up state mutations (refresh, selection updates) when the underlying
  * action did not complete.
  *
- * Consolidates the `try/catch + setToast` pattern that previously repeated at
- * every IPC call site in `App.tsx` — keeps the toast wording in one place per
- * action and trims a ~6-line block down to a single helper invocation.
+ * Keeps toast wording in one place per action and lets call sites stay focused
+ * on the state change after a successful IPC call.
  */
 export async function withToast(
   fn: () => Promise<unknown>,

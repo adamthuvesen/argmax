@@ -32,12 +32,12 @@ contextualized.
 
 An idle follow-up can also switch provider. When `providers:send-input` carries
 a `provider` that differs from the session's current one, `send_input` repoints
-the session to the new provider + model, clears the (provider-specific)
-`provider_conversation_id`, and relaunches fresh — Claude/Codex/Cursor resume ids
-don't translate, so the new agent rebuilds context from the same visible
-transcript rather than a native resume. Switching is gated to idle sessions: the
-composer locks the picker to the session's provider while a turn is running (a
-follow-up sent mid-turn queues and keeps the current provider), and a switch
+the session to the new provider + model, clears the provider-specific
+`provider_conversation_id`, and relaunches fresh. Claude/Codex/Cursor resume ids
+do not translate, so the new agent rebuilds context from the same visible
+transcript instead of using a native resume. Switching is gated to idle sessions:
+the composer locks the picker to the session's provider while a turn is running.
+A follow-up sent mid-turn queues and keeps the current provider. A switch
 requires `model_label`/`model_id` for the new provider. A `session.provider-changed`
 timeline marker records the handoff.
 

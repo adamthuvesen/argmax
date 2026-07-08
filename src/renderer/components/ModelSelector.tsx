@@ -547,7 +547,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                     }}
                   >
                     <span className="model-picker-name">Speed</span>
-                    <span className="model-picker-effort">{fastModeEnabled ? "Fast" : "Standard"}</span>
                     <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
                   </button>
                 </li>

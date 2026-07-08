@@ -645,8 +645,7 @@
 }
 
 .model-picker-popover {
-  min-width: 300px;
-  --model-picker-action-column: 42px;
+  min-width: 220px;
   /* Taller than the generic picker so the full model list fits with little or
      no scrolling. Opens upward in-session, so there's room above the composer. */
   max-height: 440px;
@@ -741,20 +740,9 @@
   text-overflow: ellipsis;
 }
 
-.model-picker-effort {
-  flex: none;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  font-weight: 400;
-  margin-left: auto;
-}
-
 .model-picker-item.model-picker-submenu-trigger {
   display: grid;
-  grid-template-columns:
-    minmax(0, 1fr)
-    auto
-    calc(var(--model-picker-action-column) - 8px);
+  grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 8px;
 }
 

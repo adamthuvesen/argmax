@@ -323,9 +323,8 @@ describe("accent CSS contract", () => {
     expect(projectItemRule).toContain("padding: 5px 9px;");
     expect(projectItemRule).toContain("font-size: var(--text-sm);");
     expect(projectItemRule).toContain("line-height: 1.35;");
-    expect(modelPopoverRule).toContain("--model-picker-action-column: 42px;");
+    expect(modelPopoverRule).toContain("min-width: 220px;");
     expect(modelItemRule).toContain("gap: 8px;");
-    expect(modelSubmenuTriggerRule).toContain("calc(var(--model-picker-action-column) - 8px)");
     expect(modelSubmenuTriggerRule).toContain("column-gap: 8px;");
     expect(groupLabelRule).toContain("font-size: var(--text-2xs);");
     expect(groupLabelRule).toContain("line-height: 1.2;");

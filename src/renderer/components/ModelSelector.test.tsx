@@ -87,7 +87,7 @@ describe("LaunchModelSelector — all providers", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
     const speedMenu = screen.getByRole("listbox", { name: "Speed" });
     expect(
       within(speedMenu)
@@ -136,7 +136,7 @@ describe("LaunchModelSelector — all providers", () => {
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-      fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Speed" }));
 
       const speedMenu = screen.getByRole("listbox", { name: "Speed" });
       expect(speedMenu.getAttribute("style") ?? "").toContain("--model-submenu-top: 320px");
@@ -184,7 +184,7 @@ describe("LaunchModelSelector — all providers", () => {
       />
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
     fireEvent.click(within(screen.getByRole("listbox", { name: "Speed" })).getByRole("button", { name: "Fast" }));
     expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
   });
@@ -260,7 +260,7 @@ describe("LaunchModelSelector — all providers", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
     const speedMenu = screen.getByRole("listbox", { name: "Speed" });
     const fastButton = within(speedMenu).getByRole("button", { name: "Fast" });
     expect(fastButton).toBeEnabled();

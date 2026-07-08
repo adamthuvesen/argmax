@@ -1,6 +1,6 @@
 # Argmax
 
-[![CI](https://github.com/adamthuvesen/argmax/actions/workflows/ci.yml/badge.svg)](https://github.com/adamthuvesen/argmax/actions/workflows/ci.yml) ![License](https://img.shields.io/github/license/adamthuvesen/argmax) ![Rust](https://img.shields.io/badge/rust-1.95%2B-orange)
+![License](https://img.shields.io/github/license/adamthuvesen/argmax) ![Rust](https://img.shields.io/badge/rust-1.95%2B-orange)
 
 <p align="center">
   <img src="assets/icon.png" alt="Argmax purple mascot" width="96" height="96">

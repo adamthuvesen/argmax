@@ -235,10 +235,6 @@ pub fn extract_usage(
     })
 }
 
-pub fn should_drop_sub_agent_prose(payload: &Map<String, Value>) -> bool {
-    string_value(payload.get("parent_tool_use_id")).is_some()
-}
-
 /// When a skill is activated, Claude injects the skill's full `SKILL.md` body
 /// as a synthetic `user` message so the model can read its instructions. That
 /// body is meant for the model, not the user — surfacing it briefly flashes the
@@ -477,6 +473,34 @@ mod tests {
             &mut context,
         );
         assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(
+            result.events[0].payload["parent_tool_use_id"],
+            "toolu_parent_task"
+        );
+    }
+
+    #[test]
+    fn claude_sub_agent_prose_is_persisted_with_parent_tool_use_id() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                &json!({
+                    "type": "assistant",
+                    "parent_tool_use_id": "toolu_parent_task",
+                    "message": {
+                        "content": [
+                            { "type": "text", "text": "I checked the renderer surface." }
+                        ]
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "message.completed");
+        assert_eq!(result.events[0].message, "I checked the renderer surface.");
         assert_eq!(
             result.events[0].payload["parent_tool_use_id"],
             "toolu_parent_task"

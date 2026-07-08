@@ -9,6 +9,10 @@ pub(super) fn compose_follow_up_prompt(
     session_id: &str,
     message: &str,
 ) -> ArgmaxResult<String> {
+    // Child-agent rows are hidden from the visible transcript, so they must
+    // not resurface here: Claude child prose carries `parent_tool_use_id`,
+    // trace-imported Codex/Cursor rows carry `traceImported`, and live Codex
+    // child messages are `agent_message` payloads with thread linkage.
     let mut statement = connection
         .prepare(
             r#"
@@ -17,6 +21,16 @@ pub(super) fn compose_follow_up_prompt(
             WHERE session_id = ?
               AND type IN ('user.message', 'message.completed', 'error')
               AND trim(message) <> ''
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+              AND json_extract(payload_json, '$.traceImported') IS NULL
+              AND NOT (
+                (json_extract(payload_json, '$.item_type') = 'agent_message'
+                  OR json_extract(payload_json, '$.item.type') = 'agent_message')
+                AND (json_extract(payload_json, '$.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.sender_thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.sender_thread_id') IS NOT NULL)
+              )
             ORDER BY rowid DESC
             LIMIT ?
             "#,
@@ -89,7 +103,7 @@ mod tests {
         database::Database,
         events::{persist_timeline_event, PersistTimelineEventInput},
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     #[test]
     fn follow_up_prompt_reads_latest_messages_only() {
@@ -145,6 +159,54 @@ mod tests {
         assert!(!prompt.contains("large 1"));
         assert!(prompt.contains("large 2"));
         assert!(prompt.contains("large 3"));
+    }
+
+    #[test]
+    fn follow_up_prompt_excludes_child_agent_rows() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        seed_session(&connection);
+        let rows: [(&str, &str, Value); 5] = [
+            ("user.message", "real question", json!({})),
+            (
+                "message.completed",
+                "claude child prose",
+                json!({ "parent_tool_use_id": "toolu_1" }),
+            ),
+            (
+                "message.completed",
+                "imported child message",
+                json!({ "parent_tool_use_id": "toolu_1", "traceImported": true }),
+            ),
+            (
+                "message.completed",
+                "codex child message",
+                json!({ "item_type": "agent_message", "thread_id": "thread-child" }),
+            ),
+            ("message.completed", "real answer", json!({})),
+        ];
+        for (index, (event_type, message, payload)) in rows.into_iter().enumerate() {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: format!("event-{index}"),
+                    session_id: "s1".to_string(),
+                    r#type: event_type.to_string(),
+                    message: message.to_string(),
+                    payload,
+                    created_at: Some(format!("2026-05-24T10:00:{index:02}.000Z")),
+                },
+            )
+            .expect("insert event");
+        }
+
+        let prompt = compose_follow_up_prompt(&connection, "s1", "next").expect("prompt");
+
+        assert!(prompt.contains("User: real question"));
+        assert!(prompt.contains("Assistant: real answer"));
+        assert!(!prompt.contains("claude child prose"));
+        assert!(!prompt.contains("imported child message"));
+        assert!(!prompt.contains("codex child message"));
     }
 
     fn seed_session(connection: &rusqlite::Connection) {

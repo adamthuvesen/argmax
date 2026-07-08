@@ -35,6 +35,7 @@ export const IPC_CHANNELS = [
   "approvals:resolve",
   "approvals:pending",
   "session:events-since",
+  "session:agent-events",
   "review:list-changed-files",
   "review:load-diff",
   "review:list-changed-files-for-project",

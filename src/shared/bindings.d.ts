@@ -256,6 +256,14 @@ async sessionEventsSince(input: SessionEventsSinceInput) : Promise<Result<Sessio
     else return { status: "error", error: e  as any };
 }
 },
+async sessionAgentEvents(input: SessionAgentEventsInput) : Promise<Result<SessionEventsSinceResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_agent_events", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async reviewListChangedFiles(input: ReviewListChangedFilesInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files", { input }) };
@@ -721,6 +729,7 @@ export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number
 export type SaveImageResult = { filePath: string; sizeBytes: number }
 export type SearchQuery = string
 export type SendInputResult = { ok: boolean; queued: boolean }
+export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: NonEmptyString }
 export type SessionCostSummary = { sessionId: string; modelId: string | null; tokens: UsageCounts; costUsd: number }
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }

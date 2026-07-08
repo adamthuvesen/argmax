@@ -645,7 +645,10 @@ mod tests {
                 ..launch_input(ProviderId::Cursor)
             };
             let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
-            let i = args.iter().position(|a| a == "--model").expect("model flag");
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
             assert_eq!(args[i + 1], expected, "{model_id} fast");
         }
     }
@@ -660,8 +663,12 @@ mod tests {
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
         };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_resume_args)(&input, "conv-1");
-        let i = args.iter().position(|a| a == "--model").expect("model flag");
+        let args =
+            (get_provider_definition(ProviderId::Cursor).structured_resume_args)(&input, "conv-1");
+        let i = args
+            .iter()
+            .position(|a| a == "--model")
+            .expect("model flag");
         assert_eq!(args[i + 1], "claude-opus-4-8-max-fast");
     }
 
@@ -675,7 +682,10 @@ mod tests {
             ..launch_input(ProviderId::Cursor)
         };
         let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
-        let i = args.iter().position(|a| a == "--model").expect("model flag");
+        let i = args
+            .iter()
+            .position(|a| a == "--model")
+            .expect("model flag");
         assert_eq!(args[i + 1], "gemini-3.5-flash");
     }
 
@@ -696,7 +706,10 @@ mod tests {
                 ..launch_input(ProviderId::Cursor)
             };
             let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
-            let i = args.iter().position(|a| a == "--model").expect("model flag");
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
             assert_eq!(args[i + 1], expected, "gpt-5.5 effort {effort:?}");
         }
     }
@@ -717,7 +730,10 @@ mod tests {
                 ..launch_input(ProviderId::Cursor)
             };
             let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
-            let i = args.iter().position(|a| a == "--model").expect("model flag");
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
             assert_eq!(args[i + 1], expected, "opus effort {effort:?}");
         }
     }
@@ -731,7 +747,10 @@ mod tests {
             ..launch_input(ProviderId::Cursor)
         };
         let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
-        let i = args.iter().position(|a| a == "--model").expect("model flag");
+        let i = args
+            .iter()
+            .position(|a| a == "--model")
+            .expect("model flag");
         assert_eq!(args[i + 1], "composer-2.5");
     }
 

@@ -1320,7 +1320,11 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
         }
         tokio::time::sleep(Duration::from_millis(2)).await;
     }
-    assert_eq!(service.open_handle_count(), 1, "follow-up handle is pending");
+    assert_eq!(
+        service.open_handle_count(),
+        1,
+        "follow-up handle is pending"
+    );
     assert!(
         !service.is_handle_resolved(&session_id),
         "follow-up handle should still be spawning",

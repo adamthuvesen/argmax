@@ -332,6 +332,38 @@ mod tests {
     }
 
     #[test]
+    fn cursor_task_tool_call_surfaces_as_agent_launch() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                &json!({
+                    "type": "tool_call",
+                    "subtype": "started",
+                    "call_id": "call_task",
+                    "tool_call": {
+                        "taskToolCall": {
+                            "args": {
+                                "description": "Map renderer surface",
+                                "prompt": "Inspect the renderer files."
+                            }
+                        }
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events[0].r#type, "command.started");
+        assert_eq!(result.events[0].message, "taskToolCall");
+        assert_eq!(result.events[0].payload["call_id"], "call_task");
+        assert_eq!(
+            result.events[0].payload["input"]["description"],
+            "Map renderer surface"
+        );
+    }
+
+    #[test]
     fn cursor_ask_user_question_args_flatten_for_question_card() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(

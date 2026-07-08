@@ -39,6 +39,9 @@ mod tests {
 
     #[test]
     fn rejects_other_schemes() {
-        assert_eq!(extract_scheme_url_path("argmax-asset", "https://example.com/x"), None);
+        assert_eq!(
+            extract_scheme_url_path("argmax-asset", "https://example.com/x"),
+            None
+        );
     }
 }

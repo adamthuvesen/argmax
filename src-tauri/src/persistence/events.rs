@@ -62,6 +62,10 @@ pub struct SessionEventsSinceResult {
 
 pub const SESSION_EVENT_PAGE_LIMIT: usize = 500;
 pub const SESSION_RAW_OUTPUT_PAGE_LIMIT: usize = 100;
+// `session:agent-events` scans the session tail on every pane poll, so the
+// scan must stay bounded. An agent tail lives in the recent slice of its
+// session; sized to the renderer's protected-event budget.
+pub const SESSION_AGENT_EVENT_SCAN_LIMIT: usize = 2000;
 
 pub fn list_session_events_since(
     connection: &Connection,
@@ -80,6 +84,56 @@ pub fn list_session_events_since(
         raw_outputs: raw_output_rows,
         event_cursor: next_event_cursor,
         raw_output_cursor: next_raw_output_cursor,
+    })
+}
+
+pub fn list_session_agent_events(
+    connection: &Connection,
+    session_id: &str,
+    parent_tool_use_id: &str,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    let rows = list_newest_event_rows(connection, session_id, SESSION_AGENT_EVENT_SCAN_LIMIT)?;
+    let mut receiver_thread_ids = std::collections::HashSet::new();
+    let mut child_tool_use_ids = std::collections::HashSet::new();
+    let mut included_ids = std::collections::HashSet::new();
+
+    for row in &rows {
+        if is_parent_agent_event(row, parent_tool_use_id) {
+            included_ids.insert(row.id.clone());
+            receiver_thread_ids.extend(receiver_thread_ids_for_payload(&row.payload));
+        }
+        if parent_tool_use_id_for_payload(&row.payload) == Some(parent_tool_use_id) {
+            included_ids.insert(row.id.clone());
+            if row.r#type == "command.started" {
+                if let Some(tool_use_id) = tool_use_id_for_payload(&row.payload) {
+                    child_tool_use_ids.insert(tool_use_id.to_string());
+                }
+            }
+        }
+    }
+
+    for row in &rows {
+        if child_tool_use_ids.iter().any(|tool_use_id| {
+            completion_id_for_payload(&row.payload) == Some(tool_use_id.as_str())
+        }) {
+            included_ids.insert(row.id.clone());
+        }
+        if is_agent_message_for_threads(&row.payload, &receiver_thread_ids) {
+            included_ids.insert(row.id.clone());
+        }
+    }
+
+    let events = rows
+        .into_iter()
+        .filter(|row| included_ids.contains(&row.id))
+        .collect::<Vec<_>>();
+    let next_event_cursor = max_row_cursor(&events, 0);
+
+    Ok(SessionEventsSinceResult {
+        events,
+        raw_outputs: Vec::new(),
+        event_cursor: next_event_cursor,
+        raw_output_cursor: 0,
     })
 }
 
@@ -116,6 +170,67 @@ pub fn persist_timeline_event(
         created_at,
         row_cursor: Some(connection.last_insert_rowid()),
     })
+}
+
+pub fn persist_timeline_event_if_absent(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<bool> {
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
+    let mut statement = prepared(
+        connection,
+        r#"
+        INSERT OR IGNORE INTO events (id, session_id, type, message, payload_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    let rows = statement
+        .execute((
+            input.id.as_str(),
+            input.session_id.as_str(),
+            input.r#type.as_str(),
+            input.message.as_str(),
+            payload_json.as_str(),
+            created_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(rows > 0)
+}
+
+/// A Cursor trace import persists a synthetic `traceNoOutput` completion in
+/// the sequence slot the tool's real result will occupy once the child
+/// transcript catches up. The real completion then arrives under the same
+/// deterministic id, so `INSERT OR IGNORE` would keep the placeholder forever.
+/// Upgrade it in place (same rowid, so cursors and ordering are untouched).
+pub fn upgrade_trace_no_output_completion(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<bool> {
+    if input.r#type != "command.completed" || input.payload.get("traceNoOutput").is_some() {
+        return Ok(false);
+    }
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
+    let mut statement = prepared(
+        connection,
+        r#"
+        UPDATE events
+        SET message = ?, payload_json = ?, created_at = ?
+        WHERE id = ? AND json_extract(payload_json, '$.traceNoOutput') = true
+        "#,
+    )
+    .map_err(sqlite_error)?;
+    let rows = statement
+        .execute((
+            input.message.as_str(),
+            payload_json.as_str(),
+            created_at.as_str(),
+            input.id.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(rows > 0)
 }
 
 pub fn persist_raw_output(
@@ -225,6 +340,24 @@ fn list_event_rows(
     }
 }
 
+fn list_newest_event_rows(
+    connection: &Connection,
+    session_id: &str,
+    limit: usize,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = prepared(
+        connection,
+        "SELECT * FROM (SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
+    )
+    .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id, limit as i64), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
 fn list_raw_output_rows(
     connection: &Connection,
     session_id: &str,
@@ -298,6 +431,91 @@ fn parse_event_payload(payload_json: &str) -> Value {
             })
         }
     }
+}
+
+fn object_field<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
+    value.as_object().and_then(|object| object.get(key))
+}
+
+fn string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    object_field(value, key).and_then(Value::as_str)
+}
+
+fn object_path_string<'a>(value: &'a Value, first: &str, second: &str) -> Option<&'a str> {
+    object_field(value, first)
+        .and_then(Value::as_object)
+        .and_then(|object| object.get(second))
+        .and_then(Value::as_str)
+}
+
+fn tool_use_id_for_payload(payload: &Value) -> Option<&str> {
+    string_field(payload, "id").or_else(|| string_field(payload, "call_id"))
+}
+
+fn completion_id_for_payload(payload: &Value) -> Option<&str> {
+    string_field(payload, "tool_use_id")
+        .or_else(|| string_field(payload, "id"))
+        .or_else(|| string_field(payload, "call_id"))
+}
+
+fn parent_tool_use_id_for_payload(payload: &Value) -> Option<&str> {
+    string_field(payload, "parent_tool_use_id")
+}
+
+fn receiver_thread_ids_for_payload(payload: &Value) -> Vec<String> {
+    let mut ids = Vec::new();
+    for value in [
+        object_field(payload, "receiver_thread_ids"),
+        object_field(payload, "input")
+            .and_then(Value::as_object)
+            .and_then(|input| input.get("receiver_thread_ids")),
+    ] {
+        let Some(array) = value.and_then(Value::as_array) else {
+            continue;
+        };
+        ids.extend(
+            array
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(str::to_string),
+        );
+    }
+    ids
+}
+
+fn is_parent_agent_event(row: &TimelineEvent, parent_tool_use_id: &str) -> bool {
+    match row.r#type.as_str() {
+        "command.started" => tool_use_id_for_payload(&row.payload) == Some(parent_tool_use_id),
+        "command.completed" => completion_id_for_payload(&row.payload) == Some(parent_tool_use_id),
+        _ => false,
+    }
+}
+
+fn is_agent_message_for_threads(
+    payload: &Value,
+    receiver_thread_ids: &std::collections::HashSet<String>,
+) -> bool {
+    if receiver_thread_ids.is_empty() {
+        return false;
+    }
+    let item_type = object_field(payload, "item")
+        .and_then(Value::as_object)
+        .and_then(|item| item.get("type"))
+        .and_then(Value::as_str)
+        .or_else(|| string_field(payload, "item_type"));
+    if item_type != Some("agent_message") {
+        return false;
+    }
+    [
+        string_field(payload, "thread_id"),
+        string_field(payload, "sender_thread_id"),
+        object_path_string(payload, "item", "thread_id"),
+        object_path_string(payload, "item", "sender_thread_id"),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|id| receiver_thread_ids.contains(id))
 }
 
 fn raw_output_row_to_provider_output(row: &Row<'_>) -> rusqlite::Result<RawProviderOutput> {

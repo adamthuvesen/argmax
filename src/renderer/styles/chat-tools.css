@@ -294,6 +294,107 @@
   background: rgba(0, 0, 0, 0.02);
 }
 
+/* Context-window ring — a compact gauge grouped with the model + effort it
+   describes (the "agent state" cluster). A hairline divider *after* it splits
+   that cluster from the git status (branch, changes) to its right, mirroring
+   the group separator between chip groups. Its popover is fixed-positioned so
+   it escapes any overflow-clipping ancestor. */
+.context-ring-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding-right: 12px;
+  margin-right: 4px;
+}
+
+.context-ring-anchor::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background: var(--line);
+  opacity: 0.6;
+}
+
+.context-ring-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.context-ring-trigger:hover {
+  background: var(--panel-soft);
+}
+
+.context-ring-svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+/* Opens upward, left-aligned to the ring — same as the model/effort pickers in
+   this toolbar (which aren't clipped opening up). */
+.context-ring-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 224px;
+  padding: 14px 16px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.context-ring-title {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.context-ring-headline {
+  margin: 4px 0 10px;
+  color: var(--muted-strong);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-ring-bar {
+  height: 6px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  background: var(--panel-sunken);
+  overflow: hidden;
+}
+
+.context-ring-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.context-ring-tokens {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-ring-model {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: var(--text-2xs-plus);
+}
+
 .checks-list {
   display: flex;
   flex-direction: column;

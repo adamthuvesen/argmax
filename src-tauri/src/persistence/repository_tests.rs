@@ -374,6 +374,40 @@ fn event_approval_check_and_usage_repositories_round_trip() {
         .expect("session context");
     assert_eq!(context_tokens, 17); // 10 input + 3 cache_read + 4 cache_write
     assert_eq!(context_window, Some(272_000));
+
+    // A second turn: token/cost counters accumulate, but context_tokens is
+    // OVERWRITTEN with only this turn's input side, and context_window is
+    // preserved via COALESCE when the turn reports none.
+    insert_usage_event(
+        &connection,
+        &InsertUsageEventInput {
+            session_id: "s1".to_owned(),
+            event_id: Some("e2".to_owned()),
+            model_id: "gpt-5.5".to_owned(),
+            tokens: UsageCounts {
+                input: 5,
+                output: 6,
+                cache_read: 1,
+                cache_write: 0,
+            },
+            cost_usd: 0.10,
+            context_window: None,
+            created_at: Some("2026-05-24T10:06:00.000Z".to_owned()),
+        },
+    )
+    .expect("insert second usage");
+    let after = get_session_cost_summary(&connection, "s1").expect("cost summary");
+    assert_eq!(after.tokens.input, 15); // 10 + 5 accumulated
+    assert_eq!(after.tokens.output, 26); // 20 + 6 accumulated
+    let (context_tokens, context_window): (i64, Option<i64>) = connection
+        .query_row(
+            "SELECT context_tokens, context_window FROM sessions WHERE id = 's1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("session context");
+    assert_eq!(context_tokens, 6); // overwritten: 5 input + 1 cache_read + 0
+    assert_eq!(context_window, Some(272_000)); // preserved through COALESCE(None)
 }
 
 #[test]

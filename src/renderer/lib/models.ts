@@ -33,19 +33,22 @@ export function optionKey(model: Pick<ProviderModelSelection, "modelId">): strin
   return model.modelId;
 }
 
-export function providerSupportsFastMode(provider: ProviderId): boolean {
-  return provider !== "cursor";
-}
-
-export function modelSupportsFastMode(model: Pick<ModelPickerSelection, "provider">): boolean {
-  return providerSupportsFastMode(model.provider);
+// Cursor serves a faster variant of each model as a `-fast` id suffix — every
+// Cursor model has one except Gemini 3.5 Flash (already a fast model). Claude
+// and Codex fast mode is provider-wide (a settings flag / priority tier), not
+// tied to the model. Kept in sync with the Rust cursor adapter's -fast mapping.
+export function modelSupportsFastMode(model: Pick<ModelPickerSelection, "provider" | "modelId">): boolean {
+  if (model.provider !== "cursor") return true;
+  return model.modelId !== "gemini-3.5-flash";
 }
 
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: "Low",
   medium: "Medium",
   high: "High",
-  xhigh: "Extra High"
+  xhigh: "Extra High",
+  max: "Max",
+  ultra: "Ultra"
 };
 
 export function effortLabel(reasoningEffort: ReasoningEffort): string {

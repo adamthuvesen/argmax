@@ -69,6 +69,18 @@
   font-weight: 400;
 }
 
+/* Model + effort are one unit, so sit the effort chip tight to the model — much
+   closer than the gap out to the rest of the toolbar. */
+.composer-chips-model,
+.composer-context-group--model {
+  gap: 0;
+}
+
+.composer-chips-model .effort-slider-chip,
+.composer-context-group--model .effort-slider-chip {
+  padding-left: 3px;
+}
+
 .session-input-toolbar .model-picker-label {
   min-width: 0;
   overflow: hidden;

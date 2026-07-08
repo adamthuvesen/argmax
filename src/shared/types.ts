@@ -318,6 +318,11 @@ export interface SessionSummary {
   lastActivityAt: string;
   costUsd?: number;
   tokens?: UsageCounts;
+  /** Input-side tokens of the latest turn — the live context-window occupancy. */
+  contextTokens?: number;
+  /** The model's context window when the provider reports it (Codex); the
+   *  renderer otherwise falls back to a per-model table. */
+  contextWindow?: number | null;
 }
 
 /**

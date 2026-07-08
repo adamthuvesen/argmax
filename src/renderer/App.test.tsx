@@ -714,7 +714,8 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
-    // Sonnet is effort-capable, so picking it seeds the default Medium effort.
+    // The launcher defaults to Opus at High; switching to Sonnet (also
+    // effort-capable) carries that High over rather than resetting to Medium.
     fireEvent.click(within(launchPopover).getByText("Sonnet 5"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
@@ -728,7 +729,7 @@ describe("App", () => {
         prompt: "Review this change",
         modelLabel: "Sonnet 5",
         modelId: "claude-sonnet-5",
-        reasoningEffort: "medium",
+        reasoningEffort: "high",
         fastMode: false,
         agentMode: "auto",
         permissionMode: "auto-approve",
@@ -746,7 +747,8 @@ describe("App", () => {
     fireEvent.click(modelToggle);
     expect(modelToggle).toHaveAttribute("aria-expanded", "true");
 
-    fireEvent.click(screen.getByText("Codex"));
+    // Click inert popover chrome (the listbox padding, not an option button).
+    fireEvent.click(await screen.findByRole("listbox", { name: "Switch model" }));
     expect(modelToggle).toHaveAttribute("aria-expanded", "false");
   });
 

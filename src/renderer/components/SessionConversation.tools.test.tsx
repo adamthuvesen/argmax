@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   baseSession,
@@ -79,7 +79,11 @@ describe("SessionConversation — tools & chrome", () => {
 
     expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
     expect(screen.getByText("Worked for 1s")).toBeInTheDocument();
-    expect(screen.queryByText("Opus 4.8")).toBeNull();
+    // The model name belongs to the composer chip, not the turn header — scope
+    // the check to the header so the composer's own "Opus 4.8" doesn't count.
+    const turnHeader = screen.getByText("Worked for 1s").closest(".turn-block-header");
+    expect(turnHeader).not.toBeNull();
+    expect(turnHeader && within(turnHeader as HTMLElement).queryByText("Opus 4.8")).toBeNull();
   });
 
   it("collapses a single MCP tool row when the turn chip is toggled", () => {

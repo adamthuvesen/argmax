@@ -816,6 +816,134 @@
   justify-content: space-between;
 }
 
+/* ---- Model + effort cluster ----
+   The cluster is layout-transparent (display: contents) so the model chip and
+   the effort chip sit as siblings in the surrounding chip group, spaced by its
+   gap. In settings (no effort slider) it collapses to just the model anchor. */
+.model-picker-cluster {
+  display: contents;
+}
+
+.effort-slider-anchor {
+  flex: 0 0 auto;
+}
+
+.effort-slider-chip {
+  white-space: nowrap;
+}
+
+/* Effort popover — opens upward in-session (mirrors the model flyout); the
+   launcher override below flips it downward. */
+.effort-slider-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: 232px;
+  padding: 12px 14px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.composer-context .effort-slider-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+.effort-slider-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.effort-slider-caption {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.effort-slider-current {
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+/* Track hosts a clipped accent pixel field (the <canvas> that fills to the
+   current effort and streams left→right) and a draggable thumb on top. The
+   track itself does not clip, so the thumb is free to reach the edges. */
+.effort-slider-track {
+  position: relative;
+  height: 22px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+/* Rounded rail that clips the pixel field to the pill shape. */
+.effort-slider-fieldclip {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--panel-sunken);
+}
+
+/* Overscans the rail (top/bottom/right) so sparks thrown off the beam aren't
+   clipped; the fill inside still aligns to the rail band. Keep the overscan
+   values in sync with OVERSCAN_* in EffortPixelField.tsx. */
+.effort-pixel-field {
+  position: absolute;
+  left: 0;
+  top: -15px;
+  width: calc(100% + 14px);
+  height: calc(100% + 30px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Thumb rides on --effort-pos (0..1) across the track's inner width, so its
+   travel exactly spans the rail. Glides to the snapped stop unless dragging.
+   A light rounded plate holds the mascot so it reads against the accent field. */
+.effort-slider-thumb {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--effort-pos, 0) * (100% - 26px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-1); /* theme-aware lift; the border carries definition */
+  transform: translateY(-50%);
+  transition: left 170ms var(--ease);
+  pointer-events: none;
+  z-index: 2; /* above the overscanned pixel/spark canvas */
+}
+
+.effort-slider-thumb .mascot {
+  animation: none; /* the thumb is the moving element; keep the mascot steady */
+  /* The art fills only the top 12 of the 16-row viewBox (bottom rows are bob
+     padding), so nudge it down to optically center inside the plate. */
+  transform: translateY(2px);
+}
+
+.effort-slider-thumb[data-dragging] {
+  transition: none;
+}
+
+.effort-slider-track:focus-visible .effort-slider-thumb {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
 .project-picker-item {
   display: flex;
   align-items: center;

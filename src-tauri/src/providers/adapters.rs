@@ -175,13 +175,18 @@ fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
 // append "-fast" after the effort suffix for every model that has a fast variant
 // — all but Gemini 3.5 Flash. The renderer only enables the Speed toggle for
 // those, so this mirrors it.
+//
+// Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
+// and the spellings from `cursor-agent --list-models`) rather than a prefix, so
+// a future non-parameterized `gpt-5.5-*`/`claude-opus-4-8-*` model passes
+// through untouched instead of being silently rewritten to a different model.
 fn cursor_model_for(
     model_id: &str,
     reasoning_effort: Option<ReasoningEffort>,
     fast_mode: bool,
 ) -> String {
-    let with_effort = match reasoning_effort {
-        Some(effort) if model_id.starts_with("gpt-5.5") => {
+    let with_effort = match (model_id, reasoning_effort) {
+        ("gpt-5.5-medium", Some(effort)) => {
             let suffix = match effort {
                 ReasoningEffort::Low => "low",
                 ReasoningEffort::Medium => "medium",
@@ -192,7 +197,7 @@ fn cursor_model_for(
             };
             format!("gpt-5.5-{suffix}")
         }
-        Some(effort) if model_id.starts_with("claude-opus-4-8") => {
+        ("claude-opus-4-8-medium", Some(effort)) => {
             let suffix = match effort {
                 ReasoningEffort::Low => "low",
                 ReasoningEffort::Medium => "medium",
@@ -628,6 +633,9 @@ mod tests {
                 Some(ReasoningEffort::Xhigh),
                 "claude-opus-4-8-xhigh-fast",
             ),
+            // Fast on an effort-capable model with no effort set keeps the base
+            // -medium alias and just appends -fast.
+            ("gpt-5.5-medium", None, "gpt-5.5-medium-fast"),
         ];
         for (model_id, effort, expected) in cases {
             let input = ProviderLaunchInput {
@@ -640,6 +648,21 @@ mod tests {
             let i = args.iter().position(|a| a == "--model").expect("model flag");
             assert_eq!(args[i + 1], expected, "{model_id} fast");
         }
+    }
+
+    #[test]
+    fn cursor_resume_applies_the_same_effort_fast_mapping() {
+        // The resume arg builder shares cursor_model_for, so effort/fast fold
+        // into --model on resume exactly as on launch.
+        let input = ProviderLaunchInput {
+            model_id: "claude-opus-4-8-medium".to_string(),
+            reasoning_effort: Some(ReasoningEffort::Max),
+            fast_mode: true,
+            ..launch_input(ProviderId::Cursor)
+        };
+        let args = (get_provider_definition(ProviderId::Cursor).structured_resume_args)(&input, "conv-1");
+        let i = args.iter().position(|a| a == "--model").expect("model flag");
+        assert_eq!(args[i + 1], "claude-opus-4-8-max-fast");
     }
 
     #[test]

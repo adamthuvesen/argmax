@@ -1,7 +1,10 @@
 .mascot {
-  --mascot-body: #9b6dd4;
+  /* The mascot wears the app's chosen accent, so it recolors with the accent
+     picked in settings (sage default, purple/orange/blue/neutral, per theme)
+     everywhere it appears. The rain dots are a softer wash of the same accent. */
+  --mascot-body: var(--accent);
   --mascot-eye: #1c1b18;
-  --mascot-rain: #c4b3e0;
+  --mascot-rain: color-mix(in oklab, var(--accent) 58%, var(--panel));
 
   display: inline-block;
   overflow: visible;
@@ -35,7 +38,7 @@
 
 /* Rest state (empty composer → send disabled). Muted and theme-aware so the
    mascot recedes into the palette instead of blaring near-white on the dark
-   canvas; it blooms to the purple --mascot-body the moment there's text to
+   canvas; it blooms to the accent --mascot-body the moment there's text to
    send (mood flips sad → idle). */
 .mascot[data-mood="sad"] {
   animation: mascot-droop 2.6s var(--ease) infinite;

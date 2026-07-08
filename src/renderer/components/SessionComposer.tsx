@@ -35,6 +35,7 @@ import {
 import { leadingSlashCommand } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
@@ -367,6 +368,7 @@ export function SessionComposer({
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                showEffortControl
                 ariaLabel="Session model"
               />
             ) : (
@@ -377,11 +379,13 @@ export function SessionComposer({
                 onChange={setSelectedModel}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                showEffortControl
                 ariaLabel="Session model"
               />
             )}
           </div>
         ) : null}
+        {session ? <ContextRing session={session} /> : null}
         {workspace ? (
           <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
             {workspace.sharedWorkspace ? null : (

@@ -15,6 +15,12 @@ export interface ProviderModelOption {
    * which render without an effort control.
    */
   supportsReasoningEffort?: boolean;
+  /**
+   * Context-window size in tokens. Used to show window occupancy when the
+   * provider doesn't report it on the session (Codex does; Claude/Cursor fall
+   * back to this). Approximate — revisit when a provider changes its window.
+   */
+  contextWindow?: number;
   description?: string;
   badge?: string;
 }
@@ -30,8 +36,41 @@ export interface ProviderModelSelection {
   reasoningEffort?: ReasoningEffort;
 }
 
-/** Effort levels offered in the picker, low → high. There is no "max". */
-export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
+/** All effort levels, low → high. Claude exposes the full list; other providers
+ *  stop at Extra High — their CLIs don't accept Max/Ultra (the Rust adapters
+ *  clamp any that slip through, e.g. after a provider switch). */
+export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
+
+/**
+ * Effort levels a given model offers in the picker, low → high. Claude's own
+ * models run the full low→ultra list; Codex and Cursor's GPT-5.5 stop at Extra
+ * High; Cursor's Opus 4.8 goes one further to Max (its CLI exposes that variant
+ * but not Ultra). Kept in sync with the Rust adapters' effort → model mapping.
+ */
+export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
+  if (provider === "claude") return REASONING_EFFORTS; // low → ultra
+  if (provider === "cursor" && modelId.startsWith("claude-opus-4-8")) {
+    return REASONING_EFFORTS.slice(0, 5); // low → max
+  }
+  return REASONING_EFFORTS.slice(0, 4); // low → xhigh
+}
+
+/**
+ * Carry an effort onto a target model's supported levels when switching model
+ * or provider. Keeps it if the target supports it (xhigh maps directly — every
+ * effort-capable model has it); otherwise clamps DOWN to the highest the target
+ * allows. Never promotes: a Codex xhigh selection switched to Claude stays
+ * xhigh, it does not jump to Ultra. Returns undefined when there's no effort to
+ * map. `efforts` must be a low→high prefix of REASONING_EFFORTS.
+ */
+export function clampEffort(
+  effort: ReasoningEffort | undefined,
+  efforts: readonly ReasoningEffort[]
+): ReasoningEffort | undefined {
+  if (!effort || efforts.length === 0) return undefined;
+  if (efforts.includes(effort)) return effort;
+  return efforts[efforts.length - 1];
+}
 
 /** Effort an effort-capable model gets when first picked (before Edit). */
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
@@ -40,25 +79,31 @@ export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 // submenu, not by selecting a different row. Models without
 // `supportsReasoningEffort` are fast/no-effort and hide the effort control.
 //
-// NOTE: Cursor's `modelId`s keep their `-medium` alias because that is the
-// identifier the Cursor CLI actually accepts — its CLI has no reasoning-effort
-// flag, so effort for Cursor is UI-only (persisted, not sent). Do not rewrite
-// these ids from the chosen effort.
+// NOTE: Cursor's `modelId`s keep their `-medium` alias as a stable base — the
+// Cursor CLI selects reasoning effort through the model id (e.g. gpt-5.5-high,
+// claude-opus-4-8-xhigh), so the Rust cursor adapter folds the chosen effort
+// into the launched `--model` variant. Keep the picker's id stable; effort
+// rides in `reasoningEffort`.
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
-    { label: "Fable 5", modelId: "claude-fable-5", supportsReasoningEffort: true },
-    { label: "Opus 4.8", modelId: "claude-opus-4-8", supportsReasoningEffort: true },
-    { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true },
-    { label: "Haiku 4.5", modelId: "claude-haiku-4-5" }
+    { label: "Fable 5", modelId: "claude-fable-5", supportsReasoningEffort: true, contextWindow: 200_000 },
+    { label: "Opus 4.8", modelId: "claude-opus-4-8", supportsReasoningEffort: true, contextWindow: 200_000 },
+    { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
+    { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
   codex: [
-    { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true }
+    { label: "GPT-5.5", modelId: "gpt-5.5", supportsReasoningEffort: true, contextWindow: 272_000 }
   ],
   cursor: [
-    { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" },
-    { label: "Gemini 3.5 Flash (Cursor)", modelId: "gemini-3.5-flash" },
-    { label: "GPT-5.5 (Cursor)", modelId: "gpt-5.5-medium", supportsReasoningEffort: true },
-    { label: "Claude Opus 4.8 (Cursor)", modelId: "claude-opus-4-8-medium", supportsReasoningEffort: true }
+    { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
+    { label: "Gemini 3.5 Flash (Cursor)", modelId: "gemini-3.5-flash", contextWindow: 1_000_000 },
+    { label: "GPT-5.5 (Cursor)", modelId: "gpt-5.5-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    {
+      label: "Claude Opus 4.8 (Cursor)",
+      modelId: "claude-opus-4-8-medium",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000
+    }
   ]
 };
 
@@ -198,4 +243,18 @@ export function costOf(usage: UsageCounts, modelId: string): number {
 /** Test-only hook to reset the unknown-model log dedupe. */
 export function __resetUnknownModelLog(): void {
   loggedUnknownModels.clear();
+}
+
+/**
+ * The model's context-window size in tokens from its definition, or null when
+ * unknown. Codex reports its own window on the session row; Claude and Cursor
+ * fall back to this.
+ */
+export function contextWindowForModel(modelId: string): number | null {
+  const id = normalizeModelId(modelId);
+  for (const models of Object.values(PROVIDER_MODELS)) {
+    const match = models.find((model) => model.modelId === id);
+    if (match?.contextWindow) return match.contextWindow;
+  }
+  return null;
 }

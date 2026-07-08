@@ -80,6 +80,13 @@ pub struct SessionSummary {
     pub last_activity_at: String,
     pub cost_usd: f64,
     pub tokens: UsageCounts,
+    /// Input-side tokens of the latest turn — the live context-window occupancy
+    /// (overwritten each turn, not cumulative like `tokens`).
+    pub context_tokens: i64,
+    /// The model's context-window size, when the provider reports it (Codex).
+    /// The renderer falls back to a per-model table when this is null.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<i64>,
 }
 
 pub fn list_sessions_for_dashboard(
@@ -393,6 +400,8 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
             cache_read: row.get("cache_read_tokens")?,
             cache_write: row.get("cache_write_tokens")?,
         },
+        context_tokens: row.get("context_tokens")?,
+        context_window: row.get("context_window")?,
     })
 }
 

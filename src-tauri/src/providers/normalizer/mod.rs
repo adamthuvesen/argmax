@@ -107,6 +107,10 @@ pub struct NormalizedUsage {
     pub tokens: UsageCounts,
     pub cost_usd: f64,
     pub event_id: Option<String>,
+    /// The model's context-window size when the provider reports it (Codex's
+    /// token_count carries it). None for providers that don't; the renderer
+    /// falls back to a per-model table.
+    pub context_window: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]

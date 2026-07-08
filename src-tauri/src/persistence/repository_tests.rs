@@ -353,6 +353,7 @@ fn event_approval_check_and_usage_repositories_round_trip() {
                 cache_write: 4,
             },
             cost_usd: 0.42,
+            context_window: Some(272_000),
             created_at: Some("2026-05-24T10:05:00.000Z".to_owned()),
         },
     )
@@ -361,6 +362,18 @@ fn event_approval_check_and_usage_repositories_round_trip() {
     assert_eq!(summary.model_id.as_deref(), Some("gpt-5.5"));
     assert_eq!(summary.tokens.output, 20);
     assert_eq!(summary.cost_usd, 0.42);
+
+    // context_tokens is the latest turn's input side (input + cache read/write),
+    // and context_window is stored from the reported value.
+    let (context_tokens, context_window): (i64, Option<i64>) = connection
+        .query_row(
+            "SELECT context_tokens, context_window FROM sessions WHERE id = 's1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("session context");
+    assert_eq!(context_tokens, 17); // 10 input + 3 cache_read + 4 cache_write
+    assert_eq!(context_window, Some(272_000));
 }
 
 #[test]

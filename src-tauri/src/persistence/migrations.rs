@@ -44,6 +44,22 @@ pub static WORKSPACES_AUTO_LABEL_COLUMNS: phf::Map<&'static str, &'static [&'sta
     ] as &'static [&'static str],
 };
 
+// Post-v5 `sessions` shape: the v1 column set plus the two context-window
+// columns. `context_tokens` is the input-side size of the latest turn (the live
+// window occupancy, overwritten each turn — not cumulative like the token
+// counts); `context_window` is the model's max, set only when the provider
+// reports it (Codex does).
+pub static SESSIONS_CONTEXT_WINDOW_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "cache_read_tokens", "cache_write_tokens",
+        "completed_at", "context_tokens", "context_window", "cost_usd", "id",
+        "input_tokens", "last_activity_at", "last_model_id", "model_id",
+        "model_label", "output_tokens", "permission_mode", "prompt", "provider",
+        "provider_conversation_id", "reasoning_effort", "started_at", "state",
+        "workspace_id",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -127,7 +143,23 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &WORKSPACES_AUTO_LABEL_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 5,
+        name: "session_context_window",
+        up: SESSION_CONTEXT_WINDOW,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSIONS_CONTEXT_WINDOW_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Tracks context-window usage per session. `context_tokens` is overwritten with
+// the latest turn's input-side token count (what's sitting in the window right
+// now); `context_window` holds the model's max when the provider reports it.
+const SESSION_CONTEXT_WINDOW: &str = r#"
+ALTER TABLE sessions ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN context_window INTEGER;
+"#;
 
 // Tracks whether `task_label` is still the auto-generated title (1) or has been
 // renamed by the user (0). The session-title generator only overwrites while
@@ -647,9 +679,13 @@ mod tests {
         let mut connection = Connection::open_in_memory().expect("open db");
         run_migrations(&mut connection).expect("migrate");
 
-        for table in ["projects", "sessions", "events", "learnings"] {
+        for table in ["projects", "events", "learnings"] {
             verify_table_columns(&connection, &EXPECTED_COLUMNS, table).expect(table);
         }
+        // sessions gained context-window columns in v5, so verify it against the
+        // head shape rather than the v1 EXPECTED_COLUMNS.
+        verify_table_columns(&connection, &SESSIONS_CONTEXT_WINDOW_COLUMNS, "sessions")
+            .expect("sessions");
 
         let fts_tables: Vec<String> = connection
             .prepare(
@@ -678,6 +714,7 @@ mod tests {
                 (2, compute_migration_checksum(DASHBOARD_READ_INDEXES)),
                 (3, compute_migration_checksum(DASHBOARD_EXTRA_READ_INDEXES)),
                 (4, compute_migration_checksum(WORKSPACE_AUTO_LABEL_FLAG)),
+                (5, compute_migration_checksum(SESSION_CONTEXT_WINDOW)),
             ]
         );
 

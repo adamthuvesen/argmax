@@ -246,17 +246,23 @@ pub fn extract_usage(
     provider_type: Option<&str>,
     context: &NormalizerSessionContext,
 ) -> Option<NormalizedUsage> {
-    let raw_usage = if provider_type == Some("event_msg") {
-        let inner = object_value(payload.get("payload"))?;
-        if string_value(inner.get("type")) == Some("token_count") {
-            object_value(inner.get("info"))
-                .and_then(|info| object_value(info.get("last_token_usage")))
-        } else {
-            None
-        }
+    // token_count events also carry the model's context window in `info`; capture
+    // it so the session can show window occupancy. turn.completed has no window.
+    let info = if provider_type == Some("event_msg") {
+        object_value(payload.get("payload"))
+            .filter(|inner| string_value(inner.get("type")) == Some("token_count"))
+            .and_then(|inner| object_value(inner.get("info")))
     } else if provider_type == Some("token_count") {
         object_value(payload.get("info"))
-            .and_then(|info| object_value(info.get("last_token_usage")))
+    } else {
+        None
+    };
+    let context_window = info
+        .map(|info| number_value(info.get("model_context_window")))
+        .filter(|window| *window > 0);
+
+    let raw_usage = if let Some(info) = info {
+        object_value(info.get("last_token_usage"))
     } else if provider_type == Some("turn.completed") {
         object_value(payload.get("usage"))
     } else {
@@ -285,6 +291,7 @@ pub fn extract_usage(
         model_id,
         tokens,
         event_id: None,
+        context_window,
     })
 }
 
@@ -719,6 +726,19 @@ mod tests {
         assert_eq!(result.usages[0].model_id, "gpt-5.5");
         assert_eq!(result.usages[0].tokens.input, 60);
         assert_eq!(result.usages[0].tokens.cache_read, 40);
+    }
+
+    #[test]
+    fn codex_token_count_captures_model_context_window() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"token_count","info":{"model_context_window":272000,"last_token_usage":{"input_tokens":100,"output_tokens":10}}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(result.usages[0].context_window, Some(272_000));
     }
 
     #[test]

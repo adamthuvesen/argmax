@@ -700,7 +700,7 @@ export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
 export type RawProviderOutput = { id: string; sessionId: string; stream: string; content: string; createdAt: string; rowCursor: number | null }
-export type ReasoningEffort = "low" | "medium" | "high" | "xhigh"
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 export type RelativePath = string
 export type RepoPath = string
 /**
@@ -728,7 +728,17 @@ export type SessionEventsSinceResult = { events: TimelineEvent[]; rawOutputs: Ra
 export type SessionId = string
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
-export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string; startedAt: string; completedAt: string | null; lastActivityAt: string; costUsd: number; tokens: UsageCounts }
+export type SessionSummary = { id: string; workspaceId: string; provider: string; modelLabel: string; modelId: string; reasoningEffort?: string | null; permissionMode: string; agentMode?: string | null; providerConversationId: string | null; prompt: string; state: string; attention: string; startedAt: string; completedAt: string | null; lastActivityAt: string; costUsd: number; tokens: UsageCounts; 
+/**
+ * Input-side tokens of the latest turn — the live context-window occupancy
+ * (overwritten each turn, not cumulative like `tokens`).
+ */
+contextTokens: number; 
+/**
+ * The model's context-window size, when the provider reports it (Codex).
+ * The renderer falls back to a per-model table when this is null.
+ */
+contextWindow?: number | null }
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }

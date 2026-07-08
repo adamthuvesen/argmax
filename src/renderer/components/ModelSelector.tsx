@@ -17,8 +17,8 @@ import {
   allModelOptions,
   effortLabel,
   modelSupportsFastMode,
-  modelValue,
-  optionKey,
+  providerModelKey,
+  modelKey,
   type ModelPickerSelection
 } from "../lib/models.js";
 
@@ -57,9 +57,6 @@ function availabilityAnnotation(
   return {};
 }
 
-/** Minimum shape the picker needs from each selectable value. */
-type PickerValue = { label: string; modelId: string; reasoningEffort?: ReasoningEffort };
-
 type SubmenuStyle = CSSProperties & {
   "--model-submenu-top"?: string;
   "--model-submenu-bottom"?: string;
@@ -84,7 +81,7 @@ export function ModelSelector({
   onFastModeEnabledChange,
   onChange,
   provider,
-  showEffortControl = false,
+  withEffortSlider = false,
   value
 }: {
   ariaLabel: string;
@@ -92,11 +89,11 @@ export function ModelSelector({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onChange: (model: ProviderModelSelection) => void;
   provider: ProviderId;
-  showEffortControl?: boolean;
+  withEffortSlider?: boolean;
   value: ProviderModelSelection;
 }): JSX.Element {
   const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map((model) => ({
-    key: optionKey(model),
+    key: modelKey(model),
     label: model.label,
     supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
     value: {
@@ -115,7 +112,7 @@ export function ModelSelector({
       onFastModeEnabledChange={onFastModeEnabledChange}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(provider, model.modelId)}
-      showEffortControl={showEffortControl}
+      withEffortSlider={withEffortSlider}
       supportsFastModeForValue={(model) => modelSupportsFastMode({ provider, modelId: model.modelId })}
       value={value}
     />
@@ -132,7 +129,7 @@ export function LaunchModelSelector({
   onChange,
   onFastModeEnabledChange,
   open,
-  showEffortControl = false,
+  withEffortSlider = false,
   value
 }: {
   ariaLabel: string;
@@ -144,11 +141,11 @@ export function LaunchModelSelector({
   onChange: (model: ModelPickerSelection) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   open?: boolean;
-  showEffortControl?: boolean;
+  withEffortSlider?: boolean;
   value: ModelPickerSelection;
 }): JSX.Element {
   const options: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map((model) => ({
-    key: modelValue(model),
+    key: providerModelKey(model),
     label: model.label,
     group: PROVIDER_GROUP_LABEL[model.provider],
     supportsReasoningEffort: model.supportsReasoningEffort,
@@ -174,7 +171,7 @@ export function LaunchModelSelector({
       open={open}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(model.provider, model.modelId)}
-      showEffortControl={showEffortControl}
+      withEffortSlider={withEffortSlider}
       supportsFastModeForValue={modelSupportsFastMode}
       value={value}
     />
@@ -330,7 +327,7 @@ function EffortSlider({
             onPointerCancel={() => setDragging(false)}
           >
             <div className="effort-slider-fieldclip">
-              <EffortPixelField level={fraction} speed={fraction} />
+              <EffortPixelField level={fraction} flowRate={fraction} />
             </div>
             <div
               className="effort-slider-thumb"
@@ -347,7 +344,7 @@ function EffortSlider({
   );
 }
 
-function ChipModelPicker<T extends PickerValue>({
+function ChipModelPicker<T extends ProviderModelSelection>({
   ariaLabel,
   anchorClassName,
   fastModeEnabled,
@@ -359,7 +356,7 @@ function ChipModelPicker<T extends PickerValue>({
   open: controlledOpen,
   options,
   reasoningEffortsForValue,
-  showEffortControl = false,
+  withEffortSlider = false,
   supportsFastModeForValue = alwaysSupportsFastMode,
   value
 }: {
@@ -378,13 +375,13 @@ function ChipModelPicker<T extends PickerValue>({
   reasoningEffortsForValue: (value: T) => readonly ReasoningEffort[];
   /** Show a standalone effort slider beside the chip and drop the effort suffix
    *  from the model label. Off in settings, where effort stays in the label. */
-  showEffortControl?: boolean;
+  withEffortSlider?: boolean;
   supportsFastModeForValue?: (value: T) => boolean;
   value: T;
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [effortMenuFor, setEffortMenuFor] = useState<string | null>(null);
-  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
+  const [effortMenuOpenFor, setEffortMenuOpenFor] = useState<string | null>(null);
+  const [fastModeMenuOpen, setFastModeMenuOpen] = useState(false);
   const [submenuOffset, setSubmenuOffset] = useState<{ top: number; bottom: number } | null>(null);
   const open = controlledOpen ?? internalOpen;
   const setOpen = (next: boolean | ((open: boolean) => boolean)): void => {
@@ -393,8 +390,8 @@ function ChipModelPicker<T extends PickerValue>({
       setInternalOpen(nextValue);
     }
     if (!nextValue) {
-      setEffortMenuFor(null);
-      setSpeedMenuOpen(false);
+      setEffortMenuOpenFor(null);
+      setFastModeMenuOpen(false);
       setSubmenuOffset(null);
     }
     onOpenChange?.(nextValue);
@@ -403,7 +400,10 @@ function ChipModelPicker<T extends PickerValue>({
   const primaryListRef = useRef<HTMLUListElement | null>(null);
   useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
   const selectedSupportsFastMode = supportsFastModeForValue(value);
-  const canChangeSpeed = Boolean(onFastModeEnabledChange) && selectedSupportsFastMode;
+  // Fast mode is surfaced as a submenu the UI labels "Speed" (Standard / Fast);
+  // picking "Fast" flips fastModeEnabled. The code below uses the fast-mode name
+  // throughout — "Speed" stays only in the visible copy.
+  const canChangeFastMode = Boolean(onFastModeEnabledChange) && selectedSupportsFastMode;
   const effectiveFastModeEnabled = fastModeEnabled && selectedSupportsFastMode;
 
   const selectedOption = options.find((option) => isSelected(option.value));
@@ -417,8 +417,8 @@ function ChipModelPicker<T extends PickerValue>({
     selectedShowsEffort && value.reasoningEffort
       ? `${value.label} · ${effortLabel(value.reasoningEffort)}`
       : value.label;
-  const selectedLabel = showEffortControl ? value.label : selectedTitle;
-  const showEffortSlider = showEffortControl && selectedShowsEffort && value.reasoningEffort != null;
+  const selectedLabel = withEffortSlider ? value.label : selectedTitle;
+  const showEffortSlider = withEffortSlider && selectedShowsEffort && value.reasoningEffort != null;
 
   // Effort a row would use if picked: the current effort carried over and
   // clamped to what the row's model supports (fast models show nothing). This
@@ -453,7 +453,7 @@ function ChipModelPicker<T extends PickerValue>({
     setOpen(false);
   };
 
-  const selectSpeed = (enabled: boolean): void => {
+  const setFastMode = (enabled: boolean): void => {
     onFastModeEnabledChange?.(enabled);
     setOpen(false);
   };
@@ -480,8 +480,8 @@ function ChipModelPicker<T extends PickerValue>({
       }
     : undefined;
 
-  const editingOption = effortMenuFor
-    ? options.find((option) => option.key === effortMenuFor && option.supportsReasoningEffort && !option.disabled) ?? null
+  const editingOption = effortMenuOpenFor
+    ? options.find((option) => option.key === effortMenuOpenFor && option.supportsReasoningEffort && !option.disabled) ?? null
     : null;
 
   return (
@@ -526,7 +526,7 @@ function ChipModelPicker<T extends PickerValue>({
             {options.map((option, index) => {
               const selected = isSelected(option.value);
               const previousGroup = index > 0 ? options[index - 1]?.group : null;
-              const editing = option.key === effortMenuFor;
+              const editing = option.key === effortMenuOpenFor;
               return (
                 <Fragment key={option.key}>
                   {option.group && index > 0 && option.group !== previousGroup ? (
@@ -563,10 +563,10 @@ function ChipModelPicker<T extends PickerValue>({
                         aria-expanded={editing}
                         title="Change reasoning effort"
                         onClick={(event) => {
-                          setSpeedMenuOpen(false);
-                          const nextEffortMenuFor = effortMenuFor === option.key ? null : option.key;
-                          setEffortMenuFor(nextEffortMenuFor);
-                          if (nextEffortMenuFor) {
+                          setFastModeMenuOpen(false);
+                          const nextEffortMenuOpenFor = effortMenuOpenFor === option.key ? null : option.key;
+                          setEffortMenuOpenFor(nextEffortMenuOpenFor);
+                          if (nextEffortMenuOpenFor) {
                             if (!isSelected(option.value)) {
                               onChange(selectionForOption(option));
                             }
@@ -583,19 +583,19 @@ function ChipModelPicker<T extends PickerValue>({
                 </Fragment>
               );
             })}
-            {canChangeSpeed ? (
+            {canChangeFastMode ? (
               <>
                 <li className="model-picker-divider" role="separator" />
                 <li role="presentation" className="model-picker-row model-picker-speed-row">
                   <button
                     type="button"
                     className="project-picker-item model-picker-item model-picker-submenu-trigger"
-                    aria-expanded={speedMenuOpen}
+                    aria-expanded={fastModeMenuOpen}
                     onClick={(event) => {
-                      setEffortMenuFor(null);
-                      const nextSpeedMenuOpen = !speedMenuOpen;
-                      setSpeedMenuOpen(nextSpeedMenuOpen);
-                      if (nextSpeedMenuOpen) {
+                      setEffortMenuOpenFor(null);
+                      const nextFastModeMenuOpen = !fastModeMenuOpen;
+                      setFastModeMenuOpen(nextFastModeMenuOpen);
+                      if (nextFastModeMenuOpen) {
                         anchorSubmenuTo(event.currentTarget);
                       } else {
                         setSubmenuOffset(null);
@@ -637,7 +637,7 @@ function ChipModelPicker<T extends PickerValue>({
               })}
             </ul>
           ) : null}
-          {speedMenuOpen && canChangeSpeed ? (
+          {fastModeMenuOpen && canChangeFastMode ? (
             <ul
               className="project-picker-popover model-speed-popover"
               role="listbox"
@@ -652,7 +652,7 @@ function ChipModelPicker<T extends PickerValue>({
                   type="button"
                   className="project-picker-item model-effort-item"
                   aria-pressed={!fastModeEnabled}
-                  onClick={() => selectSpeed(false)}
+                  onClick={() => setFastMode(false)}
                 >
                   <span>Standard</span>
                 </button>
@@ -663,7 +663,7 @@ function ChipModelPicker<T extends PickerValue>({
                   className="project-picker-item model-effort-item"
                   aria-pressed={fastModeEnabled}
                   title="Faster responses, increased usage"
-                  onClick={() => selectSpeed(true)}
+                  onClick={() => setFastMode(true)}
                 >
                   <span>Fast</span>
                 </button>

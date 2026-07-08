@@ -622,7 +622,7 @@ export function LaunchSurface({
               fastModeEnabled={fastModeEnabled}
               open={modelPickerOpen}
               onOpenChange={setModelPickerOpen}
-              showEffortControl
+              withEffortSlider
               value={model}
               onChange={onModelChange}
               onFastModeEnabledChange={onFastModeEnabledChange}

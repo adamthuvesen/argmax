@@ -496,20 +496,20 @@ describe("LaunchModelSelector — provider availability gating", () => {
 });
 
 describe("ModelSelector — standalone effort slider", () => {
-  it("without showEffortControl the effort rides in the model label, no slider", () => {
+  it("without withEffortSlider the effort rides in the model label, no slider", () => {
     render(<ModelSelector ariaLabel="Session model" provider="claude" value={OPUS_MEDIUM} onChange={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Opus 4.8 · Medium");
     expect(screen.queryByRole("button", { name: "Session model effort" })).toBeNull();
   });
 
-  it("with showEffortControl the model label drops the effort and a chip shows it", () => {
+  it("with withEffortSlider the model label drops the effort and a chip shows it", () => {
     render(
       <ModelSelector
         ariaLabel="Session model"
         provider="claude"
         value={OPUS_MEDIUM}
         onChange={vi.fn()}
-        showEffortControl
+        withEffortSlider
       />
     );
     const modelButton = screen.getByRole("button", { name: "Session model" });
@@ -522,7 +522,7 @@ describe("ModelSelector — standalone effort slider", () => {
 
   it("hides the effort chip for a no-effort (fast) model", () => {
     render(
-      <ModelSelector ariaLabel="Session model" provider="claude" value={HAIKU} onChange={vi.fn()} showEffortControl />
+      <ModelSelector ariaLabel="Session model" provider="claude" value={HAIKU} onChange={vi.fn()} withEffortSlider />
     );
     expect(screen.queryByRole("button", { name: "Session model effort" })).toBeNull();
   });
@@ -535,7 +535,7 @@ describe("ModelSelector — standalone effort slider", () => {
         provider="claude"
         value={OPUS_MEDIUM}
         onChange={onChange}
-        showEffortControl
+        withEffortSlider
       />
     );
     const chip = screen.getByRole("button", { name: "Session model effort" });
@@ -571,7 +571,7 @@ describe("ModelSelector — standalone effort slider", () => {
       modelId: "gpt-5.5",
       reasoningEffort: "medium"
     };
-    render(<LaunchModelSelector ariaLabel="Session model" value={value} onChange={vi.fn()} showEffortControl />);
+    render(<LaunchModelSelector ariaLabel="Session model" value={value} onChange={vi.fn()} withEffortSlider />);
     fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
     const dialog = screen.getByRole("dialog", { name: "Session model effort" });
     expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "3");
@@ -585,7 +585,7 @@ describe("ModelSelector — standalone effort slider", () => {
       reasoningEffort: "medium"
     };
     const { unmount } = render(
-      <LaunchModelSelector ariaLabel="Session model" value={gpt} onChange={vi.fn()} showEffortControl />
+      <LaunchModelSelector ariaLabel="Session model" value={gpt} onChange={vi.fn()} withEffortSlider />
     );
     fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
     expect(
@@ -602,7 +602,7 @@ describe("ModelSelector — standalone effort slider", () => {
       modelId: "claude-opus-4-8-medium",
       reasoningEffort: "medium"
     };
-    render(<LaunchModelSelector ariaLabel="Session model" value={opus} onChange={vi.fn()} showEffortControl />);
+    render(<LaunchModelSelector ariaLabel="Session model" value={opus} onChange={vi.fn()} withEffortSlider />);
     fireEvent.click(screen.getByRole("button", { name: "Session model effort" }));
     expect(
       within(screen.getByRole("dialog", { name: "Session model effort" })).getByRole("slider", {

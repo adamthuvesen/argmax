@@ -2,14 +2,14 @@ import { useEffect, useRef, type JSX } from "react";
 import { hash, readAccent, vnoise, type Rgb } from "../lib/pixelField.js";
 
 // Accent pixel mosaic for the effort slider. It fills the track from the left up
-// to `level` (0..1) and streams left→right; `speed` (0..1) sets the current's
+// to `level` (0..1) and streams left→right; `flowRate` (0..1) sets the current's
 // rate, so a higher effort visibly flows faster. Brighter toward the fill edge
 // so the mosaic reads as intensity. At the highest efforts the leading edge
 // throws off sparks — pixels that fan out past the rail as if it's overheating.
 // Purely decorative — the slider on top owns interaction.
 
 const CELL = 5; // logical px per pixel-cell
-// Scroll rate (phase units per ms) = BASE + RANGE * speed^CURVE. `speed` is the
+// Scroll rate (phase units per ms) = BASE + RANGE * flowRate^CURVE. `flowRate` is the
 // continuous thumb position, so during a drag the rate rises smoothly the whole
 // way from one stop to the next. The mild curve keeps the four stops clearly
 // separated (medium well below high, high below xhigh) without flattening the
@@ -42,16 +42,16 @@ const SPARK_SPREAD = Math.PI * 0.82; // half-fan (±) around the +x axis: right,
 
 type Spark = { x: number; y: number; vx: number; vy: number; life: number };
 
-export function EffortPixelField({ level, speed }: { level: number; speed: number }): JSX.Element {
+export function EffortPixelField({ level, flowRate }: { level: number; flowRate: number }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const levelRef = useRef(level);
-  const speedRef = useRef(speed);
+  const flowRateRef = useRef(flowRate);
 
   // Live values the rAF loop reads without re-running its setup effect.
   useEffect(() => {
     levelRef.current = level;
-    speedRef.current = speed;
-  }, [level, speed]);
+    flowRateRef.current = flowRate;
+  }, [level, flowRate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -69,7 +69,7 @@ export function EffortPixelField({ level, speed }: { level: number; speed: numbe
     let height = 0;
     let raf = 0;
     let shownLevel = levelRef.current; // eased fill, so snaps glide instead of jumping
-    let shownSpeed = speedRef.current; // eased rate, so a step change ramps up/down
+    let shownSpeed = flowRateRef.current; // eased rate, so a step change ramps up/down
     let scroll = 0; // accumulated flow phase (advanced by dt*rate, never now*rate)
     let last = 0;
     const sparks: Spark[] = [];
@@ -178,7 +178,7 @@ export function EffortPixelField({ level, speed }: { level: number; speed: numbe
       const dt = last === 0 ? 16 : Math.min(64, now - last);
       last = now;
       shownLevel += (levelRef.current - shownLevel) * 0.2;
-      shownSpeed += (speedRef.current - shownSpeed) * 0.2;
+      shownSpeed += (flowRateRef.current - shownSpeed) * 0.2;
       const rate = BASE_SPEED + SPEED_RANGE * Math.pow(shownSpeed, SPEED_CURVE);
       scroll += dt * rate;
       paint();

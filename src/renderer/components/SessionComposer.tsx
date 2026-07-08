@@ -368,7 +368,7 @@ export function SessionComposer({
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
-                showEffortControl
+                withEffortSlider
                 ariaLabel="Session model"
               />
             ) : (
@@ -379,7 +379,7 @@ export function SessionComposer({
                 onChange={setSelectedModel}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
-                showEffortControl
+                withEffortSlider
                 ariaLabel="Session model"
               />
             )}

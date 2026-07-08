@@ -6,13 +6,17 @@ import type { ProviderId } from "./types.js";
 export type ReasoningEffort = BindingReasoningEffort;
 export type ProviderLaunchMode = "interactive-pty" | "structured-json";
 
+/** One model in a provider's catalog: display label, CLI id, and capabilities
+ *  (effort support, context window, badges). */
 export interface ProviderModelOption {
   label: string;
   modelId: string;
   /**
    * When true, the model exposes an editable reasoning effort (Low → Extra
    * High). Omit for fast / non-reasoning models (Haiku, Cursor Composer 2.5)
-   * which render without an effort control.
+   * which render without an effort control. This is the model's capability;
+   * whether a given picker surface renders the standalone slider is the
+   * separate `withEffortSlider` prop on the ModelSelector.
    */
   supportsReasoningEffort?: boolean;
   /**
@@ -25,11 +29,15 @@ export interface ProviderModelOption {
   badge?: string;
 }
 
+/** A {@link ProviderModelOption} plus how to launch it (launch mode and a
+ *  seeded effort). Used for each provider's default model. */
 export interface ProviderModelDefault extends ProviderModelOption {
   launchMode: ProviderLaunchMode;
   reasoningEffort?: ReasoningEffort;
 }
 
+/** A model the user has chosen — only what's needed to launch and display it,
+ *  without the catalog metadata of {@link ProviderModelOption}. */
 export interface ProviderModelSelection {
   label: string;
   modelId: string;

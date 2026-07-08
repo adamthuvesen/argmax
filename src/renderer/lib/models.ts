@@ -8,9 +8,12 @@ import {
 } from "../../shared/providerModels.js";
 import type { DiscoveredProvider, ProviderId, SessionCostSummary, SessionSummary } from "../../shared/types.js";
 
+/** A {@link ProviderModelSelection} plus its provider, for the composer picker
+ *  that spans providers (an idle session can switch agent). */
 export type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId };
 
-/** A picker row: a model plus whether it exposes an editable effort. */
+/** A picker row: a {@link ModelPickerSelection} plus whether the model exposes
+ *  an editable reasoning effort (fast models don't). */
 export type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort: boolean };
 
 export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[])
@@ -24,12 +27,14 @@ export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS
     }))
   );
 
-// One row per model now, so the key no longer encodes effort.
-export function modelValue(model: Pick<ModelPickerSelection, "provider" | "modelId">): string {
+// One row per model now, so the key no longer encodes effort. The cross-provider
+// picker needs the provider in the key (model ids can repeat across providers);
+// a single-provider picker keys on the model id alone.
+export function providerModelKey(model: Pick<ModelPickerSelection, "provider" | "modelId">): string {
   return `${model.provider}:${model.modelId}`;
 }
 
-export function optionKey(model: Pick<ProviderModelSelection, "modelId">): string {
+export function modelKey(model: Pick<ProviderModelSelection, "modelId">): string {
   return model.modelId;
 }
 

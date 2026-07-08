@@ -645,8 +645,7 @@
 }
 
 .model-picker-popover {
-  min-width: 300px;
-  --model-picker-action-column: 42px;
+  min-width: 220px;
   /* Taller than the generic picker so the full model list fits with little or
      no scrolling. Opens upward in-session, so there's room above the composer. */
   max-height: 440px;
@@ -657,8 +656,8 @@
   max-height: min(440px, calc(100dvh - 96px));
 }
 
-/* Two-panel model picker: a flat model list plus a right-side effort submenu
-   opened by a row's "Edit" button. */
+/* Two-panel model picker: a flat model list plus a right-side Speed submenu
+   opened by the Speed row (fast-capable providers only). */
 .model-picker-flyout {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -683,19 +682,9 @@
   bottom: auto;
 }
 
-.model-effort-popover {
-  min-width: 160px;
-  margin-bottom: var(--model-submenu-bottom, 0);
-}
-
 .model-speed-popover {
   min-width: 230px;
   margin-bottom: var(--model-submenu-bottom, 0);
-}
-
-.composer-context .model-effort-popover {
-  margin-top: var(--model-submenu-top, 0);
-  margin-bottom: 0;
 }
 
 .composer-context .model-speed-popover {
@@ -708,7 +697,6 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-right: var(--model-picker-action-column); /* Reserve space for the absolute Edit button */
   border-radius: var(--radius-sm);
   position: relative;
   transition: background var(--duration-fast) var(--ease);
@@ -720,10 +708,6 @@
 
 .model-picker-row[aria-selected="true"] {
   background: var(--panel-sunken);
-}
-
-.model-picker-speed-row {
-  padding-right: 0;
 }
 
 .model-picker-divider {
@@ -756,20 +740,9 @@
   text-overflow: ellipsis;
 }
 
-.model-picker-effort {
-  flex: none;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  font-weight: 400;
-  margin-left: auto;
-}
-
 .model-picker-item.model-picker-submenu-trigger {
   display: grid;
-  grid-template-columns:
-    minmax(0, 1fr)
-    auto
-    calc(var(--model-picker-action-column) - 8px);
+  grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 8px;
 }
 
@@ -800,30 +773,6 @@
 
 .model-picker-row[data-disabled] .model-picker-name {
   color: var(--muted);
-}
-
-.model-picker-edit {
-  position: absolute;
-  right: 3px;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
-}
-
-.model-picker-edit:hover,
-.model-picker-edit[aria-expanded="true"] {
-  background: var(--panel-soft);
-  color: var(--text);
 }
 
 .model-effort-item {

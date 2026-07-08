@@ -211,8 +211,9 @@
 
 .settings-model-picker {
   z-index: 35;
-  width: min(240px, 100%);
-  min-width: min(200px, 100%);
+  /* Hug the (now effort-free) model label; cap so long Cursor labels ellipsize. */
+  width: fit-content;
+  max-width: min(240px, 100%);
   margin-left: auto;
 }
 
@@ -230,13 +231,8 @@
 }
 
 .settings-model-picker .model-picker-popover {
-  min-width: min(330px, calc(100vw - 48px));
+  min-width: min(220px, calc(100vw - 48px));
   max-height: min(440px, calc(100dvh - 180px));
-}
-
-.settings-model-picker .model-effort-popover {
-  margin-top: var(--model-submenu-top, 0);
-  margin-bottom: 0;
 }
 
 .settings-model-picker .model-speed-popover {

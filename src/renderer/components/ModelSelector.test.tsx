@@ -1,5 +1,4 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderModelSelection } from "../../shared/providerModels.js";
 import { LaunchModelSelector, ModelSelector, type ProviderAvailability } from "./ModelSelector.js";
@@ -33,104 +32,6 @@ describe("ModelSelector — one row per model", () => {
     expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
   });
 
-  it("shows a default effort label for effort-capable models", () => {
-    openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Session model" });
-    const opusRow = within(list).getByText("Opus 4.8").closest("li");
-    // Default effort before any edit is Medium.
-    expect(opusRow && within(opusRow).getByText("Medium")).toBeTruthy();
-  });
-
-  it("shows Edit on every effort-capable model", () => {
-    openClaudePicker(OPUS_MEDIUM);
-    expect(screen.getByRole("button", { name: "Edit effort for Opus 4.8" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Edit effort for Fable 5" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Edit effort for Sonnet 5" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Edit effort for Haiku 4.5" })).toBeNull();
-  });
-
-  it("gives fast models (Haiku) no Edit button and no effort", () => {
-    openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Session model" });
-    expect(screen.queryByRole("button", { name: "Edit effort for Haiku 4.5" })).toBeNull();
-    const haikuRow = within(list).getByText("Haiku 4.5").closest("li");
-    expect(haikuRow && within(haikuRow).queryByText(/Medium|Low|High/)).toBeNull();
-  });
-
-  it("opens a Claude effort submenu spanning Low → Ultra", () => {
-    openClaudePicker(OPUS_MEDIUM);
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
-    const submenu = screen.getByRole("listbox", { name: "Reasoning effort" });
-    const labels = within(submenu)
-      .getAllByRole("option")
-      .map((option) => option.textContent);
-    expect(labels).toEqual(["Low", "Medium", "High", "Extra High", "Max", "Ultra"]);
-  });
-
-  it("stops the Codex effort submenu at Extra High (no Max/Ultra)", () => {
-    const value: ProviderModelSelection = { label: "GPT-5.5", modelId: "gpt-5.5", reasoningEffort: "medium" };
-    render(<ModelSelector ariaLabel="Session model" provider="codex" value={value} onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for GPT-5.5" }));
-    const submenu = screen.getByRole("listbox", { name: "Reasoning effort" });
-    const labels = within(submenu)
-      .getAllByRole("option")
-      .map((option) => option.textContent);
-    expect(labels).toEqual(["Low", "Medium", "High", "Extra High"]);
-  });
-
-  it("selecting Extra High emits xhigh for the selected model", () => {
-    const onChange = openClaudePicker(OPUS_MEDIUM);
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
-    fireEvent.click(screen.getByRole("button", { name: "Extra High" }));
-    expect(onChange).toHaveBeenCalledWith({
-      label: "Opus 4.8",
-      modelId: "claude-opus-4-8",
-      reasoningEffort: "xhigh"
-    });
-  });
-
-  it("selecting Ultra emits ultra for a Claude model", () => {
-    const onChange = openClaudePicker(OPUS_MEDIUM);
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
-    fireEvent.click(screen.getByRole("button", { name: "Ultra" }));
-    expect(onChange).toHaveBeenCalledWith({
-      label: "Opus 4.8",
-      modelId: "claude-opus-4-8",
-      reasoningEffort: "ultra"
-    });
-  });
-
-  it("clicking Edit on an unselected model selects it and opens effort", () => {
-    const onChange = vi.fn();
-    function Harness() {
-      const [value, setValue] = useState<ProviderModelSelection>(HAIKU);
-      return (
-        <ModelSelector
-          ariaLabel="Session model"
-          provider="claude"
-          value={value}
-          onChange={(next) => {
-            onChange(next);
-            setValue(next);
-          }}
-        />
-      );
-    }
-
-    render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
-
-    expect(onChange).toHaveBeenCalledWith({
-      label: "Opus 4.8",
-      modelId: "claude-opus-4-8",
-      reasoningEffort: "medium"
-    });
-    expect(screen.getByRole("button", { name: "Session model" })).toHaveAttribute("title", "Opus 4.8 · Medium");
-    expect(screen.getByRole("listbox", { name: "Reasoning effort" })).toBeInTheDocument();
-  });
-
   it("picking a model row selects it with the default Medium effort", () => {
     const onChange = openClaudePicker();
     fireEvent.click(screen.getByText("Opus 4.8"));
@@ -148,29 +49,15 @@ describe("ModelSelector — one row per model", () => {
   });
 });
 
-describe("ModelSelector — Cursor", () => {
-  it("treats fast Cursor models as no-effort and keeps effort model edits available", () => {
-    const value: ProviderModelSelection = { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5" };
-    render(<ModelSelector ariaLabel="Session model" provider="cursor" value={value} onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
-    expect(screen.queryByRole("button", { name: "Edit effort for Composer 2.5 (Cursor)" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Edit effort for Gemini 3.5 Flash (Cursor)" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Edit effort for Claude Opus 4.8 (Cursor)" })).toBeEnabled();
-  });
-});
-
 describe("LaunchModelSelector — all providers", () => {
   it("groups models by provider and keeps Cursor model ids intact", () => {
-    // The Cursor model is selected so its effort is editable.
     const value: ModelPickerSelection = {
       provider: "cursor",
       label: "GPT-5.5 (Cursor)",
       modelId: "gpt-5.5-medium",
       reasoningEffort: "medium"
     };
-    const onChange = vi.fn();
-    render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={onChange} />);
+    render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     // Providers are grouped by thin separators, not text labels — one before
     // Codex and one before Cursor, none above the first (Claude) group.
@@ -179,16 +66,6 @@ describe("LaunchModelSelector — all providers", () => {
     expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
     expect(screen.getAllByRole("separator")).toHaveLength(2);
     expect(screen.getByText("GPT-5.5")).toBeInTheDocument();
-
-    // Cursor effort is UI-only: selecting Extra High keeps the -medium alias id.
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for GPT-5.5 (Cursor)" }));
-    fireEvent.click(screen.getByRole("button", { name: "Extra High" }));
-    expect(onChange).toHaveBeenCalledWith({
-      provider: "cursor",
-      label: "GPT-5.5 (Cursor)",
-      modelId: "gpt-5.5-medium",
-      reasoningEffort: "xhigh"
-    });
   });
 
   it("shows speed in the model picker and toggles fast mode", () => {
@@ -210,7 +87,7 @@ describe("LaunchModelSelector — all providers", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
     const speedMenu = screen.getByRole("listbox", { name: "Speed" });
     expect(
       within(speedMenu)
@@ -222,34 +99,7 @@ describe("LaunchModelSelector — all providers", () => {
     expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
   });
 
-  it("keeps effort and speed submenus mutually exclusive", () => {
-    const value: ModelPickerSelection = {
-      provider: "claude",
-      label: "Opus 4.8",
-      modelId: "claude-opus-4-8",
-      reasoningEffort: "medium"
-    };
-    render(
-      <LaunchModelSelector
-        ariaLabel="Launch model"
-        value={value}
-        onChange={vi.fn()}
-        fastModeEnabled
-        onFastModeEnabledChange={vi.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: /Speed Fast/ }));
-    expect(screen.getByRole("listbox", { name: "Speed" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
-
-    expect(screen.getByRole("listbox", { name: "Reasoning effort" })).toBeInTheDocument();
-    expect(screen.queryByRole("listbox", { name: "Speed" })).toBeNull();
-  });
-
-  it("anchors the speed submenu to the speed row instead of the selected model row", () => {
+  it("anchors the speed submenu to the speed row", () => {
     const value: ModelPickerSelection = {
       provider: "claude",
       label: "Opus 4.8",
@@ -271,7 +121,6 @@ describe("LaunchModelSelector — all providers", () => {
 
       if (this.classList.contains("model-picker-popover")) return rect(100, 500);
       if (this.classList.contains("model-picker-submenu-trigger")) return rect(420, 460);
-      if (this.getAttribute("aria-label") === "Edit effort for Opus 4.8") return rect(180, 220);
       return rect(0, 0);
     });
 
@@ -287,17 +136,11 @@ describe("LaunchModelSelector — all providers", () => {
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-      fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Speed" }));
 
       const speedMenu = screen.getByRole("listbox", { name: "Speed" });
       expect(speedMenu.getAttribute("style") ?? "").toContain("--model-submenu-top: 320px");
       expect(speedMenu.getAttribute("style") ?? "").toContain("--model-submenu-bottom: 40px");
-
-      fireEvent.click(screen.getByRole("button", { name: "Edit effort for Opus 4.8" }));
-
-      const effortMenu = screen.getByRole("listbox", { name: "Reasoning effort" });
-      expect(effortMenu.getAttribute("style") ?? "").toContain("--model-submenu-top: 80px");
-      expect(effortMenu.getAttribute("style") ?? "").toContain("--model-submenu-bottom: 280px");
     } finally {
       rectSpy.mockRestore();
     }
@@ -320,10 +163,7 @@ describe("LaunchModelSelector — all providers", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute(
-      "title",
-      "Opus 4.8 · Medium · Fast speed"
-    );
+    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute("title", "Opus 4.8 · Fast speed");
   });
 
   it("offers speed for fast-capable Cursor models (GPT-5.5)", () => {
@@ -344,7 +184,7 @@ describe("LaunchModelSelector — all providers", () => {
       />
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
     fireEvent.click(within(screen.getByRole("listbox", { name: "Speed" })).getByRole("button", { name: "Fast" }));
     expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
   });
@@ -420,7 +260,7 @@ describe("LaunchModelSelector — all providers", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: /Speed Standard/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
     const speedMenu = screen.getByRole("listbox", { name: "Speed" });
     const fastButton = within(speedMenu).getByRole("button", { name: "Fast" });
     expect(fastButton).toBeEnabled();
@@ -496,13 +336,15 @@ describe("LaunchModelSelector — provider availability gating", () => {
 });
 
 describe("ModelSelector — standalone effort slider", () => {
-  it("without withEffortSlider the effort rides in the model label, no slider", () => {
+  it("without withEffortSlider the chip shows just the model label, no slider", () => {
     render(<ModelSelector ariaLabel="Session model" provider="claude" value={OPUS_MEDIUM} onChange={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Session model" })).toHaveTextContent("Opus 4.8 · Medium");
+    const modelButton = screen.getByRole("button", { name: "Session model" });
+    expect(modelButton).toHaveTextContent("Opus 4.8");
+    expect(modelButton).toHaveAttribute("title", "Opus 4.8");
     expect(screen.queryByRole("button", { name: "Session model effort" })).toBeNull();
   });
 
-  it("with withEffortSlider the model label drops the effort and a chip shows it", () => {
+  it("with withEffortSlider the model chip stays effort-free and a separate chip shows it", () => {
     render(
       <ModelSelector
         ariaLabel="Session model"
@@ -514,9 +356,7 @@ describe("ModelSelector — standalone effort slider", () => {
     );
     const modelButton = screen.getByRole("button", { name: "Session model" });
     expect(modelButton).toHaveTextContent("Opus 4.8");
-    expect(modelButton).not.toHaveTextContent("·");
-    // Tooltip still carries the full "model · effort".
-    expect(modelButton).toHaveAttribute("title", "Opus 4.8 · Medium");
+    expect(modelButton).toHaveAttribute("title", "Opus 4.8");
     expect(screen.getByRole("button", { name: "Session model effort" })).toHaveTextContent("Medium");
   });
 

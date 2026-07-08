@@ -681,14 +681,15 @@ export function LaunchSurface({
           </div>
           <div className="project-picker-anchor" ref={branchPickerRef}>
             <button
-              className="composer-context-chip"
+              className="composer-context-chip branch-chip"
               type="button"
               aria-label="Switch branch"
               aria-expanded={branchPickerOpen}
+              title={project.currentBranch}
               onClick={() => void openBranchPicker()}
             >
               <GitBranch size={14} aria-hidden="true" />
-              {project.currentBranch}
+              <span className="composer-context-chip-label">{project.currentBranch}</span>
               <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {branchPickerOpen && (

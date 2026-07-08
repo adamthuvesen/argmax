@@ -444,6 +444,20 @@
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
+/* A long branch name would otherwise consume the whole row and wrap the
+   behavior toggles onto a second line, growing the composer. Cap the label and
+   end-ellipsize it; the full name stays available via the chip's title. */
+.branch-chip {
+  min-width: 0;
+}
+
+.composer-context-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16ch;
+}
+
 .composer-context-chip:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--line-strong);

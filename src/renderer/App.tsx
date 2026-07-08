@@ -232,6 +232,7 @@ export function App(): JSX.Element {
     refresh: refreshDashboardStatus,
     loadDashboard,
     loadSessionEvents,
+    loadAgentEvents,
     openProjectLauncher,
     resolveApproval,
     pendingSelectionRef
@@ -253,7 +254,8 @@ export function App(): JSX.Element {
     handleDropWorkspace,
     handleWorkspaceDragStart,
     handleWorkspaceDragEnd,
-    openLauncherPaneInGrid
+    openLauncherPaneInGrid,
+    openAgentPane
   } = useAppGridSelection({
     snapshot,
     selectedProject,
@@ -793,17 +795,23 @@ export function App(): JSX.Element {
           sessions: [launchedSession]
         })
       );
-      // If the user launched from the standalone full launcher, return them
-      // to the grid view now that the new pane will be present and focused.
+      // Full-launcher mode is a hard context switch: the old grid was hidden
+      // while composing, so stale split panes (especially agent activity panes)
+      // should not reappear beside the fresh session after launch.
+      const launchedFromFullLauncher = isFullLauncherOpen;
       setIsFullLauncherOpen(false);
-      setGrid((current) =>
-        openWorkspaceInGrid(
+      setGrid((current) => {
+        const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
+        if (launchedFromFullLauncher) {
+          return { rows: [[cell]], focused: { row: 0, col: 0 } };
+        }
+        return openWorkspaceInGrid(
           current,
-          { sessionId: launchedSession.id, workspaceId: workspace.id },
+          cell,
           { ctrlOrMeta: false, alt: false },
           { maxColumns: maxGridColumnsPerRow }
-        )
-      );
+        );
+      });
       void window.argmax.workspaces
         .autoTitle({
           workspaceId: workspace.id,
@@ -819,6 +827,7 @@ export function App(): JSX.Element {
     },
     [
       selectedProject,
+      isFullLauncherOpen,
       snapshot.projects,
       maxGridColumnsPerRow,
       refreshDashboardStatus,
@@ -1177,6 +1186,8 @@ export function App(): JSX.Element {
               onDropWorkspace={handleDropWorkspace}
               onFastModeEnabledChange={setFastModeEnabled}
               onLoadSessionEvents={loadSessionEvents}
+              onLoadAgentEvents={loadAgentEvents}
+              onOpenAgentPane={openAgentPane}
               onWorkspaceMinWidthChange={setSessionGridRequiredWorkspaceMinWidth}
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}

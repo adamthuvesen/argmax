@@ -12,7 +12,14 @@ export interface LauncherGridCell {
   projectId: string;
 }
 
-export type GridCell = SessionGridCell | LauncherGridCell;
+export interface AgentGridCell {
+  kind: "agent";
+  parentSessionId: string;
+  workspaceId: string;
+  parentToolUseId: string;
+}
+
+export type GridCell = SessionGridCell | LauncherGridCell | AgentGridCell;
 
 export interface GridCoord {
   row: number;
@@ -35,7 +42,15 @@ export const MAX_CELLS = MAX_ROWS * MAX_COLS;
 export const WORKSPACE_DRAG_MIME = "application/x-argmax-workspace";
 
 export function isSessionCell(cell: GridCell): cell is SessionGridCell {
-  return cell.kind !== "launcher";
+  return cell.kind !== "launcher" && cell.kind !== "agent";
+}
+
+export function isAgentCell(cell: GridCell): cell is AgentGridCell {
+  return cell.kind === "agent";
+}
+
+export function isWorkspaceBackedCell(cell: GridCell): cell is SessionGridCell | AgentGridCell {
+  return isSessionCell(cell) || isAgentCell(cell);
 }
 
 function totalCells(grid: GridState): number {
@@ -66,6 +81,25 @@ export function findWorkspaceCell(grid: GridState, workspaceId: string): GridCoo
   return null;
 }
 
+export function findAgentCell(grid: GridState, parentSessionId: string, parentToolUseId: string): GridCoord | null {
+  for (let r = 0; r < grid.rows.length; r++) {
+    const row = grid.rows[r];
+    if (!row) continue;
+    for (let c = 0; c < row.length; c++) {
+      const cell = row[c];
+      if (
+        cell &&
+        isAgentCell(cell) &&
+        cell.parentSessionId === parentSessionId &&
+        cell.parentToolUseId === parentToolUseId
+      ) {
+        return { row: r, col: c };
+      }
+    }
+  }
+  return null;
+}
+
 export function findLauncherCell(grid: GridState): GridCoord | null {
   for (let r = 0; r < grid.rows.length; r++) {
     const row = grid.rows[r];
@@ -81,6 +115,67 @@ function replaceCell(rows: GridCell[][], coord: GridCoord, cell: GridCell): Grid
   return rows.map((row, r) =>
     r === coord.row ? row.map((c, j) => (j === coord.col ? cell : c)) : row
   );
+}
+
+function compactRows(rows: GridCell[][]): GridCell[][] {
+  return rows.filter((row) => row.length > 0);
+}
+
+function focusNear(rows: GridCell[][], preferred: GridCoord): GridState {
+  const compacted = compactRows(rows);
+  if (compacted.length === 0) return EMPTY_GRID;
+
+  const nextRow = Math.min(Math.max(preferred.row, 0), compacted.length - 1);
+  const nextRowCells = compacted[nextRow];
+  if (!nextRowCells) return EMPTY_GRID;
+  const nextCol = Math.min(Math.max(preferred.col, 0), nextRowCells.length - 1);
+  return { rows: compacted, focused: { row: nextRow, col: nextCol } };
+}
+
+export function findSessionCell(grid: GridState, sessionId: string): GridCoord | null {
+  for (let r = 0; r < grid.rows.length; r++) {
+    const row = grid.rows[r];
+    if (!row) continue;
+    for (let c = 0; c < row.length; c++) {
+      const cell = row[c];
+      if (cell && isSessionCell(cell) && cell.sessionId === sessionId) return { row: r, col: c };
+    }
+  }
+  return null;
+}
+
+function removeAgentCellsForParent(rows: GridCell[][], parentSessionId: string): GridCell[][] {
+  return compactRows(
+    rows.map((row) =>
+      row.filter((cell) => !(isAgentCell(cell) && cell.parentSessionId === parentSessionId))
+    )
+  );
+}
+
+function replaceWorkspaceContext(
+  grid: GridState,
+  target: GridCoord,
+  cell: SessionGridCell
+): GridState {
+  const targetCell = grid.rows[target.row]?.[target.col];
+  if (!targetCell) return grid;
+
+  let replaceCoord = target;
+  let parentSessionToDrop: string | null = null;
+  if (isSessionCell(targetCell)) {
+    parentSessionToDrop = targetCell.sessionId;
+  } else if (isAgentCell(targetCell)) {
+    parentSessionToDrop = targetCell.parentSessionId;
+    replaceCoord = findSessionCell(grid, targetCell.parentSessionId) ?? target;
+  }
+
+  let rows = replaceCell(grid.rows, replaceCoord, cell);
+  if (parentSessionToDrop) {
+    rows = removeAgentCellsForParent(rows, parentSessionToDrop);
+  }
+  const focused = findWorkspaceCell({ rows, focused: null }, cell.workspaceId);
+  if (focused) return { rows, focused };
+  return focusNear(rows, replaceCoord);
 }
 
 function insertCellInRow(
@@ -154,7 +249,40 @@ export function openWorkspaceInGrid(
     };
   }
 
-  return { rows: replaceCell(grid.rows, { row: fr, col: fc }, cell), focused: { row: fr, col: fc } };
+  return replaceWorkspaceContext(grid, { row: fr, col: fc }, cell);
+}
+
+export function openAgentInGrid(
+  grid: GridState,
+  cell: AgentGridCell,
+  layout?: { maxColumns?: number }
+): GridState {
+  if (!findSessionCell(grid, cell.parentSessionId)) return grid;
+  const existing = findAgentCell(grid, cell.parentSessionId, cell.parentToolUseId);
+  if (existing) return { ...grid, focused: existing };
+  if (grid.rows.length === 0 || grid.focused === null) return grid;
+
+  const { row: fr, col: fc } = grid.focused;
+  const focusedRow = grid.rows[fr];
+  const rowCap = maxColumns(layout);
+  const canSplit = totalCells(grid) < maxCells(layout);
+  if (!canSplit || !focusedRow) return grid;
+
+  if (focusedRow.length < rowCap) {
+    return {
+      rows: insertCellInRow(grid.rows, fr, fc + 1, cell),
+      focused: { row: fr, col: fc + 1 }
+    };
+  }
+
+  if (grid.rows.length < MAX_ROWS) {
+    return {
+      rows: insertRow(grid.rows, fr + 1, cell),
+      focused: { row: fr + 1, col: 0 }
+    };
+  }
+
+  return grid;
 }
 
 /**
@@ -223,7 +351,7 @@ export function dropWorkspaceInGrid(
   const canSplit = totalCells(grid) < maxCells(layout);
 
   if (position === "replace") {
-    return { rows: replaceCell(grid.rows, { row: tr, col: tc }, cell), focused: { row: tr, col: tc } };
+    return replaceWorkspaceContext(grid, { row: tr, col: tc }, cell);
   }
 
   if ((position === "left" || position === "right") && canSplit && targetRow.length < rowCap) {
@@ -243,7 +371,7 @@ export function dropWorkspaceInGrid(
   }
 
   // Capped — fall back to replacing the target cell.
-  return { rows: replaceCell(grid.rows, { row: tr, col: tc }, cell), focused: { row: tr, col: tc } };
+  return replaceWorkspaceContext(grid, { row: tr, col: tc }, cell);
 }
 
 /**
@@ -251,16 +379,12 @@ export function dropWorkspaceInGrid(
  * reflow. When the last cell is removed, returns the empty grid.
  */
 export function closeCell(grid: GridState, row: number, col: number): GridState {
-  const stripped = grid.rows.map((r, i) => (i === row ? r.filter((_, j) => j !== col) : r));
-  const rows = stripped.filter((r) => r.length > 0);
-  if (rows.length === 0) return EMPTY_GRID;
-
-  let nextRow = Math.min(row, rows.length - 1);
-  if (nextRow < 0) nextRow = 0;
-  const nextRowCells = rows[nextRow];
-  if (!nextRowCells) return EMPTY_GRID;
-  const nextCol = Math.min(col, nextRowCells.length - 1);
-  return { rows, focused: { row: nextRow, col: Math.max(nextCol, 0) } };
+  const closedCell = grid.rows[row]?.[col] ?? null;
+  let rows = grid.rows.map((r, i) => (i === row ? r.filter((_, j) => j !== col) : r));
+  if (closedCell && isSessionCell(closedCell)) {
+    rows = removeAgentCellsForParent(rows, closedCell.sessionId);
+  }
+  return focusNear(rows, { row, col });
 }
 
 export function setFocus(grid: GridState, coord: GridCoord): GridState {
@@ -282,10 +406,10 @@ export function terminalWorkspaceId(
   fallbacks: readonly (string | null | undefined)[]
 ): string | null {
   const focused = focusedCell(grid);
-  if (focused && isSessionCell(focused)) return focused.workspaceId;
+  if (focused && isWorkspaceBackedCell(focused)) return focused.workspaceId;
 
   for (const row of grid.rows) {
-    const sessionCell = row.find(isSessionCell);
+    const sessionCell = row.find(isWorkspaceBackedCell);
     if (sessionCell) return sessionCell.workspaceId;
   }
 

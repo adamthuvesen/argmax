@@ -38,6 +38,7 @@ import {
   hasRenderableSessionContent,
   lastSignificantSessionEvent
 } from "../lib/sessionConversationModel.js";
+import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CostPanel } from "./CostPanel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
@@ -90,6 +91,7 @@ export function SessionConversation({
   onRunCheck,
   onToggleLog,
   onOpenFile,
+  onOpenAgent,
   pendingApprovalCount = 0,
   project,
   rawOutputs,
@@ -128,6 +130,7 @@ export function SessionConversation({
       provided, the chip routes to the in-app right panel by default, with
       ⌘/Ctrl-click flagged via `preferIde` for the external IDE shortcut. */
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenAgent?: (tool: ToolCall) => void;
   pendingApprovalCount?: number;
   project: ProjectSummary | null;
   rawOutputs: RawProviderOutput[];
@@ -421,6 +424,7 @@ export function SessionConversation({
                 selectedModel={selectedModel}
                 workspace={workspace}
                 onOpenFile={onOpenFile}
+                onOpenAgent={onOpenAgent}
                 onTerminateSession={onTerminateSession}
                 onSendSessionInput={onSendSessionInput}
                 inputRef={inputRef}

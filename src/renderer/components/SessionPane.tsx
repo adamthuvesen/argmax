@@ -30,6 +30,7 @@ import { useStableFilter } from "../hooks/useStableFilter.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
+import type { ToolCall } from "../lib/toolCalls.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
@@ -75,6 +76,7 @@ export function SessionPane({
   onRunCheck,
   onSendSessionInput,
   onCancelQueuedMessage,
+  onOpenAgent,
   pendingMessages,
   onTerminateSession,
   project,
@@ -105,6 +107,7 @@ export function SessionPane({
   onRightPanelWidthChange?: (width: number | null) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
+  onOpenAgent?: (tool: ToolCall) => void;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -485,6 +488,7 @@ export function SessionPane({
           onCreateCheckpoint={onCreateCheckpoint}
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
+          onOpenAgent={onOpenAgent}
           onToggleLog={toggleLog}
           pendingApprovalCount={visibleApprovals.filter((a) => a.status === "pending").length}
           project={project}

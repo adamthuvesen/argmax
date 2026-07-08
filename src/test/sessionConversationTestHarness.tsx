@@ -9,6 +9,7 @@ import type {
 } from "../shared/types.js";
 import type { ReviewState } from "../renderer/hooks/useReviewState.js";
 import { SessionConversation } from "../renderer/components/SessionConversation.js";
+import type { ToolCall } from "../renderer/lib/toolCalls.js";
 
 export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
   return {
@@ -153,6 +154,7 @@ export function renderConversation(
     pendingMessages?: PendingMessage[];
     onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
+    onOpenAgent?: (tool: ToolCall) => void;
     review?: ReviewState;
   } = {}
 ) {
@@ -170,6 +172,7 @@ export function renderConversation(
       {...(options.defaultToolCallsExpanded !== undefined ? { defaultToolCallsExpanded: options.defaultToolCallsExpanded } : {})}
       {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
+      {...(options.onOpenAgent ? { onOpenAgent: options.onOpenAgent } : {})}
       project={project}
       rawOutputs={[]}
       review={options.review ?? reviewStub()}

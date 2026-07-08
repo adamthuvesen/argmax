@@ -462,6 +462,14 @@ describe("accent CSS contract", () => {
       ".session-input-toolbar .composer-chips-context"
     );
     const toolbarSpacerRule = cssRuleBody(chatComposerChips, ".session-toolbar-spacer");
+    const compactContextRule = cssRuleBody(chatComposerChips, ".composer-compact-context");
+    const compactContextTriggerRule = cssRuleBody(chatComposerChips, ".composer-compact-context-trigger");
+    const compactContextPopoverRule = cssRuleBody(chatComposerChips, ".composer-compact-context-popover");
+    const compactContextRowRule = cssRuleBody(chatComposerChips, ".composer-compact-context-row--context");
+    const compactContextRingRule = cssRuleBody(
+      chatComposerChips,
+      ".composer-compact-context-row--context .context-ring-anchor"
+    );
     const footerRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer");
     const chipRule = cssRuleBody(chatComposer, ".session-input-toolbar .composer-footer-chip");
     const baseChipRule = cssRuleBody(chatComposer, ".composer-footer-chip");
@@ -485,22 +493,34 @@ describe("accent CSS contract", () => {
     expect(contextRule).toContain("min-width: 0;");
     expect(contextRule).toContain("overflow: hidden;");
     expect(contextRule).toContain("flex: 0 1 auto;");
+    expect(compactContextRule).toContain("display: none;");
+    expect(compactContextRule).toContain("position: relative;");
+    expect(compactContextTriggerRule).toContain("width: 28px;");
+    expect(compactContextTriggerRule).toContain("color: var(--muted);");
+    expect(compactContextPopoverRule).toContain("bottom: calc(100% + 8px);");
+    expect(compactContextPopoverRule).toContain("box-shadow: var(--shadow-2);");
+    expect(compactContextRowRule).toContain("justify-content: space-between;");
+    expect(compactContextRingRule).toContain("padding: 0;");
     expect(toolbarSpacerRule).toContain("flex: 1 1 0;");
     expect(toolbarSpacerRule).toContain("min-width: 0;");
     expect(footerRule).toContain("max-width: 100%;");
     expect(footerRule).toContain("overflow: hidden;");
     expect(footerRule).toContain("flex: 0 1 auto;");
+    expect(footerRule).toContain("flex-wrap: nowrap;");
     expect(chipRule).toContain("overflow: hidden;");
     expect(baseChipRule).toContain("font-family: var(--font-prose);");
     expect(baseChipRule).toContain("color: var(--muted);");
     expect(baseChipHoverRule).toContain("background: transparent;");
     expect(baseChipHoverRule).toContain("color: var(--muted-strong);");
+    expect(branchRule).toContain("flex: 1 1 0;");
     expect(branchRule).toContain("min-width: 0;");
     expect(branchRule).toContain("max-width: 100%;");
     expect(labelRule).toContain("text-overflow: ellipsis;");
     expect(labelRule).toContain("white-space: nowrap;");
-    expect(chatComposerChips).toContain('"attach model mode send"');
-    expect(chatComposerChips).toContain('"context context context context"');
+    expect(chatComposerChips).toContain("@container (max-width: 720px)");
+    expect(chatComposerChips).toContain('"attach model details mode send"');
+    expect(chatComposerChips).toContain(".session-input-toolbar .composer-compact-context");
+    expect(chatComposerChips).toContain(".session-input-toolbar > .context-ring-anchor");
     expect(chatComposerChips).toContain(".session-input textarea");
     expect(chatComposerChips).toContain("min-height: 56px;");
     expect(chatComposerChips).toContain(".session-input-toolbar .session-send-button");
@@ -536,8 +556,8 @@ describe("accent CSS contract", () => {
     expect(changeSeparatorRule).toContain("background: var(--line);");
     expect(changeSeparatorRule).toContain("opacity: 0.6;");
     expect(changeCountRule).toContain("gap: 5px;");
-    expect(chatComposerChips).toContain("@container (max-width: 520px)");
-    expect(chatComposerChips).toContain(".session-input-toolbar .composer-footer-chip--branch");
+    expect(chatComposerChips).toContain("@container (max-width: 720px)");
+    expect(chatComposerChips).toContain(".composer-compact-context-row--changes");
   });
 
   it("keeps the pane resize floor aligned with the compact composer breakpoint", () => {
@@ -574,9 +594,9 @@ describe("accent CSS contract", () => {
     expect(rowRule).toContain("overflow: hidden;");
     expect(cellRule).toContain("container-type: inline-size;");
     expect(sessionGridRule).toContain("min-width: 0;");
-    expect(Number(cellMinWidth)).toBeLessThan(520);
+    expect(Number(cellMinWidth)).toBeLessThan(720);
     expect(Number(chatMinWidth)).toBe(520);
-    expect(chatComposerChips).toContain("@container (max-width: 520px)");
+    expect(chatComposerChips).toContain("@container (max-width: 720px)");
     expect(appSource).toContain("sessionGridRequiredWorkspaceMinWidth");
     expect(appSource).toContain("Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth)");
     expect(appSource).toContain("appWindow.setMinSize");

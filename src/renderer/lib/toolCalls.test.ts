@@ -72,6 +72,7 @@ describe("Task / sub-agent tools", () => {
   it("does not sweep up unrelated names containing 'task'", () => {
     expect(getToolTypeBucket("TaskList")).not.toBe("agent");
     expect(getToolTypeBucket("agent_id")).not.toBe("agent");
+    expect(getToolTypeBucket("close_agent")).not.toBe("agent");
   });
 
   it("classifies Cursor `taskToolCall` and Codex `collab_tool_call` as agents", () => {

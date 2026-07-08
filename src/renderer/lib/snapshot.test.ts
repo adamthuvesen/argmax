@@ -90,6 +90,26 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result.map((e) => e.id)).toEqual(["e1", "e2", "e3", "e5"]);
   });
 
+  it("keeps the parent's streaming answer when a hidden child completion lands mid-stream", () => {
+    // Child rows are excluded from the chat view model's sweep, so they must
+    // not act as turn boundaries here either: a fire-and-forget child
+    // finishing while the parent streams must not prune the parent's deltas.
+    const events: TimelineEvent[] = [
+      event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
+      event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
+      {
+        ...event("e3", "message.completed", "2026-05-12T15:00:02.000Z"),
+        payload: { parent_tool_use_id: "task-1" }
+      },
+      {
+        ...event("e4", "message.completed", "2026-05-12T15:00:03.000Z"),
+        payload: { item_type: "agent_message", thread_id: "thread-child" }
+      }
+    ];
+
+    expect(pruneSupersededDeltas(events)).toBe(events);
+  });
+
   // -------------------------------------------------------------------------
   // mergeDashboardDelta reference stability
   // -------------------------------------------------------------------------
@@ -297,5 +317,24 @@ describe("pruneSupersededDeltas — reference stability", () => {
     for (let i = 0; i < 400; i++) {
       expect(ids.has(`c${i}`)).toBe(true);
     }
+  });
+
+  // Regression: trace-imported rows used to share the protected budget, so a
+  // verbose imported child transcript could evict other sessions' protected
+  // rows from the snapshot. They now have their own bucket.
+  it("keeps other sessions' protected rows when a large trace import floods the snapshot", () => {
+    const base: DashboardSnapshot = {
+      ...emptySnapshot,
+      events: [
+        { ...event("u1", "user.message", "2026-05-12T14:59:59.000Z", 1), sessionId: "session-other" }
+      ]
+    };
+    // More imported rows than the protected budget (2000).
+    const imported: TimelineEvent[] = Array.from({ length: 2100 }, (_, i) => ({
+      ...event(`tr${i}`, i % 2 === 0 ? "command.started" : "command.completed", "2026-05-12T15:01:00.000Z", 100 + i),
+      payload: { traceImported: true, parent_tool_use_id: "task-1" }
+    }));
+    const merged = mergeDashboardDelta(base, { events: imported });
+    expect(merged.events.some((e) => e.id === "u1")).toBe(true);
   });
 });

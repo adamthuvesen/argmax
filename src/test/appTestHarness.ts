@@ -54,6 +54,7 @@ export type AppTestMocks = {
   readProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["readFileForProject"]>;
   writeProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["writeFileForProject"]>;
   sessionEventsSince: AppTestMockFn<ArgmaxApi["session"]["eventsSince"]>;
+  sessionAgentEvents: AppTestMockFn<ArgmaxApi["session"]["agentEvents"]>;
   sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
   sendProviderInput: AppTestMockFn<ArgmaxApi["providers"]["sendInput"]>;
   terminateProvider: AppTestMockFn<ArgmaxApi["providers"]["terminate"]>;
@@ -90,6 +91,7 @@ export let listProjectFiles: AppTestMocks["listProjectFiles"];
 export let readProjectFile: AppTestMocks["readProjectFile"];
 export let writeProjectFile: AppTestMocks["writeProjectFile"];
 export let sessionEventsSince: AppTestMocks["sessionEventsSince"];
+export let sessionAgentEvents: AppTestMocks["sessionAgentEvents"];
 export let sessionCostSummary: AppTestMocks["sessionCostSummary"];
 export let sendProviderInput: AppTestMocks["sendProviderInput"];
 export let terminateProvider: AppTestMocks["terminateProvider"];
@@ -147,6 +149,12 @@ export function setupAppTestMocks(): void {
   });
   listBranches = vi.fn<ArgmaxApi["projects"]["listBranches"]>().mockResolvedValue(["main"]);
   sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue({
+    events: snapshot.events,
+    rawOutputs: snapshot.rawOutputs,
+    eventCursor: 0,
+    rawOutputCursor: 0
+  });
+  sessionAgentEvents = vi.fn<ArgmaxApi["session"]["agentEvents"]>().mockResolvedValue({
     events: snapshot.events,
     rawOutputs: snapshot.rawOutputs,
     eventCursor: 0,
@@ -332,6 +340,7 @@ export function setupAppTestMocks(): void {
     },
     session: {
       eventsSince: sessionEventsSince,
+      agentEvents: sessionAgentEvents,
       costSummary: sessionCostSummary,
       search: () => Promise.resolve([])
     },
@@ -431,6 +440,18 @@ export function setupAppTestMocks(): void {
 export function mockDashboardSnapshot(data: DashboardSnapshot): void {
   dashboardLoad.mockResolvedValue(data);
   dashboardList.mockResolvedValue(dashboardListSnapshot(data));
+  sessionEventsSince.mockResolvedValue({
+    events: data.events,
+    rawOutputs: data.rawOutputs,
+    eventCursor: 0,
+    rawOutputCursor: 0
+  });
+  sessionAgentEvents.mockResolvedValue({
+    events: data.events,
+    rawOutputs: data.rawOutputs,
+    eventCursor: 0,
+    rawOutputCursor: 0
+  });
   approvalsPending.mockResolvedValue(data.approvals);
   workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(data));
 }

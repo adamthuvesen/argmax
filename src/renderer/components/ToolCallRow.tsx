@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { interpretFileChange, type FileChange } from "../lib/fileChange.js";
 import { shortenPathsInText } from "../lib/pathDisplay.js";
@@ -48,13 +48,15 @@ function ToolCallRowInner({
   childTools,
   workspaceCwd,
   defaultExpanded,
-  onOpenFile
+  onOpenFile,
+  onOpenAgent
 }: {
   tool: ToolCall;
   childTools?: ToolCall[];
   workspaceCwd?: string | null;
   defaultExpanded?: boolean;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenAgent?: (tool: ToolCall) => void;
 }): JSX.Element {
   // Follow the parent turn's expanded state until the user manually toggles
   // this row. That keeps the turn chip authoritative for single-tool rows
@@ -89,6 +91,10 @@ function ToolCallRowInner({
   const target = baseSplit.target;
   const toolTypeBucket = getToolTypeBucket(tool.name);
   const expanded = localExpanded ?? (autoExpandedOnError || (defaultExpanded ?? false));
+  const opensAgentPane = toolTypeBucket === "agent" && onOpenAgent !== undefined;
+  const toggleExpanded = (): void => {
+    setUserToggle({ value: !expanded, defaultExpanded });
+  };
   const childToolRows = childTools && childTools.length > 0 ? (
     <div className="tool-call-section tool-call-agent-activity">
       <div className="tool-call-agent-child-list">
@@ -99,41 +105,59 @@ function ToolCallRowInner({
             defaultExpanded={false}
             workspaceCwd={workspaceCwd ?? null}
             onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
           />
         ))}
       </div>
     </div>
   ) : null;
+  const rowButton = (
+    <button
+      className="tool-call-row-button"
+      type="button"
+      {...(!opensAgentPane ? { "aria-expanded": expanded } : {})}
+      aria-label={action}
+      onClick={opensAgentPane ? () => onOpenAgent(tool) : toggleExpanded}
+    >
+      <span className="tool-call-row-icon" aria-hidden="true">
+        {getToolIcon(tool.name)}
+      </span>
+      <span className="tool-call-row-verb">{verb}</span>
+      {target ? (
+        <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
+      ) : null}
+      {counts && (counts.adds > 0 || counts.dels > 0) ? (
+        <span className="tool-call-row-counts" aria-hidden="true">
+          {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}
+          {counts.dels > 0 ? <span className="dels">−{counts.dels}</span> : null}
+          {counts.files > 1 ? <span className="files">· {counts.files} files</span> : null}
+        </span>
+      ) : null}
+      {tool.status === "running" ? (
+        <span className="tool-call-row-running" aria-hidden="true">
+          <Loader2 size={11} className="tool-call-spinner" />
+        </span>
+      ) : null}
+    </button>
+  );
 
   return (
     <div className="tool-call-row" data-status={tool.status} data-tool-type={toolTypeBucket}>
-      <button
-        className="tool-call-row-button"
-        type="button"
-        aria-expanded={expanded}
-        aria-label={action}
-        onClick={() => setUserToggle({ value: !expanded, defaultExpanded })}
-      >
-        <span className="tool-call-row-icon" aria-hidden="true">
-          {getToolIcon(tool.name)}
-        </span>
-        <span className="tool-call-row-verb">{verb}</span>
-        {target ? (
-          <span className="tool-call-row-target">{shortenPathsInText(target)}</span>
-        ) : null}
-        {counts && (counts.adds > 0 || counts.dels > 0) ? (
-          <span className="tool-call-row-counts" aria-hidden="true">
-            {counts.adds > 0 ? <span className="adds">+{counts.adds}</span> : null}
-            {counts.dels > 0 ? <span className="dels">−{counts.dels}</span> : null}
-            {counts.files > 1 ? <span className="files">· {counts.files} files</span> : null}
-          </span>
-        ) : null}
-        {tool.status === "running" ? (
-          <span className="tool-call-row-running" aria-hidden="true">
-            <Loader2 size={11} className="tool-call-spinner" />
-          </span>
-        ) : null}
-      </button>
+      {opensAgentPane ? (
+        <div className="tool-call-row-main">
+          {rowButton}
+          <button
+            className="tool-call-row-disclosure"
+            type="button"
+            aria-expanded={expanded}
+            aria-label={`Toggle details for ${action}`}
+            title="Toggle details"
+            onClick={toggleExpanded}
+          >
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
+        </div>
+      ) : rowButton}
       {expanded ? (
         <ToolCallDetail
           tool={tool}
@@ -159,6 +183,7 @@ function sameChildTools(a: ToolCall[] | undefined, b: ToolCall[] | undefined): b
       left.status !== right.status ||
       left.error !== right.error ||
       left.completedAt !== right.completedAt ||
+      left.output !== right.output ||
       left.inputPreview !== right.inputPreview
     ) {
       return false;
@@ -171,6 +196,7 @@ export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;
+  if (prev.onOpenAgent !== next.onOpenAgent) return false;
   if (!sameChildTools(prev.childTools, next.childTools)) return false;
   if (prev.tool === next.tool) return true;
   return (
@@ -178,6 +204,7 @@ export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
     prev.tool.status === next.tool.status &&
     prev.tool.error === next.tool.error &&
     prev.tool.completedAt === next.tool.completedAt &&
+    prev.tool.output === next.tool.output &&
     prev.tool.inputPreview === next.tool.inputPreview
   );
 });

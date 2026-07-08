@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
@@ -140,6 +140,39 @@ describe("SessionConversation — streaming & composer", () => {
     expect(changesButton).toHaveTextContent("-1");
     expect(changesButton).toHaveAttribute("aria-pressed", "false");
 
+    fireEvent.click(changesButton);
+    expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses workspace metadata behind a compact details popover", () => {
+    const toggleChangesPanel = vi.fn();
+    renderConversation(baseSession({ contextTokens: 10_000, contextWindow: 100_000 }), [], {
+      review: reviewStub({
+        files: [{ path: "src/a.ts", status: "modified", additions: 5, deletions: 2 }],
+        toggleChangesPanel
+      })
+    });
+
+    const detailsButton = screen.getByRole("button", {
+      name: "Workspace details: branch argmax/dashboard, 1 file changed"
+    });
+    fireEvent.click(detailsButton);
+
+    const popover = screen.getByRole("dialog", { name: "Workspace details" });
+    expect(
+      within(popover).getByRole("button", {
+        name: "Context window 10% full — 10,000 of 100,000 tokens"
+      })
+    ).toBeInTheDocument();
+    expect(within(popover).getByRole("button", { name: "Open worktree at /tmp/worktrees/dashboard" })).toBeInTheDocument();
+    const branchLabel = within(popover).getByText("argmax/dashboard");
+    expect(branchLabel).toBeInTheDocument();
+
+    const changesButton = within(popover).getByRole("button", {
+      name: "Open changed files in review panel: 1 file changed, 5 additions, 2 deletions"
+    });
+    expect(changesButton.compareDocumentPosition(branchLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(changesButton).toHaveTextContent("+5");
     fireEvent.click(changesButton);
     expect(toggleChangesPanel).toHaveBeenCalledTimes(1);
   });

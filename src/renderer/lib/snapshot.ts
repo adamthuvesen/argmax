@@ -1,5 +1,10 @@
 import type { DashboardDelta, DashboardSnapshot, PendingMessage, TimelineEvent } from "../../shared/types.js";
-import { advanceTurnBoundary, isSupersededAnswerDelta, type TurnBoundary } from "./turnBoundaries.js";
+import {
+  advanceTurnBoundary,
+  isSubAgentProseEcho,
+  isSupersededAnswerDelta,
+  type TurnBoundary
+} from "./turnBoundaries.js";
 
 export const emptySnapshot: DashboardSnapshot = {
   projects: [],
@@ -41,6 +46,11 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   for (let i = ascending.length - 1; i >= 0; i--) {
     const e = ascending[i];
     if (!e) continue;
+    // Child-agent rows are invisible to the chat view model's sweep
+    // (buildConversationEvents filters them out), so they are neither prune
+    // candidates nor turn boundaries here — a hidden child completion must
+    // not prune the parent's still-streaming answer.
+    if (isSubAgentProseEcho(e)) continue;
     if (e.type === "message.delta") {
       if (isSupersededAnswerDelta(e, nextBoundary.get(e.sessionId))) {
         supersededIndices.add(i);
@@ -74,15 +84,19 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
 //   - thinking deltas (message.delta with payload.thinking): their own bucket,
 //     EVENT_THINKING_LIMIT — kept generous so reasoning stays visible, but
 //     bounded so a long thinking phase can't crowd out tool rows
+//   - trace-imported subagent rows (payload.traceImported): their own bucket,
+//     EVENT_TRACE_IMPORT_LIMIT — a verbose imported child transcript arrives
+//     in one burst and must not evict other sessions' protected rows
 //   - protected/durable rows (user/assistant messages, tool started/completed,
 //     approvals, errors, completions): EVENT_PROTECTED_LIMIT, sized to hold a
 //     large multi-agent turn (hundreds of tool calls) without eviction
 // The current turn's rows are always the newest of their kind, so they survive.
 //
-// Three buckets keep answer streaming, extended thinking, and durable rows from
-// evicting one another under bursty provider output.
+// Separate buckets keep answer streaming, extended thinking, trace imports,
+// and durable rows from evicting one another under bursty provider output.
 const EVENT_DELTA_LIMIT = 500;
 const EVENT_THINKING_LIMIT = 1000;
+const EVENT_TRACE_IMPORT_LIMIT = 1000;
 const EVENT_PROTECTED_LIMIT = 2000;
 
 function isThinkingDelta(event: TimelineEvent): boolean {
@@ -91,6 +105,10 @@ function isThinkingDelta(event: TimelineEvent): boolean {
 
 function isEvictableDelta(event: TimelineEvent): boolean {
   return event.type === "message.delta" && event.payload?.["thinking"] !== true;
+}
+
+function isTraceImportedEvent(event: TimelineEvent): boolean {
+  return event.payload?.["traceImported"] === true;
 }
 
 function mergeEventsBounded(
@@ -108,8 +126,13 @@ function mergeEventsBounded(
   const sorted = sortByTimestamp(merged, (event) => event.createdAt, (event) => event.rowCursor);
   let deltaKept = 0;
   let thinkingKept = 0;
+  let traceKept = 0;
   let protectedKept = 0;
   const capped = sorted.filter((event) => {
+    if (isTraceImportedEvent(event)) {
+      traceKept += 1;
+      return traceKept <= EVENT_TRACE_IMPORT_LIMIT;
+    }
     if (isThinkingDelta(event)) {
       thinkingKept += 1;
       return thinkingKept <= EVENT_THINKING_LIMIT;

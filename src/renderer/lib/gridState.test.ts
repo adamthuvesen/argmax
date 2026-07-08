@@ -6,6 +6,7 @@ import {
   dropWorkspaceInGrid,
   focusedCell,
   openLauncherInGrid,
+  openAgentInGrid,
   openWorkspaceInGrid,
   setFocus,
   terminalWorkspaceId,
@@ -14,6 +15,12 @@ import {
 
 const cell = (n: number) => ({ sessionId: `s${n}`, workspaceId: `w${n}` });
 const launcher = (n = 1) => ({ kind: "launcher" as const, projectId: `p${n}` });
+const agent = (n = 1) => ({
+  kind: "agent" as const,
+  parentSessionId: `s${n}`,
+  workspaceId: `w${n}`,
+  parentToolUseId: `tool-${n}`
+});
 
 describe("openWorkspaceInGrid", () => {
   it("creates the first cell when the grid is empty", () => {
@@ -24,6 +31,20 @@ describe("openWorkspaceInGrid", () => {
 
   it("replaces the focused cell with no modifiers", () => {
     const start: GridState = { rows: [[cell(1)]], focused: { row: 0, col: 0 } };
+    const next = openWorkspaceInGrid(start, cell(2), { ctrlOrMeta: false, alt: false });
+    expect(next.rows).toEqual([[cell(2)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
+  });
+
+  it("drops dependent agent panes when replacing their parent session", () => {
+    const start: GridState = { rows: [[cell(1), agent(1)]], focused: { row: 0, col: 0 } };
+    const next = openWorkspaceInGrid(start, cell(2), { ctrlOrMeta: false, alt: false });
+    expect(next.rows).toEqual([[cell(2)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
+  });
+
+  it("replaces the parent session context when navigation starts from an agent pane", () => {
+    const start: GridState = { rows: [[cell(1), agent(1)]], focused: { row: 0, col: 1 } };
     const next = openWorkspaceInGrid(start, cell(2), { ctrlOrMeta: false, alt: false });
     expect(next.rows).toEqual([[cell(2)]]);
     expect(next.focused).toEqual({ row: 0, col: 0 });
@@ -151,6 +172,42 @@ describe("openLauncherInGrid", () => {
   });
 });
 
+describe("openAgentInGrid", () => {
+  it("opens an agent pane to the right of the focused pane", () => {
+    const start: GridState = { rows: [[cell(1)]], focused: { row: 0, col: 0 } };
+    const next = openAgentInGrid(start, agent(1));
+    expect(next.rows).toEqual([[cell(1), agent(1)]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("does not open an agent pane when the parent session pane is not visible", () => {
+    const start: GridState = { rows: [[cell(2)]], focused: { row: 0, col: 0 } };
+    expect(openAgentInGrid(start, agent(1))).toBe(start);
+  });
+
+  it("refocuses an existing agent pane instead of duplicating it", () => {
+    const start: GridState = {
+      rows: [[cell(1), agent(1)]],
+      focused: { row: 0, col: 0 }
+    };
+    const next = openAgentInGrid(start, agent(1));
+    expect(next.rows).toEqual([[cell(1), agent(1)]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("does not replace a parent session when the grid is full", () => {
+    const full: GridState = {
+      rows: [
+        [cell(1), cell(2), cell(3)],
+        [cell(4), cell(5), cell(6)],
+        [cell(7), cell(8), cell(9)]
+      ],
+      focused: { row: 1, col: 1 }
+    };
+    expect(openAgentInGrid(full, agent(99))).toBe(full);
+  });
+});
+
 describe("dropWorkspaceInGrid", () => {
   const start: GridState = {
     rows: [[cell(1), cell(2)], [cell(3)]],
@@ -246,6 +303,16 @@ describe("closeCell", () => {
     const next = closeCell(start, 0, 1);
     expect(next.rows).toEqual([[cell(1), cell(3)]]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("drops dependent agent panes when closing their parent session", () => {
+    const start: GridState = {
+      rows: [[cell(1), agent(1), cell(2)]],
+      focused: { row: 0, col: 0 }
+    };
+    const next = closeCell(start, 0, 0);
+    expect(next.rows).toEqual([[cell(2)]]);
+    expect(next.focused).toEqual({ row: 0, col: 0 });
   });
 
   it("drops the row when its last cell is removed", () => {

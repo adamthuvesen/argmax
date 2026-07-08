@@ -7,7 +7,7 @@ import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
-import type { TurnToolItem } from "../lib/toolCalls.js";
+import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import type { AgentMode } from "../../shared/types.js";
@@ -36,6 +36,7 @@ function SessionConversationTurnInner({
   selectedModel,
   workspace,
   onOpenFile,
+  onOpenAgent,
   onTerminateSession,
   onSendSessionInput,
   inputRef,
@@ -53,6 +54,7 @@ function SessionConversationTurnInner({
   selectedModel: ModelPickerSelection;
   workspace: WorkspaceSummary | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenAgent?: (tool: ToolCall) => void;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onSendSessionInput: SessionConversationSendInput;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
@@ -258,6 +260,7 @@ function SessionConversationTurnInner({
               defaultExpanded={toolsExpanded}
               workspaceCwd={workspace?.path ?? null}
               onOpenFile={onOpenFile}
+              onOpenAgent={onOpenAgent}
             />
           )
         };
@@ -274,6 +277,7 @@ function SessionConversationTurnInner({
             defaultExpanded={toolsExpanded}
             workspaceCwd={workspace?.path ?? null}
             onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
           />
         )
       };

@@ -726,6 +726,18 @@
   animation: msg-in 200ms var(--ease) both;
 }
 
+.tool-call-row-main {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tool-call-row-main .tool-call-row-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .tool-call-row-button {
   display: flex;
   align-items: center;
@@ -747,6 +759,32 @@
 .tool-call-row-button:hover {
   background: transparent;
   color: var(--muted-strong);
+}
+
+.tool-call-row-disclosure {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.tool-call-row-disclosure:hover {
+  background: var(--bg-soft);
+  color: var(--muted-strong);
+}
+
+.tool-call-row-disclosure[aria-expanded="true"] svg {
+  transform: rotate(90deg);
 }
 
 .tool-call-row-verb {

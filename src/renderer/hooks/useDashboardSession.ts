@@ -35,6 +35,7 @@ export interface UseDashboardSessionResult {
   refresh: () => Promise<void>;
   loadDashboard: () => Promise<void>;
   loadSessionEvents: (sessionId: string) => Promise<void>;
+  loadAgentEvents: (sessionId: string, parentToolUseId: string) => Promise<void>;
   openWorkspaceChat: (workspaceId: string) => void;
   openProjectLauncher: (projectId: string) => void;
   resolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
@@ -131,6 +132,19 @@ export function useDashboardSession(
       // eviction (empty snapshot + parked cursor) is recognised as recoverable.
       seeded: (latest?.seeded ?? false) || data.events.length > 0
     });
+    setSnapshot((current) =>
+      mergeDashboardDelta(current, {
+        events: data.events,
+        rawOutputs: data.rawOutputs
+      })
+    );
+  }, []);
+
+  const loadAgentEvents = useCallback(async (sessionId: string, parentToolUseId: string): Promise<void> => {
+    if (!window.argmax) {
+      return;
+    }
+    const data = await window.argmax.session.agentEvents({ sessionId, parentToolUseId });
     setSnapshot((current) =>
       mergeDashboardDelta(current, {
         events: data.events,
@@ -580,6 +594,7 @@ export function useDashboardSession(
     refresh,
     loadDashboard,
     loadSessionEvents,
+    loadAgentEvents,
     openWorkspaceChat,
     openProjectLauncher,
     resolveApproval,

@@ -20,3 +20,21 @@ Dashboard reads are intentionally split:
 - `approvals:pending` is a separate focused read.
 
 Raw provider output older than 7 days is pruned by the retention sweeper. `system:vacuum-database` runs `VACUUM` in a blocking task.
+
+## Subagent Trace Imports
+
+Codex and Cursor child-agent traces are stored as normal timeline events. There
+is no migration for this: `events.payload_json` already holds provider-specific
+JSON. Imported rows use deterministic IDs in the form
+`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`, and the
+events repository inserts them only when absent so repeated pane opens are safe.
+The one exception is a synthetic Cursor `traceNoOutput` completion: it holds
+the sequence slot of a tool result that has not been written yet, and when a
+later poll finds the real result under the same ID the row is upgraded in
+place (same rowid) instead of being ignored.
+
+Imported payloads carry the spawning `parent_tool_use_id`, `traceImported: true`,
+`providerChildSessionId`, `traceSource`, and `traceSequence`. The parent chat
+projection hides those child rows. `session:agent-events` reads them back for
+the agent pane together with the parent launch/completion rows and any linked
+Codex child-thread messages.

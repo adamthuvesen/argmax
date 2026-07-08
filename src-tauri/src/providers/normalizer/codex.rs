@@ -539,6 +539,36 @@ mod tests {
     }
 
     #[test]
+    fn codex_agent_message_persists_thread_metadata() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                &json!({
+                    "type": "item.completed",
+                    "item": {
+                        "id": "agent_msg_1",
+                        "type": "agent_message",
+                        "thread_id": "019f2214-c736-7f60-bb78-75b6ecff57a3",
+                        "text": "I found the renderer entry points."
+                    }
+                })
+                .to_string(),
+            ),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        let event = &result.events[0];
+        assert_eq!(event.r#type, "message.completed");
+        assert_eq!(event.message, "I found the renderer entry points.");
+        assert_eq!(event.payload["item_type"], "agent_message");
+        assert_eq!(
+            event.payload["thread_id"],
+            "019f2214-c736-7f60-bb78-75b6ecff57a3"
+        );
+    }
+
+    #[test]
     fn codex_collab_wait_item_normalizes_without_prompt() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(

@@ -11,7 +11,12 @@ import {
   getToolTypeBucket,
   type ToolCall
 } from "./toolCalls.js";
-import { advanceTurnBoundary, isSupersededAnswerDelta, type TurnBoundary } from "./turnBoundaries.js";
+import {
+  advanceTurnBoundary,
+  isSubAgentProseEcho,
+  isSupersededAnswerDelta,
+  type TurnBoundary
+} from "./turnBoundaries.js";
 
 function isConversationEventType(type: string): boolean {
   return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
@@ -19,12 +24,6 @@ function isConversationEventType(type: string): boolean {
 
 function isPayloadTruncationMarker(event: TimelineEvent): boolean {
   return event.type === "error" && event.message === "event payload truncated" && "truncatedEventId" in event.payload;
-}
-
-function isSubAgentProseEcho(event: TimelineEvent): boolean {
-  if (event.type !== "message.delta" && event.type !== "message.completed") return false;
-  const parentToolUseId = event.payload.parent_tool_use_id;
-  return typeof parentToolUseId === "string" && parentToolUseId.length > 0;
 }
 
 function isConversationVisible(event: TimelineEvent): boolean {
@@ -46,6 +45,182 @@ function eventIsAfter(left: TimelineEvent, right: TimelineEvent): boolean {
     return left.rowCursor > right.rowCursor;
   }
   return left.createdAt > right.createdAt;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+    : [];
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function receiverThreadIds(tool: ToolCall): string[] {
+  return [
+    ...stringArray(tool.inputFull.receiver_thread_ids),
+    ...stringArray(tool.inputFull.receiverThreadIds)
+  ];
+}
+
+function hasReceiverOverlap(left: ToolCall, right: ToolCall): boolean {
+  const leftIds = new Set(receiverThreadIds(left));
+  if (leftIds.size === 0) return false;
+  return receiverThreadIds(right).some((id) => leftIds.has(id));
+}
+
+function isCodexSpawnAgentTool(tool: ToolCall): boolean {
+  return tool.name.toLowerCase() === "spawn_agent";
+}
+
+function hasReceiverThreads(tool: ToolCall): boolean {
+  return receiverThreadIds(tool).length > 0;
+}
+
+function normalizedAgentLaunchText(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function agentLaunchPrompt(tool: ToolCall): string | null {
+  return (
+    stringValue(tool.inputFull.prompt) ??
+    stringValue(tool.inputFull.instructions) ??
+    stringValue(tool.inputFull.description) ??
+    stringValue(tool.inputFull.subagent_type) ??
+    stringValue(tool.inputFull.subagentType) ??
+    stringValue(tool.inputPreview)
+  );
+}
+
+function agentLaunchSignature(tool: ToolCall): string | null {
+  if (getToolTypeBucket(tool.name) !== "agent") return null;
+  const prompt = agentLaunchPrompt(tool);
+  if (prompt === null) return null;
+  return `${tool.name.toLowerCase()}:${normalizedAgentLaunchText(prompt)}`;
+}
+
+function isNoOpCodexAgentLaunch(tool: ToolCall): boolean {
+  if (!isCodexSpawnAgentTool(tool)) return false;
+  const prompt = agentLaunchPrompt(tool);
+  if (prompt === null) return false;
+  const normalized = normalizedAgentLaunchText(prompt);
+  return (
+    /\b(ignore|disregard)\b/.test(normalized) &&
+    /\bduplicate\b/.test(normalized) &&
+    /\bno action (needed|required)\b/.test(normalized)
+  );
+}
+
+function hasAgentLaunchLinkage(tool: ToolCall): boolean {
+  if (hasReceiverThreads(tool)) return true;
+  return stringValue(tool.inputFull.agentId) !== null ||
+    stringValue(tool.inputFull.agent_id) !== null ||
+    stringValue(tool.inputFull.providerChildSessionId) !== null;
+}
+
+function hasRealToolCompletion(tool: ToolCall): boolean {
+  return tool.completedAt !== null && tool.completedAt !== tool.createdAt;
+}
+
+function hasAgentLaunchEvidence(tool: ToolCall): boolean {
+  return hasAgentLaunchLinkage(tool) || tool.output !== null || hasRealToolCompletion(tool);
+}
+
+// Providers can emit a launch-looking agent row before the real child link
+// exists, then retry with the same prompt once the child is actually created.
+// Hide only a terminal earlier row that produced no linkage/output/completion;
+// a still-running row may be a legitimate parallel same-prompt agent, and
+// hiding it would also force-close its open activity pane. Two completed
+// same-prompt agents are legitimate separate work and must stay.
+function isSupersededAgentLaunchAttempt(tool: ToolCall, allTools: readonly ToolCall[]): boolean {
+  if (getToolTypeBucket(tool.name) !== "agent" || tool.status === "running" || hasAgentLaunchEvidence(tool)) {
+    return false;
+  }
+  const signature = agentLaunchSignature(tool);
+  if (signature === null) return false;
+  return allTools.some((candidate) =>
+    candidate !== tool &&
+    candidate.createdAt > tool.createdAt &&
+    agentLaunchSignature(candidate) === signature &&
+    hasAgentLaunchEvidence(candidate)
+  );
+}
+
+function isCodexAgentControlTool(tool: ToolCall): boolean {
+  const lower = tool.name.toLowerCase();
+  return lower === "wait" || lower === "close_agent" || lower === "send_message_to_thread";
+}
+
+function matchesCodexSpawnAgent(spawn: ToolCall, control: ToolCall): boolean {
+  if (control.createdAt < spawn.createdAt) return false;
+  if (hasReceiverOverlap(spawn, control)) return true;
+  const spawnSender = stringValue(spawn.inputFull.sender_thread_id) ?? stringValue(spawn.inputFull.senderThreadId);
+  const controlSender = stringValue(control.inputFull.sender_thread_id) ?? stringValue(control.inputFull.senderThreadId);
+  return spawnSender !== null && spawnSender === controlSender;
+}
+
+function findMatchingCodexSpawn(spawns: readonly ToolCall[], control: ToolCall): ToolCall | null {
+  const matches = spawns
+    .filter((spawn) => matchesCodexSpawnAgent(spawn, control))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return matches[0] ?? null;
+}
+
+function mergeCodexWaitIntoSpawn(spawn: ToolCall, wait: ToolCall): ToolCall {
+  const waitIsAuthoritative = wait.status === "running" || wait.status === "error" || wait.completedAt !== null;
+  if (!waitIsAuthoritative) return spawn;
+  const status = wait.status;
+  return {
+    ...spawn,
+    inputFull: {
+      ...spawn.inputFull,
+      ...Object.fromEntries(
+        Object.entries(wait.inputFull).filter(([key, value]) => {
+          if (key === "prompt") return false;
+          // A spawn's `item.started` carries `receiver_thread_ids: []`; the
+          // real ids may only exist on the wait row, so an empty array must
+          // not block the backfill.
+          const spawnValue = spawn.inputFull[key];
+          if (spawnValue !== undefined && !(Array.isArray(spawnValue) && spawnValue.length === 0)) {
+            return false;
+          }
+          return value !== null && value !== undefined;
+        })
+      )
+    },
+    output: wait.output ?? spawn.output,
+    status,
+    completedAt: status === "running" ? null : wait.completedAt ?? spawn.completedAt,
+    error: wait.error ?? spawn.error
+  };
+}
+
+function foldCodexAgentControlTools(tools: readonly ToolCall[]): ToolCall[] {
+  const spawns = tools.filter(isCodexSpawnAgentTool);
+  if (spawns.length === 0) return [...tools];
+
+  const hiddenIds = new Set<string>();
+  const replacements = new Map<string, ToolCall>();
+  for (const control of tools) {
+    if (!isCodexAgentControlTool(control)) continue;
+    const spawn = findMatchingCodexSpawn(spawns, control);
+    if (!spawn) continue;
+    hiddenIds.add(control.id);
+    if (control.name.toLowerCase() === "wait") {
+      const current = replacements.get(spawn.id) ?? spawn;
+      replacements.set(spawn.id, mergeCodexWaitIntoSpawn(current, control));
+    }
+  }
+  if (hiddenIds.size === 0 && replacements.size === 0) return [...tools];
+  return tools
+    .filter((tool) => !hiddenIds.has(tool.id))
+    .map((tool) => replacements.get(tool.id) ?? tool);
+}
+
+function isInProgressCodexSpawn(name: string, completion: TimelineEvent | undefined): boolean {
+  if (name.toLowerCase() !== "spawn_agent" || !completion) return false;
+  return completion.payload.status === "in_progress";
 }
 
 /**
@@ -109,7 +284,7 @@ export function buildSessionToolCalls(
       if (toolUseId) completions.set(toolUseId, event);
     }
   }
-  return [...starts.values()]
+  const tools = [...starts.values()]
     .map(({ event, toolUseId }) => {
       const name = extractToolName(event.payload);
       const completion = completions.get(toolUseId);
@@ -139,6 +314,10 @@ export function buildSessionToolCalls(
         : inferredDone
           ? "done"
           : "running";
+      const renderedStatus: ToolCall["status"] =
+        status === "done" && sessionRunning && isInProgressCodexSpawn(name, completion)
+          ? "running"
+          : status;
       const rawParent = event.payload.parent_tool_use_id;
       const parentToolUseId = typeof rawParent === "string" && rawParent.length > 0 ? rawParent : null;
       return {
@@ -148,17 +327,27 @@ export function buildSessionToolCalls(
         inputPreview: extractToolInputPreview(name, input),
         inputFull: input,
         output: completion ? extractToolOutput(completion.payload) : null,
-        status,
+        status: renderedStatus,
         createdAt: event.createdAt,
         // No real completion timestamp exists for a dropped completion; anchor
         // the inferred-done case at the start so the chip shows a check instead
         // of a stale, ever-climbing timer.
-        completedAt: completion ? completion.createdAt : status === "done" ? event.createdAt : null,
+        completedAt: renderedStatus === "running"
+          ? null
+          : completion
+            ? completion.createdAt
+            : status === "done"
+              ? event.createdAt
+              : null,
         error: completion && isError ? extractToolError(completion.payload) : null,
         parentToolUseId
       };
     })
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const folded = foldCodexAgentControlTools(tools);
+  return folded.filter(
+    (tool) => !isNoOpCodexAgentLaunch(tool) && !isSupersededAgentLaunchAttempt(tool, folded)
+  );
 }
 
 export function lastSignificantSessionEvent(events: readonly TimelineEvent[]): TimelineEvent | undefined {

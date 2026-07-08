@@ -8,8 +8,8 @@ use super::checks::{
 };
 use super::database::Database;
 use super::events::{
-    list_session_events_since, persist_raw_output, persist_timeline_event, PersistRawOutputInput,
-    PersistTimelineEventInput,
+    list_session_agent_events, list_session_events_since, persist_raw_output,
+    persist_timeline_event, PersistRawOutputInput, PersistTimelineEventInput,
 };
 use super::gh::{
     list_gh_pr_for_session, list_open_gh_pr_session_ids, mark_gh_pr_notified, upsert_gh_pr,
@@ -408,6 +408,105 @@ fn event_approval_check_and_usage_repositories_round_trip() {
         .expect("session context");
     assert_eq!(context_tokens, 6); // overwritten: 5 input + 1 cache_read + 0
     assert_eq!(context_window, Some(272_000)); // preserved through COALESCE(None)
+}
+
+#[test]
+fn list_session_agent_events_returns_parent_child_and_thread_rows() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    for (id, event_type, message, payload) in [
+        (
+            "parent-start",
+            "command.started",
+            "Task",
+            serde_json::json!({
+                "id": "toolu_parent",
+                "name": "Task",
+                "input": {
+                    "description": "Map renderer",
+                    "receiver_thread_ids": ["thread-child"]
+                }
+            }),
+        ),
+        (
+            "other-parent",
+            "command.started",
+            "Task",
+            serde_json::json!({ "id": "toolu_other", "name": "Task" }),
+        ),
+        (
+            "child-message",
+            "message.completed",
+            "I checked the renderer.",
+            serde_json::json!({ "parent_tool_use_id": "toolu_parent" }),
+        ),
+        (
+            "child-tool-start",
+            "command.started",
+            "Read",
+            serde_json::json!({
+                "id": "toolu_child_read",
+                "name": "Read",
+                "parent_tool_use_id": "toolu_parent",
+                "input": { "file_path": "src/renderer/App.tsx" }
+            }),
+        ),
+        (
+            "child-tool-complete",
+            "command.completed",
+            "tool_result",
+            serde_json::json!({ "tool_use_id": "toolu_child_read", "content": "app" }),
+        ),
+        (
+            "codex-agent-message",
+            "message.completed",
+            "Codex child update",
+            serde_json::json!({
+                "item_type": "agent_message",
+                "thread_id": "thread-child",
+                "item": { "type": "agent_message", "thread_id": "thread-child" }
+            }),
+        ),
+        (
+            "unrelated-message",
+            "message.completed",
+            "noise",
+            serde_json::json!({ "parent_tool_use_id": "toolu_other" }),
+        ),
+    ] {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: event_type.to_owned(),
+                message: message.to_owned(),
+                payload,
+                created_at: Some("2026-05-24T10:00:00.000Z".to_owned()),
+            },
+        )
+        .expect("persist event");
+    }
+
+    let tail = list_session_agent_events(&connection, "s1", "toolu_parent").expect("agent events");
+    assert_eq!(
+        tail.events
+            .iter()
+            .map(|event| event.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "parent-start",
+            "child-message",
+            "child-tool-start",
+            "child-tool-complete",
+            "codex-agent-message"
+        ]
+    );
+    assert!(tail.raw_outputs.is_empty());
 }
 
 #[test]

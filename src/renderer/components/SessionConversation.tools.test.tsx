@@ -5,6 +5,7 @@ import {
   event,
   renderConversation
 } from "../../test/sessionConversationTestHarness.js";
+import type { ToolCall } from "../lib/toolCalls.js";
 
 describe("SessionConversation — tools & chrome", () => {
   afterEach(() => {
@@ -117,6 +118,7 @@ describe("SessionConversation — tools & chrome", () => {
   });
 
   it("renders agent launches as standalone icon rows outside tool groups", () => {
+    const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Opus 4.8", state: "complete" }),
       [
@@ -161,7 +163,8 @@ describe("SessionConversation — tools & chrome", () => {
           tool_use_id: "bash",
           content: ""
         })
-      ]
+      ],
+      { onOpenAgent }
     );
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
@@ -170,6 +173,11 @@ describe("SessionConversation — tools & chrome", () => {
     expect(agentRow).not.toHaveTextContent("🤖");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
     fireEvent.click(agentRow);
+    expect(onOpenAgent).toHaveBeenCalledTimes(1);
+    const openedTool = onOpenAgent.mock.calls[0]?.[0];
+    expect(openedTool?.toolUseId).toBe("task");
+    expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle details for Started agent Audit renderer tools" }));
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     const childRow = screen.getByRole("button", { name: "Read toolCalls.tsx" });
     expect(childRow).toBeInTheDocument();
@@ -179,6 +187,7 @@ describe("SessionConversation — tools & chrome", () => {
   });
 
   it("keeps live agent activity collapsed while showing the running agent row", () => {
+    const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Sonnet 5", state: "running" }),
       [
@@ -200,16 +209,20 @@ describe("SessionConversation — tools & chrome", () => {
           input: { file_path: "README.md" }
         })
       ],
-      { defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false }
+      { defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false, onOpenAgent }
     );
 
     const agentRow = screen.getByRole("button", { name: "Started agent Explore repo structure" });
-    expect(agentRow).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(agentRow);
+    expect(onOpenAgent).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Toggle details for Started agent Explore repo structure" }))
+      .toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Read README.md" })).not.toBeInTheDocument();
   });
 
   it("expands Codex spawned-agent rows to show spawn metadata", () => {
+    const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
       baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "complete" }),
       [
@@ -232,16 +245,62 @@ describe("SessionConversation — tools & chrome", () => {
             sender_thread_id: "sender-thread"
           }
         })
-      ]
+      ],
+      { onOpenAgent }
     );
 
     const agentRow = screen.getByRole("button", { name: "Started agent Explore repo quickly and report key files." });
     expect(screen.queryByText("Input")).not.toBeInTheDocument();
 
     fireEvent.click(agentRow);
+    expect(onOpenAgent).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Input")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {
+      name: "Toggle details for Started agent Explore repo quickly and report key files."
+    }));
 
     expect(screen.getByText("Input")).toBeInTheDocument();
     expect(screen.getByText(/receiver-thread/)).toBeInTheDocument();
+  });
+
+  it("hides linked Codex wait rows while the spawned-agent row stays visible", () => {
+    renderConversation(
+      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "running" }),
+      [
+        event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
+        event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: {
+            prompt: "Explore repo quickly and report key files.",
+            receiver_thread_ids: [],
+            sender_thread_id: "sender-thread"
+          }
+        }),
+        event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
+          id: "item_2",
+          name: "spawn_agent",
+          status: "in_progress",
+          input: {
+            prompt: "Explore repo quickly and report key files.",
+            receiver_thread_ids: ["receiver-thread"],
+            sender_thread_id: "sender-thread"
+          }
+        }),
+        event("wait-start", "command.started", "wait", "2026-05-12T15:00:03.000Z", {
+          id: "item_3",
+          name: "wait",
+          input: {
+            receiver_thread_ids: ["receiver-thread"],
+            sender_thread_id: "sender-thread"
+          }
+        })
+      ]
+    );
+
+    expect(screen.getByRole("button", { name: "Started agent Explore repo quickly and report key files." }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "wait" })).toBeNull();
   });
 
   it("turn chip expands every tool group even after one group was toggled locally", () => {

@@ -596,7 +596,10 @@ impl ProviderSessionService {
         };
         let Some(pending_ops) = pending_ops else {
             if let Err(error) = handle.terminate().await {
-                tracing::error!(?error, "failed to dispose follow-up handle cancelled during spawn");
+                tracing::error!(
+                    ?error,
+                    "failed to dispose follow-up handle cancelled during spawn"
+                );
             }
             return Ok(SendInputResult {
                 ok: true,

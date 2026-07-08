@@ -1,5 +1,37 @@
 import type { TimelineEvent } from "../../shared/types.js";
 
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+/**
+ * Sub-agent prose that is hidden from the parent chat: Claude child rows carry
+ * `parent_tool_use_id` (trace-imported Codex/Cursor rows reuse the same
+ * marker), and live Codex child messages are `agent_message` payloads with
+ * thread linkage. Both turn sweeps below must exclude exactly these rows —
+ * a hidden child completion must never act as a turn boundary that prunes the
+ * parent's still-streaming answer.
+ */
+export function isSubAgentProseEcho(event: TimelineEvent): boolean {
+  if (event.type !== "message.delta" && event.type !== "message.completed") return false;
+  const parentToolUseId = event.payload.parent_tool_use_id;
+  if (typeof parentToolUseId === "string" && parentToolUseId.length > 0) return true;
+  const item = objectValue(event.payload.item);
+  const isCodexAgentMessage = event.payload.item_type === "agent_message" ||
+    item?.type === "agent_message";
+  if (!isCodexAgentMessage) return false;
+  if (stringValue(event.payload.thread_id) !== null || stringValue(event.payload.sender_thread_id) !== null) {
+    return true;
+  }
+  return stringValue(item?.thread_id) !== null || stringValue(item?.sender_thread_id) !== null;
+}
+
 /**
  * Shared rule for when a streaming `message.delta` is superseded by the turn's
  * final answer. Both the dashboard merge (snapshot.ts pruneSupersededDeltas)

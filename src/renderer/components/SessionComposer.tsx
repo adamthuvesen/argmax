@@ -1,4 +1,4 @@
-import { Folder, GitBranch, Play, Plus, Square, X } from "lucide-react";
+import { Folder, GitBranch, MoreHorizontal, Play, Plus, Square, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -22,6 +22,7 @@ import type {
 } from "../../shared/types.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import {
@@ -103,7 +104,9 @@ export function SessionComposer({
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
+  const workspaceDetailsRef = useRef<HTMLDivElement | null>(null);
   const sessionId = session?.id ?? null;
   const {
     pendingAttachments,
@@ -163,6 +166,12 @@ export function SessionComposer({
       `${changeSummary.additions === 1 ? "addition" : "additions"}, ${changeSummary.deletions} ` +
       `${changeSummary.deletions === 1 ? "deletion" : "deletions"}`
     : undefined;
+  const workspaceDetailsLabel = workspace
+    ? `Workspace details: branch ${workspace.branch}${
+        changeSummaryText ? `, ${changeSummaryText}` : ""
+      }`
+    : "Workspace details";
+  useDismissOnOutsideOrEscape(workspaceDetailsRef, workspaceDetailsOpen, () => setWorkspaceDetailsOpen(false));
 
   const toggleMode = useCallback((): void => {
     setAgentMode((mode) => toggleAgentMode(mode));
@@ -423,6 +432,67 @@ export function SessionComposer({
               >
                 <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
               </button>
+            ) : null}
+          </div>
+        ) : null}
+        {workspace ? (
+          <div className="composer-compact-context" ref={workspaceDetailsRef}>
+            <button
+              type="button"
+              className="composer-compact-context-trigger"
+              title={workspaceDetailsLabel}
+              aria-label={workspaceDetailsLabel}
+              aria-haspopup="dialog"
+              aria-expanded={workspaceDetailsOpen}
+              onClick={() => setWorkspaceDetailsOpen((open) => !open)}
+            >
+              <MoreHorizontal size={14} aria-hidden="true" />
+              {changeSummary ? <span className="composer-compact-context-dot" aria-hidden="true" /> : null}
+            </button>
+            {workspaceDetailsOpen ? (
+              <div className="composer-compact-context-popover" role="dialog" aria-label="Workspace details">
+                {session ? (
+                  <div className="composer-compact-context-row composer-compact-context-row--context">
+                    <span>Context</span>
+                    <ContextRing session={session} />
+                  </div>
+                ) : null}
+                {workspace.sharedWorkspace ? null : (
+                  <button
+                    type="button"
+                    className="composer-compact-context-row"
+                    title={`Open worktree: ${workspace.path}`}
+                    aria-label={`Open worktree at ${workspace.path}`}
+                    onClick={() => {
+                      setWorkspaceDetailsOpen(false);
+                      if (!window.argmax) return;
+                      void window.argmax.system.openPath({ path: workspace.path }).catch(() => undefined);
+                    }}
+                  >
+                    <Folder size={12} aria-hidden="true" />
+                    <span>Worktree</span>
+                  </button>
+                )}
+                {changeSummary ? (
+                  <button
+                    type="button"
+                    className="composer-compact-context-row composer-compact-context-row--changes"
+                    aria-label={changeSummaryAriaLabel}
+                    aria-pressed={changeSummary.isOpen}
+                    onClick={() => {
+                      setWorkspaceDetailsOpen(false);
+                      changeSummary.onOpen();
+                    }}
+                  >
+                    <span>Changes</span>
+                    <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+                  </button>
+                ) : null}
+                <div className="composer-compact-context-row" title={`Branch: ${workspace.branch}`}>
+                  <GitBranch size={12} aria-hidden="true" />
+                  <span className="composer-compact-context-branch">{workspace.branch}</span>
+                </div>
+              </div>
             ) : null}
           </div>
         ) : null}

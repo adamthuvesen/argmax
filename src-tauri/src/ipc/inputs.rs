@@ -456,6 +456,13 @@ pub struct SessionEventsSinceInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionAgentEventsInput {
+    pub session_id: SessionId,
+    pub parent_tool_use_id: NonEmptyString,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewListChangedFilesInput {
     pub workspace_id: WorkspaceId,
     #[serde(default)]

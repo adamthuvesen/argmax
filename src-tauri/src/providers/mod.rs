@@ -8,6 +8,7 @@ mod orphan_cleanup;
 pub mod pricing;
 pub mod runtime;
 pub mod session_service;
+pub mod subagent_trace;
 pub mod title;
 
 use std::path::PathBuf;

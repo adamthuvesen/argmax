@@ -7,17 +7,30 @@ import {
   type MutableRefObject,
   type SetStateAction
 } from "react";
-import type { DashboardSnapshot, ProjectSummary, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  DashboardSnapshot,
+  ProjectSummary,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary
+} from "../../shared/types.js";
 import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js";
+import { buildAgentActivity } from "../lib/agentActivity.js";
 import {
   EMPTY_GRID,
   closeCell,
   dropWorkspaceInGrid,
+  findAgentCell,
+  findSessionCell,
   focusedCell,
+  isAgentCell,
   isSessionCell,
+  isWorkspaceBackedCell,
+  openAgentInGrid,
   openLauncherInGrid,
   openWorkspaceInGrid,
   setFocus,
+  type AgentGridCell,
   type GridCoord,
   type GridState,
   type SplitPosition
@@ -48,6 +61,7 @@ export interface UseAppGridSelectionResult {
   closePane: (coord: GridCoord) => void;
   focusPane: (coord: GridCoord) => void;
   closeFocusedPane: () => boolean;
+  openAgentPane: (cell: AgentGridCell) => void;
   handleDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
   handleWorkspaceDragStart: (workspaceId: string) => void;
   handleWorkspaceDragEnd: () => void;
@@ -80,9 +94,21 @@ export function useAppGridSelection({
     () => new Map(snapshot.projects.map((p) => [p.id, p])),
     [snapshot.projects]
   );
+  const eventsBySessionId = useMemo(() => {
+    const bySession = new Map<string, TimelineEvent[]>();
+    for (const event of snapshot.events) {
+      const current = bySession.get(event.sessionId);
+      if (current) {
+        current.push(event);
+      } else {
+        bySession.set(event.sessionId, [event]);
+      }
+    }
+    return bySession;
+  }, [snapshot.events]);
 
   const openWorkspaceIds = useMemo(
-    () => new Set(grid.rows.flatMap((row) => row.filter(isSessionCell).map((cell) => cell.workspaceId))),
+    () => new Set(grid.rows.flatMap((row) => row.filter(isWorkspaceBackedCell).map((cell) => cell.workspaceId))),
     [grid.rows]
   );
   const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
@@ -99,6 +125,26 @@ export function useAppGridSelection({
       const rows = current.rows
         .map((row) => {
           const next = row.filter((cell) => {
+            if (isAgentCell(cell)) {
+              const parentSession = sessionsById.get(cell.parentSessionId);
+              const parentSessionIsVisible = current.rows.some((candidateRow) =>
+                candidateRow.some(
+                  (candidateCell) =>
+                    isSessionCell(candidateCell) &&
+                    candidateCell.sessionId === cell.parentSessionId
+                )
+              );
+              const parentToolIsVisible = parentSession
+                ? buildAgentActivity({
+                    parentToolUseId: cell.parentToolUseId,
+                    events: eventsBySessionId.get(cell.parentSessionId) ?? [],
+                    sessionRunning: parentSession.state === "running"
+                  }).parentTool !== null
+                : false;
+              return parentSessionIsVisible &&
+                parentToolIsVisible &&
+                workspacesById.has(cell.workspaceId);
+            }
             if (!isSessionCell(cell)) return projectsById.has(cell.projectId);
             const pending = pendingSelectionRef.current;
             if (
@@ -126,7 +172,7 @@ export function useAppGridSelection({
       }
       return { rows, focused: { row: 0, col: 0 } };
     });
-  }, [pendingSelectionRef, projectsById, sessionsById, workspacesById]);
+  }, [eventsBySessionId, pendingSelectionRef, projectsById, sessionsById, workspacesById]);
 
   // Mirror grid.focused → hook selection state. Avoids racing on initial
   // mount by skipping when the focused cell already matches what the hook
@@ -135,6 +181,13 @@ export function useAppGridSelection({
     const cell = focusedCell(grid);
     if (cell && isSessionCell(cell)) {
       setSelectedSessionId(cell.sessionId);
+      setSelectedWorkspaceId(cell.workspaceId);
+      const workspace = workspacesById.get(cell.workspaceId);
+      if (workspace) setSelectedProjectId(workspace.projectId);
+      return;
+    }
+    if (cell && isAgentCell(cell)) {
+      setSelectedSessionId(cell.parentSessionId);
       setSelectedWorkspaceId(cell.workspaceId);
       const workspace = workspacesById.get(cell.workspaceId);
       if (workspace) setSelectedProjectId(workspace.projectId);
@@ -187,6 +240,24 @@ export function useAppGridSelection({
     return true;
   }, [grid.focused, closePane]);
 
+  const openAgentPane = useCallback(
+    (cell: AgentGridCell): void => {
+      const existing = findAgentCell(grid, cell.parentSessionId, cell.parentToolUseId);
+      const nextForCurrent = openAgentInGrid(grid, cell, { maxColumns: maxColumnsPerRow });
+      const blocked = nextForCurrent === grid && !existing;
+      setGrid((current) => openAgentInGrid(current, cell, { maxColumns: maxColumnsPerRow }));
+      if (!blocked) return;
+      // openAgentInGrid also no-ops when the parent session pane is missing
+      // or nothing is focused — only a full grid is a pane-limit failure.
+      if (!findSessionCell(grid, cell.parentSessionId)) {
+        showErrorToast("Open the agent's parent session in the grid first.");
+      } else if (grid.focused !== null) {
+        showErrorToast("Pane limit reached — close a pane before opening this agent.");
+      }
+    },
+    [grid, maxColumnsPerRow, showErrorToast]
+  );
+
   const handleDropWorkspace = useCallback(
     (workspaceId: string, target: GridCoord & { position: SplitPosition }): void => {
       const workspace = workspacesById.get(workspaceId);
@@ -233,7 +304,7 @@ export function useAppGridSelection({
       if (current.rows.length === 0) return EMPTY_GRID;
       const focused = focusedCell(current);
       let projectId = selectedProject?.id ?? selectedWorkspace?.projectId ?? snapshot.projects[0]?.id ?? null;
-      if (focused && isSessionCell(focused)) {
+      if (focused && isWorkspaceBackedCell(focused)) {
         projectId = workspacesById.get(focused.workspaceId)?.projectId ?? projectId;
       } else if (focused?.kind === "launcher") {
         projectId = focused.projectId;
@@ -262,6 +333,7 @@ export function useAppGridSelection({
     closePane,
     focusPane,
     closeFocusedPane,
+    openAgentPane,
     handleDropWorkspace,
     handleWorkspaceDragStart,
     handleWorkspaceDragEnd,

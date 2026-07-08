@@ -5,8 +5,8 @@ use specta::Type;
 use super::approvals::{list_pending_approvals, ApprovalRequest};
 use super::checks::{list_checkpoints, list_checks, CheckRun, Checkpoint};
 use super::events::{
-    list_dashboard_events, list_dashboard_raw_outputs, list_session_events_since,
-    RawProviderOutput, SessionEventsSinceResult, TimelineEvent,
+    list_dashboard_events, list_dashboard_raw_outputs, list_session_agent_events,
+    list_session_events_since, RawProviderOutput, SessionEventsSinceResult, TimelineEvent,
 };
 use super::projects::{list_projects, ProjectSummary};
 use super::sessions::{list_sessions_for_dashboard, SessionSummary};
@@ -98,6 +98,14 @@ pub fn list_session_tail(
     raw_output_cursor: Option<i64>,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
     list_session_events_since(connection, session_id, event_cursor, raw_output_cursor)
+}
+
+pub fn list_session_agent_tail(
+    connection: &Connection,
+    session_id: &str,
+    parent_tool_use_id: &str,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    list_session_agent_events(connection, session_id, parent_tool_use_id)
 }
 
 pub fn list_pending(connection: &Connection) -> ArgmaxResult<Vec<ApprovalRequest>> {

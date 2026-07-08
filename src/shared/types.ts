@@ -115,6 +115,7 @@ export type SessionEventsSinceInput = OptionalNullable<
   Bindings.SessionEventsSinceInput,
   "eventCursor" | "rawOutputCursor"
 >;
+export type SessionAgentEventsInput = Bindings.SessionAgentEventsInput;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
 export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
@@ -478,6 +479,7 @@ export interface ArgmaxApi {
   };
   session: {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
+    agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
     search: (input: { query: string; limit?: number }) => Promise<Array<{
       sessionId: string;

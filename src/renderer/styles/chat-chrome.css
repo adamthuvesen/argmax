@@ -392,6 +392,10 @@
   row-gap: 4px;
 }
 
+.launcher-surface .composer > .composer-input {
+  z-index: 2;
+}
+
 /* Send stays anchored to .composer-input's bottom edge but sits on the chip row
    below it, whose optical center lands at -35px for a 28px control. */
 .launcher-surface .composer > .composer-input > .send-button {

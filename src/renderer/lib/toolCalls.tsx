@@ -127,6 +127,9 @@ type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bas
  */
 export function isAgentToolName(name: string): boolean {
   const lower = name.toLowerCase();
+  if (lower === "close_agent" || lower === "close-agent" || lower === "send_message_to_thread") {
+    return false;
+  }
   // Claude's built-in tool is exactly "Task". Cursor spawns sub-agents via
   // `taskToolCall`; Codex coordinates them via `collab_tool_call`. Neither
   // streams the sub-agent's internal steps, but surfacing the launch as an
@@ -134,7 +137,7 @@ export function isAgentToolName(name: string): boolean {
   // agent did the work. Anchor literal matches so we don't sweep up
   // "TaskList" or "agent_id"-style names.
   return lower === "task" || lower === "agent" || lower === "subagent" ||
-    lower === "tasktoolcall" || lower === "collab_tool_call" ||
+    lower === "tasktoolcall" || lower === "collab_tool_call" || lower === "spawn_agent" ||
     /(^|[_-])(sub-?agent|agent)$/.test(lower);
 }
 

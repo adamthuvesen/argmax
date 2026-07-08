@@ -1,11 +1,15 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX } from "./components/SessionMultiGrid.js";
-import type { DashboardSnapshot } from "../shared/types.js";
+import type { DashboardSnapshot, SessionEventsSinceResult } from "../shared/types.js";
 import {
+  createCurrentWorkspace,
+  dashboardDeltaListener,
+  launchProvider,
   mockDashboardSnapshot,
   openSettings,
+  sessionAgentEvents,
   setupAppTestMocks,
   snapshot
 } from "../test/appTestHarness.js";
@@ -18,6 +22,7 @@ vi.mock("./components/TerminalTabsPanel.js", () => ({
 
 describe("App grid", () => {
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
 
@@ -193,6 +198,741 @@ describe("App grid", () => {
     const rows = document.querySelectorAll(".session-multigrid-row");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
+  });
+
+  it("opens an agent activity pane from an agent row without showing child prose in the parent chat", async () => {
+    const promptText = "Find the renderer entry points and note the important files before reporting back. ".repeat(9).trim();
+    const data: DashboardSnapshot = {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete" as const,
+        completedAt: "2026-05-08T15:55:00.000Z"
+      })),
+      events: [
+        {
+          id: "task-result",
+          sessionId: "session-1",
+          type: "command.completed",
+          message: "tool_result",
+          payload: { tool_use_id: "task-1", content: "**Agent finished.**\n\n1. Parser found." },
+          createdAt: "2026-05-08T15:54:04.000Z"
+        },
+        {
+          id: "child-message",
+          sessionId: "session-1",
+          type: "message.completed",
+          message: "Subagent found parser.",
+          payload: { parent_tool_use_id: "task-1" },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        },
+        {
+          id: "child-prompt-echo",
+          sessionId: "session-1",
+          type: "message.completed",
+          message: promptText,
+          payload: { parent_tool_use_id: "task-1" },
+          createdAt: "2026-05-08T15:54:02.500Z"
+        },
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: promptText
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "parent-message",
+          sessionId: "session-1",
+          type: "message.completed",
+          message: "I will delegate this.",
+          payload: {},
+          createdAt: "2026-05-08T15:54:01.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    };
+    mockDashboardSnapshot(data);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByText("I will delegate this.");
+    expect(screen.queryByText("Subagent found parser.")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Started agent Map renderer" }));
+
+    const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    expect(within(pane).getByText("Subagent")).toBeInTheDocument();
+    expect(within(pane).queryByRole("heading", { name: "Map renderer" })).toBeNull();
+    expect(within(pane).getAllByText(promptText)).toHaveLength(1);
+    const expandInstructions = within(pane).getByRole("button", { name: "Expand instructions" });
+    expect(expandInstructions).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(expandInstructions);
+    expect(within(pane).getByRole("button", { name: "Collapse instructions" })).toHaveAttribute("aria-expanded", "true");
+    const childMessage = within(pane).getByText("Subagent found parser.");
+    const result = within(pane).getByRole("region", { name: "Agent result" });
+    expect(childMessage.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(within(result).getByText("Agent finished.").tagName).toBe("STRONG");
+    expect(within(result).getByText("Parser found.")).toBeInTheDocument();
+    expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-1" });
+  });
+
+  it("dismisses an agent pane when sidebar navigation replaces its parent session", async () => {
+    const secondWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-2",
+      projectId: "project-1",
+      taskLabel: "Follow up task",
+      branch: "argmax/follow-up",
+      baseRef: "main",
+      path: "/tmp/worktrees/follow-up",
+      state: "complete",
+      sharedWorkspace: false,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:04:00.000Z",
+      pinned: false
+    };
+    const secondSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-2",
+      workspaceId: "workspace-2",
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-2",
+      prompt: "Follow up task",
+      state: "complete",
+      attention: "normal",
+      startedAt: "2026-05-08T16:00:00.000Z",
+      completedAt: "2026-05-08T16:04:00.000Z",
+      lastActivityAt: "2026-05-08T16:04:00.000Z"
+    };
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [...snapshot.workspaces, secondWorkspace],
+      sessions: [...snapshot.sessions, secondSession],
+      events: [
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    expect(await screen.findByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Follow up task" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "Agent activity for Build dashboard" })).toBeNull();
+    });
+    expect(screen.queryByRole("region", { name: "Build dashboard" })).toBeNull();
+    const grid = screen.getByRole("group", { name: "Session panes" });
+    expect(within(grid).getAllByRole("group", { name: /^Pane row/ })).toHaveLength(1);
+    expect(within(grid).getAllByRole("region", { name: "Follow up task" })).toHaveLength(1);
+  });
+
+  it("renders imported child tool rows instead of the limited-data notice", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete" as const,
+        completedAt: "2026-05-08T15:55:00.000Z"
+      })),
+      events: [
+        {
+          id: "child-read-complete",
+          sessionId: "session-1",
+          type: "command.completed",
+          message: "tool_result",
+          payload: {
+            id: "trace-read-1",
+            parent_tool_use_id: "task-1",
+            traceImported: true,
+            traceNoOutput: true
+          },
+          createdAt: "2026-05-08T15:54:03.500Z"
+        },
+        {
+          id: "child-read",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Read",
+          payload: {
+            id: "trace-read-1",
+            name: "Read",
+            parent_tool_use_id: "task-1",
+            traceImported: true,
+            input: { file_path: "src/renderer/App.tsx" }
+          },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        },
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+
+    const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    expect(within(pane).getByRole("button", { name: "Read App.tsx" })).toBeInTheDocument();
+    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+  });
+
+  it("renders the agent instructions prompt as markdown", async () => {
+    const promptText = [
+      "Find the **renderer** entry points.",
+      "",
+      "- Read `src/renderer/App.tsx` first.",
+      "- Keep it short."
+    ].join("\n");
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete" as const,
+        completedAt: "2026-05-08T15:55:00.000Z"
+      })),
+      events: [
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: promptText
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+
+    const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    expect(within(pane).getByText("renderer").tagName).toBe("STRONG");
+    expect(within(pane).getByRole("button", { name: "Open src/renderer/App.tsx" })).toBeInTheDocument();
+    expect(within(pane).getByText("Keep it short.").tagName).toBe("LI");
+  });
+
+  it("keeps a running spawn's pane through a same-prompt retry and drops it once the session stops", async () => {
+    const prompt = "Map renderer";
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "failed-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "spawn_agent",
+          payload: {
+            id: "item_1",
+            name: "spawn_agent",
+            input: {
+              prompt,
+              receiver_thread_ids: [],
+              sender_thread_id: "thread-parent"
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    expect(await screen.findByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
+
+    await act(async () => {
+      dashboardDeltaListener?.({
+        events: [
+          {
+            id: "retry-end",
+            sessionId: "session-1",
+            type: "command.completed",
+            message: "spawn_agent",
+            payload: {
+              id: "item_2",
+              name: "spawn_agent",
+              status: "completed",
+              input: {
+                prompt,
+                receiver_thread_ids: ["thread-child"],
+                sender_thread_id: "thread-parent"
+              }
+            },
+            createdAt: "2026-05-08T15:54:05.000Z"
+          },
+          {
+            id: "retry-start",
+            sessionId: "session-1",
+            type: "command.started",
+            message: "spawn_agent",
+            payload: {
+              id: "item_2",
+              name: "spawn_agent",
+              input: {
+                prompt,
+                receiver_thread_ids: [],
+                sender_thread_id: "thread-parent"
+              }
+            },
+            createdAt: "2026-05-08T15:54:04.000Z"
+          }
+        ]
+      });
+      await Promise.resolve();
+    });
+
+    // While the parent session runs, the earlier spawn may be a live parallel
+    // agent — the retry completing must not hide it or force-close its pane.
+    expect(screen.getByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Started agent Map renderer" })).toHaveLength(2);
+
+    await act(async () => {
+      dashboardDeltaListener?.({
+        sessions: snapshot.sessions.map((session) => ({
+          ...session,
+          state: "complete" as const,
+          completedAt: "2026-05-08T15:54:06.000Z"
+        }))
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "Agent activity for Build dashboard" })).toBeNull();
+    });
+    expect(screen.getAllByRole("button", { name: "Started agent Map renderer" })).toHaveLength(1);
+  });
+
+  it("polls agent events while an agent pane is still running", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    await waitFor(() => {
+      expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(sessionAgentEvents).toHaveBeenCalledTimes(2);
+    }, { timeout: 2500 });
+  });
+
+  it("keeps Thinking after an empty backfill while the agent is still running", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+    let resolveAgentEvents!: (value: SessionEventsSinceResult) => void;
+    sessionAgentEvents
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveAgentEvents = resolve;
+          })
+      )
+      .mockResolvedValue({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+
+    const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    expect(within(pane).getByTestId("thinking-label")).toHaveTextContent("Thinking");
+    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+
+    await act(async () => {
+      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(within(pane).getByTestId("thinking-label")).toHaveTextContent("Thinking");
+    });
+    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+  });
+
+  it("shows the limited-data notice only after an agent finishes without child activity", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete" as const,
+        completedAt: "2026-05-08T15:55:00.000Z"
+      })),
+      events: [
+        {
+          id: "task-result",
+          sessionId: "session-1",
+          type: "command.completed",
+          message: "tool_result",
+          payload: { tool_use_id: "task-1", content: "Done without child stream." },
+          createdAt: "2026-05-08T15:54:04.000Z"
+        },
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+
+    const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    expect(within(pane).queryByTestId("thinking-label")).toBeNull();
+    expect(within(pane).getByText("This provider reported the agent launch, but did not stream child activity.")).toBeInTheDocument();
+    expect(within(pane).getByText("Done without child stream.")).toBeInTheDocument();
+  });
+
+  it("does not overlap agent event polls while the prior load is in flight", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+    let resolveAgentEvents!: (value: SessionEventsSinceResult) => void;
+    sessionAgentEvents.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAgentEvents = resolve;
+        })
+    );
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    await waitFor(() => {
+      expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 1700));
+    });
+
+    expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0 });
+      await Promise.resolve();
+    });
+  });
+
+  it("does not poll agent events after the parent session and agent are done", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete" as const,
+        completedAt: "2026-05-08T15:55:00.000Z"
+      })),
+      events: [
+        {
+          id: "task-result",
+          sessionId: "session-1",
+          type: "command.completed",
+          message: "tool_result",
+          payload: { tool_use_id: "task-1", content: "Done." },
+          createdAt: "2026-05-08T15:54:04.000Z"
+        },
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    await waitFor(() => {
+      expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 1700));
+    });
+
+    expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears stale agent panes after launching from the full new-session surface", async () => {
+    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
+      id: "workspace-new",
+      projectId: "project-1",
+      taskLabel: "Fresh task",
+      branch: "argmax/fresh-task",
+      baseRef: "main",
+      path: "/tmp/worktrees/fresh-task",
+      state: "running",
+      sharedWorkspace: true,
+      dirty: false,
+      changedFiles: 0,
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
+      pinned: false
+    };
+    const newSession: DashboardSnapshot["sessions"][number] = {
+      id: "session-new",
+      workspaceId: "workspace-new",
+      provider: "claude",
+      modelLabel: "Opus 4.8",
+      modelId: "claude-opus-4-8",
+      permissionMode: "auto-approve",
+      providerConversationId: "session-new",
+      prompt: "Fresh task",
+      state: "running",
+      attention: "normal",
+      startedAt: "2026-05-08T16:10:00.000Z",
+      completedAt: null,
+      lastActivityAt: "2026-05-08T16:10:00.000Z"
+    };
+    createCurrentWorkspace.mockResolvedValue(newWorkspace);
+    launchProvider.mockResolvedValue(newSession);
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "task-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: {
+              description: "Map renderer",
+              prompt: "Find renderer files."
+            }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        }
+      ]
+    });
+    window.localStorage.setItem("argmax.newSessionMode", "full");
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    expect(await screen.findByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "n", metaKey: true });
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Fresh task" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
+
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("region", { name: "Agent activity for Build dashboard" })).toBeNull();
+    expect(await screen.findByRole("region", { name: "Fresh task" })).toBeInTheDocument();
+    const grid = screen.getByRole("group", { name: "Session panes" });
+    expect(within(grid).getAllByRole("group", { name: /^Pane row/ })).toHaveLength(1);
+    expect(within(grid).getAllByRole("region", { name: "Fresh task" })).toHaveLength(1);
   });
 
   it("hides the grid and shows the full launcher on Cmd+N when newSessionMode is 'full'", async () => {

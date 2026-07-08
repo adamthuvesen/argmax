@@ -279,7 +279,6 @@ fn is_fts_operator_token(token: &str) -> bool {
         || token.eq_ignore_ascii_case("NEAR")
 }
 
-
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())
 }

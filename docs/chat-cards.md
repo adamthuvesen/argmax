@@ -172,6 +172,52 @@ off and the block follows the saved `argmax.thinking.expanded` default from
 Settings → Agents → Thinking blocks. A manual toggle overrides the auto behavior
 (same `userToggle ?? auto` pattern as the turn chip and tool groups).
 
+## Subagent activity panes
+
+Agent tool rows (`Task`, Codex `spawn_agent`, Cursor `taskToolCall`) open an
+in-app activity pane instead of dumping child-agent prose into the parent chat.
+The row itself is a split control: clicking the main row opens or focuses the
+pane, while the small chevron still expands inline metadata. The parent
+projection hides rows with `parent_tool_use_id` and Codex child-thread
+`agent_message` rows; the pane projection reads those same persisted events and
+shows them as the subagent's own timeline.
+
+Agent panes are dependent grid cells, keyed by `parentSessionId` and
+`parentToolUseId`. Opening the same subagent focuses the existing pane. Closing
+or replacing the parent session pane also closes its agent panes, so a subagent
+view never survives as a standalone session when the user switches context. If
+the split grid is full, the row click shows the pane-limit toast and leaves the
+current panes alone.
+
+For Claude, child prose and tool calls normally arrive in the parent provider
+stream with `parent_tool_use_id`, so no extra backfill is needed. Codex and
+Cursor expose richer child details in provider-local traces: Codex writes child
+session JSONL under `~/.codex/sessions` / `~/.codex/archived_sessions`, while
+Cursor writes child transcripts under
+`~/.cursor/projects/*/agent-transcripts/<agentId>/`. Opening an agent pane calls
+`session:agent-events`; the backend tries to import those trace rows into
+normal `events` rows with `traceImported: true`, `providerChildSessionId`,
+`traceSource`, `traceSequence`, and the spawning `parent_tool_use_id`. Imported
+rows use deterministic IDs, so repeated pane opens or live polling do not
+duplicate events.
+
+The pane polls `session:agent-events` only while the parent session or agent
+tool is still running. Main chat polling stays on `session:events-since`, so a
+normal chat view does not scan provider trace directories. While a running
+subagent has no imported child rows yet, the pane shows the same quiet Thinking
+state as the main chat. The limited-data notice appears only after the pane has
+settled and the provider still did not expose child activity.
+
+Providers can emit a launch-looking row before the real child link exists, then
+retry with the same prompt once the child is created. The parent projection hides
+the earlier unresolved row when a later same-prompt agent has child evidence —
+but only once the earlier row is no longer running, since a running row may be
+a legitimate parallel agent whose open pane must not be force-closed.
+Two completed same-prompt agents still render as two real launches. If trace
+import fails because a provider moves or redacts its local files, the pane keeps
+the launch/result metadata and shows a load or limited-data notice instead of
+breaking the chat.
+
 ## Submission flow
 
 When the user clicks Submit on a PlanCard or QuestionCard, the handler must

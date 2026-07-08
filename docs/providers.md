@@ -26,8 +26,10 @@ while the user tries to continue the session again.
 
 Follow-up launches still use the provider resume id when available, but the
 prompt also includes a capped transcript of visible `user.message`,
-`message.completed`, and `error` events from the same Argmax session. The
-timeline row remains the raw user follow-up; only the provider launch prompt is
+`message.completed`, and `error` events from the same Argmax session. Hidden
+child-agent rows (`parent_tool_use_id`, `traceImported`, Codex child-thread
+messages) are excluded, matching what the chat surface shows. The timeline row
+remains the raw user follow-up; only the provider launch prompt is
 contextualized.
 
 An idle follow-up can also switch provider. When `providers:send-input` carries
@@ -61,6 +63,41 @@ offering effort/Speed where a variant exists.
 
 Cursor's provider conversation id is the `session_id` from its `system/init`
 JSON row; persist it so follow-ups can resume with `cursor-agent --resume`.
+
+## Subagent Activity
+
+Subagent panes use normal timeline events. The parent chat stays clean by hiding
+child rows, while [AgentActivityPane.tsx](../src/renderer/components/AgentActivityPane.tsx)
+projects those rows for the clicked parent tool.
+
+Claude is the simplest case: its stream tags child messages and tool calls with
+`parent_tool_use_id`, and the normalizer persists those rows. Codex and Cursor
+need a pane-scoped trace import because their CLIs can write child-agent detail
+outside the parent stream. `session:agent-events` calls
+[subagent_trace.rs](../src-tauri/src/providers/subagent_trace.rs) before reading
+rows back.
+
+Codex links children from `spawn_agent` / `wait` `receiver_thread_ids`, then
+looks for matching JSONL under `~/.codex/sessions/YYYY/MM/DD` around the parent
+launch date and under `~/.codex/archived_sessions`. A candidate file must carry
+matching `session_meta` before it is imported. Visible reasoning summaries map
+to thinking deltas, function calls map to command rows, and assistant messages
+map to normal completed messages.
+
+Cursor links children from `taskToolCall` agent ids when they exist. If Cursor
+does not emit an id in the parent row, the importer falls back to a
+workspace-scoped prompt match under
+`~/.cursor/projects/*/agent-transcripts/<agentId>/`. Cursor transcripts can
+arrive late, often only after the task completes, so the pane keeps polling
+while the parent tool is running. Text blocks become messages, `tool_use` blocks
+become command rows, and tool outputs not yet in the transcript get a synthetic
+`traceNoOutput` completion that is upgraded in place once the real result is
+appended.
+
+Imported rows are inserted only if absent and carry `traceImported: true`,
+`providerChildSessionId`, `traceSource`, `traceSequence`, and the spawning
+`parent_tool_use_id`. Trace import is best-effort: unreadable, missing, or
+malformed files are skipped, and the pane falls back to launch/result metadata.
 
 Session titles are not exposed by Claude/Codex/Cursor protocol streams. New
 sessions first show the renderer's `titleFromPrompt` label, then the renderer

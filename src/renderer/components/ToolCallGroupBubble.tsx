@@ -4,6 +4,7 @@ import {
   buildGroupRows,
   getToolIcon,
   summarizeToolGroup,
+  type ToolCall,
   type ToolCallGroup
 } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -14,6 +15,7 @@ type ToolCallGroupBubbleProps = {
   defaultExpanded?: boolean;
   workspaceCwd?: string | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
+  onOpenAgent?: (tool: ToolCall) => void;
 };
 
 type UserToggle = {
@@ -25,7 +27,8 @@ function ToolCallGroupBubbleInner({
   group,
   defaultExpanded,
   workspaceCwd,
-  onOpenFile
+  onOpenFile,
+  onOpenAgent
 }: ToolCallGroupBubbleProps): JSX.Element {
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
@@ -84,7 +87,12 @@ function ToolCallGroupBubbleInner({
               key={tool.id}
               style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
             >
-              <ToolCallRow tool={tool} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
+              <ToolCallRow
+                tool={tool}
+                workspaceCwd={workspaceCwd ?? null}
+                onOpenFile={onOpenFile}
+                onOpenAgent={onOpenAgent}
+              />
               {children.length > 0 ? (
                 <div className="tool-call-agent-children">
                   {children.map((child, childIndex) => (
@@ -93,7 +101,12 @@ function ToolCallGroupBubbleInner({
                       key={child.id}
                       style={{ animationDelay: `${Math.min(childIndex, 8) * 28}ms` }}
                     >
-                      <ToolCallRow tool={child} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
+                      <ToolCallRow
+                        tool={child}
+                        workspaceCwd={workspaceCwd ?? null}
+                        onOpenFile={onOpenFile}
+                        onOpenAgent={onOpenAgent}
+                      />
                     </div>
                   ))}
                 </div>
@@ -110,6 +123,7 @@ export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) =
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;
+  if (prev.onOpenAgent !== next.onOpenAgent) return false;
   if (prev.group === next.group) return true;
   if (prev.group.id !== next.group.id) return false;
   const pt = prev.group.tools;

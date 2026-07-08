@@ -95,10 +95,123 @@
   overflow: hidden;
 }
 
-/* Start the compact layout before the pane reaches its resize floor. CSS
+.composer-compact-context {
+  position: relative;
+  display: none;
+  flex: 0 0 auto;
+}
+
+.composer-compact-context-trigger {
+  position: relative;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.composer-compact-context-trigger:hover {
+  color: var(--muted-strong);
+}
+
+.composer-compact-context-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+
+.composer-compact-context-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  width: 244px;
+  max-width: calc(100cqw - 24px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-2);
+}
+
+.composer-compact-context-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-strong);
+  font-family: var(--font-prose);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  text-align: left;
+}
+
+button.composer-compact-context-row {
+  cursor: pointer;
+}
+
+button.composer-compact-context-row:hover,
+.composer-compact-context-row--changes[aria-pressed="true"] {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.composer-compact-context-row svg {
+  flex: 0 0 auto;
+  color: currentColor;
+  opacity: 0.72;
+}
+
+.composer-compact-context-branch {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-compact-context-row--changes {
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-compact-context-row--context {
+  justify-content: space-between;
+}
+
+.composer-compact-context-row--context .context-ring-anchor {
+  margin: 0;
+  padding: 0;
+}
+
+.composer-compact-context-row--context .context-ring-anchor::after {
+  display: none;
+}
+
+.composer-compact-context-row--context .context-ring-popover {
+  right: 0;
+  left: auto;
+}
+
+/* Start the compact layout before side-by-side panes feel cramped. CSS
    container queries do not reliably accept var() in the condition, so
    accentTokens.test.ts pins this literal. */
-@container (max-width: 520px) {
+@container (max-width: 720px) {
   .session-input {
     padding: 8px 10px;
   }
@@ -109,13 +222,11 @@
 
   .session-input-toolbar {
     display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) auto 36px;
-    grid-template-areas:
-      "attach model mode send"
-      "context context context context";
+    grid-template-columns: 30px minmax(0, 1fr) 30px auto 36px;
+    grid-template-areas: "attach model details mode send";
     align-items: center;
     column-gap: 6px;
-    row-gap: 6px;
+    row-gap: 0;
   }
 
   .session-input-toolbar .composer-tool {
@@ -125,6 +236,16 @@
   .session-input-toolbar .composer-chips-model {
     grid-area: model;
     flex-basis: 128px;
+  }
+
+  .session-input-toolbar .composer-compact-context {
+    display: block;
+    grid-area: details;
+    justify-self: end;
+  }
+
+  .session-input-toolbar > .context-ring-anchor {
+    display: none;
   }
 
   .session-input-toolbar .composer-chips-mode {
@@ -138,22 +259,7 @@
   }
 
   .session-input-toolbar .composer-chips-context {
-    grid-area: context;
-    flex: 1 1 100%;
-    padding-left: 0;
-    margin-left: 0;
-  }
-
-  .session-input-toolbar .composer-chips-context::before {
     display: none;
-  }
-
-  .session-input-toolbar .composer-footer {
-    width: 100%;
-  }
-
-  .session-input-toolbar .composer-footer-chip--branch {
-    flex: 1 1 0;
   }
 
   .session-input-toolbar .session-toolbar-spacer {

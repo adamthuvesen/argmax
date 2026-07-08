@@ -21,7 +21,7 @@ use self::{
         extract_message_content as extract_claude_message_content,
         extract_usage as extract_claude_usage,
         is_synthetic_skill_body as is_claude_synthetic_skill_body,
-        is_thinking_delta_payload as is_claude_thinking_delta_payload, should_drop_sub_agent_prose,
+        is_thinking_delta_payload as is_claude_thinking_delta_payload,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
     },
     codex::{
@@ -548,13 +548,6 @@ fn normalize_json_payload(
             provider_conversation_id,
         };
     }
-    if provider == ProviderId::Claude && should_drop_sub_agent_prose(&payload) {
-        return NormalizedProviderResult {
-            events,
-            usages,
-            provider_conversation_id,
-        };
-    }
     if provider == ProviderId::Claude && is_claude_synthetic_skill_body(&payload) {
         return NormalizedProviderResult {
             events,
@@ -589,6 +582,35 @@ fn normalize_json_payload(
     if is_claude_thinking_delta && timeline_type == "message.delta" {
         if let Value::Object(map) = &mut final_payload {
             map.insert("thinking".to_string(), Value::Bool(true));
+        }
+    }
+    if provider == ProviderId::Codex && item_type.as_deref() == Some("agent_message") {
+        if let Value::Object(map) = &mut final_payload {
+            map.insert(
+                "item_type".to_string(),
+                Value::String("agent_message".to_string()),
+            );
+            if let Some(provider_type) = provider_type.as_deref() {
+                map.insert(
+                    "providerEventType".to_string(),
+                    Value::String(provider_type.to_string()),
+                );
+            }
+            let copied_thread_fields = object_value(map.get("item"))
+                .map(|item| {
+                    ["thread_id", "sender_thread_id", "receiver_thread_ids"]
+                        .iter()
+                        .filter_map(|key| {
+                            item.get(*key)
+                                .cloned()
+                                .map(|value| ((*key).to_string(), value))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            for (key, value) in copied_thread_fields {
+                map.insert(key, value);
+            }
         }
     }
     events.push(timeline_event(

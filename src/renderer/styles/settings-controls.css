@@ -234,11 +234,6 @@
   max-height: min(440px, calc(100dvh - 180px));
 }
 
-.settings-model-picker .model-effort-popover {
-  margin-top: var(--model-submenu-top, 0);
-  margin-bottom: 0;
-}
-
 .settings-model-picker .model-speed-popover {
   margin-top: var(--model-submenu-top, 0);
   margin-bottom: 0;

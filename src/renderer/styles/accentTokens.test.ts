@@ -304,12 +304,10 @@ describe("accent CSS contract", () => {
   it("keeps speed submenu opening upward in launcher model picker", () => {
     const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
     const speedRule = cssRuleBody(chatChrome, ".composer-context .model-speed-popover");
-    const effortRule = cssRuleBody(chatChrome, ".composer-context .model-effort-popover");
 
     expect(speedRule).toContain("align-self: flex-end;");
     expect(speedRule).toContain("margin-top: 0;");
     expect(speedRule).toContain("margin-bottom: 0;");
-    expect(effortRule).toContain("margin-top: var(--model-submenu-top, 0);");
   });
 
   it("keeps project and model picker menus dense", () => {
@@ -319,7 +317,6 @@ describe("accent CSS contract", () => {
     const modelPopoverRule = cssRuleBody(chatChrome, ".model-picker-popover");
     const modelItemRule = cssRuleBody(chatChrome, ".model-picker-popover .project-picker-item");
     const modelSubmenuTriggerRule = cssRuleBody(chatChrome, ".model-picker-item.model-picker-submenu-trigger");
-    const modelEditRule = cssRuleBody(chatChrome, ".model-picker-edit");
     const groupLabelRule = cssRuleBody(chatChrome, ".project-picker-group-label");
 
     expect(popoverRule).toContain("padding: 5px;");
@@ -330,8 +327,6 @@ describe("accent CSS contract", () => {
     expect(modelItemRule).toContain("gap: 8px;");
     expect(modelSubmenuTriggerRule).toContain("calc(var(--model-picker-action-column) - 8px)");
     expect(modelSubmenuTriggerRule).toContain("column-gap: 8px;");
-    expect(modelEditRule).toContain("width: 24px;");
-    expect(modelEditRule).toContain("height: 24px;");
     expect(groupLabelRule).toContain("font-size: var(--text-2xs);");
     expect(groupLabelRule).toContain("line-height: 1.2;");
   });

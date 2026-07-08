@@ -373,14 +373,13 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   /** Effort levels for a given value's provider, low → high. Claude runs the
    *  full low→ultra list; other providers stop at Extra High. */
   reasoningEffortsForValue: (value: T) => readonly ReasoningEffort[];
-  /** Show a standalone effort slider beside the chip and drop the effort suffix
-   *  from the model label. Off in settings, where effort stays in the label. */
+  /** Show a standalone effort slider beside the chip. Off in settings, which
+   *  has no per-session effort control — the model's default effort applies. */
   withEffortSlider?: boolean;
   supportsFastModeForValue?: (value: T) => boolean;
   value: T;
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [effortMenuOpenFor, setEffortMenuOpenFor] = useState<string | null>(null);
   const [fastModeMenuOpen, setFastModeMenuOpen] = useState(false);
   const [submenuOffset, setSubmenuOffset] = useState<{ top: number; bottom: number } | null>(null);
   const open = controlledOpen ?? internalOpen;
@@ -390,7 +389,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
       setInternalOpen(nextValue);
     }
     if (!nextValue) {
-      setEffortMenuOpenFor(null);
       setFastModeMenuOpen(false);
       setSubmenuOffset(null);
     }
@@ -411,23 +409,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   // the selected model is known to be fast/no-effort.
   const selectedShowsEffort =
     value.reasoningEffort != null && (selectedOption ? selectedOption.supportsReasoningEffort : true);
-  // "Model · Effort" for the tooltip; when the standalone effort slider is
-  // shown the button text drops the effort suffix (the slider carries it).
-  const selectedTitle =
-    selectedShowsEffort && value.reasoningEffort
-      ? `${value.label} · ${effortLabel(value.reasoningEffort)}`
-      : value.label;
-  const selectedLabel = withEffortSlider ? value.label : selectedTitle;
   const showEffortSlider = withEffortSlider && selectedShowsEffort && value.reasoningEffort != null;
-
-  // Effort a row would use if picked: the current effort carried over and
-  // clamped to what the row's model supports (fast models show nothing). This
-  // keeps the row preview in step with what selectionForOption commits.
-  const effortForOption = (option: ChipModelOption<T>): ReasoningEffort =>
-    (isSelected(option.value)
-      ? value.reasoningEffort
-      : clampEffort(value.reasoningEffort, reasoningEffortsForValue(option.value))) ??
-    DEFAULT_REASONING_EFFORT;
 
   const selectionForOption = (option: ChipModelOption<T>): T => {
     // Fast/no-effort models carry no effort. Otherwise the current effort is
@@ -445,11 +427,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     if (option.disabled) return;
     const nextValue = selectionForOption(option);
     onChange(nextValue);
-    setOpen(false);
-  };
-
-  const selectEffort = (option: ChipModelOption<T>, reasoningEffort: ReasoningEffort): void => {
-    onChange({ ...option.value, reasoningEffort });
     setOpen(false);
   };
 
@@ -480,10 +457,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
       }
     : undefined;
 
-  const editingOption = effortMenuOpenFor
-    ? options.find((option) => option.key === effortMenuOpenFor && option.supportsReasoningEffort && !option.disabled) ?? null
-    : null;
-
   return (
     <div className="model-picker-cluster">
     <div
@@ -497,13 +470,13 @@ function ChipModelPicker<T extends ProviderModelSelection>({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={effectiveFastModeEnabled ? `${selectedTitle} · Fast speed` : selectedTitle}
+        title={effectiveFastModeEnabled ? `${value.label} · Fast speed` : value.label}
         onClick={() => setOpen((o) => !o)}
       >
         {effectiveFastModeEnabled ? (
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : null}
-        <span className="model-picker-label">{selectedLabel}</span>
+        <span className="model-picker-label">{value.label}</span>
       </button>
       {open && (
         <div
@@ -511,7 +484,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           onClick={(event) => {
             // Clicking inert popover chrome (group labels, padding) dismisses,
             // mirroring the other composer pickers. Buttons handle their own
-            // clicks — model/effort rows close themselves, Edit stays open.
+            // clicks — model rows and the Speed trigger close/open themselves.
             if (event.target instanceof Element && !event.target.closest("button")) {
               setOpen(false);
             }
@@ -526,7 +499,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
             {options.map((option, index) => {
               const selected = isSelected(option.value);
               const previousGroup = index > 0 ? options[index - 1]?.group : null;
-              const editing = option.key === effortMenuOpenFor;
               return (
                 <Fragment key={option.key}>
                   {option.group && index > 0 && option.group !== previousGroup ? (
@@ -551,34 +523,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                       {option.annotation ? (
                         <span className="model-picker-annotation">{option.annotation}</span>
                       ) : null}
-                      {option.supportsReasoningEffort && !option.disabled ? (
-                        <span className="model-picker-effort">{effortLabel(effortForOption(option))}</span>
-                      ) : null}
                     </button>
-                    {option.supportsReasoningEffort && !option.disabled ? (
-                      <button
-                        type="button"
-                        className="model-picker-edit"
-                        aria-label={`Edit effort for ${option.label}`}
-                        aria-expanded={editing}
-                        title="Change reasoning effort"
-                        onClick={(event) => {
-                          setFastModeMenuOpen(false);
-                          const nextEffortMenuOpenFor = effortMenuOpenFor === option.key ? null : option.key;
-                          setEffortMenuOpenFor(nextEffortMenuOpenFor);
-                          if (nextEffortMenuOpenFor) {
-                            if (!isSelected(option.value)) {
-                              onChange(selectionForOption(option));
-                            }
-                            anchorSubmenuTo(event.currentTarget);
-                          } else {
-                            setSubmenuOffset(null);
-                          }
-                        }}
-                      >
-                        <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
-                      </button>
-                    ) : null}
                   </li>
                 </Fragment>
               );
@@ -592,7 +537,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                     className="project-picker-item model-picker-item model-picker-submenu-trigger"
                     aria-expanded={fastModeMenuOpen}
                     onClick={(event) => {
-                      setEffortMenuOpenFor(null);
                       const nextFastModeMenuOpen = !fastModeMenuOpen;
                       setFastModeMenuOpen(nextFastModeMenuOpen);
                       if (nextFastModeMenuOpen) {
@@ -610,33 +554,6 @@ function ChipModelPicker<T extends ProviderModelSelection>({
               </>
             ) : null}
           </ul>
-          {editingOption ? (
-            <ul
-              className="project-picker-popover model-effort-popover"
-              role="listbox"
-              aria-label="Reasoning effort"
-              style={submenuStyle}
-            >
-              <li className="project-picker-group-label" role="presentation">
-                Effort
-              </li>
-              {reasoningEffortsForValue(editingOption.value).map((reasoningEffort) => {
-                const active = effortForOption(editingOption) === reasoningEffort;
-                return (
-                  <li key={reasoningEffort} role="option" aria-selected={active}>
-                    <button
-                      type="button"
-                      className="project-picker-item model-effort-item"
-                      aria-pressed={active}
-                      onClick={() => selectEffort(editingOption, reasoningEffort)}
-                    >
-                      <span>{effortLabel(reasoningEffort)}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
           {fastModeMenuOpen && canChangeFastMode ? (
             <ul
               className="project-picker-popover model-speed-popover"

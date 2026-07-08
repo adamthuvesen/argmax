@@ -15,6 +15,7 @@ Argmax has a Rust/Tauri runtime and a React/Vite renderer, joined by a stable `w
 | Terminal panel | [terminal.md](terminal.md) |
 | GitHub CI feedback | [gh.md](gh.md) |
 | Learnings | [memory.md](memory.md) |
+| Chat surface and cards | [chat-cards.md](chat-cards.md) |
 | Perf budgets | [performance.md](performance.md) |
 | Tests | [testing.md](testing.md) |
 | Release | [release.md](release.md) |
@@ -45,6 +46,12 @@ Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:e
 React 19 + Vite. [App.tsx](../src/renderer/App.tsx) composes the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) centralizes app command IPC through `window.argmax`. The overlay-titlebar helper [windowChrome.ts](../src/renderer/lib/windowChrome.ts) is the one direct renderer Tauri API exception: it uses the window API for drag/zoom chrome, not app IPC. Browser-preview mode detects missing Tauri internals and falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
 
 Heavy panels are lazy-loaded. Renderer tests use [src/test/appTestHarness.ts](../src/test/appTestHarness.ts) and [src/test/fixtures/dashboardSnapshot.ts](../src/test/fixtures/dashboardSnapshot.ts).
+
+[SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) renders
+three pane kinds: session, launcher, and agent activity. Agent cells are not
+primary sessions. They point back to a parent session and parent tool use id, and
+the grid helpers drop them when the parent session pane is closed or replaced.
+That keeps subagent activity tied to the chat that launched it.
 
 ## Shared: `src/shared`
 

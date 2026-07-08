@@ -19,6 +19,15 @@ Every request handler is registered in [src-tauri/src/ipc/mod.rs](../src-tauri/s
 
 Runtime validation belongs in Rust input structs/newtypes. Do not add Zod schemas or renderer-side validation for trusted app IPC.
 
+`session:agent-events` is the focused read for subagent activity panes. It takes
+`{ sessionId, parentToolUseId }`, runs provider-specific trace import
+best-effort for that one parent tool, then returns the same
+`SessionEventsSinceResult` shape as `session:events-since`. The result is scoped
+to the parent launch/completion rows, child rows linked by `parent_tool_use_id`,
+and Codex child-thread `agent_message` rows linked by receiver thread ids.
+Normal session polling stays on `session:events-since` and does not trigger trace
+directory scans.
+
 ## Push Channels
 
 Push channels are emitted by Rust and subscribed in `tauriBridge.ts`:

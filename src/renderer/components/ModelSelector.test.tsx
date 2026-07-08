@@ -150,9 +150,12 @@ describe("LaunchModelSelector — all providers", () => {
     const onChange = vi.fn();
     render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    expect(screen.getByText("Claude")).toBeInTheDocument();
-    expect(screen.getByText("Codex")).toBeInTheDocument();
-    expect(screen.getByText("Cursor")).toBeInTheDocument();
+    // Providers are grouped by thin separators, not text labels — one before
+    // Codex and one before Cursor, none above the first (Claude) group.
+    expect(screen.queryByText("Claude")).not.toBeInTheDocument();
+    expect(screen.queryByText("Codex")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("separator")).toHaveLength(2);
     expect(screen.getByText("GPT-5.5")).toBeInTheDocument();
 
     // Cursor effort is UI-only: selecting Extra High keeps the -medium alias id.

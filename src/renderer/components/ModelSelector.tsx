@@ -343,10 +343,8 @@ function ChipModelPicker<T extends PickerValue>({
               const editing = option.key === effortMenuFor;
               return (
                 <Fragment key={option.key}>
-                  {option.group && option.group !== previousGroup ? (
-                    <li className="project-picker-group-label" role="presentation">
-                      {option.group}
-                    </li>
+                  {option.group && index > 0 && option.group !== previousGroup ? (
+                    <li className="model-picker-divider" role="separator" />
                   ) : null}
                   <li
                     role="option"

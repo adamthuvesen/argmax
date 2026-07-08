@@ -2,6 +2,7 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
+use super::bool_to_i64;
 use super::gh::latest_pr_for_workspace;
 use super::prepared::prepared;
 use super::time::now_iso;
@@ -309,12 +310,4 @@ fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
 
 fn json_error(error: serde_json::Error) -> ArgmaxError {
     ArgmaxError::service("JSON", error.to_string())
-}
-
-fn bool_to_i64(value: bool) -> i64 {
-    if value {
-        1
-    } else {
-        0
-    }
 }

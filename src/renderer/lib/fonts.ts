@@ -235,8 +235,3 @@ export async function loadFontAssets(id: FontFamilyId): Promise<void> {
   // font never recovered without a full page reload (R-033).
   loadedFonts.add(id);
 }
-
-/** Test-only: clear the loaded-font cache between fixtures. */
-export function resetLoadedFontsForTesting(): void {
-  loadedFonts.clear();
-}

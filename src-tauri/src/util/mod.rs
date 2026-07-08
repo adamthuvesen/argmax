@@ -5,6 +5,7 @@ pub mod gh_runner;
 pub mod ipc_latency;
 pub mod log_buffer;
 pub mod process_control;
+pub mod protocol_url;
 pub mod startup_timer;
 pub mod stream_reader;
 pub mod tracing_init;

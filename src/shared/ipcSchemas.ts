@@ -2,9 +2,6 @@
 // in Rust input newtypes and command structs; this module is a tiny TypeScript
 // type source for renderer calls.
 
-export const MAX_STREAM_CHUNK_BYTES = 64 * 1024;
-export const MAX_FILE_CONTENT_BYTES = 4 * 1024 * 1024;
-
 export const IPC_CHANNELS = [
   "health:ping",
   "projects:list",

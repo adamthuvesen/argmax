@@ -100,23 +100,6 @@ function toolGroupWithoutHiddenTools(
   return { ...buildToolCallGroup(visibleTools), id: group.id };
 }
 
-export function toolsNamed(toolItems: readonly TurnToolItem[], name: string): ToolCall[] {
-  const matches: ToolCall[] = [];
-  for (const item of toolItems) {
-    if (item.kind === "tool") {
-      if (item.tool.name === name) matches.push(item.tool);
-      for (const child of item.children ?? []) {
-        if (child.name === name) matches.push(child);
-      }
-      continue;
-    }
-    for (const tool of item.group.tools) {
-      if (tool.name === name) matches.push(tool);
-    }
-  }
-  return matches;
-}
-
 export function visibleTurnToolItem(
   item: TurnToolItem,
   hiddenToolIds: ReadonlySet<string>

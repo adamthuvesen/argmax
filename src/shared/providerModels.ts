@@ -75,9 +75,10 @@ export function clampEffort(
 /** Effort an effort-capable model gets when first picked (before Edit). */
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 
-// One entry per model. Effort is chosen separately via the picker's Edit
-// submenu, not by selecting a different row. Models without
-// `supportsReasoningEffort` are fast/no-effort and hide the effort control.
+// One entry per model. Effort is chosen separately via the effort control (the
+// standalone slider chip, or the per-row Edit submenu), not by selecting a
+// different row. Models without `supportsReasoningEffort` are fast/no-effort and
+// hide the effort control.
 //
 // NOTE: Cursor's `modelId`s keep their `-medium` alias as a stable base — the
 // Cursor CLI selects reasoning effort through the model id (e.g. gpt-5.5-high,

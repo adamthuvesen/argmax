@@ -15,5 +15,14 @@ pub mod workspaces;
 
 pub use database::Database;
 
+/// Map a bool to SQLite's 0/1 integer representation.
+pub(crate) fn bool_to_i64(value: bool) -> i64 {
+    if value {
+        1
+    } else {
+        0
+    }
+}
+
 #[cfg(test)]
 mod repository_tests;

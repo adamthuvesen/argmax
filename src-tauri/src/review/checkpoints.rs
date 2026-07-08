@@ -69,18 +69,11 @@ impl CheckpointService {
         Self::with_checkpoint_dir(database, data_dir.as_ref().join("checkpoints"))
     }
 
-    pub fn with_checkpoint_dir(
-        database: Arc<Database>,
-        checkpoint_dir: impl AsRef<Path>,
-    ) -> Arc<Self> {
+    fn with_checkpoint_dir(database: Arc<Database>, checkpoint_dir: impl AsRef<Path>) -> Arc<Self> {
         Arc::new(Self {
             database,
             checkpoint_dir: checkpoint_dir.as_ref().to_path_buf(),
         })
-    }
-
-    pub fn checkpoint_dir(&self) -> &Path {
-        &self.checkpoint_dir
     }
 
     pub async fn create_checkpoint(

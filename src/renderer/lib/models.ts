@@ -105,26 +105,12 @@ export function modelPickerSelectionFromSession(session: SessionSummary | null):
   };
 }
 
-export function thinkingModelSlug(model: ProviderModelSelection): string {
-  const id = model.modelId.toLowerCase().split(":")[0] ?? model.modelId;
-  return id.replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
-}
-
 const EMPTY_USAGE_COUNTS: SessionCostSummary["tokens"] = {
   input: 0,
   output: 0,
   cacheRead: 0,
   cacheWrite: 0
 };
-
-export function emptyCostSummary(sessionId: string): SessionCostSummary {
-  return {
-    sessionId,
-    modelId: null,
-    tokens: { ...EMPTY_USAGE_COUNTS },
-    costUsd: 0
-  };
-}
 
 export function costForBucket(
   bucket: keyof SessionCostSummary["tokens"],

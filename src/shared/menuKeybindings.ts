@@ -105,7 +105,3 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘W", label: "Close focused session pane" },
   { displayAccelerator: "Esc", label: "Close the topmost overlay" }
 ] as const;
-
-export function findMenuKeybinding(command: MenuCommand): MenuKeybinding | undefined {
-  return MENU_KEYBINDINGS.find((entry) => entry.command === command);
-}

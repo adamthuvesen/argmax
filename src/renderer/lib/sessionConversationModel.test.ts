@@ -256,6 +256,55 @@ describe("buildSessionToolCalls", () => {
     });
   });
 
+  it("hides Codex no-op duplicate spawn_agent rows", () => {
+    const tools = buildSessionToolCalls([
+      event("real-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+        id: "item_1",
+        name: "spawn_agent",
+        status: "in_progress",
+        input: {
+          prompt: "Read README.md and summarize it quickly.",
+          receiver_thread_ids: ["thread-child"],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("real-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+        id: "item_1",
+        name: "spawn_agent",
+        input: {
+          prompt: "Read README.md and summarize it quickly.",
+          receiver_thread_ids: [],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("noop-end", "command.completed", "2026-05-12T15:00:04.000Z", "spawn_agent", {
+        id: "item_2",
+        name: "spawn_agent",
+        input: {
+          prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
+          receiver_thread_ids: ["thread-noop"],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("noop-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
+        id: "item_2",
+        name: "spawn_agent",
+        input: {
+          prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
+          receiver_thread_ids: [],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("noop-child", "message.completed", "2026-05-12T15:00:05.000Z", "Got it. No action taken.", {
+        parent_tool_use_id: "item_2",
+        providerChildSessionId: "thread-noop",
+        traceImported: true
+      })
+    ], true);
+
+    expect(tools.map((tool) => tool.toolUseId)).toEqual(["item_1"]);
+  });
+
   it("keeps a running same-prompt spawn_agent while the session is still running", () => {
     // The earlier row has no launch evidence yet, but while it is running it
     // may be a legitimate parallel agent — hiding it would also force-close

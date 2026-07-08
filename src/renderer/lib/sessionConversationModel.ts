@@ -82,17 +82,34 @@ function normalizedAgentLaunchText(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function agentLaunchSignature(tool: ToolCall): string | null {
-  if (getToolTypeBucket(tool.name) !== "agent") return null;
-  const prompt =
+function agentLaunchPrompt(tool: ToolCall): string | null {
+  return (
     stringValue(tool.inputFull.prompt) ??
     stringValue(tool.inputFull.instructions) ??
     stringValue(tool.inputFull.description) ??
     stringValue(tool.inputFull.subagent_type) ??
     stringValue(tool.inputFull.subagentType) ??
-    stringValue(tool.inputPreview);
+    stringValue(tool.inputPreview)
+  );
+}
+
+function agentLaunchSignature(tool: ToolCall): string | null {
+  if (getToolTypeBucket(tool.name) !== "agent") return null;
+  const prompt = agentLaunchPrompt(tool);
   if (prompt === null) return null;
   return `${tool.name.toLowerCase()}:${normalizedAgentLaunchText(prompt)}`;
+}
+
+function isNoOpCodexAgentLaunch(tool: ToolCall): boolean {
+  if (!isCodexSpawnAgentTool(tool)) return false;
+  const prompt = agentLaunchPrompt(tool);
+  if (prompt === null) return false;
+  const normalized = normalizedAgentLaunchText(prompt);
+  return (
+    /\b(ignore|disregard)\b/.test(normalized) &&
+    /\bduplicate\b/.test(normalized) &&
+    /\bno action (needed|required)\b/.test(normalized)
+  );
 }
 
 function hasAgentLaunchLinkage(tool: ToolCall): boolean {
@@ -328,7 +345,9 @@ export function buildSessionToolCalls(
     })
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const folded = foldCodexAgentControlTools(tools);
-  return folded.filter((tool) => !isSupersededAgentLaunchAttempt(tool, folded));
+  return folded.filter(
+    (tool) => !isNoOpCodexAgentLaunch(tool) && !isSupersededAgentLaunchAttempt(tool, folded)
+  );
 }
 
 export function lastSignificantSessionEvent(events: readonly TimelineEvent[]): TimelineEvent | undefined {

@@ -211,8 +211,9 @@
 
 .settings-model-picker {
   z-index: 35;
-  width: min(240px, 100%);
-  min-width: min(200px, 100%);
+  /* Hug the (now effort-free) model label; cap so long Cursor labels ellipsize. */
+  width: fit-content;
+  max-width: min(240px, 100%);
   margin-left: auto;
 }
 

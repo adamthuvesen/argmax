@@ -185,7 +185,7 @@ fn gh_error_category(error: &ArgmaxError) -> GhErrorCategory {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GhCheckState {
+enum GhCheckState {
     Unknown,
     Pending,
     Success,

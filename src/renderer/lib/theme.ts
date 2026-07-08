@@ -111,34 +111,3 @@ export function animateThemeChange(): void {
     root.classList.remove("theme-transition");
   }, 240);
 }
-
-export function getThemeOption(id: ThemeMode): ThemeOption {
-  return THEME_OPTIONS.find((option) => option.id === id) ?? THEME_OPTIONS[0];
-}
-
-/**
- * Subscribe a callback to data-theme attribute changes. Returns an unsubscribe.
- * Consumers that read the document attribute imperatively (xterm, shiki) use
- * this to refresh their styling when the user toggles theme in Settings or
- * the OS preference flips under "System".
- */
-export function subscribeToThemeChange(cb: (resolved: ResolvedTheme) => void): () => void {
-  if (typeof document === "undefined") return () => {};
-  const observer = new MutationObserver(() => {
-    const attr = document.documentElement.getAttribute("data-theme");
-    cb(themeAppearance(attr));
-  });
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"]
-  });
-  return () => observer.disconnect();
-}
-
-/**
- * Read the light/dark *appearance* from the document — never returns "system".
- */
-export function readResolvedTheme(): "light" | "dark" {
-  if (typeof document === "undefined") return "light";
-  return themeAppearance(document.documentElement.getAttribute("data-theme"));
-}

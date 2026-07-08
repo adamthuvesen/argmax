@@ -29,6 +29,7 @@ import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
+import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
@@ -140,13 +141,13 @@ export function SessionPane({
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
-  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(SESSION_RIGHT_PANEL_WIDTH_KEY) : null;
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n >= SESSION_RIGHT_PANEL_MIN && n <= SESSION_RIGHT_PANEL_MAX
-      ? n
-      : SESSION_RIGHT_PANEL_DEFAULT;
-  });
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() =>
+    readBoundedNumberPreference(SESSION_RIGHT_PANEL_WIDTH_KEY, {
+      min: SESSION_RIGHT_PANEL_MIN,
+      max: SESSION_RIGHT_PANEL_MAX,
+      fallback: SESSION_RIGHT_PANEL_DEFAULT
+    })
+  );
   const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   // True once the user has opened the terminal in the current workspace.
@@ -155,11 +156,13 @@ export function SessionPane({
   // workspace change so stale PTYs are torn down with the leaf components.
   const [terminalOnceOpened, setTerminalOnceOpened] = useState(false);
   const [isTerminalResizing, setIsTerminalResizing] = useState(false);
-  const [terminalHeight, setTerminalHeight] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(TERMINAL_HEIGHT_KEY) : null;
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n >= TERMINAL_MIN_HEIGHT && n <= TERMINAL_MAX_HEIGHT ? n : TERMINAL_DEFAULT_HEIGHT;
-  });
+  const [terminalHeight, setTerminalHeight] = useState<number>(() =>
+    readBoundedNumberPreference(TERMINAL_HEIGHT_KEY, {
+      min: TERMINAL_MIN_HEIGHT,
+      max: TERMINAL_MAX_HEIGHT,
+      fallback: TERMINAL_DEFAULT_HEIGHT
+    })
+  );
   useEffect(() => {
     if (isTerminalOpen) setTerminalOnceOpened(true);
   }, [isTerminalOpen]);

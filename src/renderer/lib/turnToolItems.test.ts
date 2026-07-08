@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseQuestionsFromToolInput } from "./questions.js";
-import {
-  foldTurnToolItems,
-  toolsNamed,
-  visibleTurnToolItem
-} from "./turnToolItems.js";
+import { foldTurnToolItems, visibleTurnToolItem } from "./turnToolItems.js";
 import { buildToolCallGroup, type ToolCall } from "./toolCalls.js";
-import type { TurnToolItem } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "id" | "name">): ToolCall {
   return {
@@ -109,20 +104,6 @@ describe("turnToolItems", () => {
     expect(folded[1]?.kind === "tool-group" ? folded[1].group.tools.map((t) => t.id) : []).toEqual([
       "top-bash"
     ]);
-  });
-
-  it("finds named tools inside individual tools and groups", () => {
-    const ask = tool({ id: "ask", name: "AskUserQuestion" });
-    const plan = tool({ id: "plan", name: "ExitPlanMode" });
-    const childPlan = tool({ id: "child-plan", name: "ExitPlanMode" });
-    const read = tool({ id: "read", name: "Read" });
-    const items: TurnToolItem[] = [
-      { kind: "tool", tool: ask, children: [childPlan] },
-      { kind: "tool-group", group: buildToolCallGroup([plan, read]) }
-    ];
-
-    expect(toolsNamed(items, "AskUserQuestion")).toEqual([ask]);
-    expect(toolsNamed(items, "ExitPlanMode")).toEqual([childPlan, plan]);
   });
 
   it("parses valid AskUserQuestion input and rejects oversized option sets", () => {

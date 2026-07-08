@@ -1,7 +1,7 @@
 import { logger } from "../../shared/logger.js";
 import { errorMessage } from "../../shared/error.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
-import type { ProjectSummary, ProviderId } from "../../shared/types.js";
+import type { ProjectSummary } from "../../shared/types.js";
 
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 export const expandedProjectsStorageKey = "argmax.sidebar.expandedProjects";
@@ -277,12 +277,6 @@ export function applyProjectOrder(projects: ProjectSummary[], order: string[]): 
 export function titleFromPrompt(prompt: string): string {
   const firstLine = prompt.split(/\r?\n/, 1)[0]?.trim() ?? "";
   return firstLine.length > 64 ? `${firstLine.slice(0, 61)}...` : firstLine || "Local agent task";
-}
-
-export function providerLabel(provider: ProviderId): string {
-  if (provider === "codex") return "Codex";
-  if (provider === "cursor") return "Cursor";
-  return "Claude";
 }
 
 export function repoNameFromPath(path: string | null | undefined): string | null {

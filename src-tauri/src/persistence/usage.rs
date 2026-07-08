@@ -14,6 +14,9 @@ pub struct InsertUsageEventInput {
     pub model_id: String,
     pub tokens: UsageCounts,
     pub cost_usd: f64,
+    /// The model's context-window size when the provider reports it (Codex).
+    /// Persisted on the session when present; leaves the prior value otherwise.
+    pub context_window: Option<i64>,
     pub created_at: Option<String>,
 }
 
@@ -62,6 +65,11 @@ pub fn insert_usage_event(
             ))
             .map_err(sqlite_error)?;
 
+        // Cumulative token/cost counters accumulate (+=); context_tokens is the
+        // input side of *this* turn, so it overwrites (the live window size);
+        // context_window keeps its prior value unless this turn reported one.
+        let context_tokens =
+            input.tokens.input + input.tokens.cache_read + input.tokens.cache_write;
         let mut update_statement = prepared(
             connection,
             r#"
@@ -71,7 +79,9 @@ pub fn insert_usage_event(
               output_tokens = output_tokens + ?,
               cache_read_tokens = cache_read_tokens + ?,
               cache_write_tokens = cache_write_tokens + ?,
-              cost_usd = cost_usd + ?
+              cost_usd = cost_usd + ?,
+              context_tokens = ?,
+              context_window = COALESCE(?, context_window)
             WHERE id = ?
             "#,
         )
@@ -83,6 +93,8 @@ pub fn insert_usage_event(
                 input.tokens.cache_read,
                 input.tokens.cache_write,
                 input.cost_usd,
+                context_tokens,
+                input.context_window,
                 input.session_id.as_str(),
             ))
             .map_err(sqlite_error)?;

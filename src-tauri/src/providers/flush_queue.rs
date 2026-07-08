@@ -13,6 +13,7 @@ use super::{
 };
 use crate::{
     error::ArgmaxResult,
+    ipc::inputs::ComposerAttachmentInput,
     persistence::{
         approvals::{
             find_pending_approval, persist_approval, ApprovalRequest, FindPendingApprovalInput,
@@ -71,6 +72,11 @@ pub struct PendingMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
     pub fast_mode: bool,
+    // Carried through the queue so a drained follow-up re-persists its image
+    // thumbnails on the user.message event — otherwise queuing a message with
+    // an attachment loses the image in the chat UI once the turn sends.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<ComposerAttachmentInput>,
     pub queued_at: String,
 }
 
@@ -371,6 +377,7 @@ pub fn flush_session_buffer(
                         cache_write: usage.tokens.cache_write as i64,
                     },
                     cost_usd: usage.cost_usd,
+                    context_window: usage.context_window.map(|window| window as i64),
                     created_at: None,
                 },
             )?;
@@ -481,6 +488,7 @@ mod tests {
             model_id: None,
             reasoning_effort: None,
             fast_mode: false,
+            attachments: Vec::new(),
             queued_at: "2026-01-01T00:00:00Z".to_string(),
         };
 

@@ -115,20 +115,19 @@ faithful. Reduced-motion users skip the paced reveal.
 ## Live auto-scroll
 
 The conversation list uses [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts)
-to follow live output without hard-pinning every text growth to the physical
-bottom. While a session is running, `.conversation-list[data-live-follow="true"]`
-adds a bottom reserve. Catch-up scrolls to the physical bottom of that padded
-list, which keeps the latest rendered text above the composer; the reserve is
-only used for the near-latest decision. Streaming text grows into the empty
-space first; only after enough of the reserve is consumed does the viewport
-catch up. Live catch-up uses one `requestAnimationFrame` follower that reads the
-latest bottom each frame, so rapid text growth updates a moving target instead
-of restarting native smooth-scroll animations. If the user scrolls up with real
-input, auto-follow pauses and the scroll-to-latest FAB appears as before. When
-the turn stops running, the hook snaps back to the exact bottom so history does
-not keep an artificial tail. The hook also observes direct conversation-list
-children with `ResizeObserver`, because smooth text reveal grows an existing
-assistant turn without changing the `conversationItems` array.
+to follow live output. `.conversation-list` keeps a constant bottom padding
+(`--space-8`) in every state — idle and live alike. That gap is deliberately
+*not* toggled per turn: a reserve that only appeared while streaming would be
+reclaimed the instant the turn ended, jerking the view up as the last line
+settled. The steady gap keeps the latest rendered text clear of the bottom edge
+and above the composer without that wobble. While a session is running, any text
+growth eases the viewport to the physical bottom via one `requestAnimationFrame`
+follower that reads the latest bottom each frame, so rapid growth updates a
+moving target instead of restarting native smooth-scroll animations. If the user
+scrolls up with real input, auto-follow pauses and the scroll-to-latest FAB
+appears as before. The hook also observes direct conversation-list children with
+`ResizeObserver`, because smooth text reveal grows an existing assistant turn
+without changing the `conversationItems` array.
 
 ## Extended-thinking (Thought block)
 

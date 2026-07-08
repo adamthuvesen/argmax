@@ -91,10 +91,7 @@ export function SettingsNav({
                 aria-pressed={isActive}
                 onClick={() => onChange(group.id)}
               >
-                <span className="settings-nav-copy">
-                  <span className="settings-nav-label">{group.label}</span>
-                  <span className="settings-nav-note">{group.railNote}</span>
-                </span>
+                <span className="settings-nav-label">{group.label}</span>
               </button>
             </li>
           );
@@ -146,12 +143,14 @@ type SegmentedOption = { value: string; label: string; caption?: string };
 
 export function Segmented({
   legend,
+  hint,
   name,
   value,
   onChange,
   options
 }: {
   legend: string;
+  hint?: string;
   name: string;
   value: string;
   onChange: (next: string) => void;
@@ -159,7 +158,10 @@ export function Segmented({
 }): JSX.Element {
   return (
     <div className="settings-segmented" role="radiogroup" aria-label={legend}>
-      <span className="settings-segmented-legend">{legend}</span>
+      <span className="settings-segmented-copy">
+        <span className="settings-segmented-legend">{legend}</span>
+        {hint ? <span className="settings-segmented-hint">{hint}</span> : null}
+      </span>
       <div className="settings-segmented-track" data-count={options.length}>
         {options.map((option) => {
           const checked = option.value === value;

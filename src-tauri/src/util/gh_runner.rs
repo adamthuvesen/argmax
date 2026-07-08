@@ -17,17 +17,10 @@ pub type GhRunner = Arc<
 /// without letting the renderer stare at a frozen dropdown forever.
 pub const DEFAULT_GH_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Production constructor — runs the real `gh` binary under the
-/// configured timeout, surfacing stderr on non-zero exit and rejecting
+/// Production constructor — runs the real `gh` binary under
+/// `DEFAULT_GH_TIMEOUT`, surfacing stderr on non-zero exit and rejecting
 /// non-UTF-8 stdout.
 pub fn default_gh_runner() -> GhRunner {
-    default_gh_runner_with_timeout(DEFAULT_GH_TIMEOUT)
-}
-
-/// Like `default_gh_runner` but with a caller-supplied timeout — used
-/// when a subsystem wants tighter or looser bounds (e.g. the poller's
-/// per-tick budget).
-pub fn default_gh_runner_with_timeout(timeout: Duration) -> GhRunner {
     Arc::new(move |cwd: String, args: Vec<String>| {
         Box::pin(async move {
             use std::process::Stdio;
@@ -48,10 +41,13 @@ pub fn default_gh_runner_with_timeout(timeout: Duration) -> GhRunner {
                 .map_err(|error| {
                     ArgmaxError::service("GH_SPAWN_FAILED", format!("failed to run gh: {error}"))
                 })?;
-            let output = tokio::time::timeout(timeout, child.wait_with_output())
+            let output = tokio::time::timeout(DEFAULT_GH_TIMEOUT, child.wait_with_output())
                 .await
                 .map_err(|_| {
-                    ArgmaxError::service("GH_TIMEOUT", format!("gh timed out after {timeout:?}"))
+                    ArgmaxError::service(
+                        "GH_TIMEOUT",
+                        format!("gh timed out after {DEFAULT_GH_TIMEOUT:?}"),
+                    )
                 })?
                 .map_err(|error| {
                     ArgmaxError::service("GH_WAIT_FAILED", format!("gh wait failed: {error}"))

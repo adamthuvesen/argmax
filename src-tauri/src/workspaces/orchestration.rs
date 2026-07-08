@@ -16,8 +16,7 @@
 //   - `open_in_ide` invokes `open -a <app> <path>` for the picked IDE.
 //
 // The fs watcher lives in `watcher.rs` and is owned per-workspace by
-// this service; `watch`, `close_watcher`, and
-// `close_watchers_for_workspaces` are this module's public surface.
+// this service; `watch` and `close_watcher` are this module's public surface.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -559,12 +558,6 @@ impl WorkspaceService {
 
     pub fn close_watcher(&self, workspace_id: &str) {
         super::watcher::close_watcher(self, workspace_id)
-    }
-
-    pub fn close_watchers_for_workspaces(&self, workspace_ids: &[String]) {
-        for id in workspace_ids {
-            self.close_watcher(id);
-        }
     }
 
     // ----- helpers -------------------------------------------------------

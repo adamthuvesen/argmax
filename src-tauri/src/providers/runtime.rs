@@ -593,6 +593,8 @@ pub(super) fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
         "medium" => Some(ReasoningEffort::Medium),
         "high" => Some(ReasoningEffort::High),
         "xhigh" => Some(ReasoningEffort::Xhigh),
+        "max" => Some(ReasoningEffort::Max),
+        "ultra" => Some(ReasoningEffort::Ultra),
         _ => None,
     }
 }

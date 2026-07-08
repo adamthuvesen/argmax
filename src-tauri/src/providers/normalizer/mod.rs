@@ -107,6 +107,10 @@ pub struct NormalizedUsage {
     pub tokens: UsageCounts,
     pub cost_usd: f64,
     pub event_id: Option<String>,
+    /// The model's context-window size when the provider reports it (Codex's
+    /// token_count carries it). None for providers that don't; the renderer
+    /// falls back to a per-model table.
+    pub context_window: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -729,15 +733,15 @@ pub(crate) fn number_value(value: Option<&Value>) -> u64 {
     value.and_then(Value::as_u64).unwrap_or(0)
 }
 
+/// Severity label for a permission-gated command, shown on the approval row.
+/// Delegates to the canonical approval classifier so the timeline and the
+/// approval gate agree on what counts as risky — no second, weaker regex.
 pub(crate) fn classify_command_risk(command: &str) -> &'static str {
-    static HIGH_RISK_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let re = HIGH_RISK_RE.get_or_init(|| {
-        Regex::new(r"(?i)\b(rm\b|sudo\b|dd\b|mkfs|chmod\s+0?7|chown\s)").expect("risk regex")
-    });
-    if re.is_match(command) {
-        "high"
-    } else {
-        "medium"
+    use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
+    match classify_command_risk(command).risk_level {
+        CommandRiskLevel::High => "high",
+        CommandRiskLevel::Medium => "medium",
+        CommandRiskLevel::Low => "low",
     }
 }
 

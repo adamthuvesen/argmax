@@ -16,7 +16,6 @@ pub mod git;
 pub mod ide;
 pub mod ipc;
 pub mod mcp;
-pub mod memory;
 pub mod menu;
 pub mod notifications;
 pub mod persistence;

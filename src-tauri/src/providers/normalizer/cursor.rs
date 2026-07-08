@@ -216,6 +216,8 @@ pub fn extract_usage(
         model_id,
         tokens,
         event_id: None,
+        // Cursor doesn't report the window; the renderer uses a per-model table.
+        context_window: None,
     })
 }
 

@@ -385,7 +385,6 @@ export function SessionConversation({
       </div>
       <div
         className="conversation-list"
-        data-live-follow={sessionRunning ? "true" : undefined}
         ref={conversationListRef}
         onScroll={handleConversationScroll}
         onWheel={handleConversationScrollIntent}

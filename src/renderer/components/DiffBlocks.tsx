@@ -38,8 +38,9 @@ function UnifiedHunk({
       <div className="diff-hunk-header">{block.header}</div>
       {block.lines.map((line, index) => (
         <div className={`diff-line ${line.kind}`} key={`${block.id}-${index}`}>
-          <span className="diff-line-number">{line.oldLineNumber ?? ""}</span>
-          <span className="diff-line-number">{line.newLineNumber ?? ""}</span>
+          <span className="diff-line-number">
+            {line.newLineNumber ?? line.oldLineNumber ?? ""}
+          </span>
           <code>
             <DiffLineContent content={line.content || " "} lang={lang} />
           </code>

@@ -1,9 +1,7 @@
 # Project Learnings
 
-Argmax stores project-scoped learnings in SQLite and injects verified facts into future provider sessions.
+Argmax stores project-scoped learnings in SQLite so they can be reviewed and reused across sessions.
 
-- [src-tauri/src/memory/extractor.rs](../src-tauri/src/memory/extractor.rs) extracts candidates from session events.
-- [src-tauri/src/memory/injector.rs](../src-tauri/src/memory/injector.rs) composes the session-start memory preamble.
 - [src-tauri/src/persistence/learnings.rs](../src-tauri/src/persistence/learnings.rs) owns reads/writes and FTS-backed search.
 - `learnings:list`, `learnings:update`, and `learnings:delete` expose the UI surface.
 

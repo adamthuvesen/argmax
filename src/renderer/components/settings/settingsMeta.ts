@@ -6,7 +6,6 @@ export type SettingsGroupMeta = {
   title: string;
   eyebrow: string;
   description: string;
-  railNote: string;
   sections: ReadonlyArray<SettingsSectionMeta>;
 };
 
@@ -17,7 +16,6 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     title: "Shape the workspace",
     eyebrow: "Local console",
     description: "The everyday feel of Argmax: identity, typography, launch behavior, and visible session detail.",
-    railNote: "Look · launch · local",
     sections: [
       { id: "settings-local", label: "Local profile" },
       { id: "settings-appearance", label: "Appearance" },
@@ -30,7 +28,6 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     title: "Tune agent behavior",
     eyebrow: "Model sessions",
     description: "Provider defaults, tool-call visibility, and the permission stance every new session starts with.",
-    railNote: "Models · tools · risk",
     sections: [
       { id: "settings-agent-defaults", label: "Model defaults" },
       { id: "settings-permissions", label: "Permissions" },
@@ -43,7 +40,6 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     title: "Connect local tools",
     eyebrow: "Handoffs",
     description: "Editors and MCP servers Argmax can discover, reveal, or authenticate from this machine.",
-    railNote: "IDE · MCP",
     sections: [
       { id: "settings-tools", label: "Default IDE" },
       { id: "settings-mcp", label: "MCP servers" }
@@ -55,7 +51,6 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     title: "Inspect the engine room",
     eyebrow: "On-device state",
     description: "Project knowledge, runtime diagnostics, local database health, logs, and app details.",
-    railNote: "Memory · diagnostics",
     sections: [
       { id: "settings-knowledge", label: "Project knowledge" },
       { id: "settings-diagnostics", label: "Diagnostics" },

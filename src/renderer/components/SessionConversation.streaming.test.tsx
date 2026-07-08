@@ -28,7 +28,8 @@ describe("SessionConversation — streaming & composer", () => {
 
     const picker = screen.getByRole("button", { name: "Session model" });
     expect(picker.textContent).toContain("GPT-5.3 Codex");
-    expect(picker.textContent).toContain("Medium");
+    // Effort rides in its own chip beside the model, not in the model label.
+    expect(screen.getByRole("button", { name: "Session model effort" }).textContent).toContain("Medium");
 
     // Parent rebuilds the SessionSummary object on every dashboard delta.
     // A new object reference with the same id (and even a freshly-emitted
@@ -56,7 +57,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     const pickerAfter = screen.getByRole("button", { name: "Session model" });
     expect(pickerAfter.textContent).toContain("GPT-5.3 Codex");
-    expect(pickerAfter.textContent).toContain("Medium");
+    expect(screen.getByRole("button", { name: "Session model effort" }).textContent).toContain("Medium");
   });
 
   it("does reset the model picker when session.id changes (different session selected)", () => {

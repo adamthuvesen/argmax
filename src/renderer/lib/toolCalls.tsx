@@ -587,22 +587,3 @@ export function getToolTypeBucket(name: string): ToolTypeBucket {
   if (/web|browser|navigate|fetch|url|http/.test(lower)) return "web";
   return "other";
 }
-
-export function buildGroupIconBuckets(tools: ToolCall[]): ToolTypeBucket[] {
-  const seen = new Map<ToolTypeBucket, number>();
-  for (const tool of tools) {
-    const b = getToolTypeBucket(tool.name);
-    seen.set(b, (seen.get(b) ?? 0) + 1);
-  }
-  return [...seen.keys()].slice(0, 3);
-}
-
-export const BUCKET_ICON_NAME: Record<ToolTypeBucket, string> = {
-  bash: "bash",
-  edit: "write",
-  read: "read_file",
-  search: "search_files",
-  web: "web_fetch",
-  agent: "agent",
-  other: "tool",
-};

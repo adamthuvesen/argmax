@@ -35,7 +35,9 @@ import {
 import { leadingSlashCommand } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
+import { ImageLightbox } from "./ImageLightbox.js";
 import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
 import { SkillPopover } from "./SkillPopover.js";
 
@@ -100,6 +102,7 @@ export function SessionComposer({
 }): JSX.Element {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
   const sessionId = session?.id ?? null;
   const {
@@ -251,7 +254,15 @@ export function SessionComposer({
         <div className="composer-attachments" aria-label="Attached images">
           {pendingAttachments.map((attachment) => (
             <div key={attachment.id} className="composer-attachment-chip">
-              <img src={attachment.thumbnailDataUrl} alt="" />
+              <button
+                type="button"
+                className="attachment-open-button"
+                aria-label="View attachment"
+                title="View attachment"
+                onClick={() => setLightboxSrc(attachment.thumbnailDataUrl)}
+              >
+                <img src={attachment.thumbnailDataUrl} alt="" />
+              </button>
               <button
                 type="button"
                 className="composer-attachment-remove"
@@ -357,6 +368,7 @@ export function SessionComposer({
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                withEffortSlider
                 ariaLabel="Session model"
               />
             ) : (
@@ -367,11 +379,13 @@ export function SessionComposer({
                 onChange={setSelectedModel}
                 fastModeEnabled={fastModeEnabled}
                 onFastModeEnabledChange={onFastModeEnabledChange}
+                withEffortSlider
                 ariaLabel="Session model"
               />
             )}
           </div>
         ) : null}
+        {session ? <ContextRing session={session} /> : null}
         {workspace ? (
           <div className="composer-footer composer-chips-group composer-chips-context" aria-label="Workspace context">
             {workspace.sharedWorkspace ? null : (
@@ -471,6 +485,7 @@ export function SessionComposer({
           {status}
         </p>
       ) : null}
+      <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
     </form>
   );
 }

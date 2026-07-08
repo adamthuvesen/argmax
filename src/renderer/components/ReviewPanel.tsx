@@ -2,6 +2,7 @@ import { Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReviewState, WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
+import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks } from "./DiffBlocks.js";
@@ -100,12 +101,11 @@ function maxLeftColumnWidth(panelWidth: number): number {
 }
 
 function readStoredLeftColumnWidth(): number {
-  if (typeof window === "undefined") return LEFT_COL_DEFAULT;
-  const raw = window.localStorage.getItem(LEFT_COL_WIDTH_KEY);
-  if (!raw) return LEFT_COL_DEFAULT;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return LEFT_COL_DEFAULT;
-  return Math.max(LEFT_COL_MIN, Math.min(LEFT_COL_MAX, parsed));
+  return readBoundedNumberPreference(LEFT_COL_WIDTH_KEY, {
+    min: LEFT_COL_MIN,
+    max: LEFT_COL_MAX,
+    fallback: LEFT_COL_DEFAULT
+  });
 }
 
 export function ReviewPanel({

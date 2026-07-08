@@ -230,6 +230,8 @@ pub fn extract_usage(
         cost_usd: cost_of(tokens.clone().into(), model_id),
         tokens,
         event_id: string_value(message.get("id")).map(str::to_string),
+        // Claude doesn't report the window; the renderer uses a per-model table.
+        context_window: None,
     })
 }
 

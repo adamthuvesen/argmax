@@ -36,10 +36,9 @@ export interface SmartFollowDecision {
 export function decideSmartFollow(
   scrollHeight: number,
   scrollTop: number,
-  clientHeight: number,
-  followOffsetPx = 0
+  clientHeight: number
 ): SmartFollowDecision {
-  const raw = scrollHeight - scrollTop - clientHeight - Math.max(0, followOffsetPx);
+  const raw = scrollHeight - scrollTop - clientHeight;
   const distanceFromBottom = Number.isFinite(raw) ? Math.max(0, raw) : 0;
   return {
     pinToBottom: distanceFromBottom < NEAR_BOTTOM_PX,

@@ -145,9 +145,9 @@ fn codex_structured_stdin(input: &ProviderLaunchInput) -> Option<String> {
     Some(prompt_for_agent_mode(&input.prompt, input.agent_mode))
 }
 
-// Cursor's CLI has no separate reasoning-effort or fast-mode flag, so both are
-// intentionally ignored here. The renderer hides Speed for Cursor models, and
-// this keeps stale persisted fast-mode state from changing the model id.
+// Cursor exposes both reasoning effort and fast serving as distinct model ids
+// rather than flags, so both are folded into the --model value by
+// cursor_model_for.
 fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec![
         "agent".to_string(),
@@ -160,11 +160,60 @@ fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     args.extend(cursor_permission_args(input));
     args.extend([
         "--model".to_string(),
-        input.model_id.clone(),
+        cursor_model_for(&input.model_id, input.reasoning_effort, input.fast_mode),
         "--".to_string(),
         input.prompt.clone(),
     ]);
     args
+}
+
+// Cursor picks reasoning effort and fast serving through the model id (e.g.
+// gpt-5.5-high, claude-opus-4-8-xhigh-fast). Effort: only GPT-5.5 and Opus 4.8
+// are parameterized; suffixes differ per family and neither reaches Claude's
+// Ultra, so clamp — GPT-5.5 tops out at Extra High (spelled "extra-high"), Opus
+// at Max. Composer and Gemini have no effort variant and pass through. Fast:
+// append "-fast" after the effort suffix for every model that has a fast variant
+// — all but Gemini 3.5 Flash. The renderer only enables the Speed toggle for
+// those, so this mirrors it.
+//
+// Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
+// and the spellings from `cursor-agent --list-models`) rather than a prefix, so
+// a future non-parameterized `gpt-5.5-*`/`claude-opus-4-8-*` model passes
+// through untouched instead of being silently rewritten to a different model.
+fn cursor_model_for(
+    model_id: &str,
+    reasoning_effort: Option<ReasoningEffort>,
+    fast_mode: bool,
+) -> String {
+    let with_effort = match (model_id, reasoning_effort) {
+        ("gpt-5.5-medium", Some(effort)) => {
+            let suffix = match effort {
+                ReasoningEffort::Low => "low",
+                ReasoningEffort::Medium => "medium",
+                ReasoningEffort::High => "high",
+                ReasoningEffort::Xhigh | ReasoningEffort::Max | ReasoningEffort::Ultra => {
+                    "extra-high"
+                }
+            };
+            format!("gpt-5.5-{suffix}")
+        }
+        ("claude-opus-4-8-medium", Some(effort)) => {
+            let suffix = match effort {
+                ReasoningEffort::Low => "low",
+                ReasoningEffort::Medium => "medium",
+                ReasoningEffort::High => "high",
+                ReasoningEffort::Xhigh => "xhigh",
+                ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
+            };
+            format!("claude-opus-4-8-{suffix}")
+        }
+        _ => model_id.to_string(),
+    };
+    if fast_mode && model_id != "gemini-3.5-flash" {
+        format!("{with_effort}-fast")
+    } else {
+        with_effort
+    }
 }
 
 fn cursor_structured_resume_args(
@@ -184,7 +233,7 @@ fn cursor_structured_resume_args(
     args.extend(cursor_permission_args(input));
     args.extend([
         "--model".to_string(),
-        input.model_id.clone(),
+        cursor_model_for(&input.model_id, input.reasoning_effort, input.fast_mode),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -250,6 +299,12 @@ fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
         ReasoningEffort::Xhigh => {
             "Reason exhaustively through this task. Enumerate every alternative, edge case, and trade-off, and verify your conclusions before acting. Take as much thinking as the problem demands."
         }
+        ReasoningEffort::Max => {
+            "Think as hard as you can. Reason exhaustively from first principles: enumerate every alternative, edge case, and failure mode, argue against your own conclusions, and verify each step before acting. Do not shortcut the analysis."
+        }
+        ReasoningEffort::Ultra => {
+            "Ultrathink. Use your maximum reasoning budget on this task. Exhaustively decompose the problem, enumerate and evaluate every alternative and edge case, adversarially challenge each conclusion, and re-derive and verify your answer before acting. Spare no thinking."
+        }
     };
     vec!["--append-system-prompt".to_string(), prompt.to_string()]
 }
@@ -281,9 +336,16 @@ fn codex_reasoning_args(input: &ProviderLaunchInput, structured: bool) -> Vec<St
         };
     };
 
+    // Codex's CLI only accepts up to xhigh. Max/Ultra are Claude-only levels, so
+    // clamp them down to Codex's highest (xhigh) in case a switched-provider
+    // session carries one. The renderer clamps on switch too; this is a backstop.
+    let effort = match reasoning_effort {
+        ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
+        other => other.as_str(),
+    };
     vec![
         "-c".to_string(),
-        format!("model_reasoning_effort=\"{}\"", reasoning_effort.as_str()),
+        format!("model_reasoning_effort=\"{effort}\""),
     ]
 }
 
@@ -448,6 +510,24 @@ mod tests {
     }
 
     #[test]
+    fn codex_clamps_claude_only_effort_down_to_xhigh() {
+        // A session switched from a Claude Max/Ultra selection must not send
+        // those Claude-only levels to Codex; clamp to its ceiling (xhigh).
+        for effort in [ReasoningEffort::Max, ReasoningEffort::Ultra] {
+            let input = ProviderLaunchInput {
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Codex)
+            };
+            let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
+            assert!(
+                args.iter()
+                    .any(|arg| arg == "model_reasoning_effort=\"xhigh\""),
+                "effort {effort:?} should clamp to xhigh, got {args:?}"
+            );
+        }
+    }
+
+    #[test]
     fn codex_fast_mode_is_carried_by_service_tier_override() {
         let input = ProviderLaunchInput {
             fast_mode: true,
@@ -540,21 +620,119 @@ mod tests {
     }
 
     #[test]
-    fn cursor_fast_mode_does_not_change_model_id() {
+    fn cursor_fast_mode_appends_fast_variant_after_effort() {
+        let cases = [
+            ("composer-2.5", None, "composer-2.5-fast"),
+            (
+                "gpt-5.5-medium",
+                Some(ReasoningEffort::High),
+                "gpt-5.5-high-fast",
+            ),
+            (
+                "claude-opus-4-8-medium",
+                Some(ReasoningEffort::Xhigh),
+                "claude-opus-4-8-xhigh-fast",
+            ),
+            // Fast on an effort-capable model with no effort set keeps the base
+            // -medium alias and just appends -fast.
+            ("gpt-5.5-medium", None, "gpt-5.5-medium-fast"),
+        ];
+        for (model_id, effort, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: model_id.to_string(),
+                reasoning_effort: effort,
+                fast_mode: true,
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let i = args.iter().position(|a| a == "--model").expect("model flag");
+            assert_eq!(args[i + 1], expected, "{model_id} fast");
+        }
+    }
+
+    #[test]
+    fn cursor_resume_applies_the_same_effort_fast_mapping() {
+        // The resume arg builder shares cursor_model_for, so effort/fast fold
+        // into --model on resume exactly as on launch.
         let input = ProviderLaunchInput {
-            model_id: "claude-opus-4-8[context=1m,fast=false,effort=high]".to_string(),
+            model_id: "claude-opus-4-8-medium".to_string(),
+            reasoning_effort: Some(ReasoningEffort::Max),
+            fast_mode: true,
+            ..launch_input(ProviderId::Cursor)
+        };
+        let args = (get_provider_definition(ProviderId::Cursor).structured_resume_args)(&input, "conv-1");
+        let i = args.iter().position(|a| a == "--model").expect("model flag");
+        assert_eq!(args[i + 1], "claude-opus-4-8-max-fast");
+    }
+
+    #[test]
+    fn cursor_gemini_has_no_fast_variant() {
+        // Gemini 3.5 Flash has no -fast model, so fast mode is a no-op for it.
+        let input = ProviderLaunchInput {
+            model_id: "gemini-3.5-flash".to_string(),
+            reasoning_effort: None,
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
         };
         let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
-        let index = args
-            .iter()
-            .position(|arg| arg == "--model")
-            .expect("model flag");
-        assert_eq!(
-            args[index + 1],
-            "claude-opus-4-8[context=1m,fast=false,effort=high]"
-        );
+        let i = args.iter().position(|a| a == "--model").expect("model flag");
+        assert_eq!(args[i + 1], "gemini-3.5-flash");
+    }
+
+    #[test]
+    fn cursor_gpt55_effort_maps_to_model_variant() {
+        let cases = [
+            (ReasoningEffort::Low, "gpt-5.5-low"),
+            (ReasoningEffort::Medium, "gpt-5.5-medium"),
+            (ReasoningEffort::High, "gpt-5.5-high"),
+            (ReasoningEffort::Xhigh, "gpt-5.5-extra-high"),
+            (ReasoningEffort::Max, "gpt-5.5-extra-high"),
+            (ReasoningEffort::Ultra, "gpt-5.5-extra-high"),
+        ];
+        for (effort, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: "gpt-5.5-medium".to_string(),
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let i = args.iter().position(|a| a == "--model").expect("model flag");
+            assert_eq!(args[i + 1], expected, "gpt-5.5 effort {effort:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_opus_effort_maps_to_variant_capped_at_max() {
+        let cases = [
+            (ReasoningEffort::Low, "claude-opus-4-8-low"),
+            (ReasoningEffort::High, "claude-opus-4-8-high"),
+            (ReasoningEffort::Xhigh, "claude-opus-4-8-xhigh"),
+            (ReasoningEffort::Max, "claude-opus-4-8-max"),
+            (ReasoningEffort::Ultra, "claude-opus-4-8-max"),
+        ];
+        for (effort, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: "claude-opus-4-8-medium".to_string(),
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let i = args.iter().position(|a| a == "--model").expect("model flag");
+            assert_eq!(args[i + 1], expected, "opus effort {effort:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_non_parameterized_models_ignore_effort() {
+        // Composer/Gemini have no effort variants — pass the id through untouched.
+        let input = ProviderLaunchInput {
+            model_id: "composer-2.5".to_string(),
+            reasoning_effort: Some(ReasoningEffort::High),
+            ..launch_input(ProviderId::Cursor)
+        };
+        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+        let i = args.iter().position(|a| a == "--model").expect("model flag");
+        assert_eq!(args[i + 1], "composer-2.5");
     }
 
     #[test]

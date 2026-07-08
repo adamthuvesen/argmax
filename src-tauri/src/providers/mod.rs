@@ -60,6 +60,8 @@ impl ReasoningEffort {
             ReasoningEffort::Medium => "medium",
             ReasoningEffort::High => "high",
             ReasoningEffort::Xhigh => "xhigh",
+            ReasoningEffort::Max => "max",
+            ReasoningEffort::Ultra => "ultra",
         }
     }
 }

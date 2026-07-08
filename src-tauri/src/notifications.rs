@@ -475,6 +475,8 @@ mod tests {
                 cache_read: 0,
                 cache_write: 0,
             },
+            context_tokens: 0,
+            context_window: None,
         }
     }
 

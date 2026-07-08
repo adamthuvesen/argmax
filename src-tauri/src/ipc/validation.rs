@@ -24,6 +24,10 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
+    // Claude-only levels above Extra High. Other providers' CLIs don't accept
+    // these; adapters clamp them down (see codex_reasoning_args).
+    Max,
+    Ultra,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]

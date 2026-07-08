@@ -55,7 +55,7 @@
 }
 
 .settings-provider-name {
-  font-size: var(--text-base-plus);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text);
   letter-spacing: -0.003em;
@@ -188,9 +188,9 @@
   padding: 0;
   display: grid;
   gap: 0;
-  border: 1px solid var(--line);
   border-radius: var(--radius-xl);
-  overflow: hidden;
+  max-height: 320px;
+  overflow: hidden auto;
   background: var(--panel-soft);
 }
 
@@ -266,6 +266,7 @@
 }
 
 .settings-logs-message {
+  grid-column: 2 / -1;
   color: var(--text);
   word-break: break-word;
 }
@@ -367,7 +368,7 @@
 }
 
 .settings-mcp-client-name {
-  font-size: var(--text-base-plus);
+  font-size: var(--text-base);
   font-weight: 550;
   letter-spacing: 0;
   color: var(--text);
@@ -402,7 +403,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 6px 9px;
+  padding: 5px 9px;
 }
 
 .settings-mcp-server-row + .settings-mcp-server-row {
@@ -421,8 +422,8 @@
 }
 
 .settings-mcp-server-name {
-  font-size: var(--text-base);
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: 400;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;

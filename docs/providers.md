@@ -51,8 +51,13 @@ The normalizer unwraps `stream_event` rows, maps `SendUserMessage` tool calls to
 Fast mode is an Argmax launch preference, not a persisted provider edit:
 Claude receives it via `--settings {"fastMode":true|false}` and Codex receives
 the priority service tier (`-c service_tier="priority"`) only when enabled.
-Cursor models do not support Fast mode in Argmax; the picker hides Speed for
-Cursor and the runtime ignores stale fast-mode state for Cursor launches.
+Cursor has no fast-mode or reasoning-effort flag — it exposes both as distinct
+model ids — so `cursor_model_for` in [adapters.rs](../src-tauri/src/providers/adapters.rs)
+folds the chosen effort and fast mode into the launched `--model` (e.g.
+`gpt-5.5-extra-high`, `claude-opus-4-8-max-fast`). Effort variants exist only for
+GPT-5.5 and Opus 4.8 (clamped to each family's ceiling), and every Cursor model
+but Gemini 3.5 Flash has a `-fast` variant; the picker mirrors this by only
+offering effort/Speed where a variant exists.
 
 Cursor's provider conversation id is the `session_id` from its `system/init`
 JSON row; persist it so follow-ups can resume with `cursor-agent --resume`.

@@ -733,15 +733,15 @@ pub(crate) fn number_value(value: Option<&Value>) -> u64 {
     value.and_then(Value::as_u64).unwrap_or(0)
 }
 
+/// Severity label for a permission-gated command, shown on the approval row.
+/// Delegates to the canonical approval classifier so the timeline and the
+/// approval gate agree on what counts as risky — no second, weaker regex.
 pub(crate) fn classify_command_risk(command: &str) -> &'static str {
-    static HIGH_RISK_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let re = HIGH_RISK_RE.get_or_init(|| {
-        Regex::new(r"(?i)\b(rm\b|sudo\b|dd\b|mkfs|chmod\s+0?7|chown\s)").expect("risk regex")
-    });
-    if re.is_match(command) {
-        "high"
-    } else {
-        "medium"
+    use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
+    match classify_command_risk(command).risk_level {
+        CommandRiskLevel::High => "high",
+        CommandRiskLevel::Medium => "medium",
+        CommandRiskLevel::Low => "low",
     }
 }
 

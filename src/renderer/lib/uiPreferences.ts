@@ -24,6 +24,24 @@ export function writeBooleanPreference(key: string, value: boolean): void {
   }
 }
 
+/**
+ * Read an integer UI preference (a persisted pixel size), clamped into
+ * `[min, max]`. A missing or non-numeric value returns `fallback`; a stored
+ * value outside the range clamps to the nearest bound rather than resetting —
+ * so a width saved under an older min/max survives instead of snapping back.
+ */
+export function readBoundedNumberPreference(
+  key: string,
+  { min, max, fallback }: { min: number; max: number; fallback: number }
+): number {
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 export function readStoredSidebarTokensVisible(): boolean {
   return readBooleanPreference(SIDEBAR_TOKENS_KEY, false);
 }

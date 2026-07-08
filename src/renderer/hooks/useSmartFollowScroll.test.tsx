@@ -181,7 +181,7 @@ describe("useSmartFollowScroll", () => {
     expect(state.scrollTop).toBe(1200);
   });
 
-  it("keeps live output in reserved space before catching up", () => {
+  it("eases to the true bottom on every live growth", () => {
     const frames = installAnimationFrameQueue();
     const state: ScrollBoxState = { scrollHeight: 1056, clientHeight: 200, scrollTop: 856 };
     const el = makeScrollBox(state);
@@ -191,28 +191,24 @@ describe("useSmartFollowScroll", () => {
     );
     attachListRef(result.current.conversationListRef, el);
 
+    // No toggled reserve to absorb into: even a small live growth schedules an
+    // eased catch-up toward the physical bottom. The scroll doesn't move until
+    // the animation frames run.
     act(() => {
       state.scrollHeight = 1088;
       rerender({ items: ["first", "small-growth"] });
     });
 
-    expect(state.scrollTop).toBe(856);
-    expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
-
-    act(() => {
-      state.scrollHeight = 1116;
-      rerender({ items: ["first", "small-growth", "large-growth"] });
-    });
-
     expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
     expect(state.scrollTop).toBe(856);
+
     act(() => {
       frames.flushAll();
     });
 
     const scrollTo = Object.getOwnPropertyDescriptor(el, "scrollTo")?.value as ReturnType<typeof vi.fn>;
     expect(scrollTo).not.toHaveBeenCalled();
-    expect(state.scrollTop).toBe(916);
+    expect(state.scrollTop).toBe(888);
   });
 
   it("coalesces live height changes inside an existing conversation item", () => {

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { decideSmartFollow } from "../lib/smartFollow.js";
 
-export const LIVE_FOLLOW_RESERVE_PX = 56;
-const LIVE_FOLLOW_CATCH_UP_PX = 36;
 const LIVE_FOLLOW_EASE = 0.38;
 const LIVE_FOLLOW_SETTLE_PX = 0.75;
 const LIVE_FOLLOW_MIN_STEP_PX = 1;
@@ -41,9 +39,11 @@ export interface SmartFollowScroll {
  *   smooth text reveal updates DOM height without changing `conversationItems`.
  * - Programmatic scroll events, smooth-scroll catch-up, and browser scroll
  *   anchoring do not pause following. Only real user scroll intent does.
- * - While a session is live, CSS adds a bottom reserve. The hook still scrolls
- *   to the physical bottom of that padded list; the reserve is only used for
- *   the "near latest" decision so streamed prose can grow before catch-up.
+ * - The list keeps a constant bottom padding (idle and live alike) so the
+ *   newest streamed line never jams against the edge. It's deliberately not
+ *   toggled on live turns: a gap that only appeared while streaming would be
+ *   reclaimed the instant the turn ended, jerking the view up as the last
+ *   line settled.
  *
  * `now` is intentionally NOT in the deps of the pin effect — re-scrolling
  * every 250 ms while a tool runs would be jittery.
@@ -73,12 +73,6 @@ export function useSmartFollowScroll(
   const liveFollowRef = useRef(liveFollow);
   const liveFollowFrameRef = useRef<number | null>(null);
   liveFollowRef.current = liveFollow;
-
-  const followOffsetFor = useCallback((el: HTMLDivElement): number => {
-    return liveFollowRef.current && el.scrollHeight > el.clientHeight
-      ? LIVE_FOLLOW_RESERVE_PX
-      : 0;
-  }, []);
 
   const prefersReducedMotion = useCallback((): boolean => {
     return typeof window.matchMedia === "function" &&
@@ -121,12 +115,8 @@ export function useSmartFollowScroll(
     el: HTMLDivElement,
     options: { force?: boolean; smooth?: boolean; live?: boolean } = {}
   ): void => {
-    const followOffset = followOffsetFor(el);
-    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight, followOffset);
-    const rawDistanceFromBottom = Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
-    const catchUpThreshold = followOffset > 0 ? LIVE_FOLLOW_CATCH_UP_PX : 0;
-    const catchUpDistance = followOffset > 0 ? rawDistanceFromBottom : decision.distanceFromBottom;
-    if (!options.force && catchUpDistance <= catchUpThreshold) {
+    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
+    if (!options.force && decision.distanceFromBottom <= 0) {
       return;
     }
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
@@ -139,7 +129,7 @@ export function useSmartFollowScroll(
       cancelLiveFollowAnimation();
       el.scrollTop = top;
     }
-  }, [animateLiveFollowToBottom, cancelLiveFollowAnimation, followOffsetFor, prefersReducedMotion]);
+  }, [animateLiveFollowToBottom, cancelLiveFollowAnimation, prefersReducedMotion]);
 
   const clearUserScrollIntent = useCallback((): void => {
     userScrollIntentRef.current = false;
@@ -164,12 +154,7 @@ export function useSmartFollowScroll(
   const handleScroll = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
-    const decision = decideSmartFollow(
-      el.scrollHeight,
-      el.scrollTop,
-      el.clientHeight,
-      followOffsetFor(el)
-    );
+    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
 
     if (decision.pinToBottom) {
       wasNearBottomRef.current = true;
@@ -192,15 +177,10 @@ export function useSmartFollowScroll(
     }
 
     setShowScrollToBottom(decision.showFab);
-  }, [clearUserScrollIntent, followOffsetFor]);
+  }, [clearUserScrollIntent]);
 
   const reconcileScrollAffordance = useCallback((el: HTMLDivElement): void => {
-    const decision = decideSmartFollow(
-      el.scrollHeight,
-      el.scrollTop,
-      el.clientHeight,
-      followOffsetFor(el)
-    );
+    const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
 
     if (decision.pinToBottom) {
       wasNearBottomRef.current = true;
@@ -213,7 +193,7 @@ export function useSmartFollowScroll(
     if (!wasNearBottomRef.current) {
       setShowScrollToBottom(decision.showFab);
     }
-  }, [clearUserScrollIntent, followOffsetFor]);
+  }, [clearUserScrollIntent]);
 
   const scrollToBottom = useCallback((): void => {
     const el = conversationListRef.current;
@@ -238,8 +218,8 @@ export function useSmartFollowScroll(
   }, [clearUserScrollIntent, liveFollow, scrollToFollowTarget, sessionId]);
 
   // Follow live output as items / thinking-state change, IF the user is already
-  // near the bottom. During live turns, let text use the bottom reserve before
-  // catching up, which avoids a scroll nudge for every streamed line.
+  // near the bottom. Live turns ease toward the bottom so the reveal stays
+  // smooth; the constant bottom padding keeps the newest line in view.
   useLayoutEffect(() => {
     const el = conversationListRef.current;
     if (!el || !wasNearBottomRef.current) return;

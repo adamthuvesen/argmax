@@ -342,21 +342,16 @@
 }
 
 .conversation-list {
-  --conversation-live-follow-reserve: 56px;
   display: flex;
   min-height: 0;
   flex-direction: column;
   gap: var(--space-8);
   overflow: auto;
-  padding: var(--space-2) var(--session-inline-padding) var(--space-7);
-  transition: padding-bottom var(--duration-base) var(--ease);
-  /* Live turns add tail room below the latest text. New text grows into that
-     space first; the hook scrolls to the padded bottom only after the reserve
-     has been used. */
-}
-
-.conversation-list[data-live-follow="true"] {
-  padding-bottom: calc(var(--space-7) + var(--conversation-live-follow-reserve));
+  /* A constant tail gap keeps the newest streamed line clear of the bottom
+     edge. It stays the same in the idle and live states on purpose: a gap
+     that only appeared while streaming would be reclaimed the instant the
+     turn ended, jerking the view up as the last line settled. */
+  padding: var(--space-2) var(--session-inline-padding) var(--space-8);
 }
 
 /* Base layout only. The fill is owned by the variants: .user paints the ink

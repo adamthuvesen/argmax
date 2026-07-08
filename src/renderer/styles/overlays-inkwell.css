@@ -709,3 +709,68 @@
     animation: none;
   }
 }
+
+/* ============================================================
+   Image lightbox — centered full-image preview
+   Opened by clicking an attached image in the composer or a
+   sent message. Dismiss on backdrop click, Escape, or close.
+   ============================================================ */
+
+.image-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4vh 4vw;
+  background: rgba(14, 14, 12, 0.72);
+  z-index: 150;
+  animation: inkwell-fade 140ms var(--ease) both;
+}
+
+.image-lightbox-content {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  animation: inkwell-rise 240ms var(--ease) both;
+}
+
+.image-lightbox-image {
+  display: block;
+  max-width: 100%;
+  max-height: 92vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.6);
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(14, 14, 12, 0.78);
+  color: #fff;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.image-lightbox-close:hover {
+  background: rgba(14, 14, 12, 0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-lightbox-overlay,
+  .image-lightbox-content {
+    animation: none;
+  }
+}

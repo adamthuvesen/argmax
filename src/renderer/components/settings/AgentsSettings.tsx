@@ -75,6 +75,7 @@ export function AgentsSettings({
           </div>
           <Segmented
             legend="Tool calls in chat"
+            hint="The “Working for…” chip on each turn."
             name="tool-calls-expand"
             value={toolCallsExpanded ? "show" : "hide"}
             onChange={(v) => onToolCallsExpandedChange(v === "show")}
@@ -83,12 +84,9 @@ export function AgentsSettings({
               { value: "hide", label: "Show collapsed" }
             ]}
           />
-          <p className="settings-hint">
-            Controls the “Working for…” chip on each turn — whether the tool
-            activity for a turn is visible by default.
-          </p>
           <Segmented
             legend="Tool call groups"
+            hint="Inner bubbles like “Explored 6 files”."
             name="tool-call-groups-expand"
             value={toolCallGroupsExpanded ? "show" : "hide"}
             onChange={(v) => onToolCallGroupsExpandedChange(v === "show")}
@@ -97,12 +95,9 @@ export function AgentsSettings({
               { value: "hide", label: "Show collapsed" }
             ]}
           />
-          <p className="settings-hint">
-            Controls the inner bubbles like “Explored 6 files” — when collapsed,
-            you see the summary instead of every individual tool row.
-          </p>
           <Segmented
             legend="Thinking blocks"
+            hint="Saved “Thought” blocks after a turn answers. Live thinking still expands."
             name="thinking-expand"
             value={thinkingExpanded ? "show" : "hide"}
             onChange={(v) => onThinkingExpandedChange(v === "show")}
@@ -111,10 +106,6 @@ export function AgentsSettings({
               { value: "hide", label: "Show collapsed" }
             ]}
           />
-          <p className="settings-hint">
-            Controls saved “Thought” reasoning blocks after a turn has answered.
-            Live thinking still expands while the agent is actively reasoning.
-          </p>
           <ToggleRow
             label="Fast mode for Claude and Codex"
             description="Launch Claude Code with fast mode and run Codex on the priority service tier."

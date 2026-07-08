@@ -415,11 +415,11 @@
   margin-left: auto;
 }
 
-/* The model is the launch's headline decision — the one bit of text weight in
-   an otherwise quiet toolbar. Everything else stays muted so this reads first. */
+/* The model is the launch's headline decision — set apart by its stronger color
+   in an otherwise quiet toolbar so it still reads first without extra weight. */
 .composer-context-group--model .composer-context-chip {
   color: var(--muted-strong);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .composer-context-group--model .composer-context-chip:hover {

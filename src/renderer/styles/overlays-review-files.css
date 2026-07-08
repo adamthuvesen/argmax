@@ -734,27 +734,20 @@
 
 .diff-line {
   display: grid;
-  grid-template-columns: 40px 40px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   min-width: max-content;
 }
 
 .diff-line-number {
   padding: 1px 7px;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--muted) 55%, var(--panel-sunken));
   text-align: right;
   user-select: none;
   border-right: 1px solid var(--line-soft);
   background: var(--panel-sunken);
   position: sticky;
-  z-index: 1;
-}
-
-.diff-line-number:first-child {
   left: 0;
-}
-
-.diff-line-number:nth-child(2) {
-  left: 40px;
+  z-index: 1;
 }
 
 .diff-line code {

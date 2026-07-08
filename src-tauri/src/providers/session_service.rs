@@ -1226,6 +1226,7 @@ impl ProviderSessionService {
             model_id,
             reasoning_effort,
             fast_mode,
+            attachments: input.attachments.clone().unwrap_or_default(),
             queued_at: now_iso(),
         });
         drop(queues);
@@ -1513,7 +1514,7 @@ fn pending_message_to_send_input(
             .and_then(parse_reasoning_effort),
         fast_mode: message.fast_mode,
         agent_mode: parse_agent_mode(&message.agent_mode),
-        attachments: None,
+        attachments: (!message.attachments.is_empty()).then_some(message.attachments),
     })
 }
 

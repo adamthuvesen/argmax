@@ -19,7 +19,8 @@ use std::{path::PathBuf, process::Command, time::Duration};
 
 use argmax_lib::error::ArgmaxResult;
 use argmax_lib::ipc::inputs::{
-    ProvidersLaunchInput, ProvidersSendInput, ProvidersTerminateInput, TerminalCols, TerminalRows,
+    ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput, ProvidersTerminateInput,
+    TerminalCols, TerminalRows,
 };
 use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::persistence::time::now_iso;
@@ -987,6 +988,16 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
         .expect("launch ok");
     wait_for_resolved(&service, &session.id).await;
 
+    // A queued follow-up must carry its image attachments through the queue so
+    // the drained user.message re-persists them; otherwise the image vanishes
+    // from the chat UI once the turn sends.
+    let attachment: ComposerAttachmentInput = serde_json::from_value(json!({
+        "filePath": "/tmp/argmax-test/queued-image.png",
+        "mimeType": "image/png",
+        "sizeBytes": 4096,
+    }))
+    .expect("attachment valid");
+
     let result = service
         .send_input(ProvidersSendInput {
             session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
@@ -1001,7 +1012,7 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
             reasoning_effort: None,
             fast_mode: true,
             agent_mode: None,
-            attachments: None,
+            attachments: Some(vec![attachment]),
         })
         .await
         .expect("send_input ok");
@@ -1030,6 +1041,25 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
     assert_eq!(launches[1].model_label, "Sonnet 5");
     assert_eq!(launches[1].model_id, "claude-sonnet-5");
     assert!(launches[1].fast_mode);
+
+    // The drained user.message event re-persists the queued attachment so the
+    // chat UI can render the image thumbnail.
+    let connection = database.connection();
+    let events = list_session_events_since(&connection, &session.id, None, None)
+        .expect("list events")
+        .events;
+    let drained = events
+        .iter()
+        .find(|event| event.r#type == "user.message" && event.message.contains("queued after done"))
+        .expect("drained user.message present");
+    let attachments = drained.payload["attachments"]
+        .as_array()
+        .expect("payload carries attachments array");
+    assert_eq!(attachments.len(), 1, "queued attachment survives the drain");
+    assert_eq!(
+        attachments[0]["filePath"], "/tmp/argmax-test/queued-image.png",
+        "attachment file path re-persisted on drain"
+    );
 }
 
 #[tokio::test]

@@ -88,6 +88,7 @@
 
 .session-input-toolbar .composer-footer-chip--changes .change-count {
   gap: 5px;
+  font-weight: 400;
 }
 
 .session-input-toolbar .composer-footer-chip-label {

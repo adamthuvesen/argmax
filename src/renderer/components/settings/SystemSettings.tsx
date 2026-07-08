@@ -157,10 +157,6 @@ export function SystemSettings({
                 <dt>WAL size</dt>
                 <dd>{formatBytes(diagnostics.databaseStats.walBytes)}</dd>
               </div>
-              <div>
-                <dt>WAL autocheckpoint</dt>
-                <dd>{diagnostics.databaseStats.walAutocheckpoint.toLocaleString()} pages</dd>
-              </div>
             </dl>
           </div>
         ) : null}

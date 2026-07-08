@@ -1,5 +1,6 @@
 import { memo, useState, type JSX, type MutableRefObject } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import { ImageLightbox } from "./ImageLightbox.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { parsePlan } from "../lib/parsePlan.js";
 import type { RenderItem } from "../lib/foldConversation.js";
@@ -324,6 +325,7 @@ export function SessionConversationUserMessage({
     displayMessage = displayMessage.split(`@${a.filePath}`).join("");
   }
   displayMessage = displayMessage.replace(/[ \t]+(?=\n|$)/g, "").trim();
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   return (
     <div className="user-message-group">
       {attachments.length > 0 ? (
@@ -331,17 +333,25 @@ export function SessionConversationUserMessage({
           {attachments.map((a) => {
             const filename = a.filePath.split("/").pop() || a.filePath;
             if (isSupportedImageMime(a.mimeType)) {
+              const url = attachmentProtocolUrl(a.filePath);
               return (
                 <figure
                   key={a.filePath}
                   className="user-message-attachment-preview"
                   title={a.filePath}
                 >
-                  <img
-                    className="user-message-attachment-image"
-                    src={attachmentProtocolUrl(a.filePath)}
-                    alt={`Attached image: ${filename}`}
-                  />
+                  <button
+                    type="button"
+                    className="attachment-open-button"
+                    aria-label={`View image: ${filename}`}
+                    onClick={() => setLightboxSrc(url)}
+                  >
+                    <img
+                      className="user-message-attachment-image"
+                      src={url}
+                      alt={`Attached image: ${filename}`}
+                    />
+                  </button>
                 </figure>
               );
             }
@@ -366,6 +376,7 @@ export function SessionConversationUserMessage({
           <p>{displayMessage}</p>
         </ChatBubble>
       ) : null}
+      <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
     </div>
   );
 }

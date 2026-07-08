@@ -6,7 +6,7 @@
   gap: 14px;
   padding: 14px 22px;
   color: var(--text);
-  font-size: var(--text-base-plus);
+  font-size: var(--text-sm);
 }
 
 .settings-toggle-row {
@@ -19,13 +19,13 @@
 }
 
 .settings-toggle-label {
-  font-size: var(--text-base-plus);
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: -0.002em;
 }
 
 .settings-toggle-desc {
-  font-size: var(--text-sm-plus);
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 
@@ -102,19 +102,18 @@
 }
 
 .settings-row label {
-  font-size: var(--text-base);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted-strong);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: -0.002em;
+  color: var(--text);
 }
 
 .settings-row select,
 .settings-select {
-  min-height: 32px;
-  padding: 0 28px 0 12px;
+  min-height: 26px;
+  padding: 0 26px 0 10px;
   font: inherit;
-  font-size: var(--text-base);
+  font-size: var(--text-xs);
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
@@ -155,15 +154,15 @@
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  min-height: 32px;
-  padding: 0 9px;
+  min-height: 26px;
+  padding: 0 8px;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font: inherit;
-  font-size: var(--text-sm-plus);
+  font-size: var(--text-xs);
   font-weight: 500;
   transition: border-color var(--duration-fast) var(--ease),
     box-shadow var(--duration-fast) var(--ease),
@@ -249,7 +248,7 @@
 
 .settings-hint {
   margin: 8px 0 0;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   line-height: 1.55;
   color: var(--muted);
 }
@@ -265,7 +264,7 @@
 
 .settings-font-caption {
   margin: 0;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--muted);
   font-feature-settings: "calt", "ss01", "tnum";
 }
@@ -277,7 +276,7 @@
   border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--text-soft);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   letter-spacing: 0;
   overflow-x: auto;
   font-feature-settings: "calt", "ss01", "tnum";

@@ -97,7 +97,9 @@ appended.
 Imported rows are inserted only if absent and carry `traceImported: true`,
 `providerChildSessionId`, `traceSource`, `traceSequence`, and the spawning
 `parent_tool_use_id`. Trace import is best-effort: unreadable, missing, or
-malformed files are skipped, and the pane falls back to launch/result metadata.
+malformed files are skipped, and the pane falls back to safe launch metadata.
+Provider-private async launch receipts are filtered out before the renderer
+shows a subagent result.
 
 Session titles are not exposed by Claude/Codex/Cursor protocol streams. New
 sessions first show the renderer's `titleFromPrompt` label, then the renderer

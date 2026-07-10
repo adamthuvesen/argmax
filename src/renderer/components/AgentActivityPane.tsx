@@ -208,7 +208,7 @@ export function AgentActivityPane({
         <ToolCallRow
           key={tool.id}
           tool={tool}
-          defaultExpanded={tool.status === "running"}
+          defaultExpanded={false}
           workspaceCwd={workspace?.path ?? null}
           onOpenFile={onOpenFile}
           onOpenAgent={onOpenAgent}

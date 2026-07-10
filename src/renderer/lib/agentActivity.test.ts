@@ -101,6 +101,54 @@ describe("buildAgentActivity", () => {
     expect(activity.limited).toBe(true);
   });
 
+  it("hides Claude async launch receipts from the result", () => {
+    const activity = buildAgentActivity({
+      parentToolUseId: "toolu_parent",
+      events: [
+        event("task-end", "command.completed", "2026-05-12T15:00:04.000Z", "tool_result", {
+          tool_use_id: "toolu_parent",
+          content: "Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.) agentId: abc123. Use SendMessage with to: 'abc123'. Do NOT Read or tail this file via shell tool."
+        }),
+        event("child", "command.started", "2026-05-12T15:00:03.000Z", "Read", {
+          id: "toolu_child",
+          name: "Read",
+          parent_tool_use_id: "toolu_parent",
+          input: { file_path: "README.md" }
+        }),
+        event("parent", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "toolu_parent",
+          name: "Task",
+          input: { description: "Explore repo", prompt: "Read the docs." }
+        })
+      ],
+      sessionRunning: true
+    });
+
+    expect(activity.finalOutput).toBeNull();
+    expect(activity.items.map((item) => item.kind)).toEqual(["tool"]);
+    expect(activity.limited).toBe(false);
+  });
+
+  it("keeps real agent final output visible", () => {
+    const activity = buildAgentActivity({
+      parentToolUseId: "toolu_parent",
+      events: [
+        event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+          tool_use_id: "toolu_parent",
+          content: "The repo is a local Tauri app for orchestrating agents."
+        }),
+        event("parent", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "toolu_parent",
+          name: "Task",
+          input: { description: "Explore repo", prompt: "Read the docs." }
+        })
+      ],
+      sessionRunning: false
+    });
+
+    expect(activity.finalOutput).toBe("The repo is a local Tauri app for orchestrating agents.");
+  });
+
   it("links Codex agent messages through receiver thread ids", () => {
     // Mirrors the real stream shape (fixtures/codex/collab_spawn_agent.jsonl):
     // `item.started` carries an empty receiver list; the ids only arrive on

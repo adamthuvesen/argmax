@@ -18,9 +18,10 @@ import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import {
   EMPTY_GRID,
+  closeAgentTab as closeAgentTabInGrid,
   closeCell,
   dropWorkspaceInGrid,
-  findAgentCell,
+  findAgentCellForParent,
   findSessionCell,
   focusedCell,
   isAgentCell,
@@ -29,12 +30,29 @@ import {
   openAgentInGrid,
   openLauncherInGrid,
   openWorkspaceInGrid,
+  setActiveAgentTab,
   setFocus,
-  type AgentGridCell,
+  type AgentPaneRequest,
+  type GridCell,
   type GridCoord,
   type GridState,
   type SplitPosition
 } from "../lib/gridState.js";
+
+/** When some subagent tabs are pruned, keep the active tab if it survived,
+    else fall to the nearest surviving neighbour (right first, then left). */
+function nearestSurvivingId(originalIds: string[], liveIds: string[], activeId: string): string {
+  const live = new Set(liveIds);
+  const activeIndex = originalIds.indexOf(activeId);
+  if (activeIndex === -1) return liveIds[0] ?? activeId;
+  for (let offset = 1; offset < originalIds.length; offset++) {
+    const right = originalIds[activeIndex + offset];
+    if (right && live.has(right)) return right;
+    const left = originalIds[activeIndex - offset];
+    if (left && live.has(left)) return left;
+  }
+  return liveIds[0] ?? activeId;
+}
 
 export interface UseAppGridSelectionParams {
   snapshot: DashboardSnapshot;
@@ -61,7 +79,9 @@ export interface UseAppGridSelectionResult {
   closePane: (coord: GridCoord) => void;
   focusPane: (coord: GridCoord) => void;
   closeFocusedPane: () => boolean;
-  openAgentPane: (cell: AgentGridCell) => void;
+  openAgentPane: (request: AgentPaneRequest) => void;
+  activateAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
+  closeAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   handleDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
   handleWorkspaceDragStart: (workspaceId: string) => void;
   handleWorkspaceDragEnd: () => void;
@@ -122,9 +142,11 @@ export function useAppGridSelection({
     setGrid((current) => {
       if (current.rows.length === 0) return current;
       let mutated = false;
+      const pending = pendingSelectionRef.current;
       const rows = current.rows
         .map((row) => {
-          const next = row.filter((cell) => {
+          const next: GridCell[] = [];
+          for (const cell of row) {
             if (isAgentCell(cell)) {
               const parentSession = sessionsById.get(cell.parentSessionId);
               const parentSessionIsVisible = current.rows.some((candidateRow) =>
@@ -134,28 +156,61 @@ export function useAppGridSelection({
                     candidateCell.sessionId === cell.parentSessionId
                 )
               );
-              const parentToolIsVisible = parentSession
-                ? buildAgentActivity({
-                    parentToolUseId: cell.parentToolUseId,
-                    events: eventsBySessionId.get(cell.parentSessionId) ?? [],
-                    sessionRunning: parentSession.state === "running"
+              if (!parentSessionIsVisible || !parentSession || !workspacesById.has(cell.workspaceId)) {
+                mutated = true;
+                continue;
+              }
+              const sessionEvents = eventsBySessionId.get(cell.parentSessionId) ?? [];
+              const sessionRunning = parentSession.state === "running";
+              // Prune subagent tabs whose launch tool is no longer in the
+              // timeline (superseded retry, dropped completion); keep the cell
+              // as long as one tab survives.
+              const liveIds = cell.parentToolUseIds.filter(
+                (id) =>
+                  buildAgentActivity({
+                    parentToolUseId: id,
+                    events: sessionEvents,
+                    sessionRunning
                   }).parentTool !== null
-                : false;
-              return parentSessionIsVisible &&
-                parentToolIsVisible &&
-                workspacesById.has(cell.workspaceId);
+              );
+              if (liveIds.length === 0) {
+                mutated = true;
+                continue;
+              }
+              if (liveIds.length === cell.parentToolUseIds.length) {
+                // Referential stability: nothing changed, reuse the same object
+                // so the effect doesn't churn the grid on every snapshot.
+                next.push(cell);
+                continue;
+              }
+              mutated = true;
+              next.push({
+                ...cell,
+                parentToolUseIds: liveIds,
+                activeParentToolUseId: liveIds.includes(cell.activeParentToolUseId)
+                  ? cell.activeParentToolUseId
+                  : nearestSurvivingId(cell.parentToolUseIds, liveIds, cell.activeParentToolUseId)
+              });
+              continue;
             }
-            if (!isSessionCell(cell)) return projectsById.has(cell.projectId);
-            const pending = pendingSelectionRef.current;
+            if (!isSessionCell(cell)) {
+              if (projectsById.has(cell.projectId)) next.push(cell);
+              else mutated = true;
+              continue;
+            }
             if (
               pending?.sessionId === cell.sessionId &&
               pending.workspaceId === cell.workspaceId
             ) {
-              return true;
+              next.push(cell);
+              continue;
             }
-            return sessionsById.has(cell.sessionId) && workspacesById.has(cell.workspaceId);
-          });
-          if (next.length !== row.length) mutated = true;
+            if (sessionsById.has(cell.sessionId) && workspacesById.has(cell.workspaceId)) {
+              next.push(cell);
+            } else {
+              mutated = true;
+            }
+          }
           return next;
         })
         .filter((row) => row.length > 0);
@@ -241,21 +296,37 @@ export function useAppGridSelection({
   }, [grid.focused, closePane]);
 
   const openAgentPane = useCallback(
-    (cell: AgentGridCell): void => {
-      const existing = findAgentCell(grid, cell.parentSessionId, cell.parentToolUseId);
-      const nextForCurrent = openAgentInGrid(grid, cell, { maxColumns: maxColumnsPerRow });
-      const blocked = nextForCurrent === grid && !existing;
-      setGrid((current) => openAgentInGrid(current, cell, { maxColumns: maxColumnsPerRow }));
+    (request: AgentPaneRequest): void => {
+      // A parent that already has an agent cell absorbs the request as a tab,
+      // so it can never hit the pane limit — only the first subagent can.
+      const hasParentCell = findAgentCellForParent(grid, request.parentSessionId) !== null;
+      const nextForCurrent = openAgentInGrid(grid, request, { maxColumns: maxColumnsPerRow });
+      const blocked = nextForCurrent === grid && !hasParentCell;
+      setGrid((current) => openAgentInGrid(current, request, { maxColumns: maxColumnsPerRow }));
       if (!blocked) return;
       // openAgentInGrid also no-ops when the parent session pane is missing
       // or nothing is focused — only a full grid is a pane-limit failure.
-      if (!findSessionCell(grid, cell.parentSessionId)) {
+      if (!findSessionCell(grid, request.parentSessionId)) {
         showErrorToast("Open the agent's parent session in the grid first.");
       } else if (grid.focused !== null) {
         showErrorToast("Pane limit reached — close a pane before opening this agent.");
       }
     },
     [grid, maxColumnsPerRow, showErrorToast]
+  );
+
+  const activateAgentTab = useCallback(
+    (parentSessionId: string, parentToolUseId: string): void => {
+      setGrid((current) => setActiveAgentTab(current, parentSessionId, parentToolUseId));
+    },
+    []
+  );
+
+  const closeAgentTab = useCallback(
+    (parentSessionId: string, parentToolUseId: string): void => {
+      setGrid((current) => closeAgentTabInGrid(current, parentSessionId, parentToolUseId));
+    },
+    []
   );
 
   const handleDropWorkspace = useCallback(
@@ -334,6 +405,8 @@ export function useAppGridSelection({
     focusPane,
     closeFocusedPane,
     openAgentPane,
+    activateAgentTab,
+    closeAgentTab,
     handleDropWorkspace,
     handleWorkspaceDragStart,
     handleWorkspaceDragEnd,

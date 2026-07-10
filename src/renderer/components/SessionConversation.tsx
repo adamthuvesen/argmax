@@ -38,6 +38,7 @@ import {
   hasRenderableSessionContent,
   lastSignificantSessionEvent
 } from "../lib/sessionConversationModel.js";
+import { assignAgentCodenames } from "../lib/agentNames.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CostPanel } from "./CostPanel.js";
@@ -171,6 +172,10 @@ export function SessionConversation({
   const sessionRunning = session?.state === "running";
   const toolCalls = useMemo(
     () => buildSessionToolCalls(events, sessionRunning),
+    [events, sessionRunning]
+  );
+  const agentCodenames = useMemo(
+    () => assignAgentCodenames(events, sessionRunning),
     [events, sessionRunning]
   );
 
@@ -423,6 +428,7 @@ export function SessionConversation({
                 session={session}
                 selectedModel={selectedModel}
                 workspace={workspace}
+                agentCodenames={agentCodenames}
                 onOpenFile={onOpenFile}
                 onOpenAgent={onOpenAgent}
                 onTerminateSession={onTerminateSession}

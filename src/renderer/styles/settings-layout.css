@@ -11,7 +11,7 @@
 
 .settings-surface {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 760px);
+  grid-template-columns: minmax(176px, 208px) minmax(0, 760px);
   gap: clamp(32px, 5vw, 72px);
   width: min(100%, 1160px);
   margin: 0 auto;
@@ -108,9 +108,11 @@
   font-weight: 500;
 }
 
+/* Selected section uses the shared selection gray (--panel-sunken), matching
+   the sidebar sessions, model picker, and agent tabs. */
 .settings-nav-item[data-active="true"] .settings-nav-link {
   color: var(--text);
-  background: var(--accent-soft);
+  background: var(--panel-sunken);
 }
 
 /* ---- Main column ---- */

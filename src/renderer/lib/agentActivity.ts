@@ -78,6 +78,16 @@ function normalizedPromptEcho(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function isInternalAgentLaunchMetadata(output: string): boolean {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("this tool result is internal metadata") ||
+    normalized.includes("async agent launched successfully") ||
+    normalized.includes("use sendmessage with to:") ||
+    normalized.includes("do not read or tail this file")
+  );
+}
+
 function activityTitle(tool: ToolCall | null, parentToolUseId: string): string {
   if (!tool) return `Agent ${parentToolUseId}`;
   const description = stringValue(tool.inputFull.description);
@@ -122,6 +132,9 @@ export function buildAgentActivity(params: {
     ? stringValue(parentTool.inputFull.subagent_type) ?? stringValue(parentTool.inputFull.subagentType)
     : null;
   const status = parentTool?.status ?? "missing";
+  const finalOutput = parentTool?.output && !isInternalAgentLaunchMetadata(parentTool.output)
+    ? parentTool.output
+    : null;
   return {
     parentTool,
     title: activityTitle(parentTool, parentToolUseId),
@@ -129,7 +142,7 @@ export function buildAgentActivity(params: {
     subagentType,
     status,
     items,
-    finalOutput: parentTool?.output ?? null,
+    finalOutput,
     limited: parentTool !== null && visibleChildMessages.length === 0 && childToolIds.size === 0,
     receiverThreadIds
   };

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
+import { startedAgentName } from "../../test/agentRowName.js";
 import {
   baseSession,
   cursorAssistantPayload,
@@ -630,7 +631,7 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    expect(screen.getByLabelText("Started agent Map documentation structure and identify gaps")).toBeInTheDocument();
+    expect(screen.getByLabelText(startedAgentName("Map documentation structure and identify gaps"))).toBeInTheDocument();
     expect(screen.queryByText("Explore the documentation in this Tauri/React Argmax project.")).not.toBeInTheDocument();
   });
   it("keeps Thinking for Claude when session.streaming fired before assistant text", () => {

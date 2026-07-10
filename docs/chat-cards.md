@@ -206,7 +206,9 @@ tool is still running. Main chat polling stays on `session:events-since`, so a
 normal chat view does not scan provider trace directories. While a running
 subagent has no imported child rows yet, the pane shows the same quiet Thinking
 state as the main chat. The limited-data notice appears only after the pane has
-settled and the provider still did not expose child activity.
+settled and the provider still did not expose child activity. Child tool rows
+stay compact while running; the spinner carries live state so fast tools do not
+flash open and closed as completions arrive.
 
 Providers can emit a launch-looking row before the real child link exists, then
 retry with the same prompt once the child is created. The parent projection hides
@@ -215,8 +217,10 @@ but only once the earlier row is no longer running, since a running row may be
 a legitimate parallel agent whose open pane must not be force-closed.
 Two completed same-prompt agents still render as two real launches. If trace
 import fails because a provider moves or redacts its local files, the pane keeps
-the launch/result metadata and shows a load or limited-data notice instead of
-breaking the chat.
+safe launch metadata and shows a load or limited-data notice instead of breaking
+the chat. Provider-private async launch receipts (for example Claude metadata
+that names internal agent ids or output files) are never rendered as the
+subagent result.
 
 ## Submission flow
 

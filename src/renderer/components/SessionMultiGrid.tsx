@@ -23,11 +23,11 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
-import type { AgentGridCell, GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
+import type { AgentPaneRequest, GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
 import { isAgentCell, isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import type { ToolCall } from "../lib/toolCalls.js";
-import { AgentActivityPane } from "./AgentActivityPane.js";
+import { AgentTabsPane } from "./AgentTabsPane.js";
 import { SessionPane } from "./SessionPane.js";
 
 /** Minimum pane width for side-by-side grid splits and divider drags. */
@@ -45,7 +45,9 @@ function clampNumber(value: number, min: number, max: number): number {
 function gridCellKey(cell: GridCell, rowIndex: number, colIndex: number): string {
   if (cell.kind === "launcher") return `launcher-${cell.projectId}-${rowIndex}-${colIndex}`;
   if (cell.kind === "agent") {
-    return `agent-${cell.parentSessionId}-${cell.parentToolUseId}-${rowIndex}-${colIndex}`;
+    // Key on the parent session, never the active tab — switching or adding a
+    // tab must not remount the cell (which would restart every pane's loads).
+    return `agent-${cell.parentSessionId}-${rowIndex}-${colIndex}`;
   }
   return `${cell.sessionId}-${rowIndex}-${colIndex}`;
 }
@@ -84,7 +86,9 @@ interface SessionMultiGridProps {
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onLoadAgentEvents: (sessionId: string, parentToolUseId: string) => Promise<void>;
-  onOpenAgentPane: (cell: AgentGridCell) => void;
+  onOpenAgentPane: (request: AgentPaneRequest) => void;
+  onActivateAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
+  onCloseAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   onWorkspaceMinWidthChange?: (width: number) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onSendSessionInput: (
@@ -134,6 +138,8 @@ export function SessionMultiGrid({
   onLoadSessionEvents,
   onLoadAgentEvents,
   onOpenAgentPane,
+  onActivateAgentTab,
+  onCloseAgentTab,
   onWorkspaceMinWidthChange,
   onResolveApproval,
   onSendSessionInput,
@@ -341,7 +347,6 @@ export function SessionMultiGrid({
                 const baseSession = isAgent ? parentSession : session;
                 if (!baseSession || !workspace) return;
                 onOpenAgentPane({
-                  kind: "agent",
                   parentSessionId: baseSession.id,
                   workspaceId: workspace.id,
                   parentToolUseId: tool.toolUseId
@@ -365,16 +370,22 @@ export function SessionMultiGrid({
                     {isLauncher ? (
                       renderLauncher(launcherProject)
                     ) : isAgent ? (
-                      <AgentActivityPane
+                      <AgentTabsPane
+                        cell={cell}
                         events={events}
                         isFocused={focused}
-                        onClose={() => onClosePane({ row: r, col: c })}
+                        parentSession={parentSession}
+                        workspace={workspace}
                         onLoadAgentEvents={onLoadAgentEvents}
                         onLoadSessionEvents={onLoadSessionEvents}
                         onOpenAgent={openChildAgent}
-                        parentSession={parentSession}
-                        parentToolUseId={cell.parentToolUseId}
-                        workspace={workspace}
+                        onCloseCell={() => onClosePane({ row: r, col: c })}
+                        onActivateTab={(parentToolUseId) =>
+                          onActivateAgentTab(cell.parentSessionId, parentToolUseId)
+                        }
+                        onCloseTab={(parentToolUseId) =>
+                          onCloseAgentTab(cell.parentSessionId, parentToolUseId)
+                        }
                       />
                     ) : (
                       <SessionPane

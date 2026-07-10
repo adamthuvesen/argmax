@@ -280,11 +280,14 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden auto;
-  padding-right: 2px;
-  margin-right: -2px;
+  padding-right: 12px;
+  margin-right: -12px;
 }
 
 .rail-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -295,6 +298,7 @@
      right-edge columns as each project row's … / chevron (which carry this
      inset via `.project-row` padding / the session-row action offset). */
   padding-right: var(--sidebar-action-inset);
+  background: var(--sidebar);
 }
 
 .rail-label {

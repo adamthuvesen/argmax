@@ -86,6 +86,20 @@ describe("buildConversationEvents", () => {
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "intro", "done"]);
   });
+
+  it("drops a pre-tool delta that is only a prefix of the completed answer", () => {
+    const events = [
+      event("done", "message.completed", "2026-05-12T15:00:05.000Z", "Verification agent is running."),
+      event("tool", "command.started", "2026-05-12T15:00:04.000Z", "", {
+        id: "tool-1",
+        name: "Bash"
+      }),
+      event("prefix", "message.delta", "2026-05-12T15:00:03.000Z", "Ver"),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "done"]);
+  });
 });
 
 describe("hasRenderableSessionContent", () => {

@@ -9,6 +9,7 @@ import {
   reviewStub,
   workspace
 } from "../../test/sessionConversationTestHarness.js";
+import { startedAgentName } from "../../test/agentRowName.js";
 
 describe("SessionConversation — cards", () => {
   afterEach(() => {
@@ -747,7 +748,7 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByLabelText("Question from agent")).toBeInTheDocument();
     expect(screen.getByText("What should we prioritize?")).toBeInTheDocument();
 
-    const agentRow = screen.getByRole("button", { name: "Started agent Explore docs" });
+    const agentRow = screen.getByRole("button", { name: startedAgentName("Explore docs") });
     fireEvent.click(agentRow);
     expect(agentRow).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ran echo ok" })).toBeInTheDocument();

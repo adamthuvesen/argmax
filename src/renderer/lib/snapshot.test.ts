@@ -90,6 +90,24 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result.map((e) => e.id)).toEqual(["e1", "e2", "e3", "e5"]);
   });
 
+  it("drops pre-tool deltas that are prefixes of the completed answer", () => {
+    const events: TimelineEvent[] = [
+      event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
+      {
+        ...event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
+        message: "Ver"
+      },
+      event("e3", "command.started", "2026-05-12T15:00:02.000Z"),
+      {
+        ...event("e4", "message.completed", "2026-05-12T15:00:03.000Z"),
+        message: "Verification agent is running."
+      }
+    ];
+
+    const result = pruneSupersededDeltas(events);
+    expect(result.map((e) => e.id)).toEqual(["e1", "e3", "e4"]);
+  });
+
   it("keeps the parent's streaming answer when a hidden child completion lands mid-stream", () => {
     // Child rows are excluded from the chat view model's sweep, so they must
     // not act as turn boundaries here either: a fire-and-forget child

@@ -16,6 +16,17 @@ export interface AgentGridCell {
   kind: "agent";
   parentSessionId: string;
   workspaceId: string;
+  /** Ordered, unique, length >= 1. One agent cell per parent session; each
+      open subagent of that session is a tab. */
+  parentToolUseIds: string[];
+  /** Always a member of parentToolUseIds. */
+  activeParentToolUseId: string;
+}
+
+/** What a caller passes to open (or focus) a single subagent tab. */
+export interface AgentPaneRequest {
+  parentSessionId: string;
+  workspaceId: string;
   parentToolUseId: string;
 }
 
@@ -81,18 +92,13 @@ export function findWorkspaceCell(grid: GridState, workspaceId: string): GridCoo
   return null;
 }
 
-export function findAgentCell(grid: GridState, parentSessionId: string, parentToolUseId: string): GridCoord | null {
+export function findAgentCellForParent(grid: GridState, parentSessionId: string): GridCoord | null {
   for (let r = 0; r < grid.rows.length; r++) {
     const row = grid.rows[r];
     if (!row) continue;
     for (let c = 0; c < row.length; c++) {
       const cell = row[c];
-      if (
-        cell &&
-        isAgentCell(cell) &&
-        cell.parentSessionId === parentSessionId &&
-        cell.parentToolUseId === parentToolUseId
-      ) {
+      if (cell && isAgentCell(cell) && cell.parentSessionId === parentSessionId) {
         return { row: r, col: c };
       }
     }
@@ -252,14 +258,38 @@ export function openWorkspaceInGrid(
   return replaceWorkspaceContext(grid, { row: fr, col: fc }, cell);
 }
 
+/**
+ * Open (or focus) a subagent. All subagents of one parent session share a
+ * single agent cell rendered as tabs, so a second subagent appends a tab
+ * instead of taking a column. The grid-full cap only blocks the *first*
+ * subagent of a parent — once the cell exists, tabs always append.
+ */
 export function openAgentInGrid(
   grid: GridState,
-  cell: AgentGridCell,
+  request: AgentPaneRequest,
   layout?: { maxColumns?: number }
 ): GridState {
-  if (!findSessionCell(grid, cell.parentSessionId)) return grid;
-  const existing = findAgentCell(grid, cell.parentSessionId, cell.parentToolUseId);
-  if (existing) return { ...grid, focused: existing };
+  if (!findSessionCell(grid, request.parentSessionId)) return grid;
+
+  const existing = findAgentCellForParent(grid, request.parentSessionId);
+  if (existing) {
+    const cell = grid.rows[existing.row]?.[existing.col];
+    if (!cell || !isAgentCell(cell)) return grid;
+    const alreadyOpen = cell.parentToolUseIds.includes(request.parentToolUseId);
+    const alreadyActive = cell.activeParentToolUseId === request.parentToolUseId;
+    const alreadyFocused =
+      grid.focused?.row === existing.row && grid.focused.col === existing.col;
+    if (alreadyOpen && alreadyActive && alreadyFocused) return grid;
+    const nextCell: AgentGridCell = {
+      ...cell,
+      parentToolUseIds: alreadyOpen
+        ? cell.parentToolUseIds
+        : [...cell.parentToolUseIds, request.parentToolUseId],
+      activeParentToolUseId: request.parentToolUseId
+    };
+    return { rows: replaceCell(grid.rows, existing, nextCell), focused: existing };
+  }
+
   if (grid.rows.length === 0 || grid.focused === null) return grid;
 
   const { row: fr, col: fc } = grid.focused;
@@ -267,6 +297,14 @@ export function openAgentInGrid(
   const rowCap = maxColumns(layout);
   const canSplit = totalCells(grid) < maxCells(layout);
   if (!canSplit || !focusedRow) return grid;
+
+  const cell: AgentGridCell = {
+    kind: "agent",
+    parentSessionId: request.parentSessionId,
+    workspaceId: request.workspaceId,
+    parentToolUseIds: [request.parentToolUseId],
+    activeParentToolUseId: request.parentToolUseId
+  };
 
   if (focusedRow.length < rowCap) {
     return {
@@ -283,6 +321,52 @@ export function openAgentInGrid(
   }
 
   return grid;
+}
+
+/** Activate a subagent tab within its parent's agent cell. No-op if the id
+    isn't open or is already active (referential stability). */
+export function setActiveAgentTab(
+  grid: GridState,
+  parentSessionId: string,
+  parentToolUseId: string
+): GridState {
+  const coord = findAgentCellForParent(grid, parentSessionId);
+  if (!coord) return grid;
+  const cell = grid.rows[coord.row]?.[coord.col];
+  if (!cell || !isAgentCell(cell)) return grid;
+  if (
+    !cell.parentToolUseIds.includes(parentToolUseId) ||
+    cell.activeParentToolUseId === parentToolUseId
+  ) {
+    return grid;
+  }
+  const nextCell: AgentGridCell = { ...cell, activeParentToolUseId: parentToolUseId };
+  return { ...grid, rows: replaceCell(grid.rows, coord, nextCell) };
+}
+
+/** Close one subagent tab. Closing the last tab removes the whole cell.
+    Closing the active tab activates the right neighbour, else the left. */
+export function closeAgentTab(
+  grid: GridState,
+  parentSessionId: string,
+  parentToolUseId: string
+): GridState {
+  const coord = findAgentCellForParent(grid, parentSessionId);
+  if (!coord) return grid;
+  const cell = grid.rows[coord.row]?.[coord.col];
+  if (!cell || !isAgentCell(cell)) return grid;
+  const closedIndex = cell.parentToolUseIds.indexOf(parentToolUseId);
+  if (closedIndex === -1) return grid;
+
+  const remaining = cell.parentToolUseIds.filter((id) => id !== parentToolUseId);
+  if (remaining.length === 0) return closeCell(grid, coord.row, coord.col);
+
+  const activeParentToolUseId =
+    cell.activeParentToolUseId === parentToolUseId
+      ? remaining[closedIndex] ?? remaining[closedIndex - 1] ?? remaining[0]
+      : cell.activeParentToolUseId;
+  const nextCell: AgentGridCell = { ...cell, parentToolUseIds: remaining, activeParentToolUseId };
+  return { ...grid, rows: replaceCell(grid.rows, coord, nextCell) };
 }
 
 /**

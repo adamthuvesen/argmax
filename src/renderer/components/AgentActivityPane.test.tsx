@@ -84,4 +84,47 @@ describe("AgentActivityPane", () => {
     expect(row).toHaveAttribute("aria-expanded", "false");
     expect(within(pane).queryByText("Command")).toBeNull();
   });
+
+  it("shows only the codename in the kicker and includes it in the section label when provided", () => {
+    render(
+      <AgentActivityPane
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Explore repo", prompt: "Map the repo." }
+          })
+        ]}
+        codename="Callisto"
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    const pane = screen.getByRole("region", { name: "Agent activity: Callisto — Explore repo" });
+    const kicker = pane.querySelector(".agent-activity-kicker");
+    expect(kicker).toHaveTextContent("Callisto");
+    expect(kicker).not.toHaveTextContent("Subagent");
+  });
+
+  it("keeps the plain Subagent kicker when no codename is provided", () => {
+    render(
+      <AgentActivityPane
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Explore repo", prompt: "Map the repo." }
+          })
+        ]}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
+    expect(pane.querySelector(".agent-activity-kicker")).toHaveTextContent("Subagent");
+  });
 });

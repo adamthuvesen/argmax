@@ -6,6 +6,7 @@ import {
   renderConversation
 } from "../../test/sessionConversationTestHarness.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
 
 describe("SessionConversation — tools & chrome", () => {
   afterEach(() => {
@@ -168,7 +169,7 @@ describe("SessionConversation — tools & chrome", () => {
     );
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
-    const agentRow = screen.getByRole("button", { name: "Started agent Audit renderer tools" });
+    const agentRow = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
     expect(agentRow.querySelector("svg")).not.toBeNull();
     expect(agentRow).not.toHaveTextContent("🤖");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
@@ -177,7 +178,7 @@ describe("SessionConversation — tools & chrome", () => {
     const openedTool = onOpenAgent.mock.calls[0]?.[0];
     expect(openedTool?.toolUseId).toBe("task");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle details for Started agent Audit renderer tools" }));
+    fireEvent.click(screen.getByRole("button", { name: toggleAgentDetailsName("Audit renderer tools") }));
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     const childRow = screen.getByRole("button", { name: "Read toolCalls.tsx" });
     expect(childRow).toBeInTheDocument();
@@ -212,10 +213,10 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallsExpanded: false, defaultToolCallGroupsExpanded: false, onOpenAgent }
     );
 
-    const agentRow = screen.getByRole("button", { name: "Started agent Explore repo structure" });
+    const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo structure") });
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Toggle details for Started agent Explore repo structure" }))
+    expect(screen.getByRole("button", { name: toggleAgentDetailsName("Explore repo structure") }))
       .toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Read README.md" })).not.toBeInTheDocument();
@@ -249,14 +250,14 @@ describe("SessionConversation — tools & chrome", () => {
       { onOpenAgent }
     );
 
-    const agentRow = screen.getByRole("button", { name: "Started agent Explore repo quickly and report key files." });
+    const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") });
     expect(screen.queryByText("Input")).not.toBeInTheDocument();
 
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("Input")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", {
-      name: "Toggle details for Started agent Explore repo quickly and report key files."
+      name: toggleAgentDetailsName("Explore repo quickly and report key files.")
     }));
 
     expect(screen.getByText("Input")).toBeInTheDocument();
@@ -298,7 +299,7 @@ describe("SessionConversation — tools & chrome", () => {
       ]
     );
 
-    expect(screen.getByRole("button", { name: "Started agent Explore repo quickly and report key files." }))
+    expect(screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") }))
       .toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "wait" })).toBeNull();
   });

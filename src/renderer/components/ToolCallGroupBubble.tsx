@@ -7,6 +7,7 @@ import {
   type ToolCall,
   type ToolCallGroup
 } from "../lib/toolCalls.js";
+import { codenameForTool } from "../lib/agentNames.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 
@@ -14,6 +15,7 @@ type ToolCallGroupBubbleProps = {
   group: ToolCallGroup;
   defaultExpanded?: boolean;
   workspaceCwd?: string | null;
+  agentCodenames?: Map<string, string>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
 };
@@ -27,6 +29,7 @@ function ToolCallGroupBubbleInner({
   group,
   defaultExpanded,
   workspaceCwd,
+  agentCodenames,
   onOpenFile,
   onOpenAgent
 }: ToolCallGroupBubbleProps): JSX.Element {
@@ -90,6 +93,7 @@ function ToolCallGroupBubbleInner({
               <ToolCallRow
                 tool={tool}
                 workspaceCwd={workspaceCwd ?? null}
+                agentCodename={codenameForTool(tool, agentCodenames)}
                 onOpenFile={onOpenFile}
                 onOpenAgent={onOpenAgent}
               />
@@ -122,6 +126,7 @@ function ToolCallGroupBubbleInner({
 export const ToolCallGroupBubble = memo(ToolCallGroupBubbleInner, (prev, next) => {
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.workspaceCwd !== next.workspaceCwd) return false;
+  if (prev.agentCodenames !== next.agentCodenames) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;
   if (prev.onOpenAgent !== next.onOpenAgent) return false;
   if (prev.group === next.group) return true;

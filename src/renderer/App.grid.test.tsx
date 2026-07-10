@@ -13,6 +13,7 @@ import {
   setupAppTestMocks,
   snapshot
 } from "../test/appTestHarness.js";
+import { startedAgentName } from "../test/agentRowName.js";
 
 vi.mock("./components/TerminalTabsPanel.js", () => ({
   TerminalTabsPanel: ({ visible }: { visible: boolean }) => (
@@ -275,10 +276,11 @@ describe("App grid", () => {
     await screen.findByText("I will delegate this.");
     expect(screen.queryByText("Subagent found parser.")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(screen.getByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
-    expect(within(pane).getByText("Subagent")).toBeInTheDocument();
+    // The kicker shows the spawn's codename ("task-1" hashes to Triton).
+    expect(within(pane).getByText("Triton", { selector: ".agent-activity-kicker" })).toBeInTheDocument();
     expect(within(pane).queryByRole("heading", { name: "Map renderer" })).toBeNull();
     expect(within(pane).getAllByText(promptText)).toHaveLength(1);
     const expandInstructions = within(pane).getByRole("button", { name: "Expand instructions" });
@@ -349,7 +351,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     expect(await screen.findByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Follow up task" }));
@@ -361,6 +363,249 @@ describe("App grid", () => {
     const grid = screen.getByRole("group", { name: "Session panes" });
     expect(within(grid).getAllByRole("group", { name: /^Pane row/ })).toHaveLength(1);
     expect(within(grid).getAllByRole("region", { name: "Follow up task" })).toHaveLength(1);
+  });
+
+  it("collapses a second subagent into a tabbed agent cell instead of a new column", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete" as const,
+        completedAt: "2026-05-08T15:55:00.000Z"
+      })),
+      events: [
+        {
+          id: "task-2",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: { id: "task-2", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        },
+        {
+          id: "task-1",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
+    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    expect(screen.queryByRole("tablist")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
+
+    const tablist = await screen.findByRole("tablist", { name: "Subagent tabs" });
+    const tabLabels = within(tablist).getAllByRole("tab").map((tab) => tab.textContent);
+    expect(tabLabels).toHaveLength(2);
+    // Each spawn gets its own distinct moon-name codename as the tab label.
+    expect(new Set(tabLabels).size).toBe(2);
+    // The chat row and the tab derive the codename from the same toolUseId, so
+    // the same spawn must carry the same name at both call sites. The tab's
+    // title tooltip holds the task description that pairs it with its row.
+    for (const tab of within(tablist).getAllByRole("tab")) {
+      const description = tab.getAttribute("title");
+      expect(description).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: `Started agent ${tab.textContent} — ${description}` })
+      ).toBeInTheDocument();
+    }
+    // The second subagent shares the one agent cell — no extra grid column.
+    expect(screen.getAllByRole("region", { name: "Agent activity for Build dashboard" })).toHaveLength(1);
+    expect(document.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
+    expect(screen.queryByText(/Pane limit reached/)).toBeNull();
+
+    expect(screen.getByRole("tab", { name: "Tethys" })).toHaveAttribute("aria-selected", "true");
+    // Both panes stay mounted; the inactive one is hidden, not unmounted.
+    expect(document.getElementById("agent-tabpanel-task-1")).toHaveAttribute("aria-hidden", "true");
+    expect(document.getElementById("agent-tabpanel-task-2")).not.toHaveAttribute("aria-hidden");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Triton" }));
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Triton" })).toHaveAttribute("aria-selected", "true");
+    });
+    expect(document.getElementById("agent-tabpanel-task-1")).not.toHaveAttribute("aria-hidden");
+
+    // Closing one tab keeps the cell (drops back to a single, bar-less pane).
+    fireEvent.click(screen.getByRole("button", { name: "Close Tethys" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("tablist")).toBeNull();
+    });
+    expect(screen.getAllByRole("region", { name: "Agent activity for Build dashboard" })).toHaveLength(1);
+  });
+
+  it("keeps an inactive but still-running subagent tab polling", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "task-2",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: { id: "task-2", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        },
+        {
+          id: "task-1",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
+    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
+    await screen.findByRole("tablist", { name: "Subagent tabs" });
+
+    // task-2 is active; task-1 is hidden but still running.
+    expect(screen.getByRole("tab", { name: "Triton" })).toHaveAttribute("aria-selected", "false");
+
+    const task1Calls = (): number =>
+      sessionAgentEvents.mock.calls.filter((call) => call[0].parentToolUseId === "task-1").length;
+
+    await waitFor(() => {
+      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-1" });
+      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-2" });
+    });
+
+    const before = task1Calls();
+    await waitFor(() => {
+      expect(task1Calls()).toBeGreaterThan(before);
+    }, { timeout: 2500 });
+  });
+
+  it("prunes a superseded subagent tab on session stop while keeping the cell", async () => {
+    const prompt = "Map renderer";
+    mockDashboardSnapshot({
+      ...snapshot,
+      events: [
+        {
+          id: "task-b",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "Task",
+          payload: { id: "task-b", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
+          createdAt: "2026-05-08T15:54:03.000Z"
+        },
+        {
+          id: "failed-start",
+          sessionId: "session-1",
+          type: "command.started",
+          message: "spawn_agent",
+          payload: {
+            id: "item_1",
+            name: "spawn_agent",
+            input: { prompt, receiver_thread_ids: [], sender_thread_id: "thread-parent" }
+          },
+          createdAt: "2026-05-08T15:54:02.000Z"
+        },
+        {
+          id: "user-message",
+          sessionId: "session-1",
+          type: "user.message",
+          message: "Map this",
+          payload: {},
+          createdAt: "2026-05-08T15:54:00.000Z"
+        }
+      ]
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    // Open the surviving Task subagent first, then the spawn that will be
+    // superseded — so the pruned tab is the active one and activation must
+    // repoint to the survivor.
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Write tests") }));
+    await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
+    fireEvent.click(screen.getByRole("button", { name: startedAgentName("Map renderer") }));
+    await screen.findByRole("tablist", { name: "Subagent tabs" });
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+
+    await act(async () => {
+      dashboardDeltaListener?.({
+        events: [
+          {
+            id: "retry-end",
+            sessionId: "session-1",
+            type: "command.completed",
+            message: "spawn_agent",
+            payload: {
+              id: "item_2",
+              name: "spawn_agent",
+              status: "completed",
+              input: { prompt, receiver_thread_ids: ["thread-child"], sender_thread_id: "thread-parent" }
+            },
+            createdAt: "2026-05-08T15:54:05.000Z"
+          },
+          {
+            id: "retry-start",
+            sessionId: "session-1",
+            type: "command.started",
+            message: "spawn_agent",
+            payload: {
+              id: "item_2",
+              name: "spawn_agent",
+              input: { prompt, receiver_thread_ids: [], sender_thread_id: "thread-parent" }
+            },
+            createdAt: "2026-05-08T15:54:04.000Z"
+          }
+        ]
+      });
+      await Promise.resolve();
+    });
+
+    // While the session runs, both tabs survive.
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+
+    await act(async () => {
+      dashboardDeltaListener?.({
+        sessions: snapshot.sessions.map((session) => ({
+          ...session,
+          state: "complete" as const,
+          completedAt: "2026-05-08T15:54:06.000Z"
+        }))
+      });
+      await Promise.resolve();
+    });
+
+    // The superseded spawn tab is pruned; the cell survives on the Task tab.
+    await waitFor(() => {
+      expect(screen.queryByRole("tablist")).toBeNull();
+    });
+    expect(screen.getAllByRole("region", { name: "Agent activity for Build dashboard" })).toHaveLength(1);
+    expect(screen.getByRole("region", { name: /^Agent activity: .+ — Write tests$/ })).toBeInTheDocument();
   });
 
   it("renders imported child tool rows instead of the limited-data notice", async () => {
@@ -428,7 +673,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
     expect(within(pane).getByRole("button", { name: "Read App.tsx" })).toBeInTheDocument();
@@ -479,7 +724,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
     expect(within(pane).getByText("renderer").tagName).toBe("STRONG");
@@ -522,7 +767,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     expect(await screen.findByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
 
     await act(async () => {
@@ -569,7 +814,7 @@ describe("App grid", () => {
     // While the parent session runs, the earlier spawn may be a live parallel
     // agent — the retry completing must not hide it or force-close its pane.
     expect(screen.getByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Started agent Map renderer" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: startedAgentName("Map renderer") })).toHaveLength(2);
 
     await act(async () => {
       dashboardDeltaListener?.({
@@ -585,7 +830,7 @@ describe("App grid", () => {
     await waitFor(() => {
       expect(screen.queryByRole("region", { name: "Agent activity for Build dashboard" })).toBeNull();
     });
-    expect(screen.getAllByRole("button", { name: "Started agent Map renderer" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: startedAgentName("Map renderer") })).toHaveLength(1);
   });
 
   it("polls agent events while an agent pane is still running", async () => {
@@ -621,7 +866,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
     await waitFor(() => {
       expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
@@ -674,7 +919,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
     expect(within(pane).getByTestId("thinking-label")).toHaveTextContent("Thinking");
@@ -737,7 +982,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
 
     const pane = await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
     expect(within(pane).queryByTestId("thinking-label")).toBeNull();
@@ -785,7 +1030,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
     await waitFor(() => {
       expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
@@ -848,7 +1093,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     await screen.findByRole("region", { name: "Agent activity for Build dashboard" });
     await waitFor(() => {
       expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
@@ -918,7 +1163,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Started agent Map renderer" }));
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     expect(await screen.findByRole("region", { name: "Agent activity for Build dashboard" })).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });

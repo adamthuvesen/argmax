@@ -48,6 +48,7 @@ function ToolCallRowInner({
   childTools,
   workspaceCwd,
   defaultExpanded,
+  agentCodename,
   onOpenFile,
   onOpenAgent
 }: {
@@ -55,6 +56,7 @@ function ToolCallRowInner({
   childTools?: ToolCall[];
   workspaceCwd?: string | null;
   defaultExpanded?: boolean;
+  agentCodename?: string;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
 }): JSX.Element {
@@ -78,7 +80,14 @@ function ToolCallRowInner({
   const localExpanded =
     userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
 
-  const action = describeToolAction(tool);
+  // Agent rows get a deterministic codename so the same spawn is recognizable
+  // across the chat row, its tab, and its activity pane. Keep the verb "Started
+  // agent" and fold the codename (plus any task preview) into the target.
+  const action = agentCodename
+    ? tool.inputPreview
+      ? `Started agent ${agentCodename} — ${tool.inputPreview}`
+      : `Started agent ${agentCodename}`
+    : describeToolAction(tool);
   const baseSplit = splitVerbTarget(action);
 
   const changes = useMemo(
@@ -197,6 +206,7 @@ export const ToolCallRow = memo(ToolCallRowInner, (prev, next) => {
   if (prev.defaultExpanded !== next.defaultExpanded) return false;
   if (prev.onOpenFile !== next.onOpenFile) return false;
   if (prev.onOpenAgent !== next.onOpenAgent) return false;
+  if (prev.agentCodename !== next.agentCodename) return false;
   if (!sameChildTools(prev.childTools, next.childTools)) return false;
   if (prev.tool === next.tool) return true;
   return (

@@ -8,6 +8,7 @@ import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
 import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
+import { codenameForTool } from "../lib/agentNames.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
 import type { AgentMode } from "../../shared/types.js";
@@ -35,6 +36,7 @@ function SessionConversationTurnInner({
   session,
   selectedModel,
   workspace,
+  agentCodenames,
   onOpenFile,
   onOpenAgent,
   onTerminateSession,
@@ -53,6 +55,7 @@ function SessionConversationTurnInner({
   session: SessionSummary | null;
   selectedModel: ModelPickerSelection;
   workspace: WorkspaceSummary | null;
+  agentCodenames?: Map<string, string>;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenAgent?: (tool: ToolCall) => void;
   onTerminateSession: (sessionId: string) => Promise<void>;
@@ -259,6 +262,7 @@ function SessionConversationTurnInner({
               childTools={tItem.children}
               defaultExpanded={toolsExpanded}
               workspaceCwd={workspace?.path ?? null}
+              agentCodename={codenameForTool(tItem.tool, agentCodenames)}
               onOpenFile={onOpenFile}
               onOpenAgent={onOpenAgent}
             />
@@ -276,6 +280,7 @@ function SessionConversationTurnInner({
             group={tItem.group}
             defaultExpanded={toolsExpanded}
             workspaceCwd={workspace?.path ?? null}
+            agentCodenames={agentCodenames}
             onOpenFile={onOpenFile}
             onOpenAgent={onOpenAgent}
           />

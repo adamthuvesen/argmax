@@ -124,6 +124,7 @@ function AgentResult({
 
 export function AgentActivityPane({
   events,
+  codename,
   isFocused,
   onClose,
   onLoadAgentEvents,
@@ -135,6 +136,7 @@ export function AgentActivityPane({
   workspace
 }: {
   events: TimelineEvent[];
+  codename?: string;
   isFocused?: boolean;
   onClose?: () => void;
   onLoadAgentEvents?: (sessionId: string, parentToolUseId: string) => Promise<void>;
@@ -291,11 +293,15 @@ export function AgentActivityPane({
   const showLoadFailureNotice = failedAgentKey === agentKey && !showAgentActivityThinking;
 
   return (
-    <section className="agent-activity-pane" aria-label={`Agent activity: ${activity.title}`} data-focused={isFocused ? "true" : undefined}>
+    <section
+      className="agent-activity-pane"
+      aria-label={codename ? `Agent activity: ${codename} — ${activity.title}` : `Agent activity: ${activity.title}`}
+      data-focused={isFocused ? "true" : undefined}
+    >
       <header className="agent-activity-header" data-window-drag>
         <div className="agent-activity-title">
           <Bot size={15} aria-hidden="true" />
-          <p className="agent-activity-kicker">Subagent</p>
+          <p className="agent-activity-kicker">{codename ?? "Subagent"}</p>
         </div>
         <div className="agent-activity-actions">
           <span className="agent-activity-status" data-status={activity.status}>

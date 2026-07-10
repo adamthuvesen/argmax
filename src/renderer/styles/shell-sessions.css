@@ -23,14 +23,16 @@
   background: var(--row-hover);
 }
 
+/* Open and active rows use the same gray pair as the model picker and agent
+   tabs (--panel-soft / --panel-sunken) instead of the accent color. */
 .session-link[data-open="true"]:not(.active) {
   color: var(--text);
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  background: var(--panel-soft);
 }
 
 .session-link.active {
   color: var(--text);
-  background: var(--accent-soft);
+  background: var(--panel-sunken);
 }
 
 /* Keyboard focus inside the sidebar — use an inset shadow instead of the

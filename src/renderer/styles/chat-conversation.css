@@ -335,6 +335,12 @@
   animation: fade-in 280ms var(--ease) both;
 }
 
+/* Match the collapsed-sidebar lift on .conversation-surface so the subagent
+   header title/buttons align with the session pane's. */
+.app-shell[data-sidebar-collapsed="true"] .agent-activity-pane {
+  padding-top: 5px;
+}
+
 .agent-activity-header {
   display: flex;
   align-items: center;
@@ -368,6 +374,15 @@
   align-items: center;
   flex: 0 0 auto;
   gap: 6px;
+}
+
+/* Match the 22px header buttons in .conversation-surface — the default 30px
+   .small-icon makes this row taller and drops the title/buttons ~4px below
+   the session pane's header. */
+.agent-activity-actions .small-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-md);
 }
 
 .agent-activity-status {

@@ -42,8 +42,10 @@ export function isSubAgentProseEcho(event: TimelineEvent): boolean {
  *   - `message.completed` → "completed": the turn finished; earlier answer
  *     deltas of that turn are duplicates of the final text.
  *   - `command.started` downgrades "completed" → "tool": a tool ran between
- *     the delta and the completion, so the delta is real pre-tool narration
- *     (Cursor emits this), not a duplicate — keep it.
+ *     the delta and the completion, so the delta may be real pre-tool narration
+ *     (Cursor emits this). Keep it unless the later completed text already
+ *     starts with that delta, which means the delta is just an early prefix of
+ *     the same final message.
  *   - `user.message` → "user": the next turn started without this one ever
  *     completing — keep the delta.
  *
@@ -52,24 +54,41 @@ export function isSubAgentProseEcho(event: TimelineEvent): boolean {
  * boundary classification and the superseded predicate must stay identical or
  * chat rendering and snapshot pruning drift apart.
  */
-export type TurnBoundary = "completed" | "tool" | "user";
+export type TurnBoundary =
+  | { kind: "completed"; completedText: string }
+  | { kind: "tool"; completedText: string | null }
+  | { kind: "user" };
 
 /** Fold one event (scanning right-to-left) into the session's next-boundary state. */
 export function advanceTurnBoundary(
   previous: TurnBoundary | undefined,
   event: TimelineEvent
 ): TurnBoundary | undefined {
-  if (event.type === "message.completed") return "completed";
-  if (event.type === "command.started") return previous === "completed" ? "tool" : previous;
-  if (event.type === "user.message") return "user";
+  if (event.type === "message.completed") {
+    return { kind: "completed", completedText: event.message };
+  }
+  if (event.type === "command.started") {
+    return previous?.kind === "completed"
+      ? { kind: "tool", completedText: previous.completedText }
+      : previous;
+  }
+  if (event.type === "user.message") return { kind: "user" };
   return previous;
+}
+
+function isCompletedPrefixDuplicate(event: TimelineEvent, completedText: string | null): boolean {
+  if (completedText === null) return false;
+  const delta = event.message.trim();
+  if (delta.length < 3) return false;
+  return completedText.trim().startsWith(delta);
 }
 
 /**
  * A non-thinking answer delta whose next boundary is a completion is a
- * duplicate of the final answer. Thinking deltas are never superseded — they
- * are the only record of the model's reasoning step and stay visible after
- * the final answer arrives.
+ * duplicate of the final answer. If a tool appears between the delta and the
+ * completion, only prune when the completed answer already starts with that
+ * delta. Thinking deltas are never superseded — they are the only record of
+ * the model's reasoning step and stay visible after the final answer arrives.
  */
 export function isSupersededAnswerDelta(
   event: TimelineEvent,
@@ -78,6 +97,7 @@ export function isSupersededAnswerDelta(
   return (
     event.type === "message.delta" &&
     event.payload?.["thinking"] !== true &&
-    nextBoundary === "completed"
+    (nextBoundary?.kind === "completed" ||
+      (nextBoundary?.kind === "tool" && isCompletedPrefixDuplicate(event, nextBoundary.completedText)))
   );
 }

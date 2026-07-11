@@ -21,9 +21,8 @@ Provider protocol output is persisted for debugging but must not render as chat.
 ## MCP Configuration
 
 Model Context Protocol (MCP) servers are configured and authenticated through
-each provider's CLI or settings. The resulting provider configuration is used
-by Argmax sessions; MCP server discovery and authentication are not performed
-inside Argmax.
+each provider's CLI or settings. Each agent loads that configuration when
+Argmax launches it. Argmax does not discover or authenticate MCP servers.
 
 - Claude Code servers are added with `claude mcp add <name> -- <command>`.
   Authentication is opened with `/mcp` inside Claude Code.

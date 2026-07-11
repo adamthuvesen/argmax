@@ -20,6 +20,10 @@ Dashboard reads are intentionally split:
 
 Raw provider output older than 7 days is pruned by the retention sweeper. `system:vacuum-database` runs `VACUUM` in a blocking task.
 
+The schema still contains the checkpoint table from earlier releases. Existing
+rows and patch files are kept so upgrades do not delete user data, but Argmax
+no longer creates, lists, or restores checkpoints.
+
 ## Subagent Trace Imports
 
 Codex and Cursor child-agent traces are stored as normal timeline events. There

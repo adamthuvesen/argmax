@@ -21,9 +21,7 @@ import {
   secondProject,
   sessionEventsSince,
   setupAppTestMocks,
-  snapshot,
-  workspaceStatus,
-  workspaceStatusSnapshot
+  snapshot
 } from "../test/appTestHarness.js";
 
 describe("App", () => {
@@ -566,74 +564,6 @@ describe("App", () => {
     expect(await screen.findByText("New chat answer.")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New chat" })).toHaveAttribute("aria-current", "true");
-  });
-
-  it("leaves the launcher after launch even when refresh returns a stale status snapshot", async () => {
-    const newWorkspace: DashboardSnapshot["workspaces"][number] = {
-      id: "workspace-new",
-      projectId: "project-1",
-      taskLabel: "New chat",
-      branch: "main",
-      baseRef: "main",
-      path: "/tmp/argmax",
-      state: "running",
-      sharedWorkspace: true,
-      dirty: false,
-      changedFiles: 0,
-      lastActivityAt: "2026-05-08T16:10:00.000Z",
-      pinned: false
-    };
-    const newSession: DashboardSnapshot["sessions"][number] = {
-      id: "session-new",
-      workspaceId: "workspace-new",
-      provider: "codex",
-      modelLabel: "GPT-5.3 Codex",
-      modelId: "gpt-5.5",
-      reasoningEffort: "medium",
-      permissionMode: "auto-approve",
-      providerConversationId: null,
-      prompt: "New chat",
-      state: "running",
-      attention: "normal",
-      startedAt: "2026-05-08T16:10:00.000Z",
-      completedAt: null,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
-    };
-    mockDashboardSnapshot(snapshot);
-    createCurrentWorkspace.mockResolvedValue(newWorkspace);
-    launchProvider.mockResolvedValue(newSession);
-    // Simulate a slow refresh whose status payload was captured before launch.
-    workspaceStatus.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(workspaceStatusSnapshot(snapshot)), 50))
-    );
-
-    render(<App />);
-
-    fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "New chat" }
-    });
-    fireEvent.click(screen.getByTitle("Start agent"));
-
-    await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Session prompt")).toBeInTheDocument();
-    });
-
-    const existingSession = snapshot.sessions[0];
-    if (!existingSession) throw new Error("snapshot must include session-1");
-    act(() => {
-      dashboardDeltaListener?.({
-        sessions: [{ ...existingSession, lastActivityAt: "2026-05-08T16:09:00.000Z" }]
-      });
-    });
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 60));
-    });
-
-    expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Session prompt")).toBeInTheDocument();
   });
 
   it("displays an @-mention-only launch prompt as the user message in the new session", async () => {

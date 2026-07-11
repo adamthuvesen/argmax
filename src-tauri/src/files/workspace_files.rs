@@ -23,11 +23,11 @@ use super::git_grep_parser::{
 };
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, run_git_text_with_allowed_exit_codes};
-use crate::ipc::inputs::WorkspaceTargetKind;
 use crate::persistence::database::Database;
 use crate::persistence::projects::require_project;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::workspace_paths::{resolve_inside, PathError};
+use crate::workspaces::WorkspaceTargetKind;
 
 /// Files larger than this are skipped — preview is not a download manager.
 pub const MAX_PREVIEW_BYTES: u64 = 1_048_576;

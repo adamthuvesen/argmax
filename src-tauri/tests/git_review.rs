@@ -4,7 +4,6 @@ use std::os::unix::fs::symlink;
 
 use std::sync::Arc;
 
-use argmax_lib::ipc::inputs::WorkspaceTargetKind;
 use argmax_lib::persistence::{
     database::Database,
     projects::{persist_project, PersistProjectInput, ProjectSettings},
@@ -13,6 +12,7 @@ use argmax_lib::persistence::{
 use argmax_lib::review::git_review::{
     list_changed_files, list_changed_files_at_path, load_diff_at_path, ReviewComparison,
 };
+use argmax_lib::workspaces::WorkspaceTargetKind;
 use support::git_repo::{run_git, seed_git_repo};
 
 /// Persist a project + a workspace whose `path` is the repo itself, so the

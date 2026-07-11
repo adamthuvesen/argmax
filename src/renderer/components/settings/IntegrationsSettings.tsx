@@ -68,7 +68,7 @@ export function IntegrationsSettings({
           id="settings-mcp-h"
           eyebrow="Model Context Protocol"
           title="MCP servers"
-          description="Each agent's MCP configuration is used by Argmax. Servers are added and authenticated with the provider's own CLI or settings."
+          description="Each agent loads its own MCP configuration when launched by Argmax. Servers are added and authenticated with the provider's CLI or settings."
         />
         <div className="settings-mcp-body">
           {MCP_SETUP.map((provider) => (

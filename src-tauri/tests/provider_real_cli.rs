@@ -24,9 +24,7 @@ use argmax_lib::providers::runtime::{
     EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
     RealProviderProcessLauncher,
 };
-use argmax_lib::providers::{
-    AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ProviderMode,
-};
+use argmax_lib::providers::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -93,7 +91,6 @@ async fn real_claude_launcher_streams_json_and_exits_cleanly() {
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: None,
-        mode: ProviderMode::StructuredJson,
         permission_mode: PermissionMode::AutoApprove,
         agent_mode: AgentMode::Auto,
         cols: 120,

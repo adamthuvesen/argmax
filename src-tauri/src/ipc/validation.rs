@@ -105,7 +105,6 @@ string_newtype!(WorkspaceId);
 string_newtype!(SessionId);
 string_newtype!(ApprovalId);
 string_newtype!(TerminalId);
-string_newtype!(McpAuthSessionId);
 string_newtype!(Prompt);
 string_newtype!(BaseRef);
 string_newtype!(BranchName);
@@ -140,7 +139,6 @@ try_from_string!(WorkspaceId, |value| bounded_id("workspaceId", value));
 try_from_string!(SessionId, |value| bounded_id("sessionId", value));
 try_from_string!(ApprovalId, |value| bounded_id("approvalId", value));
 try_from_string!(TerminalId, |value| non_empty("terminalId", value));
-try_from_string!(McpAuthSessionId, |value| non_empty("sessionId", value));
 try_from_string!(Prompt, validate_prompt);
 try_from_string!(BaseRef, |value| validate_git_ref("baseRef", value));
 try_from_string!(BranchName, |value| validate_git_ref("branch", value));
@@ -257,15 +255,6 @@ impl<'de> Deserialize<'de> for TerminalId {
         D: serde::Deserializer<'de>,
     {
         TerminalId::try_from(String::deserialize(deserializer)?).map_err(de_error)
-    }
-}
-
-impl<'de> Deserialize<'de> for McpAuthSessionId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        McpAuthSessionId::try_from(String::deserialize(deserializer)?).map_err(de_error)
     }
 }
 

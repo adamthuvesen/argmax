@@ -21,7 +21,7 @@ export async function resolveOpenablePath(
 ): Promise<string | null> {
   if (!api) return null;
   try {
-    await api.workspace.statFile(workspaceId, path);
+    await api.workspace.statFile({ kind: "workspace", id: workspaceId }, path);
     return path;
   } catch {
     // fall through to basename resolution
@@ -29,7 +29,7 @@ export async function resolveOpenablePath(
   if (path.includes("/")) return null;
   let entries;
   try {
-    entries = await api.workspace.listFiles(workspaceId);
+    entries = await api.workspace.listFiles({ kind: "workspace", id: workspaceId });
   } catch {
     return null;
   }

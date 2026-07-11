@@ -104,16 +104,14 @@ describe("buildEntries", () => {
 
 describe("useFileAutocomplete", () => {
   let listFiles: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["listFiles"]>>;
-  let listFilesForProject: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["listFilesForProject"]>>;
 
   beforeEach(() => {
     listFiles = vi.fn<ArgmaxApi["workspace"]["listFiles"]>();
-    listFilesForProject = vi.fn<ArgmaxApi["workspace"]["listFilesForProject"]>();
     Object.defineProperty(window, "argmax", {
       configurable: true,
       writable: true,
       value: {
-        workspace: { listFiles, listFilesForProject }
+        workspace: { listFiles }
       }
     });
   });
@@ -170,7 +168,7 @@ describe("useFileAutocomplete", () => {
       setCaret(probe, 1);
     });
 
-    await waitFor(() => expect(listFiles).toHaveBeenCalledWith("workspace-1"));
+    await waitFor(() => expect(listFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }));
     await waitFor(() => expect(screen.getByTestId("popover-open").textContent).toBe("yes"));
     // 2 files + 3 derived folders (src, src-tauri, src/renderer)
     expect(screen.getByTestId("filtered-count").textContent).toBe("5");
@@ -179,7 +177,7 @@ describe("useFileAutocomplete", () => {
   });
 
   it("shows project-scoped files after the bridge resolves", async () => {
-    listFilesForProject.mockResolvedValue([{ path: "packages/shared/index.ts" }]);
+    listFiles.mockResolvedValue([{ path: "packages/shared/index.ts" }]);
 
     render(<Harness initialInput="@" source={{ kind: "project", id: "project-1" }} />);
 
@@ -188,10 +186,9 @@ describe("useFileAutocomplete", () => {
       setCaret(probe, 1);
     });
 
-    await waitFor(() => expect(listFilesForProject).toHaveBeenCalledWith("project-1"));
+    await waitFor(() => expect(listFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" }));
     await waitFor(() => expect(screen.getByTestId("popover-open").textContent).toBe("yes"));
     expect(screen.getByText("packages/shared/index.ts")).toBeTruthy();
-    expect(listFiles).not.toHaveBeenCalled();
   });
 
   it("matches short prefixes that are not at a non-alphanumeric boundary (regression)", async () => {
@@ -345,8 +342,8 @@ describe("useFileAutocomplete", () => {
     expect(screen.getByTestId("popover-open").textContent).toBe("no");
   });
 
-  it("uses listFilesForProject when source.kind is `project`", async () => {
-    listFilesForProject.mockResolvedValue([{ path: "README.md" }]);
+  it("passes the project target when source.kind is `project`", async () => {
+    listFiles.mockResolvedValue([{ path: "README.md" }]);
 
     render(<Harness initialInput="@" source={{ kind: "project", id: "project-7" }} />);
 
@@ -355,7 +352,6 @@ describe("useFileAutocomplete", () => {
       setCaret(probe, 1);
     });
 
-    await waitFor(() => expect(listFilesForProject).toHaveBeenCalledWith("project-7"));
-    expect(listFiles).not.toHaveBeenCalled();
+    await waitFor(() => expect(listFiles).toHaveBeenCalledWith({ kind: "project", id: "project-7" }));
   });
 });

@@ -15,7 +15,6 @@ pub mod gh;
 pub mod git;
 pub mod ide;
 pub mod ipc;
-pub mod mcp;
 pub mod menu;
 pub mod notifications;
 pub mod persistence;
@@ -296,9 +295,6 @@ pub fn run() {
                             );
                             if state.terminals.set(terminals).is_err() {
                                 tracing::warn!("terminal service state was already initialized");
-                            }
-                            if state.mcp_auth.set(mcp::auth::McpAuthService::new()).is_err() {
-                                tracing::warn!("mcp auth service state was already initialized");
                             }
                             if state
                                 .checks

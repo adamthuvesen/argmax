@@ -13,7 +13,14 @@ pub async fn review_list_changed_files(
     state: State<'_, AppState>,
     input: ReviewListChangedFilesInput,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    list_changed_files_for_workspace(&state, input).await
+    let database = live_database(&state)?;
+    git_review::list_changed_files(
+        database.as_ref(),
+        input.kind,
+        input.id.as_str(),
+        input.comparison,
+    )
+    .await
 }
 
 #[tauri::command(rename = "review:load-diff")]
@@ -22,75 +29,11 @@ pub async fn review_load_diff(
     state: State<'_, AppState>,
     input: ReviewLoadDiffInput,
 ) -> ArgmaxResult<WorkspaceDiff> {
-    load_diff_for_workspace(&state, input).await
-}
-
-#[tauri::command(rename = "review:list-changed-files-for-project")]
-#[specta::specta]
-pub async fn review_list_changed_files_for_project(
-    state: State<'_, AppState>,
-    input: ReviewListChangedFilesForProjectInput,
-) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    list_changed_files_for_project(&state, input).await
-}
-
-#[tauri::command(rename = "review:load-diff-for-project")]
-#[specta::specta]
-pub async fn review_load_diff_for_project(
-    state: State<'_, AppState>,
-    input: ReviewLoadDiffForProjectInput,
-) -> ArgmaxResult<WorkspaceDiff> {
-    load_diff_for_project(&state, input).await
-}
-
-async fn list_changed_files_for_workspace(
-    state: &AppState,
-    input: ReviewListChangedFilesInput,
-) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    let database = live_database(state)?;
-    git_review::list_changed_files(
-        database.as_ref(),
-        input.workspace_id.as_str(),
-        input.comparison,
-    )
-    .await
-}
-
-async fn load_diff_for_workspace(
-    state: &AppState,
-    input: ReviewLoadDiffInput,
-) -> ArgmaxResult<WorkspaceDiff> {
-    let database = live_database(state)?;
+    let database = live_database(&state)?;
     git_review::load_diff(
         database.as_ref(),
-        input.workspace_id.as_str(),
-        input.file_path.as_ref().map(|path| path.as_str()),
-        input.comparison,
-    )
-    .await
-}
-
-async fn list_changed_files_for_project(
-    state: &AppState,
-    input: ReviewListChangedFilesForProjectInput,
-) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    let database = live_database(state)?;
-    git_review::list_changed_files_for_project(
-        database.as_ref(),
-        input.project_id.as_str(),
-        input.comparison,
-    )
-    .await
-}
-
-async fn load_diff_for_project(
-    state: &AppState,
-    input: ReviewLoadDiffForProjectInput,
-) -> ArgmaxResult<WorkspaceDiff> {
-    let database = live_database(state)?;
-    git_review::load_diff_for_project(
-        database.as_ref(),
-        input.project_id.as_str(),
+        input.kind,
+        input.id.as_str(),
         input.file_path.as_ref().map(|path| path.as_str()),
         input.comparison,
     )
@@ -101,7 +44,7 @@ async fn load_diff_for_project(
 mod tests {
     use super::*;
     use crate::{
-        ipc::validation::ProjectId,
+        ipc::inputs::WorkspaceTargetKind,
         persistence::projects::{persist_project, PersistProjectInput, ProjectSettings},
         persistence::Database,
         review::git_review::ReviewComparison,
@@ -116,12 +59,12 @@ mod tests {
         std::fs::write(repo.path().join("README.md"), "hello\nchanged\n").expect("write change");
 
         let state = state_with_project(repo.path());
-        let files = list_changed_files_for_project(
-            &state,
-            ReviewListChangedFilesForProjectInput {
-                project_id: ProjectId::try_from("p1".to_string()).expect("project id"),
-                comparison: ReviewComparison::default(),
-            },
+        let database = live_database(&state).expect("live database");
+        let files = git_review::list_changed_files(
+            database.as_ref(),
+            WorkspaceTargetKind::Project,
+            "p1",
+            ReviewComparison::default(),
         )
         .await
         .expect("changed files");
@@ -151,14 +94,12 @@ mod tests {
         std::fs::write(repo.path().join("notes.txt"), "scratch\n").expect("write notes");
 
         let state = state_with_project(repo.path());
-        let project_id = || ProjectId::try_from("p1".to_string()).expect("project id");
-
-        let working_tree = list_changed_files_for_project(
-            &state,
-            ReviewListChangedFilesForProjectInput {
-                project_id: project_id(),
-                comparison: ReviewComparison::WorkingTree,
-            },
+        let database = live_database(&state).expect("live database");
+        let working_tree = git_review::list_changed_files(
+            database.as_ref(),
+            WorkspaceTargetKind::Project,
+            "p1",
+            ReviewComparison::WorkingTree,
         )
         .await
         .expect("working-tree files");
@@ -167,12 +108,11 @@ mod tests {
         let working_paths: Vec<_> = working_tree.iter().map(|file| file.path.as_str()).collect();
         assert_eq!(working_paths, vec!["app.txt", "notes.txt"]);
 
-        let branch = list_changed_files_for_project(
-            &state,
-            ReviewListChangedFilesForProjectInput {
-                project_id: project_id(),
-                comparison: ReviewComparison::Branch,
-            },
+        let branch = git_review::list_changed_files(
+            database.as_ref(),
+            WorkspaceTargetKind::Project,
+            "p1",
+            ReviewComparison::Branch,
         )
         .await
         .expect("branch files");

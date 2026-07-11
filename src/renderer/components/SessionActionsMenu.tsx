@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Folder,
   GitBranch,
-  GitCommit,
   MoreHorizontal
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
@@ -16,7 +15,6 @@ import { GitActionsMenu } from "./GitActionsMenu.js";
 export function SessionActionsMenu({
   isLogOpen,
   onBrowseFiles,
-  onCreateCheckpoint,
   onOpenCommitDialog,
   onToggleLog,
   session,
@@ -25,7 +23,6 @@ export function SessionActionsMenu({
 }: {
   isLogOpen: boolean;
   onBrowseFiles: () => void;
-  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onOpenCommitDialog?: () => void;
   onToggleLog: () => void;
   session: SessionSummary | null;
@@ -133,27 +130,6 @@ export function SessionActionsMenu({
                 >
                   <Folder size={14} aria-hidden="true" />
                   Browse files
-                </button>
-              </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item"
-                  title={
-                    workspace?.dirty
-                      ? "Save checkpoint of the current worktree"
-                      : "Worktree is clean — no checkpoint needed"
-                  }
-                  disabled={!workspace?.dirty}
-                  onClick={() => {
-                    if (!workspace) return;
-                    closeActions();
-                    void onCreateCheckpoint(workspace.id);
-                  }}
-                >
-                  <GitCommit size={14} aria-hidden="true" />
-                  Save checkpoint
                 </button>
               </li>
               <li role="none">

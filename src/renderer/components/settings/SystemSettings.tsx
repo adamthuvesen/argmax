@@ -142,10 +142,6 @@ export function SystemSettings({
                 <dd>{diagnostics.databaseStats.rowCounts.checks.toLocaleString()}</dd>
               </div>
               <div>
-                <dt>Checkpoints</dt>
-                <dd>{diagnostics.databaseStats.rowCounts.checkpoints.toLocaleString()}</dd>
-              </div>
-              <div>
                 <dt>Learnings</dt>
                 <dd>{diagnostics.databaseStats.rowCounts.learnings.toLocaleString()}</dd>
               </div>

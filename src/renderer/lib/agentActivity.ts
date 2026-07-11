@@ -53,10 +53,6 @@ function codexAgentMessageThreadId(event: TimelineEvent): string | null {
     ?? stringValue(payloadObject(event.payload.item)?.sender_thread_id);
 }
 
-export function isCodexAgentMessageEvent(event: TimelineEvent): boolean {
-  return codexAgentMessageThreadId(event) !== null;
-}
-
 function isChildMessage(
   event: TimelineEvent,
   parentToolUseId: string,

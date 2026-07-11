@@ -2,7 +2,6 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
@@ -23,17 +22,6 @@ pub struct UpdateCheckInput {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct PersistCheckpointInput {
-    pub id: String,
-    pub workspace_id: String,
-    pub label: String,
-    pub branch: String,
-    pub git_ref: Option<String>,
-    pub patch_path: Option<String>,
-    pub created_at: Option<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckRun {
@@ -47,18 +35,6 @@ pub struct CheckRun {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct Checkpoint {
-    pub id: String,
-    pub workspace_id: String,
-    pub label: String,
-    pub branch: String,
-    pub git_ref: Option<String>,
-    pub patch_path: Option<String>,
-    pub created_at: String,
-}
-
 pub fn list_checks(
     connection: &Connection,
     workspace_ids: Option<&[String]>,
@@ -67,9 +43,7 @@ pub fn list_checks(
     match workspace_ids {
         Some(ids) if !ids.is_empty() => {
             let json = serde_json::to_string(ids).map_err(json_error)?;
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM checks WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY started_at DESC, id DESC LIMIT ?",
+            let mut statement = connection.prepare_cached("SELECT * FROM checks WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY started_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -80,11 +54,9 @@ pub fn list_checks(
             Ok(rows)
         }
         _ => {
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM checks ORDER BY started_at DESC, id DESC LIMIT ?",
-            )
-            .map_err(sqlite_error)?;
+            let mut statement = connection
+                .prepare_cached("SELECT * FROM checks ORDER BY started_at DESC, id DESC LIMIT ?")
+                .map_err(sqlite_error)?;
             let rows = statement
                 .query_map([limit as i64], check_row_to_run)
                 .map_err(sqlite_error)?
@@ -96,8 +68,9 @@ pub fn list_checks(
 }
 
 pub fn find_check_by_id(connection: &Connection, check_id: &str) -> ArgmaxResult<CheckRun> {
-    let mut statement =
-        prepared(connection, "SELECT * FROM checks WHERE id = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT * FROM checks WHERE id = ?")
+        .map_err(sqlite_error)?;
     match statement.query_row([check_id], check_row_to_run) {
         Ok(check) => Ok(check),
         Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -107,26 +80,9 @@ pub fn find_check_by_id(connection: &Connection, check_id: &str) -> ArgmaxResult
     }
 }
 
-pub fn find_checkpoint_by_id(
-    connection: &Connection,
-    checkpoint_id: &str,
-) -> ArgmaxResult<Checkpoint> {
-    let mut statement =
-        prepared(connection, "SELECT * FROM checkpoints WHERE id = ?").map_err(sqlite_error)?;
-    match statement.query_row([checkpoint_id], checkpoint_row_to_summary) {
-        Ok(checkpoint) => Ok(checkpoint),
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            Err(ArgmaxError::record_not_found("checkpoint", checkpoint_id))
-        }
-        Err(error) => Err(sqlite_error(error)),
-    }
-}
-
 pub fn persist_check(connection: &Connection, input: &PersistCheckInput) -> ArgmaxResult<CheckRun> {
     let started_at = input.started_at.clone().unwrap_or_else(now_iso);
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection.prepare_cached(r#"
         INSERT INTO checks (id, workspace_id, command, status, exit_code, summary, started_at, completed_at)
         VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL)
         "#,
@@ -152,15 +108,15 @@ pub fn update_check(
     // completed_at stays NULL while a check is in-flight. Defaulting to
     // now_iso() here would mark every mid-run status/summary update as
     // "completed", silently corrupting the row's lifecycle.
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         UPDATE checks
         SET status = ?, exit_code = ?, summary = ?, completed_at = ?
         WHERE id = ?
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let changes = statement
         .execute((
             input.status.as_str(),
@@ -176,69 +132,6 @@ pub fn update_check(
     find_check_by_id(connection, check_id)
 }
 
-pub fn persist_checkpoint(
-    connection: &Connection,
-    input: &PersistCheckpointInput,
-) -> ArgmaxResult<Checkpoint> {
-    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
-    let mut statement = prepared(
-        connection,
-        r#"
-        INSERT INTO checkpoints (id, workspace_id, label, branch, git_ref, patch_path, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        "#,
-    )
-    .map_err(sqlite_error)?;
-    statement
-        .execute((
-            input.id.as_str(),
-            input.workspace_id.as_str(),
-            input.label.as_str(),
-            input.branch.as_str(),
-            input.git_ref.as_deref(),
-            input.patch_path.as_deref(),
-            created_at.as_str(),
-        ))
-        .map_err(sqlite_error)?;
-    find_checkpoint_by_id(connection, &input.id)
-}
-
-pub fn list_checkpoints(
-    connection: &Connection,
-    workspace_ids: Option<&[String]>,
-    limit: usize,
-) -> ArgmaxResult<Vec<Checkpoint>> {
-    match workspace_ids {
-        Some(ids) if !ids.is_empty() => {
-            let json = serde_json::to_string(ids).map_err(json_error)?;
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM checkpoints WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC, id DESC LIMIT ?",
-            )
-            .map_err(sqlite_error)?;
-            let rows = statement
-                .query_map((json, limit as i64), checkpoint_row_to_summary)
-                .map_err(sqlite_error)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
-            Ok(rows)
-        }
-        _ => {
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM checkpoints ORDER BY created_at DESC, id DESC LIMIT ?",
-            )
-            .map_err(sqlite_error)?;
-            let rows = statement
-                .query_map([limit as i64], checkpoint_row_to_summary)
-                .map_err(sqlite_error)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
-            Ok(rows)
-        }
-    }
-}
-
 fn check_row_to_run(row: &Row<'_>) -> rusqlite::Result<CheckRun> {
     Ok(CheckRun {
         id: row.get("id")?,
@@ -249,18 +142,6 @@ fn check_row_to_run(row: &Row<'_>) -> rusqlite::Result<CheckRun> {
         summary: row.get("summary")?,
         started_at: row.get("started_at")?,
         completed_at: row.get("completed_at")?,
-    })
-}
-
-fn checkpoint_row_to_summary(row: &Row<'_>) -> rusqlite::Result<Checkpoint> {
-    Ok(Checkpoint {
-        id: row.get("id")?,
-        workspace_id: row.get("workspace_id")?,
-        label: row.get("label")?,
-        branch: row.get("branch")?,
-        git_ref: row.get("git_ref")?,
-        patch_path: row.get("patch_path")?,
-        created_at: row.get("created_at")?,
     })
 }
 

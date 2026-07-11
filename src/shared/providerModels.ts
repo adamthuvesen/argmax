@@ -4,7 +4,6 @@ import { logger } from "./logger.js";
 import type { ProviderId } from "./types.js";
 
 export type ReasoningEffort = BindingReasoningEffort;
-export type ProviderLaunchMode = "interactive-pty" | "structured-json";
 
 /** One model in a provider's catalog: display label, CLI id, and capabilities
  *  (effort support, context window, badges). */
@@ -29,10 +28,9 @@ export interface ProviderModelOption {
   badge?: string;
 }
 
-/** A {@link ProviderModelOption} plus how to launch it (launch mode and a
- *  seeded effort). Used for each provider's default model. */
+/** A {@link ProviderModelOption} plus a seeded effort. Used for each
+ * provider's default model. */
 export interface ProviderModelDefault extends ProviderModelOption {
-  launchMode: ProviderLaunchMode;
   reasoningEffort?: ReasoningEffort;
 }
 
@@ -131,20 +129,17 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     label: "Opus 4.8",
     modelId: "claude-opus-4-8",
     supportsReasoningEffort: true,
-    reasoningEffort: "high",
-    launchMode: "structured-json"
+    reasoningEffort: "high"
   },
   codex: {
     label: "GPT-5.5",
     modelId: "gpt-5.5",
     supportsReasoningEffort: true,
-    reasoningEffort: "high",
-    launchMode: "structured-json"
+    reasoningEffort: "high"
   },
   cursor: {
     label: "Composer 2.5 (Cursor)",
-    modelId: "composer-2.5",
-    launchMode: "structured-json"
+    modelId: "composer-2.5"
   }
 };
 

@@ -148,14 +148,6 @@ export function readStoredFontSize(): FontSizeId {
   return DEFAULT_FONT_SIZE_ID;
 }
 
-export function getFontOption(id: FontFamilyId): FontOption {
-  return FONT_OPTIONS.find((option) => option.id === id) ?? FONT_OPTIONS[0];
-}
-
-export function getFontSizeOption(id: FontSizeId): FontSizeOption {
-  return FONT_SIZE_OPTIONS.find((option) => option.id === id) ?? FONT_SIZE_OPTIONS[1];
-}
-
 export function applyFontToDocument(id: FontFamilyId): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-font", id);

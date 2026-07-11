@@ -20,7 +20,6 @@ export interface SessionCommands {
   ) => Promise<void>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   runCheck: (workspaceId: string, command: string) => Promise<void>;
-  createCheckpoint: (workspaceId: string) => Promise<void>;
   terminateSession: (sessionId: string) => Promise<void>;
 }
 
@@ -94,26 +93,6 @@ export function useSessionCommands({
     [refreshDashboardStatus, setToast]
   );
 
-  const createCheckpoint = useCallback(
-    async (workspaceId: string): Promise<void> => {
-      if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to save checkpoints." });
-        return;
-      }
-      const label = `Checkpoint ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-      const ok = await withToast(
-        () => window.argmax!.checkpoints.create({ workspaceId, label }),
-        setToast,
-        "Could not save checkpoint."
-      );
-      if (ok) {
-        setToast({ kind: "info", message: `Saved ${label}.` });
-        await refreshDashboardStatus();
-      }
-    },
-    [refreshDashboardStatus, setToast]
-  );
-
   const terminateSession = useCallback(
     async (sessionId: string): Promise<void> => {
       if (!window.argmax) {
@@ -137,7 +116,6 @@ export function useSessionCommands({
     sendSessionInput,
     cancelQueuedMessage,
     runCheck,
-    createCheckpoint,
     terminateSession
   };
 }

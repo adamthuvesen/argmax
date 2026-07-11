@@ -6,7 +6,6 @@ use tokio::{process::Command, sync::Mutex};
 
 use super::{
     adapters::get_provider_definition, environment::build_provider_environment, ProviderId,
-    ProviderMode,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -24,7 +23,6 @@ pub struct ProviderCapabilityReport {
     /// never hard-blocks on it, since a CLI changing its status command must not
     /// lock out a working provider.
     pub authenticated: Option<bool>,
-    pub modes: Vec<ProviderMode>,
     pub setup_guidance: Option<String>,
 }
 
@@ -102,7 +100,6 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
         binary_path: binary_path.clone(),
         version,
         authenticated,
-        modes: provider_modes(provider_id),
         setup_guidance,
     }
 }
@@ -161,13 +158,6 @@ async fn command_output(command: &str, args: &[&str]) -> Option<String> {
     (!text.is_empty()).then(|| text.to_string())
 }
 
-fn provider_modes(provider_id: ProviderId) -> Vec<ProviderMode> {
-    match provider_id {
-        ProviderId::Claude | ProviderId::Codex => vec![ProviderMode::StructuredJson],
-        ProviderId::Cursor => vec![ProviderMode::StructuredJson],
-    }
-}
-
 fn setup_guidance(provider_id: ProviderId) -> &'static str {
     match provider_id {
         ProviderId::Claude => {
@@ -201,18 +191,6 @@ fn login_guidance(provider_id: ProviderId) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn provider_modes_match_runtime_support() {
-        assert_eq!(
-            provider_modes(ProviderId::Claude),
-            vec![ProviderMode::StructuredJson]
-        );
-        assert_eq!(
-            provider_modes(ProviderId::Cursor),
-            vec![ProviderMode::StructuredJson]
-        );
-    }
 
     #[test]
     fn setup_guidance_names_local_cli() {

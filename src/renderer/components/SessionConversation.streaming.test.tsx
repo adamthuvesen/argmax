@@ -46,7 +46,6 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
-        onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -83,7 +82,6 @@ describe("SessionConversation — streaming & composer", () => {
         isLogOpen={false}
         onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
-        onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
         project={project}
         rawOutputs={[]}
@@ -727,7 +725,6 @@ describe("SessionConversation — streaming & composer", () => {
       isLogOpen: false,
       onSendSessionInput: vi.fn().mockResolvedValue(undefined),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
-      onCreateCheckpoint: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),
       project,
       rawOutputs: [],
@@ -1023,7 +1020,6 @@ describe("SessionConversation — streaming & composer", () => {
       isLogOpen: false,
       onSendSessionInput: vi.fn().mockResolvedValue(undefined),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
-      onCreateCheckpoint: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),
       project,
       review: reviewStub(),

@@ -3,10 +3,9 @@ use serde::Serialize;
 use specta::Type;
 
 use super::approvals::{list_pending_approvals, ApprovalRequest};
-use super::checks::{list_checkpoints, list_checks, CheckRun, Checkpoint};
+use super::checks::{list_checks, CheckRun};
 use super::events::{
-    list_dashboard_events, list_dashboard_raw_outputs, list_session_agent_events,
-    list_session_events_since, RawProviderOutput, SessionEventsSinceResult, TimelineEvent,
+    list_session_agent_events, list_session_events_since, SessionEventsSinceResult,
 };
 use super::projects::{list_projects, ProjectSummary};
 use super::sessions::{list_sessions_for_dashboard, SessionSummary};
@@ -14,8 +13,6 @@ use super::workspaces::{list_workspaces, WorkspaceSummary};
 use crate::error::ArgmaxResult;
 
 pub const DASHBOARD_ROW_LIMIT: usize = 200;
-pub const DASHBOARD_EVENT_LIMIT: usize = 500;
-pub const DASHBOARD_RAW_OUTPUT_LIMIT: usize = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +29,6 @@ pub struct DashboardListSnapshot {
     pub workspaces: Vec<WorkspaceSummary>,
     pub sessions: Vec<SessionSummary>,
     pub checks: Vec<CheckRun>,
-    pub checkpoints: Vec<Checkpoint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -41,20 +37,6 @@ pub struct WorkspaceStatusSnapshot {
     pub workspaces: Vec<WorkspaceSummary>,
     pub sessions: Vec<SessionSummary>,
     pub checks: Vec<CheckRun>,
-    pub checkpoints: Vec<Checkpoint>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardSnapshot {
-    pub projects: Vec<ProjectSummary>,
-    pub workspaces: Vec<WorkspaceSummary>,
-    pub sessions: Vec<SessionSummary>,
-    pub events: Vec<TimelineEvent>,
-    pub raw_outputs: Vec<RawProviderOutput>,
-    pub approvals: Vec<ApprovalRequest>,
-    pub checks: Vec<CheckRun>,
-    pub checkpoints: Vec<Checkpoint>,
 }
 
 pub fn list_dashboard(connection: &Connection) -> ArgmaxResult<DashboardListSnapshot> {
@@ -65,7 +47,6 @@ pub fn list_dashboard(connection: &Connection) -> ArgmaxResult<DashboardListSnap
         workspaces: status.workspaces,
         sessions: status.sessions,
         checks: status.checks,
-        checkpoints: status.checkpoints,
     })
 }
 
@@ -80,14 +61,12 @@ pub fn list_workspace_status(
     let workspaces = list_workspaces(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
     let sessions = list_sessions_for_dashboard(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
     let checks = list_checks(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
-    let checkpoints = list_checkpoints(&tx, ids_ref, DASHBOARD_ROW_LIMIT)?;
 
     tx.commit().map_err(sqlite_error)?;
     Ok(WorkspaceStatusSnapshot {
         workspaces,
         sessions,
         checks,
-        checkpoints,
     })
 }
 
@@ -112,26 +91,10 @@ pub fn list_pending(connection: &Connection) -> ArgmaxResult<Vec<ApprovalRequest
     list_pending_approvals(connection, DASHBOARD_ROW_LIMIT)
 }
 
-pub fn load_dashboard(connection: &Connection) -> ArgmaxResult<DashboardSnapshot> {
-    let dashboard = list_dashboard(connection)?;
-    Ok(DashboardSnapshot {
-        projects: dashboard.projects,
-        workspaces: dashboard.workspaces,
-        sessions: dashboard.sessions,
-        events: list_dashboard_events(connection, DASHBOARD_EVENT_LIMIT)?,
-        raw_outputs: list_dashboard_raw_outputs(connection, DASHBOARD_RAW_OUTPUT_LIMIT)?,
-        approvals: list_pending_approvals(connection, DASHBOARD_ROW_LIMIT)?,
-        checks: dashboard.checks,
-        checkpoints: dashboard.checkpoints,
-    })
-}
-
 pub fn list_running_session_ids(connection: &Connection) -> ArgmaxResult<Vec<String>> {
-    let mut statement = super::prepared::prepared(
-        connection,
-        "SELECT id FROM sessions WHERE state = 'running'",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT id FROM sessions WHERE state = 'running'")
+        .map_err(sqlite_error)?;
     let rows = statement
         .query_map([], |row| row.get::<_, String>("id"))
         .map_err(sqlite_error)?
@@ -157,7 +120,7 @@ pub fn count_attention(connection: &Connection) -> ArgmaxResult<AttentionCounts>
 }
 
 fn count_where(connection: &Connection, sql: &'static str) -> ArgmaxResult<i64> {
-    let mut statement = super::prepared::prepared(connection, sql).map_err(sqlite_error)?;
+    let mut statement = connection.prepare_cached(sql).map_err(sqlite_error)?;
     statement
         .query_row([], |row| row.get::<_, i64>("count"))
         .map_err(sqlite_error)
@@ -275,30 +238,6 @@ mod tests {
         );
         assert!(next.event_cursor > initial.event_cursor);
         assert!(next.raw_output_cursor > initial.raw_output_cursor);
-    }
-
-    #[test]
-    fn load_dashboard_includes_event_tail_raw_tail_and_pending_approvals() {
-        let database = Database::open_in_memory().expect("open db");
-        let connection = database.connection();
-        seed_dashboard(&connection);
-        insert_event(&connection, "e1", "one");
-        insert_raw(&connection, "r1", "one");
-        connection
-            .execute(
-                "INSERT INTO approvals (id, session_id, command, cwd, provider, risk_level, status, created_at, resolved_at) VALUES
-                ('a1', 's1', 'git push', '/tmp', 'codex', 'medium', 'approved', '2026-05-24T10:00:00.000Z', '2026-05-24T10:01:00.000Z'),
-                ('a2', 's1', 'npm test', '/tmp', 'codex', 'medium', 'pending', '2026-05-24T10:02:00.000Z', NULL)",
-                [],
-            )
-            .expect("insert approval");
-
-        let snapshot = load_dashboard(&connection).expect("load dashboard");
-
-        assert_eq!(snapshot.events.len(), 1);
-        assert_eq!(snapshot.raw_outputs.len(), 1);
-        assert_eq!(snapshot.approvals.len(), 1);
-        assert_eq!(snapshot.approvals[0].id, "a2");
     }
 
     #[test]

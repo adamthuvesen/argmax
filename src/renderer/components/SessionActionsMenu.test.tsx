@@ -72,13 +72,11 @@ describe("SessionActionsMenu", () => {
 
   it("hides actions until opened and routes main menu clicks", async () => {
     const onBrowseFiles = vi.fn();
-    const onCreateCheckpoint = vi.fn().mockResolvedValue(undefined);
     const onToggleLog = vi.fn();
     render(
       <SessionActionsMenu
         isLogOpen={false}
         onBrowseFiles={onBrowseFiles}
-        onCreateCheckpoint={onCreateCheckpoint}
         onToggleLog={onToggleLog}
         session={session()}
         workspace={workspace({ dirty: true })}
@@ -93,10 +91,6 @@ describe("SessionActionsMenu", () => {
     expect(onBrowseFiles).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Save checkpoint" }));
-    expect(onCreateCheckpoint).toHaveBeenCalledWith("workspace-1");
-
     await waitFor(() => {
       expect(listForSession).toHaveBeenCalledWith({ sessionId: "session-1" });
     });
@@ -107,7 +101,6 @@ describe("SessionActionsMenu", () => {
       <SessionActionsMenu
         isLogOpen
         onBrowseFiles={() => {}}
-        onCreateCheckpoint={() => Promise.resolve()}
         onOpenCommitDialog={() => {}}
         onToggleLog={() => {}}
         session={session()}

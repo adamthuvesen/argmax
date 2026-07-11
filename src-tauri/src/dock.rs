@@ -3,8 +3,6 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, Runtime, Window, WindowEvent};
 
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::dashboard::count_attention;
-use crate::persistence::database::Database;
 
 pub trait DockBadgeSink: Send + Sync + 'static {
     fn set_badge(&self, text: &str) -> ArgmaxResult<()>;
@@ -64,13 +62,6 @@ impl<R: Runtime> DockBadgeSink for TauriDockBadgeSink<R> {
     fn set_badge(&self, text: &str) -> ArgmaxResult<()> {
         set_app_badge(&self.app, text)
     }
-}
-
-pub fn database_attention_counter(database: Arc<Database>) -> AttentionCounter {
-    Arc::new(move || {
-        let connection = database.connection();
-        count_attention(&connection).map(|counts| counts.total)
-    })
 }
 
 pub fn clear_badge_on_focus<R: Runtime>(window: &Window<R>, event: &WindowEvent) {

@@ -4,7 +4,6 @@ use specta::Type;
 
 use super::bool_to_i64;
 use super::gh::latest_pr_for_workspace;
-use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
@@ -62,9 +61,7 @@ pub fn list_workspaces(
     match workspace_ids {
         Some(ids) if !ids.is_empty() => {
             let json = serde_json::to_string(ids).map_err(json_error)?;
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM workspaces WHERE id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC, id DESC LIMIT ?",
+            let mut statement = connection.prepare_cached("SELECT * FROM workspaces WHERE id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -77,11 +74,11 @@ pub fn list_workspaces(
             Ok(workspaces)
         }
         _ => {
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM workspaces ORDER BY last_activity_at DESC, id DESC LIMIT ?",
-            )
-            .map_err(sqlite_error)?;
+            let mut statement = connection
+                .prepare_cached(
+                    "SELECT * FROM workspaces ORDER BY last_activity_at DESC, id DESC LIMIT ?",
+                )
+                .map_err(sqlite_error)?;
             let rows = statement
                 .query_map([limit as i64], workspace_row_to_summary)
                 .map_err(sqlite_error)?;
@@ -98,8 +95,9 @@ pub fn find_workspace_by_id(
     connection: &Connection,
     workspace_id: &str,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    let mut statement =
-        prepared(connection, "SELECT * FROM workspaces WHERE id = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT * FROM workspaces WHERE id = ?")
+        .map_err(sqlite_error)?;
     match statement.query_row([workspace_id], workspace_row_to_summary) {
         Ok(mut workspace) => {
             attach_latest_pr(connection, &mut workspace)?;
@@ -125,9 +123,9 @@ pub fn persist_workspace(
     input: &PersistWorkspaceInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
     let timestamp = now_iso();
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         INSERT INTO workspaces (
           id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
           dirty, changed_files, last_activity_at, created_at, updated_at
@@ -135,8 +133,8 @@ pub fn persist_workspace(
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute((
             input.id.as_str(),
@@ -165,18 +163,14 @@ pub fn update_workspace_state(
     let timestamp = now_iso();
     let is_user_archive_action = state == "archived" || state == "kept";
     let changes = if is_user_archive_action {
-        let mut statement = prepared(
-            connection,
-            "UPDATE workspaces SET state = ?, updated_at = ? WHERE id = ?",
-        )
-        .map_err(sqlite_error)?;
+        let mut statement = connection
+            .prepare_cached("UPDATE workspaces SET state = ?, updated_at = ? WHERE id = ?")
+            .map_err(sqlite_error)?;
         statement
             .execute((state, timestamp.as_str(), workspace_id))
             .map_err(sqlite_error)?
     } else {
-        let mut statement = prepared(
-            connection,
-            "UPDATE workspaces SET state = ?, last_activity_at = ?, updated_at = ? WHERE id = ?",
+        let mut statement = connection.prepare_cached("UPDATE workspaces SET state = ?, last_activity_at = ?, updated_at = ? WHERE id = ?",
         )
         .map_err(sqlite_error)?;
         statement
@@ -195,15 +189,15 @@ pub fn update_workspace_status(
     status: &WorkspaceStatusInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
     let timestamp = status.last_activity_at.clone().unwrap_or_else(now_iso);
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         UPDATE workspaces
         SET branch = ?, dirty = ?, changed_files = ?, last_activity_at = ?, updated_at = ?
         WHERE id = ?
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let changes = statement
         .execute((
             status.branch.as_str(),
@@ -225,11 +219,9 @@ pub fn set_workspace_pinned(
     workspace_id: &str,
     pinned: bool,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    let mut statement = prepared(
-        connection,
-        "UPDATE workspaces SET pinned = ?, updated_at = ? WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("UPDATE workspaces SET pinned = ?, updated_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?;
     let changes = statement
         .execute((bool_to_i64(pinned), now_iso(), workspace_id))
         .map_err(sqlite_error)?;
@@ -246,9 +238,7 @@ pub fn set_workspace_label(
 ) -> ArgmaxResult<WorkspaceSummary> {
     // A manual rename marks the label custom (`task_label_auto = 0`) so the
     // session-title generator stops overwriting it.
-    let mut statement = prepared(
-        connection,
-        "UPDATE workspaces SET task_label = ?, task_label_auto = 0, updated_at = ? WHERE id = ?",
+    let mut statement = connection.prepare_cached("UPDATE workspaces SET task_label = ?, task_label_auto = 0, updated_at = ? WHERE id = ?",
     )
     .map_err(sqlite_error)?;
     let changes = statement
@@ -269,9 +259,7 @@ pub fn set_workspace_label_auto(
     workspace_id: &str,
     task_label: &str,
 ) -> ArgmaxResult<Option<WorkspaceSummary>> {
-    let mut statement = prepared(
-        connection,
-        "UPDATE workspaces SET task_label = ?, updated_at = ? WHERE id = ? AND task_label_auto = 1",
+    let mut statement = connection.prepare_cached("UPDATE workspaces SET task_label = ?, updated_at = ? WHERE id = ? AND task_label_auto = 1",
     )
     .map_err(sqlite_error)?;
     let changes = statement

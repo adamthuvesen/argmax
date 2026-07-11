@@ -24,7 +24,6 @@ export type PermissionMode = Bindings.PermissionMode;
 export type ProviderId = Bindings.ProviderId;
 export type ReasoningEffort = Bindings.ReasoningEffort;
 export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
-export type ProviderMode = "interactive-pty" | "structured-json";
 
 export interface DiscoveredProvider {
   provider: ProviderId;
@@ -39,7 +38,6 @@ export interface DiscoveredProvider {
    * only; launches are never blocked by this value.
    */
   authenticated: boolean | null;
-  modes: ProviderMode[];
   setupGuidance: string | null;
 }
 
@@ -121,9 +119,6 @@ export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInpu
 export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
 export type TerminalWriteInput = Bindings.TerminalWriteInput;
 export type TerminalResizeInput = Bindings.TerminalResizeInput;
-export type McpAuthStartInput = Bindings.McpAuthStartInput;
-export type McpAuthWriteInput = Bindings.McpAuthWriteInput;
-export type McpAuthResizeInput = Bindings.McpAuthResizeInput;
 
 export interface TerminalDataEvent {
   terminalId: string;
@@ -139,17 +134,6 @@ export interface TerminalExitEvent {
 export type EventSubscription = (() => void) & {
   ready?: Promise<void>;
 };
-
-export interface McpAuthDataEvent {
-  sessionId: string;
-  data: string;
-}
-
-export interface McpAuthExitEvent {
-  sessionId: string;
-  exitCode: number;
-  signal: number | null;
-}
 
 export interface SessionCostSummary {
   sessionId: string;
@@ -178,6 +162,7 @@ export interface WorkspaceDiff {
  * base branch — the whole delta from main, committed + uncommitted + untracked.
  */
 export type ReviewComparison = Bindings.ReviewComparison;
+export type WorkspaceTarget = Pick<Bindings.WorkspaceListFilesInput, "kind" | "id">;
 
 export interface WorkspaceFileEntry {
   path: string;
@@ -223,7 +208,6 @@ export type WorkspaceFileWriteResult =
   | { ok: false; reason: "stale"; currentMtimeMs: number; size: number };
 
 export type RunCheckInput = Bindings.ChecksRunInput;
-export type CreateCheckpointInput = Bindings.CheckpointsCreateInput;
 export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;
 export type GitPushInput = Bindings.GitPushInput;
 export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
@@ -386,16 +370,6 @@ export interface CheckRun {
   completedAt: string | null;
 }
 
-export interface Checkpoint {
-  id: string;
-  workspaceId: string;
-  label: string;
-  branch: string;
-  gitRef: string | null;
-  patchPath: string | null;
-  createdAt: string;
-}
-
 export interface DashboardSnapshot {
   projects: ProjectSummary[];
   workspaces: WorkspaceSummary[];
@@ -404,7 +378,6 @@ export interface DashboardSnapshot {
   rawOutputs: RawProviderOutput[];
   approvals: ApprovalRequest[];
   checks: CheckRun[];
-  checkpoints: Checkpoint[];
   /**
    * Per-session queue of follow-ups composed while the agent was running.
    * Full replacement per session id (an empty array clears that session's queue).
@@ -415,12 +388,12 @@ export interface DashboardSnapshot {
 
 export type DashboardListSnapshot = Pick<
   DashboardSnapshot,
-  "projects" | "workspaces" | "sessions" | "checks" | "checkpoints"
+  "projects" | "workspaces" | "sessions" | "checks"
 >;
 
 export type WorkspaceStatusSnapshot = Pick<
   DashboardSnapshot,
-  "workspaces" | "sessions" | "checks" | "checkpoints"
+  "workspaces" | "sessions" | "checks"
 >;
 
 export interface SessionEventsSinceResult {
@@ -436,7 +409,6 @@ export type DashboardDelta = {
 
 export interface ArgmaxApi {
   dashboard: {
-    load: () => Promise<DashboardSnapshot>;
     list: () => Promise<DashboardListSnapshot>;
     onDelta: (listener: (delta: DashboardDelta) => void) => () => void;
   };
@@ -489,30 +461,19 @@ export interface ArgmaxApi {
     }>>;
   };
   review: {
-    listChangedFiles: (workspaceId: string, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
-    loadDiff: (workspaceId: string, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
-    listChangedFilesForProject: (projectId: string, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
-    loadDiffForProject: (projectId: string, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
+    listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+    loadDiff: (target: WorkspaceTarget, filePath?: string, comparison?: ReviewComparison) => Promise<WorkspaceDiff>;
   };
   workspace: {
-    listFiles: (workspaceId: string) => Promise<WorkspaceFileEntry[]>;
-    readFile: (workspaceId: string, filePath: string) => Promise<WorkspaceFilePreview>;
+    listFiles: (target: WorkspaceTarget) => Promise<WorkspaceFileEntry[]>;
+    readFile: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFilePreview>;
     writeFile: (
-      workspaceId: string,
+      target: WorkspaceTarget,
       filePath: string,
       content: string,
       expectedMtimeMs: number | null
     ) => Promise<WorkspaceFileWriteResult>;
-    statFile: (workspaceId: string, filePath: string) => Promise<WorkspaceFileStat>;
-    listFilesForProject: (projectId: string) => Promise<WorkspaceFileEntry[]>;
-    readFileForProject: (projectId: string, filePath: string) => Promise<WorkspaceFilePreview>;
-    writeFileForProject: (
-      projectId: string,
-      filePath: string,
-      content: string,
-      expectedMtimeMs: number | null
-    ) => Promise<WorkspaceFileWriteResult>;
-    statFileForProject: (projectId: string, filePath: string) => Promise<WorkspaceFileStat>;
+    statFile: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFileStat>;
     grepContent: (input: {
       kind: "workspace" | "project";
       id: string;
@@ -521,9 +482,6 @@ export interface ArgmaxApi {
   };
   checks: {
     run: (input: RunCheckInput) => Promise<CheckRun>;
-  };
-  checkpoints: {
-    create: (input: CreateCheckpointInput) => Promise<Checkpoint>;
   };
   health: {
     ping: () => Promise<{ ok: true; timestamp: string }>;
@@ -537,17 +495,6 @@ export interface ArgmaxApi {
     diagnostics: () => Promise<DiagnosticsReport>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
-  };
-  mcp: {
-    list: () => Promise<McpClientListing[]>;
-    auth: {
-      start: (input: McpAuthStartInput) => Promise<{ sessionId: string }>;
-      write: (input: McpAuthWriteInput) => Promise<{ ok: true }>;
-      resize: (input: McpAuthResizeInput) => Promise<{ ok: true }>;
-      terminate: (sessionId: string) => Promise<{ ok: true }>;
-      onData: (listener: (event: McpAuthDataEvent) => void) => () => void;
-      onExit: (listener: (event: McpAuthExitEvent) => void) => () => void;
-    };
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
@@ -614,37 +561,6 @@ export interface Learning {
   createdAt: string;
   lastSeenAt: string;
 }
-
-export type McpTransport = "stdio" | "http" | "sse" | "unknown";
-export type McpScope = "user" | "project";
-
-export interface McpServerEntry {
-  client: ProviderId;
-  name: string;
-  transport: McpTransport;
-  scope: McpScope;
-  source: string;
-  command?: string;
-  url?: string;
-  envKeys: string[];
-}
-
-export interface McpClientListing {
-  client: ProviderId;
-  displayName: string;
-  configPath: string | null;
-  configExists: boolean;
-  servers: McpServerEntry[];
-  error: string | null;
-}
-
-export type StartupPhase =
-  | "boot"
-  | "db.open"
-  | "services.construct"
-  | "ipc.register"
-  | "window.create"
-  | "window.ready-to-show";
 
 export type MenuCommand =
   | "new-session"

@@ -2,7 +2,6 @@ use rusqlite::{Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
@@ -97,9 +96,7 @@ pub fn list_sessions_for_dashboard(
     match workspace_ids {
         Some(ids) if !ids.is_empty() => {
             let json = serde_json::to_string(ids).map_err(json_error)?;
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM sessions WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC, id DESC LIMIT ?",
+            let mut statement = connection.prepare_cached("SELECT * FROM sessions WHERE workspace_id IN (SELECT value FROM json_each(?)) ORDER BY last_activity_at DESC, id DESC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -110,9 +107,9 @@ pub fn list_sessions_for_dashboard(
             Ok(rows)
         }
         _ => {
-            let mut statement = prepared(
-                connection,
-                r#"
+            let mut statement = connection
+                .prepare_cached(
+                    r#"
                 SELECT outer_s.*
                 FROM sessions outer_s
                 WHERE outer_s.id IN (
@@ -137,8 +134,8 @@ pub fn list_sessions_for_dashboard(
                   )
                 ORDER BY outer_s.last_activity_at DESC, outer_s.id DESC
                 "#,
-            )
-            .map_err(sqlite_error)?;
+                )
+                .map_err(sqlite_error)?;
             let rows = statement
                 .query_map((limit as i64, limit as i64), session_row_to_summary)
                 .map_err(sqlite_error)?
@@ -154,9 +151,7 @@ pub fn persist_session(
     input: &PersistSessionInput,
 ) -> ArgmaxResult<SessionSummary> {
     let timestamp = now_iso();
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection.prepare_cached(r#"
         INSERT INTO sessions (
           id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode,
           provider_conversation_id, prompt, state, attention,
@@ -194,11 +189,9 @@ pub fn update_session_agent_mode(
     session_id: &str,
     input: &SessionAgentModeInput,
 ) -> ArgmaxResult<SessionSummary> {
-    let mut statement = prepared(
-        connection,
-        "UPDATE sessions SET agent_mode = ?, last_activity_at = ? WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("UPDATE sessions SET agent_mode = ?, last_activity_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?;
     statement
         .execute((input.agent_mode.as_str(), now_iso(), session_id))
         .map_err(sqlite_error)?;
@@ -210,16 +203,16 @@ pub fn update_session_model(
     session_id: &str,
     input: &SessionModelInput,
 ) -> ArgmaxResult<SessionSummary> {
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         UPDATE sessions
         SET model_label = ?, model_id = ?, reasoning_effort = ?,
             last_model_id = ?, last_activity_at = ?
         WHERE id = ?
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let timestamp = now_iso();
     statement
         .execute((
@@ -244,16 +237,16 @@ pub fn update_session_provider(
     session_id: &str,
     input: &SessionProviderInput,
 ) -> ArgmaxResult<SessionSummary> {
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         UPDATE sessions
         SET provider = ?, model_label = ?, model_id = ?, reasoning_effort = ?,
             last_model_id = ?, provider_conversation_id = NULL, last_activity_at = ?
         WHERE id = ?
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let timestamp = now_iso();
     statement
         .execute((
@@ -275,9 +268,7 @@ pub fn update_session_state(
     input: &SessionStateInput,
 ) -> ArgmaxResult<SessionSummary> {
     let timestamp = input.last_activity_at.clone().unwrap_or_else(now_iso);
-    let mut statement = prepared(
-        connection,
-        "UPDATE sessions SET state = ?, attention = ?, completed_at = ?, last_activity_at = ? WHERE id = ?",
+    let mut statement = connection.prepare_cached("UPDATE sessions SET state = ?, attention = ?, completed_at = ?, last_activity_at = ? WHERE id = ?",
     )
     .map_err(sqlite_error)?;
     statement
@@ -297,11 +288,11 @@ pub fn update_session_provider_conversation_id(
     session_id: &str,
     provider_conversation_id: &str,
 ) -> ArgmaxResult<SessionSummary> {
-    let mut statement = prepared(
-        connection,
-        "UPDATE sessions SET provider_conversation_id = ?, last_activity_at = ? WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached(
+            "UPDATE sessions SET provider_conversation_id = ?, last_activity_at = ? WHERE id = ?",
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute((provider_conversation_id, now_iso(), session_id))
         .map_err(sqlite_error)?;
@@ -312,8 +303,9 @@ pub fn find_session_by_id(
     connection: &Connection,
     session_id: &str,
 ) -> ArgmaxResult<SessionSummary> {
-    let mut statement =
-        prepared(connection, "SELECT * FROM sessions WHERE id = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT * FROM sessions WHERE id = ?")
+        .map_err(sqlite_error)?;
     match statement.query_row([session_id], session_row_to_summary) {
         Ok(session) => Ok(session),
         Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -323,35 +315,14 @@ pub fn find_session_by_id(
     }
 }
 
-pub fn update_session_last_model_id(
-    connection: &Connection,
-    session_id: &str,
-    model_id: &str,
-) -> ArgmaxResult<()> {
-    if model_id.is_empty() {
-        return Ok(());
-    }
-    let mut statement = prepared(
-        connection,
-        "UPDATE sessions SET last_model_id = ? WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
-    statement
-        .execute((model_id, session_id))
-        .map_err(sqlite_error)?;
-    Ok(())
-}
-
 pub fn update_session_last_activity(
     connection: &Connection,
     session_id: &str,
     last_activity_at: &str,
 ) -> ArgmaxResult<SessionSummary> {
-    let mut statement = prepared(
-        connection,
-        "UPDATE sessions SET last_activity_at = ? WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("UPDATE sessions SET last_activity_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?;
     let changes = statement
         .execute((last_activity_at, session_id))
         .map_err(sqlite_error)?;
@@ -365,7 +336,8 @@ pub fn list_session_ids_for_workspace(
     connection: &Connection,
     workspace_id: &str,
 ) -> ArgmaxResult<Vec<String>> {
-    let mut statement = prepared(connection, "SELECT id FROM sessions WHERE workspace_id = ?")
+    let mut statement = connection
+        .prepare_cached("SELECT id FROM sessions WHERE workspace_id = ?")
         .map_err(sqlite_error)?;
     let rows = statement
         .query_map([workspace_id], |row| row.get::<_, String>("id"))

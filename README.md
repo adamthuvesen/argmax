@@ -102,6 +102,6 @@ assets/           App icons
 
 Build output (`dist/`, `release/`, `src-tauri/target/`) and local databases (`*.sqlite*`) are gitignored.
 
-Runtime state lives in the Tauri app-data directory: `argmax.sqlite` plus checkpoint patches under `checkpoints/`. `raw_outputs` rows older than 7 days are pruned daily; everything else is kept.
+Runtime state is stored in `argmax.sqlite` under the Tauri app-data directory. `raw_outputs` rows older than 7 days are pruned daily; everything else is kept.
 
 Subsystem conventions live in [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md).

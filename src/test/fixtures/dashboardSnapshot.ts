@@ -71,8 +71,7 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
   ],
   rawOutputs: [],
   approvals: [],
-  checks: [],
-  checkpoints: []
+  checks: []
 };
 
 export function dashboardListSnapshot(
@@ -82,8 +81,7 @@ export function dashboardListSnapshot(
     projects: data.projects,
     workspaces: data.workspaces,
     sessions: data.sessions,
-    checks: data.checks,
-    checkpoints: data.checkpoints
+    checks: data.checks
   };
 }
 
@@ -93,8 +91,7 @@ export function workspaceStatusSnapshot(
   return {
     workspaces: data.workspaces,
     sessions: data.sessions,
-    checks: data.checks,
-    checkpoints: data.checkpoints
+    checks: data.checks
   };
 }
 

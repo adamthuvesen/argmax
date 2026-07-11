@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use crate::checks::service::CheckService;
 use crate::gh::poller::GhPoller;
-use crate::mcp::auth::McpAuthService;
 use crate::persistence::Database;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
@@ -25,7 +24,6 @@ pub struct AppState {
     pub providers: OnceCell<Arc<ProviderSessionService>>,
     pub provider_discovery: Arc<ProviderDiscovery>,
     pub terminals: OnceCell<Arc<TerminalService>>,
-    pub mcp_auth: OnceCell<Arc<McpAuthService>>,
     pub checks: OnceCell<Arc<CheckService>>,
     pub workspaces: OnceCell<Arc<WorkspaceService>>,
     pub gh_poller: OnceCell<Arc<GhPoller>>,

@@ -2,10 +2,7 @@ use super::approvals::{
     find_pending_approval, persist_approval, resolve_approval, FindPendingApprovalInput,
     PersistApprovalInput,
 };
-use super::checks::{
-    find_checkpoint_by_id, persist_check, persist_checkpoint, update_check, PersistCheckInput,
-    PersistCheckpointInput, UpdateCheckInput,
-};
+use super::checks::{persist_check, update_check, PersistCheckInput, UpdateCheckInput};
 use super::database::Database;
 use super::events::{
     list_session_agent_events, list_session_events_since, persist_raw_output,
@@ -317,28 +314,6 @@ fn event_approval_check_and_usage_repositories_round_trip() {
     )
     .expect("update check");
     assert_eq!(completed.exit_code, Some(0));
-
-    let checkpoint = persist_checkpoint(
-        &connection,
-        &PersistCheckpointInput {
-            id: "cp1".to_owned(),
-            workspace_id: "w1".to_owned(),
-            label: "before cleanup".to_owned(),
-            branch: "feature/rust".to_owned(),
-            git_ref: Some("abc123".to_owned()),
-            patch_path: Some("/tmp/checkpoints/cp1.patch".to_owned()),
-            created_at: Some("2026-05-24T10:04:00.000Z".to_owned()),
-        },
-    )
-    .expect("persist checkpoint");
-    assert_eq!(checkpoint.label, "before cleanup");
-    assert_eq!(
-        find_checkpoint_by_id(&connection, "cp1")
-            .expect("find checkpoint")
-            .git_ref
-            .as_deref(),
-        Some("abc123")
-    );
 
     insert_usage_event(
         &connection,

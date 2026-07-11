@@ -14,7 +14,6 @@ export const emptySnapshot: DashboardSnapshot = {
   rawOutputs: [],
   approvals: [],
   checks: [],
-  checkpoints: [],
   pendingMessages: {}
 };
 
@@ -166,7 +165,6 @@ export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: Dashboar
   );
   const approvals = mergeSlice(snapshot.approvals, delta.approvals, (approval) => approval.createdAt, 200);
   const checks = mergeSlice(snapshot.checks, delta.checks, (check) => check.startedAt, 200);
-  const checkpoints = mergeSlice(snapshot.checkpoints, delta.checkpoints, (checkpoint) => checkpoint.createdAt, 200);
   const pendingMessages = mergePendingMessages(snapshot.pendingMessages, delta.pendingMessages);
 
   if (
@@ -177,7 +175,6 @@ export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: Dashboar
     rawOutputs === snapshot.rawOutputs &&
     approvals === snapshot.approvals &&
     checks === snapshot.checks &&
-    checkpoints === snapshot.checkpoints &&
     pendingMessages === snapshot.pendingMessages
   ) {
     return snapshot;
@@ -191,7 +188,6 @@ export function mergeDashboardDelta(snapshot: DashboardSnapshot, delta: Dashboar
     rawOutputs,
     approvals,
     checks,
-    checkpoints,
     pendingMessages
   };
 }

@@ -54,7 +54,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **IPC / `window.argmax`** → [ipc.md](docs/ipc.md)
 - **Database / migrations** → [data.md](docs/data.md)
 - **Providers** → [providers.md](docs/providers.md)
-- **Worktrees, archive, review, checkpoints** → [workspaces.md](docs/workspaces.md)
+- **Worktrees, archive, review** → [workspaces.md](docs/workspaces.md)
 - **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)
 - **Integrated terminal panel** → [terminal.md](docs/terminal.md)
 - **GitHub PR / CI feedback loop** → [gh.md](docs/gh.md)

@@ -1,10 +1,9 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type {
   DetectedIde,
   DiagnosticsReport,
   DiscoveredProvider,
   IdeId,
-  McpClientListing,
   ProjectSummary
 } from "../../shared/types.js";
 import type { FontFamilyId, FontSizeId } from "../lib/fonts.js";
@@ -25,13 +24,6 @@ import {
 } from "./settings/settingsMeta.js";
 import { SettingsGroupIntro, SettingsNav } from "./settings/settingsPrimitives.js";
 import { SystemSettings } from "./settings/SystemSettings.js";
-
-// McpAuthDialog pulls in @xterm/xterm + @xterm/addon-fit + xterm CSS — heavy
-// for a dialog that only opens on click. Lazy-mounted (ralph B3) so the
-// SettingsPanel chunk doesn't drag xterm into the launcher → Settings load.
-const McpAuthDialog = lazy(async () => ({
-  default: (await import("./McpAuthDialog.js")).McpAuthDialog
-}));
 
 export type SettingsNavigationTarget = {
   group: SettingsGroupId;
@@ -131,27 +123,6 @@ export function SettingsPanel({
       fallbackMessage: "Provider discovery failed."
     }
   );
-
-  const {
-    data: mcpListings,
-    error: mcpLoadError,
-    isLoading: refreshingMcp,
-    retry: refreshMcp
-  } = useAsyncLoad<McpClientListing[]>(() => window.argmax!.mcp.list(), {
-    missingApiMessage: "Open the Tauri app window to read MCP configs.",
-    fallbackMessage: "MCP discovery failed."
-  });
-
-  const revealMcpConfig = useCallback(async (path: string): Promise<void> => {
-    if (!window.argmax) return;
-    try {
-      await window.argmax.system.openPath({ path });
-    } catch {
-      // Silently swallow — the UI shows the path inline so the user has a fallback.
-    }
-  }, []);
-
-  const [mcpAuthOpen, setMcpAuthOpen] = useState(false);
 
   const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
   const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
@@ -321,14 +292,6 @@ export function SettingsPanel({
               detectedIdes={detectedIdes}
               defaultIde={defaultIde}
               onDefaultIdeChange={onDefaultIdeChange}
-              mcpListings={mcpListings}
-              mcpLoadError={mcpLoadError}
-              refreshingMcp={refreshingMcp}
-              refreshMcp={() => {
-                void refreshMcp();
-              }}
-              revealMcpConfig={revealMcpConfig}
-              onMcpAuthOpen={() => setMcpAuthOpen(true)}
             />
           ) : null}
 
@@ -346,17 +309,6 @@ export function SettingsPanel({
         </div>
       </div>
 
-      {mcpAuthOpen ? (
-        <Suspense fallback={null}>
-          <McpAuthDialog
-            open={mcpAuthOpen}
-            onClose={() => setMcpAuthOpen(false)}
-            onCompleted={() => {
-              void refreshMcp();
-            }}
-          />
-        </Suspense>
-      ) : null}
       </div>
     </>
   );

@@ -4,6 +4,7 @@ use std::os::unix::fs::symlink;
 
 use std::sync::Arc;
 
+use argmax_lib::ipc::inputs::WorkspaceTargetKind;
 use argmax_lib::persistence::{
     database::Database,
     projects::{persist_project, PersistProjectInput, ProjectSettings},
@@ -271,9 +272,14 @@ async fn branch_mode_falls_back_to_default_when_base_deleted() {
         "doomed",
     );
 
-    let files = list_changed_files(&database, "ws-review", ReviewComparison::Branch)
-        .await
-        .expect("review should fall back to default branch, not error on dead base");
+    let files = list_changed_files(
+        &database,
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        ReviewComparison::Branch,
+    )
+    .await
+    .expect("review should fall back to default branch, not error on dead base");
 
     assert_eq!(
         files
@@ -304,9 +310,14 @@ async fn branch_mode_falls_back_to_working_tree_when_base_and_default_gone() {
         "doomed",
     );
 
-    let files = list_changed_files(&database, "ws-review", ReviewComparison::Branch)
-        .await
-        .expect("review should fall back to working tree when no ref resolves");
+    let files = list_changed_files(
+        &database,
+        WorkspaceTargetKind::Workspace,
+        "ws-review",
+        ReviewComparison::Branch,
+    )
+    .await
+    .expect("review should fall back to working tree when no ref resolves");
 
     assert_eq!(
         files

@@ -88,7 +88,6 @@ describe("useDashboardSession — refresh / delta race", () => {
       rawOutputs: [],
       approvals: [],
       checks: [],
-      checkpoints: [],
       pendingMessages: {}
     };
 
@@ -97,8 +96,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       .mockResolvedValue({
         workspaces: baseSnapshot.workspaces,
         sessions: baseSnapshot.sessions,
-        checks: baseSnapshot.checks,
-        checkpoints: baseSnapshot.checkpoints
+        checks: baseSnapshot.checks
       });
     pendingMock = vi
       .fn<ArgmaxApi["approvals"]["pending"]>()
@@ -162,8 +160,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     statusMock.mockResolvedValueOnce({
       workspaces: baseSnapshot.workspaces,
       sessions: baseSnapshot.sessions,
-      checks: baseSnapshot.checks,
-      checkpoints: baseSnapshot.checkpoints
+      checks: baseSnapshot.checks
     });
 
     await act(async () => {
@@ -195,8 +192,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     statusMock.mockResolvedValue({
       workspaces: baseSnapshot.workspaces,
       sessions: baseSnapshot.sessions,
-      checks: baseSnapshot.checks,
-      checkpoints: baseSnapshot.checkpoints
+      checks: baseSnapshot.checks
     });
     // Backend now reports zero pending approvals (e.g. it was resolved).
     pendingMock.mockResolvedValue([]);
@@ -357,8 +353,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       statusMock.mockResolvedValue({
         workspaces: [makeWorkspace({ state: "complete" })],
         sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:30.000Z" })],
-        checks: [],
-        checkpoints: []
+        checks: []
       });
 
       // Tick 1 pulls the terminal event (snapshot ref commits at the act
@@ -437,8 +432,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       statusMock.mockResolvedValue({
         workspaces: [makeWorkspace({ state: "complete" })],
         sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:40.000Z" })],
-        checks: [],
-        checkpoints: []
+        checks: []
       });
 
       await act(async () => {

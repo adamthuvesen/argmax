@@ -34,7 +34,7 @@ export async function fetchFilePreview({
   const cached = previewCache.get(cacheKey);
   if (cached) return cached;
   if (!window.argmax) throw new Error("IPC bridge not available");
-  const result = await window.argmax.workspace.readFile(workspaceId, path);
+  const result = await window.argmax.workspace.readFile({ kind: "workspace", id: workspaceId }, path);
   if (result.kind !== "text") {
     const reason =
       result.reason === "binary"

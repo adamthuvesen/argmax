@@ -280,22 +280,6 @@ async reviewLoadDiff(input: ReviewLoadDiffInput) : Promise<Result<WorkspaceDiff,
     else return { status: "error", error: e  as any };
 }
 },
-async reviewListChangedFilesForProject(input: ReviewListChangedFilesForProjectInput) : Promise<Result<ChangedFileSummary[], ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("review_list_changed_files_for_project", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async reviewLoadDiffForProject(input: ReviewLoadDiffForProjectInput) : Promise<Result<WorkspaceDiff, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("review_load_diff_for_project", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async workspaceListFiles(input: WorkspaceListFilesInput) : Promise<Result<WorkspaceFileEntry[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspace_list_files", { input }) };
@@ -307,22 +291,6 @@ async workspaceListFiles(input: WorkspaceListFilesInput) : Promise<Result<Worksp
 async workspaceReadFile(input: WorkspaceReadFileInput) : Promise<Result<WorkspaceFilePreview, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspace_read_file", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async workspaceListFilesForProject(input: WorkspaceListFilesForProjectInput) : Promise<Result<WorkspaceFileEntry[], ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("workspace_list_files_for_project", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async workspaceReadFileForProject(input: WorkspaceReadFileForProjectInput) : Promise<Result<WorkspaceFilePreview, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("workspace_read_file_for_project", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -344,22 +312,6 @@ async workspaceStatFile(input: WorkspaceStatFileInput) : Promise<Result<Workspac
     else return { status: "error", error: e  as any };
 }
 },
-async workspaceWriteFileForProject(input: WorkspaceWriteFileForProjectInput) : Promise<Result<WorkspaceFileWriteResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("workspace_write_file_for_project", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async workspaceStatFileForProject(input: WorkspaceStatFileForProjectInput) : Promise<Result<WorkspaceFileStat, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("workspace_stat_file_for_project", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async workspaceGrepContent(input: WorkspaceGrepContentInput) : Promise<Result<WorkspaceContentSearchResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspace_grep_content", { input }) };
@@ -371,22 +323,6 @@ async workspaceGrepContent(input: WorkspaceGrepContentInput) : Promise<Result<Wo
 async checksRun(input: ChecksRunInput) : Promise<Result<CheckRun, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("checks_run", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async checkpointsCreate(input: CheckpointsCreateInput) : Promise<Result<Checkpoint, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("checkpoints_create", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async dashboardLoad(input: DashboardLoadInput) : Promise<Result<DashboardSnapshot, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("dashboard_load", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -430,41 +366,6 @@ async systemVacuumDatabase(input: SystemVacuumDatabaseInput) : Promise<Result<Sy
 async systemSetTheme(input: SystemSetThemeInput) : Promise<Result<SystemOk, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("system_set_theme", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async mcpList(input: McpListInput) : Promise<McpClientListing[]> {
-    return await TAURI_INVOKE("mcp_list", { input });
-},
-async mcpAuthStart(input: McpAuthStartInput) : Promise<Result<StartAuthOutput, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_start", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async mcpAuthWrite(input: McpAuthWriteInput) : Promise<Result<SystemOk, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_write", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async mcpAuthResize(input: McpAuthResizeInput) : Promise<Result<SystemOk, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_resize", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async mcpAuthTerminate(input: McpAuthTerminateInput) : Promise<Result<SystemOk, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("mcp_auth_terminate", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -602,15 +503,11 @@ export type BaseRef = string
 export type BranchName = string
 export type ChangedFileSummary = { path: string; status: string; additions: number; deletions: number; oldPath?: string | null }
 export type CheckRun = { id: string; workspaceId: string; command: string; status: string; exitCode: number | null; summary: string | null; startedAt: string; completedAt: string | null }
-export type Checkpoint = { id: string; workspaceId: string; label: string; branch: string; gitRef: string | null; patchPath: string | null; createdAt: string }
-export type CheckpointsCreateInput = { workspaceId: WorkspaceId; label: NonEmptyString }
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }
 export type CommandText = string
 export type ComposerAttachmentInput = { filePath: AttachmentPath; mimeType: AttachmentMimeType; sizeBytes: AttachmentSizeBytes }
 export type DashboardListInput = Record<string, never>
-export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
-export type DashboardLoadInput = Record<string, never>
-export type DashboardSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; approvals: ApprovalRequest[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
+export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
 export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
@@ -626,7 +523,6 @@ export type GitPushInput = { workspaceId: WorkspaceId }
 export type GitPushResult = { branch: string; upstreamSet: boolean }
 export type GitViewOrCreatePrInput = { sessionId: SessionId }
 export type GitViewOrCreatePrResult = { action: "opened"; url: string; prNumber: number } | { action: "created"; url: string; prNumber: number | null }
-export type GrepTargetId = string
 export type HealthPingInput = Record<string, never>
 export type HealthPingOutput = { ok: boolean; timestamp: string }
 export type IdeId = "vscode" | "cursor" | "windsurf" | "zed" | "iterm" | "terminal"
@@ -643,16 +539,6 @@ export type LearningsListInput = { projectId: ProjectId; limit: Limit200 | null 
 export type LearningsUpdateInput = { id: NonEmptyString; summary: NonEmptyString | null; verified: boolean | null }
 export type Limit200 = number
 export type LogEntry = { timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
-export type McpAuthResizeInput = { sessionId: McpAuthSessionId; cols: TerminalCols; rows: TerminalRows }
-export type McpAuthSessionId = string
-export type McpAuthStartInput = { cols: TerminalCols; rows: TerminalRows }
-export type McpAuthTerminateInput = { sessionId: McpAuthSessionId }
-export type McpAuthWriteInput = { sessionId: McpAuthSessionId; data: StreamChunk }
-export type McpClientListing = { client: ProviderId; displayName: string; configPath: string; configExists: boolean; servers: McpServerEntry[]; error: string | null }
-export type McpListInput = Record<string, never>
-export type McpScope = "user" | "project"
-export type McpServerEntry = { client: ProviderId; name: string; transport: McpTransport; scope: McpScope; source: string; command?: string | null; url?: string | null; envKeys: string[] }
-export type McpTransport = "stdio" | "http" | "sse" | "unknown"
 export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
@@ -681,9 +567,8 @@ export type ProviderCapabilityReport = { provider: ProviderId; displayName: stri
  * never hard-blocks on it, since a CLI changing its status command must not
  * lock out a working provider.
  */
-authenticated: boolean | null; modes: ProviderMode[]; setupGuidance: string | null }
+authenticated: boolean | null; setupGuidance: string | null }
 export type ProviderId = "claude" | "codex" | "cursor"
-export type ProviderMode = "interactive-pty" | "structured-json"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersDiscoverInput = { 
 /**
@@ -720,11 +605,9 @@ export type RepoPath = string
  * to the working tree, i.e. "everything different from main".
  */
 export type ReviewComparison = "workingTree" | "branch"
-export type ReviewListChangedFilesForProjectInput = { projectId: ProjectId; comparison?: ReviewComparison }
-export type ReviewListChangedFilesInput = { workspaceId: WorkspaceId; comparison?: ReviewComparison }
-export type ReviewLoadDiffForProjectInput = { projectId: ProjectId; filePath: RelativePath | null; comparison?: ReviewComparison }
-export type ReviewLoadDiffInput = { workspaceId: WorkspaceId; filePath: RelativePath | null; comparison?: ReviewComparison }
-export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; checkpoints: number; learnings: number; usageEvents: number }
+export type ReviewListChangedFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; comparison?: ReviewComparison }
+export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison }
+export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }
 export type SearchQuery = string
@@ -753,7 +636,6 @@ export type SkillSummary = { name: string; description: string; source: SkillSou
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type SkippedReason = "not-a-file" | "too-large" | "binary"
 export type SqlitePragmas = { journalMode: string; foreignKeys: number; synchronous: number; busyTimeout: number; walAutocheckpoint: number }
-export type StartAuthOutput = { sessionId: string }
 export type StartupPhaseRecord = { phase: string; elapsedMs: number; deltaMs: number }
 export type StreamChunk = string
 export type SystemDiagnosticsInput = Record<string, never>
@@ -782,17 +664,13 @@ export type WorkspaceFileEntry = { path: string }
 export type WorkspaceFilePreview = { kind: "text"; content: string; size: number; mtimeMs: number } | { kind: "skipped"; reason: SkippedReason; size?: number | null }
 export type WorkspaceFileStat = { mtimeMs: number; size: number }
 export type WorkspaceFileWriteResult = { ok: "true"; mtimeMs: number; size: number } | { ok: "false"; reason: WriteStaleReason; currentMtimeMs: number; size: number }
-export type WorkspaceGrepContentInput = { kind: WorkspaceGrepKind; id: GrepTargetId; query: SearchQuery }
-export type WorkspaceGrepKind = "workspace" | "project"
+export type WorkspaceGrepContentInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; query: SearchQuery }
 export type WorkspaceId = string
-export type WorkspaceListFilesForProjectInput = { projectId: ProjectId }
-export type WorkspaceListFilesInput = { workspaceId: WorkspaceId }
-export type WorkspaceReadFileForProjectInput = { projectId: ProjectId; filePath: RelativePath }
-export type WorkspaceReadFileInput = { workspaceId: WorkspaceId; filePath: RelativePath }
-export type WorkspaceStatFileForProjectInput = { projectId: ProjectId; filePath: RelativePath }
-export type WorkspaceStatFileInput = { workspaceId: WorkspaceId; filePath: RelativePath }
+export type WorkspaceListFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId }
+export type WorkspaceReadFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
+export type WorkspaceStatFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
-export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; checkpoints: Checkpoint[] }
+export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
 export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean; dirty: boolean; changedFiles: number; lastActivityAt: string; pinned: boolean; 
 /**
  * State of the most-recent PR across this workspace's sessions. Filled in
@@ -805,8 +683,9 @@ prState: string | null;
  * PR number paired with `pr_state`.
  */
 prNumber: number | null }
-export type WorkspaceWriteFileForProjectInput = { projectId: ProjectId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
-export type WorkspaceWriteFileInput = { workspaceId: WorkspaceId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
+export type WorkspaceTargetId = string
+export type WorkspaceTargetKind = "workspace" | "project"
+export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
 export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
 export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: TaskLabel }

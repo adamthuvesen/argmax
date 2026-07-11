@@ -2,7 +2,6 @@ use rusqlite::{named_params, Connection, Row};
 use serde::Serialize;
 use specta::Type;
 
-use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
@@ -55,9 +54,7 @@ pub struct ProjectSummary {
 }
 
 pub fn list_projects(connection: &Connection) -> ArgmaxResult<Vec<ProjectSummary>> {
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection.prepare_cached(r#"
         SELECT
           p.*,
           COALESCE(ws.active_count,         0) AS active_count,
@@ -116,9 +113,9 @@ pub fn persist_project(
     let timestamp = now_iso();
     let check_commands_json =
         serde_json::to_string(&input.settings.check_commands).map_err(json_error)?;
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         INSERT INTO projects (
           id, name, repo_path, current_branch, default_branch, default_provider,
           default_model_label, worktree_location, setup_command, check_commands_json,
@@ -134,8 +131,8 @@ pub fn persist_project(
           default_branch = excluded.default_branch,
           updated_at = excluded.updated_at
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute(named_params! {
             "@id": input.id,
@@ -163,9 +160,9 @@ pub fn update_project_settings(
 ) -> ArgmaxResult<ProjectSummary> {
     let check_commands_json =
         serde_json::to_string(&settings.check_commands).map_err(json_error)?;
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         UPDATE projects
         SET
           default_provider = @default_provider,
@@ -176,8 +173,8 @@ pub fn update_project_settings(
           updated_at = @updated_at
         WHERE id = @project_id
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute(named_params! {
             "@project_id": project_id,
@@ -197,11 +194,9 @@ pub fn update_project_branch(
     project_id: &str,
     branch: &str,
 ) -> ArgmaxResult<ProjectSummary> {
-    let mut statement = prepared(
-        connection,
-        "UPDATE projects SET current_branch = ?, updated_at = ? WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("UPDATE projects SET current_branch = ?, updated_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?;
     statement
         .execute((branch, now_iso(), project_id))
         .map_err(sqlite_error)?;
@@ -212,8 +207,9 @@ pub fn find_project_by_repo_path(
     connection: &Connection,
     repo_path: &str,
 ) -> ArgmaxResult<Option<ProjectSummary>> {
-    let mut statement =
-        prepared(connection, "SELECT * FROM projects WHERE repo_path = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT * FROM projects WHERE repo_path = ?")
+        .map_err(sqlite_error)?;
     match statement.query_row([repo_path], bare_project_row_to_summary) {
         Ok(project) => Ok(Some(project)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -225,8 +221,9 @@ pub fn find_project_by_id(
     connection: &Connection,
     project_id: &str,
 ) -> ArgmaxResult<Option<ProjectSummary>> {
-    let mut statement =
-        prepared(connection, "SELECT * FROM projects WHERE id = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT * FROM projects WHERE id = ?")
+        .map_err(sqlite_error)?;
     match statement.query_row([project_id], bare_project_row_to_summary) {
         Ok(project) => Ok(Some(project)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -240,8 +237,9 @@ pub fn require_project(connection: &Connection, project_id: &str) -> ArgmaxResul
 }
 
 pub fn delete_project(connection: &Connection, project_id: &str) -> ArgmaxResult<()> {
-    let mut statement =
-        prepared(connection, "DELETE FROM projects WHERE id = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("DELETE FROM projects WHERE id = ?")
+        .map_err(sqlite_error)?;
     statement.execute([project_id]).map_err(sqlite_error)?;
     Ok(())
 }
@@ -251,9 +249,7 @@ pub fn update_project_remote(
     project_id: &str,
     remote: Option<&ProjectRemote>,
 ) -> ArgmaxResult<()> {
-    let mut statement = prepared(
-        connection,
-        "UPDATE projects SET repo_remote_owner = ?, repo_remote_name = ?, updated_at = ? WHERE id = ?",
+    let mut statement = connection.prepare_cached("UPDATE projects SET repo_remote_owner = ?, repo_remote_name = ?, updated_at = ? WHERE id = ?",
     )
     .map_err(sqlite_error)?;
     let changes = statement
@@ -274,11 +270,9 @@ pub fn get_project_remote(
     connection: &Connection,
     project_id: &str,
 ) -> ArgmaxResult<Option<ProjectRemote>> {
-    let mut statement = prepared(
-        connection,
-        "SELECT repo_remote_owner, repo_remote_name FROM projects WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT repo_remote_owner, repo_remote_name FROM projects WHERE id = ?")
+        .map_err(sqlite_error)?;
     match statement.query_row([project_id], |row| {
         let owner: Option<String> = row.get("repo_remote_owner")?;
         let name: Option<String> = row.get("repo_remote_name")?;

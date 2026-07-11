@@ -164,7 +164,6 @@ export function renderConversation(
       isLogOpen={false}
       onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={vi.fn().mockResolvedValue(undefined)}
-      onCreateCheckpoint={vi.fn().mockResolvedValue(undefined)}
       onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn().mockResolvedValue(undefined)}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}

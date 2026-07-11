@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type JSX, type ReactNode } from "react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 import { logger } from "../../shared/logger.js";
 
 interface State {
@@ -55,13 +55,4 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
       </main>
     );
   }
-}
-
-export function ErrorBoundaryFallback({ message }: { message: string }): JSX.Element {
-  return (
-    <main className="error-boundary" role="alert">
-      <h1>Argmax stopped rendering.</h1>
-      <pre className="error-boundary-message">{message}</pre>
-    </main>
-  );
 }

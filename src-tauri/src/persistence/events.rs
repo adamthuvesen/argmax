@@ -3,7 +3,6 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use specta::Type;
 
-use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
@@ -143,14 +142,14 @@ pub fn persist_timeline_event(
 ) -> ArgmaxResult<TimelineEvent> {
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
     let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         INSERT INTO events (id, session_id, type, message, payload_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute((
             input.id.as_str(),
@@ -178,14 +177,14 @@ pub fn persist_timeline_event_if_absent(
 ) -> ArgmaxResult<bool> {
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
     let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         INSERT OR IGNORE INTO events (id, session_id, type, message, payload_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let rows = statement
         .execute((
             input.id.as_str(),
@@ -213,15 +212,15 @@ pub fn upgrade_trace_no_output_completion(
     }
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
     let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         UPDATE events
         SET message = ?, payload_json = ?, created_at = ?
         WHERE id = ? AND json_extract(payload_json, '$.traceNoOutput') = true
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let rows = statement
         .execute((
             input.message.as_str(),
@@ -238,14 +237,14 @@ pub fn persist_raw_output(
     input: &PersistRawOutputInput,
 ) -> ArgmaxResult<RawProviderOutput> {
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
         VALUES (?, ?, ?, ?, ?)
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute((
             input.id.as_str(),
@@ -265,40 +264,6 @@ pub fn persist_raw_output(
     })
 }
 
-pub fn list_dashboard_events(
-    connection: &Connection,
-    limit: usize,
-) -> ArgmaxResult<Vec<TimelineEvent>> {
-    let mut statement = prepared(
-        connection,
-        "SELECT rowid AS row_cursor, * FROM events ORDER BY rowid DESC LIMIT ?",
-    )
-    .map_err(sqlite_error)?;
-    let rows = statement
-        .query_map([limit as i64], event_row_to_timeline_event)
-        .map_err(sqlite_error)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(sqlite_error)?;
-    Ok(rows)
-}
-
-pub fn list_dashboard_raw_outputs(
-    connection: &Connection,
-    limit: usize,
-) -> ArgmaxResult<Vec<RawProviderOutput>> {
-    let mut statement = prepared(
-        connection,
-        "SELECT rowid AS row_cursor, * FROM raw_outputs ORDER BY rowid DESC LIMIT ?",
-    )
-    .map_err(sqlite_error)?;
-    let rows = statement
-        .query_map([limit as i64], raw_output_row_to_provider_output)
-        .map_err(sqlite_error)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(sqlite_error)?;
-    Ok(rows)
-}
-
 fn list_event_rows(
     connection: &Connection,
     session_id: &str,
@@ -306,9 +271,7 @@ fn list_event_rows(
 ) -> ArgmaxResult<Vec<TimelineEvent>> {
     match cursor {
         Some(cursor) => {
-            let mut statement = prepared(
-                connection,
-                "SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? AND rowid > ? ORDER BY rowid ASC LIMIT ?",
+            let mut statement = connection.prepare_cached("SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? AND rowid > ? ORDER BY rowid ASC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -322,9 +285,7 @@ fn list_event_rows(
             Ok(rows)
         }
         None => {
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM (SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
+            let mut statement = connection.prepare_cached("SELECT * FROM (SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -345,9 +306,7 @@ fn list_newest_event_rows(
     session_id: &str,
     limit: usize,
 ) -> ArgmaxResult<Vec<TimelineEvent>> {
-    let mut statement = prepared(
-        connection,
-        "SELECT * FROM (SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
+    let mut statement = connection.prepare_cached("SELECT * FROM (SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
     )
     .map_err(sqlite_error)?;
     let rows = statement
@@ -365,9 +324,7 @@ fn list_raw_output_rows(
 ) -> ArgmaxResult<Vec<RawProviderOutput>> {
     match cursor {
         Some(cursor) => {
-            let mut statement = prepared(
-                connection,
-                "SELECT rowid AS row_cursor, * FROM raw_outputs WHERE session_id = ? AND rowid > ? ORDER BY rowid ASC LIMIT ?",
+            let mut statement = connection.prepare_cached("SELECT rowid AS row_cursor, * FROM raw_outputs WHERE session_id = ? AND rowid > ? ORDER BY rowid ASC LIMIT ?",
             )
             .map_err(sqlite_error)?;
             let rows = statement
@@ -381,9 +338,7 @@ fn list_raw_output_rows(
             Ok(rows)
         }
         None => {
-            let mut statement = prepared(
-                connection,
-                "SELECT * FROM (SELECT rowid AS row_cursor, * FROM raw_outputs WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
+            let mut statement = connection.prepare_cached("SELECT * FROM (SELECT rowid AS row_cursor, * FROM raw_outputs WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
             )
             .map_err(sqlite_error)?;
             let rows = statement

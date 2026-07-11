@@ -42,26 +42,6 @@ export function readBoundedNumberPreference(
   return Math.max(min, Math.min(max, parsed));
 }
 
-export function readStoredSidebarTokensVisible(): boolean {
-  return readBooleanPreference(SIDEBAR_TOKENS_KEY, false);
-}
-
-export function readStoredChatCostVisible(): boolean {
-  return readBooleanPreference(CHAT_COST_KEY, false);
-}
-
-export function readStoredThinkingExpanded(): boolean {
-  return readBooleanPreference(THINKING_EXPANDED_KEY, false);
-}
-
-export function readStoredToolCallsExpanded(): boolean {
-  return readBooleanPreference(TOOL_CALLS_EXPANDED_KEY, false);
-}
-
-export function readStoredToolCallGroupsExpanded(): boolean {
-  return readBooleanPreference(TOOL_CALL_GROUPS_EXPANDED_KEY, false);
-}
-
 /** Boolean UI preference with mirrored localStorage persistence. */
 export function useBooleanUiPreference(key: string, fallback: boolean): [boolean, (value: boolean) => void] {
   const [value, setValue] = useState(() => readBooleanPreference(key, fallback));

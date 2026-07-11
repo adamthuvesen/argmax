@@ -33,7 +33,7 @@ Pure CSS in [src/renderer/styles.css](../src/renderer/styles.css). No CSS-in-JS,
 |---|---|
 | `settings-layout.css` | Settings shell: left rail, hero, sections, cards, account, metrics |
 | `settings-controls.css` | Segmented controls, toggles, font/theme pickers, refresh |
-| `settings-diagnostics.css` | Providers list, diagnostics tiles, logs, tables, MCP |
+| `settings-diagnostics.css` | Providers list, diagnostics tiles, logs, tables, integrations |
 
 ## Chat stylesheets
 

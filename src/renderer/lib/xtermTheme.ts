@@ -1,4 +1,4 @@
-/** Shared xterm themes for integrated terminal + MCP auth dialog.
+/** xterm themes for the integrated terminal.
  *
  * xterm draws to canvas/WebGL outside the CSS context, so we can't reuse
  * `var(--bg)` etc. Each theme is a literal object the renderer picks based

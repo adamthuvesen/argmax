@@ -37,7 +37,7 @@ fn every_command_is_registered() {
     let fixture = fixture_channels();
     assert_eq!(
         fixture.len(),
-        73,
+        60,
         "fixture should list every stable channel"
     );
 

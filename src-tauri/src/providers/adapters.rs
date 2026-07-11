@@ -117,7 +117,7 @@ fn codex_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     args.extend(codex_permission_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
     args.extend(codex_reasoning_summary_args(input));
-    args.extend(codex_reasoning_args(input, true));
+    args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
     args.push("-".to_string());
     args
@@ -135,7 +135,7 @@ fn codex_structured_resume_args(
     args.extend(codex_permission_args(input));
     args.extend(["--model".to_string(), input.model_id.clone()]);
     args.extend(codex_reasoning_summary_args(input));
-    args.extend(codex_reasoning_args(input, true));
+    args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
     args.extend([resume_conversation_id.to_string(), "-".to_string()]);
     args
@@ -327,13 +327,9 @@ fn codex_fast_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
     }
 }
 
-fn codex_reasoning_args(input: &ProviderLaunchInput, structured: bool) -> Vec<String> {
+fn codex_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
     let Some(reasoning_effort) = input.reasoning_effort else {
-        return if structured {
-            vec!["--ignore-user-config".to_string()]
-        } else {
-            Vec::new()
-        };
+        return Vec::new();
     };
 
     // Codex's CLI only accepts up to xhigh. Max/Ultra are Claude-only levels, so
@@ -499,13 +495,13 @@ mod tests {
     }
 
     #[test]
-    fn codex_structured_without_reasoning_ignores_user_config() {
+    fn codex_structured_without_reasoning_uses_user_config() {
         let input = ProviderLaunchInput {
             reasoning_effort: None,
             ..launch_input(ProviderId::Codex)
         };
         let args = (get_provider_definition(ProviderId::Codex).structured_args)(&input);
-        assert!(args.iter().any(|arg| arg == "--ignore-user-config"));
+        assert!(!args.iter().any(|arg| arg == "--ignore-user-config"));
     }
 
     #[test]

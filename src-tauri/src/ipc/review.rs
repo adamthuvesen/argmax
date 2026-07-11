@@ -44,10 +44,10 @@ pub async fn review_load_diff(
 mod tests {
     use super::*;
     use crate::{
-        ipc::inputs::WorkspaceTargetKind,
         persistence::projects::{persist_project, PersistProjectInput, ProjectSettings},
         persistence::Database,
         review::git_review::ReviewComparison,
+        workspaces::WorkspaceTargetKind,
     };
     use std::{path::Path, process::Command, sync::Arc};
     use tempfile::tempdir;

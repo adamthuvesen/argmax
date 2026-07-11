@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::review::git_review::ReviewComparison;
+use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKind};
 
 use super::validation::{
     AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
@@ -508,13 +508,6 @@ pub struct WorkspaceStatFileInput {
     pub kind: WorkspaceTargetKind,
     pub id: WorkspaceTargetId,
     pub file_path: RelativePath,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum WorkspaceTargetKind {
-    Workspace,
-    Project,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

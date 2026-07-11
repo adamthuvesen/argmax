@@ -12,11 +12,11 @@ use tokio::{sync::Semaphore, task::JoinSet};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     git::exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
-    ipc::inputs::WorkspaceTargetKind,
     persistence::database::Database,
     persistence::projects::require_project,
     persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
     util::workspace_paths::{resolve_inside, PathError},
+    workspaces::WorkspaceTargetKind,
 };
 
 pub const DIFF_FANOUT_LIMIT: usize = 8;

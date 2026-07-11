@@ -8,7 +8,6 @@ import type {
   AttachmentSaveImageResult,
   ChangedFileSummary,
   CheckRun,
-  Checkpoint,
   DashboardDelta,
   DashboardListSnapshot,
   DashboardSnapshot,
@@ -26,12 +25,6 @@ import type {
   GitViewOrCreatePrResult,
   Learning,
   LaunchProviderSessionInput,
-  McpAuthDataEvent,
-  McpAuthExitEvent,
-  McpAuthResizeInput,
-  McpAuthStartInput,
-  McpAuthWriteInput,
-  McpClientListing,
   MenuCommand,
   OpenInIdeInput,
   ProjectFolderPickResult,
@@ -65,6 +58,7 @@ import type {
   WorkspaceFileStat,
   WorkspaceFileWriteResult,
   WorkspaceStatusInput,
+  WorkspaceTarget,
   WorkspaceStatusSnapshot,
   WorkspaceSummary
 } from "../../shared/types.js";
@@ -124,7 +118,6 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): EventSub
 function createTauriArgmaxApi(): ArgmaxApi {
   return {
     dashboard: {
-      load: () => invokeCommand<DashboardSnapshot>("dashboard:load"),
       list: () => invokeCommand<DashboardListSnapshot>("dashboard:list"),
       onDelta: (listener: (delta: DashboardDelta) => void) =>
         subscribe<DashboardDelta>("dashboard:delta", listener)
@@ -187,49 +180,29 @@ function createTauriArgmaxApi(): ArgmaxApi {
       search: (input) => invokeCommand<SessionSearchResult>("session:search", input)
     },
     review: {
-      listChangedFiles: (workspaceId: string, comparison?: ReviewComparison) =>
-        invokeCommand<ChangedFileSummary[]>("review:list-changed-files", { workspaceId, comparison }),
-      loadDiff: (workspaceId: string, filePath?: string, comparison?: ReviewComparison) =>
-        invokeCommand<WorkspaceDiff>("review:load-diff", { workspaceId, filePath, comparison }),
-      listChangedFilesForProject: (projectId: string, comparison?: ReviewComparison) =>
-        invokeCommand<ChangedFileSummary[]>("review:list-changed-files-for-project", { projectId, comparison }),
-      loadDiffForProject: (projectId: string, filePath?: string, comparison?: ReviewComparison) =>
-        invokeCommand<WorkspaceDiff>("review:load-diff-for-project", { projectId, filePath, comparison })
+      listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) =>
+        invokeCommand<ChangedFileSummary[]>("review:list-changed-files", { ...target, comparison }),
+      loadDiff: (target: WorkspaceTarget, filePath?: string, comparison?: ReviewComparison) =>
+        invokeCommand<WorkspaceDiff>("review:load-diff", { ...target, filePath, comparison })
     },
     workspace: {
-      listFiles: (workspaceId: string) =>
-        invokeCommand<WorkspaceFileEntry[]>("workspace:list-files", { workspaceId }),
-      readFile: (workspaceId: string, filePath: string) =>
-        invokeCommand<WorkspaceFilePreview>("workspace:read-file", { workspaceId, filePath }),
-      writeFile: (workspaceId: string, filePath: string, content: string, expectedMtimeMs: number | null) =>
+      listFiles: (target: WorkspaceTarget) =>
+        invokeCommand<WorkspaceFileEntry[]>("workspace:list-files", target),
+      readFile: (target: WorkspaceTarget, filePath: string) =>
+        invokeCommand<WorkspaceFilePreview>("workspace:read-file", { ...target, filePath }),
+      writeFile: (target: WorkspaceTarget, filePath: string, content: string, expectedMtimeMs: number | null) =>
         invokeCommand<WorkspaceFileWriteResult>("workspace:write-file", {
-          workspaceId,
+          ...target,
           filePath,
           content,
           expectedMtimeMs
         }),
-      statFile: (workspaceId: string, filePath: string) =>
-        invokeCommand<WorkspaceFileStat>("workspace:stat-file", { workspaceId, filePath }),
-      listFilesForProject: (projectId: string) =>
-        invokeCommand<WorkspaceFileEntry[]>("workspace:list-files-for-project", { projectId }),
-      readFileForProject: (projectId: string, filePath: string) =>
-        invokeCommand<WorkspaceFilePreview>("workspace:read-file-for-project", { projectId, filePath }),
-      writeFileForProject: (projectId: string, filePath: string, content: string, expectedMtimeMs: number | null) =>
-        invokeCommand<WorkspaceFileWriteResult>("workspace:write-file-for-project", {
-          projectId,
-          filePath,
-          content,
-          expectedMtimeMs
-        }),
-      statFileForProject: (projectId: string, filePath: string) =>
-        invokeCommand<WorkspaceFileStat>("workspace:stat-file-for-project", { projectId, filePath }),
+      statFile: (target: WorkspaceTarget, filePath: string) =>
+        invokeCommand<WorkspaceFileStat>("workspace:stat-file", { ...target, filePath }),
       grepContent: (input) => invokeCommand<WorkspaceContentSearchResult>("workspace:grep-content", input)
     },
     checks: {
       run: (input: RunCheckInput) => invokeCommand<CheckRun>("checks:run", input)
-    },
-    checkpoints: {
-      create: (input) => invokeCommand<Checkpoint>("checkpoints:create", input)
     },
     health: {
       ping: () => invokeCommand<{ ok: true; timestamp: string }>("health:ping")
@@ -243,19 +216,6 @@ function createTauriArgmaxApi(): ArgmaxApi {
       diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),
       vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
       setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode })
-    },
-    mcp: {
-      list: () => invokeCommand<McpClientListing[]>("mcp:list"),
-      auth: {
-        start: (input: McpAuthStartInput) => invokeCommand<{ sessionId: string }>("mcp:auth:start", input),
-        write: (input: McpAuthWriteInput) => invokeCommand<{ ok: true }>("mcp:auth:write", input),
-        resize: (input: McpAuthResizeInput) => invokeCommand<{ ok: true }>("mcp:auth:resize", input),
-        terminate: (sessionId: string) => invokeCommand<{ ok: true }>("mcp:auth:terminate", { sessionId }),
-        onData: (listener: (event: McpAuthDataEvent) => void) =>
-          subscribe<McpAuthDataEvent>("mcp:auth:data", listener),
-        onExit: (listener: (event: McpAuthExitEvent) => void) =>
-          subscribe<McpAuthExitEvent>("mcp:auth:exit", listener)
-      }
     },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)

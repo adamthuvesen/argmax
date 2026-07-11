@@ -286,6 +286,5 @@ export const demoSnapshot: DashboardSnapshot = {
       startedAt: "2026-05-08T15:45:00.000Z",
       completedAt: "2026-05-08T15:46:00.000Z"
     }
-  ],
-  checkpoints: []
+  ]
 };

@@ -12,6 +12,7 @@ use tokio::{sync::Semaphore, task::JoinSet};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     git::exec::{reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes},
+    ipc::inputs::WorkspaceTargetKind,
     persistence::database::Database,
     persistence::projects::require_project,
     persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
@@ -107,9 +108,14 @@ pub struct WorkspaceDiff {
 
 pub async fn list_changed_files(
     database: &Database,
-    workspace_id: &str,
+    kind: WorkspaceTargetKind,
+    id: &str,
     comparison: ReviewComparison,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
+    if kind == WorkspaceTargetKind::Project {
+        return list_changed_files_for_project(database, id, comparison).await;
+    }
+    let workspace_id = id;
     let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
     let base_ref = resolve_workspace_base(
         Path::new(&workspace.path),
@@ -123,10 +129,15 @@ pub async fn list_changed_files(
 
 pub async fn load_diff(
     database: &Database,
-    workspace_id: &str,
+    kind: WorkspaceTargetKind,
+    id: &str,
     file_path: Option<&str>,
     comparison: ReviewComparison,
 ) -> ArgmaxResult<WorkspaceDiff> {
+    if kind == WorkspaceTargetKind::Project {
+        return load_diff_for_project(database, id, file_path, comparison).await;
+    }
+    let workspace_id = id;
     let (workspace, default_branch) = load_workspace_with_default_branch(database, workspace_id)?;
     let base_ref = resolve_workspace_base(
         Path::new(&workspace.path),
@@ -144,7 +155,7 @@ pub async fn load_diff(
     .await
 }
 
-pub async fn list_changed_files_for_project(
+async fn list_changed_files_for_project(
     database: &Database,
     project_id: &str,
     comparison: ReviewComparison,
@@ -158,7 +169,7 @@ pub async fn list_changed_files_for_project(
     list_changed_files_at_path(project.repo_path, base_ref).await
 }
 
-pub async fn load_diff_for_project(
+async fn load_diff_for_project(
     database: &Database,
     project_id: &str,
     file_path: Option<&str>,

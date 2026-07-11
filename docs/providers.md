@@ -18,6 +18,20 @@ Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [s
 
 Provider protocol output is persisted for debugging but must not render as chat. Visible chat is normalized timeline events.
 
+## MCP Configuration
+
+Model Context Protocol (MCP) servers are configured and authenticated through
+each provider's CLI or settings. The resulting provider configuration is used
+by Argmax sessions; MCP server discovery and authentication are not performed
+inside Argmax.
+
+- Claude Code servers are added with `claude mcp add <name> -- <command>`.
+  Authentication is opened with `/mcp` inside Claude Code.
+- Codex servers are added with `codex mcp add <name> -- <command>` or configured
+  in `~/.codex/config.toml`.
+- Cursor servers are configured under Settings > Tools & MCP or in
+  `~/.cursor/mcp.json`.
+
 On startup, orphan recovery marks sessions left in `running` as failed and
 terminates any detached provider CLI whose argv still references the Argmax
 session id or stored provider conversation id. Without that cleanup, an

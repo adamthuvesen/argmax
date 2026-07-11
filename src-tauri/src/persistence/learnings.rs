@@ -4,7 +4,6 @@ use specta::Type;
 use uuid::Uuid;
 
 use super::bool_to_i64;
-use super::prepared::prepared;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
@@ -58,9 +57,7 @@ pub fn insert_learning(
         .clone()
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     let now = now_iso();
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection.prepare_cached(r#"
         INSERT INTO learnings (id, project_id, kind, summary, evidence_session_id, evidence_event_id, created_at, last_seen_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
@@ -86,15 +83,15 @@ pub fn list_learnings(
     project_id: &str,
     limit: usize,
 ) -> ArgmaxResult<Vec<Learning>> {
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         SELECT * FROM learnings WHERE project_id = ?
         ORDER BY verified DESC, hits DESC, last_seen_at DESC, id DESC
         LIMIT ?
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let rows = statement
         .query_map((project_id, limit as i64), row_to_learning)
         .map_err(sqlite_error)?
@@ -110,11 +107,11 @@ pub fn update_learning(
     match (&input.summary, input.verified) {
         (None, None) => find_learning_by_id(connection, &input.id),
         (Some(summary), Some(verified)) => {
-            let mut statement = prepared(
-                connection,
-                "UPDATE learnings SET summary = ?, verified = ?, last_seen_at = ? WHERE id = ?",
-            )
-            .map_err(sqlite_error)?;
+            let mut statement = connection
+                .prepare_cached(
+                    "UPDATE learnings SET summary = ?, verified = ?, last_seen_at = ? WHERE id = ?",
+                )
+                .map_err(sqlite_error)?;
             update_learning_row(
                 &mut statement,
                 (
@@ -128,11 +125,9 @@ pub fn update_learning(
             find_learning_by_id(connection, &input.id)
         }
         (Some(summary), None) => {
-            let mut statement = prepared(
-                connection,
-                "UPDATE learnings SET summary = ?, last_seen_at = ? WHERE id = ?",
-            )
-            .map_err(sqlite_error)?;
+            let mut statement = connection
+                .prepare_cached("UPDATE learnings SET summary = ?, last_seen_at = ? WHERE id = ?")
+                .map_err(sqlite_error)?;
             update_learning_row(
                 &mut statement,
                 (summary.as_str(), now_iso(), input.id.as_str()),
@@ -141,11 +136,9 @@ pub fn update_learning(
             find_learning_by_id(connection, &input.id)
         }
         (None, Some(verified)) => {
-            let mut statement = prepared(
-                connection,
-                "UPDATE learnings SET verified = ?, last_seen_at = ? WHERE id = ?",
-            )
-            .map_err(sqlite_error)?;
+            let mut statement = connection
+                .prepare_cached("UPDATE learnings SET verified = ?, last_seen_at = ? WHERE id = ?")
+                .map_err(sqlite_error)?;
             update_learning_row(
                 &mut statement,
                 (bool_to_i64(verified), now_iso(), input.id.as_str()),
@@ -157,8 +150,9 @@ pub fn update_learning(
 }
 
 pub fn delete_learning(connection: &Connection, id: &str) -> ArgmaxResult<()> {
-    let mut statement =
-        prepared(connection, "DELETE FROM learnings WHERE id = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("DELETE FROM learnings WHERE id = ?")
+        .map_err(sqlite_error)?;
     statement.execute([id]).map_err(sqlite_error)?;
     Ok(())
 }
@@ -179,9 +173,9 @@ pub fn search_events_raw(
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }
-    let mut statement = prepared(
-        connection,
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         SELECT events.session_id AS session_id,
                events.id AS event_id,
                snippet(events_fts, 0, '<b>', '</b>', '...', 12) AS snippet,
@@ -192,8 +186,8 @@ pub fn search_events_raw(
         ORDER BY events_fts.rank
         LIMIT ?
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     let rows = statement
         .query_map((query, limit as i64), |row| {
             Ok(EventSearchResult {
@@ -210,8 +204,9 @@ pub fn search_events_raw(
 }
 
 fn find_learning_by_id(connection: &Connection, id: &str) -> ArgmaxResult<Learning> {
-    let mut statement =
-        prepared(connection, "SELECT * FROM learnings WHERE id = ?").map_err(sqlite_error)?;
+    let mut statement = connection
+        .prepare_cached("SELECT * FROM learnings WHERE id = ?")
+        .map_err(sqlite_error)?;
     match statement.query_row([id], row_to_learning) {
         Ok(learning) => Ok(learning),
         Err(rusqlite::Error::QueryReturnedNoRows) => {

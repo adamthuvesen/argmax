@@ -5,10 +5,9 @@ use crate::review::git_review::ReviewComparison;
 
 use super::validation::{
     AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
-    CommandText, FileContent, GitCommitMessage, McpAuthSessionId, NonEmptyString, OpenPath,
-    PermissionMode, ProjectId, Prompt, ProviderId, ReasoningEffort, RelativePath, RepoPath,
-    SearchQuery, SessionId, StreamChunk, TaskLabel, TerminalId, ThemeMode, WorkspaceId,
-    ATTACHMENT_BYTE_CAP,
+    CommandText, FileContent, GitCommitMessage, NonEmptyString, OpenPath, PermissionMode,
+    ProjectId, Prompt, ProviderId, ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId,
+    StreamChunk, TaskLabel, TerminalId, ThemeMode, WorkspaceId, ATTACHMENT_BYTE_CAP,
 };
 
 macro_rules! empty_input {
@@ -23,12 +22,10 @@ empty_input!(HealthPingInput);
 empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);
-empty_input!(DashboardLoadInput);
 empty_input!(ApprovalsPendingInput);
 empty_input!(SystemListDetectedIdesInput);
 empty_input!(SystemDiagnosticsInput);
 empty_input!(SystemVacuumDatabaseInput);
-empty_input!(McpListInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -219,9 +216,9 @@ impl NullableExpectedMtimeMs {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(transparent)]
-pub struct GrepTargetId(String);
+pub struct WorkspaceTargetId(String);
 
-impl GrepTargetId {
+impl WorkspaceTargetId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -301,7 +298,7 @@ impl<'de> Deserialize<'de> for NullableExpectedMtimeMs {
     }
 }
 
-impl<'de> Deserialize<'de> for GrepTargetId {
+impl<'de> Deserialize<'de> for WorkspaceTargetId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -464,7 +461,8 @@ pub struct SessionAgentEventsInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewListChangedFilesInput {
-    pub workspace_id: WorkspaceId,
+    pub kind: WorkspaceTargetKind,
+    pub id: WorkspaceTargetId,
     #[serde(default)]
     pub comparison: ReviewComparison,
 }
@@ -472,24 +470,8 @@ pub struct ReviewListChangedFilesInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewLoadDiffInput {
-    pub workspace_id: WorkspaceId,
-    pub file_path: Option<RelativePath>,
-    #[serde(default)]
-    pub comparison: ReviewComparison,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReviewListChangedFilesForProjectInput {
-    pub project_id: ProjectId,
-    #[serde(default)]
-    pub comparison: ReviewComparison,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReviewLoadDiffForProjectInput {
-    pub project_id: ProjectId,
+    pub kind: WorkspaceTargetKind,
+    pub id: WorkspaceTargetId,
     pub file_path: Option<RelativePath>,
     #[serde(default)]
     pub comparison: ReviewComparison,
@@ -498,33 +480,23 @@ pub struct ReviewLoadDiffForProjectInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceListFilesInput {
-    pub workspace_id: WorkspaceId,
+    pub kind: WorkspaceTargetKind,
+    pub id: WorkspaceTargetId,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceReadFileInput {
-    pub workspace_id: WorkspaceId,
-    pub file_path: RelativePath,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceListFilesForProjectInput {
-    pub project_id: ProjectId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceReadFileForProjectInput {
-    pub project_id: ProjectId,
+    pub kind: WorkspaceTargetKind,
+    pub id: WorkspaceTargetId,
     pub file_path: RelativePath,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceWriteFileInput {
-    pub workspace_id: WorkspaceId,
+    pub kind: WorkspaceTargetKind,
+    pub id: WorkspaceTargetId,
     pub file_path: RelativePath,
     pub content: FileContent,
     pub expected_mtime_ms: NullableExpectedMtimeMs,
@@ -533,29 +505,14 @@ pub struct WorkspaceWriteFileInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceStatFileInput {
-    pub workspace_id: WorkspaceId,
-    pub file_path: RelativePath,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceWriteFileForProjectInput {
-    pub project_id: ProjectId,
-    pub file_path: RelativePath,
-    pub content: FileContent,
-    pub expected_mtime_ms: NullableExpectedMtimeMs,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceStatFileForProjectInput {
-    pub project_id: ProjectId,
+    pub kind: WorkspaceTargetKind,
+    pub id: WorkspaceTargetId,
     pub file_path: RelativePath,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
-pub enum WorkspaceGrepKind {
+pub enum WorkspaceTargetKind {
     Workspace,
     Project,
 }
@@ -563,8 +520,8 @@ pub enum WorkspaceGrepKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceGrepContentInput {
-    pub kind: WorkspaceGrepKind,
-    pub id: GrepTargetId,
+    pub kind: WorkspaceTargetKind,
+    pub id: WorkspaceTargetId,
     pub query: SearchQuery,
 }
 
@@ -573,13 +530,6 @@ pub struct WorkspaceGrepContentInput {
 pub struct ChecksRunInput {
     pub workspace_id: WorkspaceId,
     pub command: CommandText,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CheckpointsCreateInput {
-    pub workspace_id: WorkspaceId,
-    pub label: NonEmptyString,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -600,34 +550,6 @@ pub struct SystemOpenPathInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetThemeInput {
     pub mode: ThemeMode,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct McpAuthStartInput {
-    pub cols: TerminalCols,
-    pub rows: TerminalRows,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct McpAuthWriteInput {
-    pub session_id: McpAuthSessionId,
-    pub data: StreamChunk,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct McpAuthResizeInput {
-    pub session_id: McpAuthSessionId,
-    pub cols: TerminalCols,
-    pub rows: TerminalRows,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct McpAuthTerminateInput {
-    pub session_id: McpAuthSessionId,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

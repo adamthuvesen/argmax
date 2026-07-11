@@ -68,7 +68,6 @@ export function SessionPane({
   fastModeEnabled = false,
   isFocused = true,
   onClose,
-  onCreateCheckpoint,
   onFastModeEnabledChange,
   onLoadSessionEvents,
   onRightPanelWidthChange,
@@ -100,7 +99,6 @@ export function SessionPane({
   isFocused?: boolean;
   /** Close button is shown when provided. Used by the multi-pane grid; absent in single-pane mode. */
   onClose?: () => void;
-  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
@@ -485,7 +483,6 @@ export function SessionPane({
           onCancelQueuedMessage={onCancelQueuedMessage}
           pendingMessages={sessionId ? (pendingMessages?.[sessionId] ?? []) : []}
           onTerminateSession={onTerminateSession}
-          onCreateCheckpoint={onCreateCheckpoint}
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
           onOpenAgent={onOpenAgent}

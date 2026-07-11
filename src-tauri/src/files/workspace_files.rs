@@ -23,6 +23,7 @@ use super::git_grep_parser::{
 };
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, run_git_text_with_allowed_exit_codes};
+use crate::ipc::inputs::WorkspaceTargetKind;
 use crate::persistence::database::Database;
 use crate::persistence::projects::require_project;
 use crate::persistence::workspaces::find_workspace_by_id;
@@ -111,123 +112,64 @@ impl WorkspaceFilesService {
         Arc::new(Self { database })
     }
 
-    pub async fn list_files(&self, workspace_id: &str) -> ArgmaxResult<Vec<WorkspaceFileEntry>> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, workspace_id)?
-        };
-        list_files_at_path(&workspace.path).await
-    }
-
-    pub async fn list_files_for_project(
+    pub async fn list_files(
         &self,
-        project_id: &str,
+        kind: WorkspaceTargetKind,
+        id: &str,
     ) -> ArgmaxResult<Vec<WorkspaceFileEntry>> {
-        let project = {
-            let conn = self.database.connection();
-            require_project(&conn, project_id)?
-        };
-        list_files_at_path(&project.repo_path).await
+        list_files_at_path(&self.root_path(kind, id)?).await
     }
 
     pub async fn read_file(
         &self,
-        workspace_id: &str,
+        kind: WorkspaceTargetKind,
+        id: &str,
         file_path: &str,
     ) -> ArgmaxResult<WorkspaceFilePreview> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, workspace_id)?
-        };
-        read_file_at_path(&workspace.path, file_path).await
-    }
-
-    pub async fn read_file_for_project(
-        &self,
-        project_id: &str,
-        file_path: &str,
-    ) -> ArgmaxResult<WorkspaceFilePreview> {
-        let project = {
-            let conn = self.database.connection();
-            require_project(&conn, project_id)?
-        };
-        read_file_at_path(&project.repo_path, file_path).await
+        read_file_at_path(&self.root_path(kind, id)?, file_path).await
     }
 
     pub async fn stat_file(
         &self,
-        workspace_id: &str,
+        kind: WorkspaceTargetKind,
+        id: &str,
         file_path: &str,
     ) -> ArgmaxResult<WorkspaceFileStat> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, workspace_id)?
-        };
-        stat_file_at_path(&workspace.path, file_path).await
-    }
-
-    pub async fn stat_file_for_project(
-        &self,
-        project_id: &str,
-        file_path: &str,
-    ) -> ArgmaxResult<WorkspaceFileStat> {
-        let project = {
-            let conn = self.database.connection();
-            require_project(&conn, project_id)?
-        };
-        stat_file_at_path(&project.repo_path, file_path).await
+        stat_file_at_path(&self.root_path(kind, id)?, file_path).await
     }
 
     pub async fn write_file(
         &self,
-        workspace_id: &str,
+        kind: WorkspaceTargetKind,
+        id: &str,
         file_path: &str,
         content: &str,
         expected_mtime_ms: Option<f64>,
     ) -> ArgmaxResult<WorkspaceFileWriteResult> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, workspace_id)?
-        };
-        write_file_at_path(&workspace.path, file_path, content, expected_mtime_ms).await
+        write_file_at_path(
+            &self.root_path(kind, id)?,
+            file_path,
+            content,
+            expected_mtime_ms,
+        )
+        .await
     }
 
-    pub async fn write_file_for_project(
+    pub async fn grep_content(
         &self,
-        project_id: &str,
-        file_path: &str,
-        content: &str,
-        expected_mtime_ms: Option<f64>,
-    ) -> ArgmaxResult<WorkspaceFileWriteResult> {
-        let project = {
-            let conn = self.database.connection();
-            require_project(&conn, project_id)?
-        };
-        write_file_at_path(&project.repo_path, file_path, content, expected_mtime_ms).await
-    }
-
-    pub async fn grep_content_for_workspace(
-        &self,
-        workspace_id: &str,
+        kind: WorkspaceTargetKind,
+        id: &str,
         query: &str,
     ) -> ArgmaxResult<WorkspaceContentSearchResult> {
-        let workspace = {
-            let conn = self.database.connection();
-            find_workspace_by_id(&conn, workspace_id)?
-        };
-        grep_content_at_path(&workspace.path, query).await
+        grep_content_at_path(&self.root_path(kind, id)?, query).await
     }
 
-    pub async fn grep_content_for_project(
-        &self,
-        project_id: &str,
-        query: &str,
-    ) -> ArgmaxResult<WorkspaceContentSearchResult> {
-        let project = {
-            let conn = self.database.connection();
-            require_project(&conn, project_id)?
-        };
-        grep_content_at_path(&project.repo_path, query).await
+    fn root_path(&self, kind: WorkspaceTargetKind, id: &str) -> ArgmaxResult<String> {
+        let connection = self.database.connection();
+        match kind {
+            WorkspaceTargetKind::Workspace => Ok(find_workspace_by_id(&connection, id)?.path),
+            WorkspaceTargetKind::Project => Ok(require_project(&connection, id)?.repo_path),
+        }
     }
 }
 
@@ -564,7 +506,10 @@ mod tests {
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
-        let entries = svc.list_files(&workspace_id).await.unwrap();
+        let entries = svc
+            .list_files(WorkspaceTargetKind::Workspace, &workspace_id)
+            .await
+            .unwrap();
         let paths: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
         assert!(paths.contains(&"README.md"));
         assert!(paths.contains(&"src/lib.rs"));
@@ -579,7 +524,10 @@ mod tests {
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
-        let preview = svc.read_file(&workspace_id, "README.md").await.unwrap();
+        let preview = svc
+            .read_file(WorkspaceTargetKind::Workspace, &workspace_id, "README.md")
+            .await
+            .unwrap();
         match preview {
             WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "hello\n"),
             other => panic!("expected text preview, got {other:?}"),
@@ -596,7 +544,10 @@ mod tests {
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
-        let preview = svc.read_file(&workspace_id, "-notes.md").await.unwrap();
+        let preview = svc
+            .read_file(WorkspaceTargetKind::Workspace, &workspace_id, "-notes.md")
+            .await
+            .unwrap();
         match preview {
             WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "dash file\n"),
             other => panic!("expected text preview, got {other:?}"),
@@ -615,7 +566,10 @@ mod tests {
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
-        let preview = svc.read_file(&workspace_id, "blob.bin").await.unwrap();
+        let preview = svc
+            .read_file(WorkspaceTargetKind::Workspace, &workspace_id, "blob.bin")
+            .await
+            .unwrap();
         match preview {
             WorkspaceFilePreview::Skipped { reason, .. } => {
                 assert_eq!(reason, SkippedReason::Binary);
@@ -633,7 +587,13 @@ mod tests {
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let result = svc
-            .write_file(&workspace_id, "README.md", "new content\n", Some(0.0_f64))
+            .write_file(
+                WorkspaceTargetKind::Workspace,
+                &workspace_id,
+                "README.md",
+                "new content\n",
+                Some(0.0_f64),
+            )
             .await
             .unwrap();
         match result {
@@ -652,9 +612,13 @@ mod tests {
         let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
-        let stat = svc.stat_file(&workspace_id, "README.md").await.unwrap();
+        let stat = svc
+            .stat_file(WorkspaceTargetKind::Workspace, &workspace_id, "README.md")
+            .await
+            .unwrap();
         let result = svc
             .write_file(
+                WorkspaceTargetKind::Workspace,
                 &workspace_id,
                 "README.md",
                 "new content\n",
@@ -679,12 +643,16 @@ mod tests {
         let workspace_id = fixture_workspace(&database, repo.path());
         let svc = WorkspaceFilesService::new(database);
         let hit = svc
-            .grep_content_for_workspace(&workspace_id, "hello")
+            .grep_content(WorkspaceTargetKind::Workspace, &workspace_id, "hello")
             .await
             .unwrap();
         assert!(hit.files.iter().any(|file| file.path == "README.md"));
         let miss = svc
-            .grep_content_for_workspace(&workspace_id, "deadbeef-nope")
+            .grep_content(
+                WorkspaceTargetKind::Workspace,
+                &workspace_id,
+                "deadbeef-nope",
+            )
             .await
             .unwrap();
         assert!(miss.files.is_empty());

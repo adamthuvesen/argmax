@@ -292,10 +292,6 @@ impl SessionFlushBuffer {
     pub fn queue_usage(&mut self, usage: NormalizedUsage) {
         self.pending_usages.push(usage);
     }
-
-    pub fn queue_approval(&mut self, approval: PersistApprovalInput) {
-        self.pending_approvals.push(approval);
-    }
 }
 
 impl Default for SessionFlushBuffer {

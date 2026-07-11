@@ -52,8 +52,7 @@ const snapshot: DashboardSnapshot = {
   events: [],
   rawOutputs: [],
   approvals: [],
-  checks: [],
-  checkpoints: []
+  checks: []
 };
 
 const multiProjectSnapshot: DashboardSnapshot = {

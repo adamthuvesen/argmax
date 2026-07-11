@@ -10,12 +10,11 @@ FTS5 sidecars index timeline events and learnings. The initial Rust migration is
 
 ## Repositories
 
-Table-family modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `checkpoints.rs`, `usage.rs`, `learnings.rs`, `gh.rs`) expose typed reads/writes for services and IPC handlers.
+Table-family modules (`projects.rs`, `workspaces.rs`, `sessions.rs`, `events.rs`, `approvals.rs`, `checks.rs`, `usage.rs`, `learnings.rs`, `gh.rs`) expose typed reads/writes for services and IPC handlers.
 
 Dashboard reads are intentionally split:
 
-- `dashboard:list` returns projects, workspaces, sessions, checks, checkpoints.
-- `dashboard:load` returns the full snapshot used at boot and by browser-preview fixtures.
+- `dashboard:list` returns projects, workspaces, sessions, and checks.
 - `session:events-since` pages selected-session events/raw output by SQLite `rowid`.
 - `approvals:pending` is a separate focused read.
 

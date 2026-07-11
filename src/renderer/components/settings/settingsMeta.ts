@@ -39,7 +39,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     label: "Integrations",
     title: "Connect local tools",
     eyebrow: "Handoffs",
-    description: "Editors and MCP servers Argmax can discover, reveal, or authenticate from this machine.",
+    description: "Editor handoff and setup guidance for provider-managed MCP servers.",
     sections: [
       { id: "settings-tools", label: "Default IDE" },
       { id: "settings-mcp", label: "MCP servers" }

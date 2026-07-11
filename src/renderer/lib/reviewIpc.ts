@@ -5,15 +5,12 @@ import type {
   WorkspaceFileEntry,
   WorkspaceFilePreview,
   WorkspaceFileStat,
-  WorkspaceFileWriteResult
+  WorkspaceFileWriteResult,
+  WorkspaceTarget
 } from "../../shared/types.js";
 
-export type ReviewSourceKind = "workspace" | "project";
-
-export interface ReviewTarget {
-  kind: ReviewSourceKind;
-  id: string;
-}
+export type ReviewTarget = WorkspaceTarget;
+export type ReviewSourceKind = WorkspaceTarget["kind"];
 
 export interface ReviewIpcDispatch {
   listChangedFiles: (comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
@@ -31,8 +28,7 @@ export interface ReviewIpcDispatch {
 }
 
 /**
- * Factory that returns IPC callables already bound to a `target` (workspace
- * or project root). Centralizes the `if workspace then X else Y` branch.
+ * Factory that returns IPC callables already bound to a workspace/project target.
  *
  * Call sites that do not yet have an active target keep using `target` as a
  * gate — `target === null` ⇒ skip the call.
@@ -47,39 +43,27 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
   return {
     listChangedFiles: (comparison) => {
       if (!window.argmax) return noBridge();
-      return kind === "workspace"
-        ? window.argmax.review.listChangedFiles(id, comparison)
-        : window.argmax.review.listChangedFilesForProject(id, comparison);
+      return window.argmax.review.listChangedFiles({ kind, id }, comparison);
     },
     loadDiff: (filePath, comparison) => {
       if (!window.argmax) return noBridge();
-      return kind === "workspace"
-        ? window.argmax.review.loadDiff(id, filePath, comparison)
-        : window.argmax.review.loadDiffForProject(id, filePath, comparison);
+      return window.argmax.review.loadDiff({ kind, id }, filePath, comparison);
     },
     listFiles: () => {
       if (!window.argmax) return noBridge();
-      return kind === "workspace"
-        ? window.argmax.workspace.listFiles(id)
-        : window.argmax.workspace.listFilesForProject(id);
+      return window.argmax.workspace.listFiles({ kind, id });
     },
     readFile: (filePath) => {
       if (!window.argmax) return noBridge();
-      return kind === "workspace"
-        ? window.argmax.workspace.readFile(id, filePath)
-        : window.argmax.workspace.readFileForProject(id, filePath);
+      return window.argmax.workspace.readFile({ kind, id }, filePath);
     },
     statFile: (filePath) => {
       if (!window.argmax) return null;
-      return kind === "workspace"
-        ? window.argmax.workspace.statFile(id, filePath)
-        : window.argmax.workspace.statFileForProject(id, filePath);
+      return window.argmax.workspace.statFile({ kind, id }, filePath);
     },
     writeFile: (filePath, content, expectedMtimeMs) => {
       if (!window.argmax) return null;
-      return kind === "workspace"
-        ? window.argmax.workspace.writeFile(id, filePath, content, expectedMtimeMs)
-        : window.argmax.workspace.writeFileForProject(id, filePath, content, expectedMtimeMs);
+      return window.argmax.workspace.writeFile({ kind, id }, filePath, content, expectedMtimeMs);
     }
   };
 }

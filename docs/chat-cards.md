@@ -25,8 +25,7 @@ conversation-event filtering, raw transcript suppression checks, tool-call
 pairing, and last-significant-event selection. The prompt box, attachment flow,
 model/mode chips, queued follow-ups, stop/send controls, and focus behavior live in
 [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx).
-Header actions, PR refresh state, checkpoint browsing, git actions, and debug-log
-toggling live in
+Header actions, PR refresh state, git actions, and debug-log toggling are handled in
 [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx).
 
 ## Why cards exist

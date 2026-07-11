@@ -10,7 +10,6 @@ interface PaletteFileSource {
   kind: "workspace" | "project";
   id: string;
 }
-
 /**
  * Workspace-wide content search (⌘⇧F). Driven by `git grep` on the main
  * process; each file row groups the per-file match snippets returned by the

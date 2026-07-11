@@ -19,7 +19,7 @@ npm run test:rust
 - [src-tauri/src/ipc](../src-tauri/src/ipc) contains Tauri commands.
 - [src-tauri/src/persistence](../src-tauri/src/persistence) owns SQLite and migrations.
 - [src-tauri/src/providers](../src-tauri/src/providers) owns provider launch, PTYs, event normalization, and flush queues.
-- [src-tauri/src/workspaces](../src-tauri/src/workspaces), [review](../src-tauri/src/review), [files](../src-tauri/src/files), [git](../src-tauri/src/git), [gh](../src-tauri/src/gh), [terminal](../src-tauri/src/terminal), [mcp](../src-tauri/src/mcp), [approvals](../src-tauri/src/approvals), [checks](../src-tauri/src/checks), [memory](../src-tauri/src/memory), and [skills](../src-tauri/src/skills) map to user-facing subsystems.
+- [src-tauri/src/workspaces](../src-tauri/src/workspaces), [review](../src-tauri/src/review), [files](../src-tauri/src/files), [git](../src-tauri/src/git), [gh](../src-tauri/src/gh), [terminal](../src-tauri/src/terminal), [approvals](../src-tauri/src/approvals), [checks](../src-tauri/src/checks), [memory](../src-tauri/src/memory), and [skills](../src-tauri/src/skills) map to user-facing subsystems.
 
 ## Event delivery
 

@@ -32,7 +32,7 @@ use super::{
         ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle, RealProviderProcessLauncher,
     },
-    AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ProviderMode,
+    AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
 };
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
@@ -135,8 +135,7 @@ impl ProviderSessionService {
     }
 
     /// Whether the session's provider handle has finished spawning (`Resolved`)
-    /// rather than still launching in the background (`Pending`). Used to tell
-    /// the two states apart now that `launch` returns before the spawn lands.
+    /// rather than still launching in the background (`Pending`).
     pub fn is_handle_resolved(&self, session_id: &str) -> bool {
         matches!(
             self.handles.lock().expect("handles poisoned").get(session_id),
@@ -240,7 +239,6 @@ impl ProviderSessionService {
             reasoning_effort: input.reasoning_effort,
             fast_mode: input.fast_mode,
             resume_conversation_id: None,
-            mode: ProviderMode::StructuredJson,
             permission_mode,
             agent_mode,
             cols: input.cols.get(),
@@ -528,7 +526,6 @@ impl ProviderSessionService {
                     .and_then(parse_reasoning_effort),
                 fast_mode: input.fast_mode,
                 resume_conversation_id,
-                mode: ProviderMode::StructuredJson,
                 permission_mode,
                 agent_mode,
                 cols: STRUCTURED_LAUNCH_COLS,

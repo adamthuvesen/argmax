@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
-  createCheckpointStub,
   createCurrentWorkspace,
   dashboardDeltaListener,
   dashboardList,
@@ -264,22 +263,6 @@ describe("App sidebar", () => {
     expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
   });
 
-  it("saves a checkpoint via the session header button on a dirty worktree", async () => {
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
-    const checkpointButton = await screen.findByRole("menuitem", { name: "Save checkpoint" });
-    expect(checkpointButton).toBeEnabled();
-    fireEvent.click(checkpointButton);
-
-    await waitFor(() => expect(createCheckpointStub).toHaveBeenCalledTimes(1));
-    const callArg = createCheckpointStub.mock.calls[0]?.[0];
-    expect(callArg?.workspaceId).toBe("workspace-1");
-    expect(callArg?.label).toMatch(/^Checkpoint /);
-    expect(await screen.findByText(/Saved Checkpoint /)).toBeInTheDocument();
-  });
-
   it("surfaces a Stop button on a running session and terminates it", async () => {
     render(<App />);
 
@@ -369,7 +352,9 @@ describe("App sidebar", () => {
 
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
     expect(reviewPanel).toBeInTheDocument();
-    expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/renderer/App.tsx", "workingTree");
+    expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "workingTree"
+    );
     // Omitted (unmodified) context blocks are not rendered — only changed hunks.
     expect(screen.queryByText("16 unmodified lines")).not.toBeInTheDocument();
     // shiki tokenizes lines into per-token <span> children, so getByText on
@@ -413,7 +398,7 @@ describe("App sidebar", () => {
 
     // The panel opens directly in Files mode
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
+    expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" });
 
     // Expand src-tauri/ then src/ to reach the file
     fireEvent.click(await screen.findByRole("treeitem", { name: /^src-tauri$/ }));
@@ -424,7 +409,9 @@ describe("App sidebar", () => {
     fireEvent.click(nestedSrc!);
     fireEvent.click(await screen.findByRole("treeitem", { name: /^index\.ts$/ }));
 
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src-tauri/src/index.ts"));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts"
+    ));
     // The shiki highlighter tokenizes lines into per-token spans, so the line
     // text spans multiple DOM nodes. Query the preview wrapper by aria-label
     // and assert against its concatenated textContent — matches the real
@@ -440,7 +427,9 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("treeitem", { name: /^renderer$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^lib$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^tauriBridge\.ts$/ }));
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/renderer/lib/tauriBridge.ts"));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/renderer/lib/tauriBridge.ts"
+    ));
     expect(await screen.findByLabelText("Preview of src/renderer/lib/tauriBridge.ts")).toHaveTextContent(
       "export const tauriBridge = true;"
     );
@@ -478,7 +467,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
-    expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1");
+    expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" });
     expect(screen.queryByText("1 file")).not.toBeInTheDocument();
 
     fireEvent.keyDown(input, { key: "g", metaKey: true });
@@ -512,14 +501,16 @@ describe("App sidebar", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "index" } });
-    await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledWith("workspace-1"));
+    await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }));
     // uFuzzy may split the basename across highlighted spans; the option's
     // accessible name remains stable.
     await within(palette).findByRole("option", { name: /index\.ts/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src-tauri/src/index.ts"));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts"
+    ));
   });
 
   it("shows a placeholder when a previewed file is binary or too large", async () => {
@@ -608,12 +599,15 @@ describe("App sidebar", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
-    await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith("project-1"));
+    await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" }));
     await within(palette).findByRole("option", { name: /App\.tsx/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith("project-1", "src/renderer/App.tsx"));
+    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith(
+      { kind: "project", id: "project-1" },
+      "src/renderer/App.tsx"
+    ));
   });
 
   it("opens the launcher review panel in project files mode with Cmd+B", async () => {
@@ -638,7 +632,7 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
 
     fireEvent.click(screen.getByRole("treeitem", { name: "index.ts" }));
     const editor = await screen.findByLabelText("Editor for index.ts");
@@ -647,7 +641,7 @@ describe("App sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save file" }));
     await waitFor(() =>
       expect(writeProjectFile).toHaveBeenCalledWith(
-        "project-1",
+        { kind: "project", id: "project-1" },
         "index.ts",
         "export const ok = false;\n",
         123
@@ -721,7 +715,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
   });
 
   it("opens the launcher review panel in project files mode with Cmd+G", async () => {
@@ -738,7 +732,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith("project-1");
+    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
     await waitFor(() =>

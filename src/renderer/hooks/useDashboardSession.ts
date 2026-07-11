@@ -173,7 +173,6 @@ export function useDashboardSession(
           sessions: current.sessions,
           workspaces: current.workspaces,
           checks: current.checks,
-          checkpoints: current.checkpoints,
           projects: current.projects
         });
         return {
@@ -220,7 +219,7 @@ export function useDashboardSession(
       if (token !== dashboardRefreshToken.current) {
         return;
       }
-      // Upsert workspaces/sessions/checks/checkpoints via mergeDashboardDelta
+      // Upsert workspaces/sessions/checks via mergeDashboardDelta
       // instead of spreading them on top. Spreading races with concurrent
       // dashboard deltas: if a delta arrived during the await with a
       // newly-launched session, the status response (captured before the
@@ -236,8 +235,7 @@ export function useDashboardSession(
         const merged = mergeDashboardDelta(current, {
           workspaces: status.workspaces,
           sessions: status.sessions,
-          checks: status.checks,
-          checkpoints: status.checkpoints
+          checks: status.checks
         });
         return merged.approvals === approvals ? merged : { ...merged, approvals };
       });
@@ -481,8 +479,7 @@ export function useDashboardSession(
           mergeDashboardDelta(current, {
             workspaces: status.workspaces,
             sessions: status.sessions,
-            checks: status.checks,
-            checkpoints: status.checkpoints
+            checks: status.checks
           })
         );
       } finally {

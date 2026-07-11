@@ -17,7 +17,6 @@ function provider(overrides: Partial<DiscoveredProvider>): DiscoveredProvider {
     binaryPath: "/usr/local/bin/claude",
     version: "1.2.3",
     authenticated: true,
-    modes: ["structured-json"],
     setupGuidance: null,
     ...overrides
   };

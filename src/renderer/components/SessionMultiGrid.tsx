@@ -101,7 +101,6 @@ interface SessionMultiGridProps {
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
-  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   /** App-level setter the focused SessionPane registers with so its file
       source + pick handler are wired into the command palette's Files
@@ -146,7 +145,6 @@ export function SessionMultiGrid({
   onCancelQueuedMessage,
   pendingMessages,
   onTerminateSession,
-  onCreateCheckpoint,
   onRunCheck,
   registerPaletteFileContext
 }: SessionMultiGridProps): JSX.Element {
@@ -399,7 +397,6 @@ export function SessionMultiGrid({
                         showCostPanel={showCostPanel}
                         isFocused={focused}
                         onClose={() => onClosePane({ row: r, col: c })}
-                        onCreateCheckpoint={onCreateCheckpoint}
                         onFastModeEnabledChange={onFastModeEnabledChange}
                         onLoadSessionEvents={onLoadSessionEvents}
                         onOpenAgent={openChildAgent}

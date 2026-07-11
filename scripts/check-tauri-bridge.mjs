@@ -48,8 +48,6 @@ if (duplicateFixtureChannels.length || missing.length || extra.length) {
 
 const expectedPushChannels = [
   "dashboard:delta",
-  "mcp:auth:data",
-  "mcp:auth:exit",
   "menu:command",
   "terminal:data",
   "terminal:exit"

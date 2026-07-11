@@ -6,7 +6,6 @@ pub mod events;
 pub mod gh;
 pub mod learnings;
 pub mod migrations;
-pub mod prepared;
 pub mod projects;
 pub mod sessions;
 pub mod time;

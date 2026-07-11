@@ -8,9 +8,11 @@ Rust owns workspace lifecycle and git operations.
 
 The launcher composer exposes this choice per launch via the "Worktree" toggle (off by default → current checkout), persisted to `localStorage` (`argmax.workspaceMode`). `worktree` calls `create_isolated` (forking `argmax/<slug>` from the live branch); `current` calls `create_current` (shared checkout). See [src/renderer/lib/workspaceMode.ts](../src/renderer/lib/workspaceMode.ts).
 
-## Review And Checkpoints
+## Review
 
-[src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs) lists changed files and loads diffs for both workspace-scoped and project-scoped review. [checkpoints.rs](../src-tauri/src/review/checkpoints.rs) captures a binary patch with a temporary git index and stores it under app data `checkpoints/`.
+Changed files are listed and diffs are loaded for workspace or project targets
+through one command surface in
+[src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs).
 
 ## Files
 

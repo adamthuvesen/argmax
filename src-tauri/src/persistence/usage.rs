@@ -2,7 +2,6 @@ use rusqlite::Connection;
 use serde::Serialize;
 use specta::Type;
 
-use super::prepared::prepared;
 use super::sessions::UsageCounts;
 use super::time::now_iso;
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -39,9 +38,9 @@ pub fn insert_usage_event(
         .map_err(sqlite_error)?;
 
     let result = (|| {
-        let mut insert_statement = prepared(
-            connection,
-            r#"
+        let mut insert_statement = connection
+            .prepare_cached(
+                r#"
             INSERT INTO usage_events (
               session_id, event_id, model_id, input_tokens, output_tokens,
               cache_read_tokens, cache_write_tokens, cost_usd, created_at
@@ -49,8 +48,8 @@ pub fn insert_usage_event(
               ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             "#,
-        )
-        .map_err(sqlite_error)?;
+            )
+            .map_err(sqlite_error)?;
         insert_statement
             .execute((
                 input.session_id.as_str(),
@@ -70,9 +69,9 @@ pub fn insert_usage_event(
         // context_window keeps its prior value unless this turn reported one.
         let context_tokens =
             input.tokens.input + input.tokens.cache_read + input.tokens.cache_write;
-        let mut update_statement = prepared(
-            connection,
-            r#"
+        let mut update_statement = connection
+            .prepare_cached(
+                r#"
             UPDATE sessions
             SET
               input_tokens = input_tokens + ?,
@@ -84,8 +83,8 @@ pub fn insert_usage_event(
               context_window = COALESCE(?, context_window)
             WHERE id = ?
             "#,
-        )
-        .map_err(sqlite_error)?;
+            )
+            .map_err(sqlite_error)?;
         let changes = update_statement
             .execute((
                 input.tokens.input,
@@ -103,11 +102,9 @@ pub fn insert_usage_event(
         }
 
         if !input.model_id.is_empty() {
-            let mut model_statement = prepared(
-                connection,
-                "UPDATE sessions SET last_model_id = ? WHERE id = ?",
-            )
-            .map_err(sqlite_error)?;
+            let mut model_statement = connection
+                .prepare_cached("UPDATE sessions SET last_model_id = ? WHERE id = ?")
+                .map_err(sqlite_error)?;
             model_statement
                 .execute((input.model_id.as_str(), input.session_id.as_str()))
                 .map_err(sqlite_error)?;
@@ -132,9 +129,7 @@ pub fn get_session_cost_summary(
     connection: &Connection,
     session_id: &str,
 ) -> ArgmaxResult<SessionCostSummary> {
-    let mut session_statement = prepared(
-        connection,
-        "SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id FROM sessions WHERE id = ?",
+    let mut session_statement = connection.prepare_cached("SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id FROM sessions WHERE id = ?",
     )
     .map_err(sqlite_error)?;
     let session_row = match session_statement.query_row([session_id], |row| {
@@ -156,9 +151,7 @@ pub fn get_session_cost_summary(
         Err(error) => return Err(sqlite_error(error)),
     };
 
-    let mut latest_statement = prepared(
-        connection,
-        "SELECT model_id FROM usage_events WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+    let mut latest_statement = connection.prepare_cached("SELECT model_id FROM usage_events WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
     )
     .map_err(sqlite_error)?;
     let latest_model_id =

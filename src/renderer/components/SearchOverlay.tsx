@@ -10,7 +10,6 @@ export interface SearchHit {
   snippet: string;
   rank: number;
 }
-
 export function SearchOverlay({
   open,
   onClose,

@@ -88,7 +88,6 @@ export function SessionConversation({
   onCancelQueuedMessage,
   pendingMessages = [],
   onTerminateSession,
-  onCreateCheckpoint,
   onRunCheck,
   onToggleLog,
   onOpenFile,
@@ -124,7 +123,6 @@ export function SessionConversation({
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
-  onCreateCheckpoint: (workspaceId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
   /** Called when the user clicks a file reference inside agent text. When
@@ -371,7 +369,6 @@ export function SessionConversation({
           <SessionActionsMenu
             isLogOpen={isLogOpen}
             onBrowseFiles={review.openPanelInFilesMode}
-            onCreateCheckpoint={onCreateCheckpoint}
             onOpenCommitDialog={onOpenCommitDialog}
             onToggleLog={onToggleLog}
             session={session}

@@ -8,7 +8,7 @@ export interface DismissOptions {
    * Trap Tab/Shift+Tab inside `ref` so focus cycles within the dismissable
    * surface instead of escaping to background controls. Use only for true
    * modal dialogs (CommandPalette, SearchOverlay, KeyboardCheatSheet,
-   * McpAuthDialog, WorkspaceContentSearchOverlay) — popovers like the IDE
+   * WorkspaceContentSearchOverlay) — popovers like the IDE
    * picker and project picker do not need a trap.
    */
   trapFocus?: boolean;

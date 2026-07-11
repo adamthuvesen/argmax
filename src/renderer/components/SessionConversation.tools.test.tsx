@@ -566,15 +566,12 @@ describe("SessionConversation — tools & chrome", () => {
 
     // None of the consolidated actions are visible until the picker is opened.
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Save checkpoint" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Git actions" })).toBeNull();
     expect(screen.queryByRole("menuitemcheckbox", { name: "Toggle debug log" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
 
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
-    // The default workspace stub is clean, so the checkpoint row is disabled.
-    expect(screen.getByRole("menuitem", { name: "Save checkpoint" })).toBeDisabled();
     expect(screen.getByRole("menuitem", { name: "Git actions" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemcheckbox", { name: "Toggle debug log" })).toHaveAttribute(
       "aria-checked",

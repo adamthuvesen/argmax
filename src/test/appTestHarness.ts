@@ -36,7 +36,6 @@ export type AppTestMocks = {
   createIsolatedWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createIsolated"]>;
   autotitleWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["autoTitle"]>;
   archiveWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["archive"]>;
-  dashboardLoad: AppTestMockFn<ArgmaxApi["dashboard"]["load"]>;
   dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
   dashboardDeltaUnsubscribe: AppTestMockFn<() => void>;
   launchProvider: AppTestMockFn<ArgmaxApi["providers"]["launch"]>;
@@ -46,13 +45,11 @@ export type AppTestMocks = {
   listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
   listChangedFiles: AppTestMockFn<ArgmaxApi["review"]["listChangedFiles"]>;
   loadDiff: AppTestMockFn<ArgmaxApi["review"]["loadDiff"]>;
-  listChangedFilesForProject: AppTestMockFn<ArgmaxApi["review"]["listChangedFilesForProject"]>;
-  loadDiffForProject: AppTestMockFn<ArgmaxApi["review"]["loadDiffForProject"]>;
   listWorkspaceFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFiles"]>;
   readWorkspaceFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
-  listProjectFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFilesForProject"]>;
-  readProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["readFileForProject"]>;
-  writeProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["writeFileForProject"]>;
+  listProjectFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFiles"]>;
+  readProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["readFile"]>;
+  writeProjectFile: AppTestMockFn<ArgmaxApi["workspace"]["writeFile"]>;
   sessionEventsSince: AppTestMockFn<ArgmaxApi["session"]["eventsSince"]>;
   sessionAgentEvents: AppTestMockFn<ArgmaxApi["session"]["agentEvents"]>;
   sessionCostSummary: AppTestMockFn<ArgmaxApi["session"]["costSummary"]>;
@@ -61,7 +58,6 @@ export type AppTestMocks = {
   providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
   diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
   vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
-  createCheckpointStub: AppTestMockFn<ArgmaxApi["checkpoints"]["create"]>;
   workspaceStatus: AppTestMockFn<ArgmaxApi["workspaces"]["status"]>;
   skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
   openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
@@ -72,7 +68,6 @@ export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
 export let createIsolatedWorkspace: AppTestMocks["createIsolatedWorkspace"];
 export let autotitleWorkspace: AppTestMocks["autotitleWorkspace"];
 export let archiveWorkspace: AppTestMocks["archiveWorkspace"];
-export let dashboardLoad: AppTestMocks["dashboardLoad"];
 export let dashboardList: AppTestMocks["dashboardList"];
 export let dashboardDeltaListener: ((delta: DashboardDelta) => void) | null = null;
 export let dashboardDeltaUnsubscribe: AppTestMocks["dashboardDeltaUnsubscribe"];
@@ -83,8 +78,6 @@ export let pickProjectFolder: AppTestMocks["pickProjectFolder"];
 export let listBranches: AppTestMocks["listBranches"];
 export let listChangedFiles: AppTestMocks["listChangedFiles"];
 export let loadDiff: AppTestMocks["loadDiff"];
-export let listChangedFilesForProject: AppTestMocks["listChangedFilesForProject"];
-export let loadDiffForProject: AppTestMocks["loadDiffForProject"];
 export let listWorkspaceFiles: AppTestMocks["listWorkspaceFiles"];
 export let readWorkspaceFile: AppTestMocks["readWorkspaceFile"];
 export let listProjectFiles: AppTestMocks["listProjectFiles"];
@@ -98,7 +91,6 @@ export let terminateProvider: AppTestMocks["terminateProvider"];
 export let providersDiscover: AppTestMocks["providersDiscover"];
 export let diagnosticsStub: AppTestMocks["diagnosticsStub"];
 export let vacuumDatabaseStub: AppTestMocks["vacuumDatabaseStub"];
-export let createCheckpointStub: AppTestMocks["createCheckpointStub"];
 export let workspaceStatus: AppTestMocks["workspaceStatus"];
 export let skillsList: AppTestMocks["skillsList"];
 export let openInIde: AppTestMocks["openInIde"];
@@ -124,7 +116,6 @@ export function setupAppTestMocks(): void {
       state: "archived"
     })
   );
-  dashboardLoad = vi.fn<ArgmaxApi["dashboard"]["load"]>().mockResolvedValue(snapshot);
   dashboardList = vi.fn<ArgmaxApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
   dashboardDeltaListener = null;
   dashboardDeltaUnsubscribe = vi.fn<() => void>();
@@ -193,7 +184,6 @@ export function setupAppTestMocks(): void {
         rawOutputs: 60,
         approvals: 0,
         checks: 3,
-        checkpoints: 1,
         learnings: 5,
         usageEvents: 18
       },
@@ -234,26 +224,11 @@ export function setupAppTestMocks(): void {
     ]
   });
   vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
-  createCheckpointStub = vi.fn<ArgmaxApi["checkpoints"]["create"]>().mockResolvedValue({
-    id: "checkpoint-1",
-    workspaceId: "workspace-1",
-    label: "Checkpoint",
-    branch: "argmax/dashboard",
-    gitRef: null,
-    patchPath: null,
-    createdAt: "2026-05-12T00:00:00.000Z"
-  });
   menuCommandListener = null;
   workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
   listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
   loadDiff = vi.fn<ArgmaxApi["review"]["loadDiff"]>().mockResolvedValue({
     workspaceId: "workspace-1",
-    filePath: null,
-    content: ""
-  });
-  listChangedFilesForProject = vi.fn<ArgmaxApi["review"]["listChangedFilesForProject"]>().mockResolvedValue([]);
-  loadDiffForProject = vi.fn<ArgmaxApi["review"]["loadDiffForProject"]>().mockResolvedValue({
-    workspaceId: "",
     filePath: null,
     content: ""
   });
@@ -264,12 +239,12 @@ export function setupAppTestMocks(): void {
     size: 0,
     mtimeMs: 0
   });
-  listProjectFiles = vi.fn<ArgmaxApi["workspace"]["listFilesForProject"]>().mockResolvedValue([]);
-  readProjectFile = vi.fn<ArgmaxApi["workspace"]["readFileForProject"]>().mockResolvedValue({
+  listProjectFiles = vi.fn<ArgmaxApi["workspace"]["listFiles"]>().mockResolvedValue([]);
+  readProjectFile = vi.fn<ArgmaxApi["workspace"]["readFile"]>().mockResolvedValue({
     kind: "skipped",
     reason: "not-a-file"
   } as const);
-  writeProjectFile = vi.fn<ArgmaxApi["workspace"]["writeFileForProject"]>().mockResolvedValue({
+  writeProjectFile = vi.fn<ArgmaxApi["workspace"]["writeFile"]>().mockResolvedValue({
     ok: true,
     mtimeMs: 0,
     size: 0
@@ -284,7 +259,6 @@ export function setupAppTestMocks(): void {
 
   window.argmax = {
     dashboard: {
-      load: dashboardLoad,
       list: dashboardList,
       onDelta: (listener) => {
         dashboardDeltaListener = listener;
@@ -346,26 +320,19 @@ export function setupAppTestMocks(): void {
     },
     review: {
       listChangedFiles,
-      loadDiff,
-      listChangedFilesForProject,
-      loadDiffForProject
+      loadDiff
     },
     workspace: {
-      listFiles: listWorkspaceFiles,
-      readFile: readWorkspaceFile,
-      writeFile: () => Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
+      listFiles: (target) => target.kind === "project" ? listProjectFiles(target) : listWorkspaceFiles(target),
+      readFile: (target, path) => target.kind === "project" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
+      writeFile: (target, path, content, mtime) => target.kind === "project"
+        ? writeProjectFile(target, path, content, mtime)
+        : Promise.resolve({ ok: true, mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
-      listFilesForProject: listProjectFiles,
-      readFileForProject: readProjectFile,
-      writeFileForProject: writeProjectFile,
-      statFileForProject: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       grepContent: () => Promise.resolve({ files: [], truncated: false })
     },
     checks: {
       run: () => Promise.resolve(missingCheck())
-    },
-    checkpoints: {
-      create: createCheckpointStub
     },
     health: {
       ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" })
@@ -379,17 +346,6 @@ export function setupAppTestMocks(): void {
       diagnostics: diagnosticsStub,
       vacuumDatabase: vacuumDatabaseStub,
       setTheme: () => Promise.resolve({ ok: true })
-    },
-    mcp: {
-      list: () => Promise.resolve([]),
-      auth: {
-        start: () => Promise.resolve({ sessionId: "test-mcp-auth" }),
-        write: () => Promise.resolve({ ok: true }),
-        resize: () => Promise.resolve({ ok: true }),
-        terminate: () => Promise.resolve({ ok: true }),
-        onData: () => () => undefined,
-        onExit: () => () => undefined
-      }
     },
     menu: {
       onCommand: (listener) => {
@@ -438,7 +394,6 @@ export function setupAppTestMocks(): void {
 }
 
 export function mockDashboardSnapshot(data: DashboardSnapshot): void {
-  dashboardLoad.mockResolvedValue(data);
   dashboardList.mockResolvedValue(dashboardListSnapshot(data));
   sessionEventsSince.mockResolvedValue({
     events: data.events,

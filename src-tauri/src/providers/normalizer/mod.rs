@@ -177,35 +177,6 @@ impl Dispatcher {
     pub fn context_mut(&mut self, session_id: &str) -> &mut NormalizerSessionContext {
         self.contexts.entry(session_id.to_string()).or_default()
     }
-
-    pub fn set_context(
-        &mut self,
-        session_id: impl Into<String>,
-        context: NormalizerSessionContext,
-    ) {
-        self.contexts.insert(session_id.into(), context);
-    }
-
-    pub fn flush_session(
-        &mut self,
-        provider: ProviderId,
-        session_id: &str,
-        created_at: &str,
-    ) -> NormalizedProviderResult {
-        let Some(line) = self.line_buffers.remove(session_id) else {
-            return NormalizedProviderResult::default();
-        };
-        if line.trim().is_empty() {
-            return NormalizedProviderResult::default();
-        }
-        let event = ProviderOutputEvent {
-            session_id: session_id.to_string(),
-            stream: ProviderOutputStream::Stdout,
-            message: String::new(),
-            created_at: created_at.to_string(),
-        };
-        normalize_line(provider, &event, line.trim(), self.context_mut(session_id))
-    }
 }
 
 #[cfg(test)]

@@ -19,6 +19,10 @@ Every request handler is registered in [src-tauri/src/ipc/mod.rs](../src-tauri/s
 
 Runtime validation belongs in Rust input structs/newtypes. Do not add Zod schemas or renderer-side validation for trusted app IPC.
 
+The same explicit `{ kind: "workspace" | "project", id }` target is used by
+file and review commands. Separate `*ForProject` channels should not be added;
+the target is resolved in Rust.
+
 `session:agent-events` is the focused read for subagent activity panes. It takes
 `{ sessionId, parentToolUseId }`, runs provider-specific trace import
 best-effort for that one parent tool, then returns the same
@@ -35,8 +39,6 @@ Push channels are emitted by Rust and subscribed in `tauriBridge.ts`:
 - `dashboard:delta`
 - `terminal:data`
 - `terminal:exit`
-- `mcp:auth:data`
-- `mcp:auth:exit`
 - `menu:command`
 
 Push channels do not belong in `channels.txt`.

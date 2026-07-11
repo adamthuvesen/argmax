@@ -8,8 +8,6 @@ import {
   FONT_SIZE_STORAGE_KEY,
   FONT_OPTIONS,
   FONT_STORAGE_KEY,
-  getFontSizeOption,
-  getFontOption,
   resolveCssPxVariable,
   resolveTerminalFontSize,
   readStoredFontSize,
@@ -49,10 +47,6 @@ describe("fonts", () => {
     }
   });
 
-  it("getFontOption returns the matching entry", () => {
-    expect(getFontOption("fira-code").label).toBe("Fira Code");
-  });
-
   it("applyFontToDocument sets the data-font attribute on <html>", () => {
     applyFontToDocument("geist-mono");
     expect(document.documentElement.getAttribute("data-font")).toBe("geist-mono");
@@ -75,7 +69,6 @@ describe("fonts", () => {
 
   it("exposes the hidden whole-app font size options", () => {
     expect(FONT_SIZE_OPTIONS.map((option) => option.id)).toEqual(["small", "default", "large"]);
-    expect(getFontSizeOption("small").label).toBe("Small");
   });
 
   it("applyFontSizeToDocument sets the data-font-size attribute on <html>", () => {

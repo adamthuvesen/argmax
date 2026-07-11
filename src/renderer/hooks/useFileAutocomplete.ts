@@ -122,8 +122,7 @@ export function useFileAutocomplete({
     if (!api) return;
     inflightRef.current = key;
     let cancelled = false;
-    const fetcher =
-      source.kind === "workspace" ? api.listFiles(source.id) : api.listFilesForProject(source.id);
+    const fetcher = api.listFiles(source);
     void fetcher
       .then((fetched) => {
         if (cancelled) return;

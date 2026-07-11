@@ -373,7 +373,6 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::providers::ProviderMode;
 
     #[test]
     fn claude_structured_args_match_main_stream_json() {
@@ -829,20 +828,10 @@ mod tests {
     }
 
     fn launch_input(provider_id: ProviderId) -> ProviderLaunchInput {
-        let (model_label, model_id, reasoning_effort, mode) = match provider_id {
-            ProviderId::Claude => ("Claude Haiku", "haiku", None, ProviderMode::StructuredJson),
-            ProviderId::Codex => (
-                "GPT-5.5 Low",
-                "gpt-5.5",
-                Some(ReasoningEffort::Low),
-                ProviderMode::StructuredJson,
-            ),
-            ProviderId::Cursor => (
-                "Composer 2.5 (Cursor)",
-                "composer-2.5",
-                None,
-                ProviderMode::StructuredJson,
-            ),
+        let (model_label, model_id, reasoning_effort) = match provider_id {
+            ProviderId::Claude => ("Claude Haiku", "haiku", None),
+            ProviderId::Codex => ("GPT-5.5 Low", "gpt-5.5", Some(ReasoningEffort::Low)),
+            ProviderId::Cursor => ("Composer 2.5 (Cursor)", "composer-2.5", None),
         };
 
         ProviderLaunchInput {
@@ -855,7 +844,6 @@ mod tests {
             reasoning_effort,
             fast_mode: false,
             resume_conversation_id: None,
-            mode,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 100,

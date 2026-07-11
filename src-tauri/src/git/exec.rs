@@ -22,8 +22,8 @@ const ERROR_DETAIL_CAP_BYTES: usize = 4096;
 pub struct GitExecOptions {
     pub timeout: Duration,
     pub stdout_cap_bytes: usize,
-    /// Extra env vars layered onto git's environment. Used by the
-    /// checkpoint service to inject `GIT_INDEX_FILE` for a scratch index.
+    /// Extra env vars layered onto git's environment, including the scratch
+    /// index used for selected-file commits.
     pub env: Vec<(OsString, OsString)>,
 }
 
@@ -127,6 +127,19 @@ where
     Err(non_zero_error(exit_code, &output.stderr))
 }
 
+pub async fn run_git_buffer_with_options<P, I, S>(
+    workspace_path: P,
+    args: I,
+    options: GitExecOptions,
+) -> ArgmaxResult<Vec<u8>>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    run_git_output(workspace_path.as_ref(), args, options).await
+}
+
 pub async fn run_git_buffer<P, I, S>(
     workspace_path: P,
     args: I,
@@ -146,19 +159,6 @@ where
         },
     )
     .await
-}
-
-pub async fn run_git_buffer_with_options<P, I, S>(
-    workspace_path: P,
-    args: I,
-    options: GitExecOptions,
-) -> ArgmaxResult<Vec<u8>>
-where
-    P: AsRef<Path>,
-    I: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    run_git_output(workspace_path.as_ref(), args, options).await
 }
 
 pub fn reject_leading_dash(field: &'static str, value: &str) -> ArgmaxResult<()> {

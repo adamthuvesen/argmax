@@ -31,8 +31,8 @@ const POLL_INTERVAL_MS: u64 = 50;
 /// PID-based variant of `terminate_with_escalation`. Sends SIGTERM,
 /// sleeps `GRACEFUL_TIMEOUT_MS`, then SIGKILL — no `try_wait` polling,
 /// because callers that own the child handle behind a `wait()`-blocking
-/// thread (PTYs via `portable_pty`, see `mcp::auth` and
-/// `terminal::service`) can't safely share that handle with this
+/// thread (PTYs via `portable_pty`, see `terminal::service`) can't safely
+/// share that handle with this
 /// function.
 ///
 /// Best-effort: signal failures are not bubbled — the caller has
@@ -105,8 +105,8 @@ pub fn signal_term_and_kill_blocking(pid: u32) {
 
 #[cfg(not(unix))]
 pub async fn signal_term_then_kill(_pid: u32) {
-    // Windows path is not supported in v1 — TerminalService/McpAuth will
-    // own platform-specific kill logic here when added.
+    // Windows path is not supported in v1 — TerminalService will own
+    // platform-specific kill logic here when added.
 }
 
 #[cfg(not(unix))]

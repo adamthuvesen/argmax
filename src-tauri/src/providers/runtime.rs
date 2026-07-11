@@ -46,7 +46,7 @@ use super::{
     adapters::get_provider_definition, discovery::ProviderDiscovery,
     environment::build_provider_environment, flush_queue::DashboardDelta,
     normalizer::ProviderOutputStream, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
-    ProviderMode, ReasoningEffort,
+    ReasoningEffort,
 };
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
@@ -139,13 +139,6 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
         Box::pin(async move {
-            if input.mode != ProviderMode::StructuredJson {
-                return Err(ArgmaxError::service(
-                    "PROVIDER_MODE_UNSUPPORTED",
-                    "interactive provider PTY launch is not wired yet",
-                ));
-            }
-
             let definition = get_provider_definition(input.provider);
             let capability = self.discovery.discover(input.provider).await;
             let Some(binary_path) = capability.binary_path else {

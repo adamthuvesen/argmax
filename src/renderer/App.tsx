@@ -733,7 +733,7 @@ export function App(): JSX.Element {
     openNewSessionPane();
   }, [openNewSessionPane, setIsSettingsOpen]);
 
-  const { sendSessionInput, cancelQueuedMessage, runCheck, createCheckpoint, terminateSession } =
+  const { sendSessionInput, cancelQueuedMessage, runCheck, terminateSession } =
     useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: fastModeEnabled });
 
   const launchTask = useCallback(
@@ -822,18 +822,12 @@ export function App(): JSX.Element {
           prompt
         })
         .catch(() => undefined);
-      // Launch already succeeded and the snapshot is seeded above; this
-      // refresh is best-effort. allSettled keeps a rejecting refresh from
-      // surfacing the successful launch as a failure to the caller.
-      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(launchedSession.id)]);
     },
     [
       selectedProject,
       isFullLauncherOpen,
       snapshot.projects,
       maxGridColumnsPerRow,
-      refreshDashboardStatus,
-      loadSessionEvents,
       pendingSelectionRef,
       permissionMode,
       fastModeEnabled,
@@ -1198,7 +1192,6 @@ export function App(): JSX.Element {
               onCancelQueuedMessage={cancelQueuedMessage}
               pendingMessages={snapshot.pendingMessages}
               onTerminateSession={terminateSession}
-              onCreateCheckpoint={createCheckpoint}
               onRunCheck={runCheck}
               registerPaletteFileContext={registerPaletteFileContext}
             />

@@ -11,13 +11,11 @@ pub mod validation;
 
 pub mod approvals;
 pub mod attachments;
-pub mod checkpoints;
 pub mod checks;
 pub mod dashboard;
 pub mod git_ops;
 pub mod health;
 pub mod learnings;
-pub mod mcp;
 pub mod projects;
 pub mod providers;
 pub mod prs;
@@ -65,31 +63,18 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "session:agent-events",
     "review:list-changed-files",
     "review:load-diff",
-    "review:list-changed-files-for-project",
-    "review:load-diff-for-project",
     "workspace:list-files",
     "workspace:read-file",
-    "workspace:list-files-for-project",
-    "workspace:read-file-for-project",
     "workspace:write-file",
     "workspace:stat-file",
-    "workspace:write-file-for-project",
-    "workspace:stat-file-for-project",
     "workspace:grep-content",
     "checks:run",
-    "checkpoints:create",
-    "dashboard:load",
     "skills:list",
     "system:open-path",
     "system:list-detected-ides",
     "system:diagnostics",
     "system:vacuum-database",
     "system:set-theme",
-    "mcp:list",
-    "mcp:auth:start",
-    "mcp:auth:write",
-    "mcp:auth:resize",
-    "mcp:auth:terminate",
     "session:cost-summary",
     "learnings:list",
     "learnings:update",
@@ -154,31 +139,18 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         session::session_agent_events,
         review::review_list_changed_files,
         review::review_load_diff,
-        review::review_list_changed_files_for_project,
-        review::review_load_diff_for_project,
         workspace_files::workspace_list_files,
         workspace_files::workspace_read_file,
-        workspace_files::workspace_list_files_for_project,
-        workspace_files::workspace_read_file_for_project,
         workspace_files::workspace_write_file,
         workspace_files::workspace_stat_file,
-        workspace_files::workspace_write_file_for_project,
-        workspace_files::workspace_stat_file_for_project,
         workspace_files::workspace_grep_content,
         checks::checks_run,
-        checkpoints::checkpoints_create,
-        dashboard::dashboard_load,
         skills::skills_list,
         system::system_open_path,
         system::system_list_detected_ides,
         system::system_diagnostics,
         system::system_vacuum_database,
         system::system_set_theme,
-        mcp::mcp_list,
-        mcp::mcp_auth_start,
-        mcp::mcp_auth_write,
-        mcp::mcp_auth_resize,
-        mcp::mcp_auth_terminate,
         session::session_cost_summary,
         learnings::learnings_list,
         learnings::learnings_update,

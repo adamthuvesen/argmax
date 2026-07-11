@@ -31,7 +31,7 @@ Key folders:
 - `providers/`: Claude/Codex/Cursor adapters, PTY process runtime, normalizers, and event flush queue.
 - `sessions/`: session orchestration between `ipc/` and `providers/`.
 - `workspaces/`, `review/`, `files/`, `git/`: worktree lifecycle, diffs, file previews/writes, and branch/PR actions.
-- `approvals/`, `checks/`, `gh/`, `memory/`, `mcp/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. `notifications.rs` and `updater.rs` are top-level modules.
+- `approvals/`, `checks/`, `gh/`, `memory/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. `notifications.rs` and `updater.rs` are top-level modules.
 
 Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspaces:status`) plus post-commit `dashboard:delta` pushes.
 

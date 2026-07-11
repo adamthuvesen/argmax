@@ -55,7 +55,6 @@ pub struct RowCounts {
     pub raw_outputs: i64,
     pub approvals: i64,
     pub checks: i64,
-    pub checkpoints: i64,
     pub learnings: i64,
     pub usage_events: i64,
 }
@@ -294,7 +293,6 @@ fn collect_database_stats(
             raw_outputs: count_rows(connection, "raw_outputs"),
             approvals: count_rows(connection, "approvals"),
             checks: count_rows(connection, "checks"),
-            checkpoints: count_rows(connection, "checkpoints"),
             learnings: count_rows(connection, "learnings"),
             usage_events: count_rows(connection, "usage_events"),
         },

@@ -18,13 +18,6 @@ use specta::Type;
 
 pub use crate::ipc::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "kebab-case")]
-pub enum ProviderMode {
-    InteractivePty,
-    StructuredJson,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderLaunchInput {
@@ -37,7 +30,6 @@ pub struct ProviderLaunchInput {
     pub reasoning_effort: Option<ReasoningEffort>,
     pub fast_mode: bool,
     pub resume_conversation_id: Option<String>,
-    pub mode: ProviderMode,
     pub permission_mode: PermissionMode,
     pub agent_mode: AgentMode,
     pub cols: u16,

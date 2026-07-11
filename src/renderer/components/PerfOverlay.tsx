@@ -10,7 +10,6 @@ const POLL_INTERVAL_MS = 1000;
 // SPEC's draft list used a few stale labels (`workspaces:status`,
 // `gitReview:loadDiff`) that don't exist in the registry.
 const TRACKED_CHANNELS = [
-  "dashboard:load",
   "dashboard:list",
   "session:events-since",
   "workspace:status",

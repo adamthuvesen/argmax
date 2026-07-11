@@ -20,7 +20,6 @@ const baseDiagnostics: DiagnosticsReport = {
       rawOutputs: 0,
       approvals: 0,
       checks: 0,
-      checkpoints: 0,
       learnings: 0,
       usageEvents: 0
     },
@@ -92,7 +91,6 @@ describe("PerfOverlay", () => {
     // Tracked channels render in the SPEC's canonical order.
     const rows = Array.from(hud.querySelectorAll("tr[data-channel]"));
     expect(rows.map((row) => row.getAttribute("data-channel"))).toEqual([
-      "dashboard:load",
       "dashboard:list",
       "session:events-since",
       "workspace:status",
@@ -106,9 +104,6 @@ describe("PerfOverlay", () => {
       expect(list?.textContent).toContain("1.2ms");
       expect(list?.textContent).toContain("4.8ms");
     });
-    const load = rows.find((row) => row.getAttribute("data-channel") === "dashboard:load");
-    expect(load?.textContent).toContain("—");
-
     // Non-tracked channel ("providers:launch") is dropped from the HUD.
     expect(hud.textContent).not.toContain("providers:launch");
   });

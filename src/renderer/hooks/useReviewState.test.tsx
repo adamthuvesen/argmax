@@ -55,8 +55,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
   let readWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
   let writeWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFile"]>>;
   let statWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["statFile"]>>;
-  let readProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFileForProject"]>>;
-  let writeProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFileForProject"]>>;
+  let readProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
+  let writeProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFile"]>>;
 
   beforeEach(() => {
     // The Local/Branch toggle persists to localStorage; clear it so each test
@@ -78,10 +78,10 @@ describe("useReviewState — IPC fan-out resistance", () => {
       .fn<ArgmaxApi["workspace"]["statFile"]>()
       .mockResolvedValue({ mtimeMs: 1, size: 0 });
     readProjectFile = vi
-      .fn<ArgmaxApi["workspace"]["readFileForProject"]>()
+      .fn<ArgmaxApi["workspace"]["readFile"]>()
       .mockResolvedValue({ kind: "text", content: "project\n", size: 8, mtimeMs: 10 });
     writeProjectFile = vi
-      .fn<ArgmaxApi["workspace"]["writeFileForProject"]>()
+      .fn<ArgmaxApi["workspace"]["writeFile"]>()
       .mockResolvedValue({ ok: true, mtimeMs: 11, size: 0 });
 
     Object.defineProperty(window, "argmax", {
@@ -90,19 +90,17 @@ describe("useReviewState — IPC fan-out resistance", () => {
       value: {
         review: {
           listChangedFiles,
-          loadDiff: vi.fn().mockResolvedValue(null),
-          listChangedFilesForProject: vi.fn().mockResolvedValue([]),
-          loadDiffForProject: vi.fn().mockResolvedValue(null)
+          loadDiff: vi.fn().mockResolvedValue(null)
         },
         workspace: {
           listFiles: listWorkspaceFiles,
-          readFile: readWorkspaceFile,
-          writeFile: writeWorkspaceFile,
+          readFile: (target, path) => target.kind === "project"
+            ? readProjectFile(target, path)
+            : readWorkspaceFile(target, path),
+          writeFile: (target, path, content, mtime) => target.kind === "project"
+            ? writeProjectFile(target, path, content, mtime)
+            : writeWorkspaceFile(target, path, content, mtime),
           statFile: statWorkspaceFile,
-          listFilesForProject: vi.fn().mockResolvedValue([]),
-          readFileForProject: readProjectFile,
-          writeFileForProject: writeProjectFile,
-          statFileForProject: vi.fn(),
           grepContent: vi.fn().mockResolvedValue({ files: [], truncated: false })
         }
       } satisfies Partial<ArgmaxApi>
@@ -171,14 +169,14 @@ describe("useReviewState — IPC fan-out resistance", () => {
     rerender({ ws: makeWorkspace({ id: "workspace-2" }) });
 
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(2, "workspace-2", "workingTree");
+    expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-2" }, "workingTree");
   });
 
   it("refetches changed files against the base branch when the comparison toggles", async () => {
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
 
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(1, "workspace-1", "workingTree");
+    expect(listChangedFiles).toHaveBeenNthCalledWith(1, { kind: "workspace", id: "workspace-1" }, "workingTree");
     expect(result.current.comparisonBaseLabel).toBe("main");
 
     act(() => {
@@ -186,7 +184,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     });
 
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(2, "workspace-1", "branch");
+    expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-1" }, "branch");
   });
 
   it("reloads the diff under the new baseline when the comparison toggles (cache busted)", async () => {
@@ -200,14 +198,18 @@ describe("useReviewState — IPC fan-out resistance", () => {
     act(() => {
       result.current.openFile("src/a.ts");
     });
-    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/a.ts", "workingTree"));
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "workingTree"
+    ));
 
     act(() => {
       result.current.setChangesComparison("branch");
     });
 
     // The cached working-tree diff must not be served for the branch baseline.
-    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith("workspace-1", "src/a.ts", "branch"));
+    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch"
+    ));
   });
 
   it("does not refetch workspace.listFiles when lastActivityAt ticks while in Files mode", async () => {
@@ -247,14 +249,18 @@ describe("useReviewState — IPC fan-out resistance", () => {
     act(() => {
       result.current.openInFilesView("src/one.ts");
     });
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/one.ts"));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/one.ts"
+    ));
     await waitFor(() => expect(result.current.workspaceFiles.buffer).toBe("one\n"));
 
     act(() => {
       result.current.workspaceFiles.editFile("one edited\n");
       result.current.openInFilesView("src/two.ts");
     });
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/two.ts"));
+    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/two.ts"
+    ));
     await waitFor(() => expect(result.current.workspaceFiles.buffer).toBe("two\n"));
 
     act(() => {
@@ -347,7 +353,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
       await result.current.workspaceFiles.saveDirtyTabAndClose();
     });
 
-    expect(writeWorkspaceFile).toHaveBeenCalledWith("workspace-1", "src/draft.ts", "saved draft\n", 10);
+    expect(writeWorkspaceFile).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "src/draft.ts", "saved draft\n", 10
+    );
     expect(result.current.workspaceFiles.tabs).toHaveLength(0);
   });
 
@@ -423,7 +431,10 @@ describe("useReviewState — IPC fan-out resistance", () => {
     act(() => {
       result.current.openInFilesView("src/project.ts");
     });
-    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith("project-1", "src/project.ts"));
+    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith(
+      { kind: "project", id: "project-1" },
+      "src/project.ts"
+    ));
     await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
 
     expect(result.current.workspaceFiles.canEdit).toBe(true);
@@ -437,7 +448,12 @@ describe("useReviewState — IPC fan-out resistance", () => {
       await result.current.workspaceFiles.saveFile();
     });
 
-    expect(writeProjectFile).toHaveBeenCalledWith("project-1", "src/project.ts", "mutated\n", 10);
+    expect(writeProjectFile).toHaveBeenCalledWith(
+      { kind: "project", id: "project-1" },
+      "src/project.ts",
+      "mutated\n",
+      10
+    );
     expect(result.current.workspaceFiles.isDirty).toBe(false);
   });
 });

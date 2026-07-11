@@ -21,13 +21,11 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
   it("matches the documented launch defaults (Opus 4.8 high / GPT-5.5 high)", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
       modelId: "claude-opus-4-8",
-      reasoningEffort: "high",
-      launchMode: "structured-json"
+      reasoningEffort: "high"
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
       modelId: "gpt-5.5",
-      reasoningEffort: "high",
-      launchMode: "structured-json"
+      reasoningEffort: "high"
     });
   });
 });

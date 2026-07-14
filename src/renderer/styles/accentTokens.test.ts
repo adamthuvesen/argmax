@@ -230,11 +230,13 @@ describe("accent CSS contract", () => {
   it("keeps session composer text aligned with assistant prose size", () => {
     const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
     const inputRule = cssRuleBody(chatComposerChips, ".session-input input,\n.session-input textarea");
+    const textareaRule = cssRuleBody(chatComposerChips, ".session-input-field > textarea");
     const highlightRule = cssRuleBody(chatComposerChips, ".composer-highlight-backdrop");
 
     expect(inputRule).toContain("font-family: var(--font-prose);");
     expect(inputRule).toContain("font-size: var(--text-base);");
     expect(inputRule).toContain("line-height: 1.55;");
+    expect(textareaRule).toContain("overflow-x: hidden;");
     expect(highlightRule).toContain("font-family: var(--font-prose);");
     expect(highlightRule).toContain("font-size: var(--text-base);");
     expect(highlightRule).toContain("line-height: 1.55;");
@@ -278,7 +280,9 @@ describe("accent CSS contract", () => {
     expect(wideRule).toContain("--chat-content-width-docked: 900px;");
     expect(wideRule).toContain("--chat-content-width-tight: 840px;");
     expect(mainColumnRule).toContain("clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px)");
-    expect(launcherShellRule).toContain("width: min(100%, var(--chat-content-width));");
+    expect(launcherShellRule).toContain(
+      "width: min(100%, calc(var(--chat-content-width) + 64px));"
+    );
     expect(launcherSurfaceRule).toContain("width: min(100%, var(--chat-content-width));");
     expect(dockedRule).toContain("clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px)");
     expect(tightRule).toContain("clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px)");
@@ -299,6 +303,77 @@ describe("accent CSS contract", () => {
     expect(contextChipRule).toContain("font-size: var(--text-xs);");
     expect(contextChipHoverRule).toContain("background: transparent;");
     expect(contextChipHoverRule).toContain("color: var(--muted-strong);");
+  });
+
+  it("folds project and branch pickers into compact launcher details", () => {
+    const launchSurface = readSource("src/renderer/components/LaunchSurface.tsx");
+    const chatChrome = readSource("src/renderer/styles/chat-chrome.css");
+    const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
+    const wideChatComposerChips = chatComposerChips.split("@container (max-width: 720px)")[0] ?? "";
+    const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
+    const shellSessions = readSource("src/renderer/styles/shell-sessions.css");
+    const contextRule = cssRuleBody(chatChrome, ".composer-context");
+    const workspaceGroupRule = cssRuleBody(
+      chatChrome,
+      ".composer-context-group--workspace"
+    );
+    const workspaceAnchorRule = cssRuleBody(
+      chatChrome,
+      ".composer-context-group--workspace .project-picker-anchor"
+    );
+    const workspaceChipRule = cssRuleBody(
+      chatChrome,
+      ".composer-context-group--workspace .composer-context-chip"
+    );
+    const behaviorGroupRule = cssRuleBody(chatChrome, ".composer-context-group--behavior");
+    const labelRule = cssRuleBody(chatChrome, ".composer-context-chip-label");
+    const launcherScrollRule = cssRuleBody(shellSessions, ".launcher-scroll");
+    const launcherSurfaceRule = cssRuleBody(shellSessions, ".launcher-surface");
+    const launcherCellRule = cssRuleBody(chatConversation, ".session-multigrid-cell");
+    const compactTriggerRule = cssRuleBody(
+      chatComposerChips,
+      ".composer-context-group--workspace > .composer-compact-context-trigger"
+    );
+    const compactPickersRule = cssRuleBody(chatComposerChips, ".launch-workspace-pickers");
+    const compactOpenRule = cssRuleBody(
+      chatComposerChips,
+      '.composer-context-group--workspace[data-compact-open="true"] > .launch-workspace-pickers'
+    );
+    const wideModelLabelRule = cssRuleBody(
+      wideChatComposerChips,
+      ".launcher-surface .composer-context-group--model .model-picker-label"
+    );
+    const compactModelLabelRule = cssRuleBody(
+      chatComposerChips.slice(chatComposerChips.indexOf("@container (max-width: 720px)")),
+      ".launcher-surface .composer-context-group--model .model-picker-label"
+    );
+
+    expect(launchSurface).toContain('title={project.name}');
+    expect(launchSurface).toContain(
+      '<span className="composer-context-chip-label">{project.name}</span>'
+    );
+    expect(contextRule).toContain("flex-wrap: nowrap;");
+    expect(workspaceGroupRule).toContain("flex: 0 1 auto;");
+    expect(workspaceGroupRule).toContain("min-width: 0;");
+    expect(workspaceAnchorRule).toContain("flex: 0 1 auto;");
+    expect(workspaceAnchorRule).toContain("min-width: 0;");
+    expect(workspaceChipRule).toContain("max-width: 100%;");
+    expect(workspaceChipRule).toContain("min-width: 0;");
+    expect(behaviorGroupRule).toContain("flex: 0 0 auto;");
+    expect(labelRule).toContain("text-overflow: ellipsis;");
+    expect(labelRule).toContain("white-space: nowrap;");
+    expect(launchSurface).toContain("<MoreHorizontal");
+    expect(launchSurface).toContain('aria-label={compactContextOpen ? "Project and branch" : undefined}');
+    expect(launcherScrollRule).toContain("container-type: inline-size;");
+    expect(launcherSurfaceRule).not.toContain("container-type:");
+    expect(launcherCellRule).toContain("container-type: inline-size;");
+    expect(compactTriggerRule).toContain("display: none;");
+    expect(compactPickersRule).toContain("display: inline-flex;");
+    expect(wideModelLabelRule).toContain("white-space: nowrap;");
+    expect(compactOpenRule).toContain("display: flex;");
+    expect(chatComposerChips).toContain('grid-template-areas: "attach model details behavior";');
+    expect(compactModelLabelRule).toContain("text-overflow: ellipsis;");
+    expect(compactModelLabelRule).toContain("white-space: nowrap;");
   });
 
   it("keeps speed submenu opening upward in launcher model picker", () => {
@@ -453,6 +528,10 @@ describe("accent CSS contract", () => {
     const chatComposer = readSource("src/renderer/styles/chat-composer.css");
     const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
     const toolbarRule = cssRuleBody(chatComposerChips, ".session-input-toolbar");
+    const modelGroupRule = cssRuleBody(
+      chatComposerChips,
+      ".session-input-toolbar .composer-chips-model"
+    );
     const modelLabelRule = cssRuleBody(
       chatComposerChips,
       ".session-input-toolbar .model-picker-label"
@@ -484,10 +563,11 @@ describe("accent CSS contract", () => {
       ".session-input-toolbar .composer-footer-chip-label"
     );
 
-    // The toolbar stays a single row (nowrap): the spacer collapses and the
-    // model label ellipsizes under pressure, so the send button never wraps to
-    // its own line. Below the compact breakpoint the grid layout takes over.
+    // The toolbar stays a single row (nowrap): workspace details ellipsize
+    // before the model, and the compact grid folds them away before the pane
+    // can force the send button onto another line.
     expect(toolbarRule).toContain("flex-wrap: nowrap;");
+    expect(modelGroupRule).toContain("flex: 0 0 auto;");
     expect(modelLabelRule).toContain("text-overflow: ellipsis;");
     expect(modelLabelRule).toContain("white-space: nowrap;");
     expect(contextRule).toContain("min-width: 0;");

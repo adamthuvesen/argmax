@@ -293,7 +293,7 @@
   padding: 0 42px 0 0;
   color: var(--muted);
   font-size: var(--text-sm-plus);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   row-gap: 4px;
 }
 
@@ -316,11 +316,29 @@
   gap: 4px;
 }
 
+/* Project and branch names give up width before the fixed launch controls do.
+   Each picker keeps its popover anchor while the visible chip label ellipsizes. */
+.composer-context-group--workspace {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.composer-context-group--workspace .project-picker-anchor {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.composer-context-group--workspace .composer-context-chip {
+  max-width: 100%;
+  min-width: 0;
+}
+
 /* The behavior toggles (agent mode + worktree) cluster at the right edge of
    the row, mirroring the send control's right-anchored position on the input
    above. Whitespace alone sets them off from the context pickers — no divider,
    no borders; they stay quiet until switched on. */
 .composer-context-group--behavior {
+  flex: 0 0 auto;
   margin-left: auto;
 }
 
@@ -353,18 +371,18 @@
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
-/* A long branch name would otherwise consume the whole row and wrap the
-   behavior toggles onto a second line, growing the composer. Cap the label and
-   end-ellipsize it; the full name stays available via the chip's title. */
+/* Cap long project and branch labels. Their full names remain available via
+   the chips' title text. */
 .branch-chip {
   min-width: 0;
 }
 
 .composer-context-chip-label {
+  min-width: 0;
+  max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 16ch;
 }
 
 .composer-context-chip:focus-visible {

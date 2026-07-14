@@ -678,6 +678,7 @@
 .launcher-scroll {
   position: relative;
   display: grid;
+  container-type: inline-size;
   place-items: center;
   padding: 48px 36px;
 }
@@ -689,7 +690,7 @@
 }
 
 .launcher-shell {
-  width: min(100%, var(--chat-content-width));
+  width: min(100%, calc(var(--chat-content-width) + 64px));
 }
 
 .launcher-surface {

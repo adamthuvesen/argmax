@@ -706,6 +706,31 @@ describe("App", () => {
     expect(screen.getByRole("listbox", { name: "Select branch" })).toHaveTextContent("No other branches");
   });
 
+  it("keeps project and branch pickers available from compact launcher details", async () => {
+    listBranches.mockResolvedValue(["main", "feature/tidy"]);
+    render(<App />);
+
+    const detailsToggle = await screen.findByRole("button", {
+      name: "Project and branch: Argmax, main"
+    });
+    expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(detailsToggle);
+
+    const details = screen.getByRole("dialog", { name: "Project and branch" });
+    expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(details).getByRole("button", { name: "Switch project" })).toBeInTheDocument();
+
+    const branchToggle = within(details).getByRole("button", { name: "Switch branch" });
+    fireEvent.click(branchToggle);
+    await waitFor(() => expect(listBranches).toHaveBeenCalledWith("project-1"));
+    expect(within(details).getByRole("listbox", { name: "Select branch" })).toHaveTextContent(
+      "feature/tidy"
+    );
+    fireEvent.click(within(details).getByRole("button", { name: "feature/tidy" }));
+    expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("dialog", { name: "Project and branch" })).not.toBeInTheDocument();
+  });
+
   it("dismisses open pickers via the global dismiss layer", async () => {
     render(<App />);
 

@@ -40,15 +40,15 @@
 .session-input-toolbar {
   min-width: 0;
   /* Single row: the spacer between the attach (+) and the mode/send cluster
-     absorbs the squeeze first (collapsing to nothing), then the model label
-     ellipsizes — so the send button never wraps onto its own line. Below the
-     container's compact breakpoint the grid layout takes over instead. */
+     absorbs the squeeze first (collapsing to nothing), then workspace details
+     ellipsize. Below the container's compact breakpoint the grid folds those
+     details away before the model label has to ellipsize. */
   flex-wrap: nowrap;
   row-gap: 4px;
 }
 
 .session-input-toolbar .composer-chips-model {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -81,6 +81,10 @@
   padding-left: 3px;
 }
 
+.launcher-surface .composer-context-group--model .model-picker-label {
+  white-space: nowrap;
+}
+
 .session-input-toolbar .model-picker-label {
   min-width: 0;
   overflow: hidden;
@@ -99,6 +103,19 @@
   position: relative;
   display: none;
   flex: 0 0 auto;
+}
+
+/* The launcher uses the same compact-details trigger as the chat composer.
+   At normal widths the original project and branch pickers stay inline. */
+.composer-context-group--workspace > .composer-compact-context-trigger {
+  display: none;
+}
+
+.launch-workspace-pickers {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .composer-compact-context-trigger {
@@ -268,6 +285,96 @@ button.composer-compact-context-row:hover,
 
   .session-input-toolbar .session-send-button {
     grid-area: send;
+    justify-self: end;
+  }
+
+  .launcher-surface .composer-context {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) 30px auto;
+    grid-template-areas: "attach model details behavior";
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 0;
+  }
+
+  .launcher-surface .composer-context-group--model {
+    grid-area: model;
+    min-width: 0;
+  }
+
+  .launcher-surface .composer-context-group--model .model-picker-anchor,
+  .launcher-surface .composer-context-group--model .composer-context-chip {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .launcher-surface .composer-context-group--model .model-picker-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .launcher-surface .composer-context-group--workspace {
+    position: relative;
+    grid-area: details;
+    min-width: 28px;
+  }
+
+  .launcher-surface .composer-context-group--workspace > .composer-compact-context-trigger {
+    display: grid;
+  }
+
+  .launcher-surface .launch-workspace-pickers {
+    display: none;
+  }
+
+  .composer-context-group--workspace[data-compact-open="true"] > .launch-workspace-pickers {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 40;
+    display: flex;
+    width: 244px;
+    max-width: calc(100cqw - 24px);
+    padding: 6px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--panel);
+    box-shadow: var(--shadow-2);
+  }
+
+  .launcher-surface .launch-workspace-pickers > .project-picker-anchor {
+    width: 100%;
+  }
+
+  .launcher-surface .launch-workspace-pickers > .project-picker-anchor > .composer-context-chip {
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 8px;
+    color: var(--muted-strong);
+  }
+
+  .launcher-surface .launch-workspace-pickers .composer-context-chip-label {
+    flex: 1 1 auto;
+    max-width: none;
+    text-align: left;
+  }
+
+  .launcher-surface .launch-workspace-pickers .composer-context-caret {
+    margin-left: auto;
+  }
+
+  .launcher-surface .composer-tool {
+    grid-area: attach;
+  }
+
+  .launcher-surface .composer-context-group--behavior {
+    grid-area: behavior;
+    margin-left: 0;
     justify-self: end;
   }
 }
@@ -466,6 +573,10 @@ button.composer-compact-context-row:hover,
   line-height: 1.55;
   resize: none;
   overflow-y: hidden;
+}
+
+.session-input-field > textarea {
+  overflow-x: hidden;
 }
 
 .session-input-field {

@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, GitBranch, Play, Plus, X } from "lucide-react";
+import { ChevronDown, Folder, GitBranch, MoreHorizontal, Play, Plus, X } from "lucide-react";
 import {
   Suspense,
   lazy,
@@ -125,6 +125,8 @@ export function LaunchSurface({
   const [branches, setBranches] = useState<string[]>([]);
   const branchPickerRef = useRef<HTMLDivElement | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [compactContextOpen, setCompactContextOpen] = useState(false);
+  const compactContextRef = useRef<HTMLDivElement | null>(null);
 
   // Provider discovery for the model picker. Non-blocking: fires after mount
   // (cached in Rust, so the cold-launch path pays nothing extra) and the picker
@@ -250,12 +252,14 @@ export function LaunchSurface({
 
   useDismissOnOutsideOrEscape(projectPickerRef, projectPickerOpen, () => setProjectPickerOpen(false));
   useDismissOnOutsideOrEscape(branchPickerRef, branchPickerOpen, () => setBranchPickerOpen(false));
+  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () => setCompactContextOpen(false));
   const anyContextPickerOpen = projectPickerOpen || branchPickerOpen || modelPickerOpen;
 
   const closeContextPickers = useCallback((): void => {
     setProjectPickerOpen(false);
     setBranchPickerOpen(false);
     setModelPickerOpen(false);
+    setCompactContextOpen(false);
   }, []);
 
   const toggleMode = useCallback((): void => {
@@ -313,6 +317,7 @@ export function LaunchSurface({
   const switchBranch = useCallback(async (branch: string): Promise<void> => {
     if (!window.argmax || !project) return;
     setBranchPickerOpen(false);
+    setCompactContextOpen(false);
     try {
       const updated = await window.argmax.projects.switchBranch(project.id, branch);
       onBranchSwitch(updated);
@@ -628,17 +633,46 @@ export function LaunchSurface({
               onFastModeEnabledChange={onFastModeEnabledChange}
             />
           </div>
-          <div className="composer-context-group composer-context-group--workspace">
-          <div className="project-picker-anchor" ref={projectPickerRef}>
+          <div
+            className="composer-context-group composer-context-group--workspace"
+            data-compact-open={compactContextOpen ? "true" : undefined}
+            ref={compactContextRef}
+          >
+            <button
+              type="button"
+              className="composer-compact-context-trigger"
+              title={`Project and branch: ${project.name}, ${project.currentBranch}`}
+              aria-label={`Project and branch: ${project.name}, ${project.currentBranch}`}
+              aria-haspopup="dialog"
+              aria-expanded={compactContextOpen}
+              onClick={() => {
+                if (!compactContextOpen) {
+                  setProjectPickerOpen(false);
+                  setBranchPickerOpen(false);
+                  setModelPickerOpen(false);
+                }
+                setCompactContextOpen((open) => !open);
+              }}
+            >
+              <MoreHorizontal size={14} aria-hidden="true" />
+            </button>
+            <div
+              className="launch-workspace-pickers"
+              role={compactContextOpen ? "dialog" : undefined}
+              aria-label={compactContextOpen ? "Project and branch" : undefined}
+            >
+            <div className="project-picker-anchor" ref={projectPickerRef}>
             <button
               className="composer-context-chip"
               type="button"
               aria-label="Switch project"
+              aria-haspopup="listbox"
               aria-expanded={projectPickerOpen}
+              title={project.name}
               onClick={() => setProjectPickerOpen((o) => !o)}
             >
               <Folder size={14} aria-hidden="true" />
-              {project.name}
+              <span className="composer-context-chip-label">{project.name}</span>
               <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
             </button>
             {projectPickerOpen && (
@@ -658,7 +692,11 @@ export function LaunchSurface({
                       type="button"
                       className="project-picker-item"
                       aria-pressed={p.id === project.id}
-                      onClick={() => { onSelectProject(p.id); setProjectPickerOpen(false); }}
+                      onClick={() => {
+                        onSelectProject(p.id);
+                        setProjectPickerOpen(false);
+                        setCompactContextOpen(false);
+                      }}
                     >
                       <Folder size={13} aria-hidden="true" />
                       {p.name}
@@ -670,7 +708,11 @@ export function LaunchSurface({
                   <button
                     type="button"
                     className="project-picker-item"
-                    onClick={() => { onAddProject(); setProjectPickerOpen(false); }}
+                    onClick={() => {
+                      onAddProject();
+                      setProjectPickerOpen(false);
+                      setCompactContextOpen(false);
+                    }}
                   >
                     <Plus size={13} aria-hidden="true" />
                     Browse folder…
@@ -678,12 +720,13 @@ export function LaunchSurface({
                 </li>
               </ul>
             )}
-          </div>
-          <div className="project-picker-anchor" ref={branchPickerRef}>
+            </div>
+            <div className="project-picker-anchor" ref={branchPickerRef}>
             <button
               className="composer-context-chip branch-chip"
               type="button"
               aria-label="Switch branch"
+              aria-haspopup="listbox"
               aria-expanded={branchPickerOpen}
               title={project.currentBranch}
               onClick={() => void openBranchPicker()}
@@ -726,7 +769,8 @@ export function LaunchSurface({
                 )}
               </ul>
             )}
-          </div>
+            </div>
+            </div>
           </div>
           <button
             className="composer-tool"

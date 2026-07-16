@@ -16,6 +16,7 @@
 // orphan recovery live in `session_service.rs` (this module is the
 // process/IO substrate, that one is the state machine).
 
+use crate::util::sync::LockOrRecover;
 use std::{
     fs::File,
     future::Future,
@@ -414,7 +415,7 @@ impl ProviderRuntimeHandle for ProviderSessionHandle {
                 return Ok(());
             }
             signal_process(self.pid, SignalKind::Term);
-            let receiver = self.exit_rx.lock().expect("exit receiver poisoned").take();
+            let receiver = self.exit_rx.lock_or_recover("exit receiver").take();
             if let Some(receiver) = receiver {
                 let pid = self.pid;
                 let reaped = Arc::clone(&self.reaped);

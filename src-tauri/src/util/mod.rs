@@ -8,5 +8,6 @@ pub mod process_control;
 pub mod protocol_url;
 pub mod startup_timer;
 pub mod stream_reader;
+pub mod sync;
 pub mod tracing_init;
 pub mod workspace_paths;

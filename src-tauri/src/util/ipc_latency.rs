@@ -4,6 +4,7 @@
 // emits a `channel=… latency_ms=…` event. `system:diagnostics` reads p50 /
 // p99 / count via the getters below.
 
+use crate::util::sync::LockOrRecover;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -57,34 +58,31 @@ impl IpcLatencyRegistry {
     }
 
     pub fn record(&self, channel: &str, latency: Duration) {
-        let mut map = self.per_channel.lock().expect("ipc latency poisoned");
+        let mut map = self.per_channel.lock_or_recover("ipc latency");
         map.entry(channel.to_owned())
             .or_insert_with(LatencyRing::new)
             .record(latency);
-        let mut totals = self.total_recorded.lock().expect("ipc latency poisoned");
+        let mut totals = self.total_recorded.lock_or_recover("ipc latency");
         *totals.entry(channel.to_owned()).or_insert(0) += 1;
     }
 
     pub fn p50(&self, channel: &str) -> Option<Duration> {
         self.per_channel
-            .lock()
-            .expect("ipc latency poisoned")
+            .lock_or_recover("ipc latency")
             .get(channel)
             .and_then(|ring| ring.percentile(0.50))
     }
 
     pub fn p99(&self, channel: &str) -> Option<Duration> {
         self.per_channel
-            .lock()
-            .expect("ipc latency poisoned")
+            .lock_or_recover("ipc latency")
             .get(channel)
             .and_then(|ring| ring.percentile(0.99))
     }
 
     pub fn count(&self, channel: &str) -> usize {
         self.per_channel
-            .lock()
-            .expect("ipc latency poisoned")
+            .lock_or_recover("ipc latency")
             .get(channel)
             .map(|ring| ring.len)
             .unwrap_or(0)
@@ -92,8 +90,7 @@ impl IpcLatencyRegistry {
 
     pub fn total_recorded(&self, channel: &str) -> usize {
         self.total_recorded
-            .lock()
-            .expect("ipc latency poisoned")
+            .lock_or_recover("ipc latency")
             .get(channel)
             .copied()
             .unwrap_or(0)
@@ -101,8 +98,7 @@ impl IpcLatencyRegistry {
 
     pub fn known_channels(&self) -> Vec<String> {
         self.per_channel
-            .lock()
-            .expect("ipc latency poisoned")
+            .lock_or_recover("ipc latency")
             .keys()
             .cloned()
             .collect()

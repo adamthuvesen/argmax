@@ -3,6 +3,7 @@
 // same set of phase names: boot, db.open, services.construct,
 // ipc.register, window.create, window.ready-to-show.
 
+use crate::util::sync::LockOrRecover;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -24,14 +25,13 @@ impl StartupTimer {
     /// Records `name` at the current instant. Subsequent calls overwrite.
     pub fn mark(&self, name: &'static str) {
         self.marks
-            .lock()
-            .expect("startup timer poisoned")
+            .lock_or_recover("startup timer")
             .insert(name, Instant::now());
     }
 
     /// Returns the ordered (mark, milliseconds-from-boot) list.
     pub fn snapshot(&self) -> Vec<(&'static str, u128)> {
-        let marks = self.marks.lock().expect("startup timer poisoned");
+        let marks = self.marks.lock_or_recover("startup timer");
         let mut out: Vec<_> = marks
             .iter()
             .map(|(name, inst)| (*name, inst.duration_since(self.boot).as_millis()))

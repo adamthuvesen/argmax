@@ -1,3 +1,4 @@
+use crate::util::sync::LockOrRecover;
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
@@ -439,7 +440,7 @@ fn append_item<R: Runtime>(
 
 fn step_main_window_zoom<R: Runtime>(app: &AppHandle<R>, delta: f64) {
     let next_zoom = {
-        let mut zoom = WEBVIEW_ZOOM.lock().expect("webview zoom poisoned");
+        let mut zoom = WEBVIEW_ZOOM.lock_or_recover("webview zoom");
         let next = (*zoom + delta).clamp(ZOOM_MIN, ZOOM_MAX);
         *zoom = (next * 10.0).round() / 10.0;
         *zoom
@@ -450,7 +451,7 @@ fn step_main_window_zoom<R: Runtime>(app: &AppHandle<R>, delta: f64) {
 fn set_main_window_zoom<R: Runtime>(app: &AppHandle<R>, zoom: f64) {
     let next_zoom = zoom.clamp(ZOOM_MIN, ZOOM_MAX);
     {
-        let mut current = WEBVIEW_ZOOM.lock().expect("webview zoom poisoned");
+        let mut current = WEBVIEW_ZOOM.lock_or_recover("webview zoom");
         *current = next_zoom;
     }
     apply_main_window_zoom(app, next_zoom);

@@ -8,6 +8,7 @@ use tokio::task::JoinSet;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 use super::migrations::run_migrations;
+use crate::util::sync::LockOrRecover;
 
 const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const RAW_OUTPUT_RETENTION_DAYS: i64 = 7;
@@ -45,10 +46,7 @@ impl Database {
                     // does instead of breaking the loop — otherwise a single
                     // panic elsewhere would permanently stop pruning and let
                     // raw_outputs grow without bound.
-                    let connection = prune_connection.lock().unwrap_or_else(|poison| {
-                        tracing::warn!("raw output prune lock poisoned; recovering");
-                        poison.into_inner()
-                    });
+                    let connection = prune_connection.lock_or_recover("raw output prune");
                     if let Err(error) = prune_old_raw_outputs(&connection) {
                         tracing::warn!(error = ?error, "raw output prune failed");
                     }
@@ -67,33 +65,25 @@ impl Database {
         // poisoned guard is recoverable. Panicking here would turn one
         // bad row anywhere in the app into a permanent IPC outage that
         // only restart can clear.
-        self.connection.lock().unwrap_or_else(|poison| {
-            tracing::warn!("database connection mutex was poisoned; recovering");
-            poison.into_inner()
-        })
+        self.connection.lock_or_recover("database connection")
     }
 
     pub fn dispose(&self) {
-        if let Ok(mut tasks) = self.prune_tasks.lock() {
-            tasks.abort_all();
-            tasks.detach_all();
-        }
+        let mut tasks = self.prune_tasks.lock_or_recover("prune tasks");
+        tasks.abort_all();
+        tasks.detach_all();
     }
 
     pub fn prune_task_count(&self) -> usize {
-        self.prune_tasks
-            .lock()
-            .map(|tasks| tasks.len())
-            .unwrap_or(0)
+        self.prune_tasks.lock_or_recover("prune tasks").len()
     }
 }
 
 impl Drop for Database {
     fn drop(&mut self) {
-        if let Ok(mut tasks) = self.prune_tasks.lock() {
-            tasks.abort_all();
-            tasks.detach_all();
-        }
+        let mut tasks = self.prune_tasks.lock_or_recover("prune tasks");
+        tasks.abort_all();
+        tasks.detach_all();
     }
 }
 

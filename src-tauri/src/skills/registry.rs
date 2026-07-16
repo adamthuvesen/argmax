@@ -1,3 +1,4 @@
+use crate::util::sync::LockOrRecover;
 use std::{
     collections::BTreeMap,
     fs,
@@ -52,7 +53,7 @@ impl SkillRegistry {
     }
 
     pub fn clear_cache(&self) {
-        self.cache.lock().expect("skills cache poisoned").clear();
+        self.cache.lock_or_recover("skills cache").clear();
     }
 
     pub fn list_skills(
@@ -68,8 +69,7 @@ impl SkillRegistry {
         );
         if let Some(cached) = self
             .cache
-            .lock()
-            .expect("skills cache poisoned")
+            .lock_or_recover("skills cache")
             .get(&cache_key)
             .cloned()
         {
@@ -84,8 +84,7 @@ impl SkillRegistry {
         }
         let result = collected.into_values().collect::<Vec<_>>();
         self.cache
-            .lock()
-            .expect("skills cache poisoned")
+            .lock_or_recover("skills cache")
             .insert(cache_key, result.clone());
         result
     }

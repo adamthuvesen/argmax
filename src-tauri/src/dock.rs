@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, Runtime, Window, WindowEvent};
 
 use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::util::sync::LockOrRecover;
 
 pub trait DockBadgeSink: Send + Sync + 'static {
     fn set_badge(&self, text: &str) -> ArgmaxResult<()>;
@@ -28,7 +29,7 @@ impl<S: DockBadgeSink> DockBadgeService<S> {
     pub fn update(&self) -> ArgmaxResult<bool> {
         let total = (self.count_attention)()?;
         let text = format_badge(total);
-        let mut last_text = self.last_text.lock().expect("dock badge text poisoned");
+        let mut last_text = self.last_text.lock_or_recover("dock badge text");
         if *last_text == text {
             return Ok(false);
         }
@@ -38,7 +39,7 @@ impl<S: DockBadgeSink> DockBadgeService<S> {
     }
 
     pub fn clear(&self) -> ArgmaxResult<bool> {
-        let mut last_text = self.last_text.lock().expect("dock badge text poisoned");
+        let mut last_text = self.last_text.lock_or_recover("dock badge text");
         if last_text.is_empty() {
             return Ok(false);
         }

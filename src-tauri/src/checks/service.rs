@@ -2,6 +2,7 @@
 // output capture, sensitive-env filtering, per-workspace cancellation, and
 // process-group SIGTERM/SIGKILL escalation.
 
+use crate::util::sync::LockOrRecover;
 use std::{
     collections::{HashMap, VecDeque},
     process::Stdio,
@@ -105,10 +106,7 @@ impl CheckService {
     }
 
     pub fn cancel_workspace_checks(&self, workspace_id: &str) {
-        let mut registry = self
-            .cancel_registry
-            .lock()
-            .expect("cancel registry poisoned");
+        let mut registry = self.cancel_registry.lock_or_recover("cancel registry");
         registry.cancel_all(workspace_id);
     }
 
@@ -160,10 +158,7 @@ impl CheckService {
 
         let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
         {
-            let mut registry = self
-                .cancel_registry
-                .lock()
-                .expect("cancel registry poisoned");
+            let mut registry = self.cancel_registry.lock_or_recover("cancel registry");
             registry.register(&workspace.id, &check.id, cancel_tx);
         }
 
@@ -237,10 +232,7 @@ impl CheckService {
         }
 
         {
-            let mut registry = self
-                .cancel_registry
-                .lock()
-                .expect("cancel registry poisoned");
+            let mut registry = self.cancel_registry.lock_or_recover("cancel registry");
             registry.unregister(&workspace.id, &check.id);
         }
 
@@ -261,7 +253,7 @@ impl CheckService {
             ("failed", "")
         };
 
-        let tail = output.lock().expect("output mutex poisoned").take();
+        let tail = output.lock_or_recover("output").take();
         let summary = format!("{summary_prefix}{}", summarize_output(&tail));
 
         let conn = self.database.connection();
@@ -332,7 +324,7 @@ async fn read_stream<R>(
                 if let Some(sink) = sink.as_ref() {
                     sink(&buffer);
                 }
-                let mut guard = tail.lock().expect("output mutex poisoned");
+                let mut guard = tail.lock_or_recover("output");
                 guard.push(buffer.clone());
             }
             Err(error) => {

@@ -1438,3 +1438,132 @@ async fn idle_flush_publishes_buffered_line_before_terminate() {
         .await
         .expect("terminate ok");
 }
+
+// ---------------------------------------------------------------------------
+// Poisoned-lock containment.
+// ---------------------------------------------------------------------------
+
+/// Handle whose `disposed()` probe panics while armed. `is_handle_resolved`
+/// (and `live_handle`) call `disposed()` while holding the service's shared
+/// `handles` lock, so the panic unwinds inside the locked section and poisons
+/// the mutex every parallel session shares — the real cascade scenario.
+struct PoisonProbeHandle {
+    armed: Arc<AtomicBool>,
+}
+
+impl ProviderRuntimeHandle for PoisonProbeHandle {
+    fn accepts_input(&self) -> bool {
+        true
+    }
+
+    fn disposed(&self) -> bool {
+        if self.armed.load(Ordering::SeqCst) {
+            panic!("deliberate panic while the shared handles lock is held");
+        }
+        false
+    }
+
+    fn send_input(&self, _input: &str) {}
+
+    fn resize(&self, _cols: u16, _rows: u16) {}
+
+    fn terminate<'a>(&'a self) -> BoxFuture<'a, ArgmaxResult<()>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// Hands out pre-built handles in launch order.
+struct SequenceLauncher {
+    handles: Mutex<Vec<Arc<dyn ProviderRuntimeHandle>>>,
+}
+
+impl ProviderProcessLauncher for SequenceLauncher {
+    fn launch<'a>(
+        &'a self,
+        _input: ProviderLaunchInput,
+        _on_event: EventCallback,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        let handle = self
+            .handles
+            .lock()
+            .expect("sequence launcher poisoned")
+            .remove(0);
+        Box::pin(async move { Ok(handle) })
+    }
+}
+
+#[tokio::test]
+async fn panic_inside_locked_section_does_not_cascade_to_other_sessions() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let armed = Arc::new(AtomicBool::new(false));
+    let healthy_handle = FakeHandle::new(true);
+    let launcher = Arc::new(SequenceLauncher {
+        handles: Mutex::new(vec![
+            Arc::new(PoisonProbeHandle {
+                armed: Arc::clone(&armed),
+            }) as Arc<dyn ProviderRuntimeHandle>,
+            healthy_handle.clone() as Arc<dyn ProviderRuntimeHandle>,
+        ]),
+    });
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher, |_| {});
+
+    let session_a = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch session A");
+    wait_for_resolved(&service, &session_a.id).await;
+    let session_b = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch session B");
+    wait_for_resolved(&service, &session_b.id).await;
+
+    // Panic on session A's path while the shared `handles` lock is held.
+    // Before poison recovery this left the mutex poisoned forever and every
+    // later access from any session panicked too.
+    armed.store(true, Ordering::SeqCst);
+    let probe = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        service.is_handle_resolved(&session_a.id)
+    }));
+    assert!(
+        probe.is_err(),
+        "probe should panic inside the locked section"
+    );
+    armed.store(false, Ordering::SeqCst);
+
+    // Session B keeps working against the recovered lock.
+    assert!(
+        service.is_handle_resolved(&session_b.id),
+        "healthy session's handle lookup must survive the poisoned lock"
+    );
+    assert_eq!(service.open_handle_count(), 2);
+
+    let send = ProvidersSendInput {
+        session_id: SessionId::try_from(session_b.id.clone()).expect("session id valid"),
+        input: Prompt::try_from("still alive".to_owned()).expect("prompt valid"),
+        provider: None,
+        model_label: None,
+        model_id: None,
+        reasoning_effort: None,
+        fast_mode: false,
+        agent_mode: None,
+        attachments: None,
+    };
+    let result = service
+        .send_input(send)
+        .await
+        .expect("send_input to the healthy session succeeds");
+    assert!(result.ok);
+    assert!(!result.queued, "live handle accepts input directly");
+    let sent = healthy_handle
+        .state
+        .lock()
+        .expect("fake handle poisoned")
+        .sent_inputs
+        .clone();
+    assert!(
+        sent.iter().any(|input| input.contains("still alive")),
+        "healthy session's handle should have received the input: {sent:?}"
+    );
+}

@@ -14,7 +14,7 @@ Single-user, on-device, no cloud, no auth. Built for sessions that need real rep
 
 ## Status
 
-Early and still changing (0.2.0). The first public Rust/Tauri release targets macOS. Linux and Windows are not release targets yet.
+Early and still changing — see [CHANGELOG.md](CHANGELOG.md) for the current version. The first public Rust/Tauri release targets macOS. Linux and Windows are not release targets yet.
 
 Behavior, the SQLite schema, and the UI can change between versions. There are no stability guarantees yet.
 

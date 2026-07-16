@@ -3,6 +3,7 @@
 // `check_state` / `head_sha` transitions, and publishes a `DashboardDelta`
 // so the renderer can re-render PR status without polling itself.
 
+use crate::util::sync::LockOrRecover;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
@@ -107,12 +108,12 @@ struct PollerInner {
 
 impl PollerInner {
     fn ledger_has(&self, key: &str) -> bool {
-        let ledger = self.failure_ledger.lock().expect("ledger poisoned");
+        let ledger = self.failure_ledger.lock_or_recover("ledger");
         ledger.iter().any(|entry| entry == key)
     }
 
     fn ledger_add(&self, key: String) {
-        let mut ledger = self.failure_ledger.lock().expect("ledger poisoned");
+        let mut ledger = self.failure_ledger.lock_or_recover("ledger");
         if ledger.iter().any(|entry| entry == &key) {
             return;
         }
@@ -150,7 +151,7 @@ impl GhPoller {
     /// Spawns the polling loop. Safe to call multiple times — extra calls
     /// are no-ops once a task is running.
     pub fn start(self: &Arc<Self>) {
-        let mut tasks = self.tasks.lock().expect("poller tasks poisoned");
+        let mut tasks = self.tasks.lock_or_recover("poller tasks");
         if !tasks.is_empty() {
             return;
         }
@@ -178,10 +179,9 @@ impl GhPoller {
     }
 
     pub fn dispose(&self) {
-        if let Ok(mut tasks) = self.tasks.lock() {
-            for task in tasks.drain(..) {
-                task.abort();
-            }
+        let mut tasks = self.tasks.lock_or_recover("poller tasks");
+        for task in tasks.drain(..) {
+            task.abort();
         }
     }
 }
@@ -286,7 +286,7 @@ fn detect_transition(
     };
 
     let changed = {
-        let mut state = inner.last_state.lock().expect("last_state poisoned");
+        let mut state = inner.last_state.lock_or_recover("last_state");
         match state.get(&key) {
             Some(prior) if prior == &next => false,
             _ => {

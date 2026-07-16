@@ -9,6 +9,7 @@
 // terminate paths signal the captured PID only while the watcher still
 // considers it live.
 
+use crate::util::sync::LockOrRecover;
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -167,7 +168,7 @@ impl TerminalService {
         let terminal_id = Uuid::new_v4().to_string();
         let reaped = Arc::new(AtomicBool::new(false));
         {
-            let mut terminals = self.terminals.lock().expect("terminals poisoned");
+            let mut terminals = self.terminals.lock_or_recover("terminals");
             terminals.insert(
                 terminal_id.clone(),
                 TerminalEntry {
@@ -199,7 +200,7 @@ impl TerminalService {
     /// Forward `data` to the PTY. Silently no-ops on unknown ids; stale ids
     /// are a benign renderer/runtime race.
     pub fn write(&self, terminal_id: &str, data: &[u8]) {
-        let mut terminals = self.terminals.lock().expect("terminals poisoned");
+        let mut terminals = self.terminals.lock_or_recover("terminals");
         if let Some(entry) = terminals.get_mut(terminal_id) {
             let _ = entry.writer.write_all(data);
             let _ = entry.writer.flush();
@@ -208,7 +209,7 @@ impl TerminalService {
 
     /// Resize the PTY for the live terminal. No-op on unknown ids.
     pub fn resize(&self, terminal_id: &str, cols: u16, rows: u16) {
-        let terminals = self.terminals.lock().expect("terminals poisoned");
+        let terminals = self.terminals.lock_or_recover("terminals");
         if let Some(entry) = terminals.get(terminal_id) {
             let _ = entry.master.resize(PtySize {
                 rows,
@@ -223,7 +224,7 @@ impl TerminalService {
     /// SIGKILL. Returns immediately if the id is unknown.
     pub async fn terminate(&self, terminal_id: &str) {
         let target = {
-            let terminals = self.terminals.lock().expect("terminals poisoned");
+            let terminals = self.terminals.lock_or_recover("terminals");
             terminals
                 .get(terminal_id)
                 .and_then(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
@@ -235,7 +236,7 @@ impl TerminalService {
     /// Terminate every live terminal (used at app shutdown).
     pub async fn dispose_all(&self) {
         let targets: Vec<(u32, Arc<AtomicBool>)> = {
-            let terminals = self.terminals.lock().expect("terminals poisoned");
+            let terminals = self.terminals.lock_or_recover("terminals");
             terminals
                 .values()
                 .filter_map(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
@@ -248,11 +249,11 @@ impl TerminalService {
 
     #[allow(dead_code)]
     pub fn live_count(&self) -> usize {
-        self.terminals.lock().expect("terminals poisoned").len()
+        self.terminals.lock_or_recover("terminals").len()
     }
 
     fn remove_terminal(&self, terminal_id: &str) -> Option<TerminalEntry> {
-        let mut terminals = self.terminals.lock().expect("terminals poisoned");
+        let mut terminals = self.terminals.lock_or_recover("terminals");
         terminals.remove(terminal_id)
     }
 }
@@ -264,7 +265,7 @@ impl Drop for TerminalService {
         // SIGKILL, no grace window) and let the exit watcher tear down.
         // Mirrors `ProviderSessionHandle::Drop`.
         let targets: Vec<(u32, Arc<AtomicBool>)> = {
-            let terminals = self.terminals.lock().expect("terminals poisoned");
+            let terminals = self.terminals.lock_or_recover("terminals");
             terminals
                 .values()
                 .filter_map(|entry| entry.pid.map(|pid| (pid, Arc::clone(&entry.reaped))))
@@ -292,8 +293,7 @@ fn spawn_reader_thread(
                 // streaming — the renderer has moved on.
                 service
                     .terminals
-                    .lock()
-                    .expect("terminals poisoned")
+                    .lock_or_recover("terminals")
                     .contains_key(&terminal_id)
             },
             |data| {

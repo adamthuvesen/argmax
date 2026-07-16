@@ -23,6 +23,7 @@ use tokio::task::JoinHandle;
 use super::orchestration::{WorkspaceService, WATCH_DEBOUNCE_MS};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::workspaces::find_workspace_by_id;
+use crate::util::sync::LockOrRecover;
 
 pub(super) struct WatcherEntry {
     /// Held to keep the OS-level watch alive. Dropped on `close_watcher`.
@@ -76,7 +77,7 @@ pub(super) fn watch(service: &Arc<WorkspaceService>, workspace_id: &str) -> Argm
 
     let task = spawn_refresh_loop(Arc::clone(service), workspace_id.to_string(), rx);
 
-    let mut watchers = service.watchers.lock().expect("watchers poisoned");
+    let mut watchers = service.watchers.lock_or_recover("watchers");
     watchers.insert(
         workspace_id.to_string(),
         WatcherEntry {
@@ -92,8 +93,7 @@ pub(super) fn close_watcher(service: &WorkspaceService, workspace_id: &str) {
     // RecommendedWatcher, which unregisters the OS-level watch.
     let _ = service
         .watchers
-        .lock()
-        .expect("watchers poisoned")
+        .lock_or_recover("watchers")
         .remove(workspace_id);
 }
 

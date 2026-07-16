@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 
+use crate::util::sync::LockOrRecover;
 use chrono::Utc;
 use serde::Serialize;
 use specta::Type;
@@ -47,7 +48,7 @@ impl LogBuffer {
         if self.capacity == 0 {
             return;
         }
-        let mut entries = self.entries.lock().expect("log buffer poisoned");
+        let mut entries = self.entries.lock_or_recover("log buffer");
         while entries.len() >= self.capacity {
             entries.pop_front();
         }
@@ -62,8 +63,7 @@ impl LogBuffer {
 
     pub fn read(&self) -> Vec<LogEntry> {
         self.entries
-            .lock()
-            .expect("log buffer poisoned")
+            .lock_or_recover("log buffer")
             .iter()
             .cloned()
             .collect()

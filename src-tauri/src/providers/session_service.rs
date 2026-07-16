@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+use crate::util::sync::LockOrRecover;
 use serde_json::{json, Value};
 use specta::Type;
 use uuid::Uuid;
@@ -131,14 +132,14 @@ impl ProviderSessionService {
     }
 
     pub fn open_handle_count(&self) -> usize {
-        self.handles.lock().expect("handles poisoned").len()
+        self.handles.lock_or_recover("handles").len()
     }
 
     /// Whether the session's provider handle has finished spawning (`Resolved`)
     /// rather than still launching in the background (`Pending`).
     pub fn is_handle_resolved(&self, session_id: &str) -> bool {
         matches!(
-            self.handles.lock().expect("handles poisoned").get(session_id),
+            self.handles.lock_or_recover("handles").get(session_id),
             Some(HandleEntry::Resolved(handle)) if !handle.disposed()
         )
     }
@@ -217,16 +218,14 @@ impl ProviderSessionService {
         };
 
         self.flush_queue
-            .lock()
-            .expect("flush queue poisoned")
+            .lock_or_recover("flush queue")
             .initialize_session(
                 session_id.clone(),
                 provider,
                 NormalizerSessionContext::default(),
             );
         self.handles
-            .lock()
-            .expect("handles poisoned")
+            .lock_or_recover("handles")
             .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
 
         let launch_input = ProviderLaunchInput {
@@ -271,8 +270,7 @@ impl ProviderSessionService {
                 Err(error) => {
                     let prior = service
                         .handles
-                        .lock()
-                        .expect("handles poisoned")
+                        .lock_or_recover("handles")
                         .remove(&session_id);
                     // Only flip to `failed` if the session was still pending; if
                     // terminate already removed the entry, it's cancelled and
@@ -293,7 +291,7 @@ impl ProviderSessionService {
             // Swap the Pending entry for the resolved handle. Keep the lock
             // scoped to this block so it's released before any await below.
             let pending_ops = {
-                let mut handles = service.handles.lock().expect("handles poisoned");
+                let mut handles = service.handles.lock_or_recover("handles");
                 match handles.insert(
                     session_id.clone(),
                     HandleEntry::Resolved(Arc::clone(&handle)),
@@ -373,10 +371,7 @@ impl ProviderSessionService {
         // after the in-flight turn completes, exactly like a follow-up sent
         // while the agent is working.
         if matches!(
-            self.handles
-                .lock()
-                .expect("handles poisoned")
-                .get(&session_id),
+            self.handles.lock_or_recover("handles").get(&session_id),
             Some(HandleEntry::Pending(_))
         ) {
             self.enqueue_pending_message(
@@ -535,16 +530,14 @@ impl ProviderSessionService {
         };
 
         self.flush_queue
-            .lock()
-            .expect("flush queue poisoned")
+            .lock_or_recover("flush queue")
             .initialize_session(
                 session_id.clone(),
                 provider,
                 NormalizerSessionContext::default(),
             );
         self.handles
-            .lock()
-            .expect("handles poisoned")
+            .lock_or_recover("handles")
             .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
         let service = Arc::clone(self);
         let handle = match self
@@ -560,11 +553,7 @@ impl ProviderSessionService {
         {
             Ok(handle) => handle,
             Err(error) => {
-                let prior = self
-                    .handles
-                    .lock()
-                    .expect("handles poisoned")
-                    .remove(&session_id);
+                let prior = self.handles.lock_or_recover("handles").remove(&session_id);
                 if matches!(prior, Some(HandleEntry::Pending(_))) {
                     self.record_launch_failure(&session_id, provider, error.clone())?;
                     return Err(error);
@@ -579,7 +568,7 @@ impl ProviderSessionService {
         // flight — most notably resize ops issued from the very first
         // render of the resumed session. Mirrors the launch() path.
         let pending_ops = {
-            let mut handles = self.handles.lock().expect("handles poisoned");
+            let mut handles = self.handles.lock_or_recover("handles");
             match handles.insert(
                 session_id.clone(),
                 HandleEntry::Resolved(Arc::clone(&handle)),
@@ -616,8 +605,7 @@ impl ProviderSessionService {
         let session_id = input.session_id.as_str();
         let entry = self
             .handles
-            .lock()
-            .expect("handles poisoned")
+            .lock_or_recover("handles")
             .get_mut(session_id)
             .cloned();
         match entry {
@@ -625,7 +613,7 @@ impl ProviderSessionService {
                 handle.resize(input.cols.get(), input.rows.get())
             }
             Some(HandleEntry::Pending(_)) => {
-                let mut handles = self.handles.lock().expect("handles poisoned");
+                let mut handles = self.handles.lock_or_recover("handles");
                 if let Some(HandleEntry::Pending(ops)) = handles.get_mut(session_id) {
                     ops.retain(|op| !matches!(op, PendingOp::Resize { .. }));
                     ops.push(PendingOp::Resize {
@@ -646,14 +634,9 @@ impl ProviderSessionService {
         // arrives mid-terminate sees the flag and skips its own state
         // write. Cleared after cancel_session lands `cancelled`.
         self.terminating
-            .lock()
-            .expect("terminating poisoned")
+            .lock_or_recover("terminating")
             .insert(session_id.clone());
-        let entry = self
-            .handles
-            .lock()
-            .expect("handles poisoned")
-            .remove(&session_id);
+        let entry = self.handles.lock_or_recover("handles").remove(&session_id);
         let result = async {
             match entry {
                 Some(HandleEntry::Resolved(handle)) => {
@@ -673,15 +656,14 @@ impl ProviderSessionService {
         }
         .await;
         self.terminating
-            .lock()
-            .expect("terminating poisoned")
+            .lock_or_recover("terminating")
             .remove(&session_id);
         result
     }
 
     pub fn cancel_queued_message(&self, input: ProvidersCancelQueuedMessageInput) {
         let session_id = input.session_id.as_str();
-        let mut queues = self.queues.lock().expect("queues poisoned");
+        let mut queues = self.queues.lock_or_recover("queues");
         if let Some(queue) = queues.get_mut(session_id) {
             queue.retain(|message| message.id != input.message_id.as_str());
             if queue.is_empty() {
@@ -782,8 +764,7 @@ impl ProviderSessionService {
     pub async fn dispose_all(&self) -> ArgmaxResult<()> {
         let entries = self
             .handles
-            .lock()
-            .expect("handles poisoned")
+            .lock_or_recover("handles")
             .drain()
             .map(|(_, entry)| entry)
             .collect::<Vec<_>>();
@@ -856,7 +837,7 @@ impl ProviderSessionService {
             session_id = %trace_session,
             "handle_output_event: acquired DB; acquiring flush queue",
         );
-        let mut flush_queue = self.flush_queue.lock().expect("flush queue poisoned");
+        let mut flush_queue = self.flush_queue.lock_or_recover("flush queue");
         tracing::trace!(
             session_id = %trace_session,
             "handle_output_event: acquired flush queue; queuing event",
@@ -930,8 +911,7 @@ impl ProviderSessionService {
         // user cancelled (the session is heading to `cancelled`, not `complete`).
         let is_terminating = self
             .terminating
-            .lock()
-            .expect("terminating poisoned")
+            .lock_or_recover("terminating")
             .contains(&event.session_id);
         self.flush_trailing(&event.session_id, !is_terminating)?;
         // If the user already initiated terminate(), let cancel_session
@@ -940,12 +920,10 @@ impl ProviderSessionService {
         // the user just saw flash in the dashboard.
         if is_terminating {
             self.handles
-                .lock()
-                .expect("handles poisoned")
+                .lock_or_recover("handles")
                 .remove(&event.session_id);
             self.flush_queue
-                .lock()
-                .expect("flush queue poisoned")
+                .lock_or_recover("flush queue")
                 .delete_session(&event.session_id);
             return Ok(());
         }
@@ -997,12 +975,10 @@ impl ProviderSessionService {
             },
         )?;
         self.handles
-            .lock()
-            .expect("handles poisoned")
+            .lock_or_recover("handles")
             .remove(&event.session_id);
         self.flush_queue
-            .lock()
-            .expect("flush queue poisoned")
+            .lock_or_recover("flush queue")
             .delete_session(&event.session_id);
         if !succeeded {
             self.clear_queue(&event.session_id);
@@ -1029,8 +1005,7 @@ impl ProviderSessionService {
         error: ArgmaxError,
     ) -> ArgmaxResult<()> {
         self.flush_queue
-            .lock()
-            .expect("flush queue poisoned")
+            .lock_or_recover("flush queue")
             .delete_session(session_id);
         let connection = self.database.connection();
         let session = update_session_state(
@@ -1092,8 +1067,7 @@ impl ProviderSessionService {
             },
         )?;
         self.flush_queue
-            .lock()
-            .expect("flush queue poisoned")
+            .lock_or_recover("flush queue")
             .delete_session(session_id);
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
@@ -1106,12 +1080,7 @@ impl ProviderSessionService {
     }
 
     fn live_handle(&self, session_id: &str) -> Option<Arc<dyn ProviderRuntimeHandle>> {
-        match self
-            .handles
-            .lock()
-            .expect("handles poisoned")
-            .get(session_id)
-        {
+        match self.handles.lock_or_recover("handles").get(session_id) {
             Some(HandleEntry::Resolved(handle)) if !handle.disposed() => Some(Arc::clone(handle)),
             _ => None,
         }
@@ -1209,7 +1178,7 @@ impl ProviderSessionService {
                 input.fast_mode,
             )
         };
-        let mut queues = self.queues.lock().expect("queues poisoned");
+        let mut queues = self.queues.lock_or_recover("queues");
         let queue = queues.entry(session_id.to_string()).or_default();
         if queue.len() >= MAX_PENDING_QUEUE {
             return Err(ArgmaxError::service(
@@ -1237,8 +1206,7 @@ impl ProviderSessionService {
     fn clear_queue(&self, session_id: &str) {
         let removed = self
             .queues
-            .lock()
-            .expect("queues poisoned")
+            .lock_or_recover("queues")
             .remove(session_id)
             .is_some();
         if removed {
@@ -1249,8 +1217,7 @@ impl ProviderSessionService {
     fn publish_pending_messages(&self, session_id: &str) {
         let queue = self
             .queues
-            .lock()
-            .expect("queues poisoned")
+            .lock_or_recover("queues")
             .get(session_id)
             .cloned()
             .unwrap_or_default();
@@ -1264,7 +1231,7 @@ impl ProviderSessionService {
 
     fn drain_queue_after_complete(self: &Arc<Self>, session_id: String) {
         let next = {
-            let mut queues = self.queues.lock().expect("queues poisoned");
+            let mut queues = self.queues.lock_or_recover("queues");
             let Some(queue) = queues.get_mut(&session_id) else {
                 return;
             };
@@ -1303,7 +1270,7 @@ impl ProviderSessionService {
                     "failed to launch queued follow-up; restoring it to the queue"
                 );
                 {
-                    let mut queues = service.queues.lock().expect("queues poisoned");
+                    let mut queues = service.queues.lock_or_recover("queues");
                     queues
                         .entry(restore_session.clone())
                         .or_default()
@@ -1321,8 +1288,7 @@ impl ProviderSessionService {
         let mut connection = self.database.connection();
         let delta = self
             .flush_queue
-            .lock()
-            .expect("flush queue poisoned")
+            .lock_or_recover("flush queue")
             .flush_trailing_fragments(
                 &mut connection,
                 session_id,
@@ -1346,8 +1312,7 @@ impl ProviderSessionService {
     ) -> ArgmaxResult<()> {
         if self
             .terminating
-            .lock()
-            .expect("terminating poisoned")
+            .lock_or_recover("terminating")
             .contains(session_id)
         {
             return Ok(());
@@ -1382,14 +1347,9 @@ impl ProviderSessionService {
             (session, workspace, projects)
         };
 
-        let entry = self
-            .handles
-            .lock()
-            .expect("handles poisoned")
-            .remove(session_id);
+        let entry = self.handles.lock_or_recover("handles").remove(session_id);
         self.flush_queue
-            .lock()
-            .expect("flush queue poisoned")
+            .lock_or_recover("flush queue")
             .delete_session(session_id);
 
         self.publish(DashboardDelta {
@@ -1409,15 +1369,13 @@ impl ProviderSessionService {
     fn cancel_idle_flush(&self, session_id: &str) {
         if let Some(handle) = self
             .idle_flush_tasks
-            .lock()
-            .expect("idle flush tasks poisoned")
+            .lock_or_recover("idle flush tasks")
             .remove(session_id)
         {
             handle.abort();
         }
         self.idle_flush_generation
-            .lock()
-            .expect("idle flush generation poisoned")
+            .lock_or_recover("idle flush generation")
             .remove(session_id);
     }
 
@@ -1425,16 +1383,14 @@ impl ProviderSessionService {
         let generation = {
             let mut generations = self
                 .idle_flush_generation
-                .lock()
-                .expect("idle flush generation poisoned");
+                .lock_or_recover("idle flush generation");
             let next = generations.get(session_id).copied().unwrap_or(0) + 1;
             generations.insert(session_id.to_string(), next);
             next
         };
         if let Some(handle) = self
             .idle_flush_tasks
-            .lock()
-            .expect("idle flush tasks poisoned")
+            .lock_or_recover("idle flush tasks")
             .remove(session_id)
         {
             handle.abort();
@@ -1446,8 +1402,7 @@ impl ProviderSessionService {
             tokio::time::sleep(Duration::from_millis(STREAM_IDLE_FLUSH_MS)).await;
             let current = service
                 .idle_flush_generation
-                .lock()
-                .expect("idle flush generation poisoned")
+                .lock_or_recover("idle flush generation")
                 .get(&session_id_owned)
                 .copied();
             if current != Some(generation) {
@@ -1458,8 +1413,7 @@ impl ProviderSessionService {
             let flush_result = service.flush_trailing(&session_id_owned, false);
             service
                 .idle_flush_tasks
-                .lock()
-                .expect("idle flush tasks poisoned")
+                .lock_or_recover("idle flush tasks")
                 .remove(&session_id_owned);
             if let Err(error) = flush_result {
                 tracing::warn!(
@@ -1470,8 +1424,7 @@ impl ProviderSessionService {
             }
         });
         self.idle_flush_tasks
-            .lock()
-            .expect("idle flush tasks poisoned")
+            .lock_or_recover("idle flush tasks")
             .insert(session_id_for_map, handle);
     }
 

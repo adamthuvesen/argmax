@@ -44,6 +44,7 @@ use crate::persistence::workspaces::{
     WorkspaceStatusInput, WorkspaceSummary,
 };
 use crate::providers::flush_queue::DashboardDelta;
+use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
 
 /// Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`).
@@ -108,7 +109,7 @@ impl WorkspaceService {
     }
 
     pub fn open_watcher_count(&self) -> usize {
-        self.watchers.lock().expect("watchers poisoned").len()
+        self.watchers.lock_or_recover("watchers").len()
     }
 
     pub(super) fn database(&self) -> &Arc<Database> {

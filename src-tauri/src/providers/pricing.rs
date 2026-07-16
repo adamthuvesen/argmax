@@ -1,3 +1,4 @@
+use crate::util::sync::LockOrRecover;
 use std::{
     collections::HashSet,
     sync::{Mutex, OnceLock},
@@ -91,8 +92,7 @@ pub fn cost_of(usage: UsageCounts, model_id: &str) -> f64 {
     else {
         let logged = logged_unknown_models();
         if logged
-            .lock()
-            .expect("unknown-model log mutex")
+            .lock_or_recover("unknown-model log")
             .insert(key.clone())
         {
             tracing::warn!(target: "pricing", model_id, normalized = key, "unknown model id");
@@ -114,8 +114,7 @@ fn logged_unknown_models() -> &'static Mutex<HashSet<String>> {
 #[cfg(test)]
 pub fn reset_unknown_model_log_for_test() {
     logged_unknown_models()
-        .lock()
-        .expect("unknown-model log mutex")
+        .lock_or_recover("unknown-model log")
         .clear();
 }
 

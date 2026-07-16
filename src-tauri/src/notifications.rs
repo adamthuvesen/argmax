@@ -8,6 +8,7 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::gh::GhPrRecord;
 use crate::persistence::sessions::SessionSummary;
+use crate::util::sync::LockOrRecover;
 
 const TERMINAL_STATES: [&str; 2] = ["complete", "failed"];
 const LAST_NOTIFIED_CAPACITY: usize = 2_000;
@@ -46,7 +47,7 @@ impl<S: NotificationSink> NotificationService<S> {
     }
 
     pub fn set_enabled(&self, value: bool) {
-        *self.enabled.lock().expect("notification enabled poisoned") = value;
+        *self.enabled.lock_or_recover("notification enabled") = value;
     }
 
     pub fn notify(&self, session: &SessionSummary) -> ArgmaxResult<bool> {
@@ -60,8 +61,7 @@ impl<S: NotificationSink> NotificationService<S> {
         // looked away.
         if self
             .last_notified_state
-            .lock()
-            .expect("last notified state poisoned")
+            .lock_or_recover("last notified state")
             .get(&session.id)
             .is_some_and(|state| state == &session.state)
         {
@@ -76,8 +76,7 @@ impl<S: NotificationSink> NotificationService<S> {
         // Only stamp after a successful fire so a redelivery is possible
         // until the user actually sees the toast.
         self.last_notified_state
-            .lock()
-            .expect("last notified state poisoned")
+            .lock_or_recover("last notified state")
             .insert(session.id.clone(), session.state.clone());
         Ok(true)
     }
@@ -97,8 +96,7 @@ impl<S: NotificationSink> NotificationService<S> {
         {
             let mut keys = self
                 .notified_check_keys
-                .lock()
-                .expect("notified check keys poisoned");
+                .lock_or_recover("notified check keys");
             if keys.contains(&dedup_key) {
                 return Ok(false);
             }
@@ -120,13 +118,12 @@ impl<S: NotificationSink> NotificationService<S> {
 
     pub fn forget(&self, session_id: &str) {
         self.last_notified_state
-            .lock()
-            .expect("last notified state poisoned")
+            .lock_or_recover("last notified state")
             .remove(session_id);
     }
 
     fn is_enabled(&self) -> bool {
-        *self.enabled.lock().expect("notification enabled poisoned")
+        *self.enabled.lock_or_recover("notification enabled")
     }
 }
 

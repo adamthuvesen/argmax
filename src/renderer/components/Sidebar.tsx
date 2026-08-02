@@ -53,6 +53,7 @@ import {
   type ProjectSortMode,
   type SidebarViewMode
 } from "../lib/projects.js";
+import { computePriorityEntries } from "../lib/priority.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
@@ -140,6 +141,8 @@ export function Sidebar({
   onRenameWorkspace,
   onResizeMouseDown,
   onToggleWorkspacePinned,
+  onMarkPriorityDone,
+  showPriority,
   onWorkspaceDragStart,
   onWorkspaceDragEnd,
   selectedProjectId,
@@ -170,6 +173,10 @@ export function Sidebar({
   onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
+  /** Right-click "Mark as done" on a Priority row — dismisses it until new attention. */
+  onMarkPriorityDone?: (workspaceId: string) => void;
+  /** Whether the Priority section renders at all (settings toggle). */
+  showPriority: boolean;
   /** Notifies the parent that a sidebar drag started carrying this workspace. */
   onWorkspaceDragStart?: (workspaceId: string) => void;
   /** Notifies the parent that a sidebar drag finished (drop or cancel). */
@@ -314,6 +321,15 @@ export function Sidebar({
     }
     return ids;
   }, [snapshot.sessions]);
+
+  // Workspaces that need the user right now (approval, blocked, failed,
+  // review-ready) float into the Priority section above everything else.
+  // They still render in their home group — Priority is a duplicate triage
+  // view, not a relocation, so rows don't teleport as attention changes.
+  const priorityEntries = useMemo(
+    () => (showPriority ? computePriorityEntries(snapshot.workspaces, snapshot.sessions) : []),
+    [showPriority, snapshot.workspaces, snapshot.sessions]
+  );
 
   // Pinned workspaces float into a dedicated section at the top of the list,
   // above the date buckets (sessions view) and above the project groups
@@ -658,6 +674,50 @@ export function Sidebar({
             <Plus size={14} />
           </button>
         </div>
+        {priorityEntries.length > 0 ? (
+          <div className="project-group session-date-group session-priority-group">
+            <div className="project-row session-date-row session-priority-row">
+              <span className="project-name session-date-label session-priority-label">
+                <span className="project-name-text">Priority</span>
+                <span
+                  className="session-priority-count"
+                  aria-label={
+                    priorityEntries.length === 1
+                      ? "1 session needs attention"
+                      : `${priorityEntries.length} sessions need attention`
+                  }
+                >
+                  {priorityEntries.length}
+                </span>
+              </span>
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+            </div>
+            {priorityEntries.map((entry) => (
+              <div key={entry.workspace.id} className="session-row-wrap">
+                <SidebarSessionRow
+                  workspace={entry.workspace}
+                  workspaceTokens={workspaceTokenMap.get(entry.workspace.id) ?? null}
+                  isSelected={selectedWorkspaceId === entry.workspace.id}
+                  isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
+                  canDragToGrid={canDragWorkspaceToGrid}
+                  onOpenWorkspaceChat={onOpenWorkspaceChat}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onOpenInIde={onOpenInIde}
+                  onTogglePin={onToggleWorkspacePinned}
+                  onRename={onRenameWorkspace}
+                  onMarkPriorityDone={onMarkPriorityDone}
+                  priorityAttention={entry.attention}
+                  onWorkspaceDragStart={onWorkspaceDragStart}
+                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                  showTokens={showSessionTokens}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
         {pinnedWorkspaces.length > 0 ? (
           <div className="project-group session-date-group session-pinned-group">
             <div className="project-row session-date-row session-pinned-row">

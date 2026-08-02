@@ -348,6 +348,23 @@
   cursor: default;
 }
 
+/* Priority section header: same static chrome as Pinned, plus a small count
+   badge so the triage load reads at a glance. */
+.project-group.session-priority-group > .session-priority-row {
+  cursor: default;
+}
+
+.session-priority-count {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--panel-sunken);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+}
+
 .project-group.dragging {
   opacity: 0.4;
 }

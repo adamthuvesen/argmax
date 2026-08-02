@@ -45,7 +45,8 @@ const snapshot: DashboardSnapshot = {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-12T15:54:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     }
   ],
   sessions: [],
@@ -116,7 +117,8 @@ const baseProps = {
   canDragWorkspaceToGrid: false,
   detectedIdes: [],
   defaultIde: null,
-  showSessionTokens: false
+  showSessionTokens: false,
+  showPriority: false
 };
 
 function getProjectButtonOrder(): string[] {
@@ -175,6 +177,7 @@ describe("Sidebar — localStorage write isolation", () => {
           detectedIdes={[]}
           defaultIde={null}
           showSessionTokens={false}
+          showPriority={false}
         />
       </StrictMode>
     );
@@ -221,6 +224,7 @@ describe("Sidebar — localStorage write isolation", () => {
           detectedIdes={[]}
           defaultIde={null}
           showSessionTokens={false}
+          showPriority={false}
         />
       </StrictMode>
     );
@@ -426,7 +430,8 @@ describe("Sidebar — workspaces without sessions", () => {
           dirty: false,
           changedFiles: 0,
           lastActivityAt: "2026-05-12T15:54:00.000Z",
-          pinned: false
+          pinned: false,
+          priorityDismissedAt: null
         }
       ],
       sessions: [
@@ -505,7 +510,8 @@ describe("Sidebar — date (sessions) view mode", () => {
     dirty: false,
     changedFiles: 0,
     lastActivityAt,
-    pinned: false
+    pinned: false,
+    priorityDismissedAt: null
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
@@ -707,5 +713,110 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(window.localStorage.getItem(sidebarViewModeStorageKey)).toBe(JSON.stringify("sessions"));
     expect(screen.getByText("Sessions")).toBeInTheDocument();
     expect(screen.getByText("Today")).toBeInTheDocument();
+  });
+});
+
+describe("Sidebar — Priority section", () => {
+  const session = (
+    workspaceId: string,
+    attention: "normal" | "blocked" | "review-ready",
+    attentionChangedAt: string
+  ) => ({
+    id: `session-${workspaceId}`,
+    workspaceId,
+    provider: "codex" as const,
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.5",
+    permissionMode: "auto-approve" as const,
+    agentMode: "auto" as const,
+    providerConversationId: null,
+    state: attention === "blocked" ? ("waiting" as const) : ("running" as const),
+    attention,
+    attentionChangedAt,
+    startedAt: "2026-05-12T15:00:00.000Z",
+    completedAt: null,
+    lastActivityAt: "2026-05-12T15:54:00.000Z",
+    prompt: "Do the thing"
+  });
+
+  const workspace = (id: string, taskLabel: string, priorityDismissedAt?: string) => ({
+    id,
+    projectId: "project-1",
+    taskLabel,
+    branch: `argmax/${id}`,
+    baseRef: "main",
+    path: `/tmp/${id}`,
+    state: "running" as const,
+    sharedWorkspace: false,
+    dirty: false,
+    changedFiles: 0,
+    lastActivityAt: "2026-05-12T15:54:00.000Z",
+    pinned: false,
+    priorityDismissedAt: priorityDismissedAt ?? null
+  });
+
+  const prioritySnapshot: DashboardSnapshot = {
+    ...snapshot,
+    workspaces: [workspace("w-blocked", "Blocked task"), workspace("w-calm", "Calm task")],
+    sessions: [
+      session("w-blocked", "blocked", "2026-05-12T15:30:00.000Z"),
+      session("w-calm", "normal", "2026-05-12T15:30:00.000Z")
+    ]
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("floats attention-worthy sessions above collapsed projects", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+
+    // The priority row is visible even though its project boots collapsed;
+    // the calm workspace stays hidden inside the collapsed project group.
+    expect(screen.getByText("Priority")).toBeInTheDocument();
+    expect(screen.getByLabelText("1 session needs attention")).toBeInTheDocument();
+    const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
+    expect(blockedRow).toHaveAttribute("title", expect.stringContaining("waiting for input"));
+    expect(screen.queryByRole("button", { name: /Calm task/ })).toBeNull();
+  });
+
+  it("renders nothing when the setting is off", () => {
+    render(<Sidebar {...baseProps} showPriority={false} snapshot={prioritySnapshot} />);
+    expect(screen.queryByText("Priority")).toBeNull();
+  });
+
+  it("marks a priority row done from the context menu", () => {
+    const onMarkPriorityDone = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onMarkPriorityDone={onMarkPriorityDone}
+        snapshot={prioritySnapshot}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Blocked task/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark as done" }));
+
+    expect(onMarkPriorityDone).toHaveBeenCalledWith("w-blocked");
+  });
+
+  it("hides a dismissed workspace whose attention has not changed since", () => {
+    const dismissedSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        workspace("w-blocked", "Blocked task", "2026-05-12T15:45:00.000Z"),
+        workspace("w-calm", "Calm task")
+      ]
+    };
+    render(<Sidebar {...baseProps} showPriority snapshot={dismissedSnapshot} />);
+    expect(screen.queryByText("Priority")).toBeNull();
   });
 });

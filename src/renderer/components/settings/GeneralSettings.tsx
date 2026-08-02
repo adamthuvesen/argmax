@@ -24,6 +24,8 @@ export function GeneralSettings({
   onAccentChange,
   sidebarTokensVisible,
   onSidebarTokensVisibleChange,
+  sidebarPriorityVisible,
+  onSidebarPriorityVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
   pixelFieldEnabled,
@@ -45,6 +47,8 @@ export function GeneralSettings({
   onAccentChange: (accentId: AccentId) => void;
   sidebarTokensVisible: boolean;
   onSidebarTokensVisibleChange: (v: boolean) => void;
+  sidebarPriorityVisible: boolean;
+  onSidebarPriorityVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
@@ -161,6 +165,13 @@ export function GeneralSettings({
           <div className="settings-card-sub">
             <p className="settings-font-caption">{selectedFontSize.hint}</p>
           </div>
+
+          <ToggleRow
+            label="Priority section in sidebar"
+            description="Float sessions that need approval, are blocked, failed, or are ready for review to the top of the sidebar. Right-click a row to mark it done."
+            checked={sidebarPriorityVisible}
+            onChange={onSidebarPriorityVisibleChange}
+          />
 
           <ToggleRow
             label="Show session tokens in sidebar"

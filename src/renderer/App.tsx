@@ -74,6 +74,7 @@ import {
   COMPOSER_PIXEL_FIELD_KEY,
   FAST_MODE_KEY,
   SIDEBAR_COLLAPSED_KEY,
+  SIDEBAR_PRIORITY_KEY,
   SIDEBAR_TOKENS_KEY,
   THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
@@ -125,6 +126,7 @@ export function App(): JSX.Element {
     false
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
+  const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [sidebarCollapsed, setSidebarCollapsed] = useBooleanUiPreference(SIDEBAR_COLLAPSED_KEY, false);
   // Transient "peek" state: while collapsed, hovering the left edge slides the
   // sidebar out as an overlay; leaving it slides back. Not persisted.
@@ -639,6 +641,22 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
+  const markPriorityDone = useCallback(
+    async (workspaceId: string): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Tauri app window to mark a session done." });
+        return;
+      }
+      const ok = await withToast(
+        () => window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true }),
+        setToast,
+        "Could not mark the session done."
+      );
+      if (ok) await refreshDashboardStatus();
+    },
+    [refreshDashboardStatus]
+  );
+
   const renameWorkspace = useCallback(
     async (workspaceId: string, taskLabel: string): Promise<void> => {
       if (!window.argmax) {
@@ -670,6 +688,12 @@ export function App(): JSX.Element {
       void renameWorkspace(workspaceId, taskLabel);
     },
     [renameWorkspace]
+  );
+  const onMarkPriorityDoneRow = useCallback(
+    (workspaceId: string): void => {
+      void markPriorityDone(workspaceId);
+    },
+    [markPriorityDone]
   );
   const onAddProjectRow = useCallback((): void => {
     void addProject();
@@ -1068,6 +1092,8 @@ export function App(): JSX.Element {
         loadState={loadState}
         onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
         onRenameWorkspace={onRenameWorkspaceRow}
+        onMarkPriorityDone={onMarkPriorityDoneRow}
+        showPriority={sidebarPriorityVisible}
         onOpenLauncher={onOpenLauncherRow}
         onAddProject={onAddProjectRow}
         onRemoveProject={onRemoveProjectRow}
@@ -1119,6 +1145,8 @@ export function App(): JSX.Element {
                 onToolCallGroupsExpandedChange={setToolCallGroupsExpanded}
                 sidebarTokensVisible={sidebarTokensVisible}
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
+                sidebarPriorityVisible={sidebarPriorityVisible}
+                onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
                 pixelFieldEnabled={pixelFieldEnabled}

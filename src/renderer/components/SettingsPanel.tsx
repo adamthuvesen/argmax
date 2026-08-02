@@ -40,6 +40,8 @@ export function SettingsPanel({
   onToolCallGroupsExpandedChange,
   sidebarTokensVisible,
   onSidebarTokensVisibleChange,
+  sidebarPriorityVisible,
+  onSidebarPriorityVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
   pixelFieldEnabled,
@@ -76,6 +78,8 @@ export function SettingsPanel({
   onToolCallGroupsExpandedChange: (v: boolean) => void;
   sidebarTokensVisible: boolean;
   onSidebarTokensVisibleChange: (v: boolean) => void;
+  sidebarPriorityVisible: boolean;
+  onSidebarPriorityVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
@@ -253,6 +257,8 @@ export function SettingsPanel({
               onAccentChange={onAccentChange}
               sidebarTokensVisible={sidebarTokensVisible}
               onSidebarTokensVisibleChange={onSidebarTokensVisibleChange}
+              sidebarPriorityVisible={sidebarPriorityVisible}
+              onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
               chatCostVisible={chatCostVisible}
               onChatCostVisibleChange={onChatCostVisibleChange}
               pixelFieldEnabled={pixelFieldEnabled}

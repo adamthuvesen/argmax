@@ -48,7 +48,8 @@ const workspace: WorkspaceSummary = {
   dirty: false,
   changedFiles: 0,
   lastActivityAt: "2026-05-12T15:00:02.000Z",
-  pinned: false
+  pinned: false,
+  priorityDismissedAt: null
 };
 
 describe("AgentActivityPane", () => {

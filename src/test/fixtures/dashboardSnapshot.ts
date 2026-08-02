@@ -38,7 +38,8 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       dirty: true,
       changedFiles: 3,
       lastActivityAt: "2026-05-08T15:54:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     }
   ],
   sessions: [

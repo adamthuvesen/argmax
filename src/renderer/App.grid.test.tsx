@@ -44,7 +44,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -107,7 +108,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -308,7 +310,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1119,7 +1122,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-new",
@@ -1230,7 +1234,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-3",
@@ -1244,7 +1249,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:05:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1315,7 +1321,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1395,7 +1402,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1460,7 +1468,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const thirdWorkspace: DashboardSnapshot["workspaces"][number] = {
       id: "workspace-3",
@@ -1474,7 +1483,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:05:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",
@@ -1555,7 +1565,8 @@ describe("App grid", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",

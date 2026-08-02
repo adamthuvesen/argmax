@@ -8,6 +8,12 @@ Rust owns workspace lifecycle and git operations.
 
 The launcher composer exposes this choice per launch via the "Worktree" toggle (off by default → current checkout), persisted to `localStorage` (`argmax.workspaceMode`). `worktree` calls `create_isolated` (forking `argmax/<slug>` from the live branch); `current` calls `create_current` (shared checkout). See [src/renderer/lib/workspaceMode.ts](../src/renderer/lib/workspaceMode.ts).
 
+## Sidebar Priority section
+
+The sidebar floats attention-worthy workspaces (session `attention` of `approval-needed`, `blocked`, `failed`, or `review-ready`; `archived`/`kept` excluded) into a Priority section above the pinned/date/project groups, sorted by severity then oldest-waiting. The selector is pure and client-side: [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts) joins `snapshot.sessions` attention onto workspaces, so it updates via normal `dashboard:delta` merges.
+
+Right-click → "Mark as done" calls `workspaces:set-priority-dismissed`, stamping `workspaces.priority_dismissed_at`. A dismissal only suppresses the row while it is newer than the session's `attention_changed_at` (stamped in `update_session_state` whenever the attention value changes), so fresh attention re-promotes the workspace without any server-side clearing. The section is toggleable in Settings → General (`argmax.sidebar.priority.visible`, default on).
+
 ## Review
 
 Changed files are listed and diffs are loaded for workspace or project targets

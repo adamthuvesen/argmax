@@ -419,6 +419,14 @@ async workspacesSetPinned(input: WorkspacesSetPinnedInput) : Promise<Result<Work
     else return { status: "error", error: e  as any };
 }
 },
+async workspacesSetPriorityAdded(input: WorkspacesSetPriorityAddedInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_set_priority_added", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspacesSetPriorityDismissed(input: WorkspacesSetPriorityDismissedInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspaces_set_priority_dismissed", { input }) };
@@ -695,6 +703,12 @@ export type WorkspaceSummary = { id: string; projectId: string; taskLabel: strin
  */
 priorityDismissedAt: string | null; 
 /**
+ * When the user manually added this workspace to the Priority section.
+ * Manual entries need no attention and never age out; cleared by an
+ * explicit remove or a dismissal.
+ */
+priorityAddedAt: string | null; 
+/**
  * State of the most-recent PR across this workspace's sessions. Filled in
  * from `gh_pr` on every read path — the renderer merges workspace deltas
  * by whole-object replacement, so a summary published with `None` here
@@ -717,6 +731,7 @@ export type WorkspacesOpenInIdeInput = { workspaceId: WorkspaceId; ide: OpenIdeC
 export type WorkspacesRefreshStatusInput = { workspaceId: WorkspaceId }
 export type WorkspacesSetLabelInput = { workspaceId: WorkspaceId; taskLabel: TaskLabel }
 export type WorkspacesSetPinnedInput = { workspaceId: WorkspaceId; pinned: boolean }
+export type WorkspacesSetPriorityAddedInput = { workspaceId: WorkspaceId; added: boolean }
 export type WorkspacesSetPriorityDismissedInput = { workspaceId: WorkspaceId; dismissed: boolean }
 export type WriteStaleReason = "stale"
 

@@ -30,8 +30,8 @@ use super::sessions::{
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
     find_workspace_by_id, persist_workspace, set_workspace_label, set_workspace_label_auto,
-    set_workspace_pinned, set_workspace_priority_dismissed, update_workspace_state,
-    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
+    set_workspace_pinned, set_workspace_priority_added, set_workspace_priority_dismissed,
+    update_workspace_state, update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
 };
 use crate::error::ArgmaxError;
 
@@ -666,6 +666,30 @@ fn priority_dismissal_tracks_attention_changes() {
     // Unknown workspace surfaces a not-found error rather than a silent no-op.
     let missing = set_workspace_priority_dismissed(&connection, "nope", true);
     assert!(matches!(missing, Err(ArgmaxError::RecordNotFound { .. })));
+}
+
+#[test]
+fn manual_priority_add_and_dismissal_clear_each_other() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+
+    // Adding while dismissed clears the dismissal so the row actually shows.
+    set_workspace_priority_dismissed(&connection, "w1", true).expect("dismiss");
+    let added = set_workspace_priority_added(&connection, "w1", true).expect("add");
+    assert!(added.priority_added_at.is_some());
+    assert!(added.priority_dismissed_at.is_none());
+
+    // Dismissing clears the manual add — removed is removed.
+    let dismissed = set_workspace_priority_dismissed(&connection, "w1", true).expect("dismiss");
+    assert!(dismissed.priority_added_at.is_none());
+    assert!(dismissed.priority_dismissed_at.is_some());
+
+    // Explicit un-add leaves the dismissal alone.
+    let removed = set_workspace_priority_added(&connection, "w1", false).expect("remove");
+    assert!(removed.priority_added_at.is_none());
+    assert!(removed.priority_dismissed_at.is_some());
 }
 
 fn project_input() -> PersistProjectInput {

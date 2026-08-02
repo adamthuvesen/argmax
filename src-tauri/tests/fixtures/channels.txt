@@ -51,6 +51,7 @@ learnings:update
 learnings:delete
 session:search
 workspaces:set-pinned
+workspaces:set-priority-added
 workspaces:set-priority-dismissed
 workspaces:set-label
 prs:list-for-session

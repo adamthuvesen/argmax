@@ -49,6 +49,10 @@ pub struct WorkspaceSummary {
     /// workspace's session attention changes again — compare against
     /// `SessionSummary.attention_changed_at`.
     pub priority_dismissed_at: Option<String>,
+    /// When the user manually added this workspace to the Priority section.
+    /// Manual entries need no attention and never age out; cleared by an
+    /// explicit remove or a dismissal.
+    pub priority_added_at: Option<String>,
     /// State of the most-recent PR across this workspace's sessions. Filled in
     /// from `gh_pr` on every read path — the renderer merges workspace deltas
     /// by whole-object replacement, so a summary published with `None` here
@@ -236,8 +240,9 @@ pub fn set_workspace_pinned(
     find_workspace_by_id(connection, workspace_id)
 }
 
-/// Marks (or unmarks) a workspace as done in the sidebar's Priority section.
-/// Dismissing stamps the current time; undoing clears it.
+/// Removes (or restores) a workspace from the sidebar's Priority section.
+/// Dismissing stamps the current time and also clears a manual add — "remove
+/// from priority" means remove, whichever door the row came in through.
 pub fn set_workspace_priority_dismissed(
     connection: &Connection,
     workspace_id: &str,
@@ -246,10 +251,47 @@ pub fn set_workspace_priority_dismissed(
     let timestamp = now_iso();
     let dismissed_at = dismissed.then(|| timestamp.clone());
     let mut statement = connection
-        .prepare_cached("UPDATE workspaces SET priority_dismissed_at = ?, updated_at = ? WHERE id = ?")
+        .prepare_cached(
+            r#"
+        UPDATE workspaces
+        SET priority_dismissed_at = ?1,
+            priority_added_at = CASE WHEN ?1 IS NULL THEN priority_added_at ELSE NULL END,
+            updated_at = ?2
+        WHERE id = ?3
+        "#,
+        )
         .map_err(sqlite_error)?;
     let changes = statement
         .execute((dismissed_at.as_deref(), timestamp.as_str(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("workspace", workspace_id));
+    }
+    find_workspace_by_id(connection, workspace_id)
+}
+
+/// Manually adds (or removes) a workspace to the Priority section. Adding
+/// clears any standing dismissal so the row actually appears.
+pub fn set_workspace_priority_added(
+    connection: &Connection,
+    workspace_id: &str,
+    added: bool,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let timestamp = now_iso();
+    let added_at = added.then(|| timestamp.clone());
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        UPDATE workspaces
+        SET priority_added_at = ?1,
+            priority_dismissed_at = CASE WHEN ?1 IS NULL THEN priority_dismissed_at ELSE NULL END,
+            updated_at = ?2
+        WHERE id = ?3
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((added_at.as_deref(), timestamp.as_str(), workspace_id))
         .map_err(sqlite_error)?;
     if changes == 0 {
         return Err(ArgmaxError::record_not_found("workspace", workspace_id));
@@ -312,6 +354,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         last_activity_at: row.get("last_activity_at")?,
         pinned: row.get::<_, i64>("pinned")? == 1,
         priority_dismissed_at: row.get("priority_dismissed_at")?,
+        priority_added_at: row.get("priority_added_at")?,
         // PR fields are not workspace columns; attach_latest_pr fills them in
         // from gh_pr after the row maps.
         pr_state: None,

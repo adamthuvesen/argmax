@@ -288,6 +288,12 @@ export interface WorkspaceSummary {
    * the dismissal on whole-object delta merge.
    */
   priorityDismissedAt: string | null;
+  /**
+   * When the user manually added this workspace to the Priority section
+   * (null when not manually added). Manual entries need no attention and
+   * never age out; cleared by a dismissal or an explicit remove.
+   */
+  priorityAddedAt: string | null;
   /** State of the most-recent PR across this workspace's sessions. Null/absent when none. */
   prState?: GhPrState | null;
   /** PR number paired with `prState`. */
@@ -448,6 +454,7 @@ export interface ArgmaxApi {
     autoTitle: (input: AutotitleWorkspaceInput) => Promise<{ ok: true }>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
     setPriorityDismissed: (input: { workspaceId: string; dismissed: boolean }) => Promise<WorkspaceSummary>;
+    setPriorityAdded: (input: { workspaceId: string; added: boolean }) => Promise<WorkspaceSummary>;
     setLabel: (input: { workspaceId: string; taskLabel: string }) => Promise<WorkspaceSummary>;
   };
   providers: {

@@ -82,6 +82,18 @@ pub static PRIORITY_DISMISSAL_COLUMNS: phf::Map<&'static str, &'static [&'static
     ] as &'static [&'static str],
 };
 
+// Post-v7 `workspaces` shape: v6 plus `priority_added_at` (user manually added
+// the workspace to the sidebar Priority section; no attention required, no
+// staleness expiry — cleared by dismissal or an explicit remove).
+pub static PRIORITY_MANUAL_ADD_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "id",
+        "last_activity_at", "path", "pinned", "priority_added_at",
+        "priority_dismissed_at", "project_id", "shared_workspace", "state",
+        "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -181,7 +193,21 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PRIORITY_DISMISSAL_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 7,
+        name: "priority_manual_add",
+        up: PRIORITY_MANUAL_ADD,
+        affected_tables: &["workspaces"],
+        expected_columns: &PRIORITY_MANUAL_ADD_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Manual "Add to priority": floats the workspace into the sidebar Priority
+// section regardless of attention, until removed or dismissed.
+const PRIORITY_MANUAL_ADD: &str = r#"
+ALTER TABLE workspaces ADD COLUMN priority_added_at TEXT;
+"#;
 
 // Sidebar Priority section: `priority_dismissed_at` records when the user
 // marked a workspace done; `attention_changed_at` records when a session's
@@ -724,9 +750,11 @@ mod tests {
             verify_table_columns(&connection, &EXPECTED_COLUMNS, table).expect(table);
         }
         // sessions and workspaces gained columns in later migrations, so verify
-        // them against the head shape (v6) rather than the v1 EXPECTED_COLUMNS.
+        // them against the head shapes rather than the v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "sessions")
             .expect("sessions");
+        verify_table_columns(&connection, &PRIORITY_MANUAL_ADD_COLUMNS, "workspaces")
+            .expect("workspaces");
 
         let fts_tables: Vec<String> = connection
             .prepare(
@@ -757,6 +785,7 @@ mod tests {
                 (4, compute_migration_checksum(WORKSPACE_AUTO_LABEL_FLAG)),
                 (5, compute_migration_checksum(SESSION_CONTEXT_WINDOW)),
                 (6, compute_migration_checksum(PRIORITY_DISMISSAL)),
+                (7, compute_migration_checksum(PRIORITY_MANUAL_ADD)),
             ]
         );
 
@@ -801,7 +830,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &PRIORITY_MANUAL_ADD_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 

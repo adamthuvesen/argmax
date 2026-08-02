@@ -791,6 +791,26 @@ describe("Sidebar — Priority section", () => {
     expect(screen.queryByText("Priority")).toBeNull();
   });
 
+  it("shows a project subtitle on priority rows but not under project groups", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+
+    // The priority row carries the owning project's name as a second line.
+    const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
+    expect(within(blockedRow).getByText("Argmax")).toBeInTheDocument();
+
+    // A row under its project group skips the subtitle — the header names it.
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    const calmRow = screen.getByRole("button", { name: /Calm task/ });
+    expect(within(calmRow).queryByText("Argmax")).toBeNull();
+  });
+
+  it("omits subtitles entirely when priority mode is off", () => {
+    render(<Sidebar {...baseProps} showPriority={false} snapshot={prioritySnapshot} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
+    expect(within(blockedRow).queryByText("Argmax")).toBeNull();
+  });
+
   it("marks a priority row done from the context menu", () => {
     const onMarkPriorityDone = vi.fn();
     render(

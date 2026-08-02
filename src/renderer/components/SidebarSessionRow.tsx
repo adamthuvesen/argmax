@@ -4,6 +4,7 @@ import {
   CircleCheck,
   CircleX,
   ExternalLink,
+  Folder,
   GitMerge,
   GitPullRequest,
   ListChecks,
@@ -68,6 +69,12 @@ type SidebarSessionRowProps = {
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   showTokens: boolean;
+  /**
+   * Second row line under the label — the owning project's name. Set on rows
+   * whose group doesn't already name the project (Priority, Pinned, date
+   * view) while the Priority section is enabled.
+   */
+  subtitle?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityAttention?: PriorityAttention;
   /** Priority rows only — right-click "Mark as done" dismisses the row. */
@@ -171,6 +178,7 @@ function SidebarSessionRowInner({
   detectedIdes,
   defaultIde,
   showTokens,
+  subtitle,
   priorityAttention,
   onMarkPriorityDone
 }: SidebarSessionRowProps): JSX.Element {
@@ -433,7 +441,7 @@ function SidebarSessionRowInner({
         <>
           <button
             aria-current={isSelected ? "true" : undefined}
-            className={isSelected ? "session-link active" : "session-link"}
+            className={`session-link${isSelected ? " active" : ""}${subtitle ? " session-link-stacked" : ""}`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
             type="button"
@@ -455,7 +463,17 @@ function SidebarSessionRowInner({
               prState={workspace.prState}
               priorityAttention={priorityAttention}
             />
-            <span>{displayLabel}</span>
+            {subtitle ? (
+              <span className="session-link-text">
+                <span>{displayLabel}</span>
+                <span className="session-link-subtitle">
+                  <Folder size={10} aria-hidden="true" />
+                  <span>{subtitle}</span>
+                </span>
+              </span>
+            ) : (
+              <span>{displayLabel}</span>
+            )}
           </button>
       {showTokens ? (() => {
         const inputOutput = (workspaceTokens?.input ?? 0) + (workspaceTokens?.output ?? 0);
@@ -657,6 +675,7 @@ export function sidebarSessionRowEqual(
   if (prev.onRename !== next.onRename) return false;
   if (prev.onWorkspaceDragStart !== next.onWorkspaceDragStart) return false;
   if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
+  if (prev.subtitle !== next.subtitle) return false;
   if (prev.priorityAttention !== next.priorityAttention) return false;
   if (prev.onMarkPriorityDone !== next.onMarkPriorityDone) return false;
   const pw = prev.workspace;

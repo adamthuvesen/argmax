@@ -331,6 +331,23 @@ export function Sidebar({
     [showPriority, snapshot.workspaces, snapshot.sessions]
   );
 
+  // Project-name subtitles (screenshot-style two-line rows) for rows whose
+  // group doesn't already name the project: Priority, Pinned, and the flat
+  // date view. Rows under a project group skip it — the header says it.
+  // Tied to the Priority toggle so one setting flips the whole look.
+  const projectNameById = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const project of snapshot.projects) {
+      names.set(project.id, project.name);
+    }
+    return names;
+  }, [snapshot.projects]);
+  const subtitleFor = useCallback(
+    (projectId: string): string | null =>
+      showPriority ? projectNameById.get(projectId) ?? null : null,
+    [showPriority, projectNameById]
+  );
+
   // Pinned workspaces float into a dedicated section at the top of the list,
   // above the date buckets (sessions view) and above the project groups
   // (projects view). They're pulled out of their normal bucket while pinned and
@@ -697,6 +714,7 @@ export function Sidebar({
               <div key={entry.workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={entry.workspace}
+                  subtitle={subtitleFor(entry.workspace.projectId)}
                   workspaceTokens={workspaceTokenMap.get(entry.workspace.id) ?? null}
                   isSelected={selectedWorkspaceId === entry.workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
@@ -731,6 +749,7 @@ export function Sidebar({
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
+                  subtitle={subtitleFor(workspace.projectId)}
                   workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
@@ -798,6 +817,7 @@ export function Sidebar({
                         >
                           <SidebarSessionRow
                             workspace={workspace}
+                            subtitle={subtitleFor(workspace.projectId)}
                             workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                             isSelected={selectedWorkspaceId === workspace.id}
                             isOpenInGrid={openWorkspaceIds.has(workspace.id)}

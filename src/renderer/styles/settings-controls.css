@@ -232,7 +232,7 @@
 
 .settings-model-picker .model-picker-popover {
   min-width: min(220px, calc(100vw - 48px));
-  max-height: min(440px, calc(100dvh - 180px));
+  max-height: min(320px, calc(100dvh - 180px));
 }
 
 .settings-model-picker .model-speed-popover {

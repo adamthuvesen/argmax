@@ -696,16 +696,6 @@ export function Sidebar({
             <div className="project-row session-date-row session-priority-row">
               <span className="project-name session-date-label session-priority-label">
                 <span className="project-name-text">Priority</span>
-                <span
-                  className="session-priority-count"
-                  aria-label={
-                    priorityEntries.length === 1
-                      ? "1 session needs attention"
-                      : `${priorityEntries.length} sessions need attention`
-                  }
-                >
-                  {priorityEntries.length}
-                </span>
               </span>
               <span aria-hidden="true" />
               <span aria-hidden="true" />

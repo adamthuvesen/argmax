@@ -780,7 +780,6 @@ describe("Sidebar — Priority section", () => {
     // The priority row is visible even though its project boots collapsed;
     // the calm workspace stays hidden inside the collapsed project group.
     expect(screen.getByText("Priority")).toBeInTheDocument();
-    expect(screen.getByLabelText("1 session needs attention")).toBeInTheDocument();
     const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
     expect(blockedRow).toHaveAttribute("title", expect.stringContaining("waiting for input"));
     expect(screen.queryByRole("button", { name: /Calm task/ })).toBeNull();

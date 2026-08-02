@@ -39,7 +39,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 4.8");
+    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
@@ -384,7 +384,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 4.8");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -400,8 +400,8 @@ describe("App", () => {
       workspaceId: "workspace-1",
       provider: "claude",
       prompt: "Implement PTY launch",
-      modelLabel: "Opus 4.8",
-      modelId: "claude-opus-4-8",
+      modelLabel: "Opus 5",
+      modelId: "claude-opus-5",
       reasoningEffort: "high",
       fastMode: false,
       agentMode: "auto",

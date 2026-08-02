@@ -9,6 +9,7 @@ import {
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   PROVIDER_TITLE_MODEL,
+  reasoningEffortsForModel,
   type UsageCounts
 } from "./providerModels.js";
 
@@ -18,15 +19,43 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
   // The CLAUDE.md "Critical conventions" section documents these defaults. If
   // a maintainer changes the constant they need to update the doc too — this
   // test is the tripwire.
-  it("matches the documented launch defaults (Opus 4.8 high / GPT-5.5 high)", () => {
+  it("matches the documented launch defaults (Opus 5 high / GPT-5.6 Sol high)", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
-      modelId: "claude-opus-4-8",
+      modelId: "claude-opus-5",
       reasoningEffort: "high"
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
-      modelId: "gpt-5.5",
+      modelId: "gpt-5.6-sol",
       reasoningEffort: "high"
     });
+  });
+});
+
+describe("reasoningEffortsForModel", () => {
+  it("offers Max for Cursor GPT-5.6 and Opus 5 Thinking", () => {
+    expect(reasoningEffortsForModel("cursor", "gpt-5.6-sol-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]);
+    expect(reasoningEffortsForModel("cursor", "claude-opus-5-thinking-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]);
+  });
+
+  it("caps Codex at Extra High", () => {
+    expect(reasoningEffortsForModel("codex", "gpt-5.6-sol")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ]);
   });
 });
 
@@ -38,18 +67,18 @@ describe("normalizeModelId", () => {
 
   it("leaves bare ids untouched", () => {
     expect(normalizeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
-    expect(normalizeModelId("gpt-5.5")).toBe("gpt-5.5");
+    expect(normalizeModelId("gpt-5.6-sol")).toBe("gpt-5.6-sol");
   });
 
   it("does not strip non-date trailing suffixes", () => {
-    expect(normalizeModelId("gpt-5.5-medium")).toBe("gpt-5.5-medium");
+    expect(normalizeModelId("gpt-5.6-sol-medium")).toBe("gpt-5.6-sol-medium");
   });
 });
 
 describe("costOf — golden fixtures", () => {
   beforeEach(() => __resetUnknownModelLog());
 
-  it("prices Opus 4.8 across all four buckets", () => {
+  it("prices Opus 5 across all four buckets", () => {
     const usage: UsageCounts = {
       input: 1_000_000,
       output: 1_000_000,
@@ -57,6 +86,17 @@ describe("costOf — golden fixtures", () => {
       cacheWrite: 1_000_000
     };
     // 5 + 25 + 0.5 + 6.25 = 36.75
+    expect(costOf(usage, "claude-opus-5")).toBeCloseTo(36.75, 9);
+  });
+
+  it("prices stored Opus 4.8 sessions via aliases", () => {
+    const usage: UsageCounts = {
+      input: 1_000_000,
+      output: 1_000_000,
+      cacheRead: 1_000_000,
+      cacheWrite: 1_000_000
+    };
+    expect(MODEL_PRICING["claude-opus-4-8"]).toBeUndefined();
     expect(costOf(usage, "claude-opus-4-8")).toBeCloseTo(36.75, 9);
   });
 
@@ -68,7 +108,17 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(million, "claude-haiku-4-5")).toBeCloseTo(1.0, 9);
   });
 
-  it("prices GPT-5.5 input-only at $5/M", () => {
+  it("prices GPT-5.6 Sol input-only at $5/M", () => {
+    expect(costOf(million, "gpt-5.6-sol")).toBeCloseTo(5.0, 9);
+  });
+
+  it("prices GPT-5.6 Luna / Terra at published short-context rates", () => {
+    expect(costOf(million, "gpt-5.6-luna")).toBeCloseTo(0.2, 9);
+    expect(costOf(million, "gpt-5.6-terra")).toBeCloseTo(2.0, 9);
+  });
+
+  it("prices stored GPT-5.5 sessions via aliases", () => {
+    expect(MODEL_PRICING["gpt-5.5"]).toBeUndefined();
     expect(costOf(million, "gpt-5.5")).toBeCloseTo(5.0, 9);
   });
 
@@ -115,7 +165,8 @@ describe("MODEL_PRICING coverage", () => {
   it("ships entries for the launch-default model ids", () => {
     expect(MODEL_PRICING["claude-sonnet-5"]).toBeDefined();
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
-    expect(MODEL_PRICING["gpt-5.5"]).toBeDefined();
+    expect(MODEL_PRICING["gpt-5.6-sol"]).toBeDefined();
+    expect(MODEL_PRICING["claude-opus-5"]).toBeDefined();
   });
 
   // Drift tripwire: every picker model must have a matching pricing entry so

@@ -6,6 +6,12 @@ marks the commit that set it. "Unreleased" covers work not yet on `main`.
 
 ## Unreleased
 
+### Changed
+
+- Provider catalog: Claude default is Opus 5; Codex offers GPT-5.6 Luna/Terra/Sol
+  (default Sol); Cursor replaces GPT-5.5 / Opus 4.8 with the GPT-5.6 family and
+  Opus 5 Thinking.
+
 ### Fixed
 
 - In dev and test builds, one session's panic no longer takes down parallel

@@ -6,8 +6,8 @@ const BASE_SESSION: SessionSummary = {
   id: "session-1",
   workspaceId: "workspace-1",
   provider: "codex",
-  modelLabel: "GPT-5.5",
-  modelId: "gpt-5.5",
+  modelLabel: "GPT-5.6 Sol",
+  modelId: "gpt-5.6-sol",
   permissionMode: "auto-approve",
   providerConversationId: null,
   prompt: "Review this",
@@ -21,13 +21,13 @@ const BASE_SESSION: SessionSummary = {
 describe("modelSelectionFromSession", () => {
   it("preserves the stored session model", () => {
     expect(modelSelectionFromSession(BASE_SESSION)).toEqual({
-      label: "GPT-5.5",
-      modelId: "gpt-5.5",
+      label: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
     });
     expect(modelPickerSelectionFromSession(BASE_SESSION)).toEqual({
       provider: "codex",
-      label: "GPT-5.5",
-      modelId: "gpt-5.5",
+      label: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
     });
   });
 });

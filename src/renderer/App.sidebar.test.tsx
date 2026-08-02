@@ -293,8 +293,8 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Session model" }));
     const modelPopover = await screen.findByRole("listbox", { name: "Session model" });
-    // GPT-5.5 is effort-capable; selecting it seeds the default Medium effort.
-    fireEvent.click(within(modelPopover).getByText("GPT-5.5"));
+    // GPT-5.6 Sol is effort-capable; selecting it seeds the default Medium effort.
+    fireEvent.click(within(modelPopover).getByText("GPT-5.6 Sol"));
     fireEvent.change(await screen.findByLabelText("Session prompt"), {
       target: { value: "use the stronger model" }
     });
@@ -305,8 +305,8 @@ describe("App sidebar", () => {
         sessionId: "session-1",
         input: "use the stronger model",
         provider: "codex",
-        modelLabel: "GPT-5.5",
-        modelId: "gpt-5.5",
+        modelLabel: "GPT-5.6 Sol",
+        modelId: "gpt-5.6-sol",
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",

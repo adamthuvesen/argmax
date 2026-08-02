@@ -51,8 +51,8 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * Effort levels a given model offers in the picker, low → high. Claude's own
  * models run the full low→ultra list; Codex stops at Extra High; Cursor's
  * GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking go one further to Max (their CLIs
- * expose that variant but not Ultra). Kept in sync with the Rust adapters'
- * effort → model mapping.
+ * expose that variant but not Ultra); Cursor Grok 4.5 and Gemini 3.6 Flash stop
+ * at High. Kept in sync with the Rust adapters' effort → model mapping.
  */
 export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
@@ -64,6 +64,12 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
       modelId.startsWith("gpt-5.6-sol"))
   ) {
     return REASONING_EFFORTS.slice(0, 5); // low → max
+  }
+  if (
+    provider === "cursor" &&
+    (modelId.startsWith("cursor-grok-4.5") || modelId.startsWith("gemini-3.6-flash"))
+  ) {
+    return REASONING_EFFORTS.slice(0, 3); // low → high
   }
   return REASONING_EFFORTS.slice(0, 4); // low → xhigh
 }
@@ -106,16 +112,27 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
   codex: [
-    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 272_000 },
+    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 272_000 },
     { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Sol", modelId: "gpt-5.6-sol", supportsReasoningEffort: true, contextWindow: 272_000 }
+    { label: "GPT-5.6 Luna", modelId: "gpt-5.6-luna", supportsReasoningEffort: true, contextWindow: 272_000 }
   ],
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
-    { label: "Gemini 3.5 Flash (Cursor)", modelId: "gemini-3.5-flash", contextWindow: 1_000_000 },
-    { label: "GPT-5.6 Luna (Cursor)", modelId: "gpt-5.6-luna-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "GPT-5.6 Terra (Cursor)", modelId: "gpt-5.6-terra-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    {
+      label: "Grok 4.5 (Cursor)",
+      modelId: "cursor-grok-4.5-medium",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000
+    },
+    {
+      label: "Gemini 3.6 Flash (Cursor)",
+      modelId: "gemini-3.6-flash-medium",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000
+    },
     { label: "GPT-5.6 Sol (Cursor)", modelId: "gpt-5.6-sol-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "GPT-5.6 Terra (Cursor)", modelId: "gpt-5.6-terra-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "GPT-5.6 Luna (Cursor)", modelId: "gpt-5.6-luna-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     {
       label: "Claude Opus 5 (Cursor)",
       modelId: "claude-opus-5-thinking-medium",
@@ -139,14 +156,12 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
   claude: {
     label: "Opus 5",
     modelId: "claude-opus-5",
-    supportsReasoningEffort: true,
-    reasoningEffort: "high"
+    supportsReasoningEffort: true
   },
   codex: {
     label: "GPT-5.6 Sol",
     modelId: "gpt-5.6-sol",
-    supportsReasoningEffort: true,
-    reasoningEffort: "high"
+    supportsReasoningEffort: true
   },
   cursor: {
     label: "Composer 2.5 (Cursor)",
@@ -182,10 +197,11 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // cost telemetry doesn't claim charges that aren't incurred at the API
   // layer.
   "composer-2.5":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gemini-3.5-flash":                 { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "cursor-grok-4.5-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.6-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-sol-medium":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 
@@ -224,7 +240,8 @@ const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "o4-mini":              { input: 1.1,  output: 4.4,  cacheRead: 0.275, cacheWrite: 0 },
   "claude-opus-4-8-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-7-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gpt-5.5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  "gpt-5.5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.5-flash":       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 
 export interface UsageCounts {

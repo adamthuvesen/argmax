@@ -70,9 +70,10 @@ Cursor has no fast-mode or reasoning-effort flag — it exposes both as distinct
 model ids — so `cursor_model_for` in [adapters.rs](../src-tauri/src/providers/adapters.rs)
 folds the chosen effort and fast mode into the launched `--model` (e.g.
 `gpt-5.6-sol-xhigh`, `claude-opus-5-thinking-max-fast`). Effort variants exist
-for GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking (clamped to Max), and every
-Cursor model but Gemini 3.5 Flash has a `-fast` variant; the picker mirrors this
-by only offering effort/Speed where a variant exists.
+for GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking (clamped to Max), plus Grok 4.5
+and Gemini 3.6 Flash (clamped to High). Every Cursor model but Gemini 3.6 Flash
+has a `-fast` variant; the picker mirrors this by only offering effort/Speed
+where a variant exists.
 
 Cursor's provider conversation id is the `session_id` from its `system/init`
 JSON row; persist it so follow-ups can resume with `cursor-agent --resume`.

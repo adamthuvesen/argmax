@@ -147,8 +147,8 @@ export function LaunchSurface({
 
   // If the pre-filled selection points at a provider that isn't usable — CLI
   // not installed, or installed but not logged in — steer to the highest-
-  // priority usable provider's default (Claude → Codex → Cursor) so the
-  // composer isn't stuck on an unlaunchable pick. Runs once when discovery
+  // priority usable provider's default (Claude → Codex → Cursor fallback) so
+  // the composer isn't stuck on an unlaunchable pick. Runs once when discovery
   // resolves; picks the user makes afterwards are never overridden.
   const providerSteeringDone = useRef(false);
   useEffect(() => {

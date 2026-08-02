@@ -99,8 +99,8 @@ function widestGridRowColumnCount(rows: unknown[][]): number {
 
 export function App(): JSX.Element {
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
-    provider: "claude",
-    ...modelDefaultForProvider("claude")
+    provider: "codex",
+    ...modelDefaultForProvider("codex")
   }));
   const {
     isSettingsOpen,

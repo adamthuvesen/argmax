@@ -16,18 +16,19 @@ import {
 const million: UsageCounts = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 describe("PROVIDER_MODEL_DEFAULTS", () => {
-  // The CLAUDE.md "Critical conventions" section documents these defaults. If
-  // a maintainer changes the constant they need to update the doc too — this
-  // test is the tripwire.
-  it("matches the documented launch defaults (Opus 5 high / GPT-5.6 Sol high)", () => {
+  // Tripwire: launch defaults and the effort they seed. Effort comes from
+  // DEFAULT_REASONING_EFFORT via modelDefaultForProvider when unset here.
+  it("matches the documented launch defaults (Opus 5 / GPT-5.6 Sol at medium)", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
       modelId: "claude-opus-5",
-      reasoningEffort: "high"
+      supportsReasoningEffort: true
     });
+    expect(PROVIDER_MODEL_DEFAULTS.claude.reasoningEffort).toBeUndefined();
     expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
       modelId: "gpt-5.6-sol",
-      reasoningEffort: "high"
+      supportsReasoningEffort: true
     });
+    expect(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort).toBeUndefined();
   });
 });
 
@@ -49,12 +50,33 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
+  it("caps Cursor Grok and Gemini 3.6 at High", () => {
+    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.5-medium")).toEqual([
+      "low",
+      "medium",
+      "high"
+    ]);
+    expect(reasoningEffortsForModel("cursor", "gemini-3.6-flash-medium")).toEqual([
+      "low",
+      "medium",
+      "high"
+    ]);
+  });
+
   it("caps Codex at Extra High", () => {
     expect(reasoningEffortsForModel("codex", "gpt-5.6-sol")).toEqual([
       "low",
       "medium",
       "high",
       "xhigh"
+    ]);
+  });
+
+  it("lists Codex models Sol → Terra → Luna", () => {
+    expect(PROVIDER_MODELS.codex.map((model) => model.modelId)).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna"
     ]);
   });
 });

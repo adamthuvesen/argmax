@@ -39,7 +39,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
+    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-5.6 Sol");
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
@@ -384,7 +384,7 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-5.6 Sol");
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Implement PTY launch" }
     });
@@ -398,11 +398,11 @@ describe("App", () => {
     );
     expect(launchProvider).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
-      provider: "claude",
+      provider: "codex",
       prompt: "Implement PTY launch",
-      modelLabel: "Opus 5",
-      modelId: "claude-opus-5",
-      reasoningEffort: "high",
+      modelLabel: "GPT-5.6 Sol",
+      modelId: "gpt-5.6-sol",
+      reasoningEffort: "medium",
       fastMode: false,
       agentMode: "auto",
       permissionMode: "auto-approve",
@@ -413,8 +413,8 @@ describe("App", () => {
     await waitFor(() =>
       expect(autotitleWorkspace).toHaveBeenCalledWith({
         workspaceId: "workspace-1",
-        provider: "claude",
-        modelId: "claude-haiku-4-5",
+        provider: "codex",
+        modelId: "gpt-5.6-luna",
         prompt: "Implement PTY launch"
       })
     );
@@ -648,8 +648,8 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
-    // The launcher defaults to Opus at High; switching to Sonnet (also
-    // effort-capable) carries that High over rather than resetting to Medium.
+    // The launcher defaults to Sol at Medium; switching to Sonnet (also
+    // effort-capable) carries that Medium over rather than resetting.
     fireEvent.click(within(launchPopover).getByText("Sonnet 5"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
@@ -663,7 +663,7 @@ describe("App", () => {
         prompt: "Review this change",
         modelLabel: "Sonnet 5",
         modelId: "claude-sonnet-5",
-        reasoningEffort: "high",
+        reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",
         permissionMode: "auto-approve",

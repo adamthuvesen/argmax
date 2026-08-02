@@ -169,12 +169,11 @@ fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
 
 // Cursor picks reasoning effort and fast serving through the model id (e.g.
 // gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). Effort: GPT-5.6
-// Luna/Terra/Sol and Opus 5 Thinking are parameterized; neither reaches
-// Claude's Ultra, so clamp — both families top out at Max (spelled "max").
-// Composer and Gemini have no effort variant and pass through. Fast: append
-// "-fast" after the effort suffix for every model that has a fast variant —
-// all but Gemini 3.5 Flash. The renderer only enables the Speed toggle for
-// those, so this mirrors it.
+// Luna/Terra/Sol and Opus 5 Thinking are parameterized up to Max; Grok 4.5 and
+// Gemini 3.6 Flash stop at High. Composer has no effort variant and passes
+// through. Fast: append "-fast" after the effort suffix for every model that
+// has a fast variant — all but Gemini 3.6 Flash. The renderer only enables the
+// Speed toggle for those, so this mirrors it.
 //
 // Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
 // and the spellings from `cursor-agent --list-models`) rather than a prefix, so
@@ -210,9 +209,31 @@ fn cursor_model_for(
             };
             format!("claude-opus-5-thinking-{suffix}")
         }
+        ("cursor-grok-4.5-medium", Some(effort)) => {
+            let suffix = match effort {
+                ReasoningEffort::Low => "low",
+                ReasoningEffort::Medium => "medium",
+                ReasoningEffort::High
+                | ReasoningEffort::Xhigh
+                | ReasoningEffort::Max
+                | ReasoningEffort::Ultra => "high",
+            };
+            format!("cursor-grok-4.5-{suffix}")
+        }
+        ("gemini-3.6-flash-medium", Some(effort)) => {
+            let suffix = match effort {
+                ReasoningEffort::Low => "low",
+                ReasoningEffort::Medium => "medium",
+                ReasoningEffort::High
+                | ReasoningEffort::Xhigh
+                | ReasoningEffort::Max
+                | ReasoningEffort::Ultra => "high",
+            };
+            format!("gemini-3.6-flash-{suffix}")
+        }
         _ => model_id.to_string(),
     };
-    if fast_mode && model_id != "gemini-3.5-flash" {
+    if fast_mode && !model_id.starts_with("gemini-3.6-flash") {
         format!("{with_effort}-fast")
     } else {
         with_effort
@@ -672,10 +693,10 @@ mod tests {
 
     #[test]
     fn cursor_gemini_has_no_fast_variant() {
-        // Gemini 3.5 Flash has no -fast model, so fast mode is a no-op for it.
+        // Gemini 3.6 Flash has no -fast model, so fast mode is a no-op for it.
         let input = ProviderLaunchInput {
-            model_id: "gemini-3.5-flash".to_string(),
-            reasoning_effort: None,
+            model_id: "gemini-3.6-flash-medium".to_string(),
+            reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
         };
@@ -684,7 +705,31 @@ mod tests {
             .iter()
             .position(|a| a == "--model")
             .expect("model flag");
-        assert_eq!(args[i + 1], "gemini-3.5-flash");
+        assert_eq!(args[i + 1], "gemini-3.6-flash-high");
+    }
+
+    #[test]
+    fn cursor_grok_effort_maps_to_variant_capped_at_high() {
+        let cases = [
+            (ReasoningEffort::Low, "cursor-grok-4.5-low"),
+            (ReasoningEffort::Medium, "cursor-grok-4.5-medium"),
+            (ReasoningEffort::High, "cursor-grok-4.5-high"),
+            (ReasoningEffort::Xhigh, "cursor-grok-4.5-high"),
+            (ReasoningEffort::Max, "cursor-grok-4.5-high"),
+        ];
+        for (effort, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: "cursor-grok-4.5-medium".to_string(),
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
+            assert_eq!(args[i + 1], expected, "grok effort {effort:?}");
+        }
     }
 
     #[test]

@@ -52,7 +52,8 @@ describe("App sidebar", () => {
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
       pinned: false,
-      priorityDismissedAt: null
+      priorityDismissedAt: null,
+      priorityAddedAt: null
     };
     const secondSession: DashboardSnapshot["sessions"][number] = {
       id: "session-2",

@@ -13,10 +13,20 @@ const ATTENTION_SEVERITY: Record<PriorityAttention, number> = {
 
 export interface PriorityEntry {
   workspace: WorkspaceSummary;
-  attention: PriorityAttention;
+  /** Null for manually-added entries with no attention of their own. */
+  attention: PriorityAttention | null;
   /** When `attention` became current; null on sessions predating the column. */
   attentionChangedAt: string | null;
 }
+
+/**
+ * Attention older than this is history, not triage — it stays in the normal
+ * groups but no longer floats into Priority. Also the implicit gate for
+ * pre-migration sessions (null stamp = unknown age = stale), which keeps the
+ * first launch after the migration from flooding the section with every
+ * failed session ever.
+ */
+export const PRIORITY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function severity(attention: string): number {
   return ATTENTION_SEVERITY[attention as PriorityAttention] ?? 0;
@@ -36,12 +46,19 @@ function isDismissed(workspace: WorkspaceSummary, attentionChangedAt: string | n
 
 /**
  * Workspaces that need the user right now, most urgent first. `archived` and
- * `kept` workspaces are excluded — keeping is an explicit "I'm done here".
+ * `kept` workspaces are excluded — keeping is an explicit "I'm done here" —
+ * and so is anything whose attention became current more than
+ * `PRIORITY_MAX_AGE_MS` before `nowMs` (or whose age is unknown).
  * Ties within a severity sort oldest-waiting first (triage, not a feed).
+ *
+ * A manual add (`priorityAddedAt`) floats the workspace regardless of
+ * attention and never ages out; the backend guarantees add/dismiss are
+ * mutually exclusive, so a manually-added row skips the dismissal check.
  */
 export function computePriorityEntries(
   workspaces: WorkspaceSummary[],
-  sessions: SessionSummary[]
+  sessions: SessionSummary[],
+  nowMs: number
 ): PriorityEntry[] {
   // Highest-severity attention per workspace; ties go to the most recently
   // active session since that is the one whose attention is being renewed.
@@ -68,21 +85,30 @@ export function computePriorityEntries(
   for (const workspace of workspaces) {
     if (workspace.state === "archived" || workspace.state === "kept") continue;
     const found = attentionByWorkspace.get(workspace.id);
-    if (!found) continue;
-    if (isDismissed(workspace, found.changedAt)) continue;
+    const attentionQualifies = (() => {
+      if (!found || found.changedAt === null) return false;
+      const changedAtMs = Date.parse(found.changedAt);
+      if (!Number.isFinite(changedAtMs) || nowMs - changedAtMs > PRIORITY_MAX_AGE_MS) return false;
+      return !isDismissed(workspace, found.changedAt);
+    })();
+    const manuallyAdded = Boolean(workspace.priorityAddedAt);
+    if (!attentionQualifies && !manuallyAdded) continue;
     entries.push({
       workspace,
-      attention: found.attention,
-      attentionChangedAt: found.changedAt
+      // A manual add still shows real attention when there is fresh,
+      // undismissed attention to show; otherwise it renders as a plain row.
+      attention: attentionQualifies && found ? found.attention : null,
+      attentionChangedAt: attentionQualifies && found ? found.changedAt : null
     });
   }
 
   entries.sort((a, b) => {
-    const bySeverity = severity(b.attention) - severity(a.attention);
+    const bySeverity =
+      (b.attention ? severity(b.attention) : 0) - (a.attention ? severity(a.attention) : 0);
     if (bySeverity !== 0) return bySeverity;
-    // Oldest waiting first; a null stamp (unknown age) sorts oldest.
-    const aChanged = a.attentionChangedAt ?? "";
-    const bChanged = b.attentionChangedAt ?? "";
+    // Oldest waiting first; manual entries (no stamp) sort by add time.
+    const aChanged = a.attentionChangedAt ?? a.workspace.priorityAddedAt ?? "";
+    const bChanged = b.attentionChangedAt ?? b.workspace.priorityAddedAt ?? "";
     if (aChanged !== bChanged) return aChanged < bChanged ? -1 : 1;
     return a.workspace.id < b.workspace.id ? -1 : 1;
   });

@@ -43,7 +43,8 @@ const workspace: WorkspaceSummary = {
   changedFiles: 0,
   lastActivityAt: "2026-05-12T15:00:02.000Z",
   pinned: false,
-  priorityDismissedAt: null
+  priorityDismissedAt: null,
+  priorityAddedAt: null
 };
 
 // task-1 is still running (started, no completion, session running); task-2 has

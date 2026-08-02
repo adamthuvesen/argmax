@@ -299,7 +299,15 @@ export function setupAppTestMocks(): void {
         Promise.resolve({
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
-          priorityDismissedAt: dismissed ? new Date().toISOString() : null
+          priorityDismissedAt: dismissed ? new Date().toISOString() : null,
+          priorityAddedAt: null
+        }),
+      setPriorityAdded: ({ workspaceId, added }) =>
+        Promise.resolve({
+          ...(snapshot.workspaces[0] ?? missingWorkspace()),
+          id: workspaceId,
+          priorityAddedAt: added ? new Date().toISOString() : null,
+          priorityDismissedAt: null
         }),
       setLabel: ({ workspaceId, taskLabel }) =>
         Promise.resolve({

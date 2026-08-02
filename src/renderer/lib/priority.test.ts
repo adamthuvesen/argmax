@@ -16,6 +16,7 @@ const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): Works
   lastActivityAt: "2026-05-12T15:54:00.000Z",
   pinned: false,
   priorityDismissedAt: null,
+  priorityAddedAt: null,
   ...overrides
 });
 
@@ -42,6 +43,8 @@ const session = (
   ...overrides
 });
 
+const NOW = Date.parse("2026-05-12T18:00:00.000Z");
+
 describe("computePriorityEntries", () => {
   it("includes only attention-worthy workspaces and sorts by severity then age", () => {
     const entries = computePriorityEntries(
@@ -52,7 +55,8 @@ describe("computePriorityEntries", () => {
         session("w-approval", "approval-needed"),
         session("w-blocked-old", "blocked", { attentionChangedAt: "2026-05-12T10:00:00.000Z" }),
         session("w-blocked-new", "blocked", { attentionChangedAt: "2026-05-12T12:00:00.000Z" })
-      ]
+      ],
+      NOW
     );
 
     expect(entries.map((entry) => entry.workspace.id)).toEqual([
@@ -66,7 +70,8 @@ describe("computePriorityEntries", () => {
   it("excludes archived and kept workspaces", () => {
     const entries = computePriorityEntries(
       [workspace("w-archived", { state: "archived" }), workspace("w-kept", { state: "kept" })],
-      [session("w-archived", "failed"), session("w-kept", "review-ready")]
+      [session("w-archived", "failed"), session("w-kept", "review-ready")],
+      NOW
     );
     expect(entries).toEqual([]);
   });
@@ -74,7 +79,8 @@ describe("computePriorityEntries", () => {
   it("uses the highest-severity session when a workspace has several", () => {
     const entries = computePriorityEntries(
       [workspace("w-1")],
-      [session("w-1", "review-ready"), session("w-1", "blocked")]
+      [session("w-1", "review-ready"), session("w-1", "blocked")],
+      NOW
     );
     expect(entries).toHaveLength(1);
     expect(entries[0]?.attention).toBe("blocked");
@@ -82,14 +88,16 @@ describe("computePriorityEntries", () => {
 
   it("honors a dismissal until attention changes again", () => {
     const dismissed = workspace("w-1", {
-      priorityDismissedAt: "2026-05-12T16:00:00.000Z"
+      priorityDismissedAt: "2026-05-12T16:00:00.000Z",
+      priorityAddedAt: null
     });
 
     // Dismissal newer than the attention change → hidden.
     expect(
       computePriorityEntries(
         [dismissed],
-        [session("w-1", "review-ready", { attentionChangedAt: "2026-05-12T15:00:00.000Z" })]
+        [session("w-1", "review-ready", { attentionChangedAt: "2026-05-12T15:00:00.000Z" })],
+        NOW
       )
     ).toEqual([]);
 
@@ -97,17 +105,51 @@ describe("computePriorityEntries", () => {
     expect(
       computePriorityEntries(
         [dismissed],
-        [session("w-1", "approval-needed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })]
+        [session("w-1", "approval-needed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })],
+        NOW
       )
     ).toHaveLength(1);
   });
 
-  it("treats a missing attention stamp as older than any dismissal", () => {
-    // Pre-migration session rows have no attentionChangedAt; a dismissal must
-    // still stick, otherwise old review-ready workspaces are undismissable.
+  it("excludes attention older than 24 hours", () => {
     const entries = computePriorityEntries(
-      [workspace("w-1", { priorityDismissedAt: "2026-05-12T16:00:00.000Z" })],
-      [session("w-1", "review-ready", { attentionChangedAt: undefined })]
+      [workspace("w-fresh"), workspace("w-stale")],
+      [
+        session("w-fresh", "failed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" }),
+        session("w-stale", "failed", { attentionChangedAt: "2026-05-11T17:00:00.000Z" })
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-fresh"]);
+  });
+
+  it("floats manual adds without attention, after attention-driven entries", () => {
+    const entries = computePriorityEntries(
+      [
+        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z" }),
+        workspace("w-blocked")
+      ],
+      [
+        // Manual entries ignore the staleness gate (no stamp here at all).
+        session("w-manual", "normal", { attentionChangedAt: undefined }),
+        session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => [entry.workspace.id, entry.attention])).toEqual([
+      ["w-blocked", "blocked"],
+      ["w-manual", null]
+    ]);
+  });
+
+  it("treats a missing attention stamp as stale", () => {
+    // Pre-migration session rows have no attentionChangedAt — unknown age
+    // counts as old, which keeps the first post-migration launch from
+    // flooding Priority with historical sessions.
+    const entries = computePriorityEntries(
+      [workspace("w-1")],
+      [session("w-1", "review-ready", { attentionChangedAt: undefined })],
+      NOW
     );
     expect(entries).toEqual([]);
   });

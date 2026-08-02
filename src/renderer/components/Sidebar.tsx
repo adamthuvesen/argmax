@@ -141,7 +141,8 @@ export function Sidebar({
   onRenameWorkspace,
   onResizeMouseDown,
   onToggleWorkspacePinned,
-  onMarkPriorityDone,
+  onRemoveFromPriority,
+  onAddToPriority,
   showPriority,
   onWorkspaceDragStart,
   onWorkspaceDragEnd,
@@ -173,8 +174,10 @@ export function Sidebar({
   onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
-  /** Right-click "Mark as done" on a Priority row — dismisses it until new attention. */
-  onMarkPriorityDone?: (workspaceId: string) => void;
+  /** Right-click "Remove from priority" on a Priority row — dismisses it until new attention. */
+  onRemoveFromPriority?: (workspaceId: string) => void;
+  /** Right-click "Add to priority" on any other row — floats it manually. */
+  onAddToPriority?: (workspaceId: string) => void;
   /** Whether the Priority section renders at all (settings toggle). */
   showPriority: boolean;
   /** Notifies the parent that a sidebar drag started carrying this workspace. */
@@ -324,10 +327,15 @@ export function Sidebar({
 
   // Workspaces that need the user right now (approval, blocked, failed,
   // review-ready) float into the Priority section above everything else.
-  // They still render in their home group — Priority is a duplicate triage
-  // view, not a relocation, so rows don't teleport as attention changes.
+  // A row lives in exactly one section: while in Priority it leaves its
+  // home group (Pinned/date/project) and drops back when resolved,
+  // dismissed, or aged out.
+  // `Date.now()` is read inside the memo, so the 24h staleness gate is only
+  // re-evaluated when the snapshot changes — consistent with the no-polling
+  // rule. An entry that crosses the age line simply drops on the next delta.
   const priorityEntries = useMemo(
-    () => (showPriority ? computePriorityEntries(snapshot.workspaces, snapshot.sessions) : []),
+    () =>
+      showPriority ? computePriorityEntries(snapshot.workspaces, snapshot.sessions, Date.now()) : [],
     [showPriority, snapshot.workspaces, snapshot.sessions]
   );
 
@@ -348,6 +356,13 @@ export function Sidebar({
     [showPriority, projectNameById]
   );
 
+  const priorityWorkspaceIds = useMemo(
+    () => new Set(priorityEntries.map((entry) => entry.workspace.id)),
+    [priorityEntries]
+  );
+  // "Add to priority" only makes sense while the section exists.
+  const addToPriority = showPriority ? onAddToPriority : undefined;
+
   // Pinned workspaces float into a dedicated section at the top of the list,
   // above the date buckets (sessions view) and above the project groups
   // (projects view). They're pulled out of their normal bucket while pinned and
@@ -359,13 +374,14 @@ export function Sidebar({
           (workspace) =>
             workspace.pinned &&
             workspace.state !== "archived" &&
+            !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
         .sort((a, b) => {
           if (a.lastActivityAt === b.lastActivityAt) return 0;
           return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
         }),
-    [snapshot.workspaces, workspaceIdsWithSessions]
+    [snapshot.workspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
@@ -378,10 +394,11 @@ export function Sidebar({
           (workspace) =>
             !workspace.pinned &&
             workspace.state !== "archived" &&
+            !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
       ),
-    [snapshot.workspaces, workspaceIdsWithSessions]
+    [snapshot.workspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
   const workspaceTokenMap = useMemo(() => {
@@ -714,8 +731,8 @@ export function Sidebar({
                   onOpenInIde={onOpenInIde}
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
-                  onMarkPriorityDone={onMarkPriorityDone}
-                  priorityAttention={entry.attention}
+                  onRemoveFromPriority={onRemoveFromPriority}
+                  priorityAttention={entry.attention ?? undefined}
                   onWorkspaceDragStart={onWorkspaceDragStart}
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}
@@ -749,6 +766,7 @@ export function Sidebar({
                   onOpenInIde={onOpenInIde}
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
+                  onAddToPriority={addToPriority}
                   onWorkspaceDragStart={onWorkspaceDragStart}
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}
@@ -817,6 +835,7 @@ export function Sidebar({
                             onOpenInIde={onOpenInIde}
                             onTogglePin={onToggleWorkspacePinned}
                             onRename={onRenameWorkspace}
+                            onAddToPriority={addToPriority}
                             onWorkspaceDragStart={onWorkspaceDragStart}
                             onWorkspaceDragEnd={onWorkspaceDragEnd}
                             detectedIdes={detectedIdes}
@@ -853,6 +872,7 @@ export function Sidebar({
                     !workspace.pinned &&
                     workspace.projectId === project.id &&
                     workspace.state !== "archived" &&
+                    !priorityWorkspaceIds.has(workspace.id) &&
                     workspaceIdsWithSessions.has(workspace.id)
                 ),
                 manualOrder
@@ -970,6 +990,7 @@ export function Sidebar({
                         onOpenInIde={onOpenInIde}
                         onTogglePin={onToggleWorkspacePinned}
                         onRename={onRenameWorkspace}
+                        onAddToPriority={addToPriority}
                         onWorkspaceDragStart={onWorkspaceDragStart}
                         onWorkspaceDragEnd={onWorkspaceDragEnd}
                         detectedIdes={detectedIdes}

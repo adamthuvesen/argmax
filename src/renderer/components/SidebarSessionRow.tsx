@@ -8,6 +8,7 @@ import {
   GitMerge,
   GitPullRequest,
   ListChecks,
+  ListPlus,
   Pencil,
   Pin,
   PinOff,
@@ -77,8 +78,10 @@ type SidebarSessionRowProps = {
   subtitle?: string | null;
   /** Set when the row renders inside the Priority section: why it floated up. */
   priorityAttention?: PriorityAttention;
-  /** Priority rows only — right-click "Mark as done" dismisses the row. */
-  onMarkPriorityDone?: (workspaceId: string) => void;
+  /** Priority rows only — right-click "Remove from priority" dismisses the row. */
+  onRemoveFromPriority?: (workspaceId: string) => void;
+  /** Non-priority rows — right-click "Add to priority" floats the row manually. */
+  onAddToPriority?: (workspaceId: string) => void;
 };
 
 const IDE_POPOVER_WIDTH = 200;
@@ -183,7 +186,8 @@ function SidebarSessionRowInner({
   showTokens,
   subtitle,
   priorityAttention,
-  onMarkPriorityDone
+  onRemoveFromPriority,
+  onAddToPriority
 }: SidebarSessionRowProps): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
@@ -326,7 +330,7 @@ function SidebarSessionRowInner({
   const priorityTitle = priorityAttention ? ` — ${PRIORITY_TITLE[priorityAttention]}` : "";
   const title = `${displayLabel} — ${workspace.state}${priorityTitle}${prTitle}${isOpenInGrid ? " — in view" : ""}`;
 
-  const hasContextMenu = Boolean(onRename || onMarkPriorityDone);
+  const hasContextMenu = Boolean(onRename || onRemoveFromPriority || onAddToPriority);
   const handleContextMenu = (event: ReactMouseEvent): void => {
     if (!hasContextMenu) return;
     event.preventDefault();
@@ -335,7 +339,7 @@ function SidebarSessionRowInner({
     // push the menu off-screen. Sizes are the popover's min-width plus a small
     // single-item height estimate.
     const MENU_WIDTH = 150;
-    const MENU_HEIGHT = onRename && onMarkPriorityDone ? 80 : 44;
+    const MENU_HEIGHT = onRename && (onRemoveFromPriority || onAddToPriority) ? 80 : 44;
     const left = Math.min(event.clientX, Math.max(8, window.innerWidth - MENU_WIDTH));
     const top = Math.min(event.clientY, Math.max(8, window.innerHeight - MENU_HEIGHT));
     setContextMenuPos({ top, left });
@@ -625,8 +629,8 @@ function SidebarSessionRowInner({
                 </li>
               ) : null}
               {/* After Rename, which keeps its long-standing first slot — a
-                  mis-click here hides the row from Priority immediately. */}
-              {onMarkPriorityDone ? (
+                  mis-click here moves the row immediately. */}
+              {onRemoveFromPriority ? (
                 <li role="none">
                   <button
                     type="button"
@@ -635,11 +639,28 @@ function SidebarSessionRowInner({
                     onClick={(event) => {
                       event.stopPropagation();
                       closeContextMenu();
-                      onMarkPriorityDone(workspace.id);
+                      onRemoveFromPriority(workspace.id);
                     }}
                   >
                     <ListChecks size={13} aria-hidden="true" />
-                    Mark as done
+                    Remove from priority
+                  </button>
+                </li>
+              ) : null}
+              {onAddToPriority ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onAddToPriority(workspace.id);
+                    }}
+                  >
+                    <ListPlus size={13} aria-hidden="true" />
+                    Add to priority
                   </button>
                 </li>
               ) : null}
@@ -680,7 +701,8 @@ export function sidebarSessionRowEqual(
   if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
   if (prev.subtitle !== next.subtitle) return false;
   if (prev.priorityAttention !== next.priorityAttention) return false;
-  if (prev.onMarkPriorityDone !== next.onMarkPriorityDone) return false;
+  if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
+  if (prev.onAddToPriority !== next.onAddToPriority) return false;
   const pw = prev.workspace;
   const nw = next.workspace;
   if (pw === nw) {

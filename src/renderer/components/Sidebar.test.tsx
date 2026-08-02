@@ -46,7 +46,8 @@ const snapshot: DashboardSnapshot = {
       changedFiles: 0,
       lastActivityAt: "2026-05-12T15:54:00.000Z",
       pinned: false,
-      priorityDismissedAt: null
+      priorityDismissedAt: null,
+      priorityAddedAt: null
     }
   ],
   sessions: [],
@@ -431,7 +432,8 @@ describe("Sidebar — workspaces without sessions", () => {
           changedFiles: 0,
           lastActivityAt: "2026-05-12T15:54:00.000Z",
           pinned: false,
-          priorityDismissedAt: null
+          priorityDismissedAt: null,
+          priorityAddedAt: null
         }
       ],
       sessions: [
@@ -511,7 +513,8 @@ describe("Sidebar — date (sessions) view mode", () => {
     changedFiles: 0,
     lastActivityAt,
     pinned: false,
-    priorityDismissedAt: null
+    priorityDismissedAt: null,
+    priorityAddedAt: null
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
@@ -717,6 +720,11 @@ describe("Sidebar — date (sessions) view mode", () => {
 });
 
 describe("Sidebar — Priority section", () => {
+  // The Priority selector runs against real Date.now() with a 24h staleness
+  // gate, so fixture stamps are anchored to "now" rather than fixed dates.
+  const MINUTES_AGO_30 = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const MINUTES_AGO_15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
   const session = (
     workspaceId: string,
     attention: "normal" | "blocked" | "review-ready",
@@ -752,15 +760,16 @@ describe("Sidebar — Priority section", () => {
     changedFiles: 0,
     lastActivityAt: "2026-05-12T15:54:00.000Z",
     pinned: false,
-    priorityDismissedAt: priorityDismissedAt ?? null
+    priorityDismissedAt: priorityDismissedAt ?? null,
+    priorityAddedAt: null
   });
 
   const prioritySnapshot: DashboardSnapshot = {
     ...snapshot,
     workspaces: [workspace("w-blocked", "Blocked task"), workspace("w-calm", "Calm task")],
     sessions: [
-      session("w-blocked", "blocked", "2026-05-12T15:30:00.000Z"),
-      session("w-calm", "normal", "2026-05-12T15:30:00.000Z")
+      session("w-blocked", "blocked", MINUTES_AGO_30),
+      session("w-calm", "normal", MINUTES_AGO_30)
     ]
   };
 
@@ -790,6 +799,16 @@ describe("Sidebar — Priority section", () => {
     expect(screen.queryByText("Priority")).toBeNull();
   });
 
+  it("removes a priority row from its home group", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+
+    // Expanding the project group must not produce a second copy of the
+    // blocked row — a workspace lives in exactly one section at a time.
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    expect(screen.getAllByRole("button", { name: /Blocked task/ })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /Calm task/ })).toBeInTheDocument();
+  });
+
   it("shows a project subtitle on priority rows but not under project groups", () => {
     render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
 
@@ -810,28 +829,64 @@ describe("Sidebar — Priority section", () => {
     expect(within(blockedRow).queryByText("Argmax")).toBeNull();
   });
 
-  it("marks a priority row done from the context menu", () => {
-    const onMarkPriorityDone = vi.fn();
+  it("removes a priority row from the context menu", () => {
+    const onRemoveFromPriority = vi.fn();
     render(
       <Sidebar
         {...baseProps}
         showPriority
-        onMarkPriorityDone={onMarkPriorityDone}
+        onRemoveFromPriority={onRemoveFromPriority}
         snapshot={prioritySnapshot}
       />
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Blocked task/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Mark as done" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from priority" }));
 
-    expect(onMarkPriorityDone).toHaveBeenCalledWith("w-blocked");
+    expect(onRemoveFromPriority).toHaveBeenCalledWith("w-blocked");
+  });
+
+  it("adds a non-priority row from the context menu", () => {
+    const onAddToPriority = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onAddToPriority={onAddToPriority}
+        snapshot={prioritySnapshot}
+      />
+    );
+
+    // The calm row sits in its project group; its menu offers Add, not Remove.
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
+    expect(screen.queryByRole("menuitem", { name: "Remove from priority" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to priority" }));
+
+    expect(onAddToPriority).toHaveBeenCalledWith("w-calm");
+  });
+
+  it("floats a manually added workspace without attention", () => {
+    const manualSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        workspace("w-blocked", "Blocked task"),
+        { ...workspace("w-calm", "Calm task"), priorityAddedAt: MINUTES_AGO_15 }
+      ]
+    };
+    render(<Sidebar {...baseProps} showPriority snapshot={manualSnapshot} />);
+
+    // Both rows float: the blocked one by attention, the calm one manually.
+    expect(screen.getByText("Priority")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Calm task/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
   });
 
   it("hides a dismissed workspace whose attention has not changed since", () => {
     const dismissedSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
       workspaces: [
-        workspace("w-blocked", "Blocked task", "2026-05-12T15:45:00.000Z"),
+        workspace("w-blocked", "Blocked task", MINUTES_AGO_15),
         workspace("w-calm", "Calm task")
       ]
     };

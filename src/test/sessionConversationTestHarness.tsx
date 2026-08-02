@@ -99,7 +99,8 @@ export const workspace: WorkspaceSummary = {
   changedFiles: 0,
   lastActivityAt: "2026-05-12T15:54:00.000Z",
   pinned: false,
-  priorityDismissedAt: null
+  priorityDismissedAt: null,
+  priorityAddedAt: null
 };
 
 export const project: ProjectSummary = {

@@ -54,6 +54,7 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
     lastActivityAt: "2026-05-12T15:00:01.000Z",
     pinned: false,
     priorityDismissedAt: null,
+    priorityAddedAt: null,
     ...overrides
   };
 }

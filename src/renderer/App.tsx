@@ -641,16 +641,32 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
-  const markPriorityDone = useCallback(
+  const removeFromPriority = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
-        setToast({ kind: "error", message: "Open the Tauri app window to mark a session done." });
+        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
         return;
       }
       const ok = await withToast(
         () => window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true }),
         setToast,
-        "Could not mark the session done."
+        "Could not remove the session from priority."
+      );
+      if (ok) await refreshDashboardStatus();
+    },
+    [refreshDashboardStatus]
+  );
+
+  const addToPriority = useCallback(
+    async (workspaceId: string): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
+        return;
+      }
+      const ok = await withToast(
+        () => window.argmax!.workspaces.setPriorityAdded({ workspaceId, added: true }),
+        setToast,
+        "Could not add the session to priority."
       );
       if (ok) await refreshDashboardStatus();
     },
@@ -689,11 +705,17 @@ export function App(): JSX.Element {
     },
     [renameWorkspace]
   );
-  const onMarkPriorityDoneRow = useCallback(
+  const onRemoveFromPriorityRow = useCallback(
     (workspaceId: string): void => {
-      void markPriorityDone(workspaceId);
+      void removeFromPriority(workspaceId);
     },
-    [markPriorityDone]
+    [removeFromPriority]
+  );
+  const onAddToPriorityRow = useCallback(
+    (workspaceId: string): void => {
+      void addToPriority(workspaceId);
+    },
+    [addToPriority]
   );
   const onAddProjectRow = useCallback((): void => {
     void addProject();
@@ -1092,7 +1114,8 @@ export function App(): JSX.Element {
         loadState={loadState}
         onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
         onRenameWorkspace={onRenameWorkspaceRow}
-        onMarkPriorityDone={onMarkPriorityDoneRow}
+        onRemoveFromPriority={onRemoveFromPriorityRow}
+        onAddToPriority={onAddToPriorityRow}
         showPriority={sidebarPriorityVisible}
         onOpenLauncher={onOpenLauncherRow}
         onAddProject={onAddProjectRow}

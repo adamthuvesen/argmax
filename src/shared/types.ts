@@ -279,6 +279,15 @@ export interface WorkspaceSummary {
   changedFiles: number;
   lastActivityAt: string;
   pinned: boolean;
+  /**
+   * When the user marked this workspace done in the sidebar's Priority
+   * section (null when not dismissed). Spent (ignored) once the workspace's
+   * session attention changes again — compare against
+   * `SessionSummary.attentionChangedAt`. Required, matching the wire shape:
+   * an optional marker would let a locally-built summary omit it and erase
+   * the dismissal on whole-object delta merge.
+   */
+  priorityDismissedAt: string | null;
   /** State of the most-recent PR across this workspace's sessions. Null/absent when none. */
   prState?: GhPrState | null;
   /** PR number paired with `prState`. */
@@ -298,6 +307,12 @@ export interface SessionSummary {
   prompt: string;
   state: SessionState;
   attention: AttentionState;
+  /**
+   * When `attention` last changed value. Absent on sessions that predate the
+   * column. The Priority section treats a dismissal as current only while
+   * `priorityDismissedAt >= attentionChangedAt`.
+   */
+  attentionChangedAt?: string | null;
   startedAt: string;
   completedAt: string | null;
   lastActivityAt: string;
@@ -432,6 +447,7 @@ export interface ArgmaxApi {
     openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
     autoTitle: (input: AutotitleWorkspaceInput) => Promise<{ ok: true }>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
+    setPriorityDismissed: (input: { workspaceId: string; dismissed: boolean }) => Promise<WorkspaceSummary>;
     setLabel: (input: { workspaceId: string; taskLabel: string }) => Promise<WorkspaceSummary>;
   };
   providers: {

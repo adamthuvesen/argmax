@@ -30,8 +30,8 @@ use super::sessions::{
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
     find_workspace_by_id, persist_workspace, set_workspace_label, set_workspace_label_auto,
-    set_workspace_pinned, update_workspace_state, update_workspace_status, PersistWorkspaceInput,
-    WorkspaceStatusInput,
+    set_workspace_pinned, set_workspace_priority_dismissed, update_workspace_state,
+    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
 };
 use crate::error::ArgmaxError;
 
@@ -608,6 +608,64 @@ fn workspace_summaries_carry_latest_pr_on_every_read_path() {
     let found = find_workspace_by_id(&connection, "w1").expect("find workspace");
     assert_eq!(found.pr_state.as_deref(), Some("OPEN"));
     assert_eq!(found.pr_number, Some(12));
+}
+
+#[test]
+fn priority_dismissal_tracks_attention_changes() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+
+    // A fresh session stamps attention_changed_at.
+    let session = persist_session(&connection, &session_input()).expect("persist session");
+    assert!(session.attention_changed_at.is_some());
+
+    // Same attention value → the stamp does not advance.
+    let unchanged = update_session_state(
+        &connection,
+        "s1",
+        &SessionStateInput {
+            state: "running".to_owned(),
+            attention: "normal".to_owned(),
+            completed_at: None,
+            last_activity_at: Some("2026-05-24T10:05:00.000Z".to_owned()),
+        },
+    )
+    .expect("update session state");
+    assert_eq!(unchanged.attention_changed_at, session.attention_changed_at);
+
+    // Attention flips → the stamp advances to that update's activity time.
+    let flipped = update_session_state(
+        &connection,
+        "s1",
+        &SessionStateInput {
+            state: "complete".to_owned(),
+            attention: "review-ready".to_owned(),
+            completed_at: Some("2026-05-24T10:06:00.000Z".to_owned()),
+            last_activity_at: Some("2026-05-24T10:06:00.000Z".to_owned()),
+        },
+    )
+    .expect("update session state");
+    assert_eq!(
+        flipped.attention_changed_at.as_deref(),
+        Some("2026-05-24T10:06:00.000Z")
+    );
+
+    // Dismiss stamps the workspace; undo clears it.
+    let dismissed =
+        set_workspace_priority_dismissed(&connection, "w1", true).expect("dismiss workspace");
+    let dismissed_at = dismissed
+        .priority_dismissed_at
+        .expect("dismissed_at stamped");
+    assert!(dismissed_at.as_str() >= flipped.attention_changed_at.as_deref().unwrap());
+    let restored =
+        set_workspace_priority_dismissed(&connection, "w1", false).expect("restore workspace");
+    assert!(restored.priority_dismissed_at.is_none());
+
+    // Unknown workspace surfaces a not-found error rather than a silent no-op.
+    let missing = set_workspace_priority_dismissed(&connection, "nope", true);
+    assert!(matches!(missing, Err(ArgmaxError::RecordNotFound { .. })));
 }
 
 fn project_input() -> PersistProjectInput {

@@ -588,6 +588,13 @@ pub struct WorkspacesSetPinnedInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspacesSetPriorityDismissedInput {
+    pub workspace_id: WorkspaceId,
+    pub dismissed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspacesSetLabelInput {
     pub workspace_id: WorkspaceId,
     pub task_label: TaskLabel,

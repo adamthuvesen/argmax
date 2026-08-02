@@ -85,6 +85,15 @@ pub fn workspaces_set_pinned(
     live_workspaces(&state)?.set_pinned(input)
 }
 
+#[tauri::command(rename = "workspaces:set-priority-dismissed")]
+#[specta::specta]
+pub fn workspaces_set_priority_dismissed(
+    state: State<'_, AppState>,
+    input: WorkspacesSetPriorityDismissedInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(&state)?.set_priority_dismissed(input)
+}
+
 #[tauri::command(rename = "workspaces:set-label")]
 #[specta::specta]
 pub fn workspaces_set_label(

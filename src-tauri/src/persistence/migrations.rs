@@ -60,6 +60,28 @@ pub static SESSIONS_CONTEXT_WINDOW_COLUMNS: phf::Map<&'static str, &'static [&'s
     ] as &'static [&'static str],
 };
 
+// Post-v6 shapes: `workspaces` gains `priority_dismissed_at` (when the user
+// marked the workspace done in the sidebar's Priority section) and `sessions`
+// gains `attention_changed_at` (when `attention` last changed value). The
+// renderer treats a dismissal as spent once attention changes again, so both
+// timestamps travel together.
+pub static PRIORITY_DISMISSAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "id",
+        "last_activity_at", "path", "pinned", "priority_dismissed_at",
+        "project_id", "shared_workspace", "state", "task_label",
+        "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "input_tokens", "last_activity_at", "last_model_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "started_at",
+        "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -151,7 +173,26 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &SESSIONS_CONTEXT_WINDOW_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 6,
+        name: "priority_dismissal",
+        up: PRIORITY_DISMISSAL,
+        affected_tables: &["workspaces", "sessions"],
+        expected_columns: &PRIORITY_DISMISSAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Sidebar Priority section: `priority_dismissed_at` records when the user
+// marked a workspace done; `attention_changed_at` records when a session's
+// `attention` last changed value. A dismissal only suppresses the workspace
+// while it is newer than the attention change — a fresh attention event
+// re-promotes without any server-side clearing. Existing session rows start
+// NULL ("unknown"), which the renderer treats as older than any dismissal.
+const PRIORITY_DISMISSAL: &str = r#"
+ALTER TABLE workspaces ADD COLUMN priority_dismissed_at TEXT;
+ALTER TABLE sessions ADD COLUMN attention_changed_at TEXT;
+"#;
 
 // Tracks context-window usage per session. `context_tokens` is overwritten with
 // the latest turn's input-side token count (what's sitting in the window right
@@ -682,9 +723,9 @@ mod tests {
         for table in ["projects", "events", "learnings"] {
             verify_table_columns(&connection, &EXPECTED_COLUMNS, table).expect(table);
         }
-        // sessions gained context-window columns in v5, so verify it against the
-        // head shape rather than the v1 EXPECTED_COLUMNS.
-        verify_table_columns(&connection, &SESSIONS_CONTEXT_WINDOW_COLUMNS, "sessions")
+        // sessions and workspaces gained columns in later migrations, so verify
+        // them against the head shape (v6) rather than the v1 EXPECTED_COLUMNS.
+        verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "sessions")
             .expect("sessions");
 
         let fts_tables: Vec<String> = connection
@@ -715,6 +756,7 @@ mod tests {
                 (3, compute_migration_checksum(DASHBOARD_EXTRA_READ_INDEXES)),
                 (4, compute_migration_checksum(WORKSPACE_AUTO_LABEL_FLAG)),
                 (5, compute_migration_checksum(SESSION_CONTEXT_WINDOW)),
+                (6, compute_migration_checksum(PRIORITY_DISMISSAL)),
             ]
         );
 
@@ -759,7 +801,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &WORKSPACES_AUTO_LABEL_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 

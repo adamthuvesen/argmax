@@ -105,15 +105,6 @@
   color: var(--pr-open);
 }
 
-/* Priority rows: an input-starved session (pending approval, blocked) shows
-   an amber alert glyph. Same specificity lift as the PR rules so it wins over
-   the state-based colors regardless of session state; it can't collide with
-   the PR/working rules because the alert branch emits neither attribute. */
-.session-link[data-status] .status-marker[data-attention="approval-needed"],
-.session-link[data-status] .status-marker[data-attention="blocked"] {
-  color: var(--amber);
-}
-
 /* A turn in flight swaps the marker for a working ring: same circle geometry
    as the check, in the semantic running green, with a center dot that
    breathes. A running row never carries data-pr (StatusMarker returns the

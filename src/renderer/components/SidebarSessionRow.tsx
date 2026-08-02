@@ -1,7 +1,7 @@
 import {
   Archive,
-  CircleAlert,
   CircleCheck,
+  CircleEllipsis,
   CircleX,
   ExternalLink,
   Folder,
@@ -116,10 +116,13 @@ function StatusMarker({
   priorityAttention?: PriorityAttention;
 }): JSX.Element {
   // In the Priority section an input-starved session outranks everything —
-  // the whole point of the row is "the agent is stalled on you", so the alert
-  // glyph wins even over the working ring (approvals arrive mid-turn).
+  // the whole point of the row is "the agent is stalled on you". The "…"
+  // ring (a typing indicator's idiom: the conversation awaits your reply, no
+  // alarm implied) wins even over the working ring, since approvals arrive
+  // mid-turn. It keeps the default muted marker color on purpose — the
+  // fallback check ring would read "done", but this isn't a warning either.
   if (priorityAttention === "approval-needed" || priorityAttention === "blocked") {
-    return <CircleAlert size={14} aria-hidden className="status-marker" data-attention={priorityAttention} />;
+    return <CircleEllipsis size={14} aria-hidden className="status-marker" data-attention={priorityAttention} />;
   }
   if (state === "running") {
     // Hand-rolled in lucide's 24-unit stroke geometry (circle r=10, stroke 2,

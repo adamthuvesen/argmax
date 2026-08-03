@@ -45,10 +45,8 @@ pub static WORKSPACES_AUTO_LABEL_COLUMNS: phf::Map<&'static str, &'static [&'sta
 };
 
 // Post-v5 `sessions` shape: the v1 column set plus the two context-window
-// columns. `context_tokens` is the input-side size of the latest turn (the live
-// window occupancy, overwritten each turn — not cumulative like the token
-// counts); `context_window` is the model's max, set only when the provider
-// reports it (Codex does).
+// columns. `context_tokens` is the latest measured input-side occupancy, not a
+// cumulative token count. `context_window` is the model's reported maximum.
 pub static SESSIONS_CONTEXT_WINDOW_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "sessions" => &[
         "agent_mode", "attention", "cache_read_tokens", "cache_write_tokens",
@@ -201,7 +199,22 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PRIORITY_MANUAL_ADD_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 8,
+        name: "invalidate_codex_context_occupancy",
+        up: INVALIDATE_CODEX_CONTEXT_OCCUPANCY,
+        affected_tables: &["sessions"],
+        expected_columns: &PRIORITY_DISMISSAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Earlier Codex normalization stored cumulative turn usage as live context
+// occupancy. Clear those values so upgraded sessions do not keep showing a
+// bogus full ring. A later token_count event can repopulate the measurement.
+const INVALIDATE_CODEX_CONTEXT_OCCUPANCY: &str = r#"
+UPDATE sessions SET context_tokens = 0 WHERE provider = 'codex';
+"#;
 
 // Manual "Add to priority": floats the workspace into the sidebar Priority
 // section regardless of attention, until removed or dismissed.
@@ -220,9 +233,9 @@ ALTER TABLE workspaces ADD COLUMN priority_dismissed_at TEXT;
 ALTER TABLE sessions ADD COLUMN attention_changed_at TEXT;
 "#;
 
-// Tracks context-window usage per session. `context_tokens` is overwritten with
-// the latest turn's input-side token count (what's sitting in the window right
-// now); `context_window` holds the model's max when the provider reports it.
+// Tracks context-window usage per session. `context_tokens` holds the latest
+// measured input-side occupancy. `context_window` holds the model's maximum
+// when the provider reports it.
 const SESSION_CONTEXT_WINDOW: &str = r#"
 ALTER TABLE sessions ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sessions ADD COLUMN context_window INTEGER;
@@ -786,6 +799,10 @@ mod tests {
                 (5, compute_migration_checksum(SESSION_CONTEXT_WINDOW)),
                 (6, compute_migration_checksum(PRIORITY_DISMISSAL)),
                 (7, compute_migration_checksum(PRIORITY_MANUAL_ADD)),
+                (
+                    8,
+                    compute_migration_checksum(INVALIDATE_CODEX_CONTEXT_OCCUPANCY)
+                ),
             ]
         );
 
@@ -832,6 +849,45 @@ mod tests {
 
         verify_table_columns(&connection, &PRIORITY_MANUAL_ADD_COLUMNS, "workspaces")
             .expect("head workspace shape");
+    }
+
+    #[test]
+    fn codex_context_occupancy_migration_clears_only_codex_sessions() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..7]).expect("migrate through v7");
+        seed_minimal_session(&connection);
+        connection
+            .execute(
+                "UPDATE sessions SET context_tokens = 123, context_window = 258400 WHERE id = 's1'",
+                [],
+            )
+            .expect("seed Claude occupancy");
+        connection
+            .execute(
+                "INSERT INTO sessions (id, workspace_id, provider, model_label, prompt, state, attention, started_at, last_activity_at, context_tokens, context_window) VALUES ('s2', 'w1', 'codex', 'GPT-5.6 Sol', 'hello', 'complete', 'normal', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', 501468, 258400)",
+                [],
+            )
+            .expect("seed Codex occupancy");
+
+        run_migrations(&mut connection).expect("apply v8");
+
+        let claude_context: (i64, i64) = connection
+            .query_row(
+                "SELECT context_tokens, context_window FROM sessions WHERE id = 's1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read Claude occupancy");
+        let codex_context: (i64, i64) = connection
+            .query_row(
+                "SELECT context_tokens, context_window FROM sessions WHERE id = 's2'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read Codex occupancy");
+
+        assert_eq!(claude_context, (123, 258_400));
+        assert_eq!(codex_context, (0, 258_400));
     }
 
     #[test]

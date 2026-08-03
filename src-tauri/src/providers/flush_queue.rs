@@ -373,6 +373,7 @@ pub fn flush_session_buffer(
                         cache_write: usage.tokens.cache_write as i64,
                     },
                     cost_usd: usage.cost_usd,
+                    context_tokens: usage.context_tokens.map(|tokens| tokens as i64),
                     context_window: usage.context_window.map(|window| window as i64),
                     created_at: None,
                 },

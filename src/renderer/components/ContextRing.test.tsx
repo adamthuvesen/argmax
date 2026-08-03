@@ -29,6 +29,13 @@ describe("ContextRing", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("renders nothing for Codex without a reported context window", () => {
+    const { container } = render(
+      <ContextRing session={{ ...base, contextTokens: 501468, contextWindow: null }} />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
   it("renders nothing before any context is used", () => {
     const { container } = render(<ContextRing session={{ ...base, contextTokens: 0, contextWindow: 258000 }} />);
     expect(container.firstChild).toBeNull();

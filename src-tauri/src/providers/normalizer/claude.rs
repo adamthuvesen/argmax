@@ -228,6 +228,7 @@ pub fn extract_usage(
     Some(NormalizedUsage {
         model_id: model_id.to_string(),
         cost_usd: cost_of(tokens.clone().into(), model_id),
+        context_tokens: Some(tokens.input + tokens.cache_read + tokens.cache_write),
         tokens,
         event_id: string_value(message.get("id")).map(str::to_string),
         // Claude doesn't report the window; the renderer uses a per-model table.
@@ -625,6 +626,7 @@ mod tests {
         .expect("usage");
         assert_eq!(usage.cost_usd, 6.0);
         assert_eq!(usage.event_id.as_deref(), Some("msg_1"));
+        assert_eq!(usage.context_tokens, Some(1_000_000));
     }
 
     #[test]

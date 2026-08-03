@@ -34,7 +34,8 @@ export function ContextRing({ session }: { session: SessionSummary }): JSX.Eleme
   useDismissOnOutsideOrEscape(anchorRef, open, () => setOpen(false));
 
   const used = session.contextTokens ?? 0;
-  const windowSize = session.contextWindow ?? contextWindowForModel(session.modelId);
+  const windowSize =
+    session.contextWindow ?? (session.provider === "codex" ? null : contextWindowForModel(session.modelId));
   if (!windowSize || windowSize <= 0 || used <= 0) return null;
 
   const fraction = Math.min(1, used / windowSize);

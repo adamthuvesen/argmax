@@ -24,6 +24,33 @@ function event(
   };
 }
 
+function codexSpawnEvents(children: readonly string[]): TimelineEvent[] {
+  return children.flatMap((child, index) => {
+    const second = index + 1;
+    return [
+      event(`spawn-${child}-end`, "command.completed", `2026-05-12T15:00:0${second}.500Z`, "spawn_agent", {
+        id: `spawn-${child}`,
+        name: "spawn_agent",
+        status: "completed",
+        input: {
+          prompt: `Inspect ${child}.`,
+          receiver_thread_ids: [`thread-${child}`],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event(`spawn-${child}-start`, "command.started", `2026-05-12T15:00:0${second}.000Z`, "spawn_agent", {
+        id: `spawn-${child}`,
+        name: "spawn_agent",
+        input: {
+          prompt: `Inspect ${child}.`,
+          receiver_thread_ids: [],
+          sender_thread_id: "thread-parent"
+        }
+      })
+    ];
+  });
+}
+
 describe("buildConversationEvents", () => {
   it("returns oldest-first visible chat events and prunes duplicated answer deltas", () => {
     const events = [
@@ -552,6 +579,97 @@ describe("buildSessionToolCalls", () => {
       status: "running",
       completedAt: null
     });
+  });
+
+  it("keeps every Codex child running during an aggregate wait", () => {
+    const events = codexSpawnEvents(["alpha", "beta", "gamma"]);
+    events.push(event("wait-start", "command.started", "2026-05-12T15:00:04.000Z", "wait", {
+      id: "wait-1",
+      name: "wait",
+      input: {
+        receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
+        sender_thread_id: "thread-parent"
+      }
+    }));
+
+    const tools = buildSessionToolCalls(events, true);
+
+    expect(tools.map((tool) => tool.toolUseId)).toEqual([
+      "spawn-alpha",
+      "spawn-beta",
+      "spawn-gamma"
+    ]);
+    expect(tools.map((tool) => tool.status)).toEqual(["running", "running", "running"]);
+  });
+
+  it("retires only completed Codex children and ignores an empty wait timeout", () => {
+    const spawnEvents = codexSpawnEvents(["alpha", "beta", "gamma"]);
+    const timeoutEvents = [
+      event("wait-timeout-end", "command.completed", "2026-05-12T15:00:06.000Z", "wait", {
+        id: "wait-timeout",
+        input: {
+          receiver_thread_ids: [],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("wait-timeout-start", "command.started", "2026-05-12T15:00:05.000Z", "wait", {
+        id: "wait-timeout",
+        name: "wait",
+        input: {
+          receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
+          sender_thread_id: "thread-parent"
+        }
+      })
+    ];
+
+    expect(buildSessionToolCalls([...spawnEvents, ...timeoutEvents], true).map((tool) => tool.status))
+      .toEqual(["running", "running", "running"]);
+
+    const gammaDoneEvents = [
+      event("wait-gamma-end", "command.completed", "2026-05-12T15:00:08.000Z", "wait", {
+        id: "wait-gamma",
+        input: {
+          receiver_thread_ids: ["thread-gamma"],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("wait-gamma-start", "command.started", "2026-05-12T15:00:07.000Z", "wait", {
+        id: "wait-gamma",
+        name: "wait",
+        input: {
+          receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
+          sender_thread_id: "thread-parent"
+        }
+      })
+    ];
+
+    expect(buildSessionToolCalls([...spawnEvents, ...timeoutEvents, ...gammaDoneEvents], true).map((tool) => tool.status))
+      .toEqual(["running", "running", "done"]);
+
+    const betaDoneEvents = [
+      event("wait-beta-end", "command.completed", "2026-05-12T15:00:10.000Z", "wait", {
+        id: "wait-beta",
+        input: {
+          receiver_thread_ids: ["thread-beta"],
+          sender_thread_id: "thread-parent"
+        }
+      }),
+      event("wait-beta-start", "command.started", "2026-05-12T15:00:09.000Z", "wait", {
+        id: "wait-beta",
+        name: "wait",
+        input: {
+          receiver_thread_ids: ["thread-alpha", "thread-beta"],
+          sender_thread_id: "thread-parent"
+        }
+      })
+    ];
+
+    expect(buildSessionToolCalls([
+      ...spawnEvents,
+      ...timeoutEvents,
+      ...gammaDoneEvents,
+      ...betaDoneEvents
+    ], true).map((tool) => tool.status)).toEqual(["running", "done", "done"]);
   });
 
   it("backfills spawn receiver ids from a linked wait when the spawn completion is missing", () => {

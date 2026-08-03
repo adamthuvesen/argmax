@@ -152,19 +152,34 @@ function isCodexAgentControlTool(tool: ToolCall): boolean {
   return lower === "wait" || lower === "close_agent" || lower === "send_message_to_thread";
 }
 
-function matchesCodexSpawnAgent(spawn: ToolCall, control: ToolCall): boolean {
-  if (control.createdAt < spawn.createdAt) return false;
-  if (hasReceiverOverlap(spawn, control)) return true;
+function hasMatchingCodexSender(spawn: ToolCall, control: ToolCall): boolean {
   const spawnSender = stringValue(spawn.inputFull.sender_thread_id) ?? stringValue(spawn.inputFull.senderThreadId);
   const controlSender = stringValue(control.inputFull.sender_thread_id) ?? stringValue(control.inputFull.senderThreadId);
   return spawnSender !== null && spawnSender === controlSender;
 }
 
-function findMatchingCodexSpawn(spawns: readonly ToolCall[], control: ToolCall): ToolCall | null {
-  const matches = spawns
-    .filter((spawn) => matchesCodexSpawnAgent(spawn, control))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return matches[0] ?? null;
+function codexSpawnCandidates(spawns: readonly ToolCall[], control: ToolCall): ToolCall[] {
+  return spawns.filter((spawn) => control.createdAt >= spawn.createdAt);
+}
+
+function matchingCodexSpawns(spawns: readonly ToolCall[], control: ToolCall): ToolCall[] {
+  const candidates = codexSpawnCandidates(spawns, control);
+  if (receiverThreadIds(control).length > 0) {
+    const receiverMatches = candidates.filter((spawn) => hasReceiverOverlap(spawn, control));
+    if (receiverMatches.length > 0) return receiverMatches;
+  } else if (control.name.toLowerCase() === "wait" && control.status !== "running") {
+    // A completed wait with no returned receiver ids is a timeout. Its start
+    // may have targeted several children, but it did not complete any of them.
+    return [];
+  }
+  const senderMatches = candidates.filter((spawn) => hasMatchingCodexSender(spawn, control));
+  return senderMatches.length === 1 ? senderMatches : [];
+}
+
+function hasCodexSpawnCorrelation(spawns: readonly ToolCall[], control: ToolCall): boolean {
+  return codexSpawnCandidates(spawns, control).some(
+    (spawn) => hasReceiverOverlap(spawn, control) || hasMatchingCodexSender(spawn, control)
+  );
 }
 
 function mergeCodexWaitIntoSpawn(spawn: ToolCall, wait: ToolCall): ToolCall {
@@ -204,12 +219,13 @@ function foldCodexAgentControlTools(tools: readonly ToolCall[]): ToolCall[] {
   const replacements = new Map<string, ToolCall>();
   for (const control of tools) {
     if (!isCodexAgentControlTool(control)) continue;
-    const spawn = findMatchingCodexSpawn(spawns, control);
-    if (!spawn) continue;
+    if (!hasCodexSpawnCorrelation(spawns, control)) continue;
     hiddenIds.add(control.id);
     if (control.name.toLowerCase() === "wait") {
-      const current = replacements.get(spawn.id) ?? spawn;
-      replacements.set(spawn.id, mergeCodexWaitIntoSpawn(current, control));
+      for (const spawn of matchingCodexSpawns(spawns, control)) {
+        const current = replacements.get(spawn.id) ?? spawn;
+        replacements.set(spawn.id, mergeCodexWaitIntoSpawn(current, control));
+      }
     }
   }
   if (hiddenIds.size === 0 && replacements.size === 0) return [...tools];
@@ -218,9 +234,8 @@ function foldCodexAgentControlTools(tools: readonly ToolCall[]): ToolCall[] {
     .map((tool) => replacements.get(tool.id) ?? tool);
 }
 
-function isInProgressCodexSpawn(name: string, completion: TimelineEvent | undefined): boolean {
-  if (name.toLowerCase() !== "spawn_agent" || !completion) return false;
-  return completion.payload.status === "in_progress";
+function isSuccessfulCodexSpawnLaunch(name: string, completion: TimelineEvent | undefined): boolean {
+  return name.toLowerCase() === "spawn_agent" && completion !== undefined;
 }
 
 /**
@@ -315,7 +330,7 @@ export function buildSessionToolCalls(
           ? "done"
           : "running";
       const renderedStatus: ToolCall["status"] =
-        status === "done" && sessionRunning && isInProgressCodexSpawn(name, completion)
+        status === "done" && sessionRunning && isSuccessfulCodexSpawnLaunch(name, completion)
           ? "running"
           : status;
       const rawParent = event.payload.parent_tool_use_id;

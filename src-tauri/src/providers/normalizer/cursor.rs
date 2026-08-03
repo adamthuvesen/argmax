@@ -214,6 +214,7 @@ pub fn extract_usage(
     Some(NormalizedUsage {
         cost_usd: cost_of(tokens.clone().into(), &model_id),
         model_id,
+        context_tokens: Some(tokens.input + tokens.cache_read + tokens.cache_write),
         tokens,
         event_id: None,
         // Cursor doesn't report the window; the renderer uses a per-model table.
@@ -476,5 +477,6 @@ mod tests {
             &mut context,
         );
         assert_eq!(result.usages[0].model_id, "composer-2.5");
+        assert_eq!(result.usages[0].context_tokens, Some(10));
     }
 }

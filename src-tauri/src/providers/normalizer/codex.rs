@@ -289,6 +289,7 @@ pub fn extract_usage(
     Some(NormalizedUsage {
         cost_usd: cost_of(tokens.clone().into(), &model_id),
         model_id,
+        context_tokens: info.map(|_| input_tokens),
         tokens,
         event_id: None,
         context_window,
@@ -756,6 +757,7 @@ mod tests {
         assert_eq!(result.usages[0].model_id, "gpt-5.5");
         assert_eq!(result.usages[0].tokens.input, 60);
         assert_eq!(result.usages[0].tokens.cache_read, 40);
+        assert_eq!(result.usages[0].context_tokens, Some(100));
     }
 
     #[test]
@@ -769,6 +771,24 @@ mod tests {
             &mut context,
         );
         assert_eq!(result.usages[0].context_window, Some(272_000));
+    }
+
+    #[test]
+    fn codex_cumulative_turn_usage_is_not_context_occupancy() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Codex,
+            &output_event(
+                r#"{"type":"turn.completed","usage":{"input_tokens":501468,"cached_input_tokens":437504,"output_tokens":1234}}"#,
+            ),
+            &mut context,
+        );
+
+        assert_eq!(result.usages[0].tokens.input, 63_964);
+        assert_eq!(result.usages[0].tokens.cache_read, 437_504);
+        assert_eq!(result.usages[0].tokens.output, 1_234);
+        assert_eq!(result.usages[0].context_tokens, None);
+        assert_eq!(result.usages[0].context_window, None);
     }
 
     #[test]

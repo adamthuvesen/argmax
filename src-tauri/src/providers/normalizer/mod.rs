@@ -107,9 +107,11 @@ pub struct NormalizedUsage {
     pub tokens: UsageCounts,
     pub cost_usd: f64,
     pub event_id: Option<String>,
-    /// The model's context-window size when the provider reports it (Codex's
-    /// token_count carries it). None for providers that don't; the renderer
-    /// falls back to a per-model table.
+    /// Input-side tokens occupying the current context. None when the provider
+    /// reports only cumulative billing totals.
+    pub context_tokens: Option<u64>,
+    /// The model's context-window size when the provider reports it. Codex's
+    /// token_count carries it. Other providers use a per-model renderer fallback.
     pub context_window: Option<u64>,
 }
 

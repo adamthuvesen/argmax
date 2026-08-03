@@ -168,17 +168,16 @@ fn cursor_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 // Cursor picks reasoning effort and fast serving through the model id (e.g.
-// gpt-5.5-high, claude-opus-4-8-xhigh-fast). Effort: only GPT-5.5 and Opus 4.8
-// are parameterized; suffixes differ per family and neither reaches Claude's
-// Ultra, so clamp — GPT-5.5 tops out at Extra High (spelled "extra-high"), Opus
-// at Max. Composer and Gemini have no effort variant and pass through. Fast:
-// append "-fast" after the effort suffix for every model that has a fast variant
-// — all but Gemini 3.5 Flash. The renderer only enables the Speed toggle for
-// those, so this mirrors it.
+// gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). Effort: GPT-5.6
+// Luna/Terra/Sol and Opus 5 Thinking are parameterized up to Max; Grok 4.5 and
+// Gemini 3.6 Flash stop at High. Composer has no effort variant and passes
+// through. Fast: append "-fast" after the effort suffix for every model that
+// has a fast variant — all but Gemini 3.6 Flash. The renderer only enables the
+// Speed toggle for those, so this mirrors it.
 //
 // Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
 // and the spellings from `cursor-agent --list-models`) rather than a prefix, so
-// a future non-parameterized `gpt-5.5-*`/`claude-opus-4-8-*` model passes
+// a future non-parameterized `gpt-5.6-*`/`claude-opus-5-*` model passes
 // through untouched instead of being silently rewritten to a different model.
 fn cursor_model_for(
     model_id: &str,
@@ -186,18 +185,10 @@ fn cursor_model_for(
     fast_mode: bool,
 ) -> String {
     let with_effort = match (model_id, reasoning_effort) {
-        ("gpt-5.5-medium", Some(effort)) => {
-            let suffix = match effort {
-                ReasoningEffort::Low => "low",
-                ReasoningEffort::Medium => "medium",
-                ReasoningEffort::High => "high",
-                ReasoningEffort::Xhigh | ReasoningEffort::Max | ReasoningEffort::Ultra => {
-                    "extra-high"
-                }
-            };
-            format!("gpt-5.5-{suffix}")
-        }
-        ("claude-opus-4-8-medium", Some(effort)) => {
+        (
+            "gpt-5.6-luna-medium" | "gpt-5.6-terra-medium" | "gpt-5.6-sol-medium",
+            Some(effort),
+        ) => {
             let suffix = match effort {
                 ReasoningEffort::Low => "low",
                 ReasoningEffort::Medium => "medium",
@@ -205,11 +196,44 @@ fn cursor_model_for(
                 ReasoningEffort::Xhigh => "xhigh",
                 ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
             };
-            format!("claude-opus-4-8-{suffix}")
+            let family = model_id.trim_end_matches("-medium");
+            format!("{family}-{suffix}")
+        }
+        ("claude-opus-5-thinking-medium", Some(effort)) => {
+            let suffix = match effort {
+                ReasoningEffort::Low => "low",
+                ReasoningEffort::Medium => "medium",
+                ReasoningEffort::High => "high",
+                ReasoningEffort::Xhigh => "xhigh",
+                ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
+            };
+            format!("claude-opus-5-thinking-{suffix}")
+        }
+        ("cursor-grok-4.5-medium", Some(effort)) => {
+            let suffix = match effort {
+                ReasoningEffort::Low => "low",
+                ReasoningEffort::Medium => "medium",
+                ReasoningEffort::High
+                | ReasoningEffort::Xhigh
+                | ReasoningEffort::Max
+                | ReasoningEffort::Ultra => "high",
+            };
+            format!("cursor-grok-4.5-{suffix}")
+        }
+        ("gemini-3.6-flash-medium", Some(effort)) => {
+            let suffix = match effort {
+                ReasoningEffort::Low => "low",
+                ReasoningEffort::Medium => "medium",
+                ReasoningEffort::High
+                | ReasoningEffort::Xhigh
+                | ReasoningEffort::Max
+                | ReasoningEffort::Ultra => "high",
+            };
+            format!("gemini-3.6-flash-{suffix}")
         }
         _ => model_id.to_string(),
     };
-    if fast_mode && model_id != "gemini-3.5-flash" {
+    if fast_mode && !model_id.starts_with("gemini-3.6-flash") {
         format!("{with_effort}-fast")
     } else {
         with_effort
@@ -480,7 +504,7 @@ mod tests {
                 "--json",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
-                "gpt-5.5",
+                "gpt-5.6-sol",
                 "-c",
                 "model_reasoning_summary=\"auto\"",
                 "-c",
@@ -569,7 +593,7 @@ mod tests {
                 "--json",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
-                "gpt-5.5",
+                "gpt-5.6-sol",
                 "-c",
                 "model_reasoning_summary=\"auto\"",
                 "-c",
@@ -619,18 +643,18 @@ mod tests {
         let cases = [
             ("composer-2.5", None, "composer-2.5-fast"),
             (
-                "gpt-5.5-medium",
+                "gpt-5.6-sol-medium",
                 Some(ReasoningEffort::High),
-                "gpt-5.5-high-fast",
+                "gpt-5.6-sol-high-fast",
             ),
             (
-                "claude-opus-4-8-medium",
+                "claude-opus-5-thinking-medium",
                 Some(ReasoningEffort::Xhigh),
-                "claude-opus-4-8-xhigh-fast",
+                "claude-opus-5-thinking-xhigh-fast",
             ),
             // Fast on an effort-capable model with no effort set keeps the base
             // -medium alias and just appends -fast.
-            ("gpt-5.5-medium", None, "gpt-5.5-medium-fast"),
+            ("gpt-5.6-luna-medium", None, "gpt-5.6-luna-medium-fast"),
         ];
         for (model_id, effort, expected) in cases {
             let input = ProviderLaunchInput {
@@ -653,7 +677,7 @@ mod tests {
         // The resume arg builder shares cursor_model_for, so effort/fast fold
         // into --model on resume exactly as on launch.
         let input = ProviderLaunchInput {
-            model_id: "claude-opus-4-8-medium".to_string(),
+            model_id: "claude-opus-5-thinking-medium".to_string(),
             reasoning_effort: Some(ReasoningEffort::Max),
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
@@ -664,15 +688,15 @@ mod tests {
             .iter()
             .position(|a| a == "--model")
             .expect("model flag");
-        assert_eq!(args[i + 1], "claude-opus-4-8-max-fast");
+        assert_eq!(args[i + 1], "claude-opus-5-thinking-max-fast");
     }
 
     #[test]
     fn cursor_gemini_has_no_fast_variant() {
-        // Gemini 3.5 Flash has no -fast model, so fast mode is a no-op for it.
+        // Gemini 3.6 Flash has no -fast model, so fast mode is a no-op for it.
         let input = ProviderLaunchInput {
-            model_id: "gemini-3.5-flash".to_string(),
-            reasoning_effort: None,
+            model_id: "gemini-3.6-flash-medium".to_string(),
+            reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
         };
@@ -681,22 +705,21 @@ mod tests {
             .iter()
             .position(|a| a == "--model")
             .expect("model flag");
-        assert_eq!(args[i + 1], "gemini-3.5-flash");
+        assert_eq!(args[i + 1], "gemini-3.6-flash-high");
     }
 
     #[test]
-    fn cursor_gpt55_effort_maps_to_model_variant() {
+    fn cursor_grok_effort_maps_to_variant_capped_at_high() {
         let cases = [
-            (ReasoningEffort::Low, "gpt-5.5-low"),
-            (ReasoningEffort::Medium, "gpt-5.5-medium"),
-            (ReasoningEffort::High, "gpt-5.5-high"),
-            (ReasoningEffort::Xhigh, "gpt-5.5-extra-high"),
-            (ReasoningEffort::Max, "gpt-5.5-extra-high"),
-            (ReasoningEffort::Ultra, "gpt-5.5-extra-high"),
+            (ReasoningEffort::Low, "cursor-grok-4.5-low"),
+            (ReasoningEffort::Medium, "cursor-grok-4.5-medium"),
+            (ReasoningEffort::High, "cursor-grok-4.5-high"),
+            (ReasoningEffort::Xhigh, "cursor-grok-4.5-high"),
+            (ReasoningEffort::Max, "cursor-grok-4.5-high"),
         ];
         for (effort, expected) in cases {
             let input = ProviderLaunchInput {
-                model_id: "gpt-5.5-medium".to_string(),
+                model_id: "cursor-grok-4.5-medium".to_string(),
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
@@ -705,22 +728,47 @@ mod tests {
                 .iter()
                 .position(|a| a == "--model")
                 .expect("model flag");
-            assert_eq!(args[i + 1], expected, "gpt-5.5 effort {effort:?}");
+            assert_eq!(args[i + 1], expected, "grok effort {effort:?}");
         }
     }
 
     #[test]
-    fn cursor_opus_effort_maps_to_variant_capped_at_max() {
+    fn cursor_gpt56_effort_maps_to_model_variant() {
         let cases = [
-            (ReasoningEffort::Low, "claude-opus-4-8-low"),
-            (ReasoningEffort::High, "claude-opus-4-8-high"),
-            (ReasoningEffort::Xhigh, "claude-opus-4-8-xhigh"),
-            (ReasoningEffort::Max, "claude-opus-4-8-max"),
-            (ReasoningEffort::Ultra, "claude-opus-4-8-max"),
+            (ReasoningEffort::Low, "gpt-5.6-sol-low"),
+            (ReasoningEffort::Medium, "gpt-5.6-sol-medium"),
+            (ReasoningEffort::High, "gpt-5.6-sol-high"),
+            (ReasoningEffort::Xhigh, "gpt-5.6-sol-xhigh"),
+            (ReasoningEffort::Max, "gpt-5.6-sol-max"),
+            (ReasoningEffort::Ultra, "gpt-5.6-sol-max"),
         ];
         for (effort, expected) in cases {
             let input = ProviderLaunchInput {
-                model_id: "claude-opus-4-8-medium".to_string(),
+                model_id: "gpt-5.6-sol-medium".to_string(),
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input);
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
+            assert_eq!(args[i + 1], expected, "gpt-5.6-sol effort {effort:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_opus_effort_maps_to_thinking_variant_capped_at_max() {
+        let cases = [
+            (ReasoningEffort::Low, "claude-opus-5-thinking-low"),
+            (ReasoningEffort::High, "claude-opus-5-thinking-high"),
+            (ReasoningEffort::Xhigh, "claude-opus-5-thinking-xhigh"),
+            (ReasoningEffort::Max, "claude-opus-5-thinking-max"),
+            (ReasoningEffort::Ultra, "claude-opus-5-thinking-max"),
+        ];
+        for (effort, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: "claude-opus-5-thinking-medium".to_string(),
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
@@ -826,7 +874,7 @@ mod tests {
     fn launch_input(provider_id: ProviderId) -> ProviderLaunchInput {
         let (model_label, model_id, reasoning_effort) = match provider_id {
             ProviderId::Claude => ("Claude Haiku", "haiku", None),
-            ProviderId::Codex => ("GPT-5.5 Low", "gpt-5.5", Some(ReasoningEffort::Low)),
+            ProviderId::Codex => ("GPT-5.6 Sol Low", "gpt-5.6-sol", Some(ReasoningEffort::Low)),
             ProviderId::Cursor => ("Composer 2.5 (Cursor)", "composer-2.5", None),
         };
 

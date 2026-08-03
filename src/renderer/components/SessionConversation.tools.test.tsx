@@ -72,7 +72,7 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("keeps normal turn headers to time and duration, not the selected model name", () => {
     renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Opus 4.8", state: "complete" }),
+      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
       [
         event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
         event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:01.000Z")
@@ -82,10 +82,10 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
     expect(screen.getByText("Worked for 1s")).toBeInTheDocument();
     // The model name belongs to the composer chip, not the turn header — scope
-    // the check to the header so the composer's own "Opus 4.8" doesn't count.
+    // the check to the header so the composer's own "Opus 5" doesn't count.
     const turnHeader = screen.getByText("Worked for 1s").closest(".turn-block-header");
     expect(turnHeader).not.toBeNull();
-    expect(turnHeader && within(turnHeader as HTMLElement).queryByText("Opus 4.8")).toBeNull();
+    expect(turnHeader && within(turnHeader as HTMLElement).queryByText("Opus 5")).toBeNull();
   });
 
   it("collapses a single MCP tool row when the turn chip is toggled", () => {
@@ -121,7 +121,7 @@ describe("SessionConversation — tools & chrome", () => {
   it("renders agent launches as standalone icon rows outside tool groups", () => {
     const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Opus 4.8", state: "complete" }),
+      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
       [
         event("u1", "user.message", "send an agent", "2026-05-12T15:00:00.000Z"),
         event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
@@ -225,7 +225,7 @@ describe("SessionConversation — tools & chrome", () => {
   it("expands Codex spawned-agent rows to show spawn metadata", () => {
     const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "complete" }),
+      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
       [
         event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
         event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
@@ -266,7 +266,7 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("hides linked Codex wait rows while the spawned-agent row stays visible", () => {
     renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "running" }),
+      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }),
       [
         event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
         event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
@@ -306,7 +306,7 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("turn chip expands every tool group even after one group was toggled locally", () => {
     renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Opus 4.8", state: "complete" }),
+      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
       [
         event("u1", "user.message", "explore this", "2026-05-12T15:00:00.000Z"),
         event("m1", "message.completed", "I'll explore.", "2026-05-12T15:00:01.000Z"),
@@ -380,7 +380,7 @@ describe("SessionConversation — tools & chrome", () => {
     const cssPath =
       "/Users/adamthuvesen/dev/menti/argmax/src/renderer/styles/chat-chrome.css";
     renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "running" }),
+      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }),
       [
         event(
           "m1",
@@ -452,7 +452,7 @@ describe("SessionConversation — tools & chrome", () => {
       })
     ];
     renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.5", state: "complete" }),
+      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
       [
         event("m1", "message.completed", "Pass 1A.", "2026-07-01T08:32:00.000Z"),
         ...commandEvents(

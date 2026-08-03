@@ -45,7 +45,7 @@ describe("PlanCard", () => {
         plan={samplePlan()}
         createdAt="2026-05-16T14:30:00.000Z"
         rawMarkdown="raw"
-        modelLabel="Opus 4.8"
+        modelLabel="Opus 5"
         onAccept={() => {}}
         onReject={() => {}}
       />
@@ -54,7 +54,7 @@ describe("PlanCard", () => {
     expect(screen.getByText(/Tighten the onboarding flow/)).toBeInTheDocument();
     expect(screen.getByText("Summary")).toBeInTheDocument();
     expect(screen.getByText("Key Changes")).toBeInTheDocument();
-    expect(screen.queryByText("Opus 4.8")).toBeNull();
+    expect(screen.queryByText("Opus 5")).toBeNull();
     expect(screen.getByRole("button", { name: "Download plan" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy plan" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Collapse plan" })).toBeInTheDocument();

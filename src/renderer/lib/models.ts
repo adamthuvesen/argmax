@@ -39,12 +39,13 @@ export function modelKey(model: Pick<ProviderModelSelection, "modelId">): string
 }
 
 // Cursor serves a faster variant of each model as a `-fast` id suffix — every
-// Cursor model has one except Gemini 3.5 Flash (already a fast model). Claude
+// Cursor model has one except Gemini 3.6 Flash. Claude
 // and Codex fast mode is provider-wide (a settings flag / priority tier), not
 // tied to the model. Kept in sync with the Rust cursor adapter's -fast mapping.
 export function modelSupportsFastMode(model: Pick<ModelPickerSelection, "provider" | "modelId">): boolean {
   if (model.provider !== "cursor") return true;
-  return model.modelId !== "gemini-3.5-flash";
+  // Gemini 3.6 Flash has no `-fast` Cursor variant.
+  return !model.modelId.startsWith("gemini-3.6-flash");
 }
 
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {
@@ -70,7 +71,8 @@ export function modelDefaultForProvider(provider: ProviderId): ProviderModelSele
   };
 }
 
-/** Launch-default provider order: Claude first, then Codex, then Cursor. */
+/** Fallback provider order when the seeded launch model isn't installed or
+ *  authenticated: Claude first, then Codex, then Cursor. */
 export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = ["claude", "codex", "cursor"];
 
 /**

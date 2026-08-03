@@ -460,8 +460,8 @@ struct ProviderDefaults {
 fn provider_defaults(provider: &str) -> ProviderDefaults {
     match provider {
         "codex" => ProviderDefaults {
-            model_label: "GPT-5.5",
-            model_id: "gpt-5.5",
+            model_label: "GPT-5.6 Sol",
+            model_id: "gpt-5.6-sol",
             reasoning_effort: Some("medium"),
         },
         "cursor" => ProviderDefaults {
@@ -470,9 +470,9 @@ fn provider_defaults(provider: &str) -> ProviderDefaults {
             reasoning_effort: None,
         },
         _ => ProviderDefaults {
-            model_label: "Haiku 4.5",
-            model_id: "claude-haiku-4-5",
-            reasoning_effort: None,
+            model_label: "Opus 5",
+            model_id: "claude-opus-5",
+            reasoning_effort: Some("medium"),
         },
     }
 }

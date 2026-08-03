@@ -573,14 +573,14 @@
 
 .model-picker-popover {
   min-width: 220px;
-  /* Taller than the generic picker so the full model list fits with little or
-     no scrolling. Opens upward in-session, so there's room above the composer. */
-  max-height: 440px;
+  /* Keep the growing provider catalog compact; the list scrolls within the
+     popover instead of stretching across most of the workspace. */
+  max-height: 320px;
 }
 
-/* Launcher opens downward — keep the same taller cap but stay inside the viewport. */
+/* Launcher opens downward, so keep the compact cap inside the viewport. */
 .composer-context .model-picker-popover {
-  max-height: min(440px, calc(100dvh - 96px));
+  max-height: min(320px, calc(100dvh - 96px));
 }
 
 /* Two-panel model picker: a flat model list plus a right-side Speed submenu

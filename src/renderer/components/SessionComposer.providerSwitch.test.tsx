@@ -15,8 +15,8 @@ describe("SessionComposer — provider switching", () => {
     fireEvent.click(screen.getByRole("button", { name: "Session model" }));
 
     const list = screen.getByRole("listbox", { name: "Session model" });
-    expect(within(list).getByText("Opus 4.8")).toBeInTheDocument(); // a Claude model
-    expect(within(list).getByText("Claude Opus 4.8 (Cursor)")).toBeInTheDocument(); // a Cursor model
+    expect(within(list).getByText("Opus 5")).toBeInTheDocument(); // a Claude model
+    expect(within(list).getByText("Claude Opus 5 (Cursor)")).toBeInTheDocument(); // a Cursor model
     expect(within(list).getAllByRole("separator").length).toBeGreaterThanOrEqual(2);
   });
 
@@ -27,7 +27,7 @@ describe("SessionComposer — provider switching", () => {
     fireEvent.click(screen.getByRole("button", { name: "Session model" }));
 
     const list = screen.getByRole("listbox", { name: "Session model" });
-    expect(within(list).queryByText("Opus 4.8")).not.toBeInTheDocument();
-    expect(within(list).queryByText("Claude Opus 4.8 (Cursor)")).not.toBeInTheDocument();
+    expect(within(list).queryByText("Opus 5")).not.toBeInTheDocument();
+    expect(within(list).queryByText("Claude Opus 5 (Cursor)")).not.toBeInTheDocument();
   });
 });

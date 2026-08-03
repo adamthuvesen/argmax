@@ -28,17 +28,23 @@ pub struct UsageCounts {
 
 pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
-    "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
+    "claude-opus-5" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-sonnet-5" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.75 },
     "claude-haiku-4-5" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 },
-    "gpt-5.5" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 0.0 },
+    "gpt-5.6-sol" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 6.25 },
+    "gpt-5.6-terra" => ModelPricing { input: 2.0, output: 12.0, cache_read: 0.2, cache_write: 2.5 },
+    "gpt-5.6-luna" => ModelPricing { input: 0.2, output: 1.2, cache_read: 0.02, cache_write: 0.25 },
     "composer-2.5" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "gemini-3.5-flash" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "claude-opus-4-8-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "gpt-5.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "cursor-grok-4.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-3.6-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gpt-5.6-luna-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gpt-5.6-terra-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gpt-5.6-sol-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "claude-opus-5-thinking-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
+    "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-7" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-6" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-5" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
@@ -67,9 +73,13 @@ static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_
     "gpt-5.4-mini" => ModelPricing { input: 0.75, output: 4.5, cache_read: 0.075, cache_write: 0.0 },
     "gpt-5.4-nano" => ModelPricing { input: 0.2, output: 1.25, cache_read: 0.02, cache_write: 0.0 },
     "gpt-5.4-pro" => ModelPricing { input: 30.0, output: 180.0, cache_read: 0.0, cache_write: 0.0 },
+    "gpt-5.5" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 0.0 },
     "gpt-5.5-pro" => ModelPricing { input: 30.0, output: 180.0, cache_read: 0.0, cache_write: 0.0 },
     "o4-mini" => ModelPricing { input: 1.1, output: 4.4, cache_read: 0.275, cache_write: 0.0 },
+    "claude-opus-4-8-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-4-7-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gpt-5.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-3.5-flash" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
 };
 
 pub fn normalize_model_id(model_id: &str) -> String {

@@ -629,8 +629,11 @@ export function CombinedModelSelector({
         provider: "codex",
         label: PROVIDER_MODEL_DEFAULTS.codex.label,
         modelId: PROVIDER_MODEL_DEFAULTS.codex.modelId,
-        ...(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort
-          ? { reasoningEffort: PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort }
+        ...(PROVIDER_MODEL_DEFAULTS.codex.supportsReasoningEffort
+          ? {
+              reasoningEffort:
+                PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort ?? DEFAULT_REASONING_EFFORT
+            }
           : {})
       };
 

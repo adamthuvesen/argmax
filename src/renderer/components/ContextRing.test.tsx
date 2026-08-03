@@ -7,8 +7,8 @@ const base: SessionSummary = {
   id: "s1",
   workspaceId: "w1",
   provider: "codex",
-  modelLabel: "GPT-5.5",
-  modelId: "gpt-5.5",
+  modelLabel: "GPT-5.6 Sol",
+  modelId: "gpt-5.6-sol",
   permissionMode: "auto-approve",
   providerConversationId: null,
   prompt: "Do the thing",
@@ -49,10 +49,10 @@ describe("ContextRing", () => {
   it("falls back to the per-model table when the provider reports no window", () => {
     render(
       <ContextRing
-        session={{ ...base, provider: "claude", modelId: "claude-opus-4-8", contextTokens: 100000, contextWindow: null }}
+        session={{ ...base, provider: "claude", modelId: "claude-opus-5", contextTokens: 100000, contextWindow: null }}
       />
     );
-    // Claude's 200k table entry → 100000 / 200000 = 50%.
-    expect(screen.getByRole("button", { name: /Context window 50% full/ })).toBeInTheDocument();
+    // Opus 5's 1M table entry → 100000 / 1000000 = 10%.
+    expect(screen.getByRole("button", { name: /Context window 10% full/ })).toBeInTheDocument();
   });
 });

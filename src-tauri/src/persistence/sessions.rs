@@ -74,6 +74,12 @@ pub struct SessionSummary {
     pub prompt: String,
     pub state: String,
     pub attention: String,
+    /// When `attention` last changed value. NULL on rows that predate the
+    /// column. The sidebar's Priority section compares this against
+    /// `WorkspaceSummary.priority_dismissed_at` to decide whether a dismissal
+    /// is still current.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_changed_at: Option<String>,
     pub started_at: String,
     pub completed_at: Option<String>,
     pub last_activity_at: String,
@@ -154,11 +160,11 @@ pub fn persist_session(
     let mut statement = connection.prepare_cached(r#"
         INSERT INTO sessions (
           id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode,
-          provider_conversation_id, prompt, state, attention,
+          provider_conversation_id, prompt, state, attention, attention_changed_at,
           started_at, completed_at, last_activity_at
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?,
-          NULL, ?, ?, ?,
+          NULL, ?, ?, ?, ?,
           ?, NULL, ?
         )
         "#,
@@ -177,6 +183,7 @@ pub fn persist_session(
             input.prompt.as_str(),
             input.state.as_str(),
             input.attention.as_str(),
+            timestamp.as_str(),
             timestamp.as_str(),
             timestamp.as_str(),
         ))
@@ -268,15 +275,26 @@ pub fn update_session_state(
     input: &SessionStateInput,
 ) -> ArgmaxResult<SessionSummary> {
     let timestamp = input.last_activity_at.clone().unwrap_or_else(now_iso);
-    let mut statement = connection.prepare_cached("UPDATE sessions SET state = ?, attention = ?, completed_at = ?, last_activity_at = ? WHERE id = ?",
+    // `attention` on the right-hand side of the CASE reads the pre-update
+    // column value, so `attention_changed_at` only advances when the attention
+    // value actually changes — the timestamp the Priority section's dismissal
+    // check compares against.
+    let mut statement = connection.prepare_cached(
+        r#"
+        UPDATE sessions
+        SET state = ?1, completed_at = ?2, last_activity_at = ?3,
+            attention_changed_at = CASE WHEN attention = ?4 THEN attention_changed_at ELSE ?3 END,
+            attention = ?4
+        WHERE id = ?5
+        "#,
     )
     .map_err(sqlite_error)?;
     statement
         .execute((
             input.state.as_str(),
-            input.attention.as_str(),
             input.completed_at.as_deref(),
             timestamp.as_str(),
+            input.attention.as_str(),
             session_id,
         ))
         .map_err(sqlite_error)?;
@@ -362,6 +380,7 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         prompt: row.get("prompt")?,
         state: row.get("state")?,
         attention: row.get("attention")?,
+        attention_changed_at: row.get("attention_changed_at")?,
         started_at: row.get("started_at")?,
         completed_at: row.get("completed_at")?,
         last_activity_at: row.get("last_activity_at")?,

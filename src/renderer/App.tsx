@@ -74,6 +74,7 @@ import {
   COMPOSER_PIXEL_FIELD_KEY,
   FAST_MODE_KEY,
   SIDEBAR_COLLAPSED_KEY,
+  SIDEBAR_PRIORITY_KEY,
   SIDEBAR_TOKENS_KEY,
   THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
@@ -125,6 +126,7 @@ export function App(): JSX.Element {
     false
   );
   const [sidebarTokensVisible, setSidebarTokensVisible] = useBooleanUiPreference(SIDEBAR_TOKENS_KEY, false);
+  const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [sidebarCollapsed, setSidebarCollapsed] = useBooleanUiPreference(SIDEBAR_COLLAPSED_KEY, false);
   // Transient "peek" state: while collapsed, hovering the left edge slides the
   // sidebar out as an overlay; leaving it slides back. Not persisted.
@@ -639,6 +641,38 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
+  const removeFromPriority = useCallback(
+    async (workspaceId: string): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
+        return;
+      }
+      const ok = await withToast(
+        () => window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true }),
+        setToast,
+        "Could not remove the session from priority."
+      );
+      if (ok) await refreshDashboardStatus();
+    },
+    [refreshDashboardStatus]
+  );
+
+  const addToPriority = useCallback(
+    async (workspaceId: string): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
+        return;
+      }
+      const ok = await withToast(
+        () => window.argmax!.workspaces.setPriorityAdded({ workspaceId, added: true }),
+        setToast,
+        "Could not add the session to priority."
+      );
+      if (ok) await refreshDashboardStatus();
+    },
+    [refreshDashboardStatus]
+  );
+
   const renameWorkspace = useCallback(
     async (workspaceId: string, taskLabel: string): Promise<void> => {
       if (!window.argmax) {
@@ -670,6 +704,18 @@ export function App(): JSX.Element {
       void renameWorkspace(workspaceId, taskLabel);
     },
     [renameWorkspace]
+  );
+  const onRemoveFromPriorityRow = useCallback(
+    (workspaceId: string): void => {
+      void removeFromPriority(workspaceId);
+    },
+    [removeFromPriority]
+  );
+  const onAddToPriorityRow = useCallback(
+    (workspaceId: string): void => {
+      void addToPriority(workspaceId);
+    },
+    [addToPriority]
   );
   const onAddProjectRow = useCallback((): void => {
     void addProject();
@@ -1068,6 +1114,9 @@ export function App(): JSX.Element {
         loadState={loadState}
         onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
         onRenameWorkspace={onRenameWorkspaceRow}
+        onRemoveFromPriority={onRemoveFromPriorityRow}
+        onAddToPriority={onAddToPriorityRow}
+        showPriority={sidebarPriorityVisible}
         onOpenLauncher={onOpenLauncherRow}
         onAddProject={onAddProjectRow}
         onRemoveProject={onRemoveProjectRow}
@@ -1119,6 +1168,8 @@ export function App(): JSX.Element {
                 onToolCallGroupsExpandedChange={setToolCallGroupsExpanded}
                 sidebarTokensVisible={sidebarTokensVisible}
                 onSidebarTokensVisibleChange={setSidebarTokensVisible}
+                sidebarPriorityVisible={sidebarPriorityVisible}
+                onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
                 pixelFieldEnabled={pixelFieldEnabled}

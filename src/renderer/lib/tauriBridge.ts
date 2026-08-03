@@ -148,6 +148,10 @@ function createTauriArgmaxApi(): ArgmaxApi {
       openInIde: (input: OpenInIdeInput) => invokeCommand<{ ok: true }>("workspaces:open-in-ide", input),
       autoTitle: (input) => invokeCommand<{ ok: true }>("workspaces:autotitle", input),
       setPinned: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-pinned", input),
+      setPriorityDismissed: (input) =>
+        invokeCommand<WorkspaceSummary>("workspaces:set-priority-dismissed", input),
+      setPriorityAdded: (input) =>
+        invokeCommand<WorkspaceSummary>("workspaces:set-priority-added", input),
       setLabel: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-label", input)
     },
     providers: {

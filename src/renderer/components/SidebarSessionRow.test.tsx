@@ -18,7 +18,9 @@ const workspaceBase: WorkspaceSummary = {
   dirty: false,
   changedFiles: 0,
   lastActivityAt: "2026-05-01T00:01:00.000Z",
-  pinned: false
+  pinned: false,
+  priorityDismissedAt: null,
+  priorityAddedAt: null
 };
 
 const detectedIdes = [

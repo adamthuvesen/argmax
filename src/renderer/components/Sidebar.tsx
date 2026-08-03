@@ -53,6 +53,7 @@ import {
   type ProjectSortMode,
   type SidebarViewMode
 } from "../lib/projects.js";
+import { computePriorityEntries } from "../lib/priority.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
@@ -140,6 +141,9 @@ export function Sidebar({
   onRenameWorkspace,
   onResizeMouseDown,
   onToggleWorkspacePinned,
+  onRemoveFromPriority,
+  onAddToPriority,
+  showPriority,
   onWorkspaceDragStart,
   onWorkspaceDragEnd,
   selectedProjectId,
@@ -170,6 +174,12 @@ export function Sidebar({
   onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
+  /** Right-click "Remove from priority" on a Priority row — dismisses it until new attention. */
+  onRemoveFromPriority?: (workspaceId: string) => void;
+  /** Right-click "Add to priority" on any other row — floats it manually. */
+  onAddToPriority?: (workspaceId: string) => void;
+  /** Whether the Priority section renders at all (settings toggle). */
+  showPriority: boolean;
   /** Notifies the parent that a sidebar drag started carrying this workspace. */
   onWorkspaceDragStart?: (workspaceId: string) => void;
   /** Notifies the parent that a sidebar drag finished (drop or cancel). */
@@ -315,6 +325,44 @@ export function Sidebar({
     return ids;
   }, [snapshot.sessions]);
 
+  // Workspaces that need the user right now (approval, blocked, failed,
+  // review-ready) float into the Priority section above everything else.
+  // A row lives in exactly one section: while in Priority it leaves its
+  // home group (Pinned/date/project) and drops back when resolved,
+  // dismissed, or aged out.
+  // `Date.now()` is read inside the memo, so the 24h staleness gate is only
+  // re-evaluated when the snapshot changes — consistent with the no-polling
+  // rule. An entry that crosses the age line simply drops on the next delta.
+  const priorityEntries = useMemo(
+    () =>
+      showPriority ? computePriorityEntries(snapshot.workspaces, snapshot.sessions, Date.now()) : [],
+    [showPriority, snapshot.workspaces, snapshot.sessions]
+  );
+
+  // Project-name subtitles (screenshot-style two-line rows) for rows whose
+  // group doesn't already name the project: Priority, Pinned, and the flat
+  // date view. Rows under a project group skip it — the header says it.
+  // Tied to the Priority toggle so one setting flips the whole look.
+  const projectNameById = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const project of snapshot.projects) {
+      names.set(project.id, project.name);
+    }
+    return names;
+  }, [snapshot.projects]);
+  const subtitleFor = useCallback(
+    (projectId: string): string | null =>
+      showPriority ? projectNameById.get(projectId) ?? null : null,
+    [showPriority, projectNameById]
+  );
+
+  const priorityWorkspaceIds = useMemo(
+    () => new Set(priorityEntries.map((entry) => entry.workspace.id)),
+    [priorityEntries]
+  );
+  // "Add to priority" only makes sense while the section exists.
+  const addToPriority = showPriority ? onAddToPriority : undefined;
+
   // Pinned workspaces float into a dedicated section at the top of the list,
   // above the date buckets (sessions view) and above the project groups
   // (projects view). They're pulled out of their normal bucket while pinned and
@@ -326,13 +374,14 @@ export function Sidebar({
           (workspace) =>
             workspace.pinned &&
             workspace.state !== "archived" &&
+            !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
         .sort((a, b) => {
           if (a.lastActivityAt === b.lastActivityAt) return 0;
           return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
         }),
-    [snapshot.workspaces, workspaceIdsWithSessions]
+    [snapshot.workspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
@@ -345,10 +394,11 @@ export function Sidebar({
           (workspace) =>
             !workspace.pinned &&
             workspace.state !== "archived" &&
+            !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
       ),
-    [snapshot.workspaces, workspaceIdsWithSessions]
+    [snapshot.workspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
   const workspaceTokenMap = useMemo(() => {
@@ -658,6 +708,41 @@ export function Sidebar({
             <Plus size={14} />
           </button>
         </div>
+        {priorityEntries.length > 0 ? (
+          <div className="project-group session-date-group session-priority-group">
+            <div className="project-row session-date-row session-priority-row">
+              <span className="project-name session-date-label session-priority-label">
+                <span className="project-name-text">Priority</span>
+              </span>
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+            </div>
+            {priorityEntries.map((entry) => (
+              <div key={entry.workspace.id} className="session-row-wrap">
+                <SidebarSessionRow
+                  workspace={entry.workspace}
+                  subtitle={subtitleFor(entry.workspace.projectId)}
+                  workspaceTokens={workspaceTokenMap.get(entry.workspace.id) ?? null}
+                  isSelected={selectedWorkspaceId === entry.workspace.id}
+                  isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
+                  canDragToGrid={canDragWorkspaceToGrid}
+                  onOpenWorkspaceChat={onOpenWorkspaceChat}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onOpenInIde={onOpenInIde}
+                  onTogglePin={onToggleWorkspacePinned}
+                  onRename={onRenameWorkspace}
+                  onRemoveFromPriority={onRemoveFromPriority}
+                  priorityAttention={entry.attention ?? undefined}
+                  onWorkspaceDragStart={onWorkspaceDragStart}
+                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                  showTokens={showSessionTokens}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
         {pinnedWorkspaces.length > 0 ? (
           <div className="project-group session-date-group session-pinned-group">
             <div className="project-row session-date-row session-pinned-row">
@@ -671,6 +756,7 @@ export function Sidebar({
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
+                  subtitle={subtitleFor(workspace.projectId)}
                   workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                   isSelected={selectedWorkspaceId === workspace.id}
                   isOpenInGrid={openWorkspaceIds.has(workspace.id)}
@@ -680,6 +766,7 @@ export function Sidebar({
                   onOpenInIde={onOpenInIde}
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
+                  onAddToPriority={addToPriority}
                   onWorkspaceDragStart={onWorkspaceDragStart}
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}
@@ -738,6 +825,7 @@ export function Sidebar({
                         >
                           <SidebarSessionRow
                             workspace={workspace}
+                            subtitle={subtitleFor(workspace.projectId)}
                             workspaceTokens={workspaceTokenMap.get(workspace.id) ?? null}
                             isSelected={selectedWorkspaceId === workspace.id}
                             isOpenInGrid={openWorkspaceIds.has(workspace.id)}
@@ -747,6 +835,7 @@ export function Sidebar({
                             onOpenInIde={onOpenInIde}
                             onTogglePin={onToggleWorkspacePinned}
                             onRename={onRenameWorkspace}
+                            onAddToPriority={addToPriority}
                             onWorkspaceDragStart={onWorkspaceDragStart}
                             onWorkspaceDragEnd={onWorkspaceDragEnd}
                             detectedIdes={detectedIdes}
@@ -783,6 +872,7 @@ export function Sidebar({
                     !workspace.pinned &&
                     workspace.projectId === project.id &&
                     workspace.state !== "archived" &&
+                    !priorityWorkspaceIds.has(workspace.id) &&
                     workspaceIdsWithSessions.has(workspace.id)
                 ),
                 manualOrder
@@ -900,6 +990,7 @@ export function Sidebar({
                         onOpenInIde={onOpenInIde}
                         onTogglePin={onToggleWorkspacePinned}
                         onRename={onRenameWorkspace}
+                        onAddToPriority={addToPriority}
                         onWorkspaceDragStart={onWorkspaceDragStart}
                         onWorkspaceDragEnd={onWorkspaceDragEnd}
                         detectedIdes={detectedIdes}

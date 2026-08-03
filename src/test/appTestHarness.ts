@@ -103,6 +103,11 @@ export function setupAppTestMocks(): void {
   // sidebar with projects expanded (the pre-fix behavior). Sidebar tests
   // that exercise the boot-collapse seed clear this marker themselves.
   window.sessionStorage.setItem("argmax.sidebar.bootCollapseSeeded", "1");
+  // Disable the sidebar Priority section (default-on in the app): it renders
+  // attention-worthy workspaces a second time above the project groups, which
+  // would break the single-match role queries App tests rely on. Priority
+  // behavior is covered directly in Sidebar.test.tsx.
+  window.localStorage.setItem("argmax.sidebar.priority.visible", "false");
   createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
     snapshot.workspaces[0] ?? missingWorkspace()
   );
@@ -289,6 +294,20 @@ export function setupAppTestMocks(): void {
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
           pinned
+        }),
+      setPriorityDismissed: ({ workspaceId, dismissed }) =>
+        Promise.resolve({
+          ...(snapshot.workspaces[0] ?? missingWorkspace()),
+          id: workspaceId,
+          priorityDismissedAt: dismissed ? new Date().toISOString() : null,
+          priorityAddedAt: null
+        }),
+      setPriorityAdded: ({ workspaceId, added }) =>
+        Promise.resolve({
+          ...(snapshot.workspaces[0] ?? missingWorkspace()),
+          id: workspaceId,
+          priorityAddedAt: added ? new Date().toISOString() : null,
+          priorityDismissedAt: null
         }),
       setLabel: ({ workspaceId, taskLabel }) =>
         Promise.resolve({

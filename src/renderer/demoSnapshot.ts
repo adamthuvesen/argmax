@@ -38,7 +38,9 @@ export const demoSnapshot: DashboardSnapshot = {
       dirty: true,
       changedFiles: 8,
       lastActivityAt: "2026-05-08T15:54:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
     },
     {
       id: "workspace-review-studio",
@@ -52,7 +54,9 @@ export const demoSnapshot: DashboardSnapshot = {
       dirty: true,
       changedFiles: 14,
       lastActivityAt: "2026-05-08T15:48:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
     },
     {
       id: "workspace-approval-gate",
@@ -66,7 +70,9 @@ export const demoSnapshot: DashboardSnapshot = {
       dirty: false,
       changedFiles: 2,
       lastActivityAt: "2026-05-08T15:42:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
     }
   ],
   sessions: [
@@ -97,6 +103,9 @@ export const demoSnapshot: DashboardSnapshot = {
       prompt: "Build the first review studio shell.",
       state: "complete",
       attention: "review-ready",
+      // Fresh stamp (module-load relative) so the demo shows the Priority
+      // section — a fixed date would fall past the 24h staleness gate.
+      attentionChangedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T15:48:00.000Z",
       lastActivityAt: "2026-05-08T15:48:00.000Z",
@@ -113,6 +122,7 @@ export const demoSnapshot: DashboardSnapshot = {
       prompt: "Add deterministic dangerous-action detection.",
       state: "waiting",
       attention: "approval-needed",
+      attentionChangedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: null,
       lastActivityAt: "2026-05-08T15:42:00.000Z",

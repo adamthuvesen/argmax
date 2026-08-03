@@ -56,6 +56,8 @@ export const IPC_CHANNELS = [
   "learnings:delete",
   "session:search",
   "workspaces:set-pinned",
+  "workspaces:set-priority-added",
+  "workspaces:set-priority-dismissed",
   "workspaces:set-label",
   "prs:list-for-session",
   "prs:refresh",

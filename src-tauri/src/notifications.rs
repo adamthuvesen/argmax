@@ -462,6 +462,7 @@ mod tests {
             prompt: "Build the thing".to_string(),
             state: state.to_string(),
             attention: "normal".to_string(),
+            attention_changed_at: None,
             started_at: "2026-05-01T00:00:00.000Z".to_string(),
             completed_at: Some("2026-05-01T00:01:00.000Z".to_string()),
             last_activity_at: "2026-05-01T00:01:00.000Z".to_string(),

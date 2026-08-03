@@ -1,10 +1,14 @@
 import {
   Archive,
   CircleCheck,
+  CircleEllipsis,
   CircleX,
   ExternalLink,
+  Folder,
   GitMerge,
   GitPullRequest,
+  ListChecks,
+  ListPlus,
   Pencil,
   Pin,
   PinOff,
@@ -28,6 +32,16 @@ import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js
 import { formatTokens } from "../formatTokens.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
+import type { PriorityAttention } from "../lib/priority.js";
+
+// Human phrasing appended to the row title when the row sits in the sidebar's
+// Priority section, so screen readers (and tests) hear why it floated up.
+const PRIORITY_TITLE: Record<PriorityAttention, string> = {
+  "approval-needed": "needs approval",
+  blocked: "waiting for input",
+  failed: "failed",
+  "review-ready": "ready for review"
+};
 
 export interface WorkspaceTokenBreakdown {
   input: number;
@@ -56,6 +70,18 @@ type SidebarSessionRowProps = {
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   showTokens: boolean;
+  /**
+   * Second row line under the label — the owning project's name. Set on rows
+   * whose group doesn't already name the project (Priority, Pinned, date
+   * view) while the Priority section is enabled.
+   */
+  subtitle?: string | null;
+  /** Set when the row renders inside the Priority section: why it floated up. */
+  priorityAttention?: PriorityAttention;
+  /** Priority rows only — right-click "Remove from priority" dismisses the row. */
+  onRemoveFromPriority?: (workspaceId: string) => void;
+  /** Non-priority rows — right-click "Add to priority" floats the row manually. */
+  onAddToPriority?: (workspaceId: string) => void;
 };
 
 const IDE_POPOVER_WIDTH = 200;
@@ -85,11 +111,22 @@ function idePopoverPosition(rect: Pick<DOMRect, "bottom" | "right">): { top: num
 // back to a red cross when the session failed and a calm check ring otherwise.
 function StatusMarker({
   state,
-  prState
+  prState,
+  priorityAttention
 }: {
   state: WorkspaceSummary["state"];
   prState?: WorkspaceSummary["prState"];
+  priorityAttention?: PriorityAttention;
 }): JSX.Element {
+  // In the Priority section an input-starved session outranks everything —
+  // the whole point of the row is "the agent is stalled on you". The "…"
+  // ring (a typing indicator's idiom: the conversation awaits your reply, no
+  // alarm implied) wins even over the working ring, since approvals arrive
+  // mid-turn. It keeps the default muted marker color on purpose — the
+  // fallback check ring would read "done", but this isn't a warning either.
+  if (priorityAttention === "approval-needed" || priorityAttention === "blocked") {
+    return <CircleEllipsis size={14} aria-hidden className="status-marker" data-attention={priorityAttention} />;
+  }
   if (state === "running") {
     // Hand-rolled in lucide's 24-unit stroke geometry (circle r=10, stroke 2,
     // matching CircleCheck's ring) because no lucide icon pairs the ring with
@@ -146,7 +183,11 @@ function SidebarSessionRowInner({
   onWorkspaceDragEnd,
   detectedIdes,
   defaultIde,
-  showTokens
+  showTokens,
+  subtitle,
+  priorityAttention,
+  onRemoveFromPriority,
+  onAddToPriority
 }: SidebarSessionRowProps): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
@@ -286,17 +327,19 @@ function SidebarSessionRowInner({
       : workspace.prState === "OPEN" && workspace.prNumber != null
         ? ` — open pull request #${workspace.prNumber}`
         : "";
-  const title = `${displayLabel} — ${workspace.state}${prTitle}${isOpenInGrid ? " — in view" : ""}`;
+  const priorityTitle = priorityAttention ? ` — ${PRIORITY_TITLE[priorityAttention]}` : "";
+  const title = `${displayLabel} — ${workspace.state}${priorityTitle}${prTitle}${isOpenInGrid ? " — in view" : ""}`;
 
+  const hasContextMenu = Boolean(onRename || onRemoveFromPriority || onAddToPriority);
   const handleContextMenu = (event: ReactMouseEvent): void => {
-    if (!onRename) return;
+    if (!hasContextMenu) return;
     event.preventDefault();
     event.stopPropagation();
     // Clamp to the viewport so a right-click near the bottom/right edge doesn't
     // push the menu off-screen. Sizes are the popover's min-width plus a small
     // single-item height estimate.
     const MENU_WIDTH = 150;
-    const MENU_HEIGHT = 44;
+    const MENU_HEIGHT = onRename && (onRemoveFromPriority || onAddToPriority) ? 80 : 44;
     const left = Math.min(event.clientX, Math.max(8, window.innerWidth - MENU_WIDTH));
     const top = Math.min(event.clientY, Math.max(8, window.innerHeight - MENU_HEIGHT));
     setContextMenuPos({ top, left });
@@ -405,7 +448,7 @@ function SidebarSessionRowInner({
         <>
           <button
             aria-current={isSelected ? "true" : undefined}
-            className={isSelected ? "session-link active" : "session-link"}
+            className={`session-link${isSelected ? " active" : ""}${subtitle ? " session-link-stacked" : ""}`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
             type="button"
@@ -422,8 +465,22 @@ function SidebarSessionRowInner({
             onDragStart={handleWorkspaceDragStart}
             onDragEnd={handleWorkspaceDragEnd}
           >
-            <StatusMarker state={workspace.state} prState={workspace.prState} />
-            <span>{displayLabel}</span>
+            <StatusMarker
+              state={workspace.state}
+              prState={workspace.prState}
+              priorityAttention={priorityAttention}
+            />
+            {subtitle ? (
+              <span className="session-link-text">
+                <span>{displayLabel}</span>
+                <span className="session-link-subtitle">
+                  <Folder size={10} aria-hidden="true" />
+                  <span>{subtitle}</span>
+                </span>
+              </span>
+            ) : (
+              <span>{displayLabel}</span>
+            )}
           </button>
       {showTokens ? (() => {
         const inputOutput = (workspaceTokens?.input ?? 0) + (workspaceTokens?.output ?? 0);
@@ -540,7 +597,7 @@ function SidebarSessionRowInner({
           )}
         </>
       )}
-      {contextMenuPos && onRename
+      {contextMenuPos && hasContextMenu
         ? createPortal(
             <ul
               ref={contextMenuRef}
@@ -555,20 +612,58 @@ function SidebarSessionRowInner({
                 bottom: "auto"
               }}
             >
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    startRename();
-                  }}
-                >
-                  <Pencil size={13} aria-hidden="true" />
-                  Rename
-                </button>
-              </li>
+              {onRename ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startRename();
+                    }}
+                  >
+                    <Pencil size={13} aria-hidden="true" />
+                    Rename
+                  </button>
+                </li>
+              ) : null}
+              {/* After Rename, which keeps its long-standing first slot — a
+                  mis-click here moves the row immediately. */}
+              {onRemoveFromPriority ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onRemoveFromPriority(workspace.id);
+                    }}
+                  >
+                    <ListChecks size={13} aria-hidden="true" />
+                    Remove from priority
+                  </button>
+                </li>
+              ) : null}
+              {onAddToPriority ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onAddToPriority(workspace.id);
+                    }}
+                  >
+                    <ListPlus size={13} aria-hidden="true" />
+                    Add to priority
+                  </button>
+                </li>
+              ) : null}
             </ul>,
             document.body
           )
@@ -604,6 +699,10 @@ export function sidebarSessionRowEqual(
   if (prev.onRename !== next.onRename) return false;
   if (prev.onWorkspaceDragStart !== next.onWorkspaceDragStart) return false;
   if (prev.onWorkspaceDragEnd !== next.onWorkspaceDragEnd) return false;
+  if (prev.subtitle !== next.subtitle) return false;
+  if (prev.priorityAttention !== next.priorityAttention) return false;
+  if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
+  if (prev.onAddToPriority !== next.onAddToPriority) return false;
   const pw = prev.workspace;
   const nw = next.workspace;
   if (pw === nw) {

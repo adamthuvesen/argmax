@@ -509,7 +509,9 @@ describe("App", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-new",
@@ -580,7 +582,9 @@ describe("App", () => {
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
-      pinned: false
+      pinned: false,
+      priorityDismissedAt: null,
+      priorityAddedAt: null
     };
     const newSession: DashboardSnapshot["sessions"][number] = {
       id: "session-mention",

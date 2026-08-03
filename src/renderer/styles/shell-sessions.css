@@ -51,6 +51,36 @@
   white-space: nowrap;
 }
 
+/* Two-line rows (Priority mode): label on top, muted project subtitle with a
+   small folder glyph underneath. The marker pins to the first line. */
+.session-link.session-link-stacked {
+  align-items: start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.session-link-stacked .status-marker {
+  margin-top: 2px;
+}
+
+.session-link-text {
+  display: grid;
+  gap: 2px;
+}
+
+.session-link-subtitle {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  line-height: 1.2;
+}
+
+.session-link-subtitle svg {
+  flex: 0 0 auto;
+}
+
 /* Every session row gets a leading circle marker: a quiet check ring by
    default, swapped for a red cross (in SidebarSessionRow) when it failed. */
 .status-marker {

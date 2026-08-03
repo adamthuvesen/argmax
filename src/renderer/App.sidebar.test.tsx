@@ -823,7 +823,7 @@ describe("App sidebar", () => {
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
     expect(launchProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "Implement PTY launch", provider: "claude" })
+      expect.objectContaining({ prompt: "Implement PTY launch", provider: "codex" })
     );
     expect(submitEvent.defaultPrevented).toBe(true);
   });

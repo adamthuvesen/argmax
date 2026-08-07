@@ -265,6 +265,8 @@ fn event_approval_check_and_usage_repositories_round_trip() {
             command: "git push".to_owned(),
             cwd: "/tmp/repo".to_owned(),
             provider: "codex".to_owned(),
+            provider_invocation_id: None,
+            provider_request_id: None,
             risk_level: "medium".to_owned(),
             status: "pending".to_owned(),
             created_at: Some("2026-05-24T10:01:00.000Z".to_owned()),

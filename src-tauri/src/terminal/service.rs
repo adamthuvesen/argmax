@@ -32,6 +32,7 @@ use crate::{
     util::process_control::{
         signal_target_term_and_kill_blocking, signal_target_term_then_kill, SignalTarget,
     },
+    workspaces::lifecycle::WorkspaceLifecycle,
 };
 
 /// Streams each PTY chunk to the renderer (the IPC layer turns these
@@ -77,6 +78,7 @@ pub struct TerminalSpawnResult {
 pub type ShellFactory = Arc<dyn Fn(&str) -> CommandBuilder + Send + Sync>;
 
 struct TerminalEntry {
+    workspace_id: String,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     pid: Option<u32>,
@@ -89,11 +91,33 @@ pub struct TerminalService {
     on_exit: ExitSink,
     terminals: Mutex<HashMap<String, TerminalEntry>>,
     shell_factory: ShellFactory,
+    lifecycle: Arc<WorkspaceLifecycle>,
 }
 
 impl TerminalService {
     pub fn new(database: Arc<Database>, on_data: OutputSink, on_exit: ExitSink) -> Arc<Self> {
-        Self::with_shell_factory(database, on_data, on_exit, default_shell_factory())
+        Self::with_shell_factory_and_lifecycle(
+            database,
+            on_data,
+            on_exit,
+            default_shell_factory(),
+            WorkspaceLifecycle::new(),
+        )
+    }
+
+    pub fn with_lifecycle(
+        database: Arc<Database>,
+        on_data: OutputSink,
+        on_exit: ExitSink,
+        lifecycle: Arc<WorkspaceLifecycle>,
+    ) -> Arc<Self> {
+        Self::with_shell_factory_and_lifecycle(
+            database,
+            on_data,
+            on_exit,
+            default_shell_factory(),
+            lifecycle,
+        )
     }
 
     pub fn with_shell_factory(
@@ -102,12 +126,29 @@ impl TerminalService {
         on_exit: ExitSink,
         shell_factory: ShellFactory,
     ) -> Arc<Self> {
+        Self::with_shell_factory_and_lifecycle(
+            database,
+            on_data,
+            on_exit,
+            shell_factory,
+            WorkspaceLifecycle::new(),
+        )
+    }
+
+    pub fn with_shell_factory_and_lifecycle(
+        database: Arc<Database>,
+        on_data: OutputSink,
+        on_exit: ExitSink,
+        shell_factory: ShellFactory,
+        lifecycle: Arc<WorkspaceLifecycle>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             database,
             on_data,
             on_exit,
             terminals: Mutex::new(HashMap::new()),
             shell_factory,
+            lifecycle,
         })
     }
 
@@ -124,6 +165,16 @@ impl TerminalService {
                 "Workspace has no path on disk yet.",
             ));
         }
+        if matches!(
+            workspace.state.as_str(),
+            "archiving" | "archive-failed" | "archived"
+        ) {
+            return Err(ArgmaxError::service(
+                "WORKSPACE_ARCHIVING",
+                "Workspace archive is in progress; no new terminal can be started.",
+            ));
+        }
+        let admission = self.lifecycle.admit(&workspace.id)?;
 
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -172,6 +223,7 @@ impl TerminalService {
             terminals.insert(
                 terminal_id.clone(),
                 TerminalEntry {
+                    workspace_id: workspace.id.clone(),
                     master: pair.master,
                     writer,
                     pid,
@@ -179,6 +231,7 @@ impl TerminalService {
                 },
             );
         }
+        drop(admission);
 
         spawn_reader_thread(
             terminal_id.clone(),
@@ -245,6 +298,51 @@ impl TerminalService {
         for (pid, reaped) in targets {
             signal_target_term_then_kill(SignalTarget::Process(pid), Some(&reaped)).await;
         }
+    }
+
+    pub async fn terminate_workspace(
+        self: &Arc<Self>,
+        workspace_id: &str,
+        bound: std::time::Duration,
+    ) -> bool {
+        let terminal_ids: Vec<String> = {
+            let terminals = self.terminals.lock_or_recover("terminals");
+            terminals
+                .iter()
+                .filter(|(_, entry)| entry.workspace_id == workspace_id)
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        // Start every escalation immediately. Waiting for each terminal in
+        // sequence would multiply the 1.5s grace period by the number of open
+        // tabs before the archive bound even started ticking.
+        let termination_tasks = terminal_ids
+            .into_iter()
+            .map(|terminal_id| {
+                let service = Arc::clone(self);
+                tokio::spawn(async move {
+                    service.terminate(&terminal_id).await;
+                })
+            })
+            .collect::<Vec<_>>();
+        tokio::time::timeout(bound, async {
+            for task in termination_tasks {
+                let _ = task.await;
+            }
+            loop {
+                let live = self
+                    .terminals
+                    .lock_or_recover("terminals")
+                    .values()
+                    .any(|entry| entry.workspace_id == workspace_id);
+                if !live {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok()
     }
 
     #[allow(dead_code)]

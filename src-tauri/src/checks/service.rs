@@ -28,6 +28,7 @@ use crate::persistence::database::Database;
 use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::process_control::terminate_process_group_with_escalation;
+use crate::workspaces::lifecycle::WorkspaceLifecycle;
 
 /// Hard wall-clock cap. Matches `CHECK_DEFAULT_TIMEOUT_MS` in the TS.
 pub const DEFAULT_TIMEOUT_MS: u64 = 5 * 60 * 1000;
@@ -53,7 +54,7 @@ struct CancelRegistry {
 
 struct CancelEntry {
     check_id: String,
-    sender: oneshot::Sender<()>,
+    sender: Option<oneshot::Sender<()>>,
 }
 
 impl CancelRegistry {
@@ -63,7 +64,7 @@ impl CancelRegistry {
             .or_default()
             .push(CancelEntry {
                 check_id: check_id.to_string(),
-                sender,
+                sender: Some(sender),
             });
     }
 
@@ -79,29 +80,39 @@ impl CancelRegistry {
     }
 
     fn cancel_all(&mut self, workspace_id: &str) {
-        if let Some(bucket) = self.workspaces.remove(workspace_id) {
+        if let Some(bucket) = self.workspaces.get_mut(workspace_id) {
             for entry in bucket {
-                let _ = entry.sender.send(());
+                if let Some(sender) = entry.sender.take() {
+                    let _ = sender.send(());
+                }
             }
         }
     }
 
-    #[cfg(test)]
-    fn pending_count(&self) -> usize {
-        self.workspaces.values().map(Vec::len).sum()
+    fn pending_count(&self, workspace_id: &str) -> usize {
+        self.workspaces.get(workspace_id).map_or(0, Vec::len)
     }
 }
 
 pub struct CheckService {
     database: Arc<Database>,
     cancel_registry: Mutex<CancelRegistry>,
+    lifecycle: Arc<WorkspaceLifecycle>,
 }
 
 impl CheckService {
     pub fn new(database: Arc<Database>) -> Arc<Self> {
+        Self::with_lifecycle(database, WorkspaceLifecycle::new())
+    }
+
+    pub fn with_lifecycle(
+        database: Arc<Database>,
+        lifecycle: Arc<WorkspaceLifecycle>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             database,
             cancel_registry: Mutex::new(CancelRegistry::default()),
+            lifecycle,
         })
     }
 
@@ -110,12 +121,29 @@ impl CheckService {
         registry.cancel_all(workspace_id);
     }
 
-    #[cfg(test)]
-    fn pending_cancel_count(&self) -> usize {
+    pub async fn cancel_workspace_checks_and_wait(
+        &self,
+        workspace_id: &str,
+        bound: Duration,
+    ) -> bool {
+        self.cancel_workspace_checks(workspace_id);
+        tokio::time::timeout(bound, async {
+            loop {
+                if self.pending_cancel_count(workspace_id) == 0 {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok()
+    }
+
+    fn pending_cancel_count(&self, workspace_id: &str) -> usize {
         self.cancel_registry
             .lock()
             .expect("cancel registry poisoned")
-            .pending_count()
+            .pending_count(workspace_id)
     }
 
     pub async fn run_workspace_check(
@@ -140,6 +168,16 @@ impl CheckService {
             let conn = self.database.connection();
             find_workspace_by_id(&conn, &input.workspace_id)?
         };
+        if matches!(
+            workspace.state.as_str(),
+            "archiving" | "archive-failed" | "archived"
+        ) {
+            return Err(ArgmaxError::service(
+                "WORKSPACE_ARCHIVING",
+                "Workspace archive is in progress; no new check can be started.",
+            ));
+        }
+        let admission = self.lifecycle.admit(&workspace.id)?;
         let check = {
             let conn = self.database.connection();
             persist_check(
@@ -183,12 +221,21 @@ impl CheckService {
         }
         command.kill_on_drop(true);
 
-        let mut child = command.spawn().map_err(|error| {
-            ArgmaxError::service(
-                "CHECK_SPAWN_FAILED",
-                format!("failed to spawn check: {error}"),
-            )
-        })?;
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                self.cancel_registry
+                    .lock_or_recover("cancel registry")
+                    .unregister(&workspace.id, &check.id);
+                return Err(ArgmaxError::service(
+                    "CHECK_SPAWN_FAILED",
+                    format!("failed to spawn check: {error}"),
+                ));
+            }
+        };
+        // The check is now registered with a live child. Archive can cancel
+        // it through the registry without racing a late spawn.
+        drop(admission);
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let output = Arc::new(Mutex::new(OutputTail::default()));
@@ -447,7 +494,7 @@ mod tests {
         assert_eq!(result.status, "passed");
         assert_eq!(result.exit_code, Some(0));
         assert!(result.completed_at.is_some());
-        assert_eq!(svc.pending_cancel_count(), 0);
+        assert_eq!(svc.pending_cancel_count("w1"), 0);
     }
 
     #[tokio::test]
@@ -574,7 +621,7 @@ mod tests {
             .as_deref()
             .unwrap_or("")
             .starts_with("[cancelled] "));
-        assert_eq!(svc.pending_cancel_count(), 0);
+        assert_eq!(svc.pending_cancel_count("w1"), 0);
     }
 
     #[test]

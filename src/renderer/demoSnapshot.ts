@@ -279,6 +279,8 @@ export const demoSnapshot: DashboardSnapshot = {
       command: "git worktree remove ~/code/.argmax/worktrees/draft-attempt",
       cwd: "~/code/sample-project",
       provider: "codex",
+      providerInvocationId: null,
+      providerRequestId: null,
       riskLevel: "high",
       status: "pending",
       createdAt: "2026-05-08T15:42:00.000Z",

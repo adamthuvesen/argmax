@@ -139,7 +139,7 @@ export function KeyValueList({ rows }: { rows: ReadonlyArray<{ dt: string; dd: R
   );
 }
 
-type SegmentedOption = { value: string; label: string; caption?: string };
+type SegmentedOption = { value: string; label: string; caption?: string; disabled?: boolean };
 
 export function Segmented({
   legend,
@@ -170,12 +170,14 @@ export function Segmented({
               key={option.value}
               className="settings-segmented-option"
               data-checked={checked ? "true" : "false"}
+              data-disabled={option.disabled ? "true" : "false"}
             >
               <input
                 type="radio"
                 name={name}
                 value={option.value}
                 checked={checked}
+                disabled={option.disabled}
                 onChange={() => onChange(option.value)}
               />
               <span className="settings-segmented-label">{option.label}</span>

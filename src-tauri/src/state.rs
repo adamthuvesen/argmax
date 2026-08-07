@@ -8,6 +8,7 @@
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
+use crate::approvals::service::ApprovalService;
 use crate::checks::service::CheckService;
 use crate::gh::poller::GhPoller;
 use crate::persistence::Database;
@@ -21,6 +22,7 @@ use crate::workspaces::WorkspaceService;
 pub struct AppState {
     pub startup_timer: Arc<StartupTimer>,
     pub db: OnceCell<Arc<Database>>,
+    pub approvals: OnceCell<Arc<ApprovalService>>,
     pub providers: OnceCell<Arc<ProviderSessionService>>,
     pub provider_discovery: Arc<ProviderDiscovery>,
     pub terminals: OnceCell<Arc<TerminalService>>,

@@ -13,14 +13,14 @@
 // pending state machine like the TS version.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use super::orchestration::{WorkspaceService, WATCH_DEBOUNCE_MS};
+use super::orchestration::{WorkspaceService, WATCH_DEBOUNCE_MS, WATCH_MAX_DEBOUNCE_MS};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::sync::LockOrRecover;
@@ -49,14 +49,16 @@ pub(super) fn watch(service: &Arc<WorkspaceService>, workspace_id: &str) -> Argm
         find_workspace_by_id(&connection, workspace_id)?
     };
 
-    let (tx, rx) = mpsc::unbounded_channel::<()>();
+    // A dirty bit is all the refresh loop needs.  A bounded channel keeps a
+    // noisy build from turning file churn into unbounded memory growth.
+    let (tx, rx) = mpsc::channel::<()>(1);
     let mut watcher: RecommendedWatcher =
         notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
             // Coalesce: we don't care about event details — any change is
             // a signal to recompute status. Drop the event if the receiver
             // is gone (close_watcher races).
             if result.is_ok() {
-                let _ = tx.send(());
+                let _ = tx.try_send(());
             }
         })
         .map_err(|e| ArgmaxError::service("WATCHER_INIT_FAILED", e.to_string()))?;
@@ -75,7 +77,7 @@ pub(super) fn watch(service: &Arc<WorkspaceService>, workspace_id: &str) -> Argm
             .map_err(|e| ArgmaxError::service("WATCHER_WATCH_FAILED", e.to_string()))?;
     }
 
-    let task = spawn_refresh_loop(Arc::clone(service), workspace_id.to_string(), rx);
+    let task = spawn_refresh_loop(Arc::downgrade(service), workspace_id.to_string(), rx);
 
     let mut watchers = service.watchers.lock_or_recover("watchers");
     watchers.insert(
@@ -98,9 +100,9 @@ pub(super) fn close_watcher(service: &WorkspaceService, workspace_id: &str) {
 }
 
 fn spawn_refresh_loop(
-    service: Arc<WorkspaceService>,
+    service: Weak<WorkspaceService>,
     workspace_id: String,
-    mut rx: mpsc::UnboundedReceiver<()>,
+    mut rx: mpsc::Receiver<()>,
 ) -> JoinHandle<()> {
     // If the workspace row is gone, this watcher has no subject left; bail out
     // after a few consecutive not-found refreshes so an orphaned worktree can't
@@ -117,7 +119,9 @@ fn spawn_refresh_loop(
             // Trailing-edge debounce: keep extending the window as long
             // as new events arrive within `WATCH_DEBOUNCE_MS`. Once the
             // quiet window completes, fire one refresh.
-            let mut deadline = Instant::now() + Duration::from_millis(WATCH_DEBOUNCE_MS);
+            let first_event = Instant::now();
+            let max_deadline = first_event + Duration::from_millis(WATCH_MAX_DEBOUNCE_MS);
+            let mut deadline = first_event + Duration::from_millis(WATCH_DEBOUNCE_MS);
             loop {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
@@ -125,8 +129,10 @@ fn spawn_refresh_loop(
                 }
                 match tokio::time::timeout(remaining, rx.recv()).await {
                     Ok(Some(())) => {
-                        // Another event during the window — reset deadline.
-                        deadline = Instant::now() + Duration::from_millis(WATCH_DEBOUNCE_MS);
+                        // Another event during the window — reset the trailing
+                        // edge, but never beyond the hard maximum.
+                        deadline = (Instant::now() + Duration::from_millis(WATCH_DEBOUNCE_MS))
+                            .min(max_deadline);
                     }
                     Ok(None) => return, // sender dropped
                     Err(_) => break,    // quiet window completed
@@ -136,6 +142,9 @@ fn spawn_refresh_loop(
             // transient git lock contention, or removed-worktree races are
             // expected. Distinguish "workspace row gone" (terminal) from
             // transient failures (keep going) instead of swallowing everything.
+            let Some(service) = service.upgrade() else {
+                return;
+            };
             match service.refresh_status(&workspace_id).await {
                 Ok(_) => not_found_streak = 0,
                 Err(ArgmaxError::RecordNotFound { .. }) => {

@@ -27,7 +27,10 @@ use std::time::Duration;
 use serde_json::json;
 use uuid::Uuid;
 
+use super::lifecycle::{ArchiveOutcome, WorkspaceLifecycle};
 use super::watcher::WatcherEntry;
+use crate::approvals::service::ApprovalService;
+use crate::checks::service::CheckService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::run_git_text;
 use crate::ipc::inputs::{
@@ -42,15 +45,18 @@ use crate::persistence::projects::{list_projects, require_project};
 use crate::persistence::workspaces::{
     find_workspace_by_id, persist_workspace, set_workspace_label, set_workspace_label_auto,
     set_workspace_pinned, set_workspace_priority_added, set_workspace_priority_dismissed,
-    update_workspace_state, update_workspace_status, PersistWorkspaceInput,
-    WorkspaceStatusInput, WorkspaceSummary,
+    update_workspace_state, update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
+    WorkspaceSummary,
 };
 use crate::providers::flush_queue::DashboardDelta;
+use crate::providers::session_service::ProviderSessionService;
+use crate::terminal::service::TerminalService;
 use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
 
 /// Trailing-edge coalescing window for fs.watch bursts (e.g. `npm install`).
 pub(super) const WATCH_DEBOUNCE_MS: u64 = 200;
+pub(super) const WATCH_MAX_DEBOUNCE_MS: u64 = 1_000;
 
 /// Wall-clock cap for any git invocation made by this service. Matches
 /// the TS default of "long enough for `worktree add` on big clones,
@@ -63,6 +69,7 @@ const SLUG_MAX_LEN: usize = 42;
 /// 200 ms settle after `cancelChecks` fires so SIGTERM has time to land
 /// before we recheck porcelain. See TS comment in `archiveWorkspace`.
 const CANCEL_SETTLE_MS: u64 = 200;
+const ARCHIVE_QUIESCE_TIMEOUT_MS: u64 = 5_000;
 
 /// Callback shape that lets the renderer (or tests) observe the
 /// dashboard deltas this service publishes. Same shape as the provider
@@ -92,6 +99,11 @@ pub struct WorkspaceService {
     database: Arc<Database>,
     publish_delta: DeltaPublisher,
     pub(super) watchers: Mutex<HashMap<String, WatcherEntry>>,
+    lifecycle: Arc<WorkspaceLifecycle>,
+    providers: Option<Arc<ProviderSessionService>>,
+    checks: Option<Arc<CheckService>>,
+    terminals: Option<Arc<TerminalService>>,
+    approvals: Option<Arc<ApprovalService>>,
 }
 
 impl WorkspaceService {
@@ -103,11 +115,134 @@ impl WorkspaceService {
     where
         F: Fn(DashboardDelta) + Send + Sync + 'static,
     {
+        Self::with_services(
+            database,
+            publisher,
+            WorkspaceLifecycle::new(),
+            None,
+            None,
+            None,
+            None,
+        )
+    }
+
+    pub fn with_services<F>(
+        database: Arc<Database>,
+        publisher: F,
+        lifecycle: Arc<WorkspaceLifecycle>,
+        providers: Option<Arc<ProviderSessionService>>,
+        checks: Option<Arc<CheckService>>,
+        terminals: Option<Arc<TerminalService>>,
+        approvals: Option<Arc<ApprovalService>>,
+    ) -> Arc<Self>
+    where
+        F: Fn(DashboardDelta) + Send + Sync + 'static,
+    {
         Arc::new(Self {
             database,
             publish_delta: Arc::new(publisher),
             watchers: Mutex::new(HashMap::new()),
+            lifecycle,
+            providers,
+            checks,
+            terminals,
+            approvals,
         })
+    }
+
+    pub fn lifecycle(&self) -> Arc<WorkspaceLifecycle> {
+        Arc::clone(&self.lifecycle)
+    }
+
+    pub fn start_open_watchers(self: &Arc<Self>) -> ArgmaxResult<usize> {
+        let workspaces = {
+            let connection = self.database.connection();
+            crate::persistence::workspaces::list_workspaces(&connection, None, 500)?
+        };
+        let mut started = 0;
+        for workspace in workspaces {
+            if matches!(
+                workspace.state.as_str(),
+                "created"
+                    | "running"
+                    | "waiting"
+                    | "blocked"
+                    | "complete"
+                    | "failed"
+                    | "cancelled"
+                    | "kept"
+                    | "archiving"
+                    | "archive-failed"
+            ) {
+                match self.watch(&workspace.id) {
+                    Ok(()) => started += 1,
+                    Err(error) => tracing::warn!(
+                        workspace_id = %workspace.id,
+                        ?error,
+                        "failed to restore workspace watcher"
+                    ),
+                }
+            }
+        }
+        Ok(started)
+    }
+
+    /// Reconcile an interrupted archive from durable evidence without
+    /// repeating a destructive worktree removal. An isolated worktree is
+    /// archived only when both its path and Git registration are gone.
+    pub fn recover_interrupted_archives(self: &Arc<Self>) -> ArgmaxResult<usize> {
+        let workspaces = {
+            let connection = self.database.connection();
+            crate::persistence::workspaces::list_workspaces(&connection, None, 500)?
+        };
+        let mut recovered = 0;
+        for workspace in workspaces {
+            if workspace.state == "archiving" {
+                let next_state = if workspace.shared_workspace
+                    || Path::new(&workspace.path).exists()
+                {
+                    "archive-failed"
+                } else {
+                    let registration = {
+                        let connection = self.database.connection();
+                        require_project(&connection, &workspace.project_id).and_then(|project| {
+                            isolated_worktree_is_registered(
+                                Path::new(&project.repo_path),
+                                Path::new(&workspace.path),
+                            )
+                        })
+                    };
+                    match registration {
+                        Ok(false) => "archived",
+                        Ok(true) => "archive-failed",
+                        Err(error) => {
+                            tracing::warn!(
+                                workspace_id = %workspace.id,
+                                ?error,
+                                "could not prove interrupted worktree removal completed"
+                            );
+                            "archive-failed"
+                        }
+                    }
+                };
+                let recovered_workspace = {
+                    let connection = self.database.connection();
+                    update_workspace_state(&connection, &workspace.id, next_state)?
+                };
+                self.publish(DashboardDelta {
+                    workspaces: vec![recovered_workspace],
+                    ..DashboardDelta::default()
+                });
+                if let Some(approvals) = self.approvals.as_ref() {
+                    approvals.cancel_workspace_pending(&workspace.id)?;
+                }
+                if next_state == "archived" {
+                    self.close_watcher(&workspace.id);
+                }
+                recovered += 1;
+            }
+        }
+        Ok(recovered)
     }
 
     pub fn open_watcher_count(&self) -> usize {
@@ -239,6 +374,10 @@ impl WorkspaceService {
             workspaces: vec![workspace.clone()],
             ..DashboardDelta::default()
         });
+        drop(connection);
+        if let Err(error) = self.watch(&workspace.id) {
+            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
+        }
         Ok(workspace)
     }
 
@@ -268,12 +407,26 @@ impl WorkspaceService {
             workspaces: vec![workspace.clone()],
             ..DashboardDelta::default()
         });
+        drop(connection);
+        if let Err(error) = self.watch(&workspace.id) {
+            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
+        }
         Ok(workspace)
     }
 
     pub fn keep(self: &Arc<Self>, input: WorkspacesKeepInput) -> ArgmaxResult<WorkspaceSummary> {
         let connection = self.database.connection();
+        let current = find_workspace_by_id(&connection, input.workspace_id.as_str())?;
+        if current.state == "archiving" {
+            return Err(ArgmaxError::service(
+                "WORKSPACE_ARCHIVING",
+                "Workspace archive is in progress; keep cannot change its lifecycle state.",
+            ));
+        }
         let workspace = update_workspace_state(&connection, input.workspace_id.as_str(), "kept")?;
+        if current.state == "archive-failed" {
+            self.lifecycle.reopen(&current.id);
+        }
         self.publish(DashboardDelta {
             workspaces: vec![workspace.clone()],
             ..DashboardDelta::default()
@@ -288,16 +441,73 @@ impl WorkspaceService {
         let workspace_id = input.workspace_id.as_str().to_string();
         let force = input.force.unwrap_or(false);
 
-        let workspace = self.refresh_status(&workspace_id).await?;
+        let prior = {
+            let connection = self.database.connection();
+            find_workspace_by_id(&connection, &workspace_id)?
+        };
+        if prior.state == "archived" {
+            return Ok(prior);
+        }
+        let lease = self.lifecycle.begin_archive(&workspace_id)?;
+        let archiving = {
+            let connection = self.database.connection();
+            update_workspace_state(&connection, &workspace_id, "archiving")?
+        };
+        self.publish(DashboardDelta {
+            workspaces: vec![archiving],
+            ..DashboardDelta::default()
+        });
+        if !self
+            .lifecycle
+            .wait_for_admissions(
+                &workspace_id,
+                Duration::from_millis(ARCHIVE_QUIESCE_TIMEOUT_MS),
+            )
+            .await
+        {
+            self.restore_archive_state(&prior)?;
+            lease.finish(if prior.state == "archive-failed" {
+                ArchiveOutcome::Failed
+            } else {
+                ArchiveOutcome::Reopened
+            });
+            return Err(ArgmaxError::service(
+                "WORKSPACE_ADMISSION_TIMEOUT",
+                "Timed out waiting for a process admission to finish before archive.",
+            ));
+        }
+
+        let workspace = match self.refresh_status(&workspace_id).await {
+            Ok(workspace) => workspace,
+            Err(error) => {
+                self.restore_archive_state(&prior)?;
+                lease.finish(if prior.state == "archive-failed" {
+                    ArchiveOutcome::Failed
+                } else {
+                    ArchiveOutcome::Reopened
+                });
+                return Err(error);
+            }
+        };
 
         let project = {
             let connection = self.database.connection();
-            require_project(&connection, &workspace.project_id)?
+            match require_project(&connection, &workspace.project_id) {
+                Ok(project) => project,
+                Err(error) => {
+                    self.restore_archive_state(&prior)?;
+                    lease.finish(if prior.state == "archive-failed" {
+                        ArchiveOutcome::Failed
+                    } else {
+                        ArchiveOutcome::Reopened
+                    });
+                    return Err(error);
+                }
+            }
         };
 
         if !workspace.shared_workspace {
             if workspace.dirty && !force {
-                self.close_watcher(&workspace_id);
                 let kept = {
                     let connection = self.database.connection();
                     update_workspace_state(&connection, &workspace_id, "kept")?
@@ -306,68 +516,222 @@ impl WorkspaceService {
                     workspaces: vec![kept.clone()],
                     ..DashboardDelta::default()
                 });
+                lease.finish(ArchiveOutcome::Reopened);
                 return Ok(kept);
             }
+        }
 
-            // Cancel hook is the caller's responsibility (CheckService isn't
-            // in scope for Lane A). After cancel, settle briefly so SIGTERM
-            // has time to land before we recheck porcelain.
-            tokio::time::sleep(Duration::from_millis(CANCEL_SETTLE_MS)).await;
-
-            if !force {
-                let recheck = run_git_text(
-                    Path::new(&workspace.path),
-                    &["status", "--porcelain"],
-                    Duration::from_millis(GIT_TIMEOUT_MS),
-                )
-                .await
-                .map_err(|e| ArgmaxError::service("WORKSPACE_STATUS_FAILED", e.to_string()))?;
-                if !recheck.trim().is_empty() {
-                    self.close_watcher(&workspace_id);
-                    let kept = {
-                        let connection = self.database.connection();
-                        update_workspace_state(&connection, &workspace_id, "kept")?
-                    };
-                    self.publish(DashboardDelta {
-                        workspaces: vec![kept.clone()],
-                        ..DashboardDelta::default()
-                    });
-                    return Ok(kept);
-                }
+        let timeout = Duration::from_millis(ARCHIVE_QUIESCE_TIMEOUT_MS);
+        // Cancel every process-owning subsystem at once under one wall-clock
+        // bound. Each service owns its cancellation job, so cancelling this
+        // coordinator's wait cannot strand a child after archive-failed.
+        let provider_future = async {
+            if let Some(providers) = self.providers.as_ref() {
+                providers.terminate_workspace(&workspace_id).await
+            } else {
+                Ok(())
             }
+        };
+        let check_future = async {
+            if let Some(checks) = self.checks.as_ref() {
+                if checks
+                    .cancel_workspace_checks_and_wait(&workspace_id, timeout)
+                    .await
+                {
+                    Ok(())
+                } else {
+                    Err(ArgmaxError::service(
+                        "WORKSPACE_CHECK_TIMEOUT",
+                        "Timed out waiting for workspace checks to terminate.",
+                    ))
+                }
+            } else {
+                Ok(())
+            }
+        };
+        let terminal_future = async {
+            if let Some(terminals) = self.terminals.as_ref() {
+                if terminals.terminate_workspace(&workspace_id, timeout).await {
+                    Ok(())
+                } else {
+                    Err(ArgmaxError::service(
+                        "WORKSPACE_TERMINAL_TIMEOUT",
+                        "Timed out waiting for workspace terminals to terminate.",
+                    ))
+                }
+            } else {
+                Ok(())
+            }
+        };
+        let quiescence = tokio::time::timeout(timeout, async {
+            tokio::join!(provider_future, check_future, terminal_future)
+        })
+        .await;
+        let (provider_result, check_result, terminal_result) = match quiescence {
+            Ok(results) => results,
+            Err(_) => {
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                }
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_QUIESCE_TIMEOUT",
+                    "Timed out waiting for workspace processes to terminate.",
+                ));
+            }
+        };
+        if let Err(error) = provider_result {
+            if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+            }
+            lease.finish(ArchiveOutcome::Failed);
+            return Err(error);
+        }
+        if let Err(error) = check_result {
+            if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+            }
+            lease.finish(ArchiveOutcome::Failed);
+            return Err(error);
+        }
+        if let Err(error) = terminal_result {
+            if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+            }
+            lease.finish(ArchiveOutcome::Failed);
+            return Err(error);
+        }
+        if let Some(approvals) = self.approvals.as_ref() {
+            if let Err(error) = approvals.cancel_workspace_pending(&workspace_id) {
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                }
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(error);
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(CANCEL_SETTLE_MS)).await;
+        // No more status refreshes can be useful once quiescence has completed.
+        // Close the OS watcher before the final git read and worktree removal.
+        self.close_watcher(&workspace_id);
 
+        if !force && !workspace.shared_workspace {
+            let recheck = match run_git_text(
+                Path::new(&workspace.path),
+                &["status", "--porcelain"],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await
+            {
+                Ok(output) => output,
+                Err(error) => {
+                    if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                        tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                    }
+                    lease.finish(ArchiveOutcome::Failed);
+                    return Err(ArgmaxError::service(
+                        "WORKSPACE_STATUS_FAILED",
+                        error.to_string(),
+                    ));
+                }
+            };
+            if !recheck.trim().is_empty() {
+                let kept = {
+                    let connection = self.database.connection();
+                    update_workspace_state(&connection, &workspace_id, "kept")?
+                };
+                self.publish(DashboardDelta {
+                    workspaces: vec![kept.clone()],
+                    ..DashboardDelta::default()
+                });
+                if let Err(error) = self.watch(&workspace_id) {
+                    tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after dirty archive refusal");
+                }
+                lease.finish(ArchiveOutcome::Reopened);
+                return Ok(kept);
+            }
+        }
+
+        if !workspace.shared_workspace {
             let remove_args: Vec<&str> = if force {
                 vec!["worktree", "remove", "--force", workspace.path.as_str()]
             } else {
                 vec!["worktree", "remove", workspace.path.as_str()]
             };
-            run_git_text(
+            if let Err(error) = run_git_text(
                 Path::new(&project.repo_path),
                 &remove_args,
                 Duration::from_millis(GIT_TIMEOUT_MS),
             )
             .await
-            .map_err(|e| {
-                invalid_workspace(
-                    format!("Could not archive worktree. {e}"),
+            {
+                if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                    tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                }
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(invalid_workspace(
+                    format!("Could not archive worktree. {error}"),
                     "Review the worktree and retry archive.",
-                )
-            })?;
+                ));
+            }
         }
 
         let archived = {
             let connection = self.database.connection();
-            update_workspace_state(&connection, &workspace_id, "archived")?
+            match update_workspace_state(&connection, &workspace_id, "archived") {
+                Ok(workspace) => workspace,
+                Err(error) => {
+                    drop(connection);
+                    if let Err(mark_error) = self.mark_archive_failed(&workspace_id) {
+                        tracing::error!(?mark_error, workspace_id = %workspace_id, "failed to persist archive-failed state");
+                    }
+                    lease.finish(ArchiveOutcome::Failed);
+                    return Err(error);
+                }
+            }
         };
-        // Tear the watcher down only after git + DB have committed the archive,
-        // so a failed worktree removal leaves a still-watched, recoverable
-        // workspace rather than a limbo one with no watcher and no archived row.
-        self.close_watcher(&workspace_id);
         self.publish(DashboardDelta {
             workspaces: vec![archived.clone()],
             ..DashboardDelta::default()
         });
+        lease.finish(ArchiveOutcome::Archived);
         Ok(archived)
+    }
+
+    fn restore_archive_state(self: &Arc<Self>, prior: &WorkspaceSummary) -> ArgmaxResult<()> {
+        let connection = self.database.connection();
+        let restored = update_workspace_state(&connection, &prior.id, &prior.state)?;
+        self.publish(DashboardDelta {
+            workspaces: vec![restored.clone()],
+            ..DashboardDelta::default()
+        });
+        drop(connection);
+        if Path::new(&restored.path).exists() {
+            if let Err(error) = self.watch(&prior.id) {
+                tracing::warn!(workspace_id = %prior.id, ?error, "failed to restore workspace watcher after archive failure");
+            }
+        } else {
+            self.close_watcher(&prior.id);
+        }
+        Ok(())
+    }
+
+    fn mark_archive_failed(self: &Arc<Self>, workspace_id: &str) -> ArgmaxResult<()> {
+        let connection = self.database.connection();
+        let failed = update_workspace_state(&connection, workspace_id, "archive-failed")?;
+        self.publish(DashboardDelta {
+            workspaces: vec![failed.clone()],
+            ..DashboardDelta::default()
+        });
+        drop(connection);
+        if Path::new(&failed.path).exists() {
+            if let Err(error) = self.watch(workspace_id) {
+                tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after archive failure");
+            }
+        } else {
+            self.close_watcher(workspace_id);
+        }
+        Ok(())
     }
 
     pub async fn refresh_status(
@@ -541,11 +905,8 @@ impl WorkspaceService {
         input: WorkspacesSetPriorityAddedInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
         let connection = self.database.connection();
-        let workspace = set_workspace_priority_added(
-            &connection,
-            input.workspace_id.as_str(),
-            input.added,
-        )?;
+        let workspace =
+            set_workspace_priority_added(&connection, input.workspace_id.as_str(), input.added)?;
         self.publish(DashboardDelta {
             workspaces: vec![workspace.clone()],
             ..DashboardDelta::default()
@@ -652,6 +1013,68 @@ fn invalid_workspace(
         recoverable_action: recoverable_action.into(),
     }
     .into()
+}
+
+fn isolated_worktree_is_registered(repo_path: &Path, worktree_path: &Path) -> ArgmaxResult<bool> {
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|error| {
+            invalid_workspace(
+                format!("Could not inspect git worktrees: {error}"),
+                "Verify the project repository and retry archive.",
+            )
+        })?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(invalid_workspace(
+            format!("Could not inspect git worktrees: {}", detail.trim()),
+            "Verify the project repository and retry archive.",
+        ));
+    }
+
+    let target = comparable_worktree_path(worktree_path)
+        .to_string_lossy()
+        .into_owned();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .map(|path| {
+            comparable_worktree_path(Path::new(path))
+                .to_string_lossy()
+                .into_owned()
+        })
+        .any(|path| path == target))
+}
+
+fn comparable_worktree_path(path: &Path) -> PathBuf {
+    let normalized = normalize(path);
+    if let Ok(canonical) = normalized.canonicalize() {
+        return canonical;
+    }
+
+    // Git canonicalizes the repository path even when the worktree itself is
+    // already gone. Resolve the nearest existing ancestor and append the
+    // missing components so `/var` and `/private/var` compare equally on
+    // macOS.
+    let mut probe = normalized.clone();
+    let mut missing = Vec::new();
+    while !probe.exists() {
+        let Some(name) = probe.file_name() else {
+            return normalized;
+        };
+        missing.push(name.to_os_string());
+        probe.pop();
+    }
+    let Ok(mut canonical) = probe.canonicalize() else {
+        return normalized;
+    };
+    for component in missing.iter().rev() {
+        canonical.push(component);
+    }
+    canonical
 }
 
 async fn branch_exists(repo_path: &str, branch: &str) -> ArgmaxResult<bool> {

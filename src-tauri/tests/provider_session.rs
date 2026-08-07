@@ -8,7 +8,7 @@
 //   - send_input goes straight to the handle when it accepts input,
 //     and queues otherwise
 //   - terminate disposes the handle and flips the session to cancelled
-//   - recover_orphaned_sessions marks `running` rows as failed on boot
+//   - recover_orphaned_sessions marks live-capable rows as failed on boot
 
 use std::collections::HashMap;
 use std::sync::{
@@ -17,6 +17,7 @@ use std::sync::{
 };
 use std::{path::PathBuf, process::Command, time::Duration};
 
+use argmax_lib::approvals::service::ApprovalService;
 use argmax_lib::error::ArgmaxResult;
 use argmax_lib::ipc::inputs::{
     ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput, ProvidersTerminateInput,
@@ -25,6 +26,7 @@ use argmax_lib::ipc::inputs::{
 use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::persistence::time::now_iso;
 use argmax_lib::persistence::{
+    approvals::{list_approvals_for_session, persist_approval, PersistApprovalInput},
     database::Database,
     events::{
         list_session_events_since, persist_raw_output, persist_timeline_event,
@@ -33,7 +35,7 @@ use argmax_lib::persistence::{
     projects::{persist_project, PersistProjectInput, ProjectSettings},
     sessions::{
         find_session_by_id, persist_session, update_session_provider_conversation_id,
-        PersistSessionInput,
+        update_session_state, PersistSessionInput, SessionStateInput,
     },
     workspaces::{persist_workspace, PersistWorkspaceInput},
 };
@@ -45,6 +47,7 @@ use argmax_lib::providers::session_service::ProviderSessionService;
 use argmax_lib::providers::{
     flush_queue::DashboardDelta, normalizer::ProviderOutputStream, ProviderLaunchInput,
 };
+use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
@@ -1153,6 +1156,56 @@ async fn terminate_disposes_handle_and_cancels_session() {
     assert_eq!(persisted.state, "cancelled");
 }
 
+#[tokio::test]
+async fn terminate_workspace_cancels_a_blocked_live_provider() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let handle = FakeHandle::new(true);
+    let release = Arc::new(tokio::sync::Notify::new());
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(GatedLauncher {
+            handle: handle.clone(),
+            release: release.clone(),
+        }),
+        |_| {},
+    );
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    release.notify_one();
+    wait_for_resolved(&service, &session.id).await;
+    {
+        let connection = database.connection();
+        update_session_state(
+            &connection,
+            &session.id,
+            &SessionStateInput {
+                state: "blocked".to_string(),
+                attention: "blocked".to_string(),
+                completed_at: None,
+                last_activity_at: None,
+            },
+        )
+        .expect("mark provider blocked");
+    }
+
+    service
+        .terminate_workspace(WORKSPACE_ID)
+        .await
+        .expect("terminate workspace");
+    assert!(handle.disposed.load(Ordering::SeqCst));
+    let connection = database.connection();
+    assert_eq!(
+        find_session_by_id(&connection, &session.id)
+            .expect("find session")
+            .state,
+        "cancelled"
+    );
+}
+
 // A follow-up sent while the provider is still spawning must queue, never fall
 // through to the relaunch path (which would double-spawn the provider).
 #[tokio::test]
@@ -1377,7 +1430,13 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
     drop(connection);
     assert_eq!(orphan.state, "running");
 
-    let service = ProviderSessionService::new(database.clone());
+    let service = ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
+        database.clone(),
+        Arc::new(FakeCliLauncher::default()),
+        |_| {},
+        WorkspaceLifecycle::new(),
+        Some(ApprovalService::new(database.clone())),
+    );
     let recovered = service
         .recover_orphaned_sessions()
         .expect("recovery sweeps");
@@ -1397,6 +1456,119 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
     assert!(
         types.contains(&"process_did_not_survive_restart"),
         "missing recovery event: {types:?}",
+    );
+}
+
+#[test]
+fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let connection = database.connection();
+    for (session_id, state) in [
+        ("orphan-running", "running"),
+        ("orphan-waiting", "waiting"),
+        ("orphan-blocked", "blocked"),
+        ("terminal-complete", "complete"),
+        ("terminal-cancelled", "cancelled"),
+    ] {
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: session_id.to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Sonnet 5".to_owned(),
+                model_id: "claude-sonnet-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "before crash".to_owned(),
+                state: state.to_owned(),
+                attention: "normal".to_owned(),
+            },
+        )
+        .expect("seed session");
+    }
+    for session_id in ["orphan-waiting", "orphan-blocked"] {
+        persist_approval(
+            &connection,
+            &PersistApprovalInput {
+                id: format!("approval-{session_id}"),
+                session_id: session_id.to_owned(),
+                command: "git push".to_owned(),
+                cwd: "/tmp/repo".to_owned(),
+                provider: "claude".to_owned(),
+                provider_invocation_id: Some(format!("invocation-{session_id}")),
+                provider_request_id: Some(format!("request-{session_id}")),
+                risk_level: "medium".to_owned(),
+                status: "pending".to_owned(),
+                created_at: None,
+            },
+        )
+        .expect("seed approval");
+    }
+    drop(connection);
+
+    let service = ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
+        database.clone(),
+        Arc::new(FakeCliLauncher::default()),
+        |_| {},
+        WorkspaceLifecycle::new(),
+        Some(ApprovalService::new(database.clone())),
+    );
+    assert_eq!(service.recover_orphaned_sessions().expect("recover"), 3);
+
+    let connection = database.connection();
+    for session_id in ["orphan-running", "orphan-waiting", "orphan-blocked"] {
+        let session = find_session_by_id(&connection, session_id).expect("find recovered session");
+        assert_eq!(session.state, "failed");
+        let approvals = list_approvals_for_session(&connection, session_id, "cancelled")
+            .expect("list cancelled approvals");
+        if session_id != "orphan-running" {
+            assert_eq!(approvals.len(), 1);
+        }
+        let events = list_session_events_since(&connection, session_id, None, None)
+            .expect("list recovery events");
+        assert_eq!(
+            events
+                .events
+                .iter()
+                .filter(|event| event.r#type == "process_did_not_survive_restart")
+                .count(),
+            1
+        );
+    }
+    assert_eq!(
+        find_session_by_id(&connection, "terminal-complete")
+            .unwrap()
+            .state,
+        "complete"
+    );
+    assert_eq!(
+        find_session_by_id(&connection, "terminal-cancelled")
+            .unwrap()
+            .state,
+        "cancelled"
+    );
+    drop(connection);
+
+    // Recovery is idempotent once live-capable rows have been terminalized.
+    assert_eq!(
+        service
+            .recover_orphaned_sessions()
+            .expect("second recovery"),
+        0
+    );
+    let connection = database.connection();
+    let events = list_session_events_since(&connection, "orphan-blocked", None, None)
+        .expect("list events after second recovery");
+    assert_eq!(
+        events
+            .events
+            .iter()
+            .filter(|event| event.r#type == "process_did_not_survive_restart")
+            .count(),
+        1
     );
 }
 

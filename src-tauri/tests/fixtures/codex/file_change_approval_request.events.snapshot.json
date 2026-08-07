@@ -1,10 +1,12 @@
 [
   {
     "sessionId": "session-1",
-    "type": "approval.requested",
+    "type": "permission.blocked",
     "message": "Apply file changes",
     "payload": {
       "command": "Apply file changes",
+      "provider": "codex",
+      "providerRequestId": "51",
       "reason": "Apply generated patch",
       "riskLevel": "high"
     },

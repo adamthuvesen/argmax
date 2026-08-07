@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+pub mod lifecycle;
 pub mod orchestration;
 pub mod watcher;
 

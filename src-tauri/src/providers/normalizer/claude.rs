@@ -57,6 +57,10 @@ pub fn detect_permission_gate(payload: &Map<String, Value>) -> Option<Permission
         cwd: None,
         tool_name: (command_from_permission_message(message).is_some()).then(|| tool.to_string()),
         tool_use_id: string_value(payload.get("tool_use_id")).map(str::to_string),
+        // Claude's permission_denied envelope does not expose a separate
+        // request id, but the tool invocation id is stable across replay and
+        // is the closest provider-owned correlation key available.
+        provider_request_id: string_value(payload.get("tool_use_id")).map(str::to_string),
     })
 }
 
@@ -375,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_permission_denied_becomes_approval_request() {
+    fn claude_permission_denied_becomes_permission_blocked_event() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
             ProviderId::Claude,
@@ -384,7 +388,7 @@ mod tests {
             ),
             &mut context,
         );
-        assert_eq!(result.events[0].r#type, "approval.requested");
+        assert_eq!(result.events[0].r#type, "permission.blocked");
         assert_eq!(result.events[0].message, "rm -rf dist");
         assert_eq!(result.events[0].payload["riskLevel"], "high");
     }
@@ -643,7 +647,7 @@ mod tests {
             serde_json::from_str::<Value>(snapshot).expect("snapshot json")
         );
         let event = &result.events[0];
-        assert_eq!(event.r#type, "approval.requested");
+        assert_eq!(event.r#type, "permission.blocked");
         assert_eq!(event.message, "rm -rf node_modules");
         assert_eq!(event.payload["command"], "rm -rf node_modules");
         assert_eq!(

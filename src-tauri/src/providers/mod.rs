@@ -18,6 +18,17 @@ use specta::Type;
 
 pub use crate::ipc::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 
+/// What Argmax can truthfully do with a provider's native permission gate.
+/// Observable-only means the CLI can emit a request, but this runtime does not
+/// have the provider-owned transport needed to answer that exact request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApprovalSupport {
+    Unsupported,
+    ObservableOnly,
+    Respondable,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderLaunchInput {

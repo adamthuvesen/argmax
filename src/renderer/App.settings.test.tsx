@@ -12,6 +12,7 @@ import {
   missingSession,
   mockDashboardSnapshot,
   openInIde,
+  providersDiscover,
   openSettings,
   sessionCostSummary,
   setupAppTestMocks,
@@ -397,6 +398,19 @@ describe("App settings", () => {
   });
 
   it("settings Permissions section persists the chosen mode and propagates it through the next launch", async () => {
+    providersDiscover.mockResolvedValue([
+      {
+        provider: "claude",
+        displayName: "Claude Code",
+        binaryName: "claude",
+        installed: true,
+        binaryPath: "/usr/local/bin/claude",
+        version: "1.2.3",
+        authenticated: true,
+        setupGuidance: null,
+        approvalSupport: "respondable"
+      }
+    ]);
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 

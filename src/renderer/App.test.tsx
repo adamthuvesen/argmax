@@ -845,7 +845,8 @@ describe("App", () => {
         binaryPath: "/usr/local/bin/claude",
         version: "1.2.3",
         authenticated: true,
-        setupGuidance: null
+        setupGuidance: null,
+        approvalSupport: "observable-only"
       }
     ]);
 

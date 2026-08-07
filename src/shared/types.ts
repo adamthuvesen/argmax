@@ -39,6 +39,7 @@ export interface DiscoveredProvider {
    */
   authenticated: boolean | null;
   setupGuidance: string | null;
+  approvalSupport: "unsupported" | "observable-only" | "respondable";
 }
 
 export type WorkspaceState =
@@ -49,6 +50,8 @@ export type WorkspaceState =
   | "complete"
   | "failed"
   | "cancelled"
+  | "archiving"
+  | "archive-failed"
   | "kept"
   | "archived";
 
@@ -68,6 +71,7 @@ export type EventType =
   | "command.output"
   | "command.completed"
   | "approval.requested"
+  | "permission.blocked"
   | "approval.resolved"
   | "file.changed"
   | "check.started"
@@ -374,8 +378,10 @@ export interface ApprovalRequest {
   command: string;
   cwd: string;
   provider: ProviderId;
+  providerInvocationId: string | null;
+  providerRequestId: string | null;
   riskLevel: "low" | "medium" | "high";
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "cancelled";
   createdAt: string;
   resolvedAt: string | null;
 }

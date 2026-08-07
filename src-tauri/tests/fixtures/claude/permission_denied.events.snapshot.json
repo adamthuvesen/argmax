@@ -1,11 +1,13 @@
 [
   {
     "sessionId": "session-1",
-    "type": "approval.requested",
+    "type": "permission.blocked",
     "message": "rm -rf node_modules",
     "payload": {
       "command": "rm -rf node_modules",
+      "provider": "claude",
       "providerEventType": "system",
+      "providerRequestId": "toolu_01ABC123",
       "reason": "Ask mode requires user approval for Bash",
       "riskLevel": "high",
       "toolName": "Bash",

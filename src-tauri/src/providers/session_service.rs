@@ -19,6 +19,7 @@ use std::{
 use crate::util::sync::LockOrRecover;
 use serde_json::{json, Value};
 use specta::Type;
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::{
@@ -33,9 +34,10 @@ use super::{
         ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle, RealProviderProcessLauncher,
     },
-    AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
+    AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
 };
 use crate::{
+    approvals::service::ApprovalService,
     error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
@@ -56,8 +58,9 @@ use crate::{
             SessionStateInput, SessionSummary,
         },
         time::now_iso,
-        workspaces::{find_workspace_by_id, update_workspace_state},
+        workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
     },
+    workspaces::lifecycle::WorkspaceLifecycle,
 };
 
 const MAX_PENDING_QUEUE: usize = 64;
@@ -73,6 +76,24 @@ const STRUCTURED_LAUNCH_ROWS: u16 = 32;
 /// chunk, so this only fires when the provider pauses; the lower bound just
 /// makes that pause-driven flush feel real-time instead of laggy.
 const STREAM_IDLE_FLUSH_MS: u64 = 16;
+
+fn ensure_permission_mode_supported(
+    provider: ProviderId,
+    permission_mode: PermissionMode,
+) -> ArgmaxResult<()> {
+    if permission_mode == PermissionMode::AskEachTime
+        && get_provider_definition(provider).approval_support != ApprovalSupport::Respondable
+    {
+        return Err(ArgmaxError::service(
+            "PROVIDER_APPROVAL_UNSUPPORTED",
+            format!(
+                "{} cannot answer live approval requests in this runtime. Choose Auto-approve or a provider with live approval support.",
+                get_provider_definition(provider).display_name
+            ),
+        ));
+    }
+    Ok(())
+}
 
 #[derive(Clone)]
 pub struct ProviderSessionService {
@@ -91,6 +112,12 @@ pub struct ProviderSessionService {
     /// the user-initiated `cancelled` state isn't overwritten by the
     /// wait-thread's `failed`/`complete` after the kill lands.
     terminating: Arc<Mutex<HashSet<String>>>,
+    /// Owned termination jobs. A caller may stop waiting when an archive
+    /// bound expires, but the job itself continues until the provider handle
+    /// is disposed and the cancelled state is persisted.
+    termination_jobs: Arc<Mutex<HashMap<String, watch::Receiver<Option<ArgmaxResult<()>>>>>>,
+    lifecycle: Arc<WorkspaceLifecycle>,
+    approvals: Option<Arc<ApprovalService>>,
 }
 
 #[derive(Clone)]
@@ -102,6 +129,22 @@ enum HandleEntry {
 #[derive(Clone)]
 enum PendingOp {
     Resize { cols: u16, rows: u16 },
+}
+
+async fn wait_for_termination(
+    mut done: watch::Receiver<Option<ArgmaxResult<()>>>,
+) -> ArgmaxResult<()> {
+    loop {
+        if let Some(result) = done.borrow().clone() {
+            return result;
+        }
+        done.changed().await.map_err(|_| {
+            ArgmaxError::service(
+                "PROVIDER_TERMINATION_LOST",
+                "Provider termination job stopped before reporting completion.",
+            )
+        })?;
+    }
 }
 
 impl ProviderSessionService {
@@ -118,6 +161,36 @@ impl ProviderSessionService {
         launcher: Arc<dyn ProviderProcessLauncher>,
         publish_delta: impl Fn(DashboardDelta) + Send + Sync + 'static,
     ) -> Arc<Self> {
+        Self::with_launcher_and_lifecycle(
+            database,
+            launcher,
+            publish_delta,
+            WorkspaceLifecycle::new(),
+        )
+    }
+
+    pub fn with_launcher_and_lifecycle(
+        database: Arc<Database>,
+        launcher: Arc<dyn ProviderProcessLauncher>,
+        publish_delta: impl Fn(DashboardDelta) + Send + Sync + 'static,
+        lifecycle: Arc<WorkspaceLifecycle>,
+    ) -> Arc<Self> {
+        Self::with_launcher_and_lifecycle_and_approvals(
+            database,
+            launcher,
+            publish_delta,
+            lifecycle,
+            None,
+        )
+    }
+
+    pub fn with_launcher_and_lifecycle_and_approvals(
+        database: Arc<Database>,
+        launcher: Arc<dyn ProviderProcessLauncher>,
+        publish_delta: impl Fn(DashboardDelta) + Send + Sync + 'static,
+        lifecycle: Arc<WorkspaceLifecycle>,
+        approvals: Option<Arc<ApprovalService>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             database,
             launcher,
@@ -128,6 +201,9 @@ impl ProviderSessionService {
             idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
             terminating: Arc::new(Mutex::new(HashSet::new())),
+            termination_jobs: Arc::new(Mutex::new(HashMap::new())),
+            lifecycle,
+            approvals,
         })
     }
 
@@ -152,10 +228,21 @@ impl ProviderSessionService {
         let agent_mode = input.agent_mode.unwrap_or(AgentMode::Auto);
         let permission_mode = input.permission_mode.unwrap_or(PermissionMode::AutoApprove);
         let provider = input.provider;
+        ensure_permission_mode_supported(provider, permission_mode)?;
+        let admission = self.lifecycle.admit(input.workspace_id.as_str())?;
 
         let (session, workspace_path) = {
             let connection = self.database.connection();
             let workspace = find_workspace_by_id(&connection, input.workspace_id.as_str())?;
+            if matches!(
+                workspace.state.as_str(),
+                "archiving" | "archive-failed" | "archived"
+            ) {
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_ARCHIVING",
+                    "Workspace archive is in progress; no new provider can be started.",
+                ));
+            }
             let mut session = persist_session(
                 &connection,
                 &PersistSessionInput {
@@ -178,7 +265,8 @@ impl ProviderSessionService {
                 session =
                     update_session_provider_conversation_id(&connection, &session_id, &session_id)?;
             }
-            let workspace = update_workspace_state(&connection, &workspace.id, "running")?;
+            let workspace =
+                update_workspace_state_for_session_state(&connection, &workspace.id, "running")?;
             let user_message = persist_timeline_event(
                 &connection,
                 &PersistTimelineEventInput {
@@ -217,11 +305,13 @@ impl ProviderSessionService {
             (session, PathBuf::from(workspace.path))
         };
 
+        let provider_invocation_id = Uuid::new_v4().to_string();
         self.flush_queue
             .lock_or_recover("flush queue")
-            .initialize_session(
+            .initialize_session_with_invocation(
                 session_id.clone(),
                 provider,
+                provider_invocation_id.clone(),
                 NormalizerSessionContext::default(),
             );
         self.handles
@@ -253,7 +343,12 @@ impl ProviderSessionService {
         // window removes the Pending entry, which the task detects below and
         // disposes the freshly spawned handle so nothing runs orphaned.
         let service = Arc::clone(self);
+        let callback_invocation_id = provider_invocation_id.clone();
         tokio::spawn(async move {
+            // Keep the workspace admission through the real provider spawn
+            // and handle registration. Archive must not remove the worktree
+            // while a cold launcher still owns its current directory.
+            let _admission = admission;
             let event_service = Arc::clone(&service);
             let handle = match service
                 .launcher
@@ -261,7 +356,7 @@ impl ProviderSessionService {
                     launch_input,
                     Arc::new(move |event| {
                         let event_service = Arc::clone(&event_service);
-                        event_service.handle_provider_event(event);
+                        event_service.handle_provider_event(event, callback_invocation_id.clone());
                     }),
                 )
                 .await
@@ -336,6 +431,45 @@ impl ProviderSessionService {
             });
         }
 
+        let (workspace_id, session_provider, session_permission_mode) = {
+            let connection = self.database.connection();
+            let session = find_session_by_id(&connection, &session_id)?;
+            (
+                session.workspace_id,
+                parse_provider(&session.provider)?,
+                parse_permission_mode(&session.permission_mode)?,
+            )
+        };
+        if self
+            .termination_jobs
+            .lock_or_recover("termination jobs")
+            .contains_key(&session_id)
+            || self
+                .terminating
+                .lock_or_recover("terminating")
+                .contains(&session_id)
+        {
+            return Err(ArgmaxError::service(
+                "PROVIDER_TERMINATING",
+                "Provider session is being terminated; wait for cancellation to finish.",
+            ));
+        }
+        ensure_permission_mode_supported(session_provider, session_permission_mode)?;
+        let admission = self.lifecycle.admit(&workspace_id)?;
+        {
+            let connection = self.database.connection();
+            let workspace = find_workspace_by_id(&connection, &workspace_id)?;
+            if matches!(
+                workspace.state.as_str(),
+                "archiving" | "archive-failed" | "archived"
+            ) {
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_ARCHIVING",
+                    "Workspace archive is in progress; no new provider input can be sent.",
+                ));
+            }
+        }
+
         if let Some(handle) = self.live_handle(&session_id) {
             if !handle.accepts_input() {
                 self.enqueue_pending_message(
@@ -344,6 +478,7 @@ impl ProviderSessionService {
                     input.agent_mode.unwrap_or(AgentMode::Auto),
                     &input,
                 )?;
+                drop(admission);
                 return Ok(SendInputResult {
                     ok: true,
                     queued: true,
@@ -359,6 +494,7 @@ impl ProviderSessionService {
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 input.attachments.as_deref(),
             )?;
+            drop(admission);
             return Ok(SendInputResult {
                 ok: true,
                 queued: false,
@@ -380,6 +516,7 @@ impl ProviderSessionService {
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 &input,
             )?;
+            drop(admission);
             return Ok(SendInputResult {
                 ok: true,
                 queued: true,
@@ -464,6 +601,7 @@ impl ProviderSessionService {
             }
             let provider = parse_provider(&session.provider)?;
             let permission_mode = parse_permission_mode(&session.permission_mode)?;
+            ensure_permission_mode_supported(provider, permission_mode)?;
             let mut resume_conversation_id = session.provider_conversation_id.clone();
             // A just-switched session always starts the new provider fresh; never
             // resurrect a stale Cursor resume id from an earlier Cursor segment.
@@ -500,7 +638,8 @@ impl ProviderSessionService {
                     last_activity_at: None,
                 },
             )?;
-            let running_workspace = update_workspace_state(&connection, &workspace.id, "running")?;
+            let running_workspace =
+                update_workspace_state_for_session_state(&connection, &workspace.id, "running")?;
             self.publish(DashboardDelta {
                 projects: list_projects(&connection)?,
                 workspaces: vec![running_workspace],
@@ -529,24 +668,27 @@ impl ProviderSessionService {
             (provider, launch_input)
         };
 
+        let provider_invocation_id = Uuid::new_v4().to_string();
         self.flush_queue
             .lock_or_recover("flush queue")
-            .initialize_session(
+            .initialize_session_with_invocation(
                 session_id.clone(),
                 provider,
+                provider_invocation_id.clone(),
                 NormalizerSessionContext::default(),
             );
         self.handles
             .lock_or_recover("handles")
             .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
         let service = Arc::clone(self);
+        let callback_invocation_id = provider_invocation_id.clone();
         let handle = match self
             .launcher
             .launch(
                 launch_input,
                 Arc::new(move |event| {
                     let service = Arc::clone(&service);
-                    service.handle_provider_event(event);
+                    service.handle_provider_event(event, callback_invocation_id.clone());
                 }),
             )
             .await
@@ -556,8 +698,10 @@ impl ProviderSessionService {
                 let prior = self.handles.lock_or_recover("handles").remove(&session_id);
                 if matches!(prior, Some(HandleEntry::Pending(_))) {
                     self.record_launch_failure(&session_id, provider, error.clone())?;
+                    drop(admission);
                     return Err(error);
                 }
+                drop(admission);
                 return Ok(SendInputResult {
                     ok: true,
                     queued: false,
@@ -587,6 +731,7 @@ impl ProviderSessionService {
                     "failed to dispose follow-up handle cancelled during spawn"
                 );
             }
+            drop(admission);
             return Ok(SendInputResult {
                 ok: true,
                 queued: false,
@@ -595,6 +740,7 @@ impl ProviderSessionService {
         for op in pending_ops {
             self.apply_op(&handle, op).await?;
         }
+        drop(admission);
         Ok(SendInputResult {
             ok: true,
             queued: false,
@@ -626,39 +772,113 @@ impl ProviderSessionService {
         }
     }
 
-    pub async fn terminate(&self, input: ProvidersTerminateInput) -> ArgmaxResult<()> {
+    pub async fn terminate(self: &Arc<Self>, input: ProvidersTerminateInput) -> ArgmaxResult<()> {
         let session_id = input.session_id.as_str().to_string();
+        let done = self.start_termination(session_id)?;
+        wait_for_termination(done).await
+    }
+
+    pub async fn terminate_workspace(self: &Arc<Self>, workspace_id: &str) -> ArgmaxResult<()> {
+        let session_ids = {
+            let connection = self.database.connection();
+            let mut statement = connection
+                .prepare_cached(
+                    "SELECT id FROM sessions WHERE workspace_id = ? AND state IN ('running', 'waiting', 'blocked')",
+                )
+                .map_err(sqlite_error)?;
+            let session_ids = statement
+                .query_map([workspace_id], |row| row.get::<_, String>("id"))
+                .map_err(sqlite_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sqlite_error)?;
+            session_ids
+        };
+        // Transfer every live handle into an owned job before waiting for any
+        // of them. Archive timeouts may cancel these waiters, but the jobs
+        // continue disposing their provider processes and persisting state.
+        let mut done = Vec::new();
+        for session_id in session_ids {
+            done.push(self.start_termination(session_id)?);
+        }
+        for ticket in done {
+            wait_for_termination(ticket).await?;
+        }
+        Ok(())
+    }
+
+    fn start_termination(
+        self: &Arc<Self>,
+        session_id: String,
+    ) -> ArgmaxResult<watch::Receiver<Option<ArgmaxResult<()>>>> {
         self.cancel_idle_flush(&session_id);
         self.clear_queue(&session_id);
-        // Mark before pulling the handle so a wait-thread exit event that
-        // arrives mid-terminate sees the flag and skips its own state
-        // write. Cleared after cancel_session lands `cancelled`.
+        let mut jobs = self.termination_jobs.lock_or_recover("termination jobs");
+        if let Some(done) = jobs.get(&session_id) {
+            return Ok(done.clone());
+        }
+
+        // Mark before transferring the handle so a wait-thread exit event
+        // arriving mid-terminate skips its own terminal-state write.
         self.terminating
             .lock_or_recover("terminating")
             .insert(session_id.clone());
         let entry = self.handles.lock_or_recover("handles").remove(&session_id);
-        let result = async {
-            match entry {
-                Some(HandleEntry::Resolved(handle)) => {
-                    // User-initiated cancel: flush buffered text but don't
-                    // synthesize a Cursor turn completion — the turn didn't
-                    // finish, it was cancelled.
-                    self.flush_trailing(&session_id, false)?;
-                    handle.terminate().await?;
-                    self.cancel_session(&session_id)?;
+        let (done_tx, done_rx) = watch::channel::<Option<ArgmaxResult<()>>>(None);
+        jobs.insert(session_id.clone(), done_rx.clone());
+        drop(jobs);
+
+        let service = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            let result = service.finish_termination(&session_id, entry).await;
+            let _ = done_tx.send(Some(result));
+            service
+                .termination_jobs
+                .lock_or_recover("termination jobs")
+                .remove(&session_id);
+        });
+        Ok(done_rx)
+    }
+
+    async fn finish_termination(
+        &self,
+        session_id: &str,
+        entry: Option<HandleEntry>,
+    ) -> ArgmaxResult<()> {
+        let mut first_error = None;
+        match entry {
+            Some(HandleEntry::Resolved(handle)) => {
+                // User-initiated cancel: flush buffered text but don't
+                // synthesize a Cursor turn completion — the turn didn't
+                // finish, it was cancelled.
+                if let Err(error) = self.flush_trailing(session_id, false) {
+                    first_error = Some(error);
                 }
-                Some(HandleEntry::Pending(_)) => {
-                    self.cancel_session(&session_id)?;
+                if let Err(error) = handle.terminate().await {
+                    first_error.get_or_insert(error);
                 }
-                None => {}
             }
-            Ok(())
+            Some(HandleEntry::Pending(_)) | None => {}
         }
-        .await;
+
+        // Persist cancellation even when provider disposal reports an error.
+        // The process exit callback observes the terminating marker and cannot
+        // clobber this state, while archive can report a teardown failure.
+        if let Err(error) = self.cancel_session(session_id) {
+            first_error.get_or_insert(error);
+        }
+        if let Some(approvals) = self.approvals.as_ref() {
+            if let Err(error) = approvals.cancel_session_pending(session_id) {
+                first_error.get_or_insert(error);
+            }
+        }
         self.terminating
             .lock_or_recover("terminating")
-            .remove(&session_id);
-        result
+            .remove(session_id);
+        if let Some(error) = first_error {
+            Err(error)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn cancel_queued_message(&self, input: ProvidersCancelQueuedMessageInput) {
@@ -680,7 +900,9 @@ impl ProviderSessionService {
         {
             let connection = self.database.connection();
             let mut statement = connection
-                .prepare("SELECT id, provider, provider_conversation_id FROM sessions WHERE state = 'running'")
+                .prepare(
+                    "SELECT id, provider, provider_conversation_id FROM sessions WHERE state IN ('running', 'waiting', 'blocked')",
+                )
                 .map_err(sqlite_error)?;
             let rows = statement
                 .query_map([], |row| {
@@ -699,7 +921,7 @@ impl ProviderSessionService {
                     r#"
                     SELECT DISTINCT s.id, s.provider, s.provider_conversation_id
                     FROM sessions s
-                    WHERE s.state = 'running'
+                    WHERE s.state IN ('running', 'waiting', 'blocked')
                        OR EXISTS (
                          SELECT 1 FROM events e
                          WHERE e.session_id = s.id
@@ -738,7 +960,11 @@ impl ProviderSessionService {
             // Mirror the session terminal-state onto the workspace so the
             // dashboard doesn't keep showing a `running` workspace whose
             // session was just marked `failed`.
-            let workspace = update_workspace_state(&connection, &session.workspace_id, "failed")?;
+            let workspace = update_workspace_state_for_session_state(
+                &connection,
+                &session.workspace_id,
+                "failed",
+            )?;
             let event = persist_timeline_event(
                 &connection,
                 &PersistTimelineEventInput {
@@ -757,6 +983,10 @@ impl ProviderSessionService {
                 events: vec![event],
                 ..DashboardDelta::default()
             });
+            drop(connection);
+            if let Some(approvals) = self.approvals.as_ref() {
+                approvals.cancel_session_pending(session_id)?;
+            }
         }
         Ok(recovered.len())
     }
@@ -782,9 +1012,28 @@ impl ProviderSessionService {
         Ok(())
     }
 
-    fn handle_provider_event(self: Arc<Self>, event: ProviderRuntimeEvent) {
+    fn is_current_provider_invocation(
+        &self,
+        session_id: &str,
+        provider_invocation_id: &str,
+    ) -> bool {
+        self.flush_queue
+            .lock_or_recover("flush queue")
+            .is_current_invocation(session_id, provider_invocation_id)
+    }
+
+    fn handle_provider_event(
+        self: Arc<Self>,
+        event: ProviderRuntimeEvent,
+        provider_invocation_id: String,
+    ) {
+        if !self.is_current_provider_invocation(&event.session_id, &provider_invocation_id) {
+            return;
+        }
         let result = match event.r#type {
-            ProviderRuntimeEventType::Output => self.handle_output_event(event),
+            ProviderRuntimeEventType::Output => {
+                self.handle_output_event(event, provider_invocation_id)
+            }
             ProviderRuntimeEventType::StreamStarted => self.handle_stream_started(event),
             ProviderRuntimeEventType::Exit | ProviderRuntimeEventType::Error => {
                 self.handle_lifecycle_event(event)
@@ -824,7 +1073,11 @@ impl ProviderSessionService {
         Ok(())
     }
 
-    fn handle_output_event(self: Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
+    fn handle_output_event(
+        self: Arc<Self>,
+        event: ProviderRuntimeEvent,
+        provider_invocation_id: String,
+    ) -> ArgmaxResult<()> {
         let trace_bytes = event.message.len();
         let trace_session = event.session_id.clone();
         tracing::trace!(
@@ -842,8 +1095,9 @@ impl ProviderSessionService {
             session_id = %trace_session,
             "handle_output_event: acquired flush queue; queuing event",
         );
-        let mut result = flush_queue.queue_output_event(
+        let mut result = flush_queue.queue_output_event_for_invocation(
             &mut connection,
+            &provider_invocation_id,
             ProviderOutputEvent {
                 session_id: event.session_id.clone(),
                 stream: event.stream,
@@ -925,6 +1179,9 @@ impl ProviderSessionService {
             self.flush_queue
                 .lock_or_recover("flush queue")
                 .delete_session(&event.session_id);
+            if let Some(approvals) = self.approvals.as_ref() {
+                approvals.cancel_session_pending(&event.session_id)?;
+            }
             return Ok(());
         }
         let connection = self.database.connection();
@@ -951,7 +1208,8 @@ impl ProviderSessionService {
                 last_activity_at: Some(event.created_at.clone()),
             },
         )?;
-        let workspace = update_workspace_state(&connection, &session.workspace_id, state)?;
+        let workspace =
+            update_workspace_state_for_session_state(&connection, &session.workspace_id, state)?;
         // For successful exits, persist `session.completed` with an empty
         // message — the wait-thread's raw text ("X structured probe exited
         // with code 0") is debug noise that was leaking into the chat
@@ -992,6 +1250,9 @@ impl ProviderSessionService {
             ..DashboardDelta::default()
         });
         drop(connection);
+        if let Some(approvals) = self.approvals.as_ref() {
+            approvals.cancel_session_pending(&event.session_id)?;
+        }
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
         }
@@ -1018,7 +1279,8 @@ impl ProviderSessionService {
                 last_activity_at: None,
             },
         )?;
-        let workspace = update_workspace_state(&connection, &session.workspace_id, "failed")?;
+        let workspace =
+            update_workspace_state_for_session_state(&connection, &session.workspace_id, "failed")?;
         let event = persist_timeline_event(
             &connection,
             &PersistTimelineEventInput {
@@ -1043,6 +1305,10 @@ impl ProviderSessionService {
 
     fn cancel_session(&self, session_id: &str) -> ArgmaxResult<()> {
         let connection = self.database.connection();
+        let current = find_session_by_id(&connection, session_id)?;
+        if !matches!(current.state.as_str(), "running" | "waiting" | "blocked") {
+            return Ok(());
+        }
         let completed_at = now_iso();
         let session = update_session_state(
             &connection,
@@ -1054,7 +1320,11 @@ impl ProviderSessionService {
                 last_activity_at: Some(completed_at.clone()),
             },
         )?;
-        let workspace = update_workspace_state(&connection, &session.workspace_id, "cancelled")?;
+        let workspace = update_workspace_state_for_session_state(
+            &connection,
+            &session.workspace_id,
+            "cancelled",
+        )?;
         let event = persist_timeline_event(
             &connection,
             &PersistTimelineEventInput {
@@ -1342,7 +1612,11 @@ impl ProviderSessionService {
                     last_activity_at: Some(completed_at),
                 },
             )?;
-            let workspace = update_workspace_state(&connection, &session.workspace_id, "complete")?;
+            let workspace = update_workspace_state_for_session_state(
+                &connection,
+                &session.workspace_id,
+                "complete",
+            )?;
             let projects = list_projects(&connection)?;
             (session, workspace, projects)
         };
@@ -1492,6 +1766,28 @@ fn pending_model_metadata(
     })
 }
 
+/// Provider lifecycle updates must not overwrite the authoritative workspace
+/// archive state. The transaction closes the read/update race with an archive
+/// coordinator that has already entered `archiving`.
+fn update_workspace_state_for_session_state(
+    connection: &rusqlite::Connection,
+    workspace_id: &str,
+    state: &str,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let current = find_workspace_by_id(&transaction, workspace_id)?;
+    let workspace = if matches!(
+        current.state.as_str(),
+        "archiving" | "archive-failed" | "archived"
+    ) {
+        current
+    } else {
+        update_workspace_state(&transaction, workspace_id, state)?
+    };
+    transaction.commit().map_err(sqlite_error)?;
+    Ok(workspace)
+}
+
 fn infer_cursor_provider_conversation_id(
     connection: &rusqlite::Connection,
     session_id: &str,
@@ -1534,4 +1830,24 @@ fn infer_cursor_provider_conversation_id(
 pub struct SendInputResult {
     pub ok: bool,
     pub queued: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ask_each_time_is_rejected_without_a_live_provider_responder() {
+        for provider in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
+            let error = ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
+                .expect_err("unsupported provider approval mode must fail closed");
+            assert!(matches!(
+                error,
+                ArgmaxError::ServiceError { sub_code, .. }
+                    if sub_code == "PROVIDER_APPROVAL_UNSUPPORTED"
+            ));
+            ensure_permission_mode_supported(provider, PermissionMode::AutoApprove)
+                .expect("auto-approve remains supported");
+        }
+    }
 }

@@ -1,11 +1,13 @@
 [
   {
     "sessionId": "session-1",
-    "type": "approval.requested",
+    "type": "permission.blocked",
     "message": "rm -rf /tmp/build",
     "payload": {
       "command": "rm -rf /tmp/build",
       "cwd": "/Users/me/project",
+      "provider": "codex",
+      "providerRequestId": "50",
       "reason": "Clean build artifacts",
       "riskLevel": "high"
     },

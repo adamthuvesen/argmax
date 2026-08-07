@@ -279,16 +279,17 @@ pub fn update_session_state(
     // column value, so `attention_changed_at` only advances when the attention
     // value actually changes — the timestamp the Priority section's dismissal
     // check compares against.
-    let mut statement = connection.prepare_cached(
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         UPDATE sessions
         SET state = ?1, completed_at = ?2, last_activity_at = ?3,
             attention_changed_at = CASE WHEN attention = ?4 THEN attention_changed_at ELSE ?3 END,
             attention = ?4
         WHERE id = ?5
         "#,
-    )
-    .map_err(sqlite_error)?;
+        )
+        .map_err(sqlite_error)?;
     statement
         .execute((
             input.state.as_str(),

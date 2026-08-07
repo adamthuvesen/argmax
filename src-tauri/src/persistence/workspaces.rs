@@ -197,12 +197,15 @@ pub fn update_workspace_status(
     workspace_id: &str,
     status: &WorkspaceStatusInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    let timestamp = status.last_activity_at.clone().unwrap_or_else(now_iso);
+    // A status read is an observation, not activity. Callers that have a
+    // domain timestamp (for example an explicit provider event) can still
+    // supply one, while watcher refreshes keep the existing recency value.
+    let timestamp = now_iso();
     let mut statement = connection
         .prepare_cached(
             r#"
         UPDATE workspaces
-        SET branch = ?, dirty = ?, changed_files = ?, last_activity_at = ?, updated_at = ?
+        SET branch = ?, dirty = ?, changed_files = ?, last_activity_at = COALESCE(?, last_activity_at), updated_at = ?
         WHERE id = ?
         "#,
         )
@@ -212,7 +215,7 @@ pub fn update_workspace_status(
             status.branch.as_str(),
             bool_to_i64(status.dirty),
             status.changed_files,
-            timestamp.as_str(),
+            status.last_activity_at.as_deref(),
             timestamp.as_str(),
             workspace_id,
         ))

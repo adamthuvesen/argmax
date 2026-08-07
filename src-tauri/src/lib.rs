@@ -381,12 +381,18 @@ pub fn run() {
                             if let Err(error) = workspaces.recover_interrupted_archives() {
                                 tracing::warn!(?error, "failed to recover interrupted workspace archives");
                             }
-                            if let Err(error) = workspaces.start_open_watchers() {
-                                tracing::warn!(?error, "failed to start workspace watchers");
-                            }
+                            let workspaces_for_watchers = Arc::clone(&workspaces);
                             if state.workspaces.set(workspaces).is_err() {
                                 tracing::warn!("workspace service state was already initialized");
                             }
+                            // Watcher refresh loops use tokio::spawn. Setup runs
+                            // during the synchronous macOS launch callback, so
+                            // defer restoration until Tauri's runtime is alive.
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(error) = workspaces_for_watchers.start_open_watchers() {
+                                    tracing::warn!(?error, "failed to start workspace watchers");
+                                }
+                            });
                             state.startup_timer.mark("db.open");
                             // Mark services as constructed only on the success
                             // path — otherwise a failed DB open still reported a

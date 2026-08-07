@@ -39,6 +39,25 @@ impl Drop for WatcherEntry {
 }
 
 pub(super) fn watch(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResult<()> {
+    // Installing a watcher is itself workspace-scoped admission. Archive can
+    // begin while this runs, but it must wait for the install to finish and
+    // then close the watcher before teardown continues.
+    let _admission = service.lifecycle().admit(workspace_id)?;
+    watch_impl(service, workspace_id)
+}
+
+/// Archive owns the lifecycle lease while restoring a watcher after a failed
+/// or intentionally reopened archive. It has already decided that teardown
+/// is not proceeding, so it may install the watcher before releasing that
+/// lease; startup watchers are blocked by the public `watch` admission above.
+pub(super) fn watch_during_archive(
+    service: &Arc<WorkspaceService>,
+    workspace_id: &str,
+) -> ArgmaxResult<()> {
+    watch_impl(service, workspace_id)
+}
+
+fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResult<()> {
     // Replace any prior watcher for this id so a stale RecommendedWatcher
     // can't outlive its replacement and keep kernel watches alive until
     // process exit.
@@ -48,6 +67,27 @@ pub(super) fn watch(service: &Arc<WorkspaceService>, workspace_id: &str) -> Argm
         let connection = service.database().connection();
         find_workspace_by_id(&connection, workspace_id)?
     };
+    if !matches!(
+        workspace.state.as_str(),
+        "created"
+            | "running"
+            | "waiting"
+            | "blocked"
+            | "complete"
+            | "failed"
+            | "cancelled"
+            | "kept"
+            | "archiving"
+            | "archive-failed"
+    ) {
+        return Err(ArgmaxError::service(
+            "WORKSPACE_WATCH_UNAVAILABLE",
+            format!(
+                "Workspace {} is not open for filesystem watching.",
+                workspace_id
+            ),
+        ));
+    }
 
     // A dirty bit is all the refresh loop needs.  A bounded channel keeps a
     // noisy build from turning file churn into unbounded memory growth.

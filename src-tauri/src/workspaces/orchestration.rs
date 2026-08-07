@@ -644,7 +644,7 @@ impl WorkspaceService {
                     workspaces: vec![kept.clone()],
                     ..DashboardDelta::default()
                 });
-                if let Err(error) = self.watch(&workspace_id) {
+                if let Err(error) = super::watcher::watch_during_archive(&self, &workspace_id) {
                     tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after dirty archive refusal");
                 }
                 lease.finish(ArchiveOutcome::Reopened);
@@ -707,7 +707,7 @@ impl WorkspaceService {
         });
         drop(connection);
         if Path::new(&restored.path).exists() {
-            if let Err(error) = self.watch(&prior.id) {
+            if let Err(error) = super::watcher::watch_during_archive(&self, &prior.id) {
                 tracing::warn!(workspace_id = %prior.id, ?error, "failed to restore workspace watcher after archive failure");
             }
         } else {
@@ -725,7 +725,7 @@ impl WorkspaceService {
         });
         drop(connection);
         if Path::new(&failed.path).exists() {
-            if let Err(error) = self.watch(workspace_id) {
+            if let Err(error) = super::watcher::watch_during_archive(&self, workspace_id) {
                 tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after archive failure");
             }
         } else {
@@ -794,6 +794,17 @@ impl WorkspaceService {
                 (workspace.changed_files, workspace.dirty)
             }
         };
+
+        // Filesystem churn is a status observation, not user or agent
+        // activity. Avoid touching SQLite or publishing a dashboard delta
+        // when the visible status is unchanged. This keeps watcher refreshes
+        // from reordering and repainting every sidebar row during a build.
+        if branch == workspace.branch
+            && dirty == workspace.dirty
+            && changed_files == workspace.changed_files
+        {
+            return Ok(workspace);
+        }
 
         if branch != workspace.branch {
             if let Some(session_id) = self.latest_session_id_for_workspace(workspace_id)? {

@@ -257,7 +257,8 @@ async fn refresh_status_picks_up_uncommitted_changes() {
         .expect("persist workspace")
     };
 
-    let service = WorkspaceService::new(database.clone());
+    let (publisher, sink) = capture_publisher();
+    let service = WorkspaceService::with_publisher(database.clone(), publisher);
 
     let before = service
         .refresh_status(&workspace.id)
@@ -265,6 +266,7 @@ async fn refresh_status_picks_up_uncommitted_changes() {
         .expect("refresh");
     assert!(!before.dirty);
     assert_eq!(before.changed_files, 0);
+    assert!(sink.lock().expect("sink").is_empty());
 
     std::fs::write(repo.path().join("new.txt"), "fresh").expect("write");
 
@@ -277,6 +279,29 @@ async fn refresh_status_picks_up_uncommitted_changes() {
         after.changed_files >= 1,
         "expected dirty count, got {}",
         after.changed_files
+    );
+    assert_eq!(after.last_activity_at, before.last_activity_at);
+    assert_eq!(
+        sink.lock()
+            .expect("sink")
+            .iter()
+            .filter(|delta| delta.workspaces.iter().any(|w| w.id == workspace.id))
+            .count(),
+        1
+    );
+
+    service
+        .refresh_status(&workspace.id)
+        .await
+        .expect("unchanged refresh");
+    assert_eq!(
+        sink.lock()
+            .expect("sink")
+            .iter()
+            .filter(|delta| delta.workspaces.iter().any(|w| w.id == workspace.id))
+            .count(),
+        1,
+        "unchanged watcher refresh must not publish another workspace delta"
     );
 }
 
@@ -685,6 +710,49 @@ async fn startup_restores_watchers_for_kept_workspaces() {
     assert_eq!(service.start_open_watchers().expect("start watchers"), 1);
     assert_eq!(service.open_watcher_count(), 1);
     service.close_watcher(&workspace.id);
+}
+
+#[tokio::test]
+async fn startup_watcher_install_is_rejected_once_archive_begins() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let connection = database.connection();
+    let workspace = persist_workspace(
+        &connection,
+        &PersistWorkspaceInput {
+            id: "w-startup-archive-race".to_owned(),
+            project_id: PROJECT_ID.to_owned(),
+            task_label: "startup archive race".to_owned(),
+            branch: "main".to_owned(),
+            base_ref: "main".to_owned(),
+            path: repo.path().display().to_string(),
+            state: "archiving".to_owned(),
+            shared_workspace: true,
+            dirty: false,
+            changed_files: 0,
+        },
+    )
+    .expect("persist workspace");
+    drop(connection);
+
+    let service = WorkspaceService::new(database);
+    let lease = service
+        .lifecycle()
+        .begin_archive(&workspace.id)
+        .expect("begin archive");
+
+    // The startup task may have captured this row before archive began. The
+    // lifecycle admission makes the later install a no-op rather than leaving
+    // a watcher attached to a workspace that is being torn down.
+    assert_eq!(service.start_open_watchers().expect("start watchers"), 0);
+    assert_eq!(service.open_watcher_count(), 0);
+    lease.finish(argmax_lib::workspaces::lifecycle::ArchiveOutcome::Reopened);
 }
 
 #[tokio::test]

@@ -83,7 +83,12 @@ export function computePriorityEntries(
 
   const entries: PriorityEntry[] = [];
   for (const workspace of workspaces) {
-    if (workspace.state === "archived" || workspace.state === "kept") continue;
+    if (
+      workspace.state === "archived" ||
+      workspace.state === "kept" ||
+      workspace.state === "archiving" ||
+      workspace.state === "archive-failed"
+    ) continue;
     const found = attentionByWorkspace.get(workspace.id);
     const attentionQualifies = (() => {
       if (!found || found.changedAt === null) return false;

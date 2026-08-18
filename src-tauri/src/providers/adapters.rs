@@ -1,4 +1,6 @@
-use super::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
+use super::{
+    AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort,
+};
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];
@@ -18,6 +20,7 @@ pub struct ProviderLaunchDefinition {
     pub structured_args: fn(&ProviderLaunchInput) -> Vec<String>,
     pub structured_resume_args: fn(&ProviderLaunchInput, &str) -> Vec<String>,
     pub structured_stdin: fn(&ProviderLaunchInput) -> Option<String>,
+    pub approval_support: ApprovalSupport,
 }
 
 pub fn provider_definitions() -> &'static [ProviderLaunchDefinition] {
@@ -40,6 +43,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         structured_args: claude_structured_args,
         structured_resume_args: claude_structured_resume_args,
         structured_stdin: |_| None,
+        approval_support: ApprovalSupport::ObservableOnly,
     },
     ProviderLaunchDefinition {
         id: ProviderId::Codex,
@@ -49,6 +53,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         structured_args: codex_structured_args,
         structured_resume_args: codex_structured_resume_args,
         structured_stdin: codex_structured_stdin,
+        approval_support: ApprovalSupport::ObservableOnly,
     },
     ProviderLaunchDefinition {
         id: ProviderId::Cursor,
@@ -58,6 +63,7 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         structured_args: cursor_structured_args,
         structured_resume_args: cursor_structured_resume_args,
         structured_stdin: |_| None,
+        approval_support: ApprovalSupport::Unsupported,
     },
 ];
 
@@ -185,10 +191,7 @@ fn cursor_model_for(
     fast_mode: bool,
 ) -> String {
     let with_effort = match (model_id, reasoning_effort) {
-        (
-            "gpt-5.6-luna-medium" | "gpt-5.6-terra-medium" | "gpt-5.6-sol-medium",
-            Some(effort),
-        ) => {
+        ("gpt-5.6-luna-medium" | "gpt-5.6-terra-medium" | "gpt-5.6-sol-medium", Some(effort)) => {
             let suffix = match effort {
                 ReasoningEffort::Low => "low",
                 ReasoningEffort::Medium => "medium",

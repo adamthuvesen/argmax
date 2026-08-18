@@ -505,8 +505,14 @@ async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<Result<GitViewO
 
 export type AgentMode = "auto" | "plan"
 export type ApprovalId = string
-export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
+export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; providerInvocationId: string | null; providerRequestId: string | null; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
 export type ApprovalResolution = "approved" | "rejected"
+/**
+ * What Argmax can truthfully do with a provider's native permission gate.
+ * Observable-only means the CLI can emit a request, but this runtime does not
+ * have the provider-owned transport needed to answer that exact request.
+ */
+export type ApprovalSupport = "unsupported" | "observable-only" | "respondable"
 export type ApprovalsPendingInput = Record<string, never>
 export type ApprovalsResolveInput = { approvalId: ApprovalId; status: ApprovalResolution }
 export type ArgmaxError = { code: "INVALID_INPUT"; issues: InvalidInputIssue[] } | { code: "RECORD_NOT_FOUND"; kind: string; id: string } | { code: "MIGRATION_DRIFT"; detail: string } | { code: "SERVICE_ERROR"; sub_code: string; message: string }
@@ -583,7 +589,13 @@ export type ProviderCapabilityReport = { provider: ProviderId; displayName: stri
  * never hard-blocks on it, since a CLI changing its status command must not
  * lock out a working provider.
  */
-authenticated: boolean | null; setupGuidance: string | null }
+authenticated: boolean | null; setupGuidance: string | null;
+/**
+ * Whether Argmax can answer a native provider permission request. The
+ * current structured runtime is observation-only for Claude/Codex and
+ * has no Cursor gate detector, so the UI must not imply live approval.
+ */
+approvalSupport: ApprovalSupport }
 export type ProviderId = "claude" | "codex" | "cursor"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersDiscoverInput = { 

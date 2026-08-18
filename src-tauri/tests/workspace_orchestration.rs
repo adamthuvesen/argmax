@@ -12,6 +12,7 @@ mod support {
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use argmax_lib::checks::service::{CheckService, RunWorkspaceCheckInput};
 use argmax_lib::ipc::inputs::{
     OpenIdeChoice, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
     WorkspacesCreateIsolatedInput, WorkspacesKeepInput, WorkspacesOpenInIdeInput,
@@ -19,6 +20,7 @@ use argmax_lib::ipc::inputs::{
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::{
+    checks::list_checks,
     database::Database,
     projects::{persist_project, PersistProjectInput, ProjectSettings},
     workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
@@ -255,7 +257,8 @@ async fn refresh_status_picks_up_uncommitted_changes() {
         .expect("persist workspace")
     };
 
-    let service = WorkspaceService::new(database.clone());
+    let (publisher, sink) = capture_publisher();
+    let service = WorkspaceService::with_publisher(database.clone(), publisher);
 
     let before = service
         .refresh_status(&workspace.id)
@@ -263,6 +266,7 @@ async fn refresh_status_picks_up_uncommitted_changes() {
         .expect("refresh");
     assert!(!before.dirty);
     assert_eq!(before.changed_files, 0);
+    assert!(sink.lock().expect("sink").is_empty());
 
     std::fs::write(repo.path().join("new.txt"), "fresh").expect("write");
 
@@ -275,6 +279,29 @@ async fn refresh_status_picks_up_uncommitted_changes() {
         after.changed_files >= 1,
         "expected dirty count, got {}",
         after.changed_files
+    );
+    assert_eq!(after.last_activity_at, before.last_activity_at);
+    assert_eq!(
+        sink.lock()
+            .expect("sink")
+            .iter()
+            .filter(|delta| delta.workspaces.iter().any(|w| w.id == workspace.id))
+            .count(),
+        1
+    );
+
+    service
+        .refresh_status(&workspace.id)
+        .await
+        .expect("unchanged refresh");
+    assert_eq!(
+        sink.lock()
+            .expect("sink")
+            .iter()
+            .filter(|delta| delta.workspaces.iter().any(|w| w.id == workspace.id))
+            .count(),
+        1,
+        "unchanged watcher refresh must not publish another workspace delta"
     );
 }
 
@@ -422,6 +449,313 @@ async fn archive_shared_workspace_when_dirty_and_not_forced() {
 }
 
 #[tokio::test]
+async fn archive_waits_for_and_cancels_a_live_check() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let workspace = {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w-arch-check".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                task_label: "archive check".to_owned(),
+                branch: "main".to_owned(),
+                base_ref: "main".to_owned(),
+                path: repo.path().display().to_string(),
+                state: "created".to_owned(),
+                shared_workspace: true,
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace")
+    };
+
+    let lifecycle = argmax_lib::workspaces::lifecycle::WorkspaceLifecycle::new();
+    let checks = CheckService::with_lifecycle(database.clone(), lifecycle.clone());
+    let (publisher, _sink) = capture_publisher();
+    let service = WorkspaceService::with_services(
+        database.clone(),
+        publisher,
+        lifecycle,
+        None,
+        Some(checks.clone()),
+        None,
+        None,
+    );
+    let check_task = tokio::spawn({
+        let checks = checks.clone();
+        let workspace_id = workspace.id.clone();
+        async move {
+            checks
+                .run_workspace_check(
+                    RunWorkspaceCheckInput {
+                        workspace_id,
+                        command: "sleep 30".to_owned(),
+                        timeout_ms: Some(60_000),
+                    },
+                    None,
+                )
+                .await
+        }
+    });
+
+    for _ in 0..50 {
+        let running = {
+            let connection = database.connection();
+            list_checks(&connection, Some(std::slice::from_ref(&workspace.id)), 10)
+                .expect("list checks")
+                .iter()
+                .any(|check| check.status == "running")
+        };
+        if running {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let archived = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: Some(true),
+        })
+        .await
+        .expect("archive");
+    assert_eq!(archived.state, "archived");
+    let check = check_task
+        .await
+        .expect("check task join")
+        .expect("check result");
+    assert_eq!(check.status, "cancelled");
+    assert!(check.completed_at.is_some());
+}
+
+#[test]
+fn startup_reconciles_stranded_archives_without_retrying_removal() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let workspace = {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w-stranded-archive".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                task_label: "stranded archive".to_owned(),
+                branch: "main".to_owned(),
+                base_ref: "main".to_owned(),
+                path: repo.path().display().to_string(),
+                state: "archiving".to_owned(),
+                shared_workspace: true,
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace")
+    };
+    let service = WorkspaceService::new(database.clone());
+    assert_eq!(
+        service
+            .recover_interrupted_archives()
+            .expect("recover archives"),
+        1
+    );
+    let connection = database.connection();
+    let recovered = find_workspace_by_id(&connection, &workspace.id).expect("find workspace");
+    assert_eq!(recovered.state, "archive-failed");
+    assert!(
+        repo.path().exists(),
+        "startup recovery must not remove the path"
+    );
+}
+
+#[test]
+fn startup_finalizes_an_isolated_archive_after_worktree_removal() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let worktree_path = repo.path().join("worktrees").join("removed");
+    std::fs::create_dir_all(worktree_path.parent().expect("worktree parent"))
+        .expect("create worktree parent");
+    let worktree_arg = worktree_path.to_str().expect("worktree path");
+    run_git(
+        repo.path(),
+        &["worktree", "add", "--detach", worktree_arg, "main"],
+    );
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let workspace = {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w-removed-archive".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                task_label: "removed archive".to_owned(),
+                branch: "detached".to_owned(),
+                base_ref: "main".to_owned(),
+                path: worktree_arg.to_owned(),
+                state: "archiving".to_owned(),
+                shared_workspace: false,
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace")
+    };
+    run_git(
+        repo.path(),
+        &["worktree", "remove", "--force", worktree_arg],
+    );
+    assert!(!worktree_path.exists());
+
+    let service = WorkspaceService::new(database.clone());
+    assert_eq!(service.recover_interrupted_archives().expect("recover"), 1);
+    let connection = database.connection();
+    let recovered = find_workspace_by_id(&connection, &workspace.id).expect("find workspace");
+    assert_eq!(recovered.state, "archived");
+}
+
+#[test]
+fn startup_keeps_archive_failed_when_git_still_registers_missing_worktree() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let worktree_path = repo.path().join("worktrees").join("registered");
+    std::fs::create_dir_all(worktree_path.parent().expect("worktree parent"))
+        .expect("create worktree parent");
+    let worktree_arg = worktree_path.to_str().expect("worktree path");
+    run_git(
+        repo.path(),
+        &["worktree", "add", "--detach", worktree_arg, "main"],
+    );
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let workspace = {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w-registered-archive".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                task_label: "registered archive".to_owned(),
+                branch: "detached".to_owned(),
+                base_ref: "main".to_owned(),
+                path: worktree_arg.to_owned(),
+                state: "archiving".to_owned(),
+                shared_workspace: false,
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace")
+    };
+    std::fs::remove_dir_all(&worktree_path).expect("remove worktree path");
+    let service = WorkspaceService::new(database.clone());
+    assert_eq!(service.recover_interrupted_archives().expect("recover"), 1);
+    let connection = database.connection();
+    let recovered = find_workspace_by_id(&connection, &workspace.id).expect("find workspace");
+    assert_eq!(recovered.state, "archive-failed");
+}
+
+#[tokio::test]
+async fn startup_restores_watchers_for_kept_workspaces() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let connection = database.connection();
+    let workspace = persist_workspace(
+        &connection,
+        &PersistWorkspaceInput {
+            id: "w-kept-watch".to_owned(),
+            project_id: PROJECT_ID.to_owned(),
+            task_label: "kept watcher".to_owned(),
+            branch: "main".to_owned(),
+            base_ref: "main".to_owned(),
+            path: repo.path().display().to_string(),
+            state: "kept".to_owned(),
+            shared_workspace: true,
+            dirty: true,
+            changed_files: 1,
+        },
+    )
+    .expect("persist workspace");
+    drop(connection);
+
+    let service = WorkspaceService::new(database);
+    assert_eq!(service.start_open_watchers().expect("start watchers"), 1);
+    assert_eq!(service.open_watcher_count(), 1);
+    service.close_watcher(&workspace.id);
+}
+
+#[tokio::test]
+async fn startup_watcher_install_is_rejected_once_archive_begins() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let connection = database.connection();
+    let workspace = persist_workspace(
+        &connection,
+        &PersistWorkspaceInput {
+            id: "w-startup-archive-race".to_owned(),
+            project_id: PROJECT_ID.to_owned(),
+            task_label: "startup archive race".to_owned(),
+            branch: "main".to_owned(),
+            base_ref: "main".to_owned(),
+            path: repo.path().display().to_string(),
+            state: "archiving".to_owned(),
+            shared_workspace: true,
+            dirty: false,
+            changed_files: 0,
+        },
+    )
+    .expect("persist workspace");
+    drop(connection);
+
+    let service = WorkspaceService::new(database);
+    let lease = service
+        .lifecycle()
+        .begin_archive(&workspace.id)
+        .expect("begin archive");
+
+    // The startup task may have captured this row before archive began. The
+    // lifecycle admission makes the later install a no-op rather than leaving
+    // a watcher attached to a workspace that is being torn down.
+    assert_eq!(service.start_open_watchers().expect("start watchers"), 0);
+    assert_eq!(service.open_watcher_count(), 0);
+    lease.finish(argmax_lib::workspaces::lifecycle::ArchiveOutcome::Reopened);
+}
+
+#[tokio::test]
 async fn archive_isolated_worktree_kept_when_dirty_and_not_forced() {
     let repo = seed_git_repo(&[("a.txt", "1")]);
     ensure_main_branch(repo.path());
@@ -543,6 +877,45 @@ async fn watcher_debounces_burst_into_single_refresh() {
 
     service.close_watcher(&workspace.id);
     assert_eq!(service.open_watcher_count(), 0);
+}
+
+#[tokio::test]
+async fn dropping_watched_service_releases_the_service_arc() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let workspace = {
+        let connection = database.connection();
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w-drop-watcher".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                task_label: "drop watcher".to_owned(),
+                branch: "main".to_owned(),
+                base_ref: "main".to_owned(),
+                path: repo.path().display().to_string(),
+                state: "created".to_owned(),
+                shared_workspace: true,
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("persist workspace")
+    };
+    let service = WorkspaceService::new(database);
+    let weak = Arc::downgrade(&service);
+    service.watch(&workspace.id).expect("install watcher");
+    drop(service);
+    assert!(
+        weak.upgrade().is_none(),
+        "watch task must not retain service Arc"
+    );
 }
 
 #[test]

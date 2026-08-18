@@ -253,10 +253,25 @@ pub fn run() {
                                     tracing::warn!(?error, "dashboard delta channel closed");
                                 }
                             };
-                            let providers = providers::session_service::ProviderSessionService::with_launcher(
+                            let approval_delta_tx = delta_tx.clone();
+                            let approvals = approvals::service::ApprovalService::with_publisher(
+                                Arc::clone(&database),
+                                move |delta| {
+                                    if let Err(error) = approval_delta_tx.send(delta) {
+                                        tracing::warn!(?error, "dashboard delta channel closed");
+                                    }
+                                },
+                            );
+                            if state.approvals.set(Arc::clone(&approvals)).is_err() {
+                                tracing::warn!("approval service state was already initialized");
+                            }
+                            let lifecycle = workspaces::lifecycle::WorkspaceLifecycle::new();
+                            let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
                                 Arc::new(providers::runtime::RealProviderProcessLauncher::new()),
                                 publish_delta,
+                                Arc::clone(&lifecycle),
+                                Some(Arc::clone(&approvals)),
                             );
                             if let Err(error) = providers.recover_orphaned_sessions() {
                                 tracing::warn!(?error, "failed to recover orphaned sessions");
@@ -288,17 +303,21 @@ pub fn run() {
                                     tracing::warn!(?error, "failed to schedule terminal exit emit");
                                 }
                             });
-                            let terminals = terminal::service::TerminalService::new(
+                            let terminals = terminal::service::TerminalService::with_lifecycle(
                                 Arc::clone(&database),
                                 on_terminal_data,
                                 on_terminal_exit,
+                                Arc::clone(&lifecycle),
                             );
                             if state.terminals.set(terminals).is_err() {
                                 tracing::warn!("terminal service state was already initialized");
                             }
                             if state
                                 .checks
-                                .set(checks::service::CheckService::new(Arc::clone(&database)))
+                                .set(checks::service::CheckService::with_lifecycle(
+                                    Arc::clone(&database),
+                                    Arc::clone(&lifecycle),
+                                ))
                                 .is_err()
                             {
                                 tracing::warn!("check service state was already initialized");
@@ -350,13 +369,30 @@ pub fn run() {
                                     tracing::warn!(?error, "dashboard delta channel closed");
                                 }
                             };
-                            let workspaces = workspaces::WorkspaceService::with_publisher(
+                            let workspaces = workspaces::WorkspaceService::with_services(
                                 Arc::clone(&database),
                                 publish_delta,
+                                lifecycle,
+                                Some(Arc::clone(&providers)),
+                                state.checks.get().cloned(),
+                                state.terminals.get().cloned(),
+                                Some(Arc::clone(&approvals)),
                             );
+                            if let Err(error) = workspaces.recover_interrupted_archives() {
+                                tracing::warn!(?error, "failed to recover interrupted workspace archives");
+                            }
+                            let workspaces_for_watchers = Arc::clone(&workspaces);
                             if state.workspaces.set(workspaces).is_err() {
                                 tracing::warn!("workspace service state was already initialized");
                             }
+                            // Watcher refresh loops use tokio::spawn. Setup runs
+                            // during the synchronous macOS launch callback, so
+                            // defer restoration until Tauri's runtime is alive.
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(error) = workspaces_for_watchers.start_open_watchers() {
+                                    tracing::warn!(?error, "failed to start workspace watchers");
+                                }
+                            });
                             state.startup_timer.mark("db.open");
                             // Mark services as constructed only on the success
                             // path — otherwise a failed DB open still reported a

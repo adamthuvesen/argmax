@@ -4,7 +4,9 @@ Rust owns workspace lifecycle and git operations.
 
 ## Workspaces
 
-[src-tauri/src/workspaces](../src-tauri/src/workspaces) creates isolated/current workspaces, refreshes status, pins, archives, keeps, and opens IDEs. Watchers debounce filesystem changes and publish updated workspace deltas.
+[src-tauri/src/workspaces](../src-tauri/src/workspaces) creates isolated/current workspaces, refreshes status, pins, archives, keeps, and opens IDEs. Active workspaces get one explicit filesystem watcher at creation and on startup recovery. Watchers use a capacity-one dirty signal, a 200 ms trailing debounce, and a one-second maximum refresh interval so continuous churn cannot starve status updates.
+
+Archive first persists the authoritative `archiving` state and closes admission for providers, checks, and terminals through the shared workspace lifecycle gate. It then cancels those three process owners concurrently under one bounded quiescence wait, expires pending approvals, closes the watcher, refreshes git status, removes an isolated worktree, and finally persists `archived`. A dirty non-forced archive returns to `kept` without tearing down a still-live checkout. Failures before teardown restore the prior state. Once teardown has begun, failures persist `archive-failed`, keep admission closed, and leave the watcher available only when the path still exists. Startup finalizes an isolated `archiving` row as `archived` only when its path is absent and Git no longer registers the worktree. Other stranded rows become `archive-failed` instead of triggering a destructive retry. Use Keep or Retry Archive explicitly.
 
 The launcher composer exposes this choice per launch via the "Worktree" toggle (off by default → current checkout), persisted to `localStorage` (`argmax.workspaceMode`). `worktree` calls `create_isolated` (forking `argmax/<slug>` from the live branch); `current` calls `create_current` (shared checkout). See [src/renderer/lib/workspaceMode.ts](../src/renderer/lib/workspaceMode.ts).
 

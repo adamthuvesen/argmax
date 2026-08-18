@@ -52,6 +52,8 @@ export function AgentsSettings({
     }
     return map;
   }, [providers]);
+  const askEachTimeAvailable =
+    providers === null || providers.some((provider) => provider.approvalSupport === "respondable");
 
   return (
     <>
@@ -130,10 +132,20 @@ export function AgentsSettings({
             onChange={(v) => onPermissionModeChange(v as PermissionMode)}
             options={[
               { value: "auto-approve", label: "Auto-approve" },
-              { value: "ask-each-time", label: "Ask each time" }
+              {
+                value: "ask-each-time",
+                label: "Ask each time",
+                disabled: !askEachTimeAvailable,
+                caption: askEachTimeAvailable ? undefined : "Unavailable until a provider supports live replies"
+              }
             ]}
           />
-          {permissionMode === "auto-approve" ? (
+          {!askEachTimeAvailable ? (
+            <p className="settings-hint">
+              No detected provider can answer a live approval request yet. Choose Auto-approve to start a session;
+              Argmax will not pretend that an observable-only gate can be approved in-app.
+            </p>
+          ) : permissionMode === "auto-approve" ? (
             <p className="settings-hint">
               Argmax launches each provider with broad permissions
               (<code>bypassPermissions</code> / <code>--dangerously-bypass-approvals-and-sandbox</code> /
@@ -142,8 +154,8 @@ export function AgentsSettings({
             </p>
           ) : (
             <p className="settings-hint">
-              The bypass flags are dropped. Each tool invocation goes through the provider's
-              native approval gate; Argmax surfaces it as an in-app Approve / Reject prompt.
+              The bypass flags are dropped. Each tool invocation goes through a provider's
+              native approval gate only when that provider supports live replies.
             </p>
           )}
         </div>
@@ -205,6 +217,13 @@ export function AgentsSettings({
                         ) : null}
                       </span>
                       <span className="settings-provider-status">{statusText}</span>
+                      <span className="settings-provider-status">
+                        {provider.approvalSupport === "respondable"
+                          ? "Live approvals supported"
+                          : provider.approvalSupport === "observable-only"
+                            ? "Approval requests are observable only"
+                            : "Native approvals unavailable"}
+                      </span>
                       {needsLogin && provider.setupGuidance ? (
                         <span className="settings-provider-guidance">{provider.setupGuidance}</span>
                       ) : null}

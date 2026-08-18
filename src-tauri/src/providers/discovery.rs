@@ -5,7 +5,8 @@ use specta::Type;
 use tokio::{process::Command, sync::Mutex};
 
 use super::{
-    adapters::get_provider_definition, environment::build_provider_environment, ProviderId,
+    adapters::get_provider_definition, environment::build_provider_environment, ApprovalSupport,
+    ProviderId,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -24,6 +25,10 @@ pub struct ProviderCapabilityReport {
     /// lock out a working provider.
     pub authenticated: Option<bool>,
     pub setup_guidance: Option<String>,
+    /// Whether Argmax can answer a native provider permission request. The
+    /// current structured runtime is observation-only for Claude/Codex and
+    /// has no Cursor gate detector, so the UI must not imply live approval.
+    pub approval_support: ApprovalSupport,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -101,6 +106,7 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
         version,
         authenticated,
         setup_guidance,
+        approval_support: definition.approval_support,
     }
 }
 
@@ -212,6 +218,23 @@ mod tests {
         assert_eq!(
             get_provider_definition(ProviderId::Cursor).status_args,
             &["status"]
+        );
+    }
+
+    #[test]
+    fn approval_support_is_explicit_and_conservative() {
+        use crate::providers::adapters::get_provider_definition;
+        assert_eq!(
+            get_provider_definition(ProviderId::Claude).approval_support,
+            ApprovalSupport::ObservableOnly
+        );
+        assert_eq!(
+            get_provider_definition(ProviderId::Codex).approval_support,
+            ApprovalSupport::ObservableOnly
+        );
+        assert_eq!(
+            get_provider_definition(ProviderId::Cursor).approval_support,
+            ApprovalSupport::Unsupported
         );
     }
 

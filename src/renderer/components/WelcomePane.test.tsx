@@ -18,6 +18,7 @@ function provider(overrides: Partial<DiscoveredProvider>): DiscoveredProvider {
     version: "1.2.3",
     authenticated: true,
     setupGuidance: null,
+    approvalSupport: "observable-only",
     ...overrides
   };
 }

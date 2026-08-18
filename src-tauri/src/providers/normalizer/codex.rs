@@ -80,7 +80,18 @@ pub fn detect_permission_gate(payload: &Map<String, Value>) -> Option<Permission
         cwd: params.and_then(|params| string_value(params.get("cwd")).map(str::to_string)),
         tool_name: None,
         tool_use_id: None,
+        provider_request_id: payload
+            .get("id")
+            .and_then(value_as_string)
+            .or_else(|| params.and_then(|params| params.get("id").and_then(value_as_string))),
     })
+}
+
+fn value_as_string(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| value.as_i64().map(|number| number.to_string()))
 }
 
 pub fn update_turn_context_model(
@@ -734,7 +745,7 @@ mod tests {
             ),
             &mut context,
         );
-        assert_eq!(result.events[0].r#type, "approval.requested");
+        assert_eq!(result.events[0].r#type, "permission.blocked");
         assert_eq!(result.events[0].payload["cwd"], "/repo");
         assert_eq!(result.events[0].payload["riskLevel"], "high");
     }
@@ -820,7 +831,7 @@ mod tests {
             serde_json::from_str::<Value>(snapshot).expect("snapshot json")
         );
         let event = &result.events[0];
-        assert_eq!(event.r#type, "approval.requested");
+        assert_eq!(event.r#type, "permission.blocked");
         assert_eq!(event.message, "rm -rf /tmp/build");
         assert_eq!(event.payload["command"], "rm -rf /tmp/build");
         assert_eq!(event.payload["reason"], "Clean build artifacts");
@@ -843,7 +854,7 @@ mod tests {
             serde_json::from_str::<Value>(snapshot).expect("snapshot json")
         );
         let event = &result.events[0];
-        assert_eq!(event.r#type, "approval.requested");
+        assert_eq!(event.r#type, "permission.blocked");
         assert_eq!(event.message, "Apply file changes");
         assert_eq!(event.payload["command"], "Apply file changes");
         assert_eq!(event.payload["reason"], "Apply generated patch");

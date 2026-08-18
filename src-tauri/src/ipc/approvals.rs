@@ -1,9 +1,11 @@
 use super::inputs::*;
+#[cfg(test)]
 use super::live_database;
-use crate::error::ArgmaxResult;
-use crate::persistence::approvals::{list_pending_approvals, resolve_approval, ApprovalRequest};
-use crate::persistence::dashboard::DASHBOARD_ROW_LIMIT;
+use crate::approvals::service::{ApprovalService, ResolveStatus};
+use crate::error::{ArgmaxError, ArgmaxResult};
+use crate::persistence::approvals::ApprovalRequest;
 use crate::state::AppState;
+use std::sync::Arc;
 use tauri::State;
 
 #[tauri::command(rename = "approvals:resolve")]
@@ -12,12 +14,12 @@ pub fn approvals_resolve(
     state: State<'_, AppState>,
     input: ApprovalsResolveInput,
 ) -> ArgmaxResult<ApprovalRequest> {
-    let database = live_database(&state)?;
-    let connection = database.connection();
-    resolve_approval(
-        &connection,
+    live_approvals(&state)?.resolve(
         input.approval_id.as_str(),
-        approval_resolution_as_str(input.status),
+        match input.status {
+            ApprovalResolution::Approved => ResolveStatus::Approved,
+            ApprovalResolution::Rejected => ResolveStatus::Rejected,
+        },
     )
 }
 
@@ -27,11 +29,19 @@ pub fn approvals_pending(
     state: State<'_, AppState>,
     _input: ApprovalsPendingInput,
 ) -> ArgmaxResult<Vec<ApprovalRequest>> {
-    let database = live_database(&state)?;
-    let connection = database.connection();
-    list_pending_approvals(&connection, DASHBOARD_ROW_LIMIT)
+    live_approvals(&state)?.pending()
 }
 
+fn live_approvals(state: &AppState) -> ArgmaxResult<Arc<ApprovalService>> {
+    state.approvals.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "APPROVAL_SERVICE_NOT_READY",
+            "approval service is not initialized",
+        )
+    })
+}
+
+#[cfg(test)]
 fn approval_resolution_as_str(status: ApprovalResolution) -> &'static str {
     match status {
         ApprovalResolution::Approved => "approved",

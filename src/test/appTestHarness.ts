@@ -133,6 +133,8 @@ export function setupAppTestMocks(): void {
       command: "rm -rf /tmp/x",
       cwd: "/tmp",
       provider: "codex",
+      providerInvocationId: null,
+      providerRequestId: null,
       riskLevel: "high",
       status,
       createdAt: "2026-05-14T10:00:00.000Z",

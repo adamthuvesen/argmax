@@ -198,6 +198,42 @@ pub fn persist_timeline_event_if_absent(
     Ok(rows > 0)
 }
 
+/// Returns whether a provider permission event with this request identity has
+/// already been recorded for the session. Unsupported approval modes do not
+/// create an approval row, so their blocked timeline event is the durable
+/// replay-deduplication record.
+pub fn has_provider_permission_event(
+    connection: &Connection,
+    session_id: &str,
+    provider: &str,
+    provider_invocation_id: &str,
+    provider_request_id: &str,
+) -> ArgmaxResult<bool> {
+    let exists = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM events
+                WHERE session_id = ?
+                  AND type IN ('approval.requested', 'permission.blocked')
+                  AND json_extract(payload_json, '$.provider') = ?
+                  AND json_extract(payload_json, '$.providerInvocationId') = ?
+                  AND json_extract(payload_json, '$.providerRequestId') = ?
+            )
+            "#,
+            (
+                session_id,
+                provider,
+                provider_invocation_id,
+                provider_request_id,
+            ),
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(exists != 0)
+}
+
 /// A Cursor trace import persists a synthetic `traceNoOutput` completion in
 /// the sequence slot the tool's real result will occupy once the child
 /// transcript catches up. The real completion then arrives under the same

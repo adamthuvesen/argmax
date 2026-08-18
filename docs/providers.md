@@ -18,6 +18,8 @@ Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [s
 
 Provider protocol output is persisted for debugging but must not render as chat. Visible chat is normalized timeline events.
 
+Native permission gates are reported through `ProviderCapabilityReport.approvalSupport`. The current structured PTY runtime is observation-only for Claude and Codex, and unsupported for Cursor. Approval rows retain provider correlation data as opaque timeline payload fields. Resolution never silently changes a launch to bypass mode or claims to have answered a provider request that the runtime cannot address.
+
 ## MCP Configuration
 
 Model Context Protocol (MCP) servers are configured and authenticated through
@@ -31,9 +33,10 @@ Argmax launches it. Argmax does not discover or authenticate MCP servers.
 - Cursor servers are configured under Settings > Tools & MCP or in
   `~/.cursor/mcp.json`.
 
-On startup, orphan recovery marks sessions left in `running` as failed and
-terminates any detached provider CLI whose argv still references the Argmax
-session id or stored provider conversation id. Without that cleanup, an
+On startup, orphan recovery marks sessions left in `running`, `waiting`, or
+`blocked` as failed and terminates any detached provider CLI whose argv still
+references the Argmax session id or stored provider conversation id. Pending
+approvals for those sessions are cancelled. Without that cleanup, an
 unobserved Claude/Codex/Cursor process can keep working on the same resume id
 while the user tries to continue the session again.
 

@@ -8,6 +8,8 @@
 //     SELECT-then-INSERT inside the transaction.
 //   - resolve_approval flips the approval to approved/rejected and, when
 //     the session is still `waiting`, transitions it to running/blocked.
+//     Native provider continuation is deliberately not claimed until a
+//     responder is wired for that provider capability.
 //     The transaction wrapper keeps the renderer's `loadDashboard` reads
 //     from seeing inconsistent state.
 
@@ -19,12 +21,16 @@ use uuid::Uuid;
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::approvals::{
-    find_pending_approval, list_pending_approvals, persist_approval, resolve_approval,
+    find_approval_by_id, find_pending_approval, list_approvals_for_session,
+    list_approvals_for_workspace, list_pending_approvals, persist_approval, resolve_approval,
     ApprovalRequest, FindPendingApprovalInput, PersistApprovalInput,
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
 use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
+use crate::persistence::time::now_iso;
+use crate::providers::flush_queue::DashboardDelta;
+use crate::providers::runtime::DeltaPublisher;
 use crate::sessions::attention::{
     compute_session_attention, AttentionState, SessionAttentionInput,
 };
@@ -66,11 +72,22 @@ impl ResolveStatus {
 
 pub struct ApprovalService {
     database: Arc<Database>,
+    publish_delta: DeltaPublisher,
 }
 
 impl ApprovalService {
     pub fn new(database: Arc<Database>) -> Arc<Self> {
-        Arc::new(Self { database })
+        Self::with_publisher(database, |_| {})
+    }
+
+    pub fn with_publisher(
+        database: Arc<Database>,
+        publisher: impl Fn(DashboardDelta) + Send + Sync + 'static,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            database,
+            publish_delta: Arc::new(publisher),
+        })
     }
 
     /// All pending approvals, newest first. The IPC channel
@@ -125,6 +142,8 @@ impl ApprovalService {
                 command: input.command.clone(),
                 cwd: input.cwd.clone(),
                 provider: input.provider.clone(),
+                provider_invocation_id: None,
+                provider_request_id: None,
                 risk_level: risk_level_str(risk.risk_level).to_string(),
                 status: "pending".to_string(),
                 created_at: None,
@@ -181,7 +200,7 @@ impl ApprovalService {
         // provider has already exited. Resolving that stale row should
         // update the audit trail but must not revive a completed /
         // failed / cancelled session.
-        if session.state == "waiting" {
+        let updated_session = if session.state == "waiting" {
             let next_state = match status {
                 ResolveStatus::Approved => "running",
                 ResolveStatus::Rejected => "blocked",
@@ -190,7 +209,7 @@ impl ApprovalService {
                 state: next_state,
                 has_pending_approval: false,
             });
-            update_session_state(
+            Some(update_session_state(
                 &tx,
                 &approval.session_id,
                 &SessionStateInput {
@@ -199,13 +218,15 @@ impl ApprovalService {
                     completed_at: None,
                     last_activity_at: None,
                 },
-            )?;
-        }
+            )?)
+        } else {
+            None
+        };
         let message = match status {
             ResolveStatus::Approved => "Approval granted",
             ResolveStatus::Rejected => "Approval denied",
         };
-        persist_timeline_event(
+        let event = persist_timeline_event(
             &tx,
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
@@ -222,7 +243,88 @@ impl ApprovalService {
         )?;
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        self.publish(DashboardDelta {
+            sessions: updated_session.into_iter().collect(),
+            events: vec![event],
+            approvals: vec![approval.clone()],
+            ..DashboardDelta::default()
+        });
         Ok(approval)
+    }
+
+    /// Mark pending approvals for a workspace as cancelled during archive.
+    /// This is intentionally separate from user resolution: archive is a
+    /// lifecycle action, not an approval decision, and must never leave rows
+    /// that appear actionable after their provider/session is gone.
+    pub fn cancel_workspace_pending(&self, workspace_id: &str) -> ArgmaxResult<()> {
+        let conn = self.database.connection();
+        let pending = list_approvals_for_workspace(&conn, workspace_id, "pending")?;
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let mut statement = tx
+            .prepare_cached(
+                "UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE status = 'pending' AND session_id IN (SELECT id FROM sessions WHERE workspace_id = ?)",
+            )
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        statement
+            .execute((crate::persistence::time::now_iso(), workspace_id))
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        drop(statement);
+        tx.commit()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let cancelled = pending
+            .iter()
+            .map(|approval| find_approval_by_id(&conn, &approval.id))
+            .collect::<ArgmaxResult<Vec<_>>>()?;
+        if !cancelled.is_empty() {
+            self.publish(DashboardDelta {
+                approvals: cancelled,
+                ..DashboardDelta::default()
+            });
+        }
+        Ok(())
+    }
+
+    /// Cancel pending approvals when their provider session exits or is
+    /// terminated. A request that no longer has a live invocation must never
+    /// remain actionable after restart.
+    pub fn cancel_session_pending(&self, session_id: &str) -> ArgmaxResult<()> {
+        let conn = self.database.connection();
+        let pending = list_approvals_for_session(&conn, session_id, "pending")?;
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        tx.execute(
+            "UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE session_id = ? AND status = 'pending'",
+            (now_iso(), session_id),
+        )
+        .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        tx.commit()
+            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        let cancelled = pending
+            .iter()
+            .map(|approval| find_approval_by_id(&conn, &approval.id))
+            .collect::<ArgmaxResult<Vec<_>>>()?;
+        if !cancelled.is_empty() {
+            self.publish(DashboardDelta {
+                approvals: cancelled,
+                ..DashboardDelta::default()
+            });
+        }
+        Ok(())
+    }
+
+    fn publish(&self, delta: DashboardDelta) {
+        if !delta.is_empty() {
+            (self.publish_delta)(delta);
+        }
     }
 }
 
@@ -409,5 +511,26 @@ mod tests {
         let conn = database.connection();
         let session = find_session_by_id(&conn, &session_id).unwrap();
         assert_eq!(session.state, "blocked");
+    }
+
+    #[test]
+    fn repeated_resolution_is_rejected_without_a_second_terminal_event() {
+        let (database, session_id, _dir) = setup();
+        let svc = ApprovalService::new(database);
+        let request = svc
+            .request_command_approval(RequestCommandApprovalInput {
+                session_id,
+                command: "rm -rf /tmp/build".to_string(),
+                cwd: "/tmp".to_string(),
+                provider: "codex".to_string(),
+            })
+            .unwrap();
+        let approval = request.approval.expect("approval persisted");
+        svc.resolve(&approval.id, ResolveStatus::Rejected)
+            .expect("first resolution");
+        let error = svc
+            .resolve(&approval.id, ResolveStatus::Approved)
+            .expect_err("second resolution must fail");
+        assert!(error.to_string().contains("cannot be resolved again"));
     }
 }

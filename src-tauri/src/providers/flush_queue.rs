@@ -1,32 +1,39 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::Connection;
 use serde::Serialize;
+use serde_json::Value;
 use uuid::Uuid;
 
 use super::{
     normalizer::{
-        normalize_provider_event, synthesize_message_completed_from_exit, NormalizedUsage,
-        NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
+        normalize_provider_event, synthesize_message_completed_from_exit,
+        NormalizedApprovalRequest, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
+        ProviderOutputStream,
     },
     ProviderId,
 };
+use crate::sessions::attention::AttentionState;
 use crate::{
     error::ArgmaxResult,
     ipc::inputs::ComposerAttachmentInput,
     persistence::{
         approvals::{
-            find_pending_approval, persist_approval, ApprovalRequest, FindPendingApprovalInput,
-            PersistApprovalInput,
+            find_approval_by_provider_request, find_pending_approval, persist_approval,
+            ApprovalRequest, FindPendingApprovalInput, PersistApprovalInput,
         },
         events::{
-            persist_raw_output, persist_timeline_event, PersistRawOutputInput,
-            PersistTimelineEventInput, RawProviderOutput, TimelineEvent,
+            has_provider_permission_event, persist_raw_output, persist_timeline_event,
+            PersistRawOutputInput, PersistTimelineEventInput, RawProviderOutput, TimelineEvent,
         },
         projects::ProjectSummary,
-        sessions::{SessionSummary, UsageCounts as PersistedUsageCounts},
+        sessions::{
+            find_session_by_id, update_session_state, SessionStateInput, SessionSummary,
+            UsageCounts as PersistedUsageCounts,
+        },
+        time::now_iso,
         usage::{insert_usage_event, InsertUsageEventInput},
-        workspaces::WorkspaceSummary,
+        workspaces::{update_workspace_state, WorkspaceSummary},
     },
 };
 
@@ -37,6 +44,7 @@ pub struct SessionFlushBuffer {
     pending_raw_outputs: Vec<PersistRawOutputInput>,
     pending_usages: Vec<NormalizedUsage>,
     pending_approvals: Vec<PersistApprovalInput>,
+    permission_blocked: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +96,7 @@ pub struct ProviderEventFlushQueue {
 #[derive(Debug)]
 struct ProviderFlushSession {
     provider: ProviderId,
+    provider_invocation_id: String,
     normalizer_context: NormalizerSessionContext,
     stream_buffers: HashMap<ProviderOutputStream, String>,
     buffer: SessionFlushBuffer,
@@ -98,6 +107,18 @@ pub struct QueueOutputResult {
     pub delta: Option<DashboardDelta>,
     pub provider_conversation_id: Option<String>,
     pub has_trailing_fragment: bool,
+}
+
+fn attach_provider_invocation_id(
+    event: &mut crate::persistence::events::PersistTimelineEventInput,
+    provider_invocation_id: &str,
+) {
+    if let Value::Object(payload) = &mut event.payload {
+        payload.insert(
+            "providerInvocationId".to_string(),
+            Value::String(provider_invocation_id.to_string()),
+        );
+    }
 }
 
 impl ProviderEventFlushQueue {
@@ -113,10 +134,26 @@ impl ProviderEventFlushQueue {
         provider: ProviderId,
         normalizer_context: NormalizerSessionContext,
     ) {
+        self.initialize_session_with_invocation(
+            session_id,
+            provider,
+            String::new(),
+            normalizer_context,
+        );
+    }
+
+    pub fn initialize_session_with_invocation(
+        &mut self,
+        session_id: impl Into<String>,
+        provider: ProviderId,
+        provider_invocation_id: impl Into<String>,
+        normalizer_context: NormalizerSessionContext,
+    ) {
         self.sessions.insert(
             session_id.into(),
             ProviderFlushSession {
                 provider,
+                provider_invocation_id: provider_invocation_id.into(),
                 normalizer_context,
                 stream_buffers: HashMap::new(),
                 buffer: SessionFlushBuffer::new(),
@@ -128,9 +165,33 @@ impl ProviderEventFlushQueue {
         self.sessions.remove(session_id);
     }
 
+    pub fn is_current_invocation(&self, session_id: &str, provider_invocation_id: &str) -> bool {
+        self.sessions
+            .get(session_id)
+            .is_some_and(|session| session.provider_invocation_id == provider_invocation_id)
+    }
+
     pub fn queue_output_event(
         &mut self,
         connection: &mut Connection,
+        event: ProviderOutputEvent,
+    ) -> ArgmaxResult<QueueOutputResult> {
+        self.queue_output_event_with_invocation(connection, None, event)
+    }
+
+    pub fn queue_output_event_for_invocation(
+        &mut self,
+        connection: &mut Connection,
+        provider_invocation_id: &str,
+        event: ProviderOutputEvent,
+    ) -> ArgmaxResult<QueueOutputResult> {
+        self.queue_output_event_with_invocation(connection, Some(provider_invocation_id), event)
+    }
+
+    fn queue_output_event_with_invocation(
+        &mut self,
+        connection: &mut Connection,
+        provider_invocation_id: Option<&str>,
         event: ProviderOutputEvent,
     ) -> ArgmaxResult<QueueOutputResult> {
         let Some(session) = self.sessions.get_mut(&event.session_id) else {
@@ -140,6 +201,15 @@ impl ProviderEventFlushQueue {
                 has_trailing_fragment: false,
             });
         };
+        if let Some(provider_invocation_id) = provider_invocation_id {
+            if session.provider_invocation_id != provider_invocation_id {
+                return Ok(QueueOutputResult {
+                    delta: None,
+                    provider_conversation_id: None,
+                    has_trailing_fragment: false,
+                });
+            }
+        }
 
         session.buffer.queue_raw_output(PersistRawOutputInput {
             id: Uuid::new_v4().to_string(),
@@ -176,11 +246,26 @@ impl ProviderEventFlushQueue {
             &mut session.normalizer_context,
         );
         provider_conversation_id = normalized.provider_conversation_id.clone();
-        for event in normalized.events {
+        for mut event in normalized.events {
+            if let Some(provider_invocation_id) = provider_invocation_id {
+                attach_provider_invocation_id(&mut event, provider_invocation_id);
+            }
             session.buffer.queue_timeline_event(event);
         }
         for usage in normalized.usages {
             session.buffer.queue_usage(usage);
+        }
+        if normalized.permission_blocked {
+            session.buffer.mark_permission_blocked();
+        }
+        for approval in normalized.approvals {
+            if let Some(provider_invocation_id) = provider_invocation_id {
+                session
+                    .buffer
+                    .queue_approval_for_invocation(approval, provider_invocation_id);
+            } else {
+                session.buffer.queue_approval(approval);
+            }
         }
 
         let delta = flush_session_buffer(
@@ -241,11 +326,26 @@ impl ProviderEventFlushQueue {
             };
             let normalized =
                 normalize_provider_event(session.provider, &event, &mut session.normalizer_context);
-            for event in normalized.events {
+            for mut event in normalized.events {
+                if !session.provider_invocation_id.is_empty() {
+                    attach_provider_invocation_id(&mut event, &session.provider_invocation_id);
+                }
                 session.buffer.queue_timeline_event(event);
             }
             for usage in normalized.usages {
                 session.buffer.queue_usage(usage);
+            }
+            if normalized.permission_blocked {
+                session.buffer.mark_permission_blocked();
+            }
+            for approval in normalized.approvals {
+                if !session.provider_invocation_id.is_empty() {
+                    session
+                        .buffer
+                        .queue_approval_for_invocation(approval, &session.provider_invocation_id);
+                } else {
+                    session.buffer.queue_approval(approval);
+                }
             }
         }
         let delta = flush_session_buffer(connection, session_id, &mut session.buffer)?;
@@ -267,6 +367,7 @@ impl SessionFlushBuffer {
             pending_raw_outputs: Vec::new(),
             pending_usages: Vec::new(),
             pending_approvals: Vec::new(),
+            permission_blocked: false,
         }
     }
 
@@ -275,6 +376,7 @@ impl SessionFlushBuffer {
             && self.pending_raw_outputs.is_empty()
             && self.pending_usages.is_empty()
             && self.pending_approvals.is_empty()
+            && !self.permission_blocked
     }
 
     pub fn queue_timeline_event(&mut self, event: PersistTimelineEventInput) -> u64 {
@@ -291,6 +393,34 @@ impl SessionFlushBuffer {
 
     pub fn queue_usage(&mut self, usage: NormalizedUsage) {
         self.pending_usages.push(usage);
+    }
+
+    pub fn queue_approval(&mut self, approval: NormalizedApprovalRequest) {
+        self.queue_approval_for_invocation(approval, "");
+    }
+
+    fn queue_approval_for_invocation(
+        &mut self,
+        approval: NormalizedApprovalRequest,
+        provider_invocation_id: &str,
+    ) {
+        self.pending_approvals.push(PersistApprovalInput {
+            id: Uuid::new_v4().to_string(),
+            session_id: approval.session_id,
+            command: approval.command,
+            cwd: approval.cwd,
+            provider: approval.provider,
+            provider_invocation_id: (!provider_invocation_id.is_empty())
+                .then(|| provider_invocation_id.to_string()),
+            provider_request_id: approval.provider_request_id,
+            risk_level: approval.risk_level,
+            status: "pending".to_string(),
+            created_at: Some(now_iso()),
+        });
+    }
+
+    pub fn mark_permission_blocked(&mut self) {
+        self.permission_blocked = true;
     }
 }
 
@@ -344,6 +474,7 @@ pub fn flush_session_buffer(
     let pending_raw_outputs = std::mem::take(&mut buffer.pending_raw_outputs);
     let pending_usages = std::mem::take(&mut buffer.pending_usages);
     let pending_approvals = std::mem::take(&mut buffer.pending_approvals);
+    let permission_blocked = std::mem::take(&mut buffer.permission_blocked);
 
     let result = (|| {
         let transaction = connection.transaction().map_err(sqlite_error)?;
@@ -354,7 +485,64 @@ pub fn flush_session_buffer(
                 .raw_outputs
                 .push(persist_raw_output(&transaction, output)?);
         }
+        let mut seen_provider_requests = HashSet::new();
         for pending in &pending_events {
+            if matches!(
+                pending.event.r#type.as_str(),
+                "approval.requested" | "permission.blocked"
+            ) {
+                let Some(provider_invocation_id) = pending
+                    .event
+                    .payload
+                    .get("providerInvocationId")
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    delta
+                        .events
+                        .push(persist_timeline_event(&transaction, &pending.event)?);
+                    continue;
+                };
+                let Some(provider_request_id) = pending
+                    .event
+                    .payload
+                    .get("providerRequestId")
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    delta
+                        .events
+                        .push(persist_timeline_event(&transaction, &pending.event)?);
+                    continue;
+                };
+                let provider = pending
+                    .event
+                    .payload
+                    .get("provider")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                let identity = format!(
+                    "{session_id}\0{provider}\0{provider_invocation_id}\0{provider_request_id}"
+                );
+                if !seen_provider_requests.insert(identity)
+                    || find_approval_by_provider_request(
+                        &transaction,
+                        session_id,
+                        provider,
+                        provider_invocation_id,
+                        provider_request_id,
+                    )?
+                    .is_some()
+                    || (pending.event.r#type == "permission.blocked"
+                        && has_provider_permission_event(
+                            &transaction,
+                            session_id,
+                            provider,
+                            provider_invocation_id,
+                            provider_request_id,
+                        )?)
+                {
+                    continue;
+                }
+            }
             delta
                 .events
                 .push(persist_timeline_event(&transaction, &pending.event)?);
@@ -380,23 +568,110 @@ pub fn flush_session_buffer(
             )?;
         }
         for approval in &pending_approvals {
-            let existing = find_pending_approval(
-                &transaction,
-                &FindPendingApprovalInput {
-                    session_id: approval.session_id.clone(),
-                    command: approval.command.clone(),
-                    cwd: approval.cwd.clone(),
-                    provider: approval.provider.clone(),
-                },
-            )?;
+            let existing = if let (Some(provider_invocation_id), Some(provider_request_id)) = (
+                approval.provider_invocation_id.as_deref(),
+                approval.provider_request_id.as_deref(),
+            ) {
+                find_approval_by_provider_request(
+                    &transaction,
+                    &approval.session_id,
+                    &approval.provider,
+                    provider_invocation_id,
+                    provider_request_id,
+                )?
+            } else {
+                find_pending_approval(
+                    &transaction,
+                    &FindPendingApprovalInput {
+                        session_id: approval.session_id.clone(),
+                        command: approval.command.clone(),
+                        cwd: approval.cwd.clone(),
+                        provider: approval.provider.clone(),
+                    },
+                )?
+            };
             // unwrap_or eagerly evaluates its argument, so persist_approval
             // would INSERT a duplicate every time the existing row was found.
             // Match keeps the INSERT in the None branch only.
-            let row = match existing {
-                Some(row) => row,
-                None => persist_approval(&transaction, approval)?,
+            let (row, inserted) = match existing {
+                Some(row) => (row, false),
+                None => (persist_approval(&transaction, approval)?, true),
             };
+            // A replay of a provider request that already reached a terminal
+            // state is an audit no-op. Do not re-enter waiting or emit a second
+            // dashboard approval for it.
+            if !inserted || row.status != "pending" {
+                continue;
+            }
+            let current_session = find_session_by_id(&transaction, &approval.session_id)?;
+            if matches!(current_session.state.as_str(), "running" | "waiting") {
+                let session = update_session_state(
+                    &transaction,
+                    &approval.session_id,
+                    &SessionStateInput {
+                        state: "waiting".to_string(),
+                        attention: AttentionState::ApprovalNeeded.as_str().to_string(),
+                        completed_at: None,
+                        last_activity_at: None,
+                    },
+                )?;
+                let workspace_id = session.workspace_id.clone();
+                delta.sessions.push(session);
+                let workspace = {
+                    let current_workspace = crate::persistence::workspaces::find_workspace_by_id(
+                        &transaction,
+                        &workspace_id,
+                    )?;
+                    if matches!(
+                        current_workspace.state.as_str(),
+                        "archiving" | "archive-failed" | "archived"
+                    ) {
+                        None
+                    } else {
+                        Some(update_workspace_state(
+                            &transaction,
+                            &workspace_id,
+                            "waiting",
+                        )?)
+                    }
+                };
+                if let Some(workspace) = workspace {
+                    delta.workspaces.push(workspace);
+                }
+            }
             delta.approvals.push(row);
+        }
+
+        if permission_blocked {
+            let current_session = find_session_by_id(&transaction, session_id)?;
+            if matches!(current_session.state.as_str(), "running" | "waiting") {
+                let session = update_session_state(
+                    &transaction,
+                    session_id,
+                    &SessionStateInput {
+                        state: "blocked".to_string(),
+                        attention: AttentionState::Blocked.as_str().to_string(),
+                        completed_at: None,
+                        last_activity_at: None,
+                    },
+                )?;
+                let workspace_id = session.workspace_id.clone();
+                delta.sessions.push(session);
+                let current_workspace = crate::persistence::workspaces::find_workspace_by_id(
+                    &transaction,
+                    &workspace_id,
+                )?;
+                if !matches!(
+                    current_workspace.state.as_str(),
+                    "archiving" | "archive-failed" | "archived"
+                ) {
+                    delta.workspaces.push(update_workspace_state(
+                        &transaction,
+                        &workspace_id,
+                        "blocked",
+                    )?);
+                }
+            }
         }
 
         transaction.commit().map_err(sqlite_error)?;
@@ -410,6 +685,7 @@ pub fn flush_session_buffer(
             buffer.pending_raw_outputs = pending_raw_outputs;
             buffer.pending_usages = pending_usages;
             buffer.pending_approvals = pending_approvals;
+            buffer.permission_blocked = permission_blocked;
             Err(error)
         }
     }
@@ -423,6 +699,7 @@ fn sqlite_error(error: rusqlite::Error) -> crate::error::ArgmaxError {
 mod tests {
     use super::*;
     use crate::persistence::{
+        approvals::{list_approvals_for_session, list_pending_approvals, resolve_approval},
         database::Database,
         events::{list_session_events_since, PersistTimelineEventInput},
     };
@@ -553,6 +830,113 @@ mod tests {
         let fetched =
             list_session_events_since(&connection, "s1", None, None).expect("fetch events");
         assert_eq!(fetched.events[0].message, "Hello");
+    }
+
+    #[test]
+    fn unsupported_provider_permission_is_blocked_and_deduplicated() {
+        let database = Database::open_in_memory().expect("open db");
+        let mut connection = database.connection();
+        seed_session(&connection);
+
+        let mut queue = ProviderEventFlushQueue::new();
+        queue.initialize_session_with_invocation(
+            "s1",
+            ProviderId::Codex,
+            "invocation-1",
+            NormalizerSessionContext::default(),
+        );
+        let request = r#"{"id":50,"method":"item/requestApproval","params":{"command":["rm","-rf","/tmp/build"],"cwd":"/tmp/w1","reason":"Clean build artifacts"}}"#;
+        let delta = queue
+            .queue_output_event_for_invocation(
+                &mut connection,
+                "invocation-1",
+                output_event(ProviderOutputStream::Stdout, &format!("{request}\n")),
+            )
+            .expect("queue permission gate")
+            .delta
+            .expect("permission delta");
+        assert!(delta.approvals.is_empty());
+        assert_eq!(delta.sessions[0].state, "blocked");
+        assert_eq!(delta.sessions[0].attention, "blocked");
+
+        let pending = list_pending_approvals(&connection, 10).expect("pending approvals");
+        assert!(pending.is_empty());
+
+        let duplicate = queue
+            .queue_output_event_for_invocation(
+                &mut connection,
+                "invocation-1",
+                output_event(ProviderOutputStream::Stdout, &format!("{request}\n")),
+            )
+            .expect("duplicate permission gate")
+            .delta;
+        let duplicate = duplicate.expect("duplicate raw output delta");
+        assert!(duplicate.approvals.is_empty());
+        assert!(duplicate.events.is_empty());
+        assert!(duplicate.sessions.is_empty());
+        assert!(list_pending_approvals(&connection, 10)
+            .expect("pending approvals after duplicate")
+            .is_empty());
+    }
+
+    #[test]
+    fn provider_approval_request_is_persisted_once_and_terminal_replays_are_noops() {
+        let database = Database::open_in_memory().expect("open db");
+        let mut connection = database.connection();
+        seed_session(&connection);
+
+        let approval = NormalizedApprovalRequest {
+            session_id: "s1".to_string(),
+            command: "rm -rf /tmp/build".to_string(),
+            cwd: "/tmp/w1".to_string(),
+            provider: "codex".to_string(),
+            provider_request_id: Some("50".to_string()),
+            risk_level: "high".to_string(),
+        };
+        let mut buffer = SessionFlushBuffer::new();
+        buffer.queue_approval_for_invocation(approval.clone(), "invocation-1");
+        let first = flush_session_buffer(&mut connection, "s1", &mut buffer).expect("flush");
+        assert_eq!(first.approvals.len(), 1);
+        assert_eq!(
+            first.approvals[0].provider_invocation_id.as_deref(),
+            Some("invocation-1")
+        );
+        assert_eq!(
+            list_pending_approvals(&connection, 10)
+                .expect("pending")
+                .len(),
+            1
+        );
+
+        let approval_id = first.approvals[0].id.clone();
+        let resolved = resolve_approval(&connection, &approval_id, "approved").expect("resolve");
+        assert_eq!(resolved.status, "approved");
+
+        let mut replay = SessionFlushBuffer::new();
+        replay.queue_approval_for_invocation(approval.clone(), "invocation-1");
+        let second = flush_session_buffer(&mut connection, "s1", &mut replay).expect("replay");
+        assert!(second.approvals.is_empty());
+        assert!(second.events.is_empty());
+        let rows =
+            list_approvals_for_session(&connection, "s1", "approved").expect("approved approvals");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, "approved");
+
+        let mut next_invocation = SessionFlushBuffer::new();
+        next_invocation.queue_approval_for_invocation(approval, "invocation-2");
+        let third =
+            flush_session_buffer(&mut connection, "s1", &mut next_invocation).expect("next");
+        assert_eq!(third.approvals.len(), 1);
+        assert_eq!(
+            third.approvals[0].provider_invocation_id.as_deref(),
+            Some("invocation-2")
+        );
+        assert_eq!(
+            list_pending_approvals(&connection, 10)
+                .expect("pending after next invocation")
+                .len(),
+            1
+        );
     }
 
     #[test]

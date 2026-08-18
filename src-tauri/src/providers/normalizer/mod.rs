@@ -40,7 +40,7 @@ use self::{
         normalize_tool_call as normalize_cursor_tool_call,
     },
 };
-use super::ProviderId;
+use super::{adapters::get_provider_definition, ApprovalSupport, ProviderId};
 use crate::persistence::events::PersistTimelineEventInput;
 
 pub const JSON_PARSE_LINE_CAP: usize = 1_048_576;
@@ -119,7 +119,23 @@ pub struct NormalizedUsage {
 pub struct NormalizedProviderResult {
     pub events: Vec<PersistTimelineEventInput>,
     pub usages: Vec<NormalizedUsage>,
+    pub approvals: Vec<NormalizedApprovalRequest>,
+    pub permission_blocked: bool,
     pub provider_conversation_id: Option<String>,
+}
+
+/// Provider approval data kept separate from timeline events so persistence
+/// can atomically create the pending row and move the session to waiting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedApprovalRequest {
+    pub session_id: String,
+    pub command: String,
+    pub cwd: String,
+    pub provider: String,
+    pub risk_level: String,
+    /// Opaque provider correlation data. It is retained in the timeline
+    /// payload, but Argmax does not pretend it can answer an unsupported CLI.
+    pub provider_request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -152,6 +168,7 @@ pub struct PermissionGateInfo {
     pub cwd: Option<String>,
     pub tool_name: Option<String>,
     pub tool_use_id: Option<String>,
+    pub provider_request_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -220,6 +237,8 @@ impl EventNormalizer for Dispatcher {
             let out = normalize_line(provider, &event, line, context);
             result.events.extend(out.events);
             result.usages.extend(out.usages);
+            result.approvals.extend(out.approvals);
+            result.permission_blocked |= out.permission_blocked;
             if out.provider_conversation_id.is_some() {
                 result.provider_conversation_id = out.provider_conversation_id;
             }
@@ -242,11 +261,18 @@ pub fn normalize_provider_event(
         let out = normalize_line(provider, event, line, context);
         result.events.extend(out.events);
         result.usages.extend(out.usages);
+        result.approvals.extend(out.approvals);
+        result.permission_blocked |= out.permission_blocked;
         if out.provider_conversation_id.is_some() {
             result.provider_conversation_id = out.provider_conversation_id;
         }
     }
-    if result.events.is_empty() && result.usages.is_empty() && !event.message.trim().is_empty() {
+    if result.events.is_empty()
+        && result.usages.is_empty()
+        && result.approvals.is_empty()
+        && !result.permission_blocked
+        && !event.message.trim().is_empty()
+    {
         return normalize_line(provider, event, event.message.trim(), context);
     }
     result
@@ -277,6 +303,7 @@ fn normalize_line(
             )],
             usages: Vec::new(),
             provider_conversation_id: None,
+            ..NormalizedProviderResult::default()
         };
     }
 
@@ -340,6 +367,7 @@ fn normalize_json_payload(
             events: Vec::new(),
             usages,
             provider_conversation_id,
+            ..NormalizedProviderResult::default()
         };
     }
 
@@ -356,6 +384,7 @@ fn normalize_json_payload(
                 events: vec![thinking_event],
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
         if provider_type.as_deref() == Some("result")
@@ -365,26 +394,34 @@ fn normalize_json_payload(
                 events: normalize_cursor_result_success(event, context),
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
         return NormalizedProviderResult {
             events: Vec::new(),
             usages,
             provider_conversation_id,
+            ..NormalizedProviderResult::default()
         };
     }
 
     let mut events = Vec::new();
     if let Some(gate) = detect_permission_gate(provider, &payload) {
         let mut gate_payload = json!({
-            "command": gate.command,
-            "reason": gate.reason,
+            "command": gate.command.clone(),
+            "reason": gate.reason.clone(),
             "riskLevel": gate.risk_level,
+            "provider": provider.as_str(),
         });
         if let Value::Object(ref mut object) = gate_payload {
-            insert_optional(object, "cwd", gate.cwd);
-            insert_optional(object, "toolName", gate.tool_name);
-            insert_optional(object, "toolUseId", gate.tool_use_id);
+            insert_optional(object, "cwd", gate.cwd.clone());
+            insert_optional(object, "toolName", gate.tool_name.clone());
+            insert_optional(object, "toolUseId", gate.tool_use_id.clone());
+            insert_optional(
+                object,
+                "providerRequestId",
+                gate.provider_request_id.clone(),
+            );
             if let Some(provider_type) = provider_type.as_deref() {
                 object.insert(
                     "providerEventType".to_string(),
@@ -392,15 +429,34 @@ fn normalize_json_payload(
                 );
             }
         }
+        let approval_support = get_provider_definition(provider).approval_support;
+        let event_type = if approval_support == ApprovalSupport::Respondable {
+            "approval.requested"
+        } else {
+            "permission.blocked"
+        };
         events.push(timeline_event(
             event,
-            "approval.requested",
-            gate.command,
+            event_type,
+            gate.command.clone(),
             gate_payload,
         ));
         return NormalizedProviderResult {
             events,
             usages,
+            approvals: if approval_support == ApprovalSupport::Respondable {
+                vec![NormalizedApprovalRequest {
+                    session_id: event.session_id.clone(),
+                    command: gate.command,
+                    cwd: gate.cwd.unwrap_or_default(),
+                    provider: provider.as_str().to_string(),
+                    risk_level: gate.risk_level.to_string(),
+                    provider_request_id: gate.provider_request_id,
+                }]
+            } else {
+                Vec::new()
+            },
+            permission_blocked: approval_support != ApprovalSupport::Respondable,
             provider_conversation_id,
         };
     }
@@ -417,6 +473,7 @@ fn normalize_json_payload(
                 events: vec![reasoning_event],
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
         if let Some(tool_event) = normalize_codex_tool_item(
@@ -430,6 +487,7 @@ fn normalize_json_payload(
                 events: vec![tool_event],
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
         if let Some(error_event) =
@@ -439,6 +497,7 @@ fn normalize_json_payload(
                 events: vec![error_event],
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
         if matches!(
@@ -450,6 +509,7 @@ fn normalize_json_payload(
                 events,
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
     }
@@ -462,6 +522,7 @@ fn normalize_json_payload(
                 events: vec![tool_event],
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
     }
@@ -482,6 +543,7 @@ fn normalize_json_payload(
                 events: Vec::new(),
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
         if let Some(completed) = synthesize_claude_message_completed_from_result(event, &payload) {
@@ -490,6 +552,7 @@ fn normalize_json_payload(
                 events: vec![completed],
                 usages,
                 provider_conversation_id,
+                ..NormalizedProviderResult::default()
             };
         }
     }
@@ -512,6 +575,7 @@ fn normalize_json_payload(
             events,
             usages,
             provider_conversation_id,
+            ..NormalizedProviderResult::default()
         };
     }
     if mapped_type.is_none() && text.is_none() {
@@ -519,6 +583,7 @@ fn normalize_json_payload(
             events,
             usages,
             provider_conversation_id,
+            ..NormalizedProviderResult::default()
         };
     }
     if provider == ProviderId::Claude && is_claude_synthetic_skill_body(&payload) {
@@ -526,6 +591,7 @@ fn normalize_json_payload(
             events,
             usages,
             provider_conversation_id,
+            ..NormalizedProviderResult::default()
         };
     }
 
@@ -597,6 +663,7 @@ fn normalize_json_payload(
         events,
         usages,
         provider_conversation_id,
+        ..NormalizedProviderResult::default()
     }
 }
 
@@ -625,6 +692,7 @@ fn normalize_raw_line(event: &ProviderOutputEvent, line: &str) -> NormalizedProv
         )],
         usages: Vec::new(),
         provider_conversation_id: None,
+        ..NormalizedProviderResult::default()
     }
 }
 

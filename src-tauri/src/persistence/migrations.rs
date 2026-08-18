@@ -92,6 +92,25 @@ pub static PRIORITY_MANUAL_ADD_COLUMNS: phf::Map<&'static str, &'static [&'stati
     ] as &'static [&'static str],
 };
 
+// Post-v9 `approvals` shape: provider-native requests retain the opaque
+// correlation id required to make replay idempotent across terminal states.
+pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "approvals" => &[
+        "command", "created_at", "cwd", "id", "provider",
+        "provider_request_id", "resolved_at", "risk_level", "session_id", "status",
+    ] as &'static [&'static str],
+};
+
+// Post-v10 `approvals` shape: provider request ids are scoped to the
+// Argmax-owned provider invocation that emitted them.
+pub static APPROVAL_PROVIDER_INVOCATION_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "approvals" => &[
+        "command", "created_at", "cwd", "id", "provider",
+        "provider_invocation_id", "provider_request_id", "resolved_at",
+        "risk_level", "session_id", "status",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -207,6 +226,30 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PRIORITY_DISMISSAL_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 9,
+        name: "approval_provider_request_identity",
+        up: APPROVAL_PROVIDER_REQUEST_IDENTITY,
+        affected_tables: &["approvals"],
+        expected_columns: &APPROVAL_PROVIDER_REQUEST_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 10,
+        name: "approval_provider_invocation_identity",
+        up: APPROVAL_PROVIDER_INVOCATION_IDENTITY,
+        affected_tables: &["approvals"],
+        expected_columns: &APPROVAL_PROVIDER_INVOCATION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 11,
+        name: "cancel_legacy_provider_approvals",
+        up: CANCEL_LEGACY_PROVIDER_APPROVALS,
+        affected_tables: &["approvals"],
+        expected_columns: &APPROVAL_PROVIDER_INVOCATION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // Earlier Codex normalization stored cumulative turn usage as live context
@@ -214,6 +257,33 @@ pub static MIGRATIONS: &[Migration] = &[
 // bogus full ring. A later token_count event can repopulate the measurement.
 const INVALIDATE_CODEX_CONTEXT_OCCUPANCY: &str = r#"
 UPDATE sessions SET context_tokens = 0 WHERE provider = 'codex';
+"#;
+
+const APPROVAL_PROVIDER_REQUEST_IDENTITY: &str = r#"
+ALTER TABLE approvals ADD COLUMN provider_request_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_approvals_provider_request
+  ON approvals(session_id, provider, provider_request_id)
+  WHERE provider_request_id IS NOT NULL;
+"#;
+
+const APPROVAL_PROVIDER_INVOCATION_IDENTITY: &str = r#"
+ALTER TABLE approvals ADD COLUMN provider_invocation_id TEXT;
+DROP INDEX IF EXISTS idx_approvals_provider_request;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_approvals_provider_invocation_request
+  ON approvals(session_id, provider, provider_invocation_id, provider_request_id)
+  WHERE provider_invocation_id IS NOT NULL AND provider_request_id IS NOT NULL;
+"#;
+
+// A v9 provider request row has a provider request id but no Argmax-owned
+// invocation id. It cannot be resumed safely after restart because its native
+// transport is gone. Manual approvals keep both ids NULL and remain valid.
+const CANCEL_LEGACY_PROVIDER_APPROVALS: &str = r#"
+UPDATE approvals
+SET status = 'cancelled',
+    resolved_at = COALESCE(resolved_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+WHERE status = 'pending'
+  AND provider_request_id IS NOT NULL
+  AND provider_invocation_id IS NULL;
 "#;
 
 // Manual "Add to priority": floats the workspace into the sidebar Priority
@@ -768,6 +838,12 @@ mod tests {
             .expect("sessions");
         verify_table_columns(&connection, &PRIORITY_MANUAL_ADD_COLUMNS, "workspaces")
             .expect("workspaces");
+        verify_table_columns(
+            &connection,
+            &APPROVAL_PROVIDER_INVOCATION_COLUMNS,
+            "approvals",
+        )
+        .expect("approvals");
 
         let fts_tables: Vec<String> = connection
             .prepare(
@@ -803,6 +879,18 @@ mod tests {
                     8,
                     compute_migration_checksum(INVALIDATE_CODEX_CONTEXT_OCCUPANCY)
                 ),
+                (
+                    9,
+                    compute_migration_checksum(APPROVAL_PROVIDER_REQUEST_IDENTITY)
+                ),
+                (
+                    10,
+                    compute_migration_checksum(APPROVAL_PROVIDER_INVOCATION_IDENTITY)
+                ),
+                (
+                    11,
+                    compute_migration_checksum(CANCEL_LEGACY_PROVIDER_APPROVALS)
+                ),
             ]
         );
 
@@ -817,7 +905,8 @@ mod tests {
                   'idx_checks_started_id',
                   'idx_checkpoints_created_id',
                   'idx_approvals_created_id',
-                  'idx_approvals_status_created_id'
+                  'idx_approvals_status_created_id',
+                  'idx_approvals_provider_invocation_request'
                 ) ORDER BY name",
             )
             .expect("prepare index query")
@@ -829,6 +918,7 @@ mod tests {
             indexes,
             vec![
                 "idx_approvals_created_id",
+                "idx_approvals_provider_invocation_request",
                 "idx_approvals_status_created_id",
                 "idx_checkpoints_created_id",
                 "idx_checks_started_id",
@@ -839,6 +929,56 @@ mod tests {
                 "idx_workspaces_last_activity_id"
             ]
         );
+    }
+
+    #[test]
+    fn v11_cancels_legacy_provider_rows_but_keeps_manual_approvals() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..10]).expect("migrate through v10");
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO projects (
+                    id, name, repo_path, current_branch, default_provider,
+                    default_model_label, worktree_location, created_at, updated_at
+                ) VALUES ('p1', 'Project', '/tmp/project', 'main', 'codex', 'Default',
+                    '/tmp/worktrees', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                INSERT INTO workspaces (
+                    id, project_id, task_label, branch, base_ref, path, state,
+                    last_activity_at, created_at, updated_at
+                ) VALUES ('w1', 'p1', 'Task', 'main', 'main', '/tmp/workspace', 'waiting',
+                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                INSERT INTO sessions (
+                    id, workspace_id, provider, model_label, prompt, state, attention,
+                    started_at, last_activity_at
+                ) VALUES ('s1', 'w1', 'codex', 'Default', 'Prompt', 'waiting', 'approval-needed',
+                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                INSERT INTO approvals (
+                    id, session_id, command, cwd, provider, provider_invocation_id,
+                    provider_request_id, risk_level, status, created_at
+                ) VALUES
+                    ('a-legacy', 's1', 'rm -rf build', '/tmp/workspace', 'codex', NULL,
+                        '50', 'high', 'pending', '2026-01-01T00:00:00.000Z'),
+                    ('a-manual', 's1', 'rm -rf build', '/tmp/workspace', 'codex', NULL,
+                        NULL, 'high', 'pending', '2026-01-01T00:00:00.000Z');
+                "#,
+            )
+            .expect("seed legacy approvals");
+
+        run_migrations(&mut connection).expect("apply v11");
+        let rows: Vec<(String, String, Option<String>)> = connection
+            .prepare("SELECT id, status, resolved_at FROM approvals ORDER BY id")
+            .expect("prepare approvals")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .expect("query approvals")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect approvals");
+        assert_eq!(rows[0].0, "a-legacy");
+        assert_eq!(rows[0].1, "cancelled");
+        assert!(rows[0].2.is_some());
+        assert_eq!(rows[1].0, "a-manual");
+        assert_eq!(rows[1].1, "pending");
+        assert!(rows[1].2.is_none());
     }
 
     #[test]

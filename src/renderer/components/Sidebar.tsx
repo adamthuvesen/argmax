@@ -8,8 +8,8 @@ import {
   Info,
   Keyboard,
   MoreHorizontal,
-  Navigation,
   Plus,
+  Search,
   Settings,
   Trash2
 } from "lucide-react";
@@ -120,13 +120,6 @@ function visibleSidebarItems<T extends { id: string }>(
 
   const selectedItem = items[selectedIndex];
   return selectedItem ? [...items.slice(0, SIDEBAR_SESSION_LIMIT - 1), selectedItem] : compact;
-}
-
-function formatNameplateDate(): string {
-  const d = new Date();
-  const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${month}·${day}`;
 }
 
 export function Sidebar({
@@ -622,7 +615,6 @@ export function Sidebar({
     onWorkspaceDragEnd?.();
   }, [onWorkspaceDragEnd]);
 
-  const nameplateDate = useMemo(() => formatNameplateDate(), []);
   const identitySubLabel = loadState === "loading"
     ? "Booting..."
     : loadState === "error"
@@ -728,11 +720,7 @@ export function Sidebar({
     >
       <div className="window-controls" data-window-drag />
       <div className="sidebar-nameplate" aria-hidden="true">
-        <div className="sidebar-nameplate-line">
-          <span className="sidebar-nameplate-mark">argmax</span>
-          <span className="sidebar-nameplate-slash">//</span>
-        </div>
-        <div className="sidebar-nameplate-sub">{nameplateDate} · {APP_VERSION_LABEL}</div>
+        <span className="sidebar-nameplate-mark">argmax</span>
       </div>
       <nav className="rail-nav" aria-label="Primary">
         <button
@@ -743,9 +731,23 @@ export function Sidebar({
           onClick={onOpenLauncher}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
-            <Navigation size={14} />
+            <Plus size={14} />
           </span>
           <span className="rail-nav-label">New Agent</span>
+          <kbd aria-hidden="true">⌘N</kbd>
+        </button>
+        <button
+          className="rail-nav-item"
+          type="button"
+          title="Search"
+          aria-label="Search"
+          onClick={onOpenCommandPalette}
+        >
+          <span className="rail-nav-glyph" aria-hidden="true">
+            <Search size={14} />
+          </span>
+          <span className="rail-nav-label">Search</span>
+          <kbd aria-hidden="true">⌘K</kbd>
         </button>
       </nav>
 

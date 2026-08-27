@@ -102,6 +102,7 @@ impl SkillRegistry {
                         workspace.join(".claude/skills"),
                         SkillSource::Workspace,
                     ));
+                    sources.push(Self::workspace_agents_skills(workspace));
                 }
                 sources.push(
                     SourceDescriptor::skill_dir(
@@ -110,6 +111,7 @@ impl SkillRegistry {
                     )
                     .exclude_dot_dirs(),
                 );
+                sources.push(self.user_agents_skills());
                 sources.push(SourceDescriptor::plugin_cache(
                     self.home_dir.join(".claude/plugins/cache"),
                     SkillSource::Plugin,
@@ -121,6 +123,7 @@ impl SkillRegistry {
                         workspace.join(".codex/skills"),
                         SkillSource::Workspace,
                     ));
+                    sources.push(Self::workspace_agents_skills(workspace));
                 }
                 sources.push(
                     SourceDescriptor::skill_dir(
@@ -129,6 +132,7 @@ impl SkillRegistry {
                     )
                     .exclude_dot_dirs(),
                 );
+                sources.push(self.user_agents_skills());
                 sources.push(SourceDescriptor::prompt_dir(
                     self.home_dir.join(".codex/prompts"),
                     SkillSource::CodexPrompt,
@@ -148,6 +152,7 @@ impl SkillRegistry {
                         workspace.join(".cursor/skills"),
                         SkillSource::Workspace,
                     ));
+                    sources.push(Self::workspace_agents_skills(workspace));
                 }
                 sources.push(
                     SourceDescriptor::skill_dir(
@@ -156,6 +161,7 @@ impl SkillRegistry {
                     )
                     .exclude_dot_dirs(),
                 );
+                sources.push(self.user_agents_skills());
                 sources.push(SourceDescriptor::plugin_cache(
                     self.home_dir.join(".cursor/plugins/cache"),
                     SkillSource::Plugin,
@@ -163,6 +169,19 @@ impl SkillRegistry {
             }
         }
         sources
+    }
+
+    /// Cross-tool personal/repo skills from the skills CLI (`npx skills add -g`).
+    /// Claude also gets per-skill symlinks under `~/.claude/skills`; Codex and
+    /// Cursor load this directory natively. First-wins collection keeps a
+    /// Claude/Cursor/Codex-specific copy when the same name exists in both.
+    fn workspace_agents_skills(workspace: &Path) -> SourceDescriptor {
+        SourceDescriptor::skill_dir(workspace.join(".agents/skills"), SkillSource::Workspace)
+    }
+
+    fn user_agents_skills(&self) -> SourceDescriptor {
+        SourceDescriptor::skill_dir(self.home_dir.join(".agents/skills"), SkillSource::User)
+            .exclude_dot_dirs()
     }
 }
 
@@ -696,6 +715,82 @@ mod tests {
                 .map(|skill| skill.source),
             Some(SkillSource::Workspace)
         );
+    }
+
+    #[test]
+    fn lists_shared_agents_skills_for_codex_and_cursor() {
+        // Personal catalog from the skills CLI lives in ~/.agents/skills.
+        // Codex used to surface those names only via ~/.codex/prompts, and
+        // Cursor missed them entirely because ~/.cursor/skills is often empty.
+        let home = tempdir().unwrap();
+        let registry = SkillRegistry::new(home.path());
+        write_skill(
+            &home.path().join(".agents/skills"),
+            "impl",
+            "name: impl\ndescription: shared impl",
+        );
+        write_prompt(
+            &home.path().join(".codex/prompts"),
+            "impl",
+            "name: impl\ndescription: prompt copy",
+        );
+
+        let cursor = registry.list_skills(ProviderId::Cursor, None);
+        assert_eq!(
+            cursor,
+            vec![SkillSummary {
+                name: "impl".to_owned(),
+                description: "shared impl".to_owned(),
+                source: SkillSource::User,
+            }]
+        );
+
+        registry.clear_cache();
+        let codex = registry.list_skills(ProviderId::Codex, None);
+        assert_eq!(codex.len(), 1);
+        assert_eq!(codex[0].name, "impl");
+        assert_eq!(codex[0].description, "shared impl");
+        assert_eq!(codex[0].source, SkillSource::User);
+    }
+
+    #[test]
+    fn workspace_agents_skills_win_over_user_agents_skills() {
+        let home = tempdir().unwrap();
+        let workspace = tempdir().unwrap();
+        let registry = SkillRegistry::new(home.path());
+        write_skill(
+            &home.path().join(".agents/skills"),
+            "impl",
+            "name: impl\ndescription: user agents",
+        );
+        write_skill(
+            &workspace.path().join(".agents/skills"),
+            "impl",
+            "name: impl\ndescription: workspace agents",
+        );
+
+        let result = registry.list_skills(ProviderId::Cursor, Some(workspace.path()));
+        assert_eq!(result[0].description, "workspace agents");
+        assert_eq!(result[0].source, SkillSource::Workspace);
+    }
+
+    #[test]
+    fn claude_keeps_claude_dir_copy_over_shared_agents_skills() {
+        let home = tempdir().unwrap();
+        let registry = SkillRegistry::new(home.path());
+        write_skill(
+            &home.path().join(".claude/skills"),
+            "impl",
+            "name: impl\ndescription: from claude dir",
+        );
+        write_skill(
+            &home.path().join(".agents/skills"),
+            "impl",
+            "name: impl\ndescription: from agents dir",
+        );
+
+        let result = registry.list_skills(ProviderId::Claude, None);
+        assert_eq!(result[0].description, "from claude dir");
     }
 
     fn names<const N: usize>(skills: &[SkillSummary]) -> [String; N] {

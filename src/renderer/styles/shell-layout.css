@@ -33,11 +33,13 @@
 
 /* ---- Sidebar toggle: single fixed button, parked right of the macOS traffic
    lights and vertically aligned with them, so it never moves between the
-   hide (expanded) and show (collapsed) states. ---- */
+   hide (expanded) and show (collapsed) states. `left` keeps the glyph about
+   1.2 traffic-light diameters clear of the green light, matching Cursor's
+   titlebar, without reaching into the native buttons. ---- */
 .sidebar-toggle {
   position: fixed;
   top: 1px;
-  left: 84px;
+  left: 78px;
   z-index: 62;
   display: inline-flex;
   align-items: center;
@@ -285,13 +287,16 @@
   margin-right: -12px;
 }
 
+/* Label-less fallback strip for the sidebar's … / + cluster. In sessions view
+   the cluster rides the newest recency header instead; this only renders in
+   projects view or when there is no recency bucket to host it. */
 .rail-heading {
   position: sticky;
   top: 0;
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 2px;
   min-height: 24px;
   margin: 22px 0 8px 12px;
@@ -300,6 +305,12 @@
      inset via `.project-row` padding / the session-row action offset). */
   padding-right: var(--sidebar-action-inset);
   background: var(--sidebar);
+}
+
+.rail-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .rail-label {
@@ -316,15 +327,17 @@
   text-transform: uppercase;
 }
 
-.rail-label-text {
-  flex: 0 0 auto;
-}
-
-/* Match the project/session row action boxes so the header … / + line up in
-   the same right-edge columns as the rows below. */
-.rail-heading .small-icon {
+/* Match the project/session row action boxes so the … / + line up in the same
+   right-edge columns as the rows below, wherever the cluster is hosted. */
+.rail-actions .small-icon {
   width: var(--sidebar-action-size);
   height: var(--sidebar-action-size);
+}
+
+/* Without a title bar above it, the first group owns the breathing room under
+   the nav that the old header's top margin used to provide. */
+.project-list > .project-group:first-child {
+  margin-top: 22px;
 }
 
 .project-group {
@@ -343,15 +356,38 @@
   cursor: pointer;
 }
 
-/* Pinned section header: same chrome as a date/project label, but it's a
-   static marker — not collapsible — so it takes no pointer cursor. */
-.project-group.session-pinned-group > .session-pinned-row {
-  cursor: default;
+/* Section headers carry their collapse chevron inside the label rather than in
+   a right-edge action column, so two columns instead of a project row's three.
+   The newest bucket doubles as the list header and fills the second column with
+   the … / + cluster; the others leave it empty. */
+.project-row.session-date-row {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
-/* Priority section header: same static chrome as Pinned. */
+/* Tighter than a project label's icon gap: the chevron belongs to the word, so
+   it should hug it. Needs the extra class to outweigh `.project-name` below. */
+.project-name.session-date-label {
+  gap: 4px;
+}
+
+/* Shrink the text to its content so the chevron follows the last letter instead
+   of being pushed out by a full-width label column. */
+.session-date-label .project-name-text {
+  flex: 0 1 auto;
+}
+
+/* The … / + cluster beside it is always visible, so a hover-only chevron would
+   read as a gap in the header. Show it with the row. */
+.session-date-row-lead .project-visibility {
+  opacity: 1;
+}
+
+/* Pinned and Priority headers collapse exactly like a recency bucket: same
+   chrome, same chevron tucked inside the label, same pointer affordance. They
+   just never host the … / + cluster, which stays on the lead recency header. */
+.project-group.session-pinned-group > .session-pinned-row,
 .project-group.session-priority-group > .session-priority-row {
-  cursor: default;
+  cursor: pointer;
 }
 
 .project-group.dragging {

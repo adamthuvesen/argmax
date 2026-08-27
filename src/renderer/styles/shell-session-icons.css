@@ -1,0 +1,279 @@
+/* Session row custom icons: the leading glyph a user picks per row, plus the
+   Edit Icon popover. Loaded after shell-sessions.css so the custom glyph
+   overrides the default status marker rules in that file. */
+
+/* A user-chosen icon takes the marker's grid cell. The row's live state moves
+   to a small corner dot so running / awaiting / failed / PR never goes missing.
+   The dot sits outside the glyph box so it reads against the row background. */
+.session-custom-icon {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--session-icon-blue);
+}
+
+.session-custom-icon[data-icon-color="green"] {
+  color: var(--session-icon-green);
+}
+
+.session-custom-icon[data-icon-color="teal"] {
+  color: var(--session-icon-teal);
+}
+
+.session-custom-icon[data-icon-color="blue"] {
+  color: var(--session-icon-blue);
+}
+
+.session-custom-icon[data-icon-color="violet"] {
+  color: var(--session-icon-violet);
+}
+
+.session-custom-icon[data-icon-color="plum"] {
+  color: var(--session-icon-plum);
+}
+
+.session-custom-icon[data-icon-color="clay"] {
+  color: var(--session-icon-clay);
+}
+
+.session-custom-icon[data-icon-color="amber"] {
+  color: var(--session-icon-amber);
+}
+
+.session-custom-icon[data-icon-color="pink"] {
+  color: var(--session-icon-pink);
+}
+
+.session-custom-icon-overlay {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--sidebar);
+  background: var(--muted);
+}
+
+.session-custom-icon-overlay[data-overlay="working"] {
+  background: var(--sage);
+  animation: status-marker-working-pulse 1.8s var(--ease) infinite;
+}
+
+.session-custom-icon-overlay[data-overlay="awaiting"] {
+  background: var(--amber);
+}
+
+.session-custom-icon-overlay[data-overlay="failed"] {
+  background: var(--rose);
+}
+
+.session-custom-icon-overlay[data-overlay="pr-merged"] {
+  background: var(--pr-merged);
+}
+
+.session-custom-icon-overlay[data-overlay="pr-open"] {
+  background: var(--pr-open);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-custom-icon-overlay[data-overlay="working"] {
+    animation: none;
+  }
+}
+
+/* Edit Icon popover — same panel/line/shadow chrome as the picker popovers,
+   with a swatch row, a search field, and a scrollable grid. */
+.session-icon-picker {
+  z-index: 40;
+  display: grid;
+  gap: var(--space-2);
+  width: 288px;
+  padding: var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.session-icon-picker-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.session-icon-picker-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sidebar-action-size);
+  height: var(--sidebar-action-size);
+  color: var(--muted-strong);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.session-icon-picker-back:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.session-icon-picker-title {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.session-icon-swatches {
+  display: flex;
+  gap: 5px;
+}
+
+.session-icon-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text);
+  background: currentColor;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.session-icon-swatch svg {
+  color: var(--panel);
+}
+
+.session-icon-swatch[data-swatch="default"] {
+  color: var(--panel-sunken);
+  border: 1px solid var(--line);
+}
+
+.session-icon-swatch[data-swatch="default"] svg {
+  color: var(--text);
+}
+
+.session-icon-swatch[data-icon-color="green"] {
+  color: var(--session-icon-green);
+}
+
+.session-icon-swatch[data-icon-color="teal"] {
+  color: var(--session-icon-teal);
+}
+
+.session-icon-swatch[data-icon-color="blue"] {
+  color: var(--session-icon-blue);
+}
+
+.session-icon-swatch[data-icon-color="violet"] {
+  color: var(--session-icon-violet);
+}
+
+.session-icon-swatch[data-icon-color="plum"] {
+  color: var(--session-icon-plum);
+}
+
+.session-icon-swatch[data-icon-color="clay"] {
+  color: var(--session-icon-clay);
+}
+
+.session-icon-swatch[data-icon-color="amber"] {
+  color: var(--session-icon-amber);
+}
+
+.session-icon-swatch[data-icon-color="pink"] {
+  color: var(--session-icon-pink);
+}
+
+.session-icon-picker-search {
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  background: var(--panel-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.session-icon-picker-search::placeholder {
+  color: var(--muted);
+}
+
+.session-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  max-height: 232px;
+  overflow-y: auto;
+}
+
+.session-icon-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  color: var(--muted-strong);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+
+.session-icon-option:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.session-icon-option[aria-pressed="true"] {
+  background: var(--panel-sunken);
+}
+
+.session-icon-option[data-icon-color="green"] {
+  color: var(--session-icon-green);
+}
+
+.session-icon-option[data-icon-color="teal"] {
+  color: var(--session-icon-teal);
+}
+
+.session-icon-option[data-icon-color="blue"] {
+  color: var(--session-icon-blue);
+}
+
+.session-icon-option[data-icon-color="violet"] {
+  color: var(--session-icon-violet);
+}
+
+.session-icon-option[data-icon-color="plum"] {
+  color: var(--session-icon-plum);
+}
+
+.session-icon-option[data-icon-color="clay"] {
+  color: var(--session-icon-clay);
+}
+
+.session-icon-option[data-icon-color="amber"] {
+  color: var(--session-icon-amber);
+}
+
+.session-icon-option[data-icon-color="pink"] {
+  color: var(--session-icon-pink);
+}
+
+.session-icon-grid-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}

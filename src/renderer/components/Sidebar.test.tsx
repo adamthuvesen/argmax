@@ -122,6 +122,12 @@ const baseProps = {
   showPriority: false
 };
 
+// Section order assertions: does `later` sit after `earlier` in the rendered
+// document? Reads the live DOM order rather than any class or index.
+function rendersAfter(earlier: HTMLElement, later: HTMLElement): boolean {
+  return Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
 function getProjectButtonOrder(): string[] {
   return screen
     .getAllByRole("button")
@@ -547,12 +553,13 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
 
-    // Header label switches to "Sessions".
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    // No section title bar: the recency labels name the list on their own.
+    expect(screen.queryByText("Sessions")).toBeNull();
 
-    // Date buckets render, newest first.
+    // Date buckets render, newest first. Anything past 30 days lands in the
+    // single Older bucket rather than a per-month header.
     expect(screen.getByText("Today")).toBeInTheDocument();
-    expect(screen.getByText("April")).toBeInTheDocument();
+    expect(screen.getByText("Older")).toBeInTheDocument();
 
     // Both sessions are visible immediately (no per-project collapse), across
     // both projects.
@@ -561,6 +568,44 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     // No project rows in this view.
     expect(getProjectButtonOrder()).toEqual([]);
+  });
+
+  it("orders recency buckets Today, Last 7 Days, Last 30 Days, Older", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    const THIS_WEEK = new Date(2026, 5, 2, 9, 0, 0).toISOString();
+    const THIS_MONTH = new Date(2026, 4, 20, 9, 0, 0).toISOString();
+    const workspaces = [
+      workspace("w-today", "project-zebra", "Task today", TODAY),
+      workspace("w-week", "project-zebra", "Task this week", THIS_WEEK),
+      workspace("w-month", "project-zebra", "Task this month", THIS_MONTH),
+      workspace("w-older", "project-zebra", "Task long ago", APRIL)
+    ];
+
+    render(
+      <Sidebar
+        {...baseProps}
+        snapshot={{
+          ...viewSnapshot,
+          workspaces,
+          sessions: workspaces.map((row) => session(row.id, row.lastActivityAt))
+        }}
+      />
+    );
+
+    const today = screen.getByText("Today");
+    const week = screen.getByText("Last 7 Days");
+    const month = screen.getByText("Last 30 Days");
+    const older = screen.getByText("Older");
+    expect(rendersAfter(today, week)).toBe(true);
+    expect(rendersAfter(week, month)).toBe(true);
+    expect(rendersAfter(month, older)).toBe(true);
+
+    // Each bucket holds its own session, and no session is repeated.
+    expect(screen.getAllByRole("button", { name: /Task today/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Task this week/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Task this month/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Task long ago/ })).toHaveLength(1);
   });
 
   it("floats a pinned session into a Pinned section and out of its date bucket", () => {
@@ -588,7 +633,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     // It's pulled out of its date bucket — it was the only Today session, so the
     // Today bucket is gone, and it appears exactly once (not duplicated).
     expect(screen.queryByText("Today")).toBeNull();
-    expect(screen.getByText("April")).toBeInTheDocument();
+    expect(screen.getByText("Older")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Zebra task today/ })).toHaveLength(1);
   });
 
@@ -706,16 +751,137 @@ describe("Sidebar — date (sessions) view mode", () => {
   it("switches to date mode from the menu and persists the choice", () => {
     render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
 
-    // Defaults to project grouping: the header reads "Projects".
-    expect(screen.getByText("Projects")).toBeInTheDocument();
+    // Defaults to project grouping: project rows, no recency buckets.
+    expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax"]);
+    expect(screen.queryByText("Today")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
     const menu = screen.getByRole("menu", { name: "Sidebar view options" });
     fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Date" }));
 
     expect(window.localStorage.getItem(sidebarViewModeStorageKey)).toBe(JSON.stringify("sessions"));
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    expect(screen.queryByText("Sessions")).toBeNull();
     expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(getProjectButtonOrder()).toEqual([]);
+
+    // The view-mode menu follows the relocated cluster onto the Today header,
+    // so the user can switch back.
+    const relocated = screen.getByRole("menu", { name: "Sidebar view options" });
+    expect(relocated.closest(".project-row")).toBe(screen.getByText("Today").closest(".project-row"));
+    fireEvent.click(within(relocated).getByRole("menuitemradio", { name: "Projects" }));
+    expect(window.localStorage.getItem(sidebarViewModeStorageKey)).toBe(JSON.stringify("projects"));
+    expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax"]);
+  });
+
+  // Structural helper: which header row hosts a given label?
+  function headerRowFor(label: string): HTMLElement {
+    const row = screen.getByText(label).closest(".project-row");
+    if (!(row instanceof HTMLElement)) throw new Error(`expected a header row for ${label}`);
+    return row;
+  }
+
+  it("hosts the new-session and view-options actions on the newest recency header", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    const today = headerRowFor("Today");
+    expect(within(today).getByRole("button", { name: "Add Project" })).toBeInTheDocument();
+    expect(within(today).getByRole("button", { name: "Sidebar view options" })).toBeInTheDocument();
+    // The header still collapses its own rows.
+    expect(within(today).getByRole("button", { name: "Hide Today sessions" })).toBeInTheDocument();
+
+    // Older buckets stay plain collapsible labels.
+    const older = headerRowFor("Older");
+    expect(within(older).queryByRole("button", { name: "Add Project" })).toBeNull();
+    expect(within(older).queryByRole("button", { name: "Sidebar view options" })).toBeNull();
+  });
+
+  it("keeps every recency header's collapse chevron inside the label cluster", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    // The chevron shares the label span so it hugs the word instead of drifting
+    // to the row's right edge, where the … / + cluster lives.
+    for (const label of ["Today", "Older"]) {
+      const chevron = screen.getByRole("button", { name: `Hide ${label} sessions` });
+      expect(chevron.closest(".session-date-label")).toBe(
+        screen.getByText(label).closest(".session-date-label")
+      );
+    }
+  });
+
+  it("falls through to the next bucket when the newest one is empty", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    // The only Today session is pinned, so the Today bucket is omitted.
+    const pinnedSnapshot: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces: [
+        { ...workspace("w-zebra", "project-zebra", "Zebra task today", TODAY), pinned: true },
+        workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL)
+      ]
+    };
+
+    render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
+
+    expect(screen.queryByText("Today")).toBeNull();
+    const older = headerRowFor("Older");
+    expect(within(older).getByRole("button", { name: "Add Project" })).toBeInTheDocument();
+    expect(within(older).getByRole("button", { name: "Sidebar view options" })).toBeInTheDocument();
+
+    // Pinned keeps its plain header.
+    const pinned = headerRowFor("Pinned");
+    expect(within(pinned).queryByRole("button", { name: "Add Project" })).toBeNull();
+  });
+
+  it("keeps the actions off the Pinned and Priority headers", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    const attentionSnapshot: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces: [
+        { ...workspace("w-pinned", "project-zebra", "Pinned task", TODAY), pinned: true },
+        workspace("w-blocked", "project-zebra", "Blocked task", TODAY),
+        workspace("w-plain", "project-zebra", "Plain task", TODAY)
+      ],
+      sessions: [
+        session("w-pinned", TODAY),
+        {
+          ...session("w-blocked", TODAY),
+          state: "waiting" as const,
+          attention: "blocked" as const,
+          attentionChangedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+        },
+        session("w-plain", TODAY)
+      ]
+    };
+
+    render(<Sidebar {...baseProps} showPriority snapshot={attentionSnapshot} />);
+
+    for (const label of ["Pinned", "Priority"]) {
+      const row = headerRowFor(label);
+      expect(within(row).queryByRole("button", { name: "Add Project" })).toBeNull();
+      expect(within(row).queryByRole("button", { name: "Sidebar view options" })).toBeNull();
+    }
+
+    expect(
+      within(headerRowFor("Today")).getByRole("button", { name: "Add Project" })
+    ).toBeInTheDocument();
+  });
+
+  it("does not collapse the newest group when the new-session action is clicked", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    const onAddProject = vi.fn();
+
+    render(<Sidebar {...baseProps} onAddProject={onAddProject} snapshot={viewSnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
+
+    expect(onAddProject).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide Today sessions" })).toBeInTheDocument();
   });
 });
 
@@ -822,6 +988,90 @@ describe("Sidebar — Priority section", () => {
     expect(within(calmRow).queryByText("Argmax")).toBeNull();
   });
 
+  it("renders the project subtitle as plain text without a folder glyph", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+
+    const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
+    expect(within(blockedRow).getByText("Argmax")).toBeInTheDocument();
+    // The leading status marker is the row's only icon: the folder glyph that
+    // used to sit beside the project name is gone.
+    expect(blockedRow.querySelectorAll("svg")).toHaveLength(1);
+  });
+
+  it("keeps Pinned above Priority", () => {
+    const pinnedSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        ...prioritySnapshot.workspaces,
+        { ...workspace("w-pinned", "Pinned task"), pinned: true }
+      ],
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_30)]
+    };
+
+    render(<Sidebar {...baseProps} showPriority snapshot={pinnedSnapshot} />);
+
+    expect(rendersAfter(screen.getByText("Pinned"), screen.getByText("Priority"))).toBe(true);
+    // Both sections still list their rows.
+    expect(screen.getByRole("button", { name: /Pinned task/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
+  });
+
+  it("collapses and expands the Priority section from its header chevron", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+
+    // The chevron sits inside the label cluster so it hugs the word, matching
+    // every recency header.
+    const chevron = screen.getByRole("button", { name: "Hide Priority sessions" });
+    expect(chevron.closest(".session-date-label")).toBe(
+      screen.getByText("Priority").closest(".session-date-label")
+    );
+
+    fireEvent.click(chevron);
+    expect(screen.queryByRole("button", { name: /Blocked task/ })).toBeNull();
+    expect(screen.getByText("Priority")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Priority sessions" }));
+    expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
+  });
+
+  it("persists the Priority collapse alongside the date groups", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide Priority sessions" }));
+
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toContain(
+      "priority"
+    );
+
+    cleanup();
+    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
+    expect(screen.getByRole("button", { name: "Show Priority sessions" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Blocked task/ })).toBeNull();
+  });
+
+  it("collapses Pinned the same way, and keeps it above Priority", () => {
+    const pinnedSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        ...prioritySnapshot.workspaces,
+        { ...workspace("w-pinned", "Pinned task"), pinned: true }
+      ],
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_30)]
+    };
+
+    render(<Sidebar {...baseProps} showPriority snapshot={pinnedSnapshot} />);
+
+    expect(rendersAfter(screen.getByText("Pinned"), screen.getByText("Priority"))).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide Pinned sessions" }));
+    expect(screen.queryByRole("button", { name: /Pinned task/ })).toBeNull();
+    // Collapsing one section leaves the other alone.
+    expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Pinned sessions" }));
+    expect(screen.getByRole("button", { name: /Pinned task/ })).toBeInTheDocument();
+  });
+
   it("omits subtitles entirely when priority mode is off", () => {
     render(<Sidebar {...baseProps} showPriority={false} snapshot={prioritySnapshot} />);
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
@@ -864,6 +1114,25 @@ describe("Sidebar — Priority section", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Add to priority" }));
 
     expect(onAddToPriority).toHaveBeenCalledWith("w-calm");
+  });
+
+  it("sets a custom row icon from the context menu", () => {
+    const onSetWorkspaceIcon = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onSetWorkspaceIcon={onSetWorkspaceIcon}
+        snapshot={prioritySnapshot}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Blocked task/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Icon" }));
+    fireEvent.click(screen.getByRole("button", { name: "Teal icon color" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rocket" }));
+
+    expect(onSetWorkspaceIcon).toHaveBeenCalledWith("w-blocked", "Rocket", "teal");
   });
 
   it("floats a manually added workspace without attention", () => {

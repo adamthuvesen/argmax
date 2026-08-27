@@ -325,6 +325,237 @@ describe("SidebarSessionRow", () => {
     expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
   });
 
+  it("right-click → Edit Icon applies the picked icon with the picked color", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onSetIcon = vi.fn();
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onSetIcon={onSetIcon}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Icon" }));
+
+    const picker = await screen.findByRole("dialog", { name: "Edit Icon" });
+    expect(picker).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Violet icon color" }));
+    fireEvent.click(screen.getByRole("button", { name: "Brain" }));
+
+    expect(onSetIcon).toHaveBeenCalledWith("workspace-1", "Brain", "violet");
+    expect(screen.queryByRole("dialog", { name: "Edit Icon" })).toBeNull();
+  });
+
+  it("search narrows the icon grid to matching names", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onSetIcon={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Icon" }));
+    await screen.findByRole("dialog", { name: "Edit Icon" });
+
+    expect(screen.getByRole("button", { name: "Rocket" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search icons" }), {
+      target: { value: "brain" }
+    });
+
+    expect(screen.getByRole("button", { name: "Brain" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rocket" })).toBeNull();
+  });
+
+  it("a custom icon replaces the status marker and keeps live status as an overlay", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, state: "running", icon: "Brain", iconColor: "violet" }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onSetIcon={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    const row = screen.getByTitle(/Build the dashboard — running/);
+    expect(row.querySelector('[data-icon-color="violet"]')).not.toBeNull();
+    // The status marker is gone, but the running signal is not: it moves to the
+    // overlay dot on the custom glyph.
+    expect(row.querySelector('[data-working="true"]')).toBeNull();
+    expect(row.querySelector('[data-overlay="working"]')).not.toBeNull();
+  });
+
+  it.each([
+    ["failed" as const, undefined, undefined, "failed"],
+    ["complete" as const, "MERGED" as const, 12, "pr-merged"],
+    ["complete" as const, "OPEN" as const, 12, "pr-open"],
+    ["complete" as const, undefined, undefined, null]
+  ])(
+    "overlays %s / pr %s on a custom icon as %s",
+    (state, prState, prNumber, expectedOverlay) => {
+      render(
+        <SidebarSessionRow
+          workspace={{ ...workspaceBase, state, prState, prNumber, icon: "Flag", iconColor: "clay" }}
+          workspaceTokens={null}
+          isSelected={false}
+          isOpenInGrid={false}
+          canDragToGrid={true}
+          onOpenWorkspaceChat={vi.fn()}
+          onArchiveWorkspace={vi.fn()}
+          onOpenInIde={vi.fn()}
+          detectedIdes={detectedIdes}
+          defaultIde="vscode"
+          showTokens={false}
+        />
+      );
+
+      const overlay = document.querySelector("[data-overlay]");
+      expect(overlay?.getAttribute("data-overlay") ?? null).toBe(expectedOverlay);
+    }
+  );
+
+  it("the Default icon swatch clears the custom glyph", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onSetIcon = vi.fn();
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onSetIcon={onSetIcon}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Icon" }));
+    await screen.findByRole("dialog", { name: "Edit Icon" });
+    fireEvent.click(screen.getByRole("button", { name: "Default icon" }));
+
+    expect(onSetIcon).toHaveBeenCalledWith("workspace-1", null, null);
+  });
+
+  it("clearing the icon restores the default status marker on the row", () => {
+    const props = {
+      workspaceTokens: null,
+      isSelected: false,
+      isOpenInGrid: false,
+      canDragToGrid: true,
+      onOpenWorkspaceChat: vi.fn(),
+      onArchiveWorkspace: vi.fn(),
+      onOpenInIde: vi.fn(),
+      detectedIdes,
+      defaultIde: "vscode" as const,
+      showTokens: false
+    };
+    const { rerender } = render(
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, state: "running", icon: "Brain", iconColor: "violet" }}
+      />
+    );
+    expect(document.querySelector("[data-icon-color]")).not.toBeNull();
+
+    rerender(
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, state: "running", icon: null, iconColor: null }}
+      />
+    );
+    expect(document.querySelector("[data-icon-color]")).toBeNull();
+    expect(document.querySelector('[data-working="true"]')).not.toBeNull();
+  });
+
+  it("recoloring while an icon is set applies immediately without closing the picker", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onSetIcon = vi.fn();
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onSetIcon={onSetIcon}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Icon" }));
+    await screen.findByRole("dialog", { name: "Edit Icon" });
+    fireEvent.click(screen.getByRole("button", { name: "Amber icon color" }));
+
+    expect(onSetIcon).toHaveBeenCalledWith("workspace-1", "Brain", "amber");
+    expect(screen.getByRole("dialog", { name: "Edit Icon" })).toBeInTheDocument();
+  });
+
+  it("does not offer Edit Icon when onSetIcon is not provided", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        onRename={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    expect(screen.queryByRole("menuitem", { name: "Edit Icon" })).toBeNull();
+  });
+
   it("memo comparator skips re-render when a new workspace object has identical visible fields (ralph C1)", () => {
     const onOpenWorkspaceChat = vi.fn();
     const onArchiveWorkspace = vi.fn();
@@ -423,7 +654,84 @@ describe("SidebarSessionRow", () => {
     expect(row.querySelector('[data-pr="merged"]')).toBeNull();
   });
 
-  it("shows the normal check for a closed PR (no PR-specific marker)", () => {
+  it("leaves an idle completed row text-only, with the state still in its title", () => {
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    const row = screen.getByTitle(/Build the dashboard — complete/);
+    // No leading glyph at all: a done session is not worth a column of checks.
+    expect(row.querySelector("svg")).toBeNull();
+  });
+
+  it("keeps a leading marker on rows that carry a live signal", () => {
+    const props = {
+      workspaceTokens: null,
+      isSelected: false,
+      isOpenInGrid: false,
+      canDragToGrid: true,
+      onOpenWorkspaceChat: vi.fn(),
+      onArchiveWorkspace: vi.fn(),
+      onOpenInIde: vi.fn(),
+      detectedIdes,
+      defaultIde: "vscode" as const,
+      showTokens: false
+    };
+
+    const { rerender } = render(
+      <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "failed" }} />
+    );
+    expect(screen.getByTitle(/Build the dashboard — failed/).querySelector("svg")).not.toBeNull();
+
+    rerender(<SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "running" }} />);
+    expect(screen.getByTitle(/Build the dashboard — running/).querySelector("svg")).not.toBeNull();
+
+    rerender(
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, state: "complete" }}
+        priorityAttention="blocked"
+      />
+    );
+    expect(
+      screen.getByTitle(/Build the dashboard — complete — waiting for input/).querySelector("svg")
+    ).not.toBeNull();
+  });
+
+  it("keeps the custom icon on a calm row", () => {
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
+        workspaceTokens={null}
+        isSelected={false}
+        isOpenInGrid={false}
+        canDragToGrid={true}
+        onOpenWorkspaceChat={vi.fn()}
+        onArchiveWorkspace={vi.fn()}
+        onOpenInIde={vi.fn()}
+        detectedIdes={detectedIdes}
+        defaultIde="vscode"
+        showTokens={false}
+      />
+    );
+
+    const row = screen.getByTitle(/Build the dashboard — complete/);
+    expect(row.querySelector('[data-icon-color="violet"] svg')).not.toBeNull();
+  });
+
+  it("shows no PR-specific marker for a closed PR", () => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, prState: "CLOSED", prNumber: 9 }}

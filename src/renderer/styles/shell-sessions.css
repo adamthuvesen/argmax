@@ -7,7 +7,9 @@
   width: 100%;
   min-height: 34px;
   padding: 0 10px;
-  color: var(--text);
+  /* Resting titles sit one ink step below primary so the selected row (which
+     keeps --text) is the only bright label in the list. */
+  color: var(--text-soft);
   text-align: left;
   border: 0;
   border-radius: var(--radius-md);
@@ -25,8 +27,9 @@
 
 /* Open and active rows use the same gray pair as the model picker and agent
    tabs (--panel-soft / --panel-sunken) instead of the accent color. */
+/* An open row is marked by its surface, not by ink: the selected row stays the
+   only bright label in the list. */
 .session-link[data-open="true"]:not(.active) {
-  color: var(--text);
   background: var(--panel-soft);
 }
 
@@ -51,16 +54,18 @@
   white-space: nowrap;
 }
 
-/* Two-line rows (Priority mode): label on top, muted project subtitle with a
-   small folder glyph underneath. The marker pins to the first line. */
+/* Two-line rows (Priority mode): label on top, muted project name underneath.
+   The leading glyph centers on the whole two-line block. */
 .session-link.session-link-stacked {
-  align-items: start;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  align-items: center;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
-.session-link-stacked .status-marker {
-  margin-top: 2px;
+/* Calm rows draw no glyph, but they keep the marker column so every title in
+   the list starts at the same x. */
+.session-link-lead-spacer {
+  width: 14px;
 }
 
 .session-link-text {
@@ -69,20 +74,14 @@
 }
 
 .session-link-subtitle {
-  display: flex;
-  gap: 4px;
-  align-items: center;
   color: var(--muted);
-  font-size: var(--text-2xs);
-  line-height: 1.2;
+  font-size: var(--text-xs);
+  line-height: 1.25;
 }
 
-.session-link-subtitle svg {
-  flex: 0 0 auto;
-}
-
-/* Every session row gets a leading circle marker: a quiet check ring by
-   default, swapped for a red cross (in SidebarSessionRow) when it failed. */
+/* Leading marker for rows that carry a live signal: a working ring, an
+   awaiting-input ring, a PR glyph, or a red cross when the session failed.
+   Calm rows render no marker at all. */
 .status-marker {
   flex: 0 0 auto;
   color: var(--muted);

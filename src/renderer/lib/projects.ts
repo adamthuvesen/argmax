@@ -83,9 +83,8 @@ export function saveExpandedProjectIds(projectIds: Set<string>): void {
 }
 
 // Date-bucket collapse/overflow state for the "sessions" view. Keyed by bucket
-// key (e.g. "today", "month-2026-3"). Month keys naturally churn over time;
-// stale entries are harmless. Date groups default to *expanded* (empty
-// collapsed set), unlike projects which boot collapsed.
+// key ("today", "last-7", "last-30", "older"). Date groups default to
+// *expanded* (empty collapsed set), unlike projects which boot collapsed.
 export function loadCollapsedDateGroupIds(): Set<string> {
   return new Set(loadStringArray(collapsedDateGroupsStorageKey));
 }
@@ -184,11 +183,12 @@ export interface SidebarDateGroup<T> {
   items: T[];
 }
 
-// Buckets workspaces into a Claude.ai-style date-grouped list: Today,
-// Yesterday, Previous 7 Days, Previous 30 Days, then one bucket per calendar
-// month. Boundaries are computed on local-midnight day diffs against `now`.
-// Only non-empty groups are returned, ordered newest → oldest. `now` is a
-// parameter so the bucketing stays pure and testable.
+// Buckets workspaces into four relative recency groups: Today, Last 7 Days,
+// Last 30 Days, Older. Every session lands in the first bucket it matches, so
+// the list never repeats a row and never sprouts one header per calendar month.
+// Boundaries are computed on local-midnight day diffs against `now`. Only
+// non-empty groups are returned, ordered newest → oldest. `now` is a parameter
+// so the bucketing stays pure and testable.
 export function groupWorkspacesByDate<T extends { lastActivityAt: string }>(
   workspaces: T[],
   now: Date = new Date()
@@ -224,20 +224,12 @@ export function groupWorkspacesByDate<T extends { lastActivityAt: string }>(
 
     if (dayDiff <= 0) {
       push("today", "Today", workspace);
-    } else if (dayDiff === 1) {
-      push("yesterday", "Yesterday", workspace);
     } else if (dayDiff <= 7) {
-      push("prev-7", "Previous 7 Days", workspace);
+      push("last-7", "Last 7 Days", workspace);
     } else if (dayDiff <= 30) {
-      push("prev-30", "Previous 30 Days", workspace);
+      push("last-30", "Last 30 Days", workspace);
     } else {
-      const d = new Date(activity);
-      const key = `month-${d.getFullYear()}-${d.getMonth()}`;
-      const sameYear = d.getFullYear() === now.getFullYear();
-      const label = sameYear
-        ? d.toLocaleString("en-US", { month: "long" })
-        : d.toLocaleString("en-US", { month: "long", year: "numeric" });
-      push(key, label, workspace);
+      push("older", "Older", workspace);
     }
   }
 

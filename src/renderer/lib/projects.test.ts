@@ -52,31 +52,37 @@ describe("groupWorkspacesByDate", () => {
     lastActivityAt: new Date(y, m, d, h).toISOString()
   });
 
-  it("buckets into Today / Yesterday / Previous 7 / Previous 30 / months", () => {
+  it("buckets into Today / Last 7 Days / Last 30 Days / Older", () => {
     const groups = groupWorkspacesByDate(
       [
         at(2026, 5, 5), // today
-        at(2026, 5, 4), // yesterday
-        at(2026, 5, 1), // 4 days ago → Previous 7 Days
-        at(2026, 4, 20), // 16 days ago → Previous 30 Days
-        at(2026, 3, 10), // April → same-year month label
-        at(2025, 11, 10) // Dec 2025 → cross-year month label
+        at(2026, 5, 4), // yesterday → Last 7 Days
+        at(2026, 5, 1), // 4 days ago → Last 7 Days
+        at(2026, 4, 20), // 16 days ago → Last 30 Days
+        at(2026, 3, 10), // April → Older
+        at(2025, 11, 10) // Dec 2025 → Older, same bucket as April
       ],
       NOW
     );
     expect(groups.map((group) => [group.key, group.label])).toEqual([
       ["today", "Today"],
-      ["yesterday", "Yesterday"],
-      ["prev-7", "Previous 7 Days"],
-      ["prev-30", "Previous 30 Days"],
-      ["month-2026-3", "April"],
-      ["month-2025-11", "December 2025"]
+      ["last-7", "Last 7 Days"],
+      ["last-30", "Last 30 Days"],
+      ["older", "Older"]
     ]);
+    // Everything past 30 days collapses into one Older bucket instead of one
+    // header per calendar month.
+    expect(groups.at(-1)?.items).toHaveLength(2);
   });
 
-  it("treats exactly 7 days ago as Previous 7 Days and 8 days as Previous 30 Days", () => {
+  it("treats exactly 7 days ago as Last 7 Days and 8 days as Last 30 Days", () => {
     const groups = groupWorkspacesByDate([at(2026, 4, 29), at(2026, 4, 28)], NOW);
-    expect(groups.map((group) => group.key)).toEqual(["prev-7", "prev-30"]);
+    expect(groups.map((group) => group.key)).toEqual(["last-7", "last-30"]);
+  });
+
+  it("treats exactly 30 days ago as Last 30 Days and 31 days as Older", () => {
+    const groups = groupWorkspacesByDate([at(2026, 4, 6), at(2026, 4, 5)], NOW);
+    expect(groups.map((group) => group.key)).toEqual(["last-30", "older"]);
   });
 
   it("sorts newest first and groups multiple sessions per bucket", () => {

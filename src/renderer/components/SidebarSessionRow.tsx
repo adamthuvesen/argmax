@@ -111,7 +111,7 @@ function idePopoverPosition(rect: Pick<DOMRect, "bottom" | "right">): { top: num
 
 // Leading glyph for a session row, rendered only when the row carries a live
 // signal (see statusOverlayFor). A turn in flight takes precedence over
-// everything: the marker becomes a working ring with a pulsing center dot so
+// everything: the marker becomes a nest of four dots cycling out of phase so
 // live agent activity reads at a glance, then reverts to the icons below when
 // the turn ends. Otherwise a live pull request wins over session state: a
 // merged PR shows a violet merge glyph, an open PR a green pull-request glyph.
@@ -135,33 +135,25 @@ function StatusMarker({
     return <CircleEllipsis size={14} aria-hidden className="status-marker" data-attention={priorityAttention} />;
   }
   if (state === "running") {
-    // Hand-rolled in lucide's 24-unit stroke geometry (circle r=10, stroke 2,
-    // matching CircleCheck's ring) because no lucide icon pairs the ring with
-    // an animatable center dot. The dot's pulse lives in CSS
-    // (.status-marker-working-dot) so prefers-reduced-motion can pin it.
+    // A four-dot nest in a 2x2, same mark as the agent-launch row, sized to the
+    // 14px marker box. Each dot swells and fades a quarter-cycle behind the one
+    // before it, so the cluster reads as rearranging rather than blinking. The
+    // sequence lives in CSS (.status-marker-working-dot) so
+    // prefers-reduced-motion can pin it to a still nest.
     return (
       <svg
         className="status-marker"
         data-working="true"
         width={14}
         height={14}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        viewBox="0 0 14 14"
+        fill="currentColor"
         aria-hidden="true"
       >
-        <circle cx="12" cy="12" r="10" />
-        <circle
-          className="status-marker-working-dot"
-          cx="12"
-          cy="12"
-          r="3.5"
-          fill="currentColor"
-          stroke="none"
-        />
+        <circle className="status-marker-working-dot" data-dot="1" cx="4.6" cy="4.6" r="1.8" />
+        <circle className="status-marker-working-dot" data-dot="2" cx="9.4" cy="4.6" r="1.8" />
+        <circle className="status-marker-working-dot" data-dot="3" cx="9.4" cy="9.4" r="1.8" />
+        <circle className="status-marker-working-dot" data-dot="4" cx="4.6" cy="9.4" r="1.8" />
       </svg>
     );
   }

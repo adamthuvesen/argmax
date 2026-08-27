@@ -104,11 +104,10 @@
   color: var(--pr-open);
 }
 
-/* A turn in flight swaps the marker for a working ring: same circle geometry
-   as the check, in the semantic running green, with a center dot that
-   breathes. A running row never carries data-pr (StatusMarker returns the
-   working ring first), so the PR rules above cannot collide. Reduced motion
-   pins the dot; the ring+dot combination still reads as "working" at rest. */
+/* A turn in flight swaps the marker for a nest of four dots in the semantic
+   running green. A running row never carries data-pr (StatusMarker returns the
+   nest first), so the PR rules above cannot collide. Reduced motion pins the
+   dots; the filled 2x2 still reads as "working" at rest. */
 .session-link[data-status] .status-marker[data-working="true"] {
   color: var(--sage);
 }
@@ -117,6 +116,21 @@
   transform-box: fill-box;
   transform-origin: center;
   animation: status-marker-working-pulse 1.8s var(--ease) infinite;
+}
+
+/* Delays are an exact quarter of the cycle, so the swell travels clockwise
+   without a dead beat and the nest looks like it is rearranging itself. A lone
+   pulsing dot (the custom-icon overlay) carries no data-dot and stays in phase. */
+.status-marker-working-dot[data-dot="2"] {
+  animation-delay: 0.45s;
+}
+
+.status-marker-working-dot[data-dot="3"] {
+  animation-delay: 0.9s;
+}
+
+.status-marker-working-dot[data-dot="4"] {
+  animation-delay: 1.35s;
 }
 
 @keyframes status-marker-working-pulse {
@@ -533,8 +547,8 @@
 }
 
 .identity-avatar-mascot {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
 }
 
 .identity-meta {

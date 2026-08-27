@@ -15,6 +15,10 @@ marks the commit that set it. "Unreleased" covers work not yet on `main`.
 
 ### Fixed
 
+- Cursor usage is priced from the launched model instead of falling through
+  to `cursor-unknown`.
+- Startup watcher restore skips a missing checkout instead of first claiming
+  recursive watches are unavailable.
 - Follow-ups show the agent starting work right away instead of leaving the
   chat blank for the seconds a provider takes to resume: the chat treats a send
   from the composer or a card as the start of a turn rather than waiting for the

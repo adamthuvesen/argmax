@@ -312,7 +312,7 @@ impl ProviderSessionService {
                 session_id.clone(),
                 provider,
                 provider_invocation_id.clone(),
-                NormalizerSessionContext::default(),
+                NormalizerSessionContext::for_provider(provider, input.model_id.as_str()),
             );
         self.handles
             .lock_or_recover("handles")
@@ -675,7 +675,7 @@ impl ProviderSessionService {
                 session_id.clone(),
                 provider,
                 provider_invocation_id.clone(),
-                NormalizerSessionContext::default(),
+                NormalizerSessionContext::for_provider(provider, launch_input.model_id.as_str()),
             );
         self.handles
             .lock_or_recover("handles")

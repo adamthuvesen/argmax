@@ -158,6 +158,16 @@ impl NormalizerSessionContext {
             ..Self::default()
         }
     }
+
+    /// Seed per-provider stream state from the session's launched model.
+    /// Cursor usage events have no model id of their own, so leaving this
+    /// defaulted prices every Cursor turn as `cursor-unknown`.
+    pub fn for_provider(provider: ProviderId, model_id: impl Into<String>) -> Self {
+        match provider {
+            ProviderId::Cursor => Self::with_cursor_model(model_id),
+            ProviderId::Claude | ProviderId::Codex => Self::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -54,6 +54,9 @@ function isDismissed(workspace: WorkspaceSummary, attentionChangedAt: string | n
  * A manual add (`priorityAddedAt`) floats the workspace regardless of
  * attention and never ages out; the backend guarantees add/dismiss are
  * mutually exclusive, so a manually-added row skips the dismissal check.
+ *
+ * Pinned workspaces stay in Pinned. A pin is a standing placement, so it
+ * wins over both attention and a manual add until the row is unpinned.
  */
 export function computePriorityEntries(
   workspaces: WorkspaceSummary[],
@@ -84,6 +87,7 @@ export function computePriorityEntries(
   const entries: PriorityEntry[] = [];
   for (const workspace of workspaces) {
     if (
+      workspace.pinned ||
       workspace.state === "archived" ||
       workspace.state === "kept" ||
       workspace.state === "archiving" ||

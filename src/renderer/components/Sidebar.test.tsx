@@ -1016,6 +1016,63 @@ describe("Sidebar — Priority section", () => {
     expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
   });
 
+  it("keeps a pinned session in Pinned even when it qualifies for Priority", () => {
+    const pinnedAttentionSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        ...prioritySnapshot.workspaces,
+        { ...workspace("w-pinned-blocked", "Pinned blocked"), pinned: true }
+      ],
+      sessions: [
+        ...prioritySnapshot.sessions,
+        session("w-pinned-blocked", "blocked", MINUTES_AGO_30)
+      ]
+    };
+
+    const { container } = render(
+      <Sidebar {...baseProps} showPriority snapshot={pinnedAttentionSnapshot} />
+    );
+
+    const pinnedGroup = container.querySelector(".session-pinned-group");
+    const priorityGroup = container.querySelector(".session-priority-group");
+    expect(pinnedGroup).not.toBeNull();
+    expect(priorityGroup).not.toBeNull();
+    expect(
+      within(pinnedGroup as HTMLElement).getByRole("button", { name: /Pinned blocked/ })
+    ).toBeInTheDocument();
+    expect(
+      within(priorityGroup as HTMLElement).getByRole("button", { name: /Blocked task/ })
+    ).toBeInTheDocument();
+    expect(
+      within(priorityGroup as HTMLElement).queryByRole("button", { name: /Pinned blocked/ })
+    ).toBeNull();
+  });
+
+  it("does not offer Add to priority on a pinned row", () => {
+    const onAddToPriority = vi.fn();
+    const pinnedSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        ...prioritySnapshot.workspaces,
+        { ...workspace("w-pinned", "Pinned task"), pinned: true }
+      ],
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_30)]
+    };
+
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onAddToPriority={onAddToPriority}
+        snapshot={pinnedSnapshot}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Pinned task/ }));
+    expect(screen.queryByRole("menuitem", { name: "Add to priority" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Remove from priority" })).toBeNull();
+  });
+
   it("collapses and expands the Priority section from its header chevron", () => {
     render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
 

@@ -340,9 +340,10 @@ export function Sidebar({
 
   // Workspaces that need the user right now (approval, blocked, failed,
   // review-ready) float into the Priority section, directly under Pinned.
-  // A row lives in exactly one section: while in Priority it leaves its
-  // home group (Pinned/date/project) and drops back when resolved,
-  // dismissed, or aged out.
+  // A row lives in exactly one section. Pinned wins: a pin keeps the row
+  // in Pinned even when it would otherwise qualify for Priority. Unpinned
+  // Priority rows leave their date/project group and drop back when
+  // resolved, dismissed, or aged out.
   // `Date.now()` is read inside the memo, so the 24h staleness gate is only
   // re-evaluated when the snapshot changes — consistent with the no-polling
   // rule. An entry that crosses the age line simply drops on the next delta.
@@ -388,14 +389,13 @@ export function Sidebar({
           (workspace) =>
             workspace.pinned &&
             workspace.state !== "archived" &&
-            !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
         .sort((a, b) => {
           if (a.lastActivityAt === b.lastActivityAt) return 0;
           return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
         }),
-    [snapshot.workspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
+    [snapshot.workspaces, workspaceIdsWithSessions]
   );
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
@@ -783,7 +783,6 @@ export function Sidebar({
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
                   onSetIcon={onSetWorkspaceIcon}
-                  onAddToPriority={addToPriority}
                   onWorkspaceDragStart={onWorkspaceDragStart}
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}

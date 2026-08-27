@@ -67,6 +67,23 @@ describe("computePriorityEntries", () => {
     ]);
   });
 
+  it("excludes pinned workspaces even with attention or a manual add", () => {
+    const entries = computePriorityEntries(
+      [
+        workspace("w-pinned-attention", { pinned: true }),
+        workspace("w-pinned-manual", { pinned: true, priorityAddedAt: "2026-05-12T17:30:00.000Z" }),
+        workspace("w-blocked")
+      ],
+      [
+        session("w-pinned-attention", "blocked"),
+        session("w-pinned-manual", "approval-needed"),
+        session("w-blocked", "blocked")
+      ],
+      NOW
+    );
+    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-blocked"]);
+  });
+
   it("excludes archived and kept workspaces", () => {
     const entries = computePriorityEntries(
       [workspace("w-archived", { state: "archived" }), workspace("w-kept", { state: "kept" })],

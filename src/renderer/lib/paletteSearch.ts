@@ -1,7 +1,14 @@
 import uFuzzy from "@leeoniya/ufuzzy";
 import type { LucideIcon } from "lucide-react";
 
-export type PaletteGroup = "Actions" | "Sessions" | "Projects" | "Files" | "Messages" | "Settings";
+export type PaletteGroup =
+  | "Actions"
+  | "Sessions"
+  | "Projects"
+  | "Files"
+  | "Messages"
+  | "Contents"
+  | "Settings";
 
 export interface PaletteItem {
   id: string;

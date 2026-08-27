@@ -101,46 +101,18 @@
 /* ---- Margin Notes: nameplate ---- */
 
 .sidebar-nameplate {
-  display: grid;
-  /* Wordmark and meta are one unit, so they sit closer to each other than the
-     block sits to the New Agent row below. */
-  gap: var(--space-1);
-  /* `.window-controls` already clears the macOS traffic-light row. */
-  margin: 0 12px var(--space-3);
+  /* 8px sidebar pad + 10px inset lands the wordmark on the same 18px axis as
+     the rail glyphs below it. */
+  margin: 0 10px var(--space-3);
   user-select: none;
-}
-
-.sidebar-nameplate-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .sidebar-nameplate-mark {
   font-family: var(--font-mono);
-  font-size: var(--text-base);
+  font-size: var(--text-base-plus);
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
   color: var(--text);
-}
-
-/* The slash is a margin-note tick, not a second wordmark: it stays on the warm
-   ink ramp (a line token reads cool against this palette) and thins out so it
-   never competes with `argmax`. */
-.sidebar-nameplate-slash {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: color-mix(in oklab, var(--muted) 60%, transparent);
-  letter-spacing: 0.02em;
-}
-
-.sidebar-nameplate-sub {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  /* 10px uppercase on --muted disappears against the sidebar fill. */
-  color: var(--muted-strong);
 }
 
 /* ---- Margin Notes: CTA + rail nav ---- */
@@ -148,6 +120,9 @@
 .rail-nav {
   display: grid;
   gap: 1px;
+  /* The cluster is its own block: whitespace, not a rule, separates it from
+     the session list. */
+  margin-bottom: var(--space-3);
 }
 
 .rail-nav-item {
@@ -189,55 +164,59 @@
   white-space: nowrap;
 }
 
-.rail-nav-cta {
-  position: relative;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
-  margin: 0 2px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-soft);
-  font-size: var(--text-base);
-  font-weight: 350;
-  letter-spacing: 0;
-  box-shadow: none;
-  transition: background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease),
-    transform var(--duration-fast) var(--ease);
+.rail-nav-item kbd {
+  flex: 0 0 auto;
+  padding-left: var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
 }
 
-.rail-nav-cta:hover {
+/* The shortcut is a reminder, not a label: it surfaces on approach and on
+   keyboard focus, so the resting rail stays two clean words. */
+.rail-nav-item:hover kbd,
+.rail-nav-item:focus-visible kbd {
+  opacity: 1;
+}
+
+/* New Agent is the primary action but not a slab: it carries the same ghost
+   row as its siblings and leads only through ink, keeping the masthead quiet.
+   A filled, bordered button here reads as a modal dialog's confirm and drowns
+   out the session list underneath. */
+.rail-nav-cta {
+  position: relative;
   color: var(--text);
-  background: var(--row-hover);
+  font-weight: 500;
 }
 
 .rail-nav-cta:active {
   transform: translateY(1px);
 }
 
-.rail-nav-cta .rail-nav-glyph {
+.rail-nav-item .rail-nav-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 14px;
   height: 14px;
-  color: var(--muted-strong);
+  color: var(--text-soft);
   flex: 0 0 auto;
   transition: color var(--duration-fast) var(--ease);
 }
 
-.rail-nav-cta:hover .rail-nav-glyph {
+.rail-nav-item:hover .rail-nav-glyph {
   color: var(--text);
 }
 
-.rail-nav-cta .rail-nav-glyph svg {
+.rail-nav-item .rail-nav-glyph svg {
   color: currentColor;
   stroke-width: 1.8;
 }
 
-.rail-nav-cta .rail-nav-label {
+.rail-nav-item .rail-nav-label {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;

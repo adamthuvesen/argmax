@@ -9,9 +9,9 @@ interface GlobalKeybindingArgs {
   onMenuCommand: (command: MenuCommand) => void;
   /** Cmd+P opens the command palette with its Files filter pre-selected. */
   onOpenFilePalette: () => void;
-  /** Cmd+F opens the global search overlay. */
+  /** Cmd+F opens the command palette with its Messages filter pre-selected. */
   onOpenSearch: () => void;
-  /** Cmd+Shift+F opens the workspace content search overlay (git grep). */
+  /** Cmd+Shift+F opens the palette on Contents — file-content search via git grep. */
   onOpenContentSearch: () => void;
   /** Cmd+J toggles the integrated terminal for the active session pane. */
   onToggleTerminal?: () => void;
@@ -37,8 +37,8 @@ interface GlobalKeybindingArgs {
  *   Cmd/Ctrl+K    → open-command-palette (menu command), All filter
  *   Cmd/Ctrl+P    → same palette, Files filter pre-selected
  *   Cmd/Ctrl+/    → open-cheat-sheet (menu command)
- *   Cmd/Ctrl+F    → open global search (session messages)
- *   Cmd/Ctrl+Shift+F → open workspace content search (git grep)
+ *   Cmd/Ctrl+F    → same palette, Messages filter pre-selected
+ *   Cmd/Ctrl+Shift+F → same palette, Contents filter (git grep) pre-selected
  *   Cmd/Ctrl+J    → toggle integrated terminal
  *
  * Typing-target guard: text-editing keys stay in contenteditable /

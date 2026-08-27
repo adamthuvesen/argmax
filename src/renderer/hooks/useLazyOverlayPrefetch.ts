@@ -6,7 +6,6 @@ import { lazy, useEffect } from "react";
 // first paint — that way the cold ⌘K / ⌘F / Settings open hits a cached
 // module instead of paying for transform+fetch+parse on the keypress.
 const importCommandPalette = () => import("../components/CommandPalette.js");
-const importSearchOverlay = () => import("../components/SearchOverlay.js");
 const importSettingsPanel = () => import("../components/SettingsPanel.js");
 // ReviewPanel pulls in CodeMirror + every @codemirror/lang-* package — ~680KB.
 // LaunchSurface and SessionPane each lazy-import it locally; warming it from
@@ -15,16 +14,9 @@ const importSettingsPanel = () => import("../components/SettingsPanel.js");
 // dedupes by resolved URL so the lazy `import("./ReviewPanel.js")` sites and
 // this prefetch share the same module instance.
 const importReviewPanel = () => import("../components/ReviewPanel.js");
-const importWorkspaceContentSearch = () => import("../components/WorkspaceContentSearchOverlay.js");
 
 export const CommandPalette = lazy(async () => ({
   default: (await importCommandPalette()).CommandPalette
-}));
-export const WorkspaceContentSearchOverlay = lazy(async () => ({
-  default: (await importWorkspaceContentSearch()).WorkspaceContentSearchOverlay
-}));
-export const SearchOverlay = lazy(async () => ({
-  default: (await importSearchOverlay()).SearchOverlay
 }));
 export const SettingsPanel = lazy(async () => ({
   default: (await importSettingsPanel()).SettingsPanel
@@ -46,12 +38,12 @@ export function useLazyOverlayPrefetch(): void {
     const cic = (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
     const timers: number[] = [];
     const ricIds: number[] = [];
-    // Two passes, in priority order. The ⌘K / ⌘F overlays are small and on
-    // the hot path, so warm them first. The heavy chunks — ReviewPanel pulls
+    // Two passes, in priority order. The palette serves every search chord and
+    // is small, so warm it first. The heavy chunks — ReviewPanel pulls
     // CodeMirror + every @codemirror/lang-* (~680KB) and SettingsPanel is
     // bulky too — warm on a *later* idle tick. In dev (unbundled modules) that
-    // keeps CodeMirror's large transform from queueing ahead of the search
-    // chunks and slowing the first ⌘K open; in prod it just orders the fetches.
+    // keeps CodeMirror's large transform from queueing ahead of the palette
+    // chunk and slowing the first ⌘K open; in prod it just orders the fetches.
     const warmHeavy = (): void => {
       importSettingsPanel().catch(swallow);
       importReviewPanel().catch(swallow);
@@ -65,8 +57,6 @@ export function useLazyOverlayPrefetch(): void {
     };
     const warmSearch = (): void => {
       importCommandPalette().catch(swallow);
-      importSearchOverlay().catch(swallow);
-      importWorkspaceContentSearch().catch(swallow);
       scheduleHeavy();
     };
     if (typeof ric === "function") {

@@ -56,6 +56,8 @@ export function SettingsPanel({
   onFontFamilyChange,
   fontSize,
   onFontSizeChange,
+  chatFontSize,
+  onChatFontSizeChange,
   themeMode,
   onThemeModeChange,
   accentId,
@@ -94,6 +96,8 @@ export function SettingsPanel({
   onFontFamilyChange: (id: FontFamilyId) => void;
   fontSize: FontSizeId;
   onFontSizeChange: (id: FontSizeId) => void;
+  chatFontSize: FontSizeId;
+  onChatFontSizeChange: (id: FontSizeId) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -251,6 +255,8 @@ export function SettingsPanel({
               onFontFamilyChange={onFontFamilyChange}
               fontSize={fontSize}
               onFontSizeChange={onFontSizeChange}
+              chatFontSize={chatFontSize}
+              onChatFontSizeChange={onChatFontSizeChange}
               themeMode={themeMode}
               onThemeModeChange={onThemeModeChange}
               accentId={accentId}

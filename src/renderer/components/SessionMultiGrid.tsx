@@ -10,6 +10,7 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
+import type { FontSizeId } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type {
   AgentMode,
@@ -58,6 +59,9 @@ function balancedRowWeights(cellCount: number): number[] {
 
 interface SessionMultiGridProps {
   grid: GridState;
+  /** Agent-window type scale. Set as `data-font-size` on the grid root so the
+      chat subtree resolves the type tokens independently of app chrome. */
+  chatFontSize?: FontSizeId;
   approvals: ApprovalRequest[];
   events: TimelineEvent[];
   rawOutputs: RawProviderOutput[];
@@ -112,6 +116,7 @@ interface SessionMultiGridProps {
 
 export function SessionMultiGrid({
   grid,
+  chatFontSize,
   approvals,
   events,
   rawOutputs,
@@ -301,6 +306,7 @@ export function SessionMultiGrid({
       className="session-multigrid"
       role="group"
       aria-label="Session panes"
+      data-font-size={chatFontSize}
       data-resizing={isResizing ? "true" : undefined}
       style={
         {

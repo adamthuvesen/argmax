@@ -48,6 +48,101 @@ describe("accent CSS contract", () => {
     expect(hardcodedFamilies).toEqual([]);
   });
 
+  it("routes text weight through tokens and runs dark under regular", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const rootRule = cssRuleBody(tokens, ":root");
+    const darkRule = cssRuleBody(tokens, ':root[data-theme="dark"]');
+    const bodyRule = cssRuleBody(tokens, "body");
+
+    expect(rootRule).toContain("--weight-ui: 400;");
+    expect(rootRule).toContain("--weight-prose: 400;");
+    expect(rootRule).toContain("font-weight: var(--weight-ui);");
+    // Inter Variable's wght axis lets dark shave a few units off regular so
+    // light-on-dark strokes stop reading as semi-bold.
+    expect(darkRule).toContain("--weight-ui: 380;");
+    expect(darkRule).toContain("--weight-prose: 390;");
+    expect(bodyRule).toContain("-webkit-font-smoothing: antialiased;");
+    expect(bodyRule).toContain("-moz-osx-font-smoothing: grayscale;");
+  });
+
+  it("keeps dark ink off paper-white while light ink stays readable", () => {
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const rootRule = cssRuleBody(tokens, ":root");
+    const darkRule = cssRuleBody(tokens, ':root[data-theme="dark"]');
+
+    const readHex = (rule: string, token: string): string => {
+      const match = new RegExp(`--${token}:\\s*(?<hex>#[0-9a-f]{6});`, "i").exec(rule);
+      expect(match?.groups?.hex).toBeDefined();
+      return match?.groups?.hex ?? "";
+    };
+    const relativeLuminance = (hex: string): number => {
+      const channels = [1, 3, 5].map((offset) => {
+        const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    };
+    const contrast = (a: string, b: string): number => {
+      const [lighter, darker] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+      return (lighter + 0.05) / (darker + 0.05);
+    };
+
+    const darkText = readHex(darkRule, "text");
+    const darkTextSoft = readHex(darkRule, "text-soft");
+    expect(darkText).not.toBe("#f4f2ec");
+    // Chrome labels sit on --text-soft, so it has to stay quieter than --text
+    // while both clear body-copy contrast against the dark background.
+    expect(relativeLuminance(darkTextSoft)).toBeLessThan(relativeLuminance(darkText));
+    expect(contrast(darkText, readHex(darkRule, "bg"))).toBeGreaterThan(10);
+    expect(contrast(darkTextSoft, readHex(darkRule, "bg"))).toBeGreaterThan(7);
+    expect(contrast(readHex(rootRule, "text"), readHex(rootRule, "bg"))).toBeGreaterThan(10);
+    expect(contrast(readHex(rootRule, "text-soft"), readHex(rootRule, "bg"))).toBeGreaterThan(7);
+  });
+
+  it("keeps chat prose on the prose weight with emphasis only a step above", () => {
+    const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
+    const markdownRule = cssRuleBody(chatConversation, ".markdown");
+    const bubbleParagraphRule = cssRuleBody(chatConversation, ".chat-bubble p");
+    const strongRule = cssRuleBody(chatConversation, ".markdown strong");
+    const codeRule = cssRuleBody(chatConversation, ".markdown code");
+
+    expect(markdownRule).toContain("font-weight: var(--weight-prose);");
+    expect(bubbleParagraphRule).toContain("font-weight: var(--weight-prose);");
+    // Emphasis reads bolder than body without landing on 600+.
+    const strongWeight = Number(/font-weight:\s*(?<weight>\d+);/.exec(strongRule)?.groups?.weight);
+    expect(strongWeight).toBeGreaterThanOrEqual(500);
+    expect(strongWeight).toBeLessThanOrEqual(600);
+    // Mono has no wght axis to shave, so code pins regular instead of inheriting.
+    expect(codeRule).toContain("font-weight: 400;");
+  });
+
+  it("keeps palette, sidebar, and settings list labels off semi-bold", () => {
+    const chromeFiles = [
+      "src/renderer/styles/overlays-inkwell.css",
+      "src/renderer/styles/shell-layout.css",
+      "src/renderer/styles/shell-sessions.css",
+      "src/renderer/styles/settings-layout.css",
+      "src/renderer/styles/settings-diagnostics.css"
+    ];
+    const heavyLabels: string[] = [];
+
+    for (const path of chromeFiles) {
+      const source = readSource(path);
+      for (const match of source.matchAll(/font-weight:\s*(?<weight>\d+)/g)) {
+        const weight = Number(match.groups?.weight);
+        const declaration = source.slice(0, match.index ?? 0);
+        const selector = declaration.slice(declaration.lastIndexOf("\n\n") + 2).split("{")[0]?.trim();
+        // `strong` is real emphasis inside prose; everything else in chrome caps
+        // at 500 so no list label renders semi-bold.
+        if (weight > 500 && !selector?.endsWith("strong")) {
+          heavyLabels.push(`${path}: ${selector} → ${weight}`);
+        }
+      }
+    }
+
+    expect(heavyLabels).toEqual([]);
+  });
+
   it("keeps light-theme scrollbars soft while dark theme keeps contrast", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     const rootRule = cssRuleBody(tokens, ":root");
@@ -242,6 +337,76 @@ describe("accent CSS contract", () => {
     expect(highlightRule).toContain("line-height: 1.55;");
   });
 
+  it("keeps session composer placeholder on the muted token", () => {
+    const chatComposerChips = readSource("src/renderer/styles/chat-composer-chips.css");
+    const placeholderRule = cssRuleBody(
+      chatComposerChips,
+      ".session-input input::placeholder,\n.session-input textarea::placeholder"
+    );
+
+    expect(placeholderRule).toContain("color: var(--muted);");
+    expect(placeholderRule).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+
+  it("keeps unselected session titles quieter than the selected row", () => {
+    const shellSessions = readSource("src/renderer/styles/shell-sessions.css");
+    const linkRule = cssRuleBody(shellSessions, ".session-link");
+    const activeRule = cssRuleBody(shellSessions, ".session-link.active");
+    const subtitleRule = cssRuleBody(shellSessions, ".session-link-subtitle");
+
+    expect(linkRule).toContain("color: var(--text-soft);");
+    expect(activeRule).toContain("color: var(--text);");
+    expect(subtitleRule).toContain("color: var(--muted);");
+    expect(subtitleRule).toContain("font-size: var(--text-xs);");
+  });
+
+  it("keeps command palette rows light: regular titles, quiet meta, one line", () => {
+    const inkwell = readSource("src/renderer/styles/overlays-inkwell.css");
+    const palette = readSource("src/renderer/components/CommandPalette.tsx");
+    const rowRule = cssRuleBody(inkwell, ".command-palette-result");
+    const selectedRule = cssRuleBody(inkwell, ".command-palette-result.selected");
+    const labelRule = cssRuleBody(inkwell, ".command-palette-result-label");
+    const bodyRule = cssRuleBody(inkwell, ".command-palette-result-body");
+    const groupRule = cssRuleBody(inkwell, ".command-palette-group");
+    const countRule = cssRuleBody(inkwell, ".command-palette-count");
+    const tabRule = cssRuleBody(inkwell, ".command-palette-tab");
+    const selectedTabRule = cssRuleBody(inkwell, ".command-palette-tab.selected");
+    const secondaryRule = cssRuleBody(
+      inkwell,
+      ".command-palette-result-subtitle,\n.command-palette-result-snippet,\n.command-palette-result-meta"
+    );
+
+    // Unselected rows read soft, the selected row reads brighter — never bolder.
+    expect(rowRule).toContain("color: var(--text-soft);");
+    expect(selectedRule).toContain("color: var(--text);");
+    expect(labelRule).toContain("color: inherit;");
+    expect(labelRule).toContain("font-weight: 400;");
+    expect(bodyRule).toContain("display: flex;");
+    expect(secondaryRule).toContain("color: var(--muted);");
+    expect(groupRule).toContain("font-weight: 400;");
+    expect(groupRule).toContain("text-transform: none;");
+    expect(countRule).toContain("text-transform: none;");
+    expect(tabRule).toContain("font-weight: 400;");
+    expect(selectedTabRule).toContain("background: var(--panel-sunken);");
+    expect(inkwell).not.toContain(".command-palette-result-hint");
+    expect(palette).not.toContain("command-palette-result-hint");
+  });
+
+  it("centers the search palette in the window instead of pinning it near the top", () => {
+    const inkwell = readSource("src/renderer/styles/overlays-inkwell.css");
+    const backdropRule = cssRuleBody(inkwell, ".command-palette-overlay,\n.search-overlay");
+    const paletteRule = cssRuleBody(inkwell, ".command-palette");
+    const searchModalRule = cssRuleBody(inkwell, ".search-modal");
+
+    expect(backdropRule).toContain("place-items: center;");
+    expect(backdropRule).not.toContain("place-items: start center;");
+    expect(backdropRule).not.toContain("padding-top: 12vh;");
+    // Capped height keeps a long result list scrolling inside the dialog rather
+    // than pushing a centered overlay past the window edges.
+    expect(paletteRule).toContain("max-height: 70vh;");
+    expect(searchModalRule).toContain("max-height: 70vh;");
+  });
+
   it("keeps the cost table bucket header aligned with bucket labels", () => {
     const shellSessions = readSource("src/renderer/styles/shell-sessions.css");
     const cellsRule = cssRuleBody(shellSessions, ".cost-panel-table th,\n.cost-panel-table td");
@@ -417,8 +582,8 @@ describe("accent CSS contract", () => {
 
     expect(tokens).toContain("--font-prose: \"Inter Variable\", Inter, ui-sans-serif");
     expect(tokens).toContain(':root[data-font="lilex"]');
-    expect(tokens).toContain(':root[data-font-size="small"]');
-    expect(tokens).toContain(':root[data-font-size="large"]');
+    expect(tokens).toContain('[data-font-size="small"]');
+    expect(tokens).toContain('[data-font-size="large"]');
     expect(tokens).toContain("--text-terminal: 13px;");
     expect(tokens).toContain("--font-ui: \"Inter Variable\", Inter, ui-sans-serif");
     expect(bubbleParagraphRule).toContain("font-family: var(--font-prose);");

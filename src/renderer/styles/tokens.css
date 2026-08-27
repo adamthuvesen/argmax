@@ -25,6 +25,14 @@
   --muted: #8a857b;
   --muted-strong: #5d594f;
 
+  /* Text weight. Inter Variable exposes a `wght` axis, so these are real
+     values rather than rounded steps. Chrome (sidebar, palette, settings,
+     titlebar, tabs) inherits --weight-ui from :root; chat prose opts back up
+     to --weight-prose so messages stay a touch more present than chrome.
+     Dark mode lowers both, because light-on-dark strokes bloom. */
+  --weight-ui: 400;
+  --weight-prose: 400;
+
   --sage: #5a8f72;
   --sage-soft: #e7efe7;
   --sage-deep: #3d6a52;
@@ -44,6 +52,16 @@
   --syntax-comment: #817b72;
   /* PR status markers in the sidebar. Merged = violet, open = the sage green
      reused under a clearer name. */
+  /* Palette offered by the session row's Edit Icon picker. Decorative only:
+     status stays on the semantic tokens above, so these never carry meaning. */
+  --session-icon-green: #4f8a63;
+  --session-icon-teal: #2f8079;
+  --session-icon-blue: #3f7fd8;
+  --session-icon-violet: #7b56d6;
+  --session-icon-plum: #a1519c;
+  --session-icon-clay: #b56a4a;
+  --session-icon-amber: #b5872f;
+  --session-icon-pink: #c4527d;
   --pr-merged: #8250df;
   --pr-open: var(--sage);
   --stop: #c4726c;
@@ -94,30 +112,6 @@
   --space-7: 28px;
   --space-8: 32px;
 
-  /* Type-size tokens. Whole-app font-size modes override this block through
-     concrete values on [data-font-size], so settings code only flips one html
-     attribute. */
-  --text-4xs: 9px;
-  --text-3xs: 9.5px;
-  --text-2xs: 10px;
-  --text-2xs-plus: 10.5px;
-  --text-xs: 11px;
-  --text-xs-plus: 11.5px;
-  --text-sm: 12px;
-  --text-sm-plus: 12.5px;
-  --text-base: 13px;
-  --text-base-plus: 14px;
-  --text-md-tight: 14.5px;
-  --text-md: 15px;
-  --text-md-plus: 16px;
-  --text-lg-tight: 17px;
-  --text-lg: 18px;
-  --text-lg-plus: 19px;
-  --text-xl: 20px;
-  --text-2xl: 22px;
-  --text-display: 23px;
-  --text-terminal: 13px;
-
   /* Focus ring. Single source for every focus-visible style. */
   --ring: 0 0 0 2px color-mix(in oklab, var(--accent) 50%, transparent);
 
@@ -165,9 +159,39 @@
   --row-hover: rgba(255, 255, 255, 0.6);
 
   font-family: var(--font-ui);
+  font-weight: var(--weight-ui);
   font-feature-settings: "calt", "ss01", "tnum";
   background: var(--bg);
   color: var(--text);
+}
+
+/* Type-size tokens. The three scales below are plain attribute selectors, not
+   `:root`-anchored, so any container can host its own scale: `<html>` carries
+   the app-chrome size while the session grid carries the chat size. Custom
+   properties inherit, so a nested [data-font-size] re-scales its whole subtree.
+   See docs/styling.md. */
+:root,
+[data-font-size="default"] {
+  --text-4xs: 9px;
+  --text-3xs: 9.5px;
+  --text-2xs: 10px;
+  --text-2xs-plus: 10.5px;
+  --text-xs: 11px;
+  --text-xs-plus: 11.5px;
+  --text-sm: 12px;
+  --text-sm-plus: 12.5px;
+  --text-base: 13px;
+  --text-base-plus: 14px;
+  --text-md-tight: 14.5px;
+  --text-md: 15px;
+  --text-md-plus: 16px;
+  --text-lg-tight: 17px;
+  --text-lg: 18px;
+  --text-lg-plus: 19px;
+  --text-xl: 20px;
+  --text-2xl: 22px;
+  --text-display: 23px;
+  --text-terminal: 13px;
 }
 
 /* Dark theme — "Warm Charcoal Editorial".
@@ -191,10 +215,16 @@
   --scrollbar-thumb: var(--line-strong);
   --scrollbar-thumb-hover: var(--muted);
 
-  --text: #f4f2ec;
-  --text-soft: #dcd8cf;
+  /* Ink pulled back off paper-white: #f4f2ec bloomed on warm charcoal and read
+     as bold at regular weight. Chrome labels sit on --text-soft, so the gap
+     between the two stays the selection signal. */
+  --text: #e3e0d8;
+  --text-soft: #c5c1b8;
   --muted: #8a857b;
-  --muted-strong: #b5b1a7;
+  --muted-strong: #aeaaa1;
+
+  --weight-ui: 380;
+  --weight-prose: 390;
 
   --sage: #7fb494;
   --sage-soft: rgba(127, 180, 148, 0.14);
@@ -210,6 +240,15 @@
   --syntax-constant: #d99b62;
   --syntax-variable: #d99b62;
   --syntax-comment: #a29c92;
+  /* Icon palette lifted for warm charcoal: same hues, more light, less chroma. */
+  --session-icon-green: #7fb494;
+  --session-icon-teal: #63b3aa;
+  --session-icon-blue: #8aaef2;
+  --session-icon-violet: #b392f0;
+  --session-icon-plum: #d68ecf;
+  --session-icon-clay: #dd9a76;
+  --session-icon-amber: #d9a566;
+  --session-icon-pink: #ec8bad;
   /* Lifted violet so the merged glyph glows on warm charcoal; open reuses sage. */
   --pr-merged: #b392f0;
   --pr-open: var(--sage);
@@ -364,7 +403,7 @@
   }
 }
 
-:root[data-font-size="small"] {
+[data-font-size="small"] {
   --text-4xs: 8px;
   --text-3xs: 8.5px;
   --text-2xs: 9px;
@@ -387,7 +426,7 @@
   --text-terminal: 12px;
 }
 
-:root[data-font-size="large"] {
+[data-font-size="large"] {
   --text-4xs: 10px;
   --text-3xs: 10.5px;
   --text-2xs: 11px;
@@ -495,6 +534,10 @@ body {
   background-color: var(--bg);
   background-image: var(--grain-image);
   overflow: hidden;
+  /* Grayscale antialiasing rather than subpixel: it keeps light-on-dark strokes
+     from thickening, which is the other half of the dark-mode bloom. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,

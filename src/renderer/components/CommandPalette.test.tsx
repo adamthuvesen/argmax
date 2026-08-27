@@ -101,6 +101,135 @@ describe("CommandPalette", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("opens on the All filter by default and on Files when asked", () => {
+    const { unmount } = render(
+      <CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} />
+    );
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("All");
+    expect(screen.getByRole("searchbox", { name: "Command palette query" })).toHaveAttribute(
+      "placeholder",
+      "Search agents, files, actions…"
+    );
+    unmount();
+
+    render(
+      <CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} initialScope="files" />
+    );
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Files");
+    expect(screen.getByRole("searchbox", { name: "Command palette query" })).toHaveAttribute(
+      "placeholder",
+      "Search files…"
+    );
+  });
+
+  it("exposes the five filter tabs and scopes results to the picked one", () => {
+    const mixed: PaletteCommand[] = [
+      { id: "act", label: "New Session", group: "Actions", run: vi.fn() },
+      { id: "sess", label: "Refactor watcher", group: "Sessions", run: vi.fn() }
+    ];
+    render(<CommandPalette open={true} commands={mixed} onClose={vi.fn()} />);
+
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "All",
+      "Agents",
+      "Files",
+      "Actions",
+      "Settings"
+    ]);
+    expect(screen.getByText("New Session")).toBeInTheDocument();
+    expect(screen.getByText("Refactor watcher")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Agents");
+    expect(screen.getByText("Refactor watcher")).toBeInTheDocument();
+    expect(screen.queryByText("New Session")).toBeNull();
+  });
+
+  it("Tab and Shift+Tab move between filters without leaving the input", () => {
+    render(<CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Agents");
+    expect(input).toHaveFocus();
+
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("All");
+  });
+
+  it("lists workspace files with no query once the Files filter is active", async () => {
+    const onFilePick = vi.fn();
+    const loadFiles = vi.fn().mockResolvedValue(["src/renderer/App.tsx", "docs/ipc.md"]);
+    render(
+      <CommandPalette
+        open={true}
+        commands={COMMANDS}
+        onClose={vi.fn()}
+        initialScope="files"
+        fileSource={{ kind: "workspace", id: "workspace-1" }}
+        loadFiles={loadFiles}
+        onFilePick={onFilePick}
+      />
+    );
+
+    expect(await screen.findByText("App.tsx")).toBeInTheDocument();
+    expect(screen.getByText("Recent Files")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("searchbox", { name: "Command palette query" }), {
+      key: "Enter"
+    });
+    expect(onFilePick).toHaveBeenCalledWith("src/renderer/App.tsx");
+  });
+
+  it("Enter runs a command on the Actions filter and a file on the Files filter", async () => {
+    const run = vi.fn();
+    const onFilePick = vi.fn();
+    const loadFiles = vi.fn().mockResolvedValue(["src/renderer/Needle.tsx"]);
+    render(
+      <CommandPalette
+        open={true}
+        commands={[{ id: "act", label: "Needle Action", group: "Actions", run }]}
+        onClose={vi.fn()}
+        fileSource={{ kind: "workspace", id: "workspace-1" }}
+        loadFiles={loadFiles}
+        onFilePick={onFilePick}
+      />
+    );
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+    fireEvent.change(input, { target: { value: "needle" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(onFilePick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    expect(await screen.findByText("Needle.tsx")).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onFilePick).toHaveBeenCalledWith("src/renderer/Needle.tsx");
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a row on one line: title plus trailing meta, and matches on the meta", () => {
+    const run = vi.fn();
+    render(
+      <CommandPalette
+        open={true}
+        commands={[
+          { id: "sess", label: "Refactor watcher", meta: "argmax", group: "Sessions", run }
+        ]}
+        onClose={vi.fn()}
+      />
+    );
+
+    const row = screen.getByRole("option", { name: /Refactor watcher/ });
+    expect(row).toHaveTextContent("Refactor watcher");
+    expect(row).toHaveTextContent("argmax");
+
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "argmax" } });
+    expect(screen.getByRole("option", { selected: true })).toHaveTextContent("Refactor watcher");
+  });
+
   it("drops stale message-search results after the query becomes too short", async () => {
     let resolveSearch!: (hits: MessageHit[]) => void;
     const searchMessages = vi.fn().mockImplementation(

@@ -70,6 +70,15 @@ pub fn providers_cancel_queued_message(
     Ok(SystemOk { ok: true })
 }
 
+#[tauri::command(rename = "providers:send-queued-message-now")]
+#[specta::specta]
+pub async fn providers_send_queued_message_now(
+    state: State<'_, AppState>,
+    input: ProvidersSendQueuedMessageNowInput,
+) -> ArgmaxResult<SendInputResult> {
+    live_providers(&state)?.send_queued_message_now(input).await
+}
+
 fn live_providers(state: &AppState) -> ArgmaxResult<Arc<ProviderSessionService>> {
     state.providers.get().cloned().ok_or_else(|| {
         ArgmaxError::service(

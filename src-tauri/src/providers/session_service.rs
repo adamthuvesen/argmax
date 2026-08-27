@@ -41,7 +41,8 @@ use crate::{
     error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
-        ProvidersResizeInput, ProvidersSendInput, ProvidersTerminateInput,
+        ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
+        ProvidersTerminateInput,
     },
     ipc::validation::{NonEmptyString, Prompt, SessionId},
     persistence::{
@@ -102,6 +103,8 @@ pub struct ProviderSessionService {
     publish_delta: DeltaPublisher,
     handles: Arc<Mutex<HashMap<String, HandleEntry>>>,
     queues: Arc<Mutex<HashMap<String, VecDeque<PendingMessage>>>>,
+    queue_promotions: Arc<Mutex<HashSet<String>>>,
+    preserve_queue_on_launch_failure: Arc<Mutex<HashSet<String>>>,
     flush_queue: Arc<Mutex<ProviderEventFlushQueue>>,
     /// Debounced `flush_trailing` for sessions with a partial provider line in
     /// the stream buffer (no newline delimiter yet).
@@ -197,6 +200,8 @@ impl ProviderSessionService {
             publish_delta: Arc::new(publish_delta),
             handles: Arc::new(Mutex::new(HashMap::new())),
             queues: Arc::new(Mutex::new(HashMap::new())),
+            queue_promotions: Arc::new(Mutex::new(HashSet::new())),
+            preserve_queue_on_launch_failure: Arc::new(Mutex::new(HashSet::new())),
             flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
             idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
             idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
@@ -774,7 +779,10 @@ impl ProviderSessionService {
 
     pub async fn terminate(self: &Arc<Self>, input: ProvidersTerminateInput) -> ArgmaxResult<()> {
         let session_id = input.session_id.as_str().to_string();
-        let done = self.start_termination(session_id)?;
+        self.queue_promotions
+            .lock_or_recover("queue promotions")
+            .remove(&session_id);
+        let done = self.start_termination(session_id, false)?;
         wait_for_termination(done).await
     }
 
@@ -798,7 +806,7 @@ impl ProviderSessionService {
         // continue disposing their provider processes and persisting state.
         let mut done = Vec::new();
         for session_id in session_ids {
-            done.push(self.start_termination(session_id)?);
+            done.push(self.start_termination(session_id, false)?);
         }
         for ticket in done {
             wait_for_termination(ticket).await?;
@@ -809,9 +817,12 @@ impl ProviderSessionService {
     fn start_termination(
         self: &Arc<Self>,
         session_id: String,
+        preserve_queue: bool,
     ) -> ArgmaxResult<watch::Receiver<Option<ArgmaxResult<()>>>> {
         self.cancel_idle_flush(&session_id);
-        self.clear_queue(&session_id);
+        if !preserve_queue {
+            self.clear_queue(&session_id);
+        }
         let mut jobs = self.termination_jobs.lock_or_recover("termination jobs");
         if let Some(done) = jobs.get(&session_id) {
             return Ok(done.clone());
@@ -892,6 +903,119 @@ impl ProviderSessionService {
         }
         drop(queues);
         self.publish_pending_messages(session_id);
+    }
+
+    pub async fn send_queued_message_now(
+        self: &Arc<Self>,
+        input: ProvidersSendQueuedMessageNowInput,
+    ) -> ArgmaxResult<SendInputResult> {
+        let session_id = input.session_id.as_str().to_string();
+        self.queue_promotions
+            .lock_or_recover("queue promotions")
+            .insert(session_id.clone());
+        let queued_message = {
+            let mut queues = self.queues.lock_or_recover("queues");
+            if let Some(queue) = queues.get_mut(&session_id) {
+                if let Some(index) = queue
+                    .iter()
+                    .position(|message| message.id == input.message_id.as_str())
+                {
+                    let message = queue
+                        .remove(index)
+                        .expect("queued message index must exist");
+                    if queue.is_empty() {
+                        queues.remove(&session_id);
+                    }
+                    Some((index, message))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        let Some((queue_index, message)) = queued_message else {
+            self.queue_promotions
+                .lock_or_recover("queue promotions")
+                .remove(&session_id);
+            return Err(ArgmaxError::service(
+                "QUEUED_MESSAGE_NOT_FOUND",
+                "Queued follow-up no longer exists.",
+            ));
+        };
+
+        let restore = |service: &Self, message: PendingMessage| {
+            let mut queues = service.queues.lock_or_recover("queues");
+            let queue = queues.entry(session_id.clone()).or_default();
+            queue.insert(queue_index.min(queue.len()), message);
+            drop(queues);
+            service.publish_pending_messages(&session_id);
+        };
+
+        let done = match self.start_termination(session_id.clone(), true) {
+            Ok(done) => done,
+            Err(error) => {
+                self.queue_promotions
+                    .lock_or_recover("queue promotions")
+                    .remove(&session_id);
+                restore(self, message);
+                return Err(error);
+            }
+        };
+        self.publish_pending_messages(&session_id);
+        if let Err(error) = wait_for_termination(done).await {
+            self.queue_promotions
+                .lock_or_recover("queue promotions")
+                .remove(&session_id);
+            restore(self, message);
+            return Err(error);
+        }
+        if !self
+            .queue_promotions
+            .lock_or_recover("queue promotions")
+            .contains(&session_id)
+        {
+            return Err(ArgmaxError::service(
+                "QUEUED_SEND_CANCELLED",
+                "Queued follow-up was cancelled by Stop.",
+            ));
+        }
+
+        let send_input = match pending_message_to_send_input(session_id.clone(), message.clone()) {
+            Ok(send_input) => send_input,
+            Err(error) => {
+                self.queue_promotions
+                    .lock_or_recover("queue promotions")
+                    .remove(&session_id);
+                restore(self, message);
+                return Err(error);
+            }
+        };
+        self.preserve_queue_on_launch_failure
+            .lock_or_recover("queue-preserving launches")
+            .insert(session_id.clone());
+        let result = self.send_input(send_input).await;
+        self.preserve_queue_on_launch_failure
+            .lock_or_recover("queue-preserving launches")
+            .remove(&session_id);
+        let promotion_active = self
+            .queue_promotions
+            .lock_or_recover("queue promotions")
+            .remove(&session_id);
+        if !promotion_active {
+            if result.is_ok() {
+                let done = self.start_termination(session_id.clone(), false)?;
+                wait_for_termination(done).await?;
+            }
+            return Err(ArgmaxError::service(
+                "QUEUED_SEND_CANCELLED",
+                "Queued follow-up was cancelled by Stop.",
+            ));
+        }
+        match result {
+            Ok(result) => Ok(result),
+            Err(error) => Err(error),
+        }
     }
 
     pub fn recover_orphaned_sessions(&self) -> ArgmaxResult<usize> {
@@ -1292,7 +1416,13 @@ impl ProviderSessionService {
                 created_at: None,
             },
         )?;
-        self.clear_queue(session_id);
+        if !self
+            .preserve_queue_on_launch_failure
+            .lock_or_recover("queue-preserving launches")
+            .contains(session_id)
+        {
+            self.clear_queue(session_id);
+        }
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace],
@@ -1502,6 +1632,13 @@ impl ProviderSessionService {
     fn drain_queue_after_complete(self: &Arc<Self>, session_id: String) {
         let next = {
             let mut queues = self.queues.lock_or_recover("queues");
+            if self
+                .queue_promotions
+                .lock_or_recover("queue promotions")
+                .contains(&session_id)
+            {
+                return;
+            }
             let Some(queue) = queues.get_mut(&session_id) else {
                 return;
             };

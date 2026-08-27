@@ -1,4 +1,15 @@
-import { Folder, GitBranch, MoreHorizontal, Play, Plus, Send, Square, X } from "lucide-react";
+import {
+  CornerDownRight,
+  Folder,
+  GitBranch,
+  MoreHorizontal,
+  Play,
+  Plus,
+  Send,
+  Square,
+  Trash2,
+  X
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -61,6 +72,7 @@ export function SessionComposer({
   isQueueing,
   onFastModeEnabledChange,
   onCancelQueuedMessage,
+  onSendQueuedMessageNow,
   onSendSessionInput,
   onTerminateSession,
   pendingMessages,
@@ -82,6 +94,7 @@ export function SessionComposer({
   isQueueing: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
+  onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -103,6 +116,7 @@ export function SessionComposer({
 }): JSX.Element {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
@@ -220,7 +234,7 @@ export function SessionComposer({
     ) => Promise<void>
   ): Promise<void> => {
     const trimmedInput = input.trim();
-    if (!session || !trimmedInput || isSending) {
+    if (!session || !trimmedInput || isSending || sendingQueuedMessageId) {
       return;
     }
 
@@ -320,6 +334,18 @@ export function SessionComposer({
               if (!session || !onCancelQueuedMessage) return;
               void onCancelQueuedMessage(session.id, entry.id).catch(() => undefined);
             };
+            const sendQueuedNow = async (): Promise<void> => {
+              if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
+              setSendingQueuedMessageId(entry.id);
+              setStatus(null);
+              try {
+                await onSendQueuedMessageNow(session.id, entry.id);
+              } catch (error) {
+                setStatus(error instanceof Error ? error.message : "Could not send queued follow-up.");
+              } finally {
+                setSendingQueuedMessageId(null);
+              }
+            };
             return (
               <div
                 key={entry.id}
@@ -329,21 +355,42 @@ export function SessionComposer({
                 title={entry.content}
                 aria-label={`Queued follow-up: ${entry.content}`}
                 onKeyDown={(event) => {
-                  if (event.key === "Backspace" || event.key === "Delete") {
+                  if (
+                    sendingQueuedMessageId === null &&
+                    (event.key === "Backspace" || event.key === "Delete")
+                  ) {
                     event.preventDefault();
                     cancel();
                   }
                 }}
               >
+                <CornerDownRight
+                  className="composer-queued-chip-icon"
+                  size={14}
+                  aria-hidden="true"
+                />
                 <span className="composer-queued-chip-label">{entry.content}</span>
+                <span className="composer-queued-chip-state">Queued</span>
+                <button
+                  type="button"
+                  className="composer-queued-chip-action"
+                  aria-label={`Send queued follow-up now: ${entry.content}`}
+                  title="Send now, interrupting the current turn"
+                  disabled={sendingQueuedMessageId !== null}
+                  onClick={() => void sendQueuedNow()}
+                >
+                  <Send size={13} aria-hidden="true" />
+                  <span>Send now</span>
+                </button>
                 <button
                   type="button"
                   className="composer-queued-chip-remove"
                   aria-label="Cancel queued follow-up"
                   title="Cancel queued follow-up"
+                  disabled={sendingQueuedMessageId !== null}
                   onClick={cancel}
                 >
-                  <X size={12} />
+                  <Trash2 size={13} aria-hidden="true" />
                 </button>
               </div>
             );
@@ -557,7 +604,7 @@ export function SessionComposer({
             <button
               className="session-send-button"
               type="button"
-              disabled={!canSend || isSending || !input.trim()}
+              disabled={!canSend || isSending || sendingQueuedMessageId !== null || !input.trim()}
               title="Send now, interrupting the current turn"
               aria-label="Send now"
               onClick={() => void sendNow()}
@@ -569,6 +616,7 @@ export function SessionComposer({
               type="button"
               title="Stop session"
               aria-label="Stop session"
+              disabled={sendingQueuedMessageId !== null}
               onClick={() => void onTerminateSession(session.id)}
             >
               <Square size={9} fill="currentColor" strokeWidth={0} />

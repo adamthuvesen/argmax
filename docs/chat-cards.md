@@ -292,6 +292,12 @@ input method rather than a mode the user has to set:
   then `providers:send-input`, which relaunches on the saved transcript. One
   click, no separate Stop press.
 
+Queued follow-ups appear as full-width rows above the draft. Each row shows its
+queued state, a delete action, and **Send now**. Sending a queued follow-up now
+calls `providers:send-queued-message-now`. The backend removes that item,
+interrupts the current turn, and relaunches with the queued input. Other queued
+follow-ups keep their order and drain after the new turn completes.
+
 Stop keeps the far-right slot it has always had, so a mid-turn reach for "make
 it stop" never turns into an unintended send. Send now is disabled on an empty
 draft, Stop is not. The draft is cleared only after the send resolves, so a

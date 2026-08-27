@@ -1170,6 +1170,45 @@ describe("SessionConversation — streaming & composer", () => {
     expect(onCancel).toHaveBeenCalledWith("session-a", "queued-1");
   });
 
+  it("sends a queued follow-up immediately from its queue row", async () => {
+    let resolveSend: (() => void) | undefined;
+    const onSendQueuedMessageNow = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSend = resolve;
+        })
+    );
+    const pending: PendingMessage[] = [
+      {
+        id: "queued-1",
+        sessionId: "session-a",
+        content: "use the simpler approach",
+        agentMode: "auto",
+        queuedAt: "2026-05-12T15:30:30.000Z"
+      }
+    ];
+
+    renderConversation(baseSession({ state: "running" }), [], {
+      pendingMessages: pending,
+      onSendQueuedMessageNow
+    });
+
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Send queued follow-up now: use the simpler approach"
+      })
+    );
+
+    await waitFor(() =>
+      expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1")
+    );
+    expect(screen.getByRole("button", { name: "Stop session" })).toBeDisabled();
+
+    resolveSend?.();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop session" })).toBeEnabled());
+  });
+
   it("queued chips are keyboard-focusable and Backspace/Delete cancels them", () => {
     const onCancel = vi.fn().mockResolvedValue(undefined);
     const queuedAt = "2026-05-12T15:30:30.000Z";

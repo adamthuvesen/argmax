@@ -20,8 +20,8 @@ use std::{path::PathBuf, process::Command, time::Duration};
 use argmax_lib::approvals::service::ApprovalService;
 use argmax_lib::error::ArgmaxResult;
 use argmax_lib::ipc::inputs::{
-    ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput, ProvidersTerminateInput,
-    TerminalCols, TerminalRows,
+    ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput,
+    ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput, TerminalCols, TerminalRows,
 };
 use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::persistence::time::now_iso;
@@ -976,6 +976,92 @@ async fn send_input_queues_when_handle_rejecting() {
         .sent_inputs
         .clone();
     assert!(sent.is_empty(), "rejected handle should not receive bytes");
+}
+
+#[tokio::test]
+async fn send_queued_message_now_interrupts_without_dropping_the_rest_of_the_queue() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    seed_project_and_workspace(&database);
+    let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+    let handle = FakeHandle::new(false);
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(handle.clone())),
+        {
+            let deltas = Arc::clone(&deltas);
+            move |delta| deltas.lock().expect("deltas poisoned").push(delta)
+        },
+    );
+
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    for content in ["send this now", "keep this queued"] {
+        let result = service
+            .send_input(ProvidersSendInput {
+                session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+                input: Prompt::try_from(content.to_owned()).expect("prompt valid"),
+                provider: None,
+                model_label: None,
+                model_id: None,
+                reasoning_effort: None,
+                fast_mode: false,
+                agent_mode: None,
+                attachments: None,
+            })
+            .await
+            .expect("queue follow-up");
+        assert!(result.queued);
+    }
+
+    let first_message_id = {
+        let deltas = deltas.lock().expect("deltas poisoned");
+        deltas
+            .iter()
+            .rev()
+            .find_map(|delta| {
+                delta
+                    .pending_messages
+                    .as_ref()?
+                    .get(&session.id)?
+                    .first()
+                    .map(|message| message.id.clone())
+            })
+            .expect("queued message id published")
+    };
+
+    let result = service
+        .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            message_id: NonEmptyString::try_from(first_message_id).expect("message id valid"),
+        })
+        .await
+        .expect("send queued message now");
+
+    assert!(!result.queued, "promoted follow-up starts a fresh turn");
+    assert!(
+        handle
+            .state
+            .lock()
+            .expect("fake handle poisoned")
+            .terminate_called,
+        "current turn was interrupted"
+    );
+    wait_for_event(&database, &session.id, "user.message", "send this now").await;
+
+    let remaining = {
+        let deltas = deltas.lock().expect("deltas poisoned");
+        deltas
+            .iter()
+            .rev()
+            .find_map(|delta| delta.pending_messages.as_ref()?.get(&session.id).cloned())
+            .expect("remaining queue published")
+    };
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].content, "keep this queued");
 }
 
 #[tokio::test]

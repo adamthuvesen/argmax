@@ -394,6 +394,13 @@ pub struct ProvidersCancelQueuedMessageInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProvidersSendQueuedMessageNowInput {
+    pub session_id: SessionId,
+    pub message_id: NonEmptyString,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AttachmentsSaveImageInput {
     pub session_id: SessionId,
     pub mime_type: AttachmentMimeType,

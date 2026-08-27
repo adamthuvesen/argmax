@@ -192,6 +192,14 @@ async providersCancelQueuedMessage(input: ProvidersCancelQueuedMessageInput) : P
     else return { status: "error", error: e  as any };
 }
 },
+async providersSendQueuedMessageNow(input: ProvidersSendQueuedMessageNowInput) : Promise<Result<SendInputResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("providers_send_queued_message_now", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async attachmentsSaveImage(input: AttachmentsSaveImageInput) : Promise<Result<SaveImageResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("attachments_save_image", { input }) };
@@ -625,6 +633,7 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
  * model metadata is dropped with it.
  */
 provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null }
+export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }

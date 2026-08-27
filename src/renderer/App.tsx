@@ -16,7 +16,8 @@ import type {
   ComposerAttachment,
   IdeId,
   MenuCommand,
-  ProjectSummary
+  ProjectSummary,
+  WorkspaceContentSearchResult
 } from "../shared/types.js";
 import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
 import type {
@@ -43,10 +44,8 @@ import { useDashboardSession } from "./hooks/useDashboardSession.js";
 import { useSessionCommands } from "./hooks/useSessionCommands.js";
 import {
   CommandPalette,
-  SearchOverlay,
   SettingsPanel,
-  useLazyOverlayPrefetch,
-  WorkspaceContentSearchOverlay
+  useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
 import { useOverlays } from "./hooks/useOverlays.js";
@@ -111,11 +110,7 @@ export function App(): JSX.Element {
     isPaletteOpen,
     setIsPaletteOpen,
     isCheatSheetOpen,
-    setIsCheatSheetOpen,
-    isSearchOpen,
-    setIsSearchOpen,
-    isContentSearchOpen,
-    setIsContentSearchOpen
+    setIsCheatSheetOpen
   } = useOverlays();
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
@@ -415,16 +410,19 @@ export function App(): JSX.Element {
     [isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
-  // ⌘P is the same overlay as ⌘K, opened with the Files filter selected.
+  // ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
   const openFilePalette = useCallback((): void => {
     setPaletteScope("files");
     setIsPaletteOpen(true);
   }, [setIsPaletteOpen]);
-  const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
-  const openContentSearchOverlay = useCallback(
-    (): void => setIsContentSearchOpen(true),
-    [setIsContentSearchOpen]
-  );
+  const openMessagePalette = useCallback((): void => {
+    setPaletteScope("messages");
+    setIsPaletteOpen(true);
+  }, [setIsPaletteOpen]);
+  const openContentPalette = useCallback((): void => {
+    setPaletteScope("contents");
+    setIsPaletteOpen(true);
+  }, [setIsPaletteOpen]);
   const toggleIntegratedTerminal = useCallback((): void => {
     const workspaceId = terminalWorkspaceId(grid, [
       selectedWorkspace?.id,
@@ -438,8 +436,6 @@ export function App(): JSX.Element {
 
     setIsPaletteOpen(false);
     setIsCheatSheetOpen(false);
-    setIsSearchOpen(false);
-    setIsContentSearchOpen(false);
     setIsSettingsOpen(false);
     setIsFullLauncherOpen(false);
     openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
@@ -450,9 +446,7 @@ export function App(): JSX.Element {
     selectedSession?.workspaceId,
     selectedWorkspace?.id,
     setIsCheatSheetOpen,
-    setIsContentSearchOpen,
     setIsPaletteOpen,
-    setIsSearchOpen,
     setIsSettingsOpen,
     snapshot.sessions
   ]);
@@ -473,8 +467,8 @@ export function App(): JSX.Element {
     onMenuCommand: handleMenuCommand,
     onCloseFocusedPane: closeFocusedPane,
     onOpenFilePalette: openFilePalette,
-    onOpenSearch: openSearchOverlay,
-    onOpenContentSearch: openContentSearchOverlay,
+    onOpenSearch: openMessagePalette,
+    onOpenContentSearch: openContentPalette,
     onToggleTerminal: toggleIntegratedTerminal,
     onSelectSession: selectSessionFromKeybinding,
     onCloseSettings: closeSettingsFromKeybinding
@@ -928,7 +922,7 @@ export function App(): JSX.Element {
         onNewSession: () => handleMenuCommand("new-session"),
         onOpenSettings: () => openSettingsTarget("general"),
         onOpenSettingsSection: (group, sectionId) => openSettingsTarget(group, sectionId),
-        onOpenSearch: () => setIsSearchOpen(true),
+        onOpenSearch: openMessagePalette,
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
         onSelectProject: setSelectedProjectId,
@@ -942,7 +936,7 @@ export function App(): JSX.Element {
       openSettingsTarget,
       terminateSession,
       openWorkspaceChat,
-      setIsSearchOpen,
+      openMessagePalette,
       setIsSettingsOpen,
       setGrid,
       setSelectedProjectId
@@ -978,6 +972,22 @@ export function App(): JSX.Element {
       }));
     },
     [sessionLabelById, snapshot.sessions, setIsSettingsOpen, openWorkspaceChat]
+  );
+
+  // `git grep` over the active surface's checkout, backing the palette's
+  // Contents tab (⌘⇧F). Without a registered file source there is nothing to
+  // grep, so the palette shows its "open a project first" empty state.
+  const searchWorkspaceContents = useCallback(
+    async (rawQuery: string): Promise<WorkspaceContentSearchResult> => {
+      const source = paletteFileContext?.source;
+      if (!source || !window.argmax) return { files: [], truncated: false };
+      return window.argmax.workspace.grepContent({
+        kind: source.kind,
+        id: source.id,
+        query: rawQuery
+      });
+    },
+    [paletteFileContext?.source]
   );
 
   const handleBranchSwitch = useCallback(
@@ -1096,7 +1106,7 @@ export function App(): JSX.Element {
       ) : null}
       {/*
         Lazy overlays — only mount when the user actually opens them. The
-        first ⌘K / ⌘F press triggers the dynamic import; subsequent opens
+        first ⌘K / ⌘P / ⌘F press triggers the dynamic import; subsequent opens
         re-use the already-loaded chunk. Fallback is `null` because these
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
@@ -1112,34 +1122,11 @@ export function App(): JSX.Element {
             fileSource={paletteFileContext?.source ?? null}
             loadFiles={loadPaletteFiles}
             onFilePick={paletteFileContext?.onPick}
+            searchContents={searchWorkspaceContents}
           />
         </Suspense>
       ) : null}
       <KeyboardCheatSheet open={isCheatSheetOpen} onClose={() => setIsCheatSheetOpen(false)} />
-      {isSearchOpen ? (
-        <Suspense fallback={null}>
-          <SearchOverlay
-            open={isSearchOpen}
-            onClose={() => setIsSearchOpen(false)}
-            sessionLabelById={sessionLabelById}
-            onSelectSession={(sessionId) => {
-              const target = snapshot.sessions.find((session) => session.id === sessionId);
-              setIsSettingsOpen(false);
-              if (target) openWorkspaceChat(target.workspaceId);
-            }}
-          />
-        </Suspense>
-      ) : null}
-      {isContentSearchOpen ? (
-        <Suspense fallback={null}>
-          <WorkspaceContentSearchOverlay
-            open={isContentSearchOpen}
-            onClose={() => setIsContentSearchOpen(false)}
-            source={paletteFileContext?.source ?? null}
-            onPick={paletteFileContext?.onPick ?? null}
-          />
-        </Suspense>
-      ) : null}
       {toast ? (
         <div className={`toast toast-${toast.kind}`} role="status">
           <span>{toast.message}</span>

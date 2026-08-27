@@ -98,8 +98,8 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   // Tab cycles filters once it is open, so neither chord is a dead end.
   { displayAccelerator: "⌘P", label: "Open command palette on Files" },
   { displayAccelerator: "⌘G", label: "Toggle file tree" },
-  { displayAccelerator: "⌘F", label: "Global search" },
-  { displayAccelerator: "⌘⇧F", label: "Search workspace file contents" },
+  { displayAccelerator: "⌘F", label: "Open command palette on Messages" },
+  { displayAccelerator: "⌘⇧F", label: "Open command palette on File Contents" },
   { displayAccelerator: "⌘J", label: "Toggle integrated terminal" },
   { displayAccelerator: "⌘W", label: "Close focused session pane" },
   { displayAccelerator: "Esc", label: "Close the topmost overlay" }

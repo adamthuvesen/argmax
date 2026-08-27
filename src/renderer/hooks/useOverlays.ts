@@ -11,18 +11,14 @@ export interface OverlayState {
   /** Keyboard cheat sheet (Cmd+/). */
   isCheatSheetOpen: boolean;
   setIsCheatSheetOpen: (open: boolean) => void;
-  /** Global search (Cmd+F). */
-  isSearchOpen: boolean;
-  setIsSearchOpen: (open: boolean) => void;
-  /** Workspace content search (Cmd+Shift+F). */
-  isContentSearchOpen: boolean;
-  setIsContentSearchOpen: (open: boolean) => void;
 }
 
 /**
- * App-shell overlay state. Owns the four mutually-stackable overlays the
- * app exposes (settings, command palette, cheat sheet, search) and an Esc
- * handler that closes the topmost open overlay in z-order.
+ * App-shell overlay state. Owns the mutually-stackable overlays the app
+ * exposes (settings, command palette, cheat sheet) and an Esc handler that
+ * closes the topmost open overlay in z-order. Every search chord — ⌘K, ⌘P,
+ * ⌘F, ⌘⇧F — opens the palette on a different tab, so search needs no state
+ * of its own here.
  *
  * Phase 2.02 extraction: today this is a literal state container so the
  * call-site churn stays minimal. A later iteration can crystallize a
@@ -33,8 +29,6 @@ export function useOverlays(): OverlayState {
   const [isSettingsOpen, setIsSettingsOpenRaw] = useState<boolean>(false);
   const [isPaletteOpen, setIsPaletteOpenRaw] = useState<boolean>(false);
   const [isCheatSheetOpen, setIsCheatSheetOpenRaw] = useState<boolean>(false);
-  const [isSearchOpen, setIsSearchOpenRaw] = useState<boolean>(false);
-  const [isContentSearchOpen, setIsContentSearchOpenRaw] = useState<boolean>(false);
 
   // `useState` setters already have stable identity, but the hook wraps them
   // in `useCallback` indirection so consumers can list them in dep arrays
@@ -43,24 +37,14 @@ export function useOverlays(): OverlayState {
   const setIsSettingsOpen = useCallback((open: boolean) => setIsSettingsOpenRaw(open), []);
   const setIsPaletteOpen = useCallback((open: boolean) => setIsPaletteOpenRaw(open), []);
   const setIsCheatSheetOpen = useCallback((open: boolean) => setIsCheatSheetOpenRaw(open), []);
-  const setIsSearchOpen = useCallback((open: boolean) => setIsSearchOpenRaw(open), []);
-  const setIsContentSearchOpen = useCallback((open: boolean) => setIsContentSearchOpenRaw(open), []);
 
   // Esc precedence — closes one overlay per press, from topmost to deepest:
-  // palette → content search → search → cheat sheet → settings. Typing-target
-  // guard means Esc inside contenteditable / textarea / role=textbox stays
-  // in the input (e.g. cancels an inline edit) instead of dismissing chrome.
+  // palette → cheat sheet → settings. Typing-target guard means Esc inside
+  // contenteditable / textarea / role=textbox stays in the input (e.g. cancels
+  // an inline edit) instead of dismissing chrome.
   const handleEscape = useCallback((): boolean => {
     if (isPaletteOpen) {
       setIsPaletteOpenRaw(false);
-      return true;
-    }
-    if (isContentSearchOpen) {
-      setIsContentSearchOpenRaw(false);
-      return true;
-    }
-    if (isSearchOpen) {
-      setIsSearchOpenRaw(false);
       return true;
     }
     if (isCheatSheetOpen) {
@@ -72,7 +56,7 @@ export function useOverlays(): OverlayState {
       return true;
     }
     return false;
-  }, [isPaletteOpen, isContentSearchOpen, isSearchOpen, isCheatSheetOpen, isSettingsOpen]);
+  }, [isPaletteOpen, isCheatSheetOpen, isSettingsOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -92,10 +76,6 @@ export function useOverlays(): OverlayState {
     isPaletteOpen,
     setIsPaletteOpen,
     isCheatSheetOpen,
-    setIsCheatSheetOpen,
-    isSearchOpen,
-    setIsSearchOpen,
-    isContentSearchOpen,
-    setIsContentSearchOpen
+    setIsCheatSheetOpen
   };
 }

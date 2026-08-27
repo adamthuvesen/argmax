@@ -12,6 +12,7 @@ export type BuildPaletteCommandsInput = {
   onOpenSettings: () => void;
   /** Jumps straight to one settings section — feeds the palette's Settings scope. */
   onOpenSettingsSection: (group: SettingsGroupId, sectionId: string) => void;
+  /** Reopens the palette on its Messages tab — the mouse path to ⌘F. */
   onOpenSearch: () => void;
   onStopSession: (sessionId: string) => void;
   onOpenWorkspace: (workspaceId: string) => void;
@@ -57,8 +58,8 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     },
     {
       id: "action:search-sessions",
-      label: "Search Sessions",
-      subtitle: "Full-text search across every session timeline",
+      label: "Search Messages",
+      subtitle: "Full-text search across every session timeline (⌘F)",
       group: "Actions",
       icon: Search,
       run: onOpenSearch

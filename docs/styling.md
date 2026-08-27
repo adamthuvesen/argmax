@@ -11,7 +11,7 @@ Pure CSS in [src/renderer/styles.css](../src/renderer/styles.css). No CSS-in-JS,
 | Add a font | `src/renderer/lib/fonts.ts` + matching `:root[data-font="…"]` block |
 | Adjust a font-size setting | `src/renderer/lib/fonts.ts` + matching `[data-font-size="…"]` block |
 | Style markdown | `.markdown <selector>` rules (defined for headings, lists, code, etc.) |
-| Style overlays (⌘K / ⌘P palette, review, session chrome) | [overlays-*.css](#overlay-stylesheets): keep import order in `overlays.css` |
+| Style overlays (⌘K / ⌘P / ⌘F palette, review, session chrome) | [overlays-*.css](#overlay-stylesheets): keep import order in `overlays.css` |
 | Style app shell / sidebar | [shell-*.css](#shell-stylesheets): `shell.css` aggregator |
 | Style Settings | [settings-*.css](#settings-stylesheets): `settings.css` aggregator |
 | Style chat / composer / tools | [chat-*.css](#chat-stylesheets): `chat.css` aggregator |
@@ -57,7 +57,7 @@ Keep each module under **1000 lines**. Add rules to the matching surface file; d
 
 | File | Scope |
 |---|---|
-| `overlays-inkwell.css` | Unified search palette (⌘K / ⌘P) including its `.command-palette-scopes` filter tabs, cheat sheet, session/workspace search modals. Shared `.command-palette-overlay` / `.search-overlay` backdrop uses `--modal-backdrop` from `tokens.css` |
+| `overlays-inkwell.css` | Unified search palette (⌘K / ⌘P / ⌘F / ⌘⇧F) including its `.command-palette-scopes` filter tabs, and the cheat sheet. The `.command-palette-overlay` backdrop uses `--modal-backdrop` from `tokens.css` |
 | `overlays-review.css` | Review panel chrome: toolbar, diff list, commit dialog, mode tabs, composer toolbar overrides in review |
 | `overlays-review-files.css` | Review file surface: workspace tree, file tabs, file preview (CodeMirror), diff blocks, project-knowledge rows |
 | `overlays-launcher.css` | Launcher/session shell: session rows, sidebar tree chrome, approval surface, diff line gutters |
@@ -65,9 +65,11 @@ Keep each module under **1000 lines**. Add rules to the matching surface file; d
 | `overlays-launcher-panels.css` | Session panels: debug log, integrated terminal, responsive review/log stacking |
 | `overlays-launcher-cards.css` | Chat cards in session: plan card and question card |
 
-The palette sits **centered in the window**, both axes: the `.command-palette-overlay` / `.search-overlay` backdrop centers its dialog and the dialog caps at `70vh` so a long result list scrolls inside itself instead of running past the window edges. Do not reintroduce a top offset.
+The palette sits **centered in the window**, both axes: the `.command-palette-overlay` backdrop centers its dialog and the dialog caps at `70vh` so a long result list scrolls inside itself instead of running past the window edges. Do not reintroduce a top offset.
 
-Palette rows are **one line each**: icon, title at weight 400, secondary text inline (`subtitle`) or pinned right (`meta`, e.g. a session's project). Unselected titles sit on `--text-soft` and the selected row brightens to `--text` — selection changes tone, never weight. Message hits are the one stacked row, because their snippet is the result.
+Palette rows are **one line each**: icon, title at weight 400, secondary text inline (`subtitle`) or pinned right (`meta`, e.g. a session's project). Unselected titles sit on `--text-soft` and the selected row brightens to `--text` — selection changes tone, never weight. Message hits are the one stacked row, because their snippet is the result. Content-search rows swap the glyph column for a right-aligned line number (`.command-palette-line`), which indents each match under its file.
+
+**Every search chord is this one dialog.** ⌘K opens it on All, ⌘P on Files, ⌘F on Messages, ⌘⇧F on Contents, and Tab cycles the tabs from any of them. Do not add a second search modal.
 
 Keep each stylesheet module under **1000 lines**. Split further by surface if a file grows past the cap. Add new rules to the matching surface file. Do not grow aggregator files (`overlays.css`, `shell.css`, `settings.css`, `chat.css`) beyond imports and a short header comment.
 

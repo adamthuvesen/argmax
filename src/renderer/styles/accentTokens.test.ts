@@ -394,9 +394,8 @@ describe("accent CSS contract", () => {
 
   it("centers the search palette in the window instead of pinning it near the top", () => {
     const inkwell = readSource("src/renderer/styles/overlays-inkwell.css");
-    const backdropRule = cssRuleBody(inkwell, ".command-palette-overlay,\n.search-overlay");
+    const backdropRule = cssRuleBody(inkwell, ".command-palette-overlay");
     const paletteRule = cssRuleBody(inkwell, ".command-palette");
-    const searchModalRule = cssRuleBody(inkwell, ".search-modal");
 
     expect(backdropRule).toContain("place-items: center;");
     expect(backdropRule).not.toContain("place-items: start center;");
@@ -404,7 +403,8 @@ describe("accent CSS contract", () => {
     // Capped height keeps a long result list scrolling inside the dialog rather
     // than pushing a centered overlay past the window edges.
     expect(paletteRule).toContain("max-height: 70vh;");
-    expect(searchModalRule).toContain("max-height: 70vh;");
+    // Every search chord opens this one dialog — no second search modal.
+    expect(inkwell).not.toContain(".search-modal");
   });
 
   it("keeps the cost table bucket header aligned with bucket labels", () => {

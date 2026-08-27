@@ -8,7 +8,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { Command, FileText, Folder, MessageSquare, Quote, SlidersHorizontal } from "lucide-react";
+import { Command, FileSearch, FileText, Folder, MessageSquare, Quote, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   highlightSegments,
@@ -18,6 +18,10 @@ import {
   type PaletteHit,
   type PaletteItem
 } from "../lib/paletteSearch.js";
+import type {
+  WorkspaceContentSearchFile,
+  WorkspaceContentSearchResult
+} from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 
@@ -28,27 +32,45 @@ export type PaletteCommand = PaletteItem;
 const MAX_PER_GROUP = 8;
 const MESSAGE_DEBOUNCE_MS = 150;
 const MIN_MESSAGE_QUERY_LENGTH = 3;
+const CONTENT_DEBOUNCE_MS = 180;
+const MIN_CONTENT_QUERY_LENGTH = 2;
+
+const EMPTY_CONTENT_RESULT: WorkspaceContentSearchResult = { files: [], truncated: false };
 
 /**
- * Scope tabs. One overlay serves every surface — ⌘K opens it on `all`, ⌘P on
- * `files`. Each scope names the groups it shows, in display order.
+ * Scope tabs. One overlay serves every search surface — ⌘K opens it on `all`,
+ * ⌘P on `files`, ⌘F on `messages`, ⌘⇧F on `contents`. Each scope names the
+ * groups it shows, in display order.
  */
-export type PaletteScope = "all" | "agents" | "files" | "actions" | "settings";
+export type PaletteScope =
+  | "all"
+  | "agents"
+  | "files"
+  | "messages"
+  | "contents"
+  | "actions"
+  | "settings";
 
 const SCOPE_TABS: ReadonlyArray<{ scope: PaletteScope; label: string }> = [
   { scope: "all", label: "All" },
   { scope: "agents", label: "Agents" },
   { scope: "files", label: "Files" },
+  { scope: "messages", label: "Messages" },
+  { scope: "contents", label: "Contents" },
   { scope: "actions", label: "Actions" },
   { scope: "settings", label: "Settings" }
 ];
 
 // Sessions lead the mixed list: the thing a user reaches for by name is almost
 // always a running agent, and files/actions stay one keystroke away via tabs.
+// `all` deliberately omits Contents: a git grep needs a checkout and costs a
+// subprocess per keystroke, so it stays behind its own tab.
 const SCOPE_GROUPS: Record<PaletteScope, PaletteGroup[]> = {
   all: ["Sessions", "Files", "Actions", "Settings", "Projects", "Messages"],
   agents: ["Sessions", "Projects", "Messages"],
   files: ["Files"],
+  messages: ["Messages"],
+  contents: ["Contents"],
   actions: ["Actions"],
   settings: ["Settings"]
 };
@@ -60,17 +82,21 @@ const GROUP_LABEL: Record<PaletteGroup, string> = {
   Projects: "Projects",
   Files: "Files",
   Messages: "Messages",
+  Contents: "File Contents",
   Settings: "Settings"
 };
 
 // With no query these groups list what the user touched last, so the header
-// says so. Actions and Settings are static catalogs — "Recent" would lie.
+// says so. Actions and Settings are static catalogs — "Recent" would lie, and
+// Contents has nothing to show until a query runs.
 const RECENT_GROUPS = new Set<PaletteGroup>(["Sessions", "Projects", "Files", "Messages"]);
 
 const SCOPE_PLACEHOLDER: Record<PaletteScope, string> = {
   all: "Search agents, files, actions…",
   agents: "Search agents…",
   files: "Search files…",
+  messages: "Search across sessions…",
+  contents: "Search inside files…",
   actions: "Search actions…",
   settings: "Search settings…"
 };
@@ -83,6 +109,7 @@ const GROUP_ICON: Record<PaletteGroup, LucideIcon> = {
   Projects: Folder,
   Files: FileText,
   Messages: Quote,
+  Contents: FileSearch,
   Settings: SlidersHorizontal
 };
 
@@ -112,6 +139,22 @@ export interface MessageHit {
   run: () => void;
 }
 
+/**
+ * One selectable line. Content search contributes two kinds: a file header and
+ * one row per matching line, so keyboard nav walks matches without leaving the
+ * single linear index the rest of the palette uses.
+ */
+type PaletteRow =
+  | { kind: "hit"; hit: PaletteHit; group: PaletteGroup }
+  | { kind: "message"; hit: MessageHit; group: "Messages" }
+  | { kind: "content-file"; file: WorkspaceContentSearchFile; group: "Contents" }
+  | {
+      kind: "content-match";
+      file: WorkspaceContentSearchFile;
+      matchIndex: number;
+      group: "Contents";
+    };
+
 export interface CommandPaletteProps {
   open: boolean;
   commands: PaletteCommand[];
@@ -132,6 +175,12 @@ export interface CommandPaletteProps {
   fileSource?: PaletteFileSource | null;
   loadFiles?: (source: PaletteFileSource) => Promise<string[]>;
   onFilePick?: (path: string) => void;
+  /**
+   * Optional `git grep` backend for the "Contents" scope. Called with the
+   * trimmed query (length >= 2) after a debounce. Needs the same checkout as
+   * `fileSource`, and picking any content row opens its file via `onFilePick`.
+   */
+  searchContents?: (query: string) => Promise<WorkspaceContentSearchResult>;
 }
 
 export function CommandPalette({
@@ -142,7 +191,8 @@ export function CommandPalette({
   searchMessages,
   fileSource = null,
   loadFiles,
-  onFilePick
+  onFilePick,
+  searchContents
 }: CommandPaletteProps): JSX.Element | null {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<PaletteScope>(initialScope);
@@ -151,11 +201,16 @@ export function CommandPalette({
   const [messagesRunning, setMessagesRunning] = useState(false);
   const [filePaths, setFilePaths] = useState<string[]>([]);
   const [filesRunning, setFilesRunning] = useState(false);
+  const [contentResult, setContentResult] =
+    useState<WorkspaceContentSearchResult>(EMPTY_CONTENT_RESULT);
+  const [contentsRunning, setContentsRunning] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const paletteRef = useRef<HTMLDivElement | null>(null);
   const resultsRef = useRef<HTMLUListElement | null>(null);
   const messageTokenRef = useRef(0);
   const filesTokenRef = useRef(0);
+  const contentTokenRef = useRef(0);
 
   // Document-level Esc + outside-click via the shared hook means Esc works even
   // if focus drifts to a result row (e.g. via screen-reader navigation).
@@ -170,16 +225,20 @@ export function CommandPalette({
     if (!open) {
       messageTokenRef.current += 1;
       filesTokenRef.current += 1;
+      contentTokenRef.current += 1;
       setQuery("");
       setSelectedIndex(0);
       setMessageHits([]);
       setMessagesRunning(false);
       setFilePaths([]);
       setFilesRunning(false);
+      setContentResult(EMPTY_CONTENT_RESULT);
+      setContentsRunning(false);
+      setContentError(null);
       filesCacheKeyRef.current = null;
       return;
     }
-    // Re-opening with a different shortcut (⌘K vs ⌘P) re-selects the tab.
+    // Re-opening with a different shortcut (⌘K vs ⌘P vs ⌘F) re-selects the tab.
     setScope(initialScope);
     inputRef.current?.focus();
   }, [open, initialScope]);
@@ -228,6 +287,48 @@ export function CommandPalette({
     }, MESSAGE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
   }, [open, query, searchMessages, showsGroup]);
+
+  // Debounced `git grep`. Unlike the file list this can't be cached: every
+  // query is a fresh subprocess, so the debounce is the only thing between a
+  // fast typist and a queue of greps.
+  useEffect(() => {
+    if (!open || !searchContents || !showsGroup("Contents")) {
+      contentTokenRef.current += 1;
+      setContentResult(EMPTY_CONTENT_RESULT);
+      setContentsRunning(false);
+      setContentError(null);
+      return;
+    }
+    const trimmed = query.trim();
+    if (trimmed.length < MIN_CONTENT_QUERY_LENGTH) {
+      contentTokenRef.current += 1;
+      setContentResult(EMPTY_CONTENT_RESULT);
+      setContentsRunning(false);
+      setContentError(null);
+      return;
+    }
+    const token = ++contentTokenRef.current;
+    setContentsRunning(true);
+    const handle = window.setTimeout(() => {
+      void searchContents(trimmed)
+        .then((next) => {
+          if (token !== contentTokenRef.current) return;
+          setContentResult(next);
+          setContentError(null);
+        })
+        .catch((caught: unknown) => {
+          if (token !== contentTokenRef.current) return;
+          setContentResult(EMPTY_CONTENT_RESULT);
+          setContentError(caught instanceof Error ? caught.message : "Search failed.");
+        })
+        .finally(() => {
+          if (token === contentTokenRef.current) {
+            setContentsRunning(false);
+          }
+        });
+    }, CONTENT_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [open, query, searchContents, showsGroup]);
 
   // Lazy file-list load — fires on the first non-empty keystroke, or right
   // away on the Files tab. Cached for the palette session keyed by source.
@@ -291,11 +392,7 @@ export function CommandPalette({
   // Flatten hits in display order so keyboard nav has a single linear index.
   // Each row carries its group so we can insert headers without breaking the
   // index/option mapping.
-  const flatRows = useMemo(() => {
-    type Row =
-      | { kind: "hit"; hit: PaletteHit; group: PaletteGroup }
-      | { kind: "message"; hit: MessageHit; group: "Messages" };
-
+  const flatRows = useMemo<PaletteRow[]>(() => {
     const byGroup = new Map<PaletteGroup, PaletteHit[]>();
     for (const hit of localHits) {
       const list = byGroup.get(hit.item.group) ?? [];
@@ -305,7 +402,7 @@ export function CommandPalette({
       }
     }
 
-    const rows: Row[] = [];
+    const rows: PaletteRow[] = [];
     for (const group of visibleGroups) {
       if (group === "Files") {
         for (const hit of fileHits) {
@@ -319,6 +416,15 @@ export function CommandPalette({
         }
         continue;
       }
+      if (group === "Contents") {
+        for (const file of contentResult.files) {
+          rows.push({ kind: "content-file", file, group: "Contents" });
+          for (let index = 0; index < file.matches.length; index += 1) {
+            rows.push({ kind: "content-match", file, matchIndex: index, group: "Contents" });
+          }
+        }
+        continue;
+      }
       const list = byGroup.get(group);
       if (!list) continue;
       for (const hit of list) {
@@ -326,7 +432,33 @@ export function CommandPalette({
       }
     }
     return rows;
-  }, [fileHits, localHits, messageHits, visibleGroups]);
+  }, [contentResult.files, fileHits, localHits, messageHits, visibleGroups]);
+
+  // Every row commits the same way, whichever list it came from. Content rows
+  // open their file: the file header and its match rows both land on the path,
+  // matching what ⌘P file-open does.
+  const activateRow = useCallback(
+    (row: PaletteRow): void => {
+      onClose();
+      switch (row.kind) {
+        case "hit":
+          row.hit.item.run();
+          return;
+        case "message":
+          row.hit.run();
+          return;
+        case "content-file":
+        case "content-match":
+          onFilePick?.(row.file.path);
+          return;
+        default: {
+          const exhaustive: never = row;
+          return exhaustive;
+        }
+      }
+    },
+    [onClose, onFilePick]
+  );
 
   const selectScope = useCallback((next: PaletteScope): void => {
     setScope(next);
@@ -387,12 +519,7 @@ export function CommandPalette({
       event.preventDefault();
       const row = flatRows[selectedIndex];
       if (!row) return;
-      onClose();
-      if (row.kind === "hit") {
-        row.hit.item.run();
-      } else {
-        row.hit.run();
-      }
+      activateRow(row);
       return;
     }
     // Esc is handled by useDismissOnOutsideOrEscape at the document level,
@@ -400,11 +527,15 @@ export function CommandPalette({
   };
 
   const trimmedQuery = query.trim();
-  const anyBackgroundLoading = messagesRunning || filesRunning;
+  const anyBackgroundLoading = messagesRunning || filesRunning || contentsRunning;
+  // Content search answers from two characters, message search from three, so
+  // the "still too short to have run" gate follows the active tab.
+  const minQueryLength = scope === "contents" ? MIN_CONTENT_QUERY_LENGTH : MIN_MESSAGE_QUERY_LENGTH;
   const showingEmptyState =
     flatRows.length === 0 &&
     !anyBackgroundLoading &&
-    (trimmedQuery.length === 0 || trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH);
+    !contentError &&
+    (trimmedQuery.length === 0 || trimmedQuery.length >= minQueryLength);
 
   const totalCount = flatRows.length;
   let lastGroup: PaletteGroup | null = null;
@@ -463,10 +594,12 @@ export function CommandPalette({
             })}
           </div>
           <span className="command-palette-count" aria-hidden="true">
-            {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) || filesRunning
+            {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) ||
+            filesRunning ||
+            contentsRunning
               ? "searching…"
               : totalCount > 0
-                ? `${totalCount} found`
+                ? `${totalCount} found${contentResult.truncated ? " (truncated)" : ""}`
                 : trimmedQuery.length === 0
                   ? "type to filter"
                   : "no matches"}
@@ -479,13 +612,19 @@ export function CommandPalette({
           role="listbox"
           aria-label="Command results"
         >
+          {contentError ? (
+            <li className="command-palette-empty" role="alert">
+              <span className="command-palette-empty-mark" aria-hidden="true">!</span>
+              <span className="command-palette-empty-text">{contentError}</span>
+            </li>
+          ) : null}
           {showingEmptyState ? (
             <li className="command-palette-empty" role="status">
               <span className="command-palette-empty-mark" aria-hidden="true">∅</span>
               <span className="command-palette-empty-text">
                 {trimmedQuery.length > 0
                   ? "No matches — try shorter terms or another filter."
-                  : scope === "files" && !fileSource
+                  : (scope === "files" || scope === "contents") && !fileSource
                     ? "Open a session or project to search its files."
                     : `Start typing to search ${scopeNoun(scope)}.`}
               </span>
@@ -495,9 +634,8 @@ export function CommandPalette({
             const groupHeader = row.group !== lastGroup;
             lastGroup = row.group;
             const isSelected = index === selectedIndex;
-            const key = row.kind === "hit" ? row.hit.item.id : row.hit.id;
             return (
-              <Fragment key={key}>
+              <Fragment key={rowKey(row)}>
                 {groupHeader ? (
                   <li className="command-palette-group" role="presentation">
                     <span className="command-palette-group-label">
@@ -511,31 +649,61 @@ export function CommandPalette({
                   role="option"
                   aria-selected={isSelected}
                   className={`command-palette-result${isSelected ? " selected" : ""}`}
+                  data-content={
+                    row.kind === "content-file"
+                      ? "file"
+                      : row.kind === "content-match"
+                        ? "match"
+                        : undefined
+                  }
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    onClose();
-                    if (row.kind === "hit") {
-                      row.hit.item.run();
-                    } else {
-                      row.hit.run();
-                    }
+                    activateRow(row);
                   }}
                 >
-                  <RowIcon
-                    icon={(row.kind === "hit" ? row.hit.item.icon : undefined) ?? GROUP_ICON[row.group]}
-                  />
+                  {row.kind === "content-match" ? (
+                    <span className="command-palette-line" aria-hidden="true">
+                      {row.file.matches[row.matchIndex]?.line}
+                    </span>
+                  ) : (
+                    <RowIcon
+                      icon={
+                        (row.kind === "hit" ? row.hit.item.icon : undefined) ?? GROUP_ICON[row.group]
+                      }
+                    />
+                  )}
                   {row.kind === "hit" ? (
                     <span className="command-palette-result-body">
                       <PaletteHitRow hit={row.hit} />
                     </span>
-                  ) : (
+                  ) : row.kind === "message" ? (
                     <span className="command-palette-result-body stacked">
                       <MessageHitRow hit={row.hit} />
+                    </span>
+                  ) : row.kind === "content-file" ? (
+                    <span className="command-palette-result-body">
+                      <span className="command-palette-result-label">
+                        {basename(row.file.path)}
+                      </span>
+                      <span className="command-palette-result-subtitle">
+                        {dirname(row.file.path)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="command-palette-result-body">
+                      <span className="command-palette-result-preview">
+                        {row.file.matches[row.matchIndex]?.preview}
+                      </span>
                     </span>
                   )}
                   {row.kind === "hit" && row.hit.item.meta ? (
                     <span className="command-palette-result-meta">
                       <HighlightedText text={row.hit.item.meta} ranges={row.hit.subtitleRanges} />
+                    </span>
+                  ) : null}
+                  {row.kind === "content-file" ? (
+                    <span className="command-palette-result-meta" aria-hidden="true">
+                      {row.file.matches.length}
                     </span>
                   ) : null}
                 </li>
@@ -554,6 +722,12 @@ export function CommandPalette({
               Loading files…
             </li>
           ) : null}
+          {contentsRunning ? (
+            <li className="command-palette-loading" role="status">
+              <span className="command-palette-loading-dot" aria-hidden="true" />
+              Searching file contents…
+            </li>
+          ) : null}
         </ul>
         <footer className="command-palette-footer" aria-hidden="true">
           <span><kbd>↑</kbd><kbd>↓</kbd> select</span>
@@ -569,6 +743,23 @@ export function CommandPalette({
   );
 }
 
+function rowKey(row: PaletteRow): string {
+  switch (row.kind) {
+    case "hit":
+      return row.hit.item.id;
+    case "message":
+      return row.hit.id;
+    case "content-file":
+      return `content:${row.file.path}`;
+    case "content-match":
+      return `content:${row.file.path}:${row.matchIndex}`;
+    default: {
+      const exhaustive: never = row;
+      return exhaustive;
+    }
+  }
+}
+
 function scopeNoun(scope: PaletteScope): string {
   switch (scope) {
     case "all":
@@ -577,6 +768,10 @@ function scopeNoun(scope: PaletteScope): string {
       return "agents, projects, and messages";
     case "files":
       return "files in the active workspace";
+    case "messages":
+      return "messages across every agent";
+    case "contents":
+      return "text inside the project's files";
     case "actions":
       return "actions";
     case "settings":

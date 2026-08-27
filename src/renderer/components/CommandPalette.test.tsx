@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandPalette, type MessageHit, type PaletteCommand } from "./CommandPalette.js";
+import type { WorkspaceContentSearchResult } from "../../shared/types.js";
 
 const COMMANDS: PaletteCommand[] = Array.from({ length: 12 }, (_, i) => ({
   id: `cmd-${i}`,
@@ -122,7 +123,7 @@ describe("CommandPalette", () => {
     );
   });
 
-  it("exposes the five filter tabs and scopes results to the picked one", () => {
+  it("exposes one tab per search chord and scopes results to the picked one", () => {
     const mixed: PaletteCommand[] = [
       { id: "act", label: "New Session", group: "Actions", run: vi.fn() },
       { id: "sess", label: "Refactor watcher", group: "Sessions", run: vi.fn() }
@@ -133,6 +134,8 @@ describe("CommandPalette", () => {
       "All",
       "Agents",
       "Files",
+      "Messages",
+      "Contents",
       "Actions",
       "Settings"
     ]);
@@ -263,5 +266,114 @@ describe("CommandPalette", () => {
     ]);
 
     await waitFor(() => expect(screen.queryByText("Stale message")).toBeNull());
+  });
+
+  describe("Contents filter", () => {
+    const CONTENT_RESULT: WorkspaceContentSearchResult = {
+      files: [
+        { path: "src-tauri/src/index.ts", matches: [{ line: 3, preview: "var abc = 1;" }] },
+        {
+          path: "src/renderer/App.tsx",
+          matches: [
+            { line: 12, preview: "const abc = 'two';" },
+            { line: 33, preview: "abc.toUpperCase();" }
+          ]
+        }
+      ],
+      truncated: false
+    };
+
+    it("greps after a debounce and renders each file with its matching lines", async () => {
+      const searchContents = vi.fn().mockResolvedValue(CONTENT_RESULT);
+      render(
+        <CommandPalette
+          open={true}
+          commands={COMMANDS}
+          onClose={vi.fn()}
+          initialScope="contents"
+          fileSource={{ kind: "workspace", id: "workspace-1" }}
+          onFilePick={vi.fn()}
+          searchContents={searchContents}
+        />
+      );
+
+      const input = screen.getByRole("searchbox", { name: "Command palette query" });
+      fireEvent.change(input, { target: { value: "var abc" } });
+
+      await waitFor(() => expect(searchContents).toHaveBeenCalledWith("var abc"));
+      expect(await screen.findByText("index.ts")).toBeInTheDocument();
+      expect(screen.getByText("var abc = 1;")).toBeInTheDocument();
+      expect(screen.getByText("App.tsx")).toBeInTheDocument();
+      expect(screen.getByText("abc.toUpperCase();")).toBeInTheDocument();
+    });
+
+    it("opens the file behind a match row", async () => {
+      const onFilePick = vi.fn();
+      const onClose = vi.fn();
+      render(
+        <CommandPalette
+          open={true}
+          commands={COMMANDS}
+          onClose={onClose}
+          initialScope="contents"
+          fileSource={{ kind: "workspace", id: "workspace-1" }}
+          onFilePick={onFilePick}
+          searchContents={vi.fn().mockResolvedValue(CONTENT_RESULT)}
+        />
+      );
+
+      fireEvent.change(screen.getByRole("searchbox", { name: "Command palette query" }), {
+        target: { value: "var abc" }
+      });
+
+      fireEvent.mouseDown(await screen.findByText("abc.toUpperCase();"));
+      expect(onFilePick).toHaveBeenCalledWith("src/renderer/App.tsx");
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops stale grep results once the query falls below two characters", async () => {
+      let resolveSearch!: (result: WorkspaceContentSearchResult) => void;
+      const searchContents = vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSearch = resolve;
+          })
+      );
+      render(
+        <CommandPalette
+          open={true}
+          commands={COMMANDS}
+          onClose={vi.fn()}
+          initialScope="contents"
+          fileSource={{ kind: "workspace", id: "workspace-1" }}
+          onFilePick={vi.fn()}
+          searchContents={searchContents}
+        />
+      );
+
+      const input = screen.getByRole("searchbox", { name: "Command palette query" });
+      fireEvent.change(input, { target: { value: "abc" } });
+      await waitFor(() => expect(searchContents).toHaveBeenCalled());
+
+      fireEvent.change(input, { target: { value: "a" } });
+      resolveSearch(CONTENT_RESULT);
+
+      await waitFor(() => expect(screen.queryByText("index.ts")).toBeNull());
+    });
+
+    it("asks for a project when no file source is registered", () => {
+      const searchContents = vi.fn();
+      render(
+        <CommandPalette
+          open={true}
+          commands={COMMANDS}
+          onClose={vi.fn()}
+          initialScope="contents"
+          fileSource={null}
+          searchContents={searchContents}
+        />
+      );
+      expect(screen.getByText(/open a session or project/i)).toBeInTheDocument();
+    });
   });
 });

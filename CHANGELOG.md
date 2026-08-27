@@ -9,12 +9,17 @@ marks the commit that set it. "Unreleased" covers work not yet on `main`.
 ### Changed
 
 - Provider catalog: Claude default is Opus 5; Codex offers GPT-5.6 Sol/Terra/Luna
-  (default Sol · Medium); Cursor offers Grok 4.5, Gemini 3.6 Flash, the GPT-5.6
+  (default Sol · Medium); Cursor offers Grok 4.6, Gemini 3.7 Flash, the GPT-5.6
   family, and Opus 5 Thinking (replacing GPT-5.5 / Opus 4.8 / Gemini 3.5).
 - Launcher and Settings default to GPT-5.6 Sol at Medium effort.
 
 ### Fixed
 
+- Follow-ups show the agent starting work right away instead of leaving the
+  chat blank for the seconds a provider takes to resume: the chat treats a send
+  from the composer or a card as the start of a turn rather than waiting for the
+  session state flip, and a new turn no longer inherits the previous gap's
+  Thinking delay.
 - In dev and test builds, one session's panic no longer takes down parallel
   sessions: shared runtime mutexes recover from poisoning instead of
   cascading panics, with a containment test. Release builds compile with

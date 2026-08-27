@@ -89,6 +89,16 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
         ));
     }
 
+    // A gone checkout is not "recursive watches unavailable". Check first so
+    // startup restore does not warn twice for a stale SQLite row.
+    let workspace_path = Path::new(&workspace.path);
+    if !workspace_path.is_dir() {
+        return Err(ArgmaxError::service(
+            "WATCHER_PATH_MISSING",
+            format!("No directory at {}", workspace.path),
+        ));
+    }
+
     // A dirty bit is all the refresh loop needs.  A bounded channel keeps a
     // noisy build from turning file churn into unbounded memory growth.
     let (tx, rx) = mpsc::channel::<()>(1);
@@ -103,7 +113,7 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
         })
         .map_err(|e| ArgmaxError::service("WATCHER_INIT_FAILED", e.to_string()))?;
 
-    if let Err(error) = watcher.watch(Path::new(&workspace.path), RecursiveMode::Recursive) {
+    if let Err(error) = watcher.watch(workspace_path, RecursiveMode::Recursive) {
         // Some platforms (older Linux kernels) reject recursive watches.
         // Fall back to non-recursive — root-only edits will still fire,
         // nested ones get missed.
@@ -113,7 +123,7 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
             "recursive fs.watch unavailable; falling back to non-recursive"
         );
         watcher
-            .watch(Path::new(&workspace.path), RecursiveMode::NonRecursive)
+            .watch(workspace_path, RecursiveMode::NonRecursive)
             .map_err(|e| ArgmaxError::service("WATCHER_WATCH_FAILED", e.to_string()))?;
     }
 

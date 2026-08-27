@@ -176,11 +176,25 @@ impl WorkspaceService {
             ) {
                 match self.watch(&workspace.id) {
                     Ok(()) => started += 1,
-                    Err(error) => tracing::warn!(
-                        workspace_id = %workspace.id,
-                        ?error,
-                        "failed to restore workspace watcher"
-                    ),
+                    Err(error) => {
+                        if matches!(
+                            &error,
+                            ArgmaxError::ServiceError { sub_code, .. }
+                                if sub_code == "WATCHER_PATH_MISSING"
+                        ) {
+                            tracing::debug!(
+                                workspace_id = %workspace.id,
+                                ?error,
+                                "skipping watcher restore for missing checkout"
+                            );
+                        } else {
+                            tracing::warn!(
+                                workspace_id = %workspace.id,
+                                ?error,
+                                "failed to restore workspace watcher"
+                            );
+                        }
+                    }
                 }
             }
         }

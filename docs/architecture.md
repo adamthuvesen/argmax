@@ -15,6 +15,7 @@ Argmax has a Rust/Tauri runtime and a React/Vite renderer, joined by a stable `w
 | Terminal panel | [terminal.md](terminal.md) |
 | GitHub CI feedback | [gh.md](gh.md) |
 | Learnings | [memory.md](memory.md) |
+| Skills / slash autocomplete | [skills.md](skills.md) |
 | Chat surface and cards | [chat-cards.md](chat-cards.md) |
 | Perf budgets | [performance.md](performance.md) |
 | Tests | [testing.md](testing.md) |
@@ -31,7 +32,7 @@ Key folders:
 - `providers/`: Claude/Codex/Cursor adapters, PTY process runtime, normalizers, and event flush queue.
 - `sessions/`: session orchestration between `ipc/` and `providers/`.
 - `workspaces/`, `review/`, `files/`, `git/`: worktree lifecycle, diffs, file previews/writes, and branch/PR actions.
-- `approvals/`, `checks/`, `gh/`, `memory/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. `notifications.rs` and `updater.rs` are top-level modules.
+- `approvals/`, `checks/`, `gh/`, `memory/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. `notifications.rs` and `updater.rs` are top-level modules. Skill discovery roots are documented in [skills.md](skills.md).
 
 Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspaces:status`) plus post-commit `dashboard:delta` pushes.
 

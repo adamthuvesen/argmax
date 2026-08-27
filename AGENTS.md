@@ -59,6 +59,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Integrated terminal panel** → [terminal.md](docs/terminal.md)
 - **GitHub PR / CI feedback loop** → [gh.md](docs/gh.md)
 - **Learnings extraction / project memory** → [memory.md](docs/memory.md)
+- **Skills / slash autocomplete** → [skills.md](docs/skills.md)
 - **Chat surface** → [chat-cards.md](docs/chat-cards.md)
 - **Styling** → [styling.md](docs/styling.md)
 - **Tests** → [testing.md](docs/testing.md)

@@ -51,7 +51,7 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * Effort levels a given model offers in the picker, low → high. Claude's own
  * models run the full low→ultra list; Codex stops at Extra High; Cursor's
  * GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking go one further to Max (their CLIs
- * expose that variant but not Ultra); Cursor Grok 4.5 and Gemini 3.6 Flash stop
+ * expose that variant but not Ultra); Cursor Grok 4.6 and Gemini 3.7 Flash stop
  * at High. Kept in sync with the Rust adapters' effort → model mapping.
  */
 export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
@@ -67,7 +67,9 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   }
   if (
     provider === "cursor" &&
-    (modelId.startsWith("cursor-grok-4.5") || modelId.startsWith("gemini-3.6-flash"))
+    (modelId.startsWith("cursor-grok-4.6") ||
+      modelId.startsWith("cursor-grok-4.5") ||
+      modelId.startsWith("gemini-3.7-flash"))
   ) {
     return REASONING_EFFORTS.slice(0, 3); // low → high
   }
@@ -119,14 +121,14 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   cursor: [
     { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
     {
-      label: "Grok 4.5 (Cursor)",
-      modelId: "cursor-grok-4.5-medium",
+      label: "Grok 4.6 (Cursor)",
+      modelId: "cursor-grok-4.6-medium",
       supportsReasoningEffort: true,
       contextWindow: 1_000_000
     },
     {
-      label: "Gemini 3.6 Flash (Cursor)",
-      modelId: "gemini-3.6-flash-medium",
+      label: "Gemini 3.7 Flash (Cursor)",
+      modelId: "gemini-3.7-flash-medium",
       supportsReasoningEffort: true,
       contextWindow: 1_000_000
     },
@@ -197,8 +199,8 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // cost telemetry doesn't claim charges that aren't incurred at the API
   // layer.
   "composer-2.5":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "cursor-grok-4.5-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gemini-3.6-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "cursor-grok-4.6-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.7-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-sol-medium":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -241,7 +243,9 @@ const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "claude-opus-4-8-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-7-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gemini-3.5-flash":       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  "gemini-3.5-flash":       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.6-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "cursor-grok-4.5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 
 export interface UsageCounts {

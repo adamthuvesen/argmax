@@ -35,8 +35,8 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "gpt-5.6-terra" => ModelPricing { input: 2.0, output: 12.0, cache_read: 0.2, cache_write: 2.5 },
     "gpt-5.6-luna" => ModelPricing { input: 0.2, output: 1.2, cache_read: 0.02, cache_write: 0.25 },
     "composer-2.5" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "cursor-grok-4.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "gemini-3.6-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "cursor-grok-4.6-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-3.7-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.6-luna-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.6-terra-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.6-sol-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
@@ -80,6 +80,8 @@ static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_
     "claude-opus-4-7-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gemini-3.5-flash" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-3.6-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "cursor-grok-4.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
 };
 
 pub fn normalize_model_id(model_id: &str) -> String {

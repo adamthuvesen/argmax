@@ -4,7 +4,9 @@ import {
   buildConversationEvents,
   buildSessionToolCalls,
   hasRenderableSessionContent,
-  lastSignificantSessionEvent
+  lastAgentResponseEvent,
+  lastSignificantSessionEvent,
+  subAgentToolUseIds
 } from "./sessionConversationModel.js";
 
 function event(
@@ -511,6 +513,44 @@ describe("buildSessionToolCalls", () => {
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_2"]);
   });
 
+  it("keeps an agent launch that completed with a provider error payload", () => {
+    const prompt = "Review the README.";
+    const tools = buildSessionToolCalls([
+      event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+        tool_use_id: "toolu_2",
+        content: "README is OK."
+      }),
+      event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
+        id: "toolu_2",
+        name: "Task",
+        input: {
+          description: "Review README",
+          prompt
+        }
+      }),
+      event("failed-end", "command.completed", "2026-05-12T15:00:01.500Z", "tool_result", {
+        tool_use_id: "toolu_1",
+        is_error: true,
+        content: "permission denied"
+      }),
+      event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+        id: "toolu_1",
+        name: "Task",
+        input: {
+          description: "Review README",
+          prompt
+        }
+      })
+    ], false);
+
+    expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "toolu_1",
+      status: "error",
+      error: "permission denied"
+    });
+  });
+
   it("keeps two completed agent launches with the same prompt", () => {
     const prompt = "Review the README.";
     const tools = buildSessionToolCalls([
@@ -778,5 +818,68 @@ describe("lastSignificantSessionEvent", () => {
     ];
 
     expect(lastSignificantSessionEvent(events)?.id).toBe("answer");
+  });
+
+  it("skips subagent tool boundaries so a child heartbeat is not parent progress", () => {
+    // Child rows never render in the parent chat. Counting them would make the
+    // parent's post-answer grace period restart on every child tool call.
+    const events = [
+      event("child-end", "command.completed", "2026-05-12T15:00:05.000Z", "tool_result", {
+        tool_use_id: "toolu_child"
+      }),
+      event("child-start", "command.started", "2026-05-12T15:00:04.000Z", "Grep", {
+        id: "toolu_child",
+        name: "Grep",
+        input: { pattern: "x" },
+        parent_tool_use_id: "toolu_task"
+      }),
+      event("answer", "message.completed", "2026-05-12T15:00:03.000Z", "Waiting on the agent."),
+      event("task", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+        id: "toolu_task",
+        name: "Task",
+        input: { prompt: "explore" }
+      }),
+      event("user", "user.message", "2026-05-12T15:00:00.000Z", "Go")
+    ];
+    const childToolUseIds = subAgentToolUseIds(buildSessionToolCalls(events));
+
+    expect(childToolUseIds.has("toolu_child")).toBe(true);
+    expect(lastSignificantSessionEvent(events, childToolUseIds)?.id).toBe("answer");
+  });
+});
+
+describe("lastAgentResponseEvent", () => {
+  it("ignores the user's own message so a just-sent turn has no agent response yet", () => {
+    const events = [
+      event("follow-up", "user.message", "2026-05-12T15:00:03.000Z", "And now the tests"),
+      event("answer", "message.completed", "2026-05-12T15:00:02.000Z", "Done"),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+    ];
+
+    expect(lastAgentResponseEvent(events)?.id).toBe("answer");
+  });
+
+  it("counts a failure as the agent responding", () => {
+    const events = [
+      event("boom", "error", "2026-05-12T15:00:04.000Z", "Provider exited"),
+      event("follow-up", "user.message", "2026-05-12T15:00:03.000Z", "And now the tests")
+    ];
+
+    expect(lastAgentResponseEvent(events)?.id).toBe("boom");
+  });
+
+  it("skips subagent rows, raw transport, and truncation markers", () => {
+    const events = [
+      event("raw", "message.delta", "2026-05-12T15:00:06.000Z", "raw", { raw: true }),
+      event("truncated", "error", "2026-05-12T15:00:05.000Z", "event payload truncated", {
+        truncatedEventId: "big"
+      }),
+      event("child", "message.completed", "2026-05-12T15:00:04.000Z", "echo", {
+        parent_tool_use_id: "toolu_task"
+      }),
+      event("answer", "message.completed", "2026-05-12T15:00:03.000Z", "Parent answer")
+    ];
+
+    expect(lastAgentResponseEvent(events)?.id).toBe("answer");
   });
 });

@@ -239,7 +239,7 @@ button.composer-compact-context-row:hover,
 
   .session-input-toolbar {
     display: grid;
-    grid-template-columns: 30px minmax(0, 1fr) 30px auto 36px;
+    grid-template-columns: 30px minmax(0, 1fr) 30px auto auto;
     grid-template-areas: "attach model details mode send";
     align-items: center;
     column-gap: 6px;
@@ -283,7 +283,8 @@ button.composer-compact-context-row:hover,
     display: none;
   }
 
-  .session-input-toolbar .session-send-button {
+  .session-input-toolbar .session-send-button,
+  .session-input-toolbar .composer-send-group {
     grid-area: send;
     justify-self: end;
   }
@@ -672,7 +673,7 @@ button.composer-compact-context-row:hover,
 }
 
 .skill-option-name {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 
@@ -742,7 +743,7 @@ button.composer-compact-context-row:hover,
 
 .session-input input::placeholder,
 .session-input textarea::placeholder {
-  color: #b8bbbe;
+  color: var(--muted);
 }
 
 .session-send-button {
@@ -794,4 +795,13 @@ button.composer-compact-context-row:hover,
 
 .session-stop-button:hover:not(:disabled) {
   background-color: var(--stop-hover);
+}
+
+/* Mid-turn the toolbar carries both controls: Send interrupts the live turn and
+   delivers the draft, Stop only cancels. Stop keeps the far-right slot. */
+.composer-send-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
 }

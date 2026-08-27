@@ -35,12 +35,16 @@ export function GeneralSettings({
   newSessionMode,
   onNewSessionModeChange,
   fontSize,
-  onFontSizeChange
+  onFontSizeChange,
+  chatFontSize,
+  onChatFontSizeChange
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
   fontSize: FontSizeId;
   onFontSizeChange: (id: FontSizeId) => void;
+  chatFontSize: FontSizeId;
+  onChatFontSizeChange: (id: FontSizeId) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -58,7 +62,13 @@ export function GeneralSettings({
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
 }): JSX.Element {
+  const fontSizeChoices = FONT_SIZE_OPTIONS.map((option) => ({
+    value: option.id,
+    label: option.label
+  }));
   const selectedFontSize = FONT_SIZE_OPTIONS.find((o) => o.id === fontSize) ?? FONT_SIZE_OPTIONS[1];
+  const selectedChatFontSize =
+    FONT_SIZE_OPTIONS.find((o) => o.id === chatFontSize) ?? FONT_SIZE_OPTIONS[1];
 
   return (
     <>
@@ -153,17 +163,29 @@ export function GeneralSettings({
           </div>
 
           <Segmented
-            legend="Font size"
+            legend="App font size"
             name="font-size"
             value={fontSize}
             onChange={(v) => onFontSizeChange(v as FontSizeId)}
-            options={FONT_SIZE_OPTIONS.map((option) => ({
-              value: option.id,
-              label: option.label
-            }))}
+            options={fontSizeChoices}
           />
           <div className="settings-card-sub">
-            <p className="settings-font-caption">{selectedFontSize.hint}</p>
+            <p className="settings-font-caption">
+              Sidebar, titlebar, settings, and search. {selectedFontSize.hint}
+            </p>
+          </div>
+
+          <Segmented
+            legend="Agent window font size"
+            name="chat-font-size"
+            value={chatFontSize}
+            onChange={(v) => onChatFontSizeChange(v as FontSizeId)}
+            options={fontSizeChoices}
+          />
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">
+              Conversations, composers, and agent activity panes. {selectedChatFontSize.hint}
+            </p>
           </div>
 
           <ToggleRow

@@ -60,6 +60,11 @@ pub struct WorkspaceSummary {
     pub pr_state: Option<String>,
     /// PR number paired with `pr_state`.
     pub pr_number: Option<i64>,
+    /// Curated Lucide icon name the user picked for this row's sidebar glyph.
+    /// `None` keeps the row on its live status marker.
+    pub icon: Option<String>,
+    /// Named palette entry paired with `icon`.
+    pub icon_color: Option<String>,
 }
 
 pub fn list_workspaces(
@@ -243,6 +248,28 @@ pub fn set_workspace_pinned(
     find_workspace_by_id(connection, workspace_id)
 }
 
+/// Sets (or clears) the custom sidebar glyph for a workspace. Passing `None`
+/// for both values resets the row to its live status marker.
+pub fn set_workspace_icon(
+    connection: &Connection,
+    workspace_id: &str,
+    icon: Option<&str>,
+    icon_color: Option<&str>,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let mut statement = connection
+        .prepare_cached(
+            "UPDATE workspaces SET icon = ?, icon_color = ?, updated_at = ? WHERE id = ?",
+        )
+        .map_err(sqlite_error)?;
+    let changes = statement
+        .execute((icon, icon_color, now_iso(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("workspace", workspace_id));
+    }
+    find_workspace_by_id(connection, workspace_id)
+}
+
 /// Removes (or restores) a workspace from the sidebar's Priority section.
 /// Dismissing stamps the current time and also clears a manual add — "remove
 /// from priority" means remove, whichever door the row came in through.
@@ -358,6 +385,8 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         pinned: row.get::<_, i64>("pinned")? == 1,
         priority_dismissed_at: row.get("priority_dismissed_at")?,
         priority_added_at: row.get("priority_added_at")?,
+        icon: row.get("icon")?,
+        icon_color: row.get("icon_color")?,
         // PR fields are not workspace columns; attach_latest_pr fills them in
         // from gh_pr after the row maps.
         pr_state: None,

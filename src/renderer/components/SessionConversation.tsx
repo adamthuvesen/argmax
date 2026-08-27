@@ -4,6 +4,7 @@ import {
   X
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -36,7 +37,9 @@ import {
   buildConversationEvents,
   buildSessionToolCalls,
   hasRenderableSessionContent,
-  lastSignificantSessionEvent
+  lastAgentResponseEvent,
+  lastSignificantSessionEvent,
+  subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
 import { assignAgentCodenames } from "../lib/agentNames.js";
 import type { ToolCall } from "../lib/toolCalls.js";
@@ -214,7 +217,62 @@ export function SessionConversation({
   // Currently running → the next submit goes onto the queue rather than
   // straight to the agent. Used to tweak placeholder and Send tooltip copy.
   const isQueueing = session?.state === "running";
-  const lastSignificantEvent = useMemo(() => lastSignificantSessionEvent(events), [events]);
+  // Rows that belong to a launched subagent never render in the parent chat.
+  // Letting them drive the parent's progress state made the Thinking label
+  // blink on every child heartbeat while the parent was only waiting.
+  const childToolUseIds = useMemo(() => subAgentToolUseIds(toolCalls), [toolCalls]);
+  const lastSignificantEvent = useMemo(
+    () => lastSignificantSessionEvent(events, childToolUseIds),
+    [childToolUseIds, events]
+  );
+  // A send from this pane proves a turn is starting, whether or not the
+  // backend has flipped the session to `running` and whether or not the new
+  // `user.message` has reached the renderer yet. Without this the chat sat
+  // blank for as long as the provider took to emit its first event: every
+  // progress cue below is gated on `state === "running"`, and a relaunching
+  // or queue-draining follow-up reaches the transcript before that flip does.
+  // The baseline is the newest agent-response id at send time, so the local
+  // state releases the instant the provider says anything of its own.
+  const lastAgentResponseId = useMemo(
+    () => lastAgentResponseEvent(events, childToolUseIds)?.id ?? null,
+    [childToolUseIds, events]
+  );
+  const lastAgentResponseIdRef = useRef<string | null>(lastAgentResponseId);
+  useEffect(() => {
+    lastAgentResponseIdRef.current = lastAgentResponseId;
+  }, [lastAgentResponseId]);
+  const [turnStartBaseline, setTurnStartBaseline] = useState<{ agentResponseId: string | null } | null>(
+    null
+  );
+  const sendSessionInput = useCallback(
+    async (
+      targetSessionId: string,
+      text: string,
+      model: ModelPickerSelection,
+      mode: AgentMode,
+      attachments?: ComposerAttachment[]
+    ): Promise<void> => {
+      setTurnStartBaseline({ agentResponseId: lastAgentResponseIdRef.current });
+      try {
+        await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+      } catch (error) {
+        setTurnStartBaseline(null);
+        throw error;
+      }
+    },
+    [onSendSessionInput]
+  );
+  const isTurnStarting = turnStartBaseline !== null;
+  useEffect(() => {
+    if (turnStartBaseline === null) return;
+    const agentTookOver = lastAgentResponseId !== turnStartBaseline.agentResponseId;
+    // A send that could not start a turn (stop, crash) must not leave the
+    // pane pretending the agent is about to speak.
+    const turnCannotStart = session?.state === "failed" || session?.state === "cancelled";
+    if (agentTookOver || turnCannotStart) {
+      setTurnStartBaseline(null);
+    }
+  }, [lastAgentResponseId, session?.state, turnStartBaseline]);
   // Show the "Thinking" indicator whenever the turn is running but nothing on
   // screen conveys live progress *right now*. The two things that already say
   // "work is happening" are:
@@ -224,13 +282,18 @@ export function SessionConversation({
   // finished chunk ("now I'll edit the file"), silent work should still show
   // Thinking. The `ExitPlanMode` / `AskUserQuestion` tools are *hidden* (rendered
   // as cards), so a running instance of either gives no on-screen indicator —
-  // treat them as "no visible tool running" and let Thinking show.
-  const isStreamingText = lastSignificantEvent?.type === "message.delta";
+  // treat them as "no visible tool running" and let Thinking show. Subagent
+  // child rows fold under their launch row and never render in the parent
+  // chat, so they are not visible progress either. While a turn is starting the
+  // newest delta belongs to the *previous* turn, so it is history, not live
+  // streaming.
+  const isStreamingText = !isTurnStarting && lastSignificantEvent?.type === "message.delta";
   const anyVisibleToolRunning = useMemo(
     () =>
       toolCalls.some(
         (tool) =>
           tool.status === "running" &&
+          tool.parentToolUseId === null &&
           !isExitPlanModeToolName(tool.name) &&
           !isAskUserQuestionToolName(tool.name)
       ),
@@ -253,7 +316,7 @@ export function SessionConversation({
   // progress; it still suppresses the raw-stdout transcript via
   // `hasRenderableContent`.
   const agentWorkingSilently =
-    session?.state === "running" &&
+    (sessionRunning || isTurnStarting) &&
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
     !isStreamingText;
@@ -262,7 +325,9 @@ export function SessionConversation({
   // the agent is waiting on an interactive card.
   const isThinking = agentWorkingSilently;
   const isInitialThinkingBeat =
-    lastSignificantEvent === undefined || lastSignificantEvent.type === "user.message";
+    isTurnStarting ||
+    lastSignificantEvent === undefined ||
+    lastSignificantEvent.type === "user.message";
   const thinkingShowDelayMs =
     lastSignificantEvent?.type === "message.completed"
       ? THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS
@@ -274,6 +339,7 @@ export function SessionConversation({
 
   useEffect(() => {
     setIsThinkingVisible(false);
+    setTurnStartBaseline(null);
     thinkingVisibleSinceRef.current = 0;
     if (thinkingShowTimerRef.current !== null) {
       window.clearTimeout(thinkingShowTimerRef.current);
@@ -291,12 +357,21 @@ export function SessionConversation({
         window.clearTimeout(thinkingHideTimerRef.current);
         thinkingHideTimerRef.current = null;
       }
-      if (!isThinkingVisible && thinkingShowTimerRef.current === null) {
+      if (!isThinkingVisible) {
+        // A new beat can begin while a mid-turn show delay is still pending —
+        // a follow-up landing during the post-answer grace period is exactly
+        // that. The new turn owns the indicator, so drop the stale timer and
+        // show now instead of serving out the previous gap's delay.
         if (isInitialThinkingBeat) {
+          if (thinkingShowTimerRef.current !== null) {
+            window.clearTimeout(thinkingShowTimerRef.current);
+            thinkingShowTimerRef.current = null;
+          }
           thinkingVisibleSinceRef.current = performance.now();
           setIsThinkingVisible(true);
           return;
         }
+        if (thinkingShowTimerRef.current !== null) return;
         thinkingShowTimerRef.current = window.setTimeout(() => {
           thinkingShowTimerRef.current = null;
           thinkingVisibleSinceRef.current = performance.now();
@@ -429,7 +504,7 @@ export function SessionConversation({
                 onOpenFile={onOpenFile}
                 onOpenAgent={onOpenAgent}
                 onTerminateSession={onTerminateSession}
-                onSendSessionInput={onSendSessionInput}
+                onSendSessionInput={sendSessionInput}
                 inputRef={inputRef}
                 shouldRefocusInput={shouldRefocusInput}
                 setStatus={setStatus}
@@ -512,7 +587,7 @@ export function SessionConversation({
           isQueueing={isQueueing}
           onFastModeEnabledChange={onFastModeEnabledChange}
         onCancelQueuedMessage={onCancelQueuedMessage}
-        onSendSessionInput={onSendSessionInput}
+        onSendSessionInput={sendSessionInput}
         onTerminateSession={onTerminateSession}
         pendingMessages={pendingMessages}
         reviewPanelOpen={review.isPanelOpen}

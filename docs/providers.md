@@ -33,6 +33,30 @@ Argmax launches it. Argmax does not discover or authenticate MCP servers.
 - Cursor servers are configured under Settings > Tools & MCP or in
   `~/.cursor/mcp.json`.
 
+An Argmax session gets exactly the MCP surface the same CLI gets in a terminal.
+[environment.rs](../src-tauri/src/providers/environment.rs) hydrates the user's
+login shell before spawning, so stdio servers that resolve secrets or run
+through `uv`/`npx` start the same way they do interactively. The bypass flags in
+[adapters.rs](../src-tauri/src/providers/adapters.rs) do not gate MCP, and
+Claude's `--settings` override adds a settings layer rather than replacing the
+user's MCP config.
+
+The one real gap is Codex app connectors. Structured launches use `codex exec`,
+which loads `mcp_servers` from `~/.codex/config.toml` but not the connector
+plugins (Notion, Linear, Slack, Google Drive) that the ChatGPT desktop app
+wires into its own `codex app-server` through a per-instance socket. Those
+connectors are unavailable to every `codex exec` caller, terminal included, so
+Argmax cannot recover them. A connector that also ships a remote endpoint can be
+registered as an ordinary Codex server instead, for example
+`codex mcp add --url https://mcp.notion.com/mcp notion` followed by
+`codex mcp login notion`. Claude and Cursor expose their connector and plugin
+servers to headless launches already, so both see Notion in Argmax.
+
+Sessions run in the workspace's git worktree. Home-level MCP config is
+unaffected, but a project-scoped `.mcp.json` or `.cursor/mcp.json` only reaches
+the agent when it is tracked by git, since an untracked file never lands in the
+worktree.
+
 On startup, orphan recovery marks sessions left in `running`, `waiting`, or
 `blocked` as failed and terminates any detached provider CLI whose argv still
 references the Argmax session id or stored provider conversation id. Pending
@@ -73,8 +97,8 @@ Cursor has no fast-mode or reasoning-effort flag — it exposes both as distinct
 model ids — so `cursor_model_for` in [adapters.rs](../src-tauri/src/providers/adapters.rs)
 folds the chosen effort and fast mode into the launched `--model` (e.g.
 `gpt-5.6-sol-xhigh`, `claude-opus-5-thinking-max-fast`). Effort variants exist
-for GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking (clamped to Max), plus Grok 4.5
-and Gemini 3.6 Flash (clamped to High). Every Cursor model but Gemini 3.6 Flash
+for GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking (clamped to Max), plus Grok 4.6
+and Gemini 3.7 Flash (clamped to High). Every Cursor model but Gemini 3.7 Flash
 has a `-fast` variant; the picker mirrors this by only offering effort/Speed
 where a variant exists.
 

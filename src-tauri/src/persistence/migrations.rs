@@ -92,6 +92,19 @@ pub static PRIORITY_MANUAL_ADD_COLUMNS: phf::Map<&'static str, &'static [&'stati
     ] as &'static [&'static str],
 };
 
+// Post-v12 `workspaces` shape: v7 plus the custom sidebar glyph the user picked
+// for the row. `icon` holds a curated Lucide icon name, `icon_color` a named
+// palette entry. Both NULL means "use the live status marker".
+pub static WORKSPACE_CUSTOM_ICON_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "last_activity_at", "path", "pinned",
+        "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
 // Post-v9 `approvals` shape: provider-native requests retain the opaque
 // correlation id required to make replay idempotent across terminal states.
 pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -250,7 +263,22 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &APPROVAL_PROVIDER_INVOCATION_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 12,
+        name: "workspace_custom_icon",
+        up: WORKSPACE_CUSTOM_ICON,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_CUSTOM_ICON_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Per-row sidebar glyph chosen from the Edit Icon picker. NULL in both columns
+// keeps the row on its live status marker, so existing workspaces are unchanged.
+const WORKSPACE_CUSTOM_ICON: &str = r#"
+ALTER TABLE workspaces ADD COLUMN icon TEXT;
+ALTER TABLE workspaces ADD COLUMN icon_color TEXT;
+"#;
 
 // Earlier Codex normalization stored cumulative turn usage as live context
 // occupancy. Clear those values so upgraded sessions do not keep showing a
@@ -836,7 +864,7 @@ mod tests {
         // them against the head shapes rather than the v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "sessions")
             .expect("sessions");
-        verify_table_columns(&connection, &PRIORITY_MANUAL_ADD_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_CUSTOM_ICON_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -891,6 +919,7 @@ mod tests {
                     11,
                     compute_migration_checksum(CANCEL_LEGACY_PROVIDER_APPROVALS)
                 ),
+                (12, compute_migration_checksum(WORKSPACE_CUSTOM_ICON)),
             ]
         );
 
@@ -987,7 +1016,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &PRIORITY_MANUAL_ADD_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_CUSTOM_ICON_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 

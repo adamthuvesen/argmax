@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use argmax_lib::checks::service::{CheckService, RunWorkspaceCheckInput};
+use argmax_lib::error::ArgmaxError;
 use argmax_lib::ipc::inputs::{
     OpenIdeChoice, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
     WorkspacesCreateIsolatedInput, WorkspacesKeepInput, WorkspacesOpenInIdeInput,
@@ -188,6 +189,28 @@ async fn create_current_records_shared_workspace_pointing_at_repo() {
     assert!(summary.shared_workspace);
     assert_eq!(summary.branch, "main");
     assert_eq!(summary.path, repo.path().display().to_string());
+}
+
+#[test]
+fn create_current_installs_watcher_without_tokio_context() {
+    let repo = seed_git_repo(&[("file.txt", "x")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let service = WorkspaceService::new(database);
+
+    let input = WorkspacesCreateCurrentInput {
+        project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+        task_label: TaskLabel::try_from("explore".to_owned()).expect("task label"),
+    };
+    let summary = service.create_current(input).expect("create current");
+    assert_eq!(service.open_watcher_count(), 1);
+    service.close_watcher(&summary.id);
+    assert_eq!(service.open_watcher_count(), 0);
 }
 
 #[tokio::test]
@@ -710,6 +733,47 @@ async fn startup_restores_watchers_for_kept_workspaces() {
     assert_eq!(service.start_open_watchers().expect("start watchers"), 1);
     assert_eq!(service.open_watcher_count(), 1);
     service.close_watcher(&workspace.id);
+}
+
+#[tokio::test]
+async fn startup_skips_watchers_when_checkout_is_gone() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let connection = database.connection();
+    let workspace = persist_workspace(
+        &connection,
+        &PersistWorkspaceInput {
+            id: "w-missing-path".to_owned(),
+            project_id: PROJECT_ID.to_owned(),
+            task_label: "missing checkout".to_owned(),
+            branch: "main".to_owned(),
+            base_ref: "main".to_owned(),
+            path: "/definitely/missing/argmax-watch-test".to_owned(),
+            state: "kept".to_owned(),
+            shared_workspace: true,
+            dirty: false,
+            changed_files: 0,
+        },
+    )
+    .expect("persist workspace");
+    drop(connection);
+
+    let service = WorkspaceService::new(database);
+    let error = service
+        .watch(&workspace.id)
+        .expect_err("missing checkout cannot be watched");
+    assert!(matches!(
+        error,
+        ArgmaxError::ServiceError { sub_code, .. } if sub_code == "WATCHER_PATH_MISSING"
+    ));
+    assert_eq!(service.start_open_watchers().expect("start watchers"), 0);
+    assert_eq!(service.open_watcher_count(), 0);
 }
 
 #[tokio::test]

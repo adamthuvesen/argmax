@@ -443,6 +443,14 @@ async workspacesSetLabel(input: WorkspacesSetLabelInput) : Promise<Result<Worksp
     else return { status: "error", error: e  as any };
 }
 },
+async workspacesSetIcon(input: WorkspacesSetIconInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_set_icon", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async prsListForSession(input: PrsListForSessionInput) : Promise<Result<GhPrRecord[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("prs_list_for_session", { input }) };
@@ -589,7 +597,7 @@ export type ProviderCapabilityReport = { provider: ProviderId; displayName: stri
  * never hard-blocks on it, since a CLI changing its status command must not
  * lock out a working provider.
  */
-authenticated: boolean | null; setupGuidance: string | null;
+authenticated: boolean | null; setupGuidance: string | null; 
 /**
  * Whether Argmax can answer a native provider permission request. The
  * current structured runtime is observation-only for Claude/Codex and
@@ -645,6 +653,12 @@ export type SessionCostSummary = { sessionId: string; modelId: string | null; to
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null }
 export type SessionEventsSinceResult = { events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; eventCursor: number; rawOutputCursor: number }
+/**
+ * A picker token (icon name or palette color name). The renderer owns the
+ * catalog; Rust only guarantees the value is a short slug so nothing arbitrary
+ * lands in the column.
+ */
+export type SessionIconToken = string
 export type SessionId = string
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
@@ -730,7 +744,16 @@ prState: string | null;
 /**
  * PR number paired with `pr_state`.
  */
-prNumber: number | null }
+prNumber: number | null; 
+/**
+ * Curated Lucide icon name the user picked for this row's sidebar glyph.
+ * `None` keeps the row on its live status marker.
+ */
+icon: string | null; 
+/**
+ * Named palette entry paired with `icon`.
+ */
+iconColor: string | null }
 export type WorkspaceTargetId = string
 export type WorkspaceTargetKind = "workspace" | "project"
 export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
@@ -741,6 +764,11 @@ export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: T
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
 export type WorkspacesOpenInIdeInput = { workspaceId: WorkspaceId; ide: OpenIdeChoice }
 export type WorkspacesRefreshStatusInput = { workspaceId: WorkspaceId }
+/**
+ * Custom sidebar glyph for a workspace row. Both fields null clears the glyph
+ * and returns the row to its live status marker.
+ */
+export type WorkspacesSetIconInput = { workspaceId: WorkspaceId; icon: SessionIconToken | null; iconColor: SessionIconToken | null }
 export type WorkspacesSetLabelInput = { workspaceId: WorkspaceId; taskLabel: TaskLabel }
 export type WorkspacesSetPinnedInput = { workspaceId: WorkspaceId; pinned: boolean }
 export type WorkspacesSetPriorityAddedInput = { workspaceId: WorkspaceId; added: boolean }

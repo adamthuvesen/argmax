@@ -7,6 +7,8 @@ interface GlobalKeybindingArgs {
   sessions: SessionSummary[];
   /** Re-uses the menu-command dispatcher so keypresses share behavior with the native menu. */
   onMenuCommand: (command: MenuCommand) => void;
+  /** Cmd+P opens the command palette with its Files filter pre-selected. */
+  onOpenFilePalette: () => void;
   /** Cmd+F opens the global search overlay. */
   onOpenSearch: () => void;
   /** Cmd+Shift+F opens the workspace content search overlay (git grep). */
@@ -32,10 +34,8 @@ interface GlobalKeybindingArgs {
  *   Cmd/Ctrl+1..9 → jump to the nth visible session
  *   Cmd/Ctrl+,    → open-settings (menu command)
  *   Cmd/Ctrl+N    → new-session (menu command)
- *   Cmd/Ctrl+K    → open-command-palette (menu command)
- *   Cmd/Ctrl+P    → open-command-palette (alias of ⌘K — context-aware
- *                   Files group surfaces in the palette when a workspace
- *                   or project is the active surface)
+ *   Cmd/Ctrl+K    → open-command-palette (menu command), All filter
+ *   Cmd/Ctrl+P    → same palette, Files filter pre-selected
  *   Cmd/Ctrl+/    → open-cheat-sheet (menu command)
  *   Cmd/Ctrl+F    → open global search (session messages)
  *   Cmd/Ctrl+Shift+F → open workspace content search (git grep)
@@ -48,6 +48,7 @@ interface GlobalKeybindingArgs {
 export function useGlobalKeybindings({
   sessions,
   onMenuCommand,
+  onOpenFilePalette,
   onOpenSearch,
   onOpenContentSearch,
   onToggleTerminal,
@@ -96,7 +97,7 @@ export function useGlobalKeybindings({
       }
       if (event.key.toLowerCase() === "p" && !event.shiftKey) {
         event.preventDefault();
-        onMenuCommand("open-command-palette");
+        onOpenFilePalette();
         return;
       }
       if (isTypingTarget(event.target)) return;
@@ -129,6 +130,7 @@ export function useGlobalKeybindings({
   }, [
     sessions,
     onMenuCommand,
+    onOpenFilePalette,
     onOpenSearch,
     onOpenContentSearch,
     onToggleTerminal,

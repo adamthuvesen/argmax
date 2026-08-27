@@ -474,7 +474,7 @@
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.01em;
   transition: color var(--duration-fast) var(--ease);
 }
@@ -506,7 +506,7 @@
   background: var(--panel);
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   outline: none;
 }
 
@@ -658,7 +658,7 @@
 
 .model-picker-row[aria-selected="true"] .model-picker-item {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .model-picker-name {
@@ -859,7 +859,7 @@
 .project-picker-item[aria-pressed="true"] {
   background: var(--panel-sunken);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .project-picker-item:disabled,
@@ -880,7 +880,7 @@
   margin: 3px 6px;
 }
 
-/* Sidebar "sort projects" menu — opens downward from the rail-heading
+/* Sidebar "sort projects" menu — opens downward from the `.rail-actions`
    trigger and anchors to the trigger's right edge so it stays inside the
    sidebar column. */
 .rail-sort-popover {
@@ -1030,7 +1030,7 @@
 .git-actions-label {
   color: var(--muted-strong);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1070,7 +1070,7 @@
   background: var(--accent);
   color: var(--bubble-on-ink);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -1120,7 +1120,7 @@
   padding: 3px 9px 1px;
   color: var(--muted);
   font-size: var(--text-2xs);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;

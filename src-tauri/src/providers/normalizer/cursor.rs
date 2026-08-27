@@ -468,7 +468,8 @@ mod tests {
 
     #[test]
     fn cursor_usage_uses_context_model() {
-        let mut context = NormalizerSessionContext::with_cursor_model("composer-2.5");
+        let mut context =
+            NormalizerSessionContext::for_provider(ProviderId::Cursor, "composer-2.5");
         let result = normalize_provider_event(
             ProviderId::Cursor,
             &output_event(
@@ -478,5 +479,18 @@ mod tests {
         );
         assert_eq!(result.usages[0].model_id, "composer-2.5");
         assert_eq!(result.usages[0].context_tokens, Some(10));
+    }
+
+    #[test]
+    fn cursor_usage_without_a_seeded_model_is_unknown() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(
+                r#"{"type":"result","subtype":"success","usage":{"inputTokens":10,"outputTokens":20,"cacheReadTokens":0,"cacheWriteTokens":0}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(result.usages[0].model_id, "cursor-unknown");
     }
 }

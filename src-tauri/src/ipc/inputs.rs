@@ -607,6 +607,49 @@ pub struct WorkspacesSetLabelInput {
     pub task_label: TaskLabel,
 }
 
+/// Custom sidebar glyph for a workspace row. Both fields null clears the glyph
+/// and returns the row to its live status marker.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspacesSetIconInput {
+    pub workspace_id: WorkspaceId,
+    pub icon: Option<SessionIconToken>,
+    pub icon_color: Option<SessionIconToken>,
+}
+
+/// A picker token (icon name or palette color name). The renderer owns the
+/// catalog; Rust only guarantees the value is a short slug so nothing arbitrary
+/// lands in the column.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(transparent)]
+pub struct SessionIconToken(String);
+
+impl SessionIconToken {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionIconToken {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        let valid_length = (1..=64).contains(&value.len());
+        let valid_charset = value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        if valid_length && valid_charset {
+            Ok(Self(value))
+        } else {
+            Err(serde::de::Error::custom(
+                "icon tokens must be 1..=64 ASCII alphanumeric, hyphen, or underscore characters",
+            ))
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrsListForSessionInput {

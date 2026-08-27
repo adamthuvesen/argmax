@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   applyFontSizeToDocument,
   applyFontToDocument,
+  CHAT_FONT_SIZE_STORAGE_KEY,
   DEFAULT_FONT_ID,
   DEFAULT_FONT_SIZE_ID,
   FONT_SIZE_OPTIONS,
@@ -10,6 +11,7 @@ import {
   FONT_STORAGE_KEY,
   resolveCssPxVariable,
   resolveTerminalFontSize,
+  readStoredChatFontSize,
   readStoredFontSize,
   readStoredFont
 } from "./fonts.js";
@@ -17,6 +19,7 @@ import {
 afterEach(() => {
   window.localStorage.removeItem(FONT_STORAGE_KEY);
   window.localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+  window.localStorage.removeItem(CHAT_FONT_SIZE_STORAGE_KEY);
   document.documentElement.removeAttribute("data-font");
   document.documentElement.removeAttribute("data-font-size");
   document.documentElement.style.removeProperty("--text-terminal");
@@ -65,6 +68,28 @@ describe("fonts", () => {
   it("falls back to default when storage holds an unknown font size id", () => {
     window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "gigantic");
     expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE_ID);
+  });
+
+  it("starts the agent-window size equal to the app size", () => {
+    expect(readStoredChatFontSize()).toBe(DEFAULT_FONT_SIZE_ID);
+
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "large");
+    expect(readStoredChatFontSize()).toBe("large");
+  });
+
+  it("keeps the agent-window size independent once it is stored", () => {
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "large");
+    window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, "small");
+
+    expect(readStoredChatFontSize()).toBe("small");
+    expect(readStoredFontSize()).toBe("large");
+  });
+
+  it("falls back to the app size when the stored agent-window size is unknown", () => {
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "small");
+    window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, "gigantic");
+
+    expect(readStoredChatFontSize()).toBe("small");
   });
 
   it("exposes the hidden whole-app font size options", () => {

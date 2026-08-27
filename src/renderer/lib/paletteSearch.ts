@@ -1,12 +1,18 @@
 import uFuzzy from "@leeoniya/ufuzzy";
 import type { LucideIcon } from "lucide-react";
 
-export type PaletteGroup = "Actions" | "Sessions" | "Projects" | "Files" | "Messages";
+export type PaletteGroup = "Actions" | "Sessions" | "Projects" | "Files" | "Messages" | "Settings";
 
 export interface PaletteItem {
   id: string;
   label: string;
+  /** Secondary text shown inline after the label — a file's directory, an action's blurb. */
   subtitle?: string;
+  /**
+   * Trailing text pinned to the row's right edge — the project a session belongs
+   * to. Rows carry either this or a subtitle, never both.
+   */
+  meta?: string;
   group: PaletteGroup;
   /**
    * Per-item glyph. Actions each carry their own (New Session → Plus, etc.);
@@ -89,18 +95,18 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
   const labelHits = rankBy(items, labels, query, "label");
 
   const matched = new Set(labelHits.map((hit) => hit.item.id));
-  const remaining = items.filter((item) => item.subtitle && !matched.has(item.id));
+  const remaining = items.filter((item) => secondaryText(item) && !matched.has(item.id));
   const subtitleHits =
     remaining.length > 0
-      ? rankBy(
-          remaining,
-          remaining.map((item) => item.subtitle ?? ""),
-          query,
-          "subtitle"
-        )
+      ? rankBy(remaining, remaining.map(secondaryText), query, "subtitle")
       : [];
 
   return [...labelHits, ...subtitleHits];
+}
+
+/** The row's one piece of secondary text, wherever it renders. */
+function secondaryText(item: PaletteItem): string {
+  return item.meta ?? item.subtitle ?? "";
 }
 
 function rankBy(

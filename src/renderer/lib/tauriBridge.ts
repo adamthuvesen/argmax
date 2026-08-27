@@ -152,7 +152,8 @@ function createTauriArgmaxApi(): ArgmaxApi {
         invokeCommand<WorkspaceSummary>("workspaces:set-priority-dismissed", input),
       setPriorityAdded: (input) =>
         invokeCommand<WorkspaceSummary>("workspaces:set-priority-added", input),
-      setLabel: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-label", input)
+      setLabel: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-label", input),
+      setIcon: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-icon", input)
     },
     providers: {
       discover: (refresh = false) =>

@@ -35,11 +35,13 @@ export const LIGHT_XTERM_THEME = {
 
 export const DARK_XTERM_THEME = {
   background: "#0e0e0c",
-  foreground: "#f4f2ec",
-  cursor: "#f4f2ec",
+  // Mirrors the dark theme's --text / --text-soft: paper-white bloomed on warm
+  // charcoal, and the terminal shouldn't be the one surface still shouting.
+  foreground: "#e3e0d8",
+  cursor: "#e3e0d8",
   cursorAccent: "#0e0e0c",
   selectionBackground: "rgba(127, 180, 148, 0.32)",
-  selectionForeground: "#f4f2ec",
+  selectionForeground: "#e3e0d8",
   // ANSI 0-7: tuned for warm charcoal — lifted lightness, slightly reduced chroma.
   black: "#2a2a25",
   red: "#e08591",
@@ -48,7 +50,7 @@ export const DARK_XTERM_THEME = {
   blue: "#8fb3d4",
   magenta: "#d090c0",
   cyan: "#86c0c9",
-  white: "#dcd8cf",
+  white: "#c5c1b8",
   // ANSI 8-15 (bright variants) — pushed ~10pp brighter than the base 8.
   brightBlack: "#5d594f",
   brightRed: "#f0a3ad",
@@ -57,7 +59,7 @@ export const DARK_XTERM_THEME = {
   brightBlue: "#abc6e0",
   brightMagenta: "#dba8ce",
   brightCyan: "#a3d0d8",
-  brightWhite: "#f4f2ec"
+  brightWhite: "#e3e0d8"
 } as const;
 
 export interface XtermThemeObject {

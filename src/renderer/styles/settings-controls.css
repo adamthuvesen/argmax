@@ -389,7 +389,7 @@
 
 .theme-picker-chip[data-theme-mode="dark"] .theme-picker-swatch {
   --swatch-bg: #0e0e0c;
-  --swatch-text: #f4f2ec;
+  --swatch-text: #e3e0d8;
   --swatch-accent: #7fb494;
 }
 

@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   type JSX,
@@ -10,6 +11,7 @@ import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shar
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { assignAgentCodenames, fallbackCodename } from "../lib/agentNames.js";
 import type { AgentGridCell } from "../lib/gridState.js";
+import { isTypingTarget } from "../lib/typingTarget.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivityPane } from "./AgentActivityPane.js";
 
@@ -117,6 +119,22 @@ export function AgentTabsPane({
       },
     [focusTab, onActivateTab, onCloseTab, parentToolUseIds]
   );
+
+  useEffect(() => {
+    if (!isFocused) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (event.defaultPrevented) return;
+      if (isTypingTarget(event.target)) return;
+      if (event.target instanceof Element && event.target.closest(".plan-card, .question-card")) {
+        return;
+      }
+      event.preventDefault();
+      onCloseCell();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isFocused, onCloseCell]);
 
   return (
     <div className="agent-tabs-pane">

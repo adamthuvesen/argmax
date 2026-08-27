@@ -1,14 +1,13 @@
 import {
   Archive,
-  CircleCheck,
   CircleEllipsis,
   CircleX,
   ExternalLink,
-  Folder,
   GitMerge,
   GitPullRequest,
   ListChecks,
   ListPlus,
+  Palette,
   Pencil,
   Pin,
   PinOff,
@@ -33,6 +32,12 @@ import { formatTokens } from "../formatTokens.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import type { PriorityAttention } from "../lib/priority.js";
+import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
+import {
+  SESSION_ICON_PICKER_HEIGHT,
+  SESSION_ICON_PICKER_WIDTH,
+  SessionIconPicker
+} from "./SessionIconPicker.js";
 
 // Human phrasing appended to the row title when the row sits in the sidebar's
 // Priority section, so screen readers (and tests) hear why it floated up.
@@ -82,6 +87,8 @@ type SidebarSessionRowProps = {
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Non-priority rows — right-click "Add to priority" floats the row manually. */
   onAddToPriority?: (workspaceId: string) => void;
+  /** Right-click "Edit Icon" — both values null clears the custom glyph. */
+  onSetIcon?: (workspaceId: string, icon: string | null, iconColor: string | null) => void;
 };
 
 const IDE_POPOVER_WIDTH = 200;
@@ -102,13 +109,13 @@ function idePopoverPosition(rect: Pick<DOMRect, "bottom" | "right">): { top: num
   };
 }
 
-// Leading glyph for a session row. A turn in flight takes precedence over
-// everything: the marker becomes a working ring (same circle geometry as the
-// check, pulsing center dot) so live agent activity reads at a glance, then
-// reverts to the icons below when the turn ends. Otherwise a live pull
-// request wins over session state: a merged PR shows a violet merge glyph, an
-// open PR a green pull-request glyph. With no PR (or a closed one) it falls
-// back to a red cross when the session failed and a calm check ring otherwise.
+// Leading glyph for a session row, rendered only when the row carries a live
+// signal (see statusOverlayFor). A turn in flight takes precedence over
+// everything: the marker becomes a working ring with a pulsing center dot so
+// live agent activity reads at a glance, then reverts to the icons below when
+// the turn ends. Otherwise a live pull request wins over session state: a
+// merged PR shows a violet merge glyph, an open PR a green pull-request glyph.
+// With no PR (or a closed one) a failed session shows a red cross.
 function StatusMarker({
   state,
   prState,
@@ -164,8 +171,60 @@ function StatusMarker({
   if (prState === "OPEN") {
     return <GitPullRequest size={14} aria-hidden className="status-marker" data-pr="open" />;
   }
-  const props = { size: 14, "aria-hidden": true, className: "status-marker" } as const;
-  return state === "failed" ? <CircleX {...props} /> : <CircleCheck {...props} />;
+  return <CircleX size={14} aria-hidden className="status-marker" />;
+}
+
+/**
+ * Which live signal the row has to keep showing, in the same precedence order
+ * StatusMarker uses. `null` means the row is calm: a custom icon stands alone,
+ * and a row without one shows no leading glyph at all.
+ */
+type StatusOverlay = "awaiting" | "working" | "pr-merged" | "pr-open" | "failed";
+
+function statusOverlayFor({
+  state,
+  prState,
+  priorityAttention
+}: {
+  state: WorkspaceSummary["state"];
+  prState?: WorkspaceSummary["prState"];
+  priorityAttention?: PriorityAttention;
+}): StatusOverlay | null {
+  if (priorityAttention === "approval-needed" || priorityAttention === "blocked") return "awaiting";
+  if (state === "running") return "working";
+  if (prState === "MERGED") return "pr-merged";
+  if (prState === "OPEN") return "pr-open";
+  return state === "failed" ? "failed" : null;
+}
+
+/**
+ * A user-chosen icon replaces the status marker as the row's leading glyph, so
+ * live state moves to a small corner dot on the icon. Nothing is lost: the dot
+ * carries the same running / awaiting / failed / PR signal in the same colors.
+ */
+function CustomIconMarker({
+  icon,
+  iconColor,
+  overlay
+}: {
+  icon: string;
+  iconColor: string | null | undefined;
+  overlay: StatusOverlay | null;
+}): JSX.Element | null {
+  const Glyph = resolveSessionIcon(icon);
+  if (!Glyph) return null;
+  return (
+    <span
+      className="session-custom-icon"
+      data-icon-color={resolveSessionIconColor(iconColor)}
+      aria-hidden="true"
+    >
+      <Glyph size={14} />
+      {overlay ? (
+        <span className="session-custom-icon-overlay" data-overlay={overlay} />
+      ) : null}
+    </span>
+  );
 }
 
 function SidebarSessionRowInner({
@@ -187,7 +246,8 @@ function SidebarSessionRowInner({
   subtitle,
   priorityAttention,
   onRemoveFromPriority,
-  onAddToPriority
+  onAddToPriority,
+  onSetIcon
 }: SidebarSessionRowProps): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
@@ -228,6 +288,11 @@ function SidebarSessionRowInner({
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const closeContextMenu = (): void => setContextMenuPos(null);
   useDismissOnOutsideOrEscape(contextMenuRef, contextMenuPos !== null, closeContextMenu);
+
+  // Right-click "Edit Icon" → the icon picker replaces the menu at the same
+  // anchor point, clamped so a right-click near an edge stays on screen.
+  const [iconPickerPos, setIconPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const closeIconPicker = useCallback((): void => setIconPickerPos(null), []);
 
   // Focus + select the input once it mounts so the user can type immediately.
   useEffect(() => {
@@ -330,19 +395,48 @@ function SidebarSessionRowInner({
   const priorityTitle = priorityAttention ? ` — ${PRIORITY_TITLE[priorityAttention]}` : "";
   const title = `${displayLabel} — ${workspace.state}${priorityTitle}${prTitle}${isOpenInGrid ? " — in view" : ""}`;
 
-  const hasContextMenu = Boolean(onRename || onRemoveFromPriority || onAddToPriority);
+  const hasContextMenu = Boolean(onRename || onRemoveFromPriority || onAddToPriority || onSetIcon);
   const handleContextMenu = (event: ReactMouseEvent): void => {
     if (!hasContextMenu) return;
     event.preventDefault();
     event.stopPropagation();
     // Clamp to the viewport so a right-click near the bottom/right edge doesn't
     // push the menu off-screen. Sizes are the popover's min-width plus a small
-    // single-item height estimate.
+    // per-item height estimate.
     const MENU_WIDTH = 150;
-    const MENU_HEIGHT = onRename && (onRemoveFromPriority || onAddToPriority) ? 80 : 44;
+    const itemCount =
+      (onRename ? 1 : 0) +
+      (onSetIcon ? 1 : 0) +
+      (onRemoveFromPriority ? 1 : 0) +
+      (onAddToPriority ? 1 : 0);
+    const MENU_HEIGHT = 8 + itemCount * 30;
     const left = Math.min(event.clientX, Math.max(8, window.innerWidth - MENU_WIDTH));
     const top = Math.min(event.clientY, Math.max(8, window.innerHeight - MENU_HEIGHT));
     setContextMenuPos({ top, left });
+  };
+
+  const startEditIcon = (): void => {
+    const anchor = contextMenuPos;
+    closeContextMenu();
+    if (!anchor) return;
+    setIconPickerPos({
+      top: clamp(
+        anchor.top,
+        IDE_POPOVER_GUTTER,
+        Math.max(
+          IDE_POPOVER_GUTTER,
+          window.innerHeight - SESSION_ICON_PICKER_HEIGHT - IDE_POPOVER_GUTTER
+        )
+      ),
+      left: clamp(
+        anchor.left,
+        IDE_POPOVER_GUTTER,
+        Math.max(
+          IDE_POPOVER_GUTTER,
+          window.innerWidth - SESSION_ICON_PICKER_WIDTH - IDE_POPOVER_GUTTER
+        )
+      )
+    });
   };
 
   const startRename = (): void => {
@@ -431,6 +525,29 @@ function SidebarSessionRowInner({
     allLinks[nextIndex]?.focus();
   };
 
+  // A custom icon replaces the status marker; live state moves to its overlay
+  // dot. Without one, a calm row stays text-only and only a live signal
+  // (running, awaiting input, failed, open or merged PR) earns a glyph. The
+  // marker column stays reserved either way so every title lines up.
+  const statusOverlay = statusOverlayFor({
+    state: workspace.state,
+    prState: workspace.prState,
+    priorityAttention
+  });
+  const leadingGlyph = workspace.icon ? (
+    <CustomIconMarker
+      icon={workspace.icon}
+      iconColor={workspace.iconColor}
+      overlay={statusOverlay}
+    />
+  ) : statusOverlay ? (
+    <StatusMarker
+      state={workspace.state}
+      prState={workspace.prState}
+      priorityAttention={priorityAttention}
+    />
+  ) : null;
+
   return (
     <div className="session-row">
       {isEditing ? (
@@ -465,18 +582,11 @@ function SidebarSessionRowInner({
             onDragStart={handleWorkspaceDragStart}
             onDragEnd={handleWorkspaceDragEnd}
           >
-            <StatusMarker
-              state={workspace.state}
-              prState={workspace.prState}
-              priorityAttention={priorityAttention}
-            />
+            {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
             {subtitle ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>
-                <span className="session-link-subtitle">
-                  <Folder size={10} aria-hidden="true" />
-                  <span>{subtitle}</span>
-                </span>
+                <span className="session-link-subtitle">{subtitle}</span>
               </span>
             ) : (
               <span>{displayLabel}</span>
@@ -628,6 +738,22 @@ function SidebarSessionRowInner({
                   </button>
                 </li>
               ) : null}
+              {onSetIcon ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startEditIcon();
+                    }}
+                  >
+                    <Palette size={13} aria-hidden="true" />
+                    Edit Icon
+                  </button>
+                </li>
+              ) : null}
               {/* After Rename, which keeps its long-standing first slot — a
                   mis-click here moves the row immediately. */}
               {onRemoveFromPriority ? (
@@ -668,6 +794,18 @@ function SidebarSessionRowInner({
             document.body
           )
         : null}
+      {iconPickerPos && onSetIcon
+        ? createPortal(
+            <SessionIconPicker
+              icon={workspace.icon ?? null}
+              iconColor={workspace.iconColor ?? null}
+              position={iconPickerPos}
+              onApply={(icon, iconColor) => onSetIcon(workspace.id, icon, iconColor)}
+              onClose={closeIconPicker}
+            />,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -703,6 +841,7 @@ export function sidebarSessionRowEqual(
   if (prev.priorityAttention !== next.priorityAttention) return false;
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
   if (prev.onAddToPriority !== next.onAddToPriority) return false;
+  if (prev.onSetIcon !== next.onSetIcon) return false;
   const pw = prev.workspace;
   const nw = next.workspace;
   if (pw === nw) {
@@ -716,7 +855,9 @@ export function sidebarSessionRowEqual(
     pw.lastActivityAt !== nw.lastActivityAt ||
     pw.pinned !== nw.pinned ||
     pw.prState !== nw.prState ||
-    pw.prNumber !== nw.prNumber
+    pw.prNumber !== nw.prNumber ||
+    pw.icon !== nw.icon ||
+    pw.iconColor !== nw.iconColor
   ) {
     return false;
   }

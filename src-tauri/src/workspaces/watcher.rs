@@ -17,8 +17,8 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use tauri::async_runtime::JoinHandle;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 
 use super::orchestration::{WorkspaceService, WATCH_DEBOUNCE_MS, WATCH_MAX_DEBOUNCE_MS};
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -89,6 +89,16 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
         ));
     }
 
+    // A gone checkout is not "recursive watches unavailable". Check first so
+    // startup restore does not warn twice for a stale SQLite row.
+    let workspace_path = Path::new(&workspace.path);
+    if !workspace_path.is_dir() {
+        return Err(ArgmaxError::service(
+            "WATCHER_PATH_MISSING",
+            format!("No directory at {}", workspace.path),
+        ));
+    }
+
     // A dirty bit is all the refresh loop needs.  A bounded channel keeps a
     // noisy build from turning file churn into unbounded memory growth.
     let (tx, rx) = mpsc::channel::<()>(1);
@@ -103,7 +113,7 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
         })
         .map_err(|e| ArgmaxError::service("WATCHER_INIT_FAILED", e.to_string()))?;
 
-    if let Err(error) = watcher.watch(Path::new(&workspace.path), RecursiveMode::Recursive) {
+    if let Err(error) = watcher.watch(workspace_path, RecursiveMode::Recursive) {
         // Some platforms (older Linux kernels) reject recursive watches.
         // Fall back to non-recursive — root-only edits will still fire,
         // nested ones get missed.
@@ -113,7 +123,7 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
             "recursive fs.watch unavailable; falling back to non-recursive"
         );
         watcher
-            .watch(Path::new(&workspace.path), RecursiveMode::NonRecursive)
+            .watch(workspace_path, RecursiveMode::NonRecursive)
             .map_err(|e| ArgmaxError::service("WATCHER_WATCH_FAILED", e.to_string()))?;
     }
 
@@ -148,7 +158,10 @@ fn spawn_refresh_loop(
     // after a few consecutive not-found refreshes so an orphaned worktree can't
     // keep the loop alive forever.
     const MAX_NOT_FOUND_BEFORE_EXIT: u32 = 3;
-    tokio::spawn(async move {
+    // `watch()` also runs from sync IPC (`workspaces:create-current`) on the
+    // macOS main thread, which has no Tokio context. `tokio::spawn` panics
+    // there. Tauri's runtime is process-wide and matches boot restoration.
+    tauri::async_runtime::spawn(async move {
         let mut not_found_streak: u32 = 0;
         loop {
             // Wait for the first event. `None` means the sender was

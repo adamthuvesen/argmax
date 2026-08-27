@@ -107,13 +107,16 @@ export const FONT_OPTIONS: readonly FontOption[] = [
 export const DEFAULT_FONT_ID: FontFamilyId = "inter";
 export const FONT_STORAGE_KEY = "argmax.font.family";
 export const DEFAULT_FONT_SIZE_ID: FontSizeId = "default";
+/** App-chrome size: sidebar, titlebar, settings, global overlays. */
 export const FONT_SIZE_STORAGE_KEY = "argmax.font.size";
+/** Agent-window size: conversations, composers, and agent activity panes. */
+export const CHAT_FONT_SIZE_STORAGE_KEY = "argmax.font.size.chat";
 
 export const FONT_SIZE_OPTIONS: readonly FontSizeOption[] = [
   {
     id: "small",
     label: "Small",
-    hint: "Denser text across the whole app."
+    hint: "Denser text."
   },
   {
     id: "default",
@@ -123,7 +126,7 @@ export const FONT_SIZE_OPTIONS: readonly FontSizeOption[] = [
   {
     id: "large",
     label: "Large",
-    hint: "Larger text across the whole app."
+    hint: "Larger, roomier text."
   }
 ] as const;
 
@@ -146,6 +149,20 @@ export function readStoredFontSize(): FontSizeId {
     return raw as FontSizeId;
   }
   return DEFAULT_FONT_SIZE_ID;
+}
+
+/**
+ * Agent windows carry their own size. Before the split there was a single
+ * stored size, so an upgrade with no chat key inherits the app value and
+ * nothing jumps.
+ */
+export function readStoredChatFontSize(): FontSizeId {
+  if (typeof window === "undefined") return DEFAULT_FONT_SIZE_ID;
+  const raw = window.localStorage.getItem(CHAT_FONT_SIZE_STORAGE_KEY);
+  if (raw && ALL_FONT_SIZE_IDS.has(raw)) {
+    return raw as FontSizeId;
+  }
+  return readStoredFontSize();
 }
 
 export function applyFontToDocument(id: FontFamilyId): void {

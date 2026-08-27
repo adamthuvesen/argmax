@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
@@ -283,6 +283,20 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 
+  it("labels a finished thought with its duration when the fragments span seconds", () => {
+    renderConversation(
+      baseSession({ state: "complete" }),
+      [
+        event("u1", "user.message", "what is this repo", "2026-05-12T15:00:00.000Z"),
+        event("t1", "message.delta", "First look.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("t2", "message.delta", " Still looking.", "2026-05-12T15:00:06.000Z", { thinking: true }),
+        event("m1", "message.completed", "Here's the repo overview.", "2026-05-12T15:00:07.000Z")
+      ]
+    );
+
+    expect(screen.getByRole("button", { name: "Thought 5s" })).toBeInTheDocument();
+  });
+
   it("renders completed extended-thinking expanded when the default says to show it", () => {
     const thinking = "I should inspect the settings plumbing before touching the UI.";
     const answer = "Settings are wired.";
@@ -537,8 +551,8 @@ describe("SessionConversation — streaming & composer", () => {
 
     // Assistant prose is a real boundary: the first command belongs above the
     // prose, while the later adjacent commands fold together below it.
-    expect(screen.getByRole("button", { name: /Ran a command: sed/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ran 2 commands: rg · npm run/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/\/bin\/zsh/)).not.toBeInTheDocument();
   });
@@ -630,7 +644,10 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     expect(screen.getByLabelText(startedAgentName("Map documentation structure and identify gaps"))).toBeInTheDocument();
-    expect(screen.queryByText("Explore the documentation in this Tauri/React Argmax project.")).not.toBeInTheDocument();
+    // What must not come back is the echoed child bubble in the parent stream.
+    expect(
+      screen.queryByText("Explore the documentation in this Tauri/React Argmax project.", { selector: "p" })
+    ).not.toBeInTheDocument();
   });
   it("keeps Thinking for Claude when session.streaming fired before assistant text", () => {
     renderConversation(
@@ -804,9 +821,78 @@ describe("SessionConversation — streaming & composer", () => {
       ]
     );
 
-    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Working/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("keeps Thinking steady while a launched subagent works and only the child emits events", () => {
+    vi.useFakeTimers();
+    // Background launch: the Task row completes immediately, the parent then
+    // waits. Child tool rows fold under the launch row and never render here,
+    // so a child heartbeat must not toggle the parent's Thinking label.
+    const waiting = [
+      event("m1", "message.completed", "Exploration agent is running in the background.", "2026-05-12T15:00:03.000Z"),
+      event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+        tool_use_id: "toolu_task",
+        content: "Agent launched"
+      }),
+      event("task", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+        type: "tool_use",
+        id: "toolu_task",
+        name: "Task",
+        input: { description: "Explore this repo", prompt: "Explore the repo quickly." }
+      }),
+      event("u1", "user.message", "launch a subagent", "2026-05-12T15:00:00.000Z")
+    ];
+    const baseProps = {
+      isLogOpen: false,
+      onSendSessionInput: vi.fn().mockResolvedValue(undefined),
+      onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onToggleLog: vi.fn(),
+      project,
+      rawOutputs: [],
+      review: reviewStub(),
+      session: baseSession({ provider: "claude", state: "running" }),
+      workspace
+    };
+
+    const { rerender } = render(<SessionConversation {...baseProps} events={waiting} />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+
+    // The child starts its own tool, then finishes it. Both are invisible in
+    // the parent chat, so Thinking stays up across the whole heartbeat.
+    const childRunning = [
+      event("child-1", "command.started", "Grep", "2026-05-12T15:00:04.000Z", {
+        type: "tool_use",
+        id: "toolu_child",
+        name: "Grep",
+        input: { pattern: "thinking" },
+        parent_tool_use_id: "toolu_task"
+      }),
+      ...waiting
+    ];
+    rerender(<SessionConversation {...baseProps} events={childRunning} />);
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+
+    const childDone = [
+      event("child-1-end", "command.completed", "tool_result", "2026-05-12T15:00:05.000Z", {
+        tool_use_id: "toolu_child",
+        content: "match"
+      }),
+      ...childRunning
+    ];
+    rerender(<SessionConversation {...baseProps} events={childDone} />);
     act(() => {
       vi.advanceTimersByTime(700);
     });
@@ -867,6 +953,138 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
+  it("shows Thinking immediately after a follow-up is sent, before the session flips to running", () => {
+    vi.useFakeTimers();
+    // The backend relaunches the agent for a follow-up, so the transcript gets
+    // the new user bubble seconds before any provider event (and sometimes
+    // before the `running` state) arrives. The pane must not sit blank for
+    // that whole spawn: no timer advance, Thinking is already up.
+    const previousTurn = [
+      event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+    ];
+    render(
+      <SessionConversation
+        events={previousTurn}
+        isLogOpen={false}
+        onSendSessionInput={vi.fn(() => new Promise<void>(() => {}))}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "codex", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Session prompt"), {
+      target: { value: "and now the tests" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("shows Thinking immediately for a follow-up queued mid-turn, skipping the post-answer grace period", () => {
+    vi.useFakeTimers();
+    // Queued follow-ups drain after the current turn, so the running session's
+    // newest event is still the previous answer. Without the local turn-start
+    // state that answer's 1800 ms grace period gates the indicator.
+    render(
+      <SessionConversation
+        events={[
+          event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+          event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+        ]}
+        isLogOpen={false}
+        onSendSessionInput={vi.fn(() => new Promise<void>(() => {}))}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "claude", state: "running" })}
+        workspace={workspace}
+      />
+    );
+
+    const prompt = screen.getByLabelText("Session prompt");
+    fireEvent.change(prompt, { target: { value: "then run lint" } });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+  });
+
+  it("yields the post-send Thinking state to the first visible assistant text", () => {
+    vi.useFakeTimers();
+    const previousTurn = [
+      event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
+      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+    ];
+    const baseProps = {
+      isLogOpen: false,
+      onSendSessionInput: vi.fn(() => new Promise<void>(() => {})),
+      onTerminateSession: vi.fn().mockResolvedValue(undefined),
+      onToggleLog: vi.fn(),
+      project,
+      rawOutputs: [],
+      review: reviewStub(),
+      session: baseSession({ provider: "codex", state: "running" }),
+      workspace
+    };
+
+    const { rerender } = render(<SessionConversation {...baseProps} events={previousTurn} />);
+    fireEvent.change(screen.getByLabelText("Session prompt"), {
+      target: { value: "and now the tests" }
+    });
+    fireEvent.keyDown(screen.getByLabelText("Session prompt"), { key: "Enter" });
+    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
+
+    // The provider takes over: the user bubble lands and the answer streams.
+    const answering = [
+      event("d1", "message.delta", "Writing them now", "2026-05-12T15:00:04.000Z"),
+      event("u2", "user.message", "and now the tests", "2026-05-12T15:00:03.000Z"),
+      ...previousTurn
+    ];
+    rerender(<SessionConversation {...baseProps} events={answering} />);
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(screen.getByText("Writing them now")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("drops the post-send Thinking state when the send itself fails", async () => {
+    const failingSend = vi.fn().mockRejectedValue(new Error("Workspace archive is in progress"));
+    render(
+      <SessionConversation
+        events={[event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")]}
+        isLogOpen={false}
+        onSendSessionInput={failingSend}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={baseSession({ provider: "codex", state: "complete" })}
+        workspace={workspace}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Session prompt"), {
+      target: { value: "and now the tests" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Workspace archive is in progress");
+    // The label honours its minimum visible window before it drops.
+    await waitFor(() => expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument());
+  });
+
   it("hides the Thinking indicator while a regular tool is actually running on screen", () => {
     // For a visible tool, the row's own spinner is the progress indicator —
     // no need to double up with Thinking.
@@ -907,8 +1125,10 @@ describe("SessionConversation — streaming & composer", () => {
 
     const textarea = screen.getByLabelText("Session prompt");
     expect(textarea).toBeEnabled();
-    // Stop button takes the mascot's slot while running; follow-ups queue via Enter.
+    // Stop keeps the mascot's slot while running, with Send now beside it:
+    // Enter queues the follow-up, Send now interrupts the turn and delivers it.
     expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send now" })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
     ).not.toBeInTheDocument();

@@ -1,3 +1,4 @@
 /* App shell + sidebar — import order is part of the cascade contract. */
 @import url("./shell-layout.css");
 @import url("./shell-sessions.css");
+@import url("./shell-session-icons.css");

@@ -129,10 +129,12 @@ function hasAgentLaunchEvidence(tool: ToolCall): boolean {
 
 // Providers can emit a launch-looking agent row before the real child link
 // exists, then retry with the same prompt once the child is actually created.
-// Hide only a terminal earlier row that produced no linkage/output/completion;
-// a still-running row may be a legitimate parallel same-prompt agent, and
-// hiding it would also force-close its open activity pane. Two completed
-// same-prompt agents are legitimate separate work and must stay.
+// Hide only a terminal earlier row that produced no linkage, output, or real
+// completion. A still-running row may be a legitimate parallel same-prompt
+// agent, and hiding it would also force-close its open activity pane.
+// Unpaired starts with no command.completed are protocol phantoms, not Failed
+// agents. A launch that completed with a provider error has evidence and stays.
+// Two completed same-prompt agents are legitimate separate work and must stay.
 function isSupersededAgentLaunchAttempt(tool: ToolCall, allTools: readonly ToolCall[]): boolean {
   if (getToolTypeBucket(tool.name) !== "agent" || tool.status === "running" || hasAgentLaunchEvidence(tool)) {
     return false;
@@ -320,8 +322,9 @@ export function buildSessionToolCalls(
       // can prove the unpaired tool is no longer in flight. Agent tools are the
       // exception: the parent model can narrate while a spawned agent is still
       // working, so keep them running until their own completion arrives.
+      const isAgent = getToolTypeBucket(name) === "agent";
       const inferredDone =
-        !sessionRunning || (getToolTypeBucket(name) !== "agent" && hasLaterVisibleProgress);
+        !sessionRunning || (!isAgent && hasLaterVisibleProgress);
       const status: ToolCall["status"] = completion
         ? isError
           ? "error"
@@ -365,17 +368,79 @@ export function buildSessionToolCalls(
   );
 }
 
-export function lastSignificantSessionEvent(events: readonly TimelineEvent[]): TimelineEvent | undefined {
+/**
+ * Tool-use ids of rows that live inside a launched subagent. The parent chat
+ * folds these under the launch row instead of rendering them, so parent-level
+ * progress state must not react to them.
+ */
+export function subAgentToolUseIds(tools: readonly ToolCall[]): Set<string> {
+  return new Set(
+    tools.filter((tool) => tool.parentToolUseId !== null).map((tool) => tool.toolUseId)
+  );
+}
+
+/**
+ * A tool boundary that belongs to a subagent, not to the parent turn. Child
+ * `command.started` rows carry `parent_tool_use_id`; their `command.completed`
+ * often does not, so the id set from `subAgentToolUseIds` carries the linkage.
+ */
+function isSubAgentToolEvent(event: TimelineEvent, childToolUseIds: ReadonlySet<string>): boolean {
+  if (event.type !== "command.started" && event.type !== "command.completed") return false;
+  const rawParent = event.payload.parent_tool_use_id;
+  if (typeof rawParent === "string" && rawParent.length > 0) return true;
+  const toolUseId = event.type === "command.started"
+    ? extractToolUseId(event.payload)
+    : extractCompletionCorrelationId(event.payload);
+  return typeof toolUseId === "string" && toolUseId.length > 0 && childToolUseIds.has(toolUseId);
+}
+
+/** Rows the parent chat renders itself: not raw, not a truncation marker, not
+ *  a subagent row folded under its launch row. */
+function isParentVisibleEvent(
+  event: TimelineEvent,
+  childToolUseIds: ReadonlySet<string>
+): boolean {
+  return (
+    event.payload.raw !== true &&
+    !isPayloadTruncationMarker(event) &&
+    !isSubAgentProseEcho(event) &&
+    !isSubAgentToolEvent(event, childToolUseIds) &&
+    event.message !== "turn.completed"
+  );
+}
+
+export function lastSignificantSessionEvent(
+  events: readonly TimelineEvent[],
+  childToolUseIds: ReadonlySet<string> = new Set<string>()
+): TimelineEvent | undefined {
   return events.find(
     (event) =>
-      event.payload.raw !== true &&
-      !isPayloadTruncationMarker(event) &&
-      !isSubAgentProseEcho(event) &&
-      event.message !== "turn.completed" &&
+      isParentVisibleEvent(event, childToolUseIds) &&
       (event.type === "user.message" ||
         event.type === "message.delta" ||
         event.type === "message.completed" ||
         event.type === "command.started" ||
         event.type === "command.completed")
+  );
+}
+
+/**
+ * Newest event where the agent itself spoke: parent-visible output, a tool
+ * boundary, or a failure. Same filters as `lastSignificantSessionEvent` minus
+ * `user.message`, so its id is a stable "has the provider taken over yet?"
+ * marker for a turn the renderer just started locally.
+ */
+export function lastAgentResponseEvent(
+  events: readonly TimelineEvent[],
+  childToolUseIds: ReadonlySet<string> = new Set<string>()
+): TimelineEvent | undefined {
+  return events.find(
+    (event) =>
+      isParentVisibleEvent(event, childToolUseIds) &&
+      (event.type === "message.delta" ||
+        event.type === "message.completed" ||
+        event.type === "command.started" ||
+        event.type === "command.completed" ||
+        event.type === "error")
   );
 }

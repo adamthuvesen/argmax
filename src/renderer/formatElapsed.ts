@@ -28,3 +28,18 @@ export function formatElapsedSeconds(ms: number): string {
   const remMinutes = minutes % 60;
   return `${hours}h ${remMinutes}m`;
 }
+
+export function formatThoughtLabel(live: boolean, durationMs?: number): string {
+  if (live) return "Thinking";
+  if (durationMs === undefined || !Number.isFinite(durationMs) || durationMs < 1_000) {
+    return "Thought";
+  }
+  return `Thought ${formatElapsedSeconds(durationMs)}`;
+}
+
+export function thoughtDurationMs(createdAt: string, lastActivityAt: string): number | undefined {
+  const start = Date.parse(createdAt);
+  const end = Date.parse(lastActivityAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return undefined;
+  return end - start;
+}

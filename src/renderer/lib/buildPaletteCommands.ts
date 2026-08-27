@@ -1,6 +1,7 @@
-import { Folder, MessageSquare, Plus, Search, Settings, Square } from "lucide-react";
+import { Folder, MessageSquare, Plus, Search, Settings, SlidersHorizontal, Square } from "lucide-react";
 import type { PaletteCommand } from "../components/CommandPalette.js";
 import type { DashboardSnapshot, SessionSummary } from "../../shared/types.js";
+import { SETTINGS_GROUPS, type SettingsGroupId } from "../components/settings/settingsMeta.js";
 import { titleFromPrompt } from "./projects.js";
 import { collapseHome } from "./pathDisplay.js";
 
@@ -9,6 +10,8 @@ export type BuildPaletteCommandsInput = {
   selectedSession: SessionSummary | null;
   onNewSession: () => void;
   onOpenSettings: () => void;
+  /** Jumps straight to one settings section — feeds the palette's Settings scope. */
+  onOpenSettingsSection: (group: SettingsGroupId, sectionId: string) => void;
   onOpenSearch: () => void;
   onStopSession: (sessionId: string) => void;
   onOpenWorkspace: (workspaceId: string) => void;
@@ -23,6 +26,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     selectedSession,
     onNewSession,
     onOpenSettings,
+    onOpenSettingsSection,
     onOpenSearch,
     onStopSession,
     onOpenWorkspace,
@@ -80,14 +84,12 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     const workspace = workspaceById.get(session.workspaceId) ?? null;
     const project = workspace ? projectById.get(workspace.projectId) ?? null : null;
     const label = workspace?.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel;
-    const parts: string[] = [];
-    if (project) parts.push(project.name);
-    if (workspace?.branch) parts.push(workspace.branch);
-    parts.push(session.modelLabel, session.state);
     return {
       id: `session:${session.id}`,
       label,
-      subtitle: parts.filter(Boolean).join(" · "),
+      // Project alone. Branch, model, and state are visible in the session
+      // itself and only crowd the row here.
+      meta: project?.name,
       group: "Sessions",
       icon: MessageSquare,
       run: () => {
@@ -96,6 +98,22 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       }
     };
   });
+
+  // The Settings scope reuses the panel's own section registry, so the palette
+  // can never list a page the panel doesn't have.
+  const settings: PaletteCommand[] = SETTINGS_GROUPS.flatMap((group) =>
+    group.sections.map((section) => ({
+      id: `settings:${section.id}`,
+      label: section.label,
+      subtitle: `Settings · ${group.label}`,
+      group: "Settings" as const,
+      icon: SlidersHorizontal,
+      run: () => {
+        closeOverlays();
+        onOpenSettingsSection(group.id, section.id);
+      }
+    }))
+  );
 
   const projects: PaletteCommand[] = snapshot.projects.slice(0, 40).map((project) => ({
     id: `project:${project.id}`,
@@ -110,7 +128,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     }
   }));
 
-  return [...actions, ...sessions, ...projects];
+  return [...actions, ...sessions, ...projects, ...settings];
 }
 
 export function buildSessionLabelById(snapshot: DashboardSnapshot): Map<string, string> {

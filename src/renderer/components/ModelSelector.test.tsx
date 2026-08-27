@@ -192,8 +192,8 @@ describe("LaunchModelSelector — all providers", () => {
   it("hides speed for Gemini (the one Cursor model without a fast variant)", () => {
     const value: ModelPickerSelection = {
       provider: "cursor",
-      label: "Gemini 3.6 Flash (Cursor)",
-      modelId: "gemini-3.6-flash-medium",
+      label: "Gemini 3.7 Flash (Cursor)",
+      modelId: "gemini-3.7-flash-medium",
       reasoningEffort: "medium"
     };
     const onFastModeEnabledChange = vi.fn();

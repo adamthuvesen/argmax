@@ -7,11 +7,13 @@ import type { RenderItem } from "../lib/foldConversation.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import { buildTurnRenderState } from "../lib/sessionTurnView.js";
-import type { ToolCall, TurnToolItem } from "../lib/toolCalls.js";
+import { isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import { visibleTurnToolItem } from "../lib/turnToolItems.js";
 import { sessionAgentModeKey, writeStoredAgentMode } from "../lib/agentMode.js";
+import { thoughtDurationMs } from "../formatElapsed.js";
 import type { AgentMode } from "../../shared/types.js";
+import { AgentLaunchList } from "./AgentLaunchList.js";
 import { ChatBubble } from "./ChatBubble.js";
 import { PlanCard } from "./PlanCard.js";
 import { QuestionCard } from "./QuestionCard.js";
@@ -187,7 +189,11 @@ function SessionConversationTurnInner({
   // body. Assistant groups order by their LAST activity (see AssistantGroup.
   // lastActivityAt) so a streamed answer settles below the tools it follows
   // instead of floating above them.
-  type AnnotatedChild = TurnBodyChild & { createdAt: string; sortAt: string };
+  type AnnotatedChild = TurnBodyChild & {
+    createdAt: string;
+    sortAt: string;
+    agentTools?: ToolCall[];
+  };
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups.map((group) => {
     if (group.thinking) {
       const node = (
@@ -195,6 +201,7 @@ function SessionConversationTurnInner({
           key={group.id}
           defaultExpanded={toolsExpandOverride ?? defaultThinkingExpanded}
           live={thinkingLive}
+          durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
         >
           <StreamingMarkdown
             text={group.text}
@@ -251,8 +258,18 @@ function SessionConversationTurnInner({
   const toolChildren: AnnotatedChild[] = visibleToolItems
     .map((tItem) => {
       if (tItem.kind === "tool") {
+        if (isAgentToolName(tItem.tool.name)) {
+          return {
+            kind: "tool" as const,
+            id: tItem.tool.id,
+            createdAt: tItem.tool.createdAt,
+            sortAt: tItem.tool.createdAt,
+            agentTools: [tItem.tool],
+            node: null as unknown as JSX.Element
+          };
+        }
         return {
-          kind: "tool",
+          kind: "tool" as const,
           id: tItem.tool.id,
           createdAt: tItem.tool.createdAt,
           sortAt: tItem.tool.createdAt,
@@ -271,7 +288,7 @@ function SessionConversationTurnInner({
       }
       const firstCreatedAt = tItem.group.tools[0]?.createdAt ?? "";
       return {
-        kind: "tool",
+        kind: "tool" as const,
         id: tItem.group.id,
         createdAt: firstCreatedAt,
         sortAt: firstCreatedAt,
@@ -287,15 +304,47 @@ function SessionConversationTurnInner({
         )
       };
     });
-  const bodyChildren: TurnBodyChild[] = [...assistantChildren, ...toolChildren]
+  const sortedChildren = [...assistantChildren, ...toolChildren]
     .sort((a, b) => {
       const cmp = a.sortAt.localeCompare(b.sortAt);
       if (cmp !== 0) return cmp;
       // Cursor can emit a narration delta and the tool start in the same
       // millisecond. The delta is the thing the user should read first.
       return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
-    })
-    .map(({ kind, id, node }) => ({ kind, id, node }));
+    });
+  const coalescedChildren: AnnotatedChild[] = [];
+  for (const child of sortedChildren) {
+    const last = coalescedChildren[coalescedChildren.length - 1];
+    if (child.agentTools && last?.agentTools) {
+      last.agentTools.push(...child.agentTools);
+      continue;
+    }
+    coalescedChildren.push(
+      child.agentTools ? { ...child, agentTools: [...child.agentTools] } : child
+    );
+  }
+  const bodyChildren: TurnBodyChild[] = coalescedChildren.map((child) => {
+    if (child.agentTools) {
+      const first = child.agentTools[0];
+      const id = first ? `agent-list-${first.id}` : child.id;
+      return {
+        kind: "tool" as const,
+        id,
+        node: (
+          <AgentLaunchList
+            key={id}
+            tools={child.agentTools}
+            defaultExpanded={toolsExpanded}
+            workspaceCwd={workspace?.path ?? null}
+            agentCodenames={agentCodenames}
+            onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
+          />
+        )
+      };
+    }
+    return { kind: child.kind, id: child.id, node: child.node };
+  });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
     .filter((t): t is string => typeof t === "string" && t.length > 0)

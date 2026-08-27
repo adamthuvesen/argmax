@@ -385,7 +385,7 @@
 .context-ring-tokens {
   color: var(--text);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -404,7 +404,7 @@
 }
 
 .checks-list-title {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.04em;

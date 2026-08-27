@@ -50,13 +50,18 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
-  it("caps Cursor Grok and Gemini 3.6 at High", () => {
+  it("caps Cursor Grok and Gemini 3.7 at High", () => {
+    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual([
+      "low",
+      "medium",
+      "high"
+    ]);
     expect(reasoningEffortsForModel("cursor", "cursor-grok-4.5-medium")).toEqual([
       "low",
       "medium",
       "high"
     ]);
-    expect(reasoningEffortsForModel("cursor", "gemini-3.6-flash-medium")).toEqual([
+    expect(reasoningEffortsForModel("cursor", "gemini-3.7-flash-medium")).toEqual([
       "low",
       "medium",
       "high"

@@ -82,6 +82,7 @@ function renderPane(
     onCloseCell: () => void;
     onActivateTab: (id: string) => void;
     onCloseTab: (id: string) => void;
+    isFocused: boolean;
   }> = {}
 ): { onCloseCell: () => void; onActivateTab: (id: string) => void; onCloseTab: (id: string) => void } {
   const handlers = {
@@ -93,6 +94,7 @@ function renderPane(
     <AgentTabsPane
       cell={cell}
       events={twoTabEvents}
+      isFocused={overrides.isFocused}
       parentSession={session}
       workspace={workspace}
       onCloseCell={handlers.onCloseCell}
@@ -217,5 +219,40 @@ describe("AgentTabsPane", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Close pane" })[0]);
     expect(onCloseCell).toHaveBeenCalledTimes(1);
     expect(onCloseTab).not.toHaveBeenCalled();
+  });
+
+  it("closes the focused cell on Escape via the same close path", () => {
+    const onCloseCell = vi.fn();
+    renderPane(twoTabCell("task-1"), { onCloseCell, isFocused: true });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCloseCell).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not close on Escape when the agent pane is not focused", () => {
+    const onCloseCell = vi.fn();
+    renderPane(twoTabCell("task-1"), { onCloseCell, isFocused: false });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCloseCell).not.toHaveBeenCalled();
+  });
+
+  it("does not close on Escape while typing", () => {
+    const onCloseCell = vi.fn();
+    renderPane(twoTabCell("task-1"), { onCloseCell, isFocused: true });
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCloseCell).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it("does not close on Escape from a plan card", () => {
+    const onCloseCell = vi.fn();
+    renderPane(twoTabCell("task-1"), { onCloseCell, isFocused: true });
+    const card = document.createElement("div");
+    card.className = "plan-card";
+    document.body.appendChild(card);
+    fireEvent.keyDown(card, { key: "Escape" });
+    expect(onCloseCell).not.toHaveBeenCalled();
+    card.remove();
   });
 });

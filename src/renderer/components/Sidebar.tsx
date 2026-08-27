@@ -82,6 +82,12 @@ function markBootCollapseSeeded(): void {
   }
 }
 
+// Pinned and Priority collapse through the same persisted set as the recency
+// buckets. `groupWorkspacesByDate` only ever emits today / last-7 / last-30 /
+// older, so these keys can't collide with a date bucket.
+const PINNED_GROUP_KEY = "pinned";
+const PRIORITY_GROUP_KEY = "priority";
+
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
   { value: "projects", label: "Projects", description: "Group sessions under their project" },
   { value: "sessions", label: "Date", description: "Flat list of all sessions by date" }
@@ -143,6 +149,7 @@ export function Sidebar({
   onToggleWorkspacePinned,
   onRemoveFromPriority,
   onAddToPriority,
+  onSetWorkspaceIcon,
   showPriority,
   onWorkspaceDragStart,
   onWorkspaceDragEnd,
@@ -178,6 +185,12 @@ export function Sidebar({
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Right-click "Add to priority" on any other row — floats it manually. */
   onAddToPriority?: (workspaceId: string) => void;
+  /** Right-click "Edit Icon" on any row — both values null clears the glyph. */
+  onSetWorkspaceIcon?: (
+    workspaceId: string,
+    icon: string | null,
+    iconColor: string | null
+  ) => void;
   /** Whether the Priority section renders at all (settings toggle). */
   showPriority: boolean;
   /** Notifies the parent that a sidebar drag started carrying this workspace. */
@@ -326,7 +339,7 @@ export function Sidebar({
   }, [snapshot.sessions]);
 
   // Workspaces that need the user right now (approval, blocked, failed,
-  // review-ready) float into the Priority section above everything else.
+  // review-ready) float into the Priority section, directly under Pinned.
   // A row lives in exactly one section: while in Priority it leaves its
   // home group (Pinned/date/project) and drops back when resolved,
   // dismissed, or aged out.
@@ -363,10 +376,11 @@ export function Sidebar({
   // "Add to priority" only makes sense while the section exists.
   const addToPriority = showPriority ? onAddToPriority : undefined;
 
-  // Pinned workspaces float into a dedicated section at the top of the list,
-  // above the date buckets (sessions view) and above the project groups
-  // (projects view). They're pulled out of their normal bucket while pinned and
-  // drop straight back the moment they're unpinned. Shared by both view modes.
+  // Pinned workspaces float into a dedicated section at the very top of the
+  // list, above Priority, the date buckets (sessions view), and the project
+  // groups (projects view). They're pulled out of their normal bucket while
+  // pinned and drop straight back the moment they're unpinned. Shared by both
+  // view modes.
   const pinnedWorkspaces = useMemo(
     () =>
       snapshot.workspaces
@@ -488,6 +502,27 @@ export function Sidebar({
     [expandedDateGroups]
   );
 
+  // Every sidebar section header (Pinned, Priority, recency buckets) carries
+  // the same chevron, tucked inside the label so it hugs the word.
+  const renderCollapseButton = useCallback(
+    (groupKey: string, label: string, isCollapsed: boolean): JSX.Element => (
+      <button
+        aria-expanded={!isCollapsed}
+        aria-label={`${isCollapsed ? "Show" : "Hide"} ${label} sessions`}
+        className="project-visibility"
+        title={`${isCollapsed ? "Show" : "Hide"} Sessions`}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          toggleDateGroupVisibility(groupKey);
+        }}
+      >
+        <ChevronRight size={14} />
+      </button>
+    ),
+    [toggleDateGroupVisibility]
+  );
+
   const handleDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
     setDraggingId(projectId);
     e.dataTransfer.effectAllowed = "move";
@@ -598,6 +633,93 @@ export function Sidebar({
     action();
   }, []);
 
+  // The recency labels (Today / Last 7 Days / …) already name the list, so
+  // there is no separate section title. The "…" / "+" cluster rides the newest
+  // recency header instead, and falls back to a quiet label-less strip in
+  // projects view or when the sessions view has no bucket to host it.
+  const leadDateGroupKey = viewMode === "sessions" ? dateGroups[0]?.key ?? null : null;
+  const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
+  const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
+  const sidebarActions = (
+    <div className="rail-actions" onClick={(event) => event.stopPropagation()}>
+      <div className="project-picker-anchor rail-sort-anchor" ref={sortMenuAnchorRef}>
+        <button
+          className="small-icon"
+          type="button"
+          title="Sidebar view options"
+          aria-label="Sidebar view options"
+          aria-haspopup="menu"
+          aria-expanded={sortMenuOpen}
+          onClick={() => setSortMenuOpen((open) => !open)}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+        {sortMenuOpen && (
+          <ul
+            className="project-picker-popover rail-sort-popover"
+            role="menu"
+            aria-label="Sidebar view options"
+          >
+            <li className="rail-sort-group-label" role="presentation">
+              Group by
+            </li>
+            {VIEW_MODE_OPTIONS.map((option) => {
+              const isActive = option.value === viewMode;
+              return (
+                <li key={option.value} role="none">
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={isActive}
+                    className="project-picker-item"
+                    title={option.description}
+                    onClick={() => handleSelectViewMode(option.value)}
+                  >
+                    <span className="rail-sort-check" aria-hidden="true">
+                      {isActive ? <Check size={14} /> : null}
+                    </span>
+                    {option.label}
+                  </button>
+                </li>
+              );
+            })}
+            {viewMode === "projects" ? (
+              <>
+                <li className="rail-sort-divider" role="separator" />
+                <li className="rail-sort-group-label" role="presentation">
+                  Sort projects
+                </li>
+                {SORT_MODE_OPTIONS.map((option) => {
+                  const isActive = option.value === sortMode;
+                  return (
+                    <li key={option.value} role="none">
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={isActive}
+                        className="project-picker-item"
+                        title={option.description}
+                        onClick={() => handleSelectSortMode(option.value)}
+                      >
+                        <span className="rail-sort-check" aria-hidden="true">
+                          {isActive ? <Check size={14} /> : null}
+                        </span>
+                        {option.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </>
+            ) : null}
+          </ul>
+        )}
+      </div>
+      <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
+        <Plus size={14} />
+      </button>
+    </div>
+  );
+
   return (
     <aside
       className="sidebar"
@@ -628,131 +750,25 @@ export function Sidebar({
       </nav>
 
       <div className="project-list">
-        <div className="rail-heading">
-          <p className="rail-label">
-            <span className="rail-label-text">{viewMode === "sessions" ? "Sessions" : "Projects"}</span>
-          </p>
-          <div className="project-picker-anchor rail-sort-anchor" ref={sortMenuAnchorRef}>
-            <button
-              className="small-icon"
-              type="button"
-              title="Sidebar view options"
-              aria-label="Sidebar view options"
-              aria-haspopup="menu"
-              aria-expanded={sortMenuOpen}
-              onClick={() => setSortMenuOpen((open) => !open)}
-            >
-              <MoreHorizontal size={14} />
-            </button>
-            {sortMenuOpen && (
-              <ul
-                className="project-picker-popover rail-sort-popover"
-                role="menu"
-                aria-label="Sidebar view options"
-              >
-                <li className="rail-sort-group-label" role="presentation">
-                  Group by
-                </li>
-                {VIEW_MODE_OPTIONS.map((option) => {
-                  const isActive = option.value === viewMode;
-                  return (
-                    <li key={option.value} role="none">
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={isActive}
-                        className="project-picker-item"
-                        title={option.description}
-                        onClick={() => handleSelectViewMode(option.value)}
-                      >
-                        <span className="rail-sort-check" aria-hidden="true">
-                          {isActive ? <Check size={14} /> : null}
-                        </span>
-                        {option.label}
-                      </button>
-                    </li>
-                  );
-                })}
-                {viewMode === "projects" ? (
-                  <>
-                    <li className="rail-sort-divider" role="separator" />
-                    <li className="rail-sort-group-label" role="presentation">
-                      Sort projects
-                    </li>
-                    {SORT_MODE_OPTIONS.map((option) => {
-                      const isActive = option.value === sortMode;
-                      return (
-                        <li key={option.value} role="none">
-                          <button
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={isActive}
-                            className="project-picker-item"
-                            title={option.description}
-                            onClick={() => handleSelectSortMode(option.value)}
-                          >
-                            <span className="rail-sort-check" aria-hidden="true">
-                              {isActive ? <Check size={14} /> : null}
-                            </span>
-                            {option.label}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </>
-                ) : null}
-              </ul>
-            )}
-          </div>
-          <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
-            <Plus size={14} />
-          </button>
-        </div>
-        {priorityEntries.length > 0 ? (
-          <div className="project-group session-date-group session-priority-group">
-            <div className="project-row session-date-row session-priority-row">
-              <span className="project-name session-date-label session-priority-label">
-                <span className="project-name-text">Priority</span>
-              </span>
-              <span aria-hidden="true" />
-              <span aria-hidden="true" />
-            </div>
-            {priorityEntries.map((entry) => (
-              <div key={entry.workspace.id} className="session-row-wrap">
-                <SidebarSessionRow
-                  workspace={entry.workspace}
-                  subtitle={subtitleFor(entry.workspace.projectId)}
-                  workspaceTokens={workspaceTokenMap.get(entry.workspace.id) ?? null}
-                  isSelected={selectedWorkspaceId === entry.workspace.id}
-                  isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
-                  canDragToGrid={canDragWorkspaceToGrid}
-                  onOpenWorkspaceChat={onOpenWorkspaceChat}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onOpenInIde={onOpenInIde}
-                  onTogglePin={onToggleWorkspacePinned}
-                  onRename={onRenameWorkspace}
-                  onRemoveFromPriority={onRemoveFromPriority}
-                  priorityAttention={entry.attention ?? undefined}
-                  onWorkspaceDragStart={onWorkspaceDragStart}
-                  onWorkspaceDragEnd={onWorkspaceDragEnd}
-                  detectedIdes={detectedIdes}
-                  defaultIde={defaultIde}
-                  showTokens={showSessionTokens}
-                />
-              </div>
-            ))}
-          </div>
-        ) : null}
+        {leadDateGroupKey === null ? <div className="rail-heading">{sidebarActions}</div> : null}
+        {/* Pinned sits at the very top, above Priority: a pin is a standing
+            user choice, while Priority is transient triage. */}
         {pinnedWorkspaces.length > 0 ? (
-          <div className="project-group session-date-group session-pinned-group">
-            <div className="project-row session-date-row session-pinned-row">
+          <div
+            className="project-group session-date-group session-pinned-group"
+            data-collapsed={pinnedCollapsed ? "true" : undefined}
+          >
+            <div
+              className="project-row session-date-row session-pinned-row"
+              onClick={() => toggleDateGroupVisibility(PINNED_GROUP_KEY)}
+            >
               <span className="project-name session-date-label session-pinned-label">
                 <span className="project-name-text">Pinned</span>
+                {renderCollapseButton(PINNED_GROUP_KEY, "Pinned", pinnedCollapsed)}
               </span>
               <span aria-hidden="true" />
-              <span aria-hidden="true" />
             </div>
-            {pinnedWorkspaces.map((workspace) => (
+            {pinnedCollapsed ? null : pinnedWorkspaces.map((workspace) => (
               <div key={workspace.id} className="session-row-wrap">
                 <SidebarSessionRow
                   workspace={workspace}
@@ -766,7 +782,50 @@ export function Sidebar({
                   onOpenInIde={onOpenInIde}
                   onTogglePin={onToggleWorkspacePinned}
                   onRename={onRenameWorkspace}
+                  onSetIcon={onSetWorkspaceIcon}
                   onAddToPriority={addToPriority}
+                  onWorkspaceDragStart={onWorkspaceDragStart}
+                  onWorkspaceDragEnd={onWorkspaceDragEnd}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                  showTokens={showSessionTokens}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {priorityEntries.length > 0 ? (
+          <div
+            className="project-group session-date-group session-priority-group"
+            data-collapsed={priorityCollapsed ? "true" : undefined}
+          >
+            <div
+              className="project-row session-date-row session-priority-row"
+              onClick={() => toggleDateGroupVisibility(PRIORITY_GROUP_KEY)}
+            >
+              <span className="project-name session-date-label session-priority-label">
+                <span className="project-name-text">Priority</span>
+                {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
+              </span>
+              <span aria-hidden="true" />
+            </div>
+            {priorityCollapsed ? null : priorityEntries.map((entry) => (
+              <div key={entry.workspace.id} className="session-row-wrap">
+                <SidebarSessionRow
+                  workspace={entry.workspace}
+                  subtitle={subtitleFor(entry.workspace.projectId)}
+                  workspaceTokens={workspaceTokenMap.get(entry.workspace.id) ?? null}
+                  isSelected={selectedWorkspaceId === entry.workspace.id}
+                  isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
+                  canDragToGrid={canDragWorkspaceToGrid}
+                  onOpenWorkspaceChat={onOpenWorkspaceChat}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onOpenInIde={onOpenInIde}
+                  onTogglePin={onToggleWorkspacePinned}
+                  onRename={onRenameWorkspace}
+                  onSetIcon={onSetWorkspaceIcon}
+                  onRemoveFromPriority={onRemoveFromPriority}
+                  priorityAttention={entry.attention ?? undefined}
                   onWorkspaceDragStart={onWorkspaceDragStart}
                   onWorkspaceDragEnd={onWorkspaceDragEnd}
                   detectedIdes={detectedIdes}
@@ -786,6 +845,7 @@ export function Sidebar({
               const visibleItems = visibleSidebarItems(group.items, selectedWorkspaceId, showAll);
               const hiddenCount = totalCount - visibleItems.length;
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
+              const isLead = group.key === leadDateGroupKey;
               return (
                 <div
                   className="project-group session-date-group"
@@ -793,28 +853,18 @@ export function Sidebar({
                   key={group.key}
                 >
                   <div
-                    className="project-row session-date-row"
+                    className={`project-row session-date-row${isLead ? " session-date-row-lead" : ""}`}
                     onClick={() => toggleDateGroupVisibility(group.key)}
                   >
+                    {/* The label and its collapse chevron are one cluster on the
+                        left, so the chevron reads as part of the label. The
+                        newest bucket doubles as the list header and also hosts
+                        the sidebar actions on the right. */}
                     <span className="project-name session-date-label">
                       <span className="project-name-text">{group.label}</span>
+                      {renderCollapseButton(group.key, group.label, isCollapsed)}
                     </span>
-                    {/* Empty actions column so the chevron lands in the same
-                        right-edge slot as a project row's visibility chevron. */}
-                    <span aria-hidden="true" />
-                    <button
-                      aria-expanded={!isCollapsed}
-                      aria-label={`${isCollapsed ? "Show" : "Hide"} ${group.label} sessions`}
-                      className="project-visibility"
-                      title={`${isCollapsed ? "Show" : "Hide"} Sessions`}
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleDateGroupVisibility(group.key);
-                      }}
-                    >
-                      <ChevronRight size={14} />
-                    </button>
+                    {isLead ? sidebarActions : <span aria-hidden="true" />}
                   </div>
                   {isCollapsed ? null : (
                     <>
@@ -835,6 +885,7 @@ export function Sidebar({
                             onOpenInIde={onOpenInIde}
                             onTogglePin={onToggleWorkspacePinned}
                             onRename={onRenameWorkspace}
+                            onSetIcon={onSetWorkspaceIcon}
                             onAddToPriority={addToPriority}
                             onWorkspaceDragStart={onWorkspaceDragStart}
                             onWorkspaceDragEnd={onWorkspaceDragEnd}
@@ -990,6 +1041,7 @@ export function Sidebar({
                         onOpenInIde={onOpenInIde}
                         onTogglePin={onToggleWorkspacePinned}
                         onRename={onRenameWorkspace}
+                        onSetIcon={onSetWorkspaceIcon}
                         onAddToPriority={addToPriority}
                         onWorkspaceDragStart={onWorkspaceDragStart}
                         onWorkspaceDragEnd={onWorkspaceDragEnd}

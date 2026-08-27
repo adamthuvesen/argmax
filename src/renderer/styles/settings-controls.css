@@ -388,7 +388,7 @@
 }
 
 .theme-picker-chip[data-theme-mode="dark"] .theme-picker-swatch {
-  --swatch-bg: #0e0e0c;
+  --swatch-bg: #171714;
   --swatch-text: #e3e0d8;
   --swatch-accent: #7fb494;
 }
@@ -398,7 +398,7 @@
   --swatch-text: #1c1b18;
   --swatch-accent: #5a8f72;
   background:
-    linear-gradient(135deg, #fdfdfd 0%, #fdfdfd 50%, #0e0e0c 50%, #0e0e0c 100%);
+    linear-gradient(135deg, #fdfdfd 0%, #fdfdfd 50%, #171714 50%, #171714 100%);
 }
 
 .theme-picker-chip[data-theme-mode="system"] .theme-picker-swatch-text {

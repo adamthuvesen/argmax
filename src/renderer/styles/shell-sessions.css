@@ -672,7 +672,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--panel);
+  background: var(--bg);
   background-image: radial-gradient(
       120% 60% at 50% 0%,
       var(--paper-highlight-soft),

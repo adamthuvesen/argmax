@@ -1,4 +1,4 @@
-import { PanelLeft, PanelLeftClose } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   Suspense,
@@ -19,7 +19,10 @@ import type {
   ProjectSummary
 } from "../shared/types.js";
 import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
-import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
+import type {
+  MessageHit as PaletteMessageHit,
+  PaletteScope
+} from "./components/CommandPalette.js";
 import type { SettingsNavigationTarget } from "./components/SettingsPanel.js";
 import type { SettingsGroupId } from "./components/settings/settingsMeta.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
@@ -154,6 +157,8 @@ export function App(): JSX.Element {
     setFontFamily,
     fontSize,
     setFontSize,
+    chatFontSize,
+    setChatFontSize,
     defaultIde,
     setDefaultIde,
     detectedIdes
@@ -174,6 +179,8 @@ export function App(): JSX.Element {
   // The active surface (focused SessionPane, or the LaunchSurface when no
   // session is open) registers its file source + pick handler here so the
   // command palette can surface Files for that surface's scope.
+  // ⌘K and ⌘P open the same palette; only the pre-selected filter differs.
+  const [paletteScope, setPaletteScope] = useState<PaletteScope>("all");
   const [paletteFileContext, setPaletteFileContext] = useState<{
     source: { kind: "workspace" | "project"; id: string };
     onPick: (path: string) => void;
@@ -389,6 +396,7 @@ export function App(): JSX.Element {
           openNewSessionPane();
           return;
         case "open-command-palette":
+          setPaletteScope("all");
           setIsPaletteOpen(true);
           return;
         case "open-cheat-sheet":
@@ -407,6 +415,11 @@ export function App(): JSX.Element {
     [isSettingsOpen, openNewSessionPane, openSettingsTarget, setIsCheatSheetOpen, setIsPaletteOpen, setIsSettingsOpen]
   );
 
+  // ⌘P is the same overlay as ⌘K, opened with the Files filter selected.
+  const openFilePalette = useCallback((): void => {
+    setPaletteScope("files");
+    setIsPaletteOpen(true);
+  }, [setIsPaletteOpen]);
   const openSearchOverlay = useCallback((): void => setIsSearchOpen(true), [setIsSearchOpen]);
   const openContentSearchOverlay = useCallback(
     (): void => setIsContentSearchOpen(true),
@@ -459,6 +472,7 @@ export function App(): JSX.Element {
     sessions: snapshot.sessions,
     onMenuCommand: handleMenuCommand,
     onCloseFocusedPane: closeFocusedPane,
+    onOpenFilePalette: openFilePalette,
     onOpenSearch: openSearchOverlay,
     onOpenContentSearch: openContentSearchOverlay,
     onToggleTerminal: toggleIntegratedTerminal,
@@ -689,6 +703,22 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
+  const setWorkspaceIcon = useCallback(
+    async (workspaceId: string, icon: string | null, iconColor: string | null): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Tauri app window to change a session icon." });
+        return;
+      }
+      const ok = await withToast(
+        () => window.argmax!.workspaces.setIcon({ workspaceId, icon, iconColor }),
+        setToast,
+        "Could not change the session icon."
+      );
+      if (ok) await refreshDashboardStatus();
+    },
+    [refreshDashboardStatus]
+  );
+
   // Stable per-row callbacks so SidebarSessionRow's memo comparator (which
   // checks reference equality on each prop) doesn't re-render every row on
   // every dashboard:delta. Inline lambdas would be recreated each render and
@@ -716,6 +746,12 @@ export function App(): JSX.Element {
       void addToPriority(workspaceId);
     },
     [addToPriority]
+  );
+  const onSetWorkspaceIconRow = useCallback(
+    (workspaceId: string, icon: string | null, iconColor: string | null): void => {
+      void setWorkspaceIcon(workspaceId, icon, iconColor);
+    },
+    [setWorkspaceIcon]
   );
   const onAddProjectRow = useCallback((): void => {
     void addProject();
@@ -760,6 +796,7 @@ export function App(): JSX.Element {
     openSettingsTarget("system", "settings-about");
   }, [openSettingsTarget]);
   const onOpenCommandPaletteRow = useCallback((): void => {
+    setPaletteScope("all");
     setIsPaletteOpen(true);
   }, [setIsPaletteOpen]);
   const onOpenKeyboardShortcutsRow = useCallback((): void => {
@@ -890,6 +927,7 @@ export function App(): JSX.Element {
         selectedSession,
         onNewSession: () => handleMenuCommand("new-session"),
         onOpenSettings: () => openSettingsTarget("general"),
+        onOpenSettingsSection: (group, sectionId) => openSettingsTarget(group, sectionId),
         onOpenSearch: () => setIsSearchOpen(true),
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onOpenWorkspace: openWorkspaceChat,
@@ -1042,7 +1080,7 @@ export function App(): JSX.Element {
         aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
         onClick={toggleSidebarCollapsed}
       >
-        {sidebarCollapsed ? <PanelLeft size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
+        <PanelLeft size={16} strokeWidth={1.75} />
       </button>
       {sidebarCollapsed ? (
         <div
@@ -1068,6 +1106,7 @@ export function App(): JSX.Element {
           <CommandPalette
             open={isPaletteOpen}
             commands={paletteCommands}
+            initialScope={paletteScope}
             onClose={() => setIsPaletteOpen(false)}
             searchMessages={searchMessages}
             fileSource={paletteFileContext?.source ?? null}
@@ -1116,6 +1155,7 @@ export function App(): JSX.Element {
         onRenameWorkspace={onRenameWorkspaceRow}
         onRemoveFromPriority={onRemoveFromPriorityRow}
         onAddToPriority={onAddToPriorityRow}
+        onSetWorkspaceIcon={onSetWorkspaceIconRow}
         showPriority={sidebarPriorityVisible}
         onOpenLauncher={onOpenLauncherRow}
         onAddProject={onAddProjectRow}
@@ -1184,6 +1224,8 @@ export function App(): JSX.Element {
                 onFontFamilyChange={setFontFamily}
                 fontSize={fontSize}
                 onFontSizeChange={setFontSize}
+                chatFontSize={chatFontSize}
+                onChatFontSizeChange={setChatFontSize}
                 themeMode={themeMode}
                 onThemeModeChange={(mode) => {
                   animateThemeChange();
@@ -1209,6 +1251,7 @@ export function App(): JSX.Element {
             renderLaunchSurface(selectedProject)
           ) : grid.rows.length > 0 ? (
             <SessionMultiGrid
+              chatFontSize={chatFontSize}
               grid={grid}
               approvals={snapshot.approvals}
               events={snapshot.events}

@@ -62,6 +62,7 @@ export type AppTestMocks = {
   skillsList: AppTestMockFn<ArgmaxApi["skills"]["list"]>;
   openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
   listDetectedIdes: AppTestMockFn<ArgmaxApi["system"]["listDetectedIdes"]>;
+  setWorkspaceIcon: AppTestMockFn<ArgmaxApi["workspaces"]["setIcon"]>;
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
@@ -95,6 +96,7 @@ export let workspaceStatus: AppTestMocks["workspaceStatus"];
 export let skillsList: AppTestMocks["skillsList"];
 export let openInIde: AppTestMocks["openInIde"];
 export let listDetectedIdes: AppTestMocks["listDetectedIdes"];
+export let setWorkspaceIcon: AppTestMocks["setWorkspaceIcon"];
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
@@ -263,6 +265,16 @@ export function setupAppTestMocks(): void {
     { id: "cursor", label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true },
     { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false }
   ]);
+  setWorkspaceIcon = vi
+    .fn<ArgmaxApi["workspaces"]["setIcon"]>()
+    .mockImplementation(({ workspaceId, icon, iconColor }) =>
+      Promise.resolve({
+        ...(snapshot.workspaces[0] ?? missingWorkspace()),
+        id: workspaceId,
+        icon,
+        iconColor
+      })
+    );
 
   window.argmax = {
     dashboard: {
@@ -316,7 +328,8 @@ export function setupAppTestMocks(): void {
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
           taskLabel
-        })
+        }),
+      setIcon: setWorkspaceIcon
     },
     providers: {
       discover: providersDiscover,

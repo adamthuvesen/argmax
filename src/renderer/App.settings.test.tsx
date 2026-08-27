@@ -479,14 +479,14 @@ describe("App settings", () => {
     expect(document.documentElement.getAttribute("data-font-size")).toBe("default");
   });
 
-  it("settings Appearance section switches the font size and persists it", async () => {
+  it("settings Appearance section switches the app font size and persists it", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
     await openSettings();
     await screen.findByRole("heading", { name: "Appearance" });
 
-    const fontSize = screen.getByRole("radiogroup", { name: "Font size" });
+    const fontSize = screen.getByRole("radiogroup", { name: "App font size" });
     expect(within(fontSize).getByRole("radio", { name: "Default" })).toBeChecked();
 
     fireEvent.click(within(fontSize).getByRole("radio", { name: "Large" }));
@@ -500,6 +500,45 @@ describe("App settings", () => {
       expect(window.localStorage.getItem("argmax.font.size")).toBe("small")
     );
     expect(document.documentElement.getAttribute("data-font-size")).toBe("small");
+  });
+
+  it("settings Appearance section sizes agent windows independently of app chrome", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Appearance" });
+
+    const appFontSize = screen.getByRole("radiogroup", { name: "App font size" });
+    const chatFontSize = screen.getByRole("radiogroup", { name: "Agent window font size" });
+    expect(within(chatFontSize).getByRole("radio", { name: "Default" })).toBeChecked();
+
+    fireEvent.click(within(chatFontSize).getByRole("radio", { name: "Large" }));
+    await waitFor(() =>
+      expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("large")
+    );
+    // App chrome must not follow the agent-window size.
+    expect(window.localStorage.getItem("argmax.font.size")).toBe("default");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("default");
+    expect(within(appFontSize).getByRole("radio", { name: "Default" })).toBeChecked();
+
+    fireEvent.click(within(appFontSize).getByRole("radio", { name: "Small" }));
+    await waitFor(() =>
+      expect(document.documentElement.getAttribute("data-font-size")).toBe("small")
+    );
+    expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("large");
+    expect(within(chatFontSize).getByRole("radio", { name: "Large" })).toBeChecked();
+  });
+
+  it("carries the agent-window size on the session grid, not on app chrome", async () => {
+    window.localStorage.setItem("argmax.font.size.chat", "large");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+
+    const grid = await screen.findByRole("group", { name: "Session panes" });
+    expect(grid).toHaveAttribute("data-font-size", "large");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("default");
   });
 
   it("settings Appearance section renders the Accent picker and persists accent changes", async () => {

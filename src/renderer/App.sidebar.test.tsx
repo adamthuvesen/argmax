@@ -19,6 +19,7 @@ import {
   readWorkspaceFile,
   sendProviderInput,
   sessionEventsSince,
+  setWorkspaceIcon,
   skillsList,
   setupAppTestMocks,
   snapshot,
@@ -101,6 +102,24 @@ describe("App sidebar", () => {
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-current", "true");
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
+  });
+
+  it("persists a custom session icon through the workspaces:set-icon command", async () => {
+    render(<App />);
+
+    const row = await screen.findByRole("button", { name: /Build dashboard/ });
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Icon" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plum icon color" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sparkles" }));
+
+    await waitFor(() =>
+      expect(setWorkspaceIcon).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        icon: "Sparkles",
+        iconColor: "plum"
+      })
+    );
   });
 
   it("shows a thinking indicator while a session is running", async () => {
@@ -279,6 +298,23 @@ describe("App sidebar", () => {
     fireEvent.click(stopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
+    expect(sendProviderInput).not.toHaveBeenCalled();
+  });
+
+  it("interrupts the running turn and sends the draft when Send now is clicked", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = await screen.findByLabelText("Session prompt");
+    fireEvent.change(input, { target: { value: "MCP" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send now" }));
+
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
+    await waitFor(() =>
+      expect(sendProviderInput).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "session-1", input: "MCP" })
+      )
+    );
   });
 
 

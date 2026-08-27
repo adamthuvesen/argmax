@@ -17,8 +17,8 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use tauri::async_runtime::JoinHandle;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 
 use super::orchestration::{WorkspaceService, WATCH_DEBOUNCE_MS, WATCH_MAX_DEBOUNCE_MS};
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -148,7 +148,10 @@ fn spawn_refresh_loop(
     // after a few consecutive not-found refreshes so an orphaned worktree can't
     // keep the loop alive forever.
     const MAX_NOT_FOUND_BEFORE_EXIT: u32 = 3;
-    tokio::spawn(async move {
+    // `watch()` also runs from sync IPC (`workspaces:create-current`) on the
+    // macOS main thread, which has no Tokio context. `tokio::spawn` panics
+    // there. Tauri's runtime is process-wide and matches boot restoration.
+    tauri::async_runtime::spawn(async move {
         let mut not_found_streak: u32 = 0;
         loop {
             // Wait for the first event. `None` means the sender was

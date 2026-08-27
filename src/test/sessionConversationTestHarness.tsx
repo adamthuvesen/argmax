@@ -155,6 +155,8 @@ export function renderConversation(
     defaultToolCallGroupsExpanded?: boolean;
     pendingMessages?: PendingMessage[];
     onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
+    onSendSessionInput?: ReturnType<typeof vi.fn>;
+    onTerminateSession?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
     onOpenAgent?: (tool: ToolCall) => void;
     review?: ReviewState;
@@ -164,8 +166,8 @@ export function renderConversation(
     <SessionConversation
       events={events}
       isLogOpen={false}
-      onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
-      onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+      onSendSessionInput={options.onSendSessionInput ?? vi.fn().mockResolvedValue(undefined)}
+      onTerminateSession={options.onTerminateSession ?? vi.fn().mockResolvedValue(undefined)}
       onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn().mockResolvedValue(undefined)}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}

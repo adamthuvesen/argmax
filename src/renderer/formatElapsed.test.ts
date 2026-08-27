@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatElapsed, formatElapsedSeconds } from "./formatElapsed.js";
+import { formatElapsed, formatElapsedSeconds, formatThoughtLabel } from "./formatElapsed.js";
 
 describe("formatElapsed", () => {
   it("returns an em-dash sentinel for invalid input", () => {
@@ -69,5 +69,14 @@ describe("formatElapsedSeconds", () => {
   it("switches to hours and minutes past an hour", () => {
     expect(formatElapsedSeconds(3_600_000)).toBe("1h 0m");
     expect(formatElapsedSeconds(3_900_000)).toBe("1h 5m");
+  });
+});
+
+describe("formatThoughtLabel", () => {
+  it("uses Thinking while live and Thought once done", () => {
+    expect(formatThoughtLabel(true, 12_000)).toBe("Thinking");
+    expect(formatThoughtLabel(false)).toBe("Thought");
+    expect(formatThoughtLabel(false, 400)).toBe("Thought");
+    expect(formatThoughtLabel(false, 5_000)).toBe("Thought 5s");
   });
 });

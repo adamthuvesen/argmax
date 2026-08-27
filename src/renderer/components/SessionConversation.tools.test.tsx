@@ -118,7 +118,7 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByText("Output")).toBeNull();
   });
 
-  it("renders agent launches as standalone icon rows outside tool groups", () => {
+  it("renders agent launches as a list outside tool groups", () => {
     const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
       baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
@@ -138,7 +138,8 @@ describe("SessionConversation — tools & chrome", () => {
           name: "Task",
           input: {
             description: "Audit renderer tools",
-            prompt: "Audit renderer tool-call grouping."
+            prompt: "Audit renderer tool-call grouping.",
+            subagent_type: "reviewer"
           }
         }),
         event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
@@ -170,7 +171,9 @@ describe("SessionConversation — tools & chrome", () => {
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
     const agentRow = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
-    expect(agentRow.querySelector("svg")).not.toBeNull();
+    expect(agentRow.textContent).toMatch(/^Launched \S+$/);
+    expect(agentRow).not.toHaveTextContent("Audit renderer tools");
+    expect(agentRow).not.toHaveTextContent("Reviewer");
     expect(agentRow).not.toHaveTextContent("🤖");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
     fireEvent.click(agentRow);
@@ -180,11 +183,46 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: toggleAgentDetailsName("Audit renderer tools") }));
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
-    const childRow = screen.getByRole("button", { name: "Read toolCalls.tsx" });
-    expect(childRow).toBeInTheDocument();
-    expect(childRow.closest(".tool-call-agent-child-list")).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Read a file, started an agent/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Explored 1 file, started an agent/ })).toBeNull();
+  });
+
+  it("keeps a completed launch to its title alone and marks only the failed one", () => {
+    const prompt =
+      "Read-only task in /Users/adamthuvesen/dev/menti/hq: inspect this repository and report the layout";
+    const preview = prompt.slice(0, 72);
+    renderConversation(
+      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
+      [
+        event("u1", "user.message", "inspect hq", "2026-05-12T15:00:00.000Z"),
+        event("task-1-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+          id: "task-1",
+          name: "Task",
+          input: { prompt }
+        }),
+        event("task-1-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+          tool_use_id: "task-1",
+          is_error: true,
+          content: "Launch did not complete."
+        }),
+        event("task-2-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
+          id: "task-2",
+          name: "Task",
+          input: { prompt }
+        }),
+        event("task-2-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+          tool_use_id: "task-2",
+          content: "done"
+        })
+      ]
+    );
+
+    const rows = screen.getAllByRole("button", { name: startedAgentName(preview) });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toMatch(/^Launched \S+Failed$/);
+    expect(rows[1]?.textContent).toMatch(/^Launched \S+$/);
+    expect(screen.queryByText(/\/Users\//)).not.toBeInTheDocument();
   });
 
   it("keeps live agent activity collapsed while showing the running agent row", () => {
@@ -351,7 +389,7 @@ describe("SessionConversation — tools & chrome", () => {
       { defaultToolCallGroupsExpanded: false }
     );
 
-    const groups = screen.getAllByRole("button", { name: /Read a file, ran a command/ });
+    const groups = screen.getAllByRole("button", { name: /Explored 1 file, ran 1 command/ });
     expect(groups).toHaveLength(2);
     for (const group of groups) {
       expect(group).toHaveAttribute("aria-expanded", "false");
@@ -479,7 +517,7 @@ describe("SessionConversation — tools & chrome", () => {
     );
 
     expect(screen.getByRole("button", { name: /Ran 2 commands/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ran a command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ran 1 command/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ran 3 commands/ })).toBeNull();
   });
 

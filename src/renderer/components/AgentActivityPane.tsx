@@ -5,6 +5,7 @@ import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { coalesceAssistantGroups, type AssistantGroup } from "../lib/sessionTurnView.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import { thoughtDurationMs } from "../formatElapsed.js";
 import { ChatBubble } from "./ChatBubble.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
@@ -78,7 +79,12 @@ function renderAssistantGroup({
 }): JSX.Element {
   if (group.thinking) {
     return (
-      <ThoughtBlock key={group.id} defaultExpanded={thinkingLive} live={thinkingLive}>
+      <ThoughtBlock
+        key={group.id}
+        defaultExpanded={thinkingLive}
+        live={thinkingLive}
+        durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
+      >
         <StreamingMarkdown
           text={group.text}
           streaming={false}

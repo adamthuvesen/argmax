@@ -173,27 +173,27 @@ const FINE_BUCKET_ORDER: FineBucket[] = [
 // is used for subsequent clauses — Codex-style "Explored 1 file, 2 lists,
 // ran 1 command" emerges by mixing the two.
 function clauseForBucket(bucket: FineBucket, n: number, first: boolean): string {
-  const count = (singular: string, pluralWord: string): string =>
-    n === 1 ? `a ${singular}` : `${n} ${pluralWord}`;
-  const once = n === 1 ? "once" : `${n} times`;
-  const lowerFirst = (value: string): string => first ? value : value.charAt(0).toLowerCase() + value.slice(1);
+  const nNoun = (singular: string, pluralWord: string): string =>
+    `${n} ${n === 1 ? singular : pluralWord}`;
   switch (bucket) {
     case "agent":
-      return lowerFirst(`Started ${n === 1 ? "an agent" : `${n} agents`}`);
+      if (first) return n === 1 ? "Started an agent" : `Started ${n} agents`;
+      return nNoun("agent", "agents");
     case "read-files":
-      return lowerFirst(`Read ${count("file", "files")}`);
+      return first ? `Explored ${nNoun("file", "files")}` : nNoun("file", "files");
     case "read-lists":
-      return lowerFirst(`Listed ${count("directory", "directories")}`);
+      return first ? `Listed ${nNoun("directory", "directories")}` : nNoun("list", "lists");
     case "search":
-      return lowerFirst(`Searched ${once}`);
+      if (first) return n === 1 ? "Searched once" : `Searched ${n} times`;
+      return nNoun("search", "searches");
     case "web":
-      return lowerFirst(`Fetched ${count("URL", "URLs")}`);
+      return first ? `Fetched ${nNoun("URL", "URLs")}` : nNoun("URL", "URLs");
     case "edit":
-      return lowerFirst(`Edited ${count("file", "files")}`);
+      return first ? `Edited ${nNoun("file", "files")}` : nNoun("edit", "edits");
     case "bash":
-      return lowerFirst(`Ran ${count("command", "commands")}`);
+      return first ? `Ran ${nNoun("command", "commands")}` : `ran ${nNoun("command", "commands")}`;
     case "other":
-      return lowerFirst(`Used ${count("tool", "tools")}`);
+      return first ? `Used ${nNoun("tool", "tools")}` : nNoun("tool", "tools");
   }
 }
 

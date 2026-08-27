@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
+import { formatThoughtLabel } from "../formatElapsed.js";
 
 /**
  * Collapsible "Thought" block for Claude's extended-thinking (reasoning).
@@ -29,11 +30,13 @@ type UserToggle = {
 export function ThoughtBlock({
   children,
   defaultExpanded = false,
-  live = false
+  live = false,
+  durationMs
 }: {
   children: ReactNode;
   defaultExpanded?: boolean;
   live?: boolean;
+  durationMs?: number;
 }): JSX.Element {
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const localExpanded =
@@ -41,7 +44,8 @@ export function ThoughtBlock({
       ? userToggle.value
       : null;
   const expanded = localExpanded ?? (live || defaultExpanded);
-  const label = live ? "Thinking" : "Thought";
+  const label = formatThoughtLabel(live, durationMs);
+  const titleVerb = live ? "thinking" : "thought";
   return (
     <div
       className="thought-block"
@@ -53,7 +57,7 @@ export function ThoughtBlock({
         className="thought-block-header"
         aria-expanded={expanded}
         aria-label={label}
-        title={expanded ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+        title={expanded ? `Hide ${titleVerb}` : `Show ${titleVerb}`}
         onClick={() => setUserToggle({ value: !expanded, defaultExpanded, live })}
       >
         <span className="thought-block-eyebrow">

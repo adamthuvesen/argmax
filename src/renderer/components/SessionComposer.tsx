@@ -1,4 +1,4 @@
-import { Folder, GitBranch, MoreHorizontal, Play, Plus, Square, X } from "lucide-react";
+import { Folder, GitBranch, MoreHorizontal, Play, Plus, Send, Square, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -207,8 +207,18 @@ export function SessionComposer({
     }
   };
 
-  const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
+  /**
+   * Build the prompt from the draft plus attachments and hand it to `deliver`.
+   * The draft is only cleared once delivery resolves, so a failed send leaves
+   * the text in place for a retry.
+   */
+  const deliverDraft = async (
+    deliver: (
+      sessionId: string,
+      prompt: string,
+      attachments: ComposerAttachment[] | undefined
+    ) => Promise<void>
+  ): Promise<void> => {
     const trimmedInput = input.trim();
     if (!session || !trimmedInput || isSending) {
       return;
@@ -226,11 +236,9 @@ export function SessionComposer({
     setStatus(null);
     shouldRefocusInput.current = true;
     try {
-      await onSendSessionInput(
+      await deliver(
         session.id,
         prompt,
-        selectedModel,
-        agentMode,
         attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
       );
       setInput("");
@@ -240,6 +248,26 @@ export function SessionComposer({
     } finally {
       setIsSending(false);
     }
+  };
+
+  const submitInput = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    // Mid-turn this reaches the backend queue: Enter always means "line up the
+    // follow-up", never "cut the current turn short".
+    await deliverDraft((sessionId, prompt, attachments) =>
+      onSendSessionInput(sessionId, prompt, selectedModel, agentMode, attachments)
+    );
+  };
+
+  // The send control beside Stop skips the queue: cancel the live turn first,
+  // then deliver the draft, which relaunches the agent on the saved transcript.
+  // Same ordering the Plan/Question cards use, so the follow-up never waits
+  // behind whatever the provider is still emitting.
+  const sendNow = async (): Promise<void> => {
+    await deliverDraft(async (sessionId, prompt, attachments) => {
+      await onTerminateSession(sessionId);
+      await onSendSessionInput(sessionId, prompt, selectedModel, agentMode, attachments);
+    });
   };
 
   return (
@@ -523,15 +551,29 @@ export function SessionComposer({
           </div>
         ) : null}
         {session && session.state === "running" ? (
-          <button
-            className="session-send-button session-stop-button"
-            type="button"
-            title="Stop session"
-            aria-label="Stop session"
-            onClick={() => void onTerminateSession(session.id)}
-          >
-            <Square size={9} fill="currentColor" strokeWidth={0} />
-          </button>
+          // Stop keeps the far-right slot it has always had, so a mid-turn
+          // reach for "make it stop" never turns into an unintended send.
+          <div className="composer-send-group">
+            <button
+              className="session-send-button"
+              type="button"
+              disabled={!canSend || isSending || !input.trim()}
+              title="Send now, interrupting the current turn"
+              aria-label="Send now"
+              onClick={() => void sendNow()}
+            >
+              <Send size={12} aria-hidden="true" />
+            </button>
+            <button
+              className="session-send-button session-stop-button"
+              type="button"
+              title="Stop session"
+              aria-label="Stop session"
+              onClick={() => void onTerminateSession(session.id)}
+            >
+              <Square size={9} fill="currentColor" strokeWidth={0} />
+            </button>
+          </div>
         ) : (() => {
           const sendDisabled = !canSend || isSending || !input.trim();
           const sendTitle = isQueueing

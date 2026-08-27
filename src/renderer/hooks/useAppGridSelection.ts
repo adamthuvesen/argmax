@@ -163,8 +163,8 @@ export function useAppGridSelection({
               const sessionEvents = eventsBySessionId.get(cell.parentSessionId) ?? [];
               const sessionRunning = parentSession.state === "running";
               // Prune subagent tabs whose launch tool is no longer in the
-              // timeline (superseded retry, dropped completion); keep the cell
-              // as long as one tab survives.
+              // timeline (dropped completion); keep the cell as long as one
+              // tab survives.
               const liveIds = cell.parentToolUseIds.filter(
                 (id) =>
                   buildAgentActivity({

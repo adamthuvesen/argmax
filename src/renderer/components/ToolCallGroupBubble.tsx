@@ -2,7 +2,6 @@ import { Loader2 } from "lucide-react";
 import { memo, useMemo, useState, type JSX } from "react";
 import {
   buildGroupRows,
-  getToolIcon,
   summarizeToolGroup,
   type ToolCall,
   type ToolCallGroup
@@ -36,7 +35,6 @@ function ToolCallGroupBubbleInner({
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const summary = useMemo(() => summarizeToolGroup(group.tools), [group.tools]);
   const rows = useMemo(() => buildGroupRows(group.tools), [group.tools]);
-  const leadingTool = rows[0]?.tool ?? group.tools[0] ?? null;
   // Collapsed by default to match Codex — the user clicks the chevron to reveal
   // per-tool rows. defaultExpanded (from Settings) overrides. Error state colors
   // the chevron + status dot on the header without changing expansion.
@@ -45,11 +43,11 @@ function ToolCallGroupBubbleInner({
   const expanded = localExpanded ?? (defaultExpanded ?? false);
 
   // While collapsed and still running, show the current action ("Read foo.ts")
-  // in place of the slash-joined input preview so the user has a live signal.
+  // as a live caption. Done groups keep the rolled-up headline only.
   const previewText =
     !expanded && summary.status === "running" && summary.currentAction
       ? summary.currentAction
-      : summary.preview;
+      : null;
 
   return (
     <div
@@ -65,11 +63,6 @@ function ToolCallGroupBubbleInner({
         aria-label={`${summary.headline}${previewText ? ": " + previewText : ""}`}
         onClick={() => setUserToggle({ value: !expanded, defaultExpanded })}
       >
-        {leadingTool ? (
-          <span className="tool-call-group-icon" aria-hidden="true">
-            {getToolIcon(leadingTool.name)}
-          </span>
-        ) : null}
         <span className="tool-call-group-eyebrow" aria-hidden="true">
           <span className="tool-call-group-eyebrow-label">{summary.headline}</span>
         </span>

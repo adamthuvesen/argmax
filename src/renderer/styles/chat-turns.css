@@ -396,7 +396,7 @@
 }
 
 .tool-call-name {
-  font-weight: 600;
+  font-weight: 500;
   font-family: var(--font-code);
   font-size: var(--text-sm);
   flex: 0 0 auto;
@@ -880,4 +880,170 @@
 
 .tool-call-row[data-tool-type="agent"] .tool-call-row-icon {
   color: color-mix(in oklab, var(--accent) 34%, var(--muted));
+}
+
+/* Consecutive agent launches in a turn: a compact nested task row, with the
+   title and role on one line and a single quiet detail line under it.
+   Child tools stay in the activity pane, not nested under this list. */
+.agent-launch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agent-launch-row {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agent-launch-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agent-launch-row-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 2px 4px 2px 0;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  line-height: 1.3;
+  color: inherit;
+}
+
+.agent-launch-row-button:hover {
+  background: transparent;
+}
+
+.agent-launch-row-button:focus-visible {
+  box-shadow: none;
+}
+
+.agent-launch-nest {
+  flex: 0 0 auto;
+  margin-top: 5px;
+  margin-right: 4px;
+  color: color-mix(in oklab, var(--muted) 60%, transparent);
+  fill: currentColor;
+}
+
+/* A launch in flight walks the four dots clockwise, one brightening at a time
+   against a dimmed rest of the mark. Only `data-status="running"` animates:
+   a completed or failed row keeps the mark still, which is what "settled"
+   should look like. Reduced motion drops back to the same static mark. */
+.agent-launch-row[data-status="running"] .agent-launch-nest-dot {
+  animation: agent-launch-nest-orbit 1.6s var(--ease) infinite;
+}
+
+.agent-launch-row[data-status="running"] .agent-launch-nest-dot[data-dot="2"] {
+  animation-delay: 0.2s;
+}
+
+.agent-launch-row[data-status="running"] .agent-launch-nest-dot[data-dot="3"] {
+  animation-delay: 0.4s;
+}
+
+.agent-launch-row[data-status="running"] .agent-launch-nest-dot[data-dot="4"] {
+  animation-delay: 0.6s;
+}
+
+@keyframes agent-launch-nest-orbit {
+  0%,
+  55%,
+  100% {
+    opacity: 0.4;
+  }
+
+  18% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-launch-row[data-status="running"] .agent-launch-nest-dot {
+    animation: none;
+  }
+}
+
+.agent-launch-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agent-launch-title {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: 400;
+}
+
+.agent-launch-role,
+.agent-launch-status {
+  flex: 0 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.agent-launch-subtitle {
+  display: block;
+  max-width: 100%;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.agent-launch-row[data-status="error"] .agent-launch-status {
+  color: var(--rose);
+}
+
+.agent-launch-row[data-status="running"] .agent-launch-status {
+  color: var(--accent);
+}
+
+.agent-launch-row .tool-call-row-disclosure {
+  opacity: 0.45;
+}
+
+.agent-launch-row:hover .tool-call-row-disclosure,
+.agent-launch-row .tool-call-row-disclosure:focus-visible {
+  opacity: 1;
+}
+
+.agent-launch-row > .tool-call-detail {
+  margin: 2px 0 0;
+  padding: 4px 0 0;
 }

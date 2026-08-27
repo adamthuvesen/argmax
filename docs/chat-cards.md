@@ -71,6 +71,13 @@ The "Thinking" bubble is suppressed when any of these are true:
 - `session.state !== "running"`
 - the last significant event is `message.delta` (visible assistant text is actively streaming)
 - a *visible* tool is running (`tool.name` is not `ExitPlanMode` / an ask-question tool; the tool's own spinner is the indicator)
+- **subagent rows do not count as parent progress**: tool boundaries and prose
+  that carry a `parent_tool_use_id` fold under the launch row and never render
+  in the parent chat, so neither the visible-tool check nor
+  `lastSignificantSessionEvent` sees them (`subAgentToolUseIds` supplies the
+  linkage for child completions that omit the marker). While the parent only
+  waits on a launched subagent, Thinking stays steady instead of blinking on
+  every child heartbeat
 - **there is an outstanding card ask**: the most-recent `AskUserQuestion` / `ExitPlanMode` happened after the last `user.message` ([turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts) /
 [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx))
 
@@ -89,6 +96,22 @@ period, because final answer events often arrive shortly before the terminal
 session-state delta; this prevents a bogus one-second tail Thinking bubble when
 the turn is already done. Once the label is visible it stays up for at least
 600 ms, so rapid delta/tool chatter does not make it blink.
+
+**A send starts the turn, not the state flip.** Every rule above reads
+`session.state`, which the backend flips before it spawns or resumes the
+provider. The renderer can still see the new user bubble first, and it can miss
+or lag the delta that carries the flip, so a follow-up used to leave the chat
+blank for the whole provider start-up. `SessionConversation` wraps
+`onSendSessionInput` and remembers the newest agent-response event id at send
+time (`lastAgentResponseEvent`, which ignores `user.message`). While that
+marker still matches, the pane counts as starting a turn: Thinking shows on the
+first beat with no delay, the previous turn's trailing delta is treated as
+history rather than live streaming, and a pending mid-turn show delay is
+dropped so the new turn is not gated behind the old gap's timer. The marker
+releases as soon as the provider emits anything of its own, and also if the
+send throws or the session ends up `failed` or `cancelled`. Card submits route
+through the same wrapper, so the outstanding-card gate still owns their beat
+until the answer's `user.message` lands.
 
 These conditions are provider-agnostic. Do **not** suppress Thinking on the
 `session.streaming` first-byte beacon for Codex (an earlier heuristic did): the
@@ -181,6 +204,15 @@ projection hides rows with `parent_tool_use_id` and Codex child-thread
 `agent_message` rows; the pane projection reads those same persisted events and
 shows them as the subagent's own timeline.
 
+**Launch row visual contract.** A launch is one short line: a quiet 2x2 nest
+marker, then `Launched <codename>` in `--text`. The prompt and task description
+do not appear on the parent row. Clicking the row opens the activity pane, which
+owns the full brief. While the launch is running the dots brighten one at a time
+in a slow clockwise walk, and a completed or failed launch rests on the static
+mark. Only `Running` and `Failed` earn a quiet same-line hint. The accessible
+name keeps the existing Started agent contract (matched by
+[agentRowName.ts](../src/test/agentRowName.ts)).
+
 Agent panes are dependent grid cells, keyed by `parentSessionId` and
 `parentToolUseId`. Opening the same subagent focuses the existing pane. Closing
 or replacing the parent session pane also closes its agent panes, so a subagent
@@ -211,9 +243,11 @@ flash open and closed as completions arrive.
 
 Providers can emit a launch-looking row before the real child link exists, then
 retry with the same prompt once the child is created. The parent projection hides
-the earlier unresolved row when a later same-prompt agent has child evidence —
+the earlier unresolved row when a later same-prompt agent has child evidence,
 but only once the earlier row is no longer running, since a running row may be
-a legitimate parallel agent whose open pane must not be force-closed.
+a legitimate parallel agent whose open pane must not be force-closed. Protocol
+retries without a child, output, or real `command.completed` are hidden, not
+shown as Failed. A launch that completed with a provider error payload stays.
 Two completed same-prompt agents still render as two real launches. If trace
 import fails because a provider moves or redacts its local files, the pane keeps
 safe launch metadata and shows a load or limited-data notice instead of breaking
@@ -244,6 +278,26 @@ Main's `sendInput` already relaunches the agent when no live handle exists
 so the terminated session resumes via `--resume <conversationId>` and sends a
 capped visible transcript plus the answer as the next user message. The UI
 timeline still stores only the raw answer text.
+
+## Mid-turn follow-ups: queue or send now
+
+While a turn is running the composer offers both paths, and the choice is the
+input method rather than a mode the user has to set:
+
+- **Enter** submits the form, which reaches `providers:send-input`. Main sees a
+  live handle that is not accepting input and parks the message on the queue, so
+  the chip appears in the pending lane and drains when the turn finishes.
+- **Send now** (the paper-plane button beside Stop) runs the same
+  terminate-then-send order as the card submits above: `providers:terminate`,
+  then `providers:send-input`, which relaunches on the saved transcript. One
+  click, no separate Stop press.
+
+Stop keeps the far-right slot it has always had, so a mid-turn reach for "make
+it stop" never turns into an unintended send. Send now is disabled on an empty
+draft, Stop is not. The draft is cleared only after the send resolves, so a
+failed interrupt leaves the text in place with the error in the composer status
+line. Terminating drops any messages still queued for that session, which is
+the existing Stop behavior, not something send now adds.
 
 ## QuestionCard answer format
 
@@ -303,11 +357,24 @@ Search for the relevant `it(...)` titles:
 - "renders an AskUserQuestion card immediately from command.started and hides the raw row"
 - "delays Thinking after a completed assistant chunk while the session is still running"
 - "does not flash Thinking when the session completes during the post-answer grace period"
+- "keeps Thinking steady while a launched subagent works and only the child emits events"
+- "shows Thinking immediately after a follow-up is sent, before the session flips to running"
+- "shows Thinking immediately for a follow-up queued mid-turn, skipping the post-answer grace period"
+- "yields the post-send Thinking state to the first visible assistant text"
+- "drops the post-send Thinking state when the send itself fails"
 - "suppresses the Thinking indicator while AskUserQuestion is outstanding (the card is the ask)"
 - "restores Thinking once the user submits and a new user.message arrives"
 - "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"
 - "hides hallucinated assistant prose emitted AFTER an AskUserQuestion card"
 - "terminates the in-flight probe before sending the QuestionCard answer (no queue wait)"
+
+Mid-turn send now is locked in by
+[src/renderer/components/SessionComposer.sendNow.test.tsx](../src/renderer/components/SessionComposer.sendNow.test.tsx):
+
+- "cancels the live turn before sending the draft when Send now is clicked"
+- "queues on Enter instead of interrupting the running turn"
+- "stops without sending the draft when Stop is clicked"
+- "disables Send now on an empty draft while Stop stays available"
 
 ## When to revisit
 

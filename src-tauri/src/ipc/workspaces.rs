@@ -112,6 +112,15 @@ pub fn workspaces_set_label(
     live_workspaces(&state)?.set_label(input)
 }
 
+#[tauri::command(rename = "workspaces:set-icon")]
+#[specta::specta]
+pub fn workspaces_set_icon(
+    state: State<'_, AppState>,
+    input: WorkspacesSetIconInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(&state)?.set_icon(input)
+}
+
 fn live_workspaces(state: &AppState) -> ArgmaxResult<Arc<WorkspaceService>> {
     state.workspaces.get().cloned().ok_or_else(|| {
         ArgmaxError::service(

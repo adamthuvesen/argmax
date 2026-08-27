@@ -36,17 +36,17 @@ use crate::git::exec::run_git_text;
 use crate::ipc::inputs::{
     OpenIdeChoice, WorkspacesArchiveInput, WorkspacesAutotitleInput, WorkspacesCreateCurrentInput,
     WorkspacesCreateIsolatedInput, WorkspacesKeepInput, WorkspacesOpenInIdeInput,
-    WorkspacesSetLabelInput, WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput,
-    WorkspacesSetPriorityDismissedInput,
+    WorkspacesSetIconInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
+    WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
 use crate::persistence::projects::{list_projects, require_project};
 use crate::persistence::workspaces::{
-    find_workspace_by_id, persist_workspace, set_workspace_label, set_workspace_label_auto,
-    set_workspace_pinned, set_workspace_priority_added, set_workspace_priority_dismissed,
-    update_workspace_state, update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
-    WorkspaceSummary,
+    find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
+    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
+    set_workspace_priority_dismissed, update_workspace_state, update_workspace_status,
+    PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
 };
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
@@ -951,6 +951,24 @@ impl WorkspaceService {
             &connection,
             input.workspace_id.as_str(),
             input.task_label.as_str(),
+        )?;
+        self.publish(DashboardDelta {
+            workspaces: vec![workspace.clone()],
+            ..DashboardDelta::default()
+        });
+        Ok(workspace)
+    }
+
+    pub fn set_icon(
+        self: &Arc<Self>,
+        input: WorkspacesSetIconInput,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let connection = self.database.connection();
+        let workspace = set_workspace_icon(
+            &connection,
+            input.workspace_id.as_str(),
+            input.icon.as_ref().map(|token| token.as_str()),
+            input.icon_color.as_ref().map(|token| token.as_str()),
         )?;
         self.publish(DashboardDelta {
             workspaces: vec![workspace.clone()],

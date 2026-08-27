@@ -59,6 +59,7 @@ export const IPC_CHANNELS = [
   "workspaces:set-priority-added",
   "workspaces:set-priority-dismissed",
   "workspaces:set-label",
+  "workspaces:set-icon",
   "prs:list-for-session",
   "prs:refresh",
   "git:commit",

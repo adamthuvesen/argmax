@@ -302,6 +302,13 @@ export interface WorkspaceSummary {
   prState?: GhPrState | null;
   /** PR number paired with `prState`. */
   prNumber?: number | null;
+  /**
+   * Curated Lucide icon name the user picked for this row's sidebar glyph
+   * (null for none). With no custom icon the row keeps its live status marker.
+   */
+  icon?: string | null;
+  /** Named palette entry paired with `icon`. */
+  iconColor?: string | null;
 }
 
 export interface SessionSummary {
@@ -462,6 +469,11 @@ export interface ArgmaxApi {
     setPriorityDismissed: (input: { workspaceId: string; dismissed: boolean }) => Promise<WorkspaceSummary>;
     setPriorityAdded: (input: { workspaceId: string; added: boolean }) => Promise<WorkspaceSummary>;
     setLabel: (input: { workspaceId: string; taskLabel: string }) => Promise<WorkspaceSummary>;
+    setIcon: (input: {
+      workspaceId: string;
+      icon: string | null;
+      iconColor: string | null;
+    }) => Promise<WorkspaceSummary>;
   };
   providers: {
     discover: (refresh?: boolean) => Promise<DiscoveredProvider[]>;

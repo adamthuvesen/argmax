@@ -29,9 +29,10 @@ use super::sessions::{
 };
 use super::usage::{get_session_cost_summary, insert_usage_event, InsertUsageEventInput};
 use super::workspaces::{
-    find_workspace_by_id, persist_workspace, set_workspace_label, set_workspace_label_auto,
-    set_workspace_pinned, set_workspace_priority_added, set_workspace_priority_dismissed,
-    update_workspace_state, update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
+    find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
+    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
+    set_workspace_priority_dismissed, update_workspace_state, update_workspace_status,
+    PersistWorkspaceInput, WorkspaceStatusInput,
 };
 use crate::error::ArgmaxError;
 
@@ -212,6 +213,33 @@ fn workspace_auto_label_updates_until_manual_rename() {
             .task_label,
         "My Manual Title"
     );
+}
+
+#[test]
+fn workspace_custom_icon_persists_and_clears() {
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    let fresh = persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    assert_eq!(fresh.icon, None);
+    assert_eq!(fresh.icon_color, None);
+
+    let decorated = set_workspace_icon(&connection, "w1", Some("brain"), Some("violet"))
+        .expect("set workspace icon");
+    assert_eq!(decorated.icon.as_deref(), Some("brain"));
+    assert_eq!(decorated.icon_color.as_deref(), Some("violet"));
+
+    let reread = find_workspace_by_id(&connection, "w1").expect("reread workspace");
+    assert_eq!(reread.icon.as_deref(), Some("brain"));
+    assert_eq!(reread.icon_color.as_deref(), Some("violet"));
+
+    let cleared = set_workspace_icon(&connection, "w1", None, None).expect("clear workspace icon");
+    assert_eq!(cleared.icon, None);
+    assert_eq!(cleared.icon_color, None);
+
+    let missing = set_workspace_icon(&connection, "missing", Some("flag"), Some("blue"))
+        .expect_err("missing workspace");
+    assert!(matches!(missing, ArgmaxError::RecordNotFound { .. }));
 }
 
 #[test]

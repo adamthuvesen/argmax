@@ -10,7 +10,7 @@
       (function () {
         try {
           var raw = localStorage.getItem("argmax.theme.mode");
-          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "system";
+          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "dark";
           var resolved =
             mode === "system"
               ? window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -19,7 +19,7 @@
               : mode;
           document.documentElement.setAttribute("data-theme", resolved);
         } catch (e) {
-          document.documentElement.setAttribute("data-theme", "light");
+          document.documentElement.setAttribute("data-theme", "dark");
         }
       })();
     </script>

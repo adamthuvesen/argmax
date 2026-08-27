@@ -202,16 +202,26 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0e0e0c;
-  --sidebar: #131311;
-  --panel: #1a1a17;
-  --panel-soft: #1f1f1c;
-  --panel-sunken: #0a0a09;
+  /* Main view is the well. Sidebar sits a half step above it and cards stay on
+     --panel so they still lift. The well sits at warm charcoal (oklch ~20%),
+     not near-black: going darker crushes the grain, flattens the shadows, and
+     makes long reading sessions harsh. The bg-to-sidebar gap is deliberately
+     tight — the chrome seam is carried by the sidebar's 1px --line border, so
+     the fills only need to differ enough to hint at depth. Any change here has
+     to move the first-paint mirrors with it — Tauri's window backgroundColor,
+     DARK_BG in ipc/system.rs, the xterm theme, and the theme-picker swatch — or
+     the app flashes a different black on cold start. */
+
+  --bg: #171714;
+  --sidebar: #1b1b18;
+  --panel: #232320;
+  --panel-soft: #292925;
+  --panel-sunken: #121210;
   --code-surface: var(--panel-sunken);
 
-  --line: #2a2a25;
-  --line-soft: #1f1f1b;
-  --line-strong: #3a3a33;
+  --line: #34342e;
+  --line-soft: #292924;
+  --line-strong: #44443c;
   --scrollbar-thumb: var(--line-strong);
   --scrollbar-thumb-hover: var(--muted);
 
@@ -260,7 +270,7 @@
      softer dark-mode tokens below so they don't become bright slabs. */
   --ink: #f4f2ec;
   --ink-soft: #e5e1d7;
-  --bubble-on-ink: #0e0e0c;
+  --bubble-on-ink: #171714;
   --user-bubble-bg: #2d2c27;
   --user-bubble-fg: #f4f2ec;
   --user-message-bg: color-mix(in oklab, var(--panel-soft) 82%, var(--panel) 18%);
@@ -281,8 +291,8 @@
   --overlay-soft: rgba(255, 250, 235, 0.04);
   --overlay-med: rgba(255, 250, 235, 0.07);
   --overlay-strong: rgba(255, 250, 235, 0.12);
-  --modal-backdrop: rgba(14, 14, 12, 0.36);
-  --modal-backdrop-gradient: linear-gradient(180deg, rgba(14, 14, 12, 0.14), rgba(14, 14, 12, 0.42));
+  --modal-backdrop: rgba(10, 10, 8, 0.44);
+  --modal-backdrop-gradient: linear-gradient(180deg, rgba(10, 10, 8, 0.2), rgba(10, 10, 8, 0.5));
   --selection-bg: color-mix(in oklab, var(--accent) 30%, transparent);
   --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 

@@ -75,6 +75,7 @@ export function SessionPane({
   onRunCheck,
   onSendSessionInput,
   onCancelQueuedMessage,
+  onSendQueuedMessageNow,
   onOpenAgent,
   pendingMessages,
   onTerminateSession,
@@ -114,6 +115,7 @@ export function SessionPane({
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
+  onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   project: ProjectSummary | null;
@@ -481,6 +483,7 @@ export function SessionPane({
           onOpenCommitDialog={handleOpenCommitDialog}
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}
+          onSendQueuedMessageNow={onSendQueuedMessageNow}
           pendingMessages={sessionId ? (pendingMessages?.[sessionId] ?? []) : []}
           onTerminateSession={onTerminateSession}
           onRunCheck={onRunCheck}

@@ -19,6 +19,7 @@ export interface SessionCommands {
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
+  sendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   runCheck: (workspaceId: string, command: string) => Promise<void>;
   terminateSession: (sessionId: string) => Promise<void>;
 }
@@ -77,6 +78,17 @@ export function useSessionCommands({
     await window.argmax.providers.cancelQueuedMessage({ sessionId, messageId });
   }, []);
 
+  const sendQueuedMessageNow = useCallback(
+    async (sessionId: string, messageId: string): Promise<void> => {
+      if (!window.argmax) {
+        throw new Error("Open the Tauri app window to send a queued follow-up.");
+      }
+      await window.argmax.providers.sendQueuedMessageNow({ sessionId, messageId });
+      await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+    },
+    [refreshDashboardStatus, loadSessionEvents]
+  );
+
   const runCheck = useCallback(
     async (workspaceId: string, command: string): Promise<void> => {
       if (!window.argmax) {
@@ -115,6 +127,7 @@ export function useSessionCommands({
   return {
     sendSessionInput,
     cancelQueuedMessage,
+    sendQueuedMessageNow,
     runCheck,
     terminateSession
   };

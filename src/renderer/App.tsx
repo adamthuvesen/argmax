@@ -816,7 +816,7 @@ export function App(): JSX.Element {
     openNewSessionPane();
   }, [openNewSessionPane, setIsSettingsOpen]);
 
-  const { sendSessionInput, cancelQueuedMessage, runCheck, terminateSession } =
+  const { sendSessionInput, cancelQueuedMessage, sendQueuedMessageNow, runCheck, terminateSession } =
     useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: fastModeEnabled });
 
   const launchTask = useCallback(
@@ -1284,6 +1284,7 @@ export function App(): JSX.Element {
               onResolveApproval={resolveApproval}
               onSendSessionInput={sendSessionInput}
               onCancelQueuedMessage={cancelQueuedMessage}
+              onSendQueuedMessageNow={sendQueuedMessageNow}
               pendingMessages={snapshot.pendingMessages}
               onTerminateSession={terminateSession}
               onRunCheck={runCheck}

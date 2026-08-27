@@ -103,6 +103,7 @@ interface SessionMultiGridProps {
     attachments?: ComposerAttachment[]
   ) => Promise<void>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
+  onSendQueuedMessageNow: (sessionId: string, messageId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
@@ -148,6 +149,7 @@ export function SessionMultiGrid({
   onResolveApproval,
   onSendSessionInput,
   onCancelQueuedMessage,
+  onSendQueuedMessageNow,
   pendingMessages,
   onTerminateSession,
   onRunCheck,
@@ -411,6 +413,7 @@ export function SessionMultiGrid({
                         onRunCheck={onRunCheck}
                         onSendSessionInput={onSendSessionInput}
                         onCancelQueuedMessage={onCancelQueuedMessage}
+                        onSendQueuedMessageNow={onSendQueuedMessageNow}
                         pendingMessages={pendingMessages}
                         onTerminateSession={onTerminateSession}
                         project={project}

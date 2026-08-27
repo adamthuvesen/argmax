@@ -89,6 +89,7 @@ export function SessionConversation({
   onOpenCommitDialog,
   onSendSessionInput,
   onCancelQueuedMessage,
+  onSendQueuedMessageNow,
   pendingMessages = [],
   onTerminateSession,
   onRunCheck,
@@ -125,6 +126,7 @@ export function SessionConversation({
       chips above the composer; cleared from the parent as the queue drains. */
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
+  onSendQueuedMessageNow?: (sessionId: string, messageId: string) => Promise<void>;
   onTerminateSession: (sessionId: string) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
@@ -586,10 +588,11 @@ export function SessionConversation({
           inputRef={inputRef}
           isQueueing={isQueueing}
           onFastModeEnabledChange={onFastModeEnabledChange}
-        onCancelQueuedMessage={onCancelQueuedMessage}
-        onSendSessionInput={sendSessionInput}
-        onTerminateSession={onTerminateSession}
-        pendingMessages={pendingMessages}
+          onCancelQueuedMessage={onCancelQueuedMessage}
+          onSendQueuedMessageNow={onSendQueuedMessageNow}
+          onSendSessionInput={sendSessionInput}
+          onTerminateSession={onTerminateSession}
+          pendingMessages={pendingMessages}
         reviewPanelOpen={review.isPanelOpen}
         selectedModel={selectedModel}
         session={session}

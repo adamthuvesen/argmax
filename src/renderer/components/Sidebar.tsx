@@ -1154,7 +1154,7 @@ export function Sidebar({
             onClick={() => setIdentityMenuOpen((open) => !open)}
           >
             <span className="identity-avatar" aria-hidden="true">
-              <Mascot size={26} className="identity-avatar-mascot" />
+              <Mascot size={24} className="identity-avatar-mascot" />
             </span>
             <span className="identity-meta">
               <span className="identity-name">argmax@local</span>

@@ -108,6 +108,7 @@ export type ProviderSessionInput = OptionalNullable<
   "modelLabel" | "modelId" | "reasoningEffort" | "agentMode" | "attachments"
 >;
 export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMessageInput;
+export type ProvidersSendQueuedMessageNowInput = Bindings.ProvidersSendQueuedMessageNowInput;
 export type ProviderSessionResizeInput = Bindings.ProvidersResizeInput;
 export type ComposerAttachment = Bindings.ComposerAttachmentInput;
 export type AttachmentSaveImageInput = Bindings.AttachmentsSaveImageInput;
@@ -482,6 +483,9 @@ export interface ArgmaxApi {
     resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
     terminate: (sessionId: string) => Promise<{ ok: true }>;
     cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<{ ok: true }>;
+    sendQueuedMessageNow: (
+      input: ProvidersSendQueuedMessageNowInput
+    ) => Promise<{ ok: true; queued: boolean }>;
   };
   attachments: {
     saveImage: (input: AttachmentSaveImageInput) => Promise<AttachmentSaveImageResult>;

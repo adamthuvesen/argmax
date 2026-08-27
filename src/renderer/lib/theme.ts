@@ -6,8 +6,9 @@
  * - Persisted to localStorage under `argmax.theme.mode`.
  * - Applied as a `data-theme` attribute on `<html>`, which flips the token
  *   block in `styles.css` (`:root[data-theme="dark"]`).
- * - When mode is `"system"`, the resolved value follows
- *   `prefers-color-scheme`, and updates live when the OS preference flips.
+ * - Unset storage defaults to `"dark"`. When mode is `"system"`, the
+ *   resolved value follows `prefers-color-scheme`, and updates live when
+ *   the OS preference flips.
  *
  * Tauri runtime keeps its own cached copy in `userData/theme.json` so
  * `BrowserWindow.backgroundColor` matches at cold start (no white flash). The
@@ -18,7 +19,7 @@ export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
 export const THEME_STORAGE_KEY = "argmax.theme.mode";
-export const DEFAULT_THEME_MODE: ThemeMode = "system";
+export const DEFAULT_THEME_MODE: ThemeMode = "dark";
 
 const THEME_MODES = new Set<string>(["light", "dark", "system"]);
 

@@ -32,6 +32,7 @@ import type {
   ProviderSessionInput,
   ProviderSessionResizeInput,
   ProvidersCancelQueuedMessageInput,
+  ProvidersSendQueuedMessageNowInput,
   RegisterProjectInput,
   RemoveProjectInput,
   ResolveApprovalInput,
@@ -164,7 +165,9 @@ function createTauriArgmaxApi(): ArgmaxApi {
       resize: (input: ProviderSessionResizeInput) => invokeCommand<{ ok: true }>("providers:resize", input),
       terminate: (sessionId: string) => invokeCommand<{ ok: true }>("providers:terminate", { sessionId }),
       cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) =>
-        invokeCommand<{ ok: true }>("providers:cancel-queued-message", input)
+        invokeCommand<{ ok: true }>("providers:cancel-queued-message", input),
+      sendQueuedMessageNow: (input: ProvidersSendQueuedMessageNowInput) =>
+        invokeCommand<{ ok: true; queued: boolean }>("providers:send-queued-message-now", input)
     },
     attachments: {
       saveImage: (input: AttachmentSaveImageInput) =>

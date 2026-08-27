@@ -155,6 +155,7 @@ export function renderConversation(
     defaultToolCallGroupsExpanded?: boolean;
     pendingMessages?: PendingMessage[];
     onCancelQueuedMessage?: ReturnType<typeof vi.fn>;
+    onSendQueuedMessageNow?: ReturnType<typeof vi.fn>;
     onSendSessionInput?: ReturnType<typeof vi.fn>;
     onTerminateSession?: ReturnType<typeof vi.fn>;
     onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
@@ -169,6 +170,7 @@ export function renderConversation(
       onSendSessionInput={options.onSendSessionInput ?? vi.fn().mockResolvedValue(undefined)}
       onTerminateSession={options.onTerminateSession ?? vi.fn().mockResolvedValue(undefined)}
       onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn().mockResolvedValue(undefined)}
+      onSendQueuedMessageNow={options.onSendQueuedMessageNow ?? vi.fn().mockResolvedValue(undefined)}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
       {...(options.defaultThinkingExpanded !== undefined ? { defaultThinkingExpanded: options.defaultThinkingExpanded } : {})}

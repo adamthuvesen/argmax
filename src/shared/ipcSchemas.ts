@@ -27,6 +27,7 @@ export const IPC_CHANNELS = [
   "providers:resize",
   "providers:terminate",
   "providers:cancel-queued-message",
+  "providers:send-queued-message-now",
   "attachments:save-image",
   "terminal:spawn",
   "terminal:write",

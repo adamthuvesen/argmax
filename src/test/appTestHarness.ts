@@ -337,7 +337,8 @@ export function setupAppTestMocks(): void {
       sendInput: sendProviderInput,
       resize: () => Promise.resolve({ ok: true }),
       terminate: terminateProvider,
-      cancelQueuedMessage: () => Promise.resolve({ ok: true })
+      cancelQueuedMessage: () => Promise.resolve({ ok: true }),
+      sendQueuedMessageNow: () => Promise.resolve({ ok: true, queued: false })
     },
     attachments: {
       saveImage: () => Promise.resolve({ filePath: "/tmp/fake.png", sizeBytes: 0 })

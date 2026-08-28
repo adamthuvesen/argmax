@@ -3,7 +3,10 @@
 ![License](https://img.shields.io/github/license/adamthuvesen/argmax) ![Rust](https://img.shields.io/badge/rust-1.95%2B-orange)
 
 <p align="center">
-  <img src="assets/icon.png" alt="Argmax purple mascot" width="96" height="96">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.png">
+    <img src="assets/icon.png" alt="Argmax purple mascot" width="96" height="96">
+  </picture>
 </p>
 
 A local desktop app with a Rust core and React UI for running Claude Code, Codex, and Cursor Agent in isolated git worktrees or your current checkout.

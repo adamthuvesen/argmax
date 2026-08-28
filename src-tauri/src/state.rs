@@ -14,6 +14,7 @@ use crate::gh::poller::GhPoller;
 use crate::persistence::Database;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
+use crate::session_control::SessionLaunchServer;
 use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
 use crate::workspaces::WorkspaceService;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub db: OnceCell<Arc<Database>>,
     pub approvals: OnceCell<Arc<ApprovalService>>,
     pub providers: OnceCell<Arc<ProviderSessionService>>,
+    pub session_launch_server: OnceCell<SessionLaunchServer>,
     pub provider_discovery: Arc<ProviderDiscovery>,
     pub terminals: OnceCell<Arc<TerminalService>>,
     pub checks: OnceCell<Arc<CheckService>>,

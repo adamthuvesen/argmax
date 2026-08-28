@@ -16,7 +16,10 @@
 // orphan recovery live in `session_service.rs` (this module is the
 // process/IO substrate, that one is the state machine).
 
-use crate::util::sync::LockOrRecover;
+use crate::{
+    session_control::{SessionLaunchProcessConfig, SessionLaunchRegistry},
+    util::sync::LockOrRecover,
+};
 use std::{
     fs::File,
     future::Future,
@@ -117,12 +120,21 @@ pub trait ProviderProcessLauncher: Send + Sync {
 #[derive(Clone)]
 pub struct RealProviderProcessLauncher {
     discovery: ProviderDiscovery,
+    session_launch_registry: Option<Arc<SessionLaunchRegistry>>,
 }
 
 impl RealProviderProcessLauncher {
     pub fn new() -> Self {
         Self {
             discovery: ProviderDiscovery::new(),
+            session_launch_registry: None,
+        }
+    }
+
+    pub fn with_session_launch_registry(registry: Arc<SessionLaunchRegistry>) -> Self {
+        Self {
+            discovery: ProviderDiscovery::new(),
+            session_launch_registry: Some(registry),
         }
     }
 }
@@ -136,10 +148,17 @@ impl Default for RealProviderProcessLauncher {
 impl ProviderProcessLauncher for RealProviderProcessLauncher {
     fn launch<'a>(
         &'a self,
-        input: ProviderLaunchInput,
+        mut input: ProviderLaunchInput,
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
         Box::pin(async move {
+            let session_launch = self
+                .session_launch_registry
+                .as_ref()
+                .map(|registry| registry.issue(&input));
+            if let Some(config) = session_launch.as_ref() {
+                input.prompt = config.prepend_instruction(&input.prompt);
+            }
             let definition = get_provider_definition(input.provider);
             let capability = self.discovery.discover(input.provider).await;
             let Some(binary_path) = capability.binary_path else {
@@ -162,6 +181,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 args,
                 &input,
                 on_event,
+                session_launch.as_ref(),
             )
         })
     }
@@ -174,6 +194,7 @@ fn launch_structured_via_pty(
     args: Vec<String>,
     input: &ProviderLaunchInput,
     on_event: EventCallback,
+    session_launch: Option<&SessionLaunchProcessConfig>,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     // Connect the child's stdio to a PTY instead of pipes. With pipes,
     // `claude -p`, `codex exec --json`, and `cursor agent` all fall into
@@ -222,14 +243,19 @@ fn launch_structured_via_pty(
     let stdout_fd = dup_slave()?;
     let stderr_fd = dup_slave()?;
 
+    let mut environment_overrides = vec![
+        ("NO_COLOR".to_string(), "1".to_string()),
+        ("TERM".to_string(), "xterm-256color".to_string()),
+    ];
+    if let Some(config) = session_launch {
+        environment_overrides.extend(config.env_pairs());
+    }
+
     let mut child = Command::new(binary_path)
         .args(&args)
         .current_dir(&input.workspace_path)
         .env_clear()
-        .envs(build_provider_environment([
-            ("NO_COLOR".to_string(), "1".to_string()),
-            ("TERM".to_string(), "xterm-256color".to_string()),
-        ]))
+        .envs(build_provider_environment(environment_overrides))
         .stdin(Stdio::from(stdin_fd))
         .stdout(Stdio::from(stdout_fd))
         .stderr(Stdio::from(stderr_fd))
@@ -355,6 +381,7 @@ fn launch_structured_via_pty(
     _args: Vec<String>,
     _input: &ProviderLaunchInput,
     _on_event: EventCallback,
+    _session_launch: Option<&SessionLaunchProcessConfig>,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     Err(ArgmaxError::service(
         "PROVIDER_PTY_UNSUPPORTED",

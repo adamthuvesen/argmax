@@ -20,6 +20,7 @@ pub mod notifications;
 pub mod persistence;
 pub mod providers;
 pub mod review;
+pub mod session_control;
 pub mod sessions;
 pub mod skills;
 pub mod state;
@@ -265,10 +266,29 @@ pub fn run() {
                             if state.approvals.set(Arc::clone(&approvals)).is_err() {
                                 tracing::warn!("approval service state was already initialized");
                             }
+                            let (session_launch_server, session_launch_registry) =
+                                match session_control::SessionLaunchServer::bind() {
+                                    Ok((server, registry)) => (Some(server), Some(registry)),
+                                    Err(error) => {
+                                        tracing::warn!(?error, "session launch control unavailable");
+                                        (None, None)
+                                    }
+                                };
                             let lifecycle = workspaces::lifecycle::WorkspaceLifecycle::new();
+                            let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> =
+                                match session_launch_registry {
+                                    Some(registry) => Arc::new(
+                                        providers::runtime::RealProviderProcessLauncher::with_session_launch_registry(
+                                            registry,
+                                        ),
+                                    ),
+                                    None => Arc::new(
+                                        providers::runtime::RealProviderProcessLauncher::new(),
+                                    ),
+                                };
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
-                                Arc::new(providers::runtime::RealProviderProcessLauncher::new()),
+                                provider_launcher,
                                 publish_delta,
                                 Arc::clone(&lifecycle),
                                 Some(Arc::clone(&approvals)),
@@ -384,6 +404,24 @@ pub fn run() {
                             let workspaces_for_watchers = Arc::clone(&workspaces);
                             if state.workspaces.set(workspaces).is_err() {
                                 tracing::warn!("workspace service state was already initialized");
+                            }
+                            if let Some(server) = session_launch_server {
+                                match server.start(
+                                    Arc::clone(&database),
+                                    Arc::clone(&workspaces_for_watchers),
+                                    Arc::clone(&providers),
+                                ) {
+                                    Ok(server) => {
+                                        if state.session_launch_server.set(server).is_err() {
+                                            tracing::warn!(
+                                                "session launch server state was already initialized"
+                                            );
+                                        }
+                                    }
+                                    Err(error) => {
+                                        tracing::warn!(?error, "session launch server failed to start")
+                                    }
+                                }
                             }
                             // Watcher refresh loops use tokio::spawn. Setup runs
                             // during the synchronous macOS launch callback, so

@@ -131,6 +131,21 @@ impl RealProviderProcessLauncher {
         }
     }
 
+    /// Share the boot-warmed discovery cache (`AppState.provider_discovery`).
+    /// A launcher with its own fresh cache re-probes each provider's version
+    /// and auth status on its first launch — `cursor-agent status` alone runs
+    /// ~800 ms — so the first session per provider paid a probe the app had
+    /// already done at boot.
+    pub fn with_discovery(
+        discovery: ProviderDiscovery,
+        session_launch_registry: Option<Arc<SessionLaunchRegistry>>,
+    ) -> Self {
+        Self {
+            discovery,
+            session_launch_registry,
+        }
+    }
+
     pub fn with_session_launch_registry(registry: Arc<SessionLaunchRegistry>) -> Self {
         Self {
             discovery: ProviderDiscovery::new(),

@@ -12,6 +12,7 @@ const PROJECT: ProjectSummary = {
   settings: {
     defaultProvider: "claude",
     defaultModelLabel: "Haiku 4.5",
+    defaultModelId: "",
     worktreeLocation: "/repo/argmax/.worktrees",
     setupCommand: "",
     checkCommands: []

@@ -41,6 +41,8 @@ pub struct ProvidersDiscoverInput {
 pub struct ProjectSettingsInput {
     pub default_provider: ProviderId,
     pub default_model_label: NonEmptyString,
+    /// '' keeps "no model chosen": launch paths use the provider default.
+    pub default_model_id: String,
     pub worktree_location: NonEmptyString,
     pub setup_command: String,
     pub check_commands: Vec<String>,

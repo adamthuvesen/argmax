@@ -956,6 +956,7 @@ mod tests {
             settings: ProjectSettings {
                 default_provider: "codex".to_string(),
                 default_model_label: "GPT-5.6 Sol".to_string(),
+                default_model_id: String::new(),
                 worktree_location: "/tmp/worktrees".to_string(),
                 setup_command: String::new(),
                 check_commands: Vec::new(),

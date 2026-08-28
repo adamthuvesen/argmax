@@ -517,6 +517,21 @@ fn build_check_failure_follow_up_input(
     context: &gh::poller::CheckFailureContext,
 ) -> error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
     let defaults = provider_defaults(&project.settings.default_provider);
+    // Honor the project's configured default model when one was chosen; ''
+    // (rows persisted before v14, or never edited) falls back to the built-in
+    // per-provider default. Effort stays the provider default either way —
+    // per-model effort isn't part of project settings.
+    let (model_label, model_id) = if project.settings.default_model_id.is_empty() {
+        (
+            defaults.model_label.to_string(),
+            defaults.model_id.to_string(),
+        )
+    } else {
+        (
+            project.settings.default_model_label.clone(),
+            project.settings.default_model_id.clone(),
+        )
+    };
     serde_json::from_value(json!({
         "workspaceId": workspace_id,
         "provider": project.settings.default_provider,
@@ -526,8 +541,8 @@ fn build_check_failure_follow_up_input(
             context.head_sha.chars().take(12).collect::<String>(),
             context.pr_number
         ),
-        "modelLabel": defaults.model_label,
-        "modelId": defaults.model_id,
+        "modelLabel": model_label,
+        "modelId": model_id,
         "reasoningEffort": defaults.reasoning_effort,
         "cols": 120,
         "rows": 36
@@ -600,5 +615,59 @@ mod tests {
             contents.contains("health_ping") || contents.contains("healthPing"),
             "expected command surface in bindings:\n{contents}",
         );
+    }
+
+    fn follow_up_project(default_model_label: &str, default_model_id: &str) -> persistence::projects::ProjectSummary {
+        persistence::projects::ProjectSummary {
+            id: "p1".to_string(),
+            name: "Argmax".to_string(),
+            repo_path: "/tmp/repo".to_string(),
+            current_branch: "main".to_string(),
+            default_branch: Some("main".to_string()),
+            settings: persistence::projects::ProjectSettings {
+                default_provider: "codex".to_string(),
+                default_model_label: default_model_label.to_string(),
+                default_model_id: default_model_id.to_string(),
+                worktree_location: "/tmp/repo/.worktrees".to_string(),
+                setup_command: String::new(),
+                check_commands: Vec::new(),
+            },
+            counts: persistence::projects::ProjectCounts {
+                active: 0,
+                blocked: 0,
+                failed: 0,
+                review_ready: 0,
+            },
+            latest_activity_at: None,
+        }
+    }
+
+    fn follow_up_context() -> gh::poller::CheckFailureContext {
+        gh::poller::CheckFailureContext {
+            session_id: "s1".to_string(),
+            workspace_id: "w1".to_string(),
+            pr_number: 7,
+            head_sha: "abcdef1234567890".to_string(),
+        }
+    }
+
+    #[test]
+    fn check_failure_follow_up_honors_configured_default_model() {
+        let project = follow_up_project("GPT-5.6 Luna", "gpt-5.6-luna");
+        let input = build_check_failure_follow_up_input("w1", &project, &follow_up_context())
+            .expect("follow-up input");
+        assert_eq!(input.model_label.as_str(), "GPT-5.6 Luna");
+        assert_eq!(input.model_id.as_str(), "gpt-5.6-luna");
+    }
+
+    #[test]
+    fn check_failure_follow_up_falls_back_without_model_id() {
+        // Rows persisted before v14 (or never edited) carry '' — the built-in
+        // per-provider default applies, exactly the pre-v14 behavior.
+        let project = follow_up_project("GPT-5.5", "");
+        let input = build_check_failure_follow_up_input("w1", &project, &follow_up_context())
+            .expect("follow-up input");
+        assert_eq!(input.model_label.as_str(), "GPT-5.6 Sol");
+        assert_eq!(input.model_id.as_str(), "gpt-5.6-sol");
     }
 }

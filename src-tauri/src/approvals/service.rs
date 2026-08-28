@@ -361,6 +361,7 @@ mod tests {
                     settings: ProjectSettings {
                         default_provider: "claude".to_string(),
                         default_model_label: "Haiku 4.5".to_string(),
+                        default_model_id: String::new(),
                         worktree_location: "/tmp/argmax-fixture-repo/.worktrees".to_string(),
                         setup_command: String::new(),
                         check_commands: Vec::new(),

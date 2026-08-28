@@ -145,6 +145,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
           settings: {
             defaultProvider: "codex",
             defaultModelLabel: "GPT-5.3 Codex",
+            defaultModelId: "",
             worktreeLocation: "/tmp",
             setupCommand: "",
             checkCommands: []

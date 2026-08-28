@@ -1,4 +1,4 @@
-export type SettingsGroupId = "general" | "agents" | "integrations" | "system";
+export type SettingsGroupId = "general" | "agents" | "projects" | "integrations" | "system";
 type SettingsSectionMeta = { id: string; label: string };
 export type SettingsGroupMeta = {
   id: SettingsGroupId;
@@ -33,6 +33,14 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       { id: "settings-permissions", label: "Permissions" },
       { id: "settings-providers", label: "Providers" }
     ]
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    title: "Configure your projects",
+    eyebrow: "Per-repo defaults",
+    description: "Where each project's worktrees live, which checks run before shipping, and which agent handles its automatic sessions.",
+    sections: [{ id: "settings-project-config", label: "Project settings" }]
   },
   {
     id: "integrations",

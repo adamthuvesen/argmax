@@ -26,6 +26,9 @@ pub struct ProjectRemote {
 pub struct ProjectSettings {
     pub default_provider: String,
     pub default_model_label: String,
+    /// '' means "not chosen yet": launch paths fall back to the built-in
+    /// per-provider default model.
+    pub default_model_id: String,
     pub worktree_location: String,
     pub setup_command: String,
     pub check_commands: Vec<String>,
@@ -112,12 +115,12 @@ pub fn persist_project(
             r#"
         INSERT INTO projects (
           id, name, repo_path, current_branch, default_branch, default_provider,
-          default_model_label, worktree_location, setup_command, check_commands_json,
-          ui_preferences_json, created_at, updated_at
+          default_model_label, default_model_id, worktree_location, setup_command,
+          check_commands_json, ui_preferences_json, created_at, updated_at
         ) VALUES (
           @id, @name, @repo_path, @current_branch, @default_branch, @default_provider,
-          @default_model_label, @worktree_location, @setup_command, @check_commands_json,
-          '{}', @created_at, @updated_at
+          @default_model_label, @default_model_id, @worktree_location, @setup_command,
+          @check_commands_json, '{}', @created_at, @updated_at
         )
         ON CONFLICT(repo_path) DO UPDATE SET
           name = excluded.name,
@@ -136,6 +139,7 @@ pub fn persist_project(
             "@default_branch": input.default_branch,
             "@default_provider": input.settings.default_provider,
             "@default_model_label": input.settings.default_model_label,
+            "@default_model_id": input.settings.default_model_id,
             "@worktree_location": input.settings.worktree_location,
             "@setup_command": input.settings.setup_command,
             "@check_commands_json": check_commands_json,
@@ -161,6 +165,7 @@ pub fn update_project_settings(
         SET
           default_provider = @default_provider,
           default_model_label = @default_model_label,
+          default_model_id = @default_model_id,
           worktree_location = @worktree_location,
           setup_command = @setup_command,
           check_commands_json = @check_commands_json,
@@ -174,6 +179,7 @@ pub fn update_project_settings(
             "@project_id": project_id,
             "@default_provider": settings.default_provider,
             "@default_model_label": settings.default_model_label,
+            "@default_model_id": settings.default_model_id,
             "@worktree_location": settings.worktree_location,
             "@setup_command": settings.setup_command,
             "@check_commands_json": check_commands_json,
@@ -340,6 +346,7 @@ fn project_summary_from_row(
         settings: ProjectSettings {
             default_provider: row.get("default_provider")?,
             default_model_label: row.get("default_model_label")?,
+            default_model_id: row.get("default_model_id")?,
             worktree_location: row.get("worktree_location")?,
             setup_command: row.get("setup_command")?,
             check_commands: parse_string_array(row.get("check_commands_json")?),

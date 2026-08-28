@@ -124,6 +124,17 @@ pub static APPROVAL_PROVIDER_INVOCATION_COLUMNS: phf::Map<&'static str, &'static
     ] as &'static [&'static str],
 };
 
+// Post-v14 `projects` shape: the per-project default model stores its id next
+// to the display label so Rust launch paths never resolve labels themselves.
+pub static PROJECT_DEFAULT_MODEL_ID_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "check_commands_json", "created_at", "current_branch", "default_branch",
+        "default_model_id", "default_model_label", "default_provider", "id", "name",
+        "repo_path", "repo_remote_name", "repo_remote_owner", "setup_command",
+        "ui_preferences_json", "updated_at", "worktree_location",
+    ] as &'static [&'static str],
+};
+
 pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &[
         "check_commands_json", "created_at", "current_branch", "default_branch",
@@ -271,7 +282,41 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &WORKSPACE_CUSTOM_ICON_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 13,
+        name: "events_restart_recovery_index",
+        up: EVENTS_RESTART_RECOVERY_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 14,
+        name: "project_default_model_id",
+        up: PROJECT_DEFAULT_MODEL_ID,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_DEFAULT_MODEL_ID_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// The per-project default model previously stored only its display label,
+// which nothing could resolve to a launchable model id on the Rust side. The
+// id is stored alongside it; '' means "not chosen yet" and launch paths fall
+// back to the built-in per-provider default.
+const PROJECT_DEFAULT_MODEL_ID: &str = r#"
+ALTER TABLE projects ADD COLUMN default_model_id TEXT NOT NULL DEFAULT '';
+"#;
+
+// Boot-path orphan recovery probes every session for a
+// `process_did_not_survive_restart` event. Without a type-scoped index the
+// probe walks each session's full event history (~670 ms on a 166 MB
+// database), so recovery dominated cold start. The partial index keeps the
+// probe O(1) per session and stays tiny — it only holds restart events.
+const EVENTS_RESTART_RECOVERY_INDEX: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_events_restart_recovery
+  ON events(session_id) WHERE type = 'process_did_not_survive_restart';
+"#;
 
 // Per-row sidebar glyph chosen from the Edit Icon picker. NULL in both columns
 // keeps the row on its live status marker, so existing workspaces are unchanged.
@@ -857,11 +902,14 @@ mod tests {
         let mut connection = Connection::open_in_memory().expect("open db");
         run_migrations(&mut connection).expect("migrate");
 
-        for table in ["projects", "events", "learnings"] {
+        for table in ["events", "learnings"] {
             verify_table_columns(&connection, &EXPECTED_COLUMNS, table).expect(table);
         }
-        // sessions and workspaces gained columns in later migrations, so verify
-        // them against the head shapes rather than the v1 EXPECTED_COLUMNS.
+        // projects, sessions, and workspaces gained columns in later
+        // migrations, so verify them against the head shapes rather than the
+        // v1 EXPECTED_COLUMNS.
+        verify_table_columns(&connection, &PROJECT_DEFAULT_MODEL_ID_COLUMNS, "projects")
+            .expect("projects");
         verify_table_columns(&connection, &PRIORITY_DISMISSAL_COLUMNS, "sessions")
             .expect("sessions");
         verify_table_columns(&connection, &WORKSPACE_CUSTOM_ICON_COLUMNS, "workspaces")
@@ -920,6 +968,11 @@ mod tests {
                     compute_migration_checksum(CANCEL_LEGACY_PROVIDER_APPROVALS)
                 ),
                 (12, compute_migration_checksum(WORKSPACE_CUSTOM_ICON)),
+                (
+                    13,
+                    compute_migration_checksum(EVENTS_RESTART_RECOVERY_INDEX)
+                ),
+                (14, compute_migration_checksum(PROJECT_DEFAULT_MODEL_ID)),
             ]
         );
 

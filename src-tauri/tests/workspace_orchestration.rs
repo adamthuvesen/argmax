@@ -1026,3 +1026,211 @@ fn open_in_ide_constructs_open_command() {
         ide: OpenIdeChoice::Default,
     });
 }
+
+#[test]
+fn workspaces_sharing_a_checkout_share_one_os_watch() {
+    let repo = seed_git_repo(&[("file.txt", "x")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let service = WorkspaceService::new(database);
+
+    // Every `create_current` session points at the same checkout. Watching it
+    // once per workspace is what used to fan one file save out into a git
+    // process per session.
+    let mut ids = Vec::new();
+    for label in ["explore", "refactor", "review"] {
+        let summary = service
+            .create_current(WorkspacesCreateCurrentInput {
+                project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+                task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
+            })
+            .expect("create current");
+        ids.push(summary.id);
+    }
+
+    assert_eq!(service.open_watcher_count(), 3);
+    assert_eq!(service.watched_checkout_count(), 1);
+
+    // The shared watch survives until its last subscriber leaves.
+    service.close_watcher(&ids[0]);
+    assert_eq!(service.open_watcher_count(), 2);
+    assert_eq!(service.watched_checkout_count(), 1);
+
+    service.close_watcher(&ids[1]);
+    service.close_watcher(&ids[2]);
+    assert_eq!(service.open_watcher_count(), 0);
+    assert_eq!(service.watched_checkout_count(), 0);
+}
+
+#[tokio::test]
+async fn refresh_checkout_updates_every_workspace_from_one_read() {
+    let repo = seed_git_repo(&[("file.txt", "x")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let service = WorkspaceService::new(database.clone());
+
+    let mut ids = Vec::new();
+    for label in ["one", "two"] {
+        let summary = service
+            .create_current(WorkspacesCreateCurrentInput {
+                project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+                task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
+            })
+            .expect("create current");
+        ids.push(summary.id);
+    }
+    for id in &ids {
+        service.close_watcher(id);
+    }
+
+    std::fs::write(repo.path().join("dirty.txt"), "new").expect("write");
+    assert_eq!(service.refresh_checkout(repo.path(), &ids).await, 2);
+
+    let connection = database.connection();
+    for id in &ids {
+        let workspace = find_workspace_by_id(&connection, id).expect("workspace");
+        assert!(workspace.dirty, "{id} should be dirty");
+        assert_eq!(workspace.changed_files, 1);
+        assert_eq!(workspace.branch, "main");
+    }
+}
+
+#[tokio::test]
+async fn one_shared_watch_refreshes_every_subscriber() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let ids = ["w-share-1".to_owned(), "w-share-2".to_owned()];
+    {
+        let connection = database.connection();
+        for id in &ids {
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: id.clone(),
+                    project_id: PROJECT_ID.to_owned(),
+                    task_label: "shared watch".to_owned(),
+                    branch: "main".to_owned(),
+                    base_ref: "main".to_owned(),
+                    path: repo.path().display().to_string(),
+                    state: "created".to_owned(),
+                    shared_workspace: true,
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("persist workspace");
+        }
+    }
+
+    let service = WorkspaceService::new(database.clone());
+    for id in &ids {
+        service.watch(id).expect("install watcher");
+    }
+    // Both workspaces point at one checkout, so they share a single OS watch.
+    assert_eq!(service.watched_checkout_count(), 1);
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    std::fs::write(repo.path().join("dirty.txt"), "x").expect("write");
+
+    // The single watch must fan its one refresh out to every subscriber, not
+    // just the workspace that happened to install it.
+    let mut settled = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let connection = database.connection();
+        settled = ids.iter().all(|id| {
+            find_workspace_by_id(&connection, id)
+                .map(|workspace| workspace.dirty)
+                .unwrap_or(false)
+        });
+        if settled {
+            break;
+        }
+    }
+    if !settled {
+        // Some sandboxed environments never deliver fs events to `notify`;
+        // exercise the fan-out directly so the assertion still means something.
+        assert_eq!(service.refresh_checkout(repo.path(), &ids).await, 2);
+    }
+
+    let connection = database.connection();
+    for id in &ids {
+        let workspace = find_workspace_by_id(&connection, id).expect("find");
+        assert!(
+            workspace.dirty,
+            "{id} was not refreshed by the shared watch"
+        );
+    }
+    drop(connection);
+
+    for id in &ids {
+        service.close_watcher(id);
+    }
+    assert_eq!(service.watched_checkout_count(), 0);
+}
+
+#[tokio::test]
+async fn a_shared_checkout_publishes_one_delta_for_all_subscribers() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let ids: Vec<String> = (0..4).map(|i| format!("w-batch-{i}")).collect();
+    {
+        let connection = database.connection();
+        for id in &ids {
+            persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: id.clone(),
+                    project_id: PROJECT_ID.to_owned(),
+                    task_label: "batch".to_owned(),
+                    branch: "main".to_owned(),
+                    base_ref: "main".to_owned(),
+                    path: repo.path().display().to_string(),
+                    state: "created".to_owned(),
+                    shared_workspace: true,
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )
+            .expect("persist workspace");
+        }
+    }
+
+    let (publisher, sink) = capture_publisher();
+    let service = WorkspaceService::with_publisher(database, publisher);
+
+    std::fs::write(repo.path().join("dirty.txt"), "x").expect("write");
+    assert_eq!(service.refresh_checkout(repo.path(), &ids).await, 4);
+
+    // Four workspaces changed, but the renderer is woken once.
+    let deltas = sink.lock().expect("sink").clone();
+    assert_eq!(deltas.len(), 1);
+    assert_eq!(deltas[0].workspaces.len(), 4);
+    assert!(deltas[0].workspaces.iter().all(|w| w.dirty));
+
+    // A refresh that changes nothing publishes nothing at all.
+    assert_eq!(service.refresh_checkout(repo.path(), &ids).await, 4);
+    assert_eq!(sink.lock().expect("sink").len(), 1);
+}

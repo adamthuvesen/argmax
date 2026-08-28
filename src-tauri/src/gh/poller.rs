@@ -241,10 +241,51 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         return Ok(());
     }
 
-    // Publish one delta per tick — re-renders pull the fresh PR rows from
-    // SQLite via the existing dashboard readers.
+    // Publish one delta per tick carrying the refreshed workspace rows. An
+    // empty delta would merge into an identical snapshot and never re-render,
+    // so the rows have to ride along — `find_workspace_by_id` re-attaches the
+    // latest `pr_state` / `pr_number`.
     if let Some(publisher) = inner.publish_delta.as_ref() {
-        (publisher)(DashboardDelta::default());
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut workspaces = Vec::new();
+        {
+            let conn = inner.database.connection();
+            for transition in &transitions {
+                // Inlined rather than `resolve_workspace_id` because that
+                // takes its own connection guard, which would deadlock here.
+                let workspace_id = match crate::persistence::sessions::find_session_by_id(
+                    &conn,
+                    &transition.context.session_id,
+                ) {
+                    Ok(session) => session.workspace_id,
+                    Err(error) => {
+                        tracing::warn!(
+                            session_id = %transition.context.session_id,
+                            ?error,
+                            "gh.poller: could not resolve workspace for PR transition",
+                        );
+                        continue;
+                    }
+                };
+                if !seen.insert(workspace_id.clone()) {
+                    continue;
+                }
+                match crate::persistence::workspaces::find_workspace_by_id(&conn, &workspace_id) {
+                    Ok(workspace) => workspaces.push(workspace),
+                    Err(error) => tracing::warn!(
+                        %workspace_id,
+                        ?error,
+                        "gh.poller: could not load workspace for PR transition",
+                    ),
+                }
+            }
+        }
+        if !workspaces.is_empty() {
+            (publisher)(DashboardDelta {
+                workspaces,
+                ..Default::default()
+            });
+        }
     }
 
     for transition in transitions {

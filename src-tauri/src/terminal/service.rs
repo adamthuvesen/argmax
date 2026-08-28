@@ -80,7 +80,9 @@ pub type ShellFactory = Arc<dyn Fn(&str) -> CommandBuilder + Send + Sync>;
 struct TerminalEntry {
     workspace_id: String,
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    // Behind its own mutex so a blocking PTY write never holds the shared
+    // `terminals` map lock (which every other terminal op contends on).
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pid: Option<u32>,
     reaped: Arc<AtomicBool>,
 }
@@ -225,7 +227,7 @@ impl TerminalService {
                 TerminalEntry {
                     workspace_id: workspace.id.clone(),
                     master: pair.master,
-                    writer,
+                    writer: Arc::new(Mutex::new(writer)),
                     pid,
                     reaped: Arc::clone(&reaped),
                 },
@@ -253,11 +255,20 @@ impl TerminalService {
     /// Forward `data` to the PTY. Silently no-ops on unknown ids; stale ids
     /// are a benign renderer/runtime race.
     pub fn write(&self, terminal_id: &str, data: &[u8]) {
-        let mut terminals = self.terminals.lock_or_recover("terminals");
-        if let Some(entry) = terminals.get_mut(terminal_id) {
-            let _ = entry.writer.write_all(data);
-            let _ = entry.writer.flush();
-        }
+        // Take a handle to the writer and drop the map lock before writing:
+        // the PTY master write blocks once the child stops draining its tty
+        // input queue, and holding `terminals` across that stalls every other
+        // terminal's output, resize, and terminate.
+        let writer = {
+            let terminals = self.terminals.lock_or_recover("terminals");
+            terminals
+                .get(terminal_id)
+                .map(|entry| Arc::clone(&entry.writer))
+        };
+        let Some(writer) = writer else { return };
+        let mut writer = writer.lock_or_recover("terminal writer");
+        let _ = writer.write_all(data);
+        let _ = writer.flush();
     }
 
     /// Resize the PTY for the live terminal. No-op on unknown ids.

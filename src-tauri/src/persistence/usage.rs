@@ -41,6 +41,23 @@ pub fn insert_usage_event(
         .map_err(sqlite_error)?;
 
     let result = (|| {
+        // Claude's stream-json emits one `assistant` event per content block of a
+        // single message, and every one repeats that message's full `usage` under
+        // the same `message.id`. Counting each would bill one turn N times.
+        if let Some(event_id) = input.event_id.as_deref() {
+            let mut seen_statement = connection
+                .prepare_cached(
+                    "SELECT 1 FROM usage_events WHERE session_id = ? AND event_id = ? LIMIT 1",
+                )
+                .map_err(sqlite_error)?;
+            if seen_statement
+                .exists((input.session_id.as_str(), event_id))
+                .map_err(sqlite_error)?
+            {
+                return Ok(());
+            }
+        }
+
         let mut insert_statement = connection
             .prepare_cached(
                 r#"

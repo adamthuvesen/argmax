@@ -42,6 +42,7 @@ npm run tauri:build     # production Tauri bundle
 - **Dashboard state is SQLite-first and delta-driven.** Focused reads plus `dashboard:delta`; no recurring renderer poll.
 - **Thinking state yields to content.** Hide the pre-answer Thinking bubble as soon as any visible assistant event arrives.
 - **Auto-approve is the default permission mode.** Keep provider bypass flags centralized in [src-tauri/src/providers/adapters.rs](src-tauri/src/providers/adapters.rs).
+- **App icon artifacts are generated.** Edit the grid and palette in [scripts/build-icons.mjs](scripts/build-icons.mjs) and run `npm run build:icons`. Never hand-edit `assets/icon*`, `assets/Argmax.icon`, or `src-tauri/icons`. See [docs/release.md](docs/release.md).
 - **SQLite migrations are append-only and checksummed.** Never edit an applied migration; see [docs/data.md](docs/data.md).
 - **Never commit secrets, `.env`, or AI-attribution lines.**
 

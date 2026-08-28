@@ -1,0 +1,51 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.99608,0.99608,0.99608,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.10588,0.10588,0.09412,1.00000"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "name": "mark",
+          "image-name": "mark.png",
+          "fill-specializations": [
+            {
+              "value": {
+                "solid": "srgb:0.60784,0.42745,0.83137,1.00000"
+              }
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:0.72157,0.58039,1.00000,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "lighting": "individual",
+      "specular": false,
+      "shadow": {
+        "kind": "none",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

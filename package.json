@@ -9,6 +9,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "build:renderer": "vite build",
+    "build:icons": "node scripts/build-icons.mjs",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:perf && npm run test:rust",
     "test:unit": "vitest run",

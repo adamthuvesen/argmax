@@ -31,7 +31,7 @@
   "bundle": {
     "active": true,
     "targets": ["dmg", "app"],
-    "icon": ["icons/icon.icns"],
+    "icon": ["icons/icon.icns", "icons/Assets.car"],
     "macOS": {
       "minimumSystemVersion": "11.0",
       "entitlements": "entitlements.plist"

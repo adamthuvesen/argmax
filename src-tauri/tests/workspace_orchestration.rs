@@ -50,6 +50,15 @@ fn capture_publisher() -> (
 }
 
 fn build_project(db: &Database, repo_path: &str, worktree_location: &str) {
+    build_project_with_setup(db, repo_path, worktree_location, "");
+}
+
+fn build_project_with_setup(
+    db: &Database,
+    repo_path: &str,
+    worktree_location: &str,
+    setup_command: &str,
+) {
     let connection = db.connection();
     persist_project(
         &connection,
@@ -62,13 +71,31 @@ fn build_project(db: &Database, repo_path: &str, worktree_location: &str) {
             settings: ProjectSettings {
                 default_provider: "claude".to_owned(),
                 default_model_label: "Sonnet".to_owned(),
+                default_model_id: String::new(),
                 worktree_location: worktree_location.to_owned(),
-                setup_command: String::new(),
+                setup_command: setup_command.to_owned(),
                 check_commands: vec![],
             },
         },
     )
     .expect("persist project");
+}
+
+/// WorkspaceService wired with a CheckService, as in the app, so the
+/// setup-command path has something to run through.
+fn service_with_checks(
+    database: &Arc<Database>,
+    publisher: impl Fn(DashboardDelta) + Send + Sync + 'static,
+) -> Arc<WorkspaceService> {
+    WorkspaceService::with_services(
+        Arc::clone(database),
+        publisher,
+        argmax_lib::workspaces::lifecycle::WorkspaceLifecycle::new(),
+        None,
+        Some(CheckService::new(Arc::clone(database))),
+        None,
+        None,
+    )
 }
 
 fn ensure_main_branch(repo_path: &std::path::Path) {
@@ -114,6 +141,76 @@ async fn create_isolated_adds_worktree_and_persists_row() {
     assert!(recorded
         .iter()
         .any(|delta| delta.workspaces.iter().any(|w| w.id == summary.id)));
+}
+
+#[tokio::test]
+async fn create_isolated_runs_setup_command_in_fresh_worktree() {
+    let repo = seed_git_repo(&[("README.md", "hi")]);
+    ensure_main_branch(repo.path());
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project_with_setup(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+        "echo ready > setup-ran.txt",
+    );
+    let (publisher, _sink) = capture_publisher();
+    let service = service_with_checks(&database, publisher);
+
+    let summary = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("Setup run".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create isolated");
+
+    // The command ran inside the new worktree, before create_isolated
+    // returned — the agent launching next finds its dependencies in place.
+    assert!(std::path::Path::new(&summary.path).join("setup-ran.txt").exists());
+    // And it left a persisted check row the review surface can show.
+    let checks = {
+        let connection = database.connection();
+        list_checks(&connection, Some(std::slice::from_ref(&summary.id)), 10).expect("list checks")
+    };
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].command, "echo ready > setup-ran.txt");
+    assert_eq!(checks[0].status, "passed");
+}
+
+#[tokio::test]
+async fn create_isolated_survives_failing_setup_command() {
+    let repo = seed_git_repo(&[("README.md", "hi")]);
+    ensure_main_branch(repo.path());
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project_with_setup(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+        "exit 1",
+    );
+    let (publisher, _sink) = capture_publisher();
+    let service = service_with_checks(&database, publisher);
+
+    let summary = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("Setup fails".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("workspace creation must survive a failing setup command");
+
+    assert!(std::path::Path::new(&summary.path).exists());
+    let checks = {
+        let connection = database.connection();
+        list_checks(&connection, Some(std::slice::from_ref(&summary.id)), 10).expect("list checks")
+    };
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].status, "failed");
 }
 
 #[tokio::test]

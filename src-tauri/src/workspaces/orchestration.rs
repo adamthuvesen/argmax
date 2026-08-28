@@ -29,10 +29,10 @@ use std::time::Duration;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::lifecycle::{ArchiveOutcome, WorkspaceLifecycle};
+use super::lifecycle::{ArchiveOutcome, WorkspaceArchiveLease, WorkspaceLifecycle};
 use super::watcher::WatcherRegistry;
 use crate::approvals::service::ApprovalService;
-use crate::checks::service::CheckService;
+use crate::checks::service::{CheckService, RunWorkspaceCheckInput};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::run_git_text;
 use crate::ipc::inputs::{
@@ -378,32 +378,84 @@ impl WorkspaceService {
             ));
         }
 
-        let connection = self.database.connection();
-        let workspace = persist_workspace(
-            &connection,
-            &PersistWorkspaceInput {
-                id: Uuid::new_v4().to_string(),
-                project_id: project.id.clone(),
-                task_label: task_label.to_string(),
-                branch: branch.clone(),
-                base_ref: base_ref.clone(),
-                path: worktree_path.display().to_string(),
-                state: "created".to_string(),
-                shared_workspace: false,
-                dirty: false,
-                changed_files: 0,
-            },
-        )?;
-        self.publish(DashboardDelta {
-            projects: list_projects(&connection)?,
-            workspaces: vec![workspace.clone()],
-            ..DashboardDelta::default()
-        });
-        drop(connection);
+        // Block scope, not drop(): the async Send analysis must see the
+        // non-Send connection guard end before the setup-command await below.
+        let workspace = {
+            let connection = self.database.connection();
+            let workspace = persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: Uuid::new_v4().to_string(),
+                    project_id: project.id.clone(),
+                    task_label: task_label.to_string(),
+                    branch: branch.clone(),
+                    base_ref: base_ref.clone(),
+                    path: worktree_path.display().to_string(),
+                    state: "created".to_string(),
+                    shared_workspace: false,
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )?;
+            self.publish(DashboardDelta {
+                projects: list_projects(&connection)?,
+                workspaces: vec![workspace.clone()],
+                ..DashboardDelta::default()
+            });
+            workspace
+        };
         if let Err(error) = self.watch(&workspace.id) {
             tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
         }
+        self.run_setup_command(&workspace.id, &project.settings.setup_command)
+            .await;
         Ok(workspace)
+    }
+
+    /// Run the project's setup command in a freshly created worktree, before
+    /// the caller launches an agent into it (dependencies install once per
+    /// worktree). Runs through CheckService so the command gets the standard
+    /// risk gate, timeout, output capture, and a persisted check row the
+    /// review surface can show. Failure never blocks the workspace — the
+    /// agent can usually repair a broken setup itself — so this only warns.
+    async fn run_setup_command(self: &Arc<Self>, workspace_id: &str, setup_command: &str) {
+        let command = setup_command.trim();
+        if command.is_empty() {
+            return;
+        }
+        let Some(checks) = self.checks.as_ref() else {
+            tracing::warn!(
+                workspace_id,
+                command,
+                "setup command configured but check service is unavailable"
+            );
+            return;
+        };
+        let run = checks
+            .run_workspace_check(
+                RunWorkspaceCheckInput {
+                    workspace_id: workspace_id.to_string(),
+                    command: command.to_string(),
+                    timeout_ms: None,
+                },
+                None,
+            )
+            .await;
+        match run {
+            Ok(run) if run.status == "passed" => {}
+            Ok(run) => tracing::warn!(
+                workspace_id,
+                command,
+                status = %run.status,
+                "setup command did not pass"
+            ),
+            Err(error) => tracing::warn!(
+                workspace_id,
+                command,
+                ?error,
+                "setup command could not run"
+            ),
+        }
     }
 
     pub fn create_current(

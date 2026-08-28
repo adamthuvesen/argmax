@@ -15,12 +15,13 @@ use uuid::Uuid;
 
 use self::{
     claude::{
+        compaction_marker as claude_compaction_marker,
         detect_permission_gate as detect_claude_permission_gate, event_type as claude_event_type,
         extract_delta_text as extract_claude_delta_text,
         extract_inline_tool_blocks as extract_claude_inline_tool_blocks,
         extract_message_content as extract_claude_message_content,
         extract_usage as extract_claude_usage,
-        is_synthetic_skill_body as is_claude_synthetic_skill_body,
+        is_hidden_synthetic_body as is_claude_hidden_synthetic_body,
         is_thinking_delta_payload as is_claude_thinking_delta_payload,
         synthesize_message_completed_from_result as synthesize_claude_message_completed_from_result,
     },
@@ -277,7 +278,14 @@ pub fn normalize_provider_event(
             result.provider_conversation_id = out.provider_conversation_id;
         }
     }
-    if result.events.is_empty()
+    // A single unterminated blob that `lines()` never split can still be real
+    // content, so retry it whole. A message that DID split must not be retried:
+    // every one of its lines was already normalized, and a chunk whose lines
+    // were all deliberately dropped (Claude's `system` status/hook/token rows)
+    // would come back as one unparseable blob and surface as raw protocol JSON.
+    let is_single_line = !event.message.contains('\n');
+    if is_single_line
+        && result.events.is_empty()
         && result.usages.is_empty()
         && result.approvals.is_empty()
         && !result.permission_blocked
@@ -538,6 +546,14 @@ fn normalize_json_payload(
     }
 
     if provider == ProviderId::Claude {
+        if let Some(marker) = claude_compaction_marker(event, &payload) {
+            return NormalizedProviderResult {
+                events: vec![marker],
+                usages,
+                provider_conversation_id,
+                ..NormalizedProviderResult::default()
+            };
+        }
         events.extend(extract_claude_inline_tool_blocks(event, &payload));
         if events
             .iter()
@@ -596,7 +612,7 @@ fn normalize_json_payload(
             ..NormalizedProviderResult::default()
         };
     }
-    if provider == ProviderId::Claude && is_claude_synthetic_skill_body(&payload) {
+    if provider == ProviderId::Claude && is_claude_hidden_synthetic_body(&payload) {
         return NormalizedProviderResult {
             events,
             usages,

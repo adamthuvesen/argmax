@@ -194,6 +194,37 @@ off and the block follows the saved `argmax.thinking.expanded` default from
 Settings → Agents → Thinking blocks. A manual toggle overrides the auto behavior
 (same `userToggle ?? auto` pattern as the turn chip and tool groups).
 
+## Context compaction
+
+When a provider runs out of context it compacts: it summarizes the conversation
+so far and continues from that summary. Claude brackets the run with
+`system/status status:"compacting"` and a `system/compact_boundary` row carrying
+`pre_tokens`/`post_tokens`, then injects the replacement summary as a synthetic
+`user` message. That summary is written for the model and routinely runs tens
+of KB, so `is_hidden_synthetic_body`
+([claude.rs](../src-tauri/src/providers/normalizer/claude.rs)) drops it the same
+way it drops an activated skill's `SKILL.md` body, and `compaction_marker` maps
+the two bracket rows to `session.compacting` / `session.compacted`.
+
+The same list drops the note Claude emits after reading an image (`[Image:
+original 2086x1075, displayed at 2000x1031. Multiply coordinates by 1.04 to map
+to original image.]`). It tells the model how to translate coordinates onto a
+picture the chat never shows, so on screen it is a stray line between two tool
+rows.
+
+The chat shows the seam, not the summary.
+[foldConversation.ts](../src/renderer/lib/foldConversation.ts) collapses the
+bracket into one `compaction` render item. The finished row replaces the
+running one in place, and
+[CompactionNotice.tsx](../src/renderer/components/CompactionNotice.tsx) renders
+it as a rule with a centered caption (`Compacted context · 471k → 10.7k`). The
+seam ends the turn it lands in, so the work after it opens a fresh turn block.
+
+Compaction takes minutes of complete provider silence, so the live marker is the
+pane's only progress cue: `SessionConversation` suppresses the generic Thinking
+label while `isCompacting(events)` holds, rather than stacking two indicators
+that say the same thing less precisely.
+
 ## Subagent activity panes
 
 Agent tool rows (`Task`, Codex `spawn_agent`, Cursor `taskToolCall`) open an

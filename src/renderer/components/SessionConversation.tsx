@@ -42,8 +42,10 @@ import {
   subAgentToolUseIds
 } from "../lib/sessionConversationModel.js";
 import { assignAgentCodenames } from "../lib/agentNames.js";
+import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
+import { CompactionNotice } from "./CompactionNotice.js";
 import { CostPanel } from "./CostPanel.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
 import {
@@ -322,10 +324,13 @@ export function SessionConversation({
     !anyVisibleToolRunning &&
     !hasOutstandingCardAsk &&
     !isStreamingText;
+  // Compaction is minutes of provider-side silence with its own live marker in
+  // the transcript. A second Thinking line under it would add noise.
+  const compacting = useMemo(() => isCompacting(events), [events]);
   // Show the generic indicator for any silent gap in a running turn. It stays
   // hidden while text is actively streaming, a visible tool row is running, or
   // the agent is waiting on an interactive card.
-  const isThinking = agentWorkingSilently;
+  const isThinking = agentWorkingSilently && !compacting;
   const isInitialThinkingBeat =
     isTurnStarting ||
     lastSignificantEvent === undefined ||
@@ -492,6 +497,9 @@ export function SessionConversation({
                   attachments={parseUserMessageAttachments(item)}
                 />
               );
+            }
+            if (item.kind === "compaction") {
+              return <CompactionNotice key={item.id} notice={item.notice} />;
             }
             return (
               <SessionConversationTurn

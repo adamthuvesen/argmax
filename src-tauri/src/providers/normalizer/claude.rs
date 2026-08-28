@@ -240,12 +240,27 @@ pub fn extract_usage(
     })
 }
 
-/// When a skill is activated, Claude injects the skill's full `SKILL.md` body
-/// as a synthetic `user` message so the model can read its instructions. That
-/// body is meant for the model, not the user — surfacing it briefly flashes the
-/// entire skill markdown into the chat before the turn settles. Drop it; the
-/// `Skill` tool row already marks the activation with the skill's name.
-pub fn is_synthetic_skill_body(payload: &Map<String, Value>) -> bool {
+/// Opening text of the synthetic `user` rows Claude injects for the model to
+/// read, not for the user to see:
+///
+/// - a skill activation carries the whole `SKILL.md` body, which would flash
+///   the entire skill markdown into the chat before the turn settles. The
+///   `Skill` tool row already marks the activation with the skill's name.
+/// - a compaction carries the full replacement summary, often tens of KB of
+///   "here is everything that happened so far". `compaction_marker` below
+///   surfaces the same event as a one-line status row instead.
+/// - reading an image emits the downscale note ("original 2086x1075, displayed
+///   at 2000x1031…"), a coordinate-mapping hint for the model. The screenshot
+///   itself never renders in chat, so the note reads as a stray line.
+const HIDDEN_SYNTHETIC_PREFIXES: [&str; 3] = [
+    "Base directory for this skill:",
+    "This session is being continued from a previous conversation",
+    "[Image:",
+];
+
+/// True when this payload is one of the model-facing synthetic `user` rows
+/// listed in `HIDDEN_SYNTHETIC_PREFIXES`. Those never render as chat.
+pub fn is_hidden_synthetic_body(payload: &Map<String, Value>) -> bool {
     if payload.get("isSynthetic") != Some(&Value::Bool(true)) {
         return false;
     }
@@ -256,10 +271,46 @@ pub fn is_synthetic_skill_body(payload: &Map<String, Value>) -> bool {
     };
     content.iter().any(|block| {
         string_value(block.get("text")).is_some_and(|text| {
-            text.trim_start()
-                .starts_with("Base directory for this skill:")
+            let text = text.trim_start();
+            HIDDEN_SYNTHETIC_PREFIXES
+                .iter()
+                .any(|prefix| text.starts_with(prefix))
         })
     })
+}
+
+/// Timeline row for a context-compaction phase, or `None` for any other
+/// payload. Claude brackets a compaction with
+/// `system/status status:"compacting"` and a `system/compact_boundary` row
+/// carrying the token counts. The run between them is silent and can take
+/// minutes, so the chat shows a live "compacting" marker that settles into a
+/// finished one rather than a two-minute unexplained gap.
+pub fn compaction_marker(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+) -> Option<PersistTimelineEventInput> {
+    if string_value(payload.get("type")) != Some("system") {
+        return None;
+    }
+    match string_value(payload.get("subtype")) {
+        Some("status") if string_value(payload.get("status")) == Some("compacting") => Some(
+            timeline_event(event, "session.compacting", "Compacting context", json!({})),
+        ),
+        Some("compact_boundary") => {
+            let metadata = object_value(payload.get("compact_metadata"));
+            Some(timeline_event(
+                event,
+                "session.compacted",
+                "Compacted context",
+                json!({
+                    "trigger": metadata.and_then(|data| string_value(data.get("trigger"))),
+                    "preTokens": metadata.map(|data| number_value(data.get("pre_tokens"))),
+                    "postTokens": metadata.map(|data| number_value(data.get("post_tokens"))),
+                }),
+            ))
+        }
+        _ => None,
+    }
 }
 
 fn command_from_permission_message(message: Option<&str>) -> Option<String> {
@@ -376,6 +427,102 @@ mod tests {
             result.events.is_empty(),
             "synthetic skill body should not surface as a chat message"
         );
+    }
+
+    #[test]
+    fn claude_image_downscale_note_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(&json!({
+                "type": "user",
+                "isSynthetic": true,
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[Image: original 2086x1075, displayed at 2000x1031. Multiply coordinates by 1.04 to map to original image.]"
+                        }
+                    ]
+                }
+            }).to_string()),
+            &mut context,
+        );
+        assert!(
+            result.events.is_empty(),
+            "image downscale note should not surface as a chat message"
+        );
+    }
+
+    #[test]
+    fn claude_compaction_brackets_become_status_markers() {
+        let mut context = NormalizerSessionContext::default();
+        let started = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(r#"{"type":"system","subtype":"status","status":"compacting"}"#),
+            &mut context,
+        );
+        assert_eq!(started.events.len(), 1);
+        assert_eq!(started.events[0].r#type, "session.compacting");
+
+        let finished = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(
+                r#"{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":470664,"post_tokens":10703}}"#,
+            ),
+            &mut context,
+        );
+        assert_eq!(finished.events.len(), 1);
+        assert_eq!(finished.events[0].r#type, "session.compacted");
+        assert_eq!(finished.events[0].payload["trigger"], "auto");
+        assert_eq!(finished.events[0].payload["preTokens"], 470_664);
+        assert_eq!(finished.events[0].payload["postTokens"], 10_703);
+    }
+
+    #[test]
+    fn claude_compaction_summary_is_dropped() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(&json!({
+                "type": "user",
+                "isSynthetic": true,
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary Request and Intent:\n…"
+                        }
+                    ]
+                }
+            }).to_string()),
+            &mut context,
+        );
+        assert!(
+            result.events.is_empty(),
+            "compaction summary should surface as a status marker, not as chat text"
+        );
+    }
+
+    #[test]
+    fn claude_dropped_system_rows_do_not_resurface_as_raw_text() {
+        // A chunk whose lines are ALL deliberately dropped must stay dropped.
+        // Retrying it as one blob turned Claude's hook/status/token rows into
+        // raw protocol JSON in the transcript.
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event(concat!(
+                r#"{"type":"system","subtype":"hook_started","hook_name":"SessionStart:resume"}"#,
+                "\r\n",
+                r#"{"type":"system","subtype":"thinking_tokens","estimated_tokens":50}"#,
+                "\r\n"
+            )),
+            &mut context,
+        );
+        assert!(result.events.is_empty(), "{:?}", result.events);
     }
 
     #[test]

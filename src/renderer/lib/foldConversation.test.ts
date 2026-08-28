@@ -99,4 +99,42 @@ describe("foldRenderItems", () => {
     expect(firstTurn?.id).toBe("turn-user-1");
     expect(cappedTurn?.id).toBe(firstTurn?.id);
   });
+
+  it("collapses a compaction bracket into one seam that ends the turn", () => {
+    const items: ConversationItem[] = [
+      { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go") },
+      { kind: "message", event: event("delta-1", "message.delta", "2026-05-12T15:00:01.000Z", "Working") },
+      { kind: "message", event: event("start", "session.compacting", "2026-05-12T15:00:02.000Z") },
+      {
+        kind: "message",
+        event: event("end", "session.compacted", "2026-05-12T15:02:00.000Z", "Compacted context", {
+          preTokens: 470664,
+          postTokens: 10703
+        })
+      },
+      { kind: "message", event: event("delta-2", "message.delta", "2026-05-12T15:02:01.000Z", "Resumed") }
+    ];
+
+    const out = foldRenderItems(items, null, keepToolItems);
+
+    expect(out.map((item) => item.kind)).toEqual(["user-message", "turn", "compaction", "turn"]);
+    const notice = out.find((item) => item.kind === "compaction");
+    expect(notice?.kind === "compaction" ? notice.notice : null).toEqual({
+      running: false,
+      preTokens: 470664,
+      postTokens: 10703
+    });
+  });
+
+  it("keeps an unfinished compaction marked running", () => {
+    const items: ConversationItem[] = [
+      { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go") },
+      { kind: "message", event: event("start", "session.compacting", "2026-05-12T15:00:02.000Z") }
+    ];
+
+    const out = foldRenderItems(items, null, keepToolItems);
+    const notice = out.find((item) => item.kind === "compaction");
+
+    expect(notice?.kind === "compaction" ? notice.notice.running : null).toBe(true);
+  });
 });

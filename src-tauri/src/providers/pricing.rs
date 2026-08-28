@@ -48,6 +48,14 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "opencode/mimo-v2.5-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "opencode/nemotron-3.5-lightning-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "opencode/nemotron-3-ultra-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    // OpenCode Go (opencode-go/*) — billed per-token models.
+    "opencode-go/glm-5.3-flash" => ModelPricing { input: 0.075, output: 0.25, cache_read: 0.015, cache_write: 0.0 },
+    "opencode-go/glm-5.3" => ModelPricing { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 0.0 },
+    "opencode-go/kimi-k3" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 0.0 },
+    "opencode-go/qwen3.8-max" => ModelPricing { input: 2.0, output: 6.0, cache_read: 0.25, cache_write: 2.5 },
+    "opencode-go/qwen3.8-flash" => ModelPricing { input: 0.15, output: 0.47, cache_read: 0.016, cache_write: 0.2 },
+    "opencode-go/deepseek-v4-pro" => ModelPricing { input: 0.66, output: 1.98, cache_read: 0.022, cache_write: 0.0 },
+    "opencode-go/deepseek-v4-flash" => ModelPricing { input: 0.22, output: 0.66, cache_read: 0.007, cache_write: 0.0 },
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {

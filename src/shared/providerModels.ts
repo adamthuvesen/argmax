@@ -52,7 +52,9 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * models run the full low→ultra list; Codex stops at Extra High; Cursor's
  * GPT-5.6 Luna/Terra/Sol and Opus 5 Thinking go one further to Max (their CLIs
  * expose that variant but not Ultra); Cursor Grok 4.6 and Gemini 3.7 Flash stop
- * at High. Kept in sync with the Rust adapters' effort → model mapping.
+ * at High. OpenCode Go (opencode-go/*) models ship non-prefix variant lists
+ * because their CLI exposes only certain discrete levels (e.g. low/high/max).
+ * Kept in sync with the Rust adapters' effort → model mapping.
  */
 export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
@@ -73,16 +75,30 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   ) {
     return REASONING_EFFORTS.slice(0, 3); // low → high
   }
+  // OpenCode Go models have discrete variant sets; fall back to low → xhigh
+  // for non-variant opencode models (which won't set supportsReasoningEffort).
+  const opencodeGoVariants: Record<string, readonly ReasoningEffort[]> = {
+    "opencode-go/glm-5.3-flash": ["low", "high", "max"],
+    "opencode-go/glm-5.3": ["low", "high", "max"],
+    "opencode-go/kimi-k3": ["max"],
+    "opencode-go/qwen3.8-flash": ["high", "max"],
+    "opencode-go/deepseek-v4-pro": ["high", "max"],
+    "opencode-go/deepseek-v4-flash": ["low", "high", "max"]
+  };
+  if (provider === "opencode" && modelId in opencodeGoVariants) return opencodeGoVariants[modelId];
   return REASONING_EFFORTS.slice(0, 4); // low → xhigh
 }
 
 /**
  * Carry an effort onto a target model's supported levels when switching model
- * or provider. Keeps it if the target supports it (xhigh maps directly — every
- * effort-capable model has it); otherwise clamps DOWN to the highest the target
- * allows. Never promotes: a Codex xhigh selection switched to Claude stays
- * xhigh, it does not jump to Ultra. Returns undefined when there's no effort to
- * map. `efforts` must be a low→high prefix of REASONING_EFFORTS.
+ * or provider. Keeps it if the target supports it; otherwise clamps DOWN to
+ * the highest supported effort at or below the incoming effort in the global
+ * low→ultra order (so a "medium" incoming effort mapping to ["low","high","max"]
+ * returns "low", not "high"). Never promotes: a Codex xhigh selection switched
+ * to Claude stays xhigh, it does not jump to Ultra. Falls back to the lowest
+ * supported effort when no supported level is ≤ the incoming effort.
+ * Returns undefined when there's no effort to map. `efforts` must be ordered
+ * low→high (a prefix of REASONING_EFFORTS or a discrete subset).
  */
 export function clampEffort(
   effort: ReasoningEffort | undefined,
@@ -90,7 +106,10 @@ export function clampEffort(
 ): ReasoningEffort | undefined {
   if (!effort || efforts.length === 0) return undefined;
   if (efforts.includes(effort)) return effort;
-  return efforts[efforts.length - 1];
+  const incomingRank = REASONING_EFFORTS.indexOf(effort);
+  const below = efforts.filter((candidate) => REASONING_EFFORTS.indexOf(candidate) < incomingRank);
+  if (below.length > 0) return below[below.length - 1];
+  return efforts[0];
 }
 
 /** Effort an effort-capable model gets when first picked (before Edit). */
@@ -145,12 +164,23 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // OpenCode Zen free tier. Ids keep the `provider/model` format the OpenCode
   // CLI's `-m` flag expects. None expose a reasoning-effort or fast-mode
   // control (the CLI's `--variant` doesn't apply to the Zen free models).
+  //
+  // OpenCode Go (opencode-go/*) are billed per-token models with reasoning
+  // effort variants wired via the CLI's `--variant` flag. Keep the variant map
+  // in reasoningEffortsForModel and the Rust adapter in sync with these.
   opencode: [
     { label: "Big Pickle", modelId: "opencode/big-pickle", contextWindow: 200_000 },
     { label: "Hy3 Free", modelId: "opencode/hy3-free", contextWindow: 190_000 },
     { label: "MiMo V2.5 Free", modelId: "opencode/mimo-v2.5-free", contextWindow: 200_000 },
     { label: "Nemotron 3.5 Lightning Free", modelId: "opencode/nemotron-3.5-lightning-free", contextWindow: 262_144 },
-    { label: "Nemotron 3 Ultra Free", modelId: "opencode/nemotron-3-ultra-free", contextWindow: 1_000_000 }
+    { label: "Nemotron 3 Ultra Free", modelId: "opencode/nemotron-3-ultra-free", contextWindow: 1_000_000 },
+    { label: "GLM-5.3-Flash", modelId: "opencode-go/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "GLM-5.3", modelId: "opencode-go/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "Kimi K3", modelId: "opencode-go/kimi-k3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
+    { label: "Qwen3.8 Max", modelId: "opencode-go/qwen3.8-max", contextWindow: 1_000_000 },
+    { label: "Qwen3.8 Flash", modelId: "opencode-go/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "DeepSeek V4 Pro", modelId: "opencode-go/deepseek-v4-pro", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "DeepSeek V4 Flash", modelId: "opencode-go/deepseek-v4-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
   ]
 };
 
@@ -221,13 +251,20 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 
-  // OpenCode Zen free tier — $0 across the board. Keep in sync with the Rust
-  // pricing mirror.
+  // OpenCode Zen free tier — $0 across the board. OpenCode Go (opencode-go/*)
+  // is billed per-token. Keep in sync with the Rust pricing mirror.
   "opencode/big-pickle":                   { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "opencode/hy3-free":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "opencode/mimo-v2.5-free":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "opencode/nemotron-3.5-lightning-free":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/nemotron-3-ultra-free":        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  "opencode/nemotron-3-ultra-free":        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode-go/glm-5.3-flash":             { input: 0.075, output: 0.25,   cacheRead: 0.015, cacheWrite: 0 },
+  "opencode-go/glm-5.3":                   { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 0 },
+  "opencode-go/kimi-k3":                   { input: 3,     output: 15,     cacheRead: 0.3,   cacheWrite: 0 },
+  "opencode-go/qwen3.8-max":               { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
+  "opencode-go/qwen3.8-flash":             { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
+  "opencode-go/deepseek-v4-pro":           { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
+  "opencode-go/deepseek-v4-flash":         { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 }
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {

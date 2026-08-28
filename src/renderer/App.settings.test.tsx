@@ -4,7 +4,7 @@ import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
-import { FAST_MODE_KEY } from "./lib/uiPreferences.js";
+import { FAST_MODE_KEY, RANDOM_SESSION_ICON_KEY } from "./lib/uiPreferences.js";
 import {
   dashboardDeltaListener,
   launchProvider,
@@ -229,6 +229,22 @@ describe("App settings", () => {
     fireEvent.click(toggle);
     await waitFor(() =>
       expect(window.localStorage.getItem("argmax.composer.pixelField.enabled")).toBe("true")
+    );
+  });
+
+  it("disables random session icons by default and persists turning them on", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
+    await openSettings();
+    await screen.findByRole("heading", { name: "Launch defaults" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Random icon for new sessions" });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(RANDOM_SESSION_ICON_KEY)).toBe("true")
     );
   });
 
@@ -475,8 +491,8 @@ describe("App settings", () => {
       expect(window.localStorage.getItem("argmax.font.family")).toBe("jetbrains-mono")
     );
     expect(document.documentElement.getAttribute("data-font")).toBe("jetbrains-mono");
-    expect(window.localStorage.getItem("argmax.font.size")).toBe("default");
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("default");
+    expect(window.localStorage.getItem("argmax.font.size")).toBe("3");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("3");
   });
 
   it("settings Appearance section switches the app font size and persists it", async () => {
@@ -487,19 +503,16 @@ describe("App settings", () => {
     await screen.findByRole("heading", { name: "Appearance" });
 
     const fontSize = screen.getByRole("radiogroup", { name: "App font size" });
-    expect(within(fontSize).getByRole("radio", { name: "Default" })).toBeChecked();
+    expect(within(fontSize).getByRole("radio", { name: "3" })).toBeChecked();
 
-    fireEvent.click(within(fontSize).getByRole("radio", { name: "Large" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.font.size")).toBe("large")
-    );
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("large");
+    // The scale reaches past the old Small/Default/Large trio at both ends.
+    fireEvent.click(within(fontSize).getByRole("radio", { name: "5" }));
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size")).toBe("5"));
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("5");
 
-    fireEvent.click(within(fontSize).getByRole("radio", { name: "Small" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.font.size")).toBe("small")
-    );
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("small");
+    fireEvent.click(within(fontSize).getByRole("radio", { name: "1" }));
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size")).toBe("1"));
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("1");
   });
 
   it("settings Appearance section sizes agent windows independently of app chrome", async () => {
@@ -511,34 +524,30 @@ describe("App settings", () => {
 
     const appFontSize = screen.getByRole("radiogroup", { name: "App font size" });
     const chatFontSize = screen.getByRole("radiogroup", { name: "Agent window font size" });
-    expect(within(chatFontSize).getByRole("radio", { name: "Default" })).toBeChecked();
+    expect(within(chatFontSize).getByRole("radio", { name: "3" })).toBeChecked();
 
-    fireEvent.click(within(chatFontSize).getByRole("radio", { name: "Large" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("large")
-    );
+    fireEvent.click(within(chatFontSize).getByRole("radio", { name: "4" }));
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("4"));
     // App chrome must not follow the agent-window size.
-    expect(window.localStorage.getItem("argmax.font.size")).toBe("default");
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("default");
-    expect(within(appFontSize).getByRole("radio", { name: "Default" })).toBeChecked();
+    expect(window.localStorage.getItem("argmax.font.size")).toBe("3");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("3");
+    expect(within(appFontSize).getByRole("radio", { name: "3" })).toBeChecked();
 
-    fireEvent.click(within(appFontSize).getByRole("radio", { name: "Small" }));
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute("data-font-size")).toBe("small")
-    );
-    expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("large");
-    expect(within(chatFontSize).getByRole("radio", { name: "Large" })).toBeChecked();
+    fireEvent.click(within(appFontSize).getByRole("radio", { name: "2" }));
+    await waitFor(() => expect(document.documentElement.getAttribute("data-font-size")).toBe("2"));
+    expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("4");
+    expect(within(chatFontSize).getByRole("radio", { name: "4" })).toBeChecked();
   });
 
   it("carries the agent-window size on the session grid, not on app chrome", async () => {
-    window.localStorage.setItem("argmax.font.size.chat", "large");
+    window.localStorage.setItem("argmax.font.size.chat", "5");
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     const grid = await screen.findByRole("group", { name: "Session panes" });
-    expect(grid).toHaveAttribute("data-font-size", "large");
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("default");
+    expect(grid).toHaveAttribute("data-font-size", "5");
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("3");
   });
 
   it("settings Appearance section renders the Accent picker and persists accent changes", async () => {
@@ -575,20 +584,35 @@ describe("App settings", () => {
     await screen.findByRole("heading", { name: "Appearance" });
 
     const chatWidth = screen.getByRole("radiogroup", { name: "Chat width" });
-    expect(within(chatWidth).getByRole("radio", { name: "Default" })).toBeChecked();
-    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "standard");
+    expect(within(chatWidth).getByRole("radio", { name: "3" })).toBeChecked();
+    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "3");
 
-    fireEvent.click(within(chatWidth).getByRole("radio", { name: "Narrow" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("narrow")
-    );
-    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "narrow");
+    fireEvent.click(within(chatWidth).getByRole("radio", { name: "1" }));
+    await waitFor(() => expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("1"));
+    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "1");
 
-    fireEvent.click(within(chatWidth).getByRole("radio", { name: "Wide" }));
+    fireEvent.click(within(chatWidth).getByRole("radio", { name: "5" }));
+    await waitFor(() => expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("5"));
+    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "5");
+  });
+
+  it("migrates sizes stored by the old three-way settings", async () => {
+    // Small/Default/Large and Narrow/Default/Wide were levels 2, 3 and 4 of
+    // the scale that replaced them.
+    window.localStorage.setItem("argmax.font.size", "large");
+    window.localStorage.setItem("argmax.font.size.chat", "small");
+    window.localStorage.setItem(CHAT_WIDTH_KEY, "wide");
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+
     await waitFor(() =>
-      expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("wide")
+      expect(document.documentElement.getAttribute("data-font-size")).toBe("4")
     );
-    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "wide");
+    expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "4");
+    // The level is written back, so the legacy value converts on first run.
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.size")).toBe("4"));
+    expect(window.localStorage.getItem("argmax.font.size.chat")).toBe("2");
+    expect(window.localStorage.getItem(CHAT_WIDTH_KEY)).toBe("4");
   });
 
   it("settings Appearance section wires the macOS-native options through to the document attribute", async () => {

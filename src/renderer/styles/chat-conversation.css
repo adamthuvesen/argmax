@@ -179,23 +179,39 @@
   grid-template-columns: minmax(var(--session-main-column-min-width), 1fr) var(--session-review-panel-width) var(--session-log-panel-width);
 }
 
-.app-shell[data-chat-width="narrow"] {
+/* Conversation column width, 1 (narrowest) to 5 (widest). Levels 2, 3 and 4 are
+   the exact widths the old narrow/default/wide setting shipped, so an upgrade
+   lands on the same measure it had. 1 and 5 extend the run in both directions.
+   `-docked` applies with one side panel open, `-tight` with two. */
+.app-shell[data-chat-width="1"] {
+  --chat-content-width: 520px;
+  --chat-content-width-docked: 480px;
+  --chat-content-width-tight: 440px;
+}
+
+.app-shell[data-chat-width="2"] {
   --chat-content-width: 640px;
   --chat-content-width-docked: 600px;
   --chat-content-width-tight: 560px;
 }
 
 .app-shell,
-.app-shell[data-chat-width="standard"] {
+.app-shell[data-chat-width="3"] {
   --chat-content-width: 780px;
   --chat-content-width-docked: 740px;
   --chat-content-width-tight: 680px;
 }
 
-.app-shell[data-chat-width="wide"] {
+.app-shell[data-chat-width="4"] {
   --chat-content-width: 940px;
   --chat-content-width-docked: 900px;
   --chat-content-width-tight: 840px;
+}
+
+.app-shell[data-chat-width="5"] {
+  --chat-content-width: 1100px;
+  --chat-content-width-docked: 1060px;
+  --chat-content-width-tight: 1000px;
 }
 
 .session-main-column {

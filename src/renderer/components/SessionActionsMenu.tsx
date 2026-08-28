@@ -5,6 +5,7 @@ import {
   Folder,
   GitBranch,
   MoreHorizontal,
+  PanelRightDashed,
   SquarePen
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
@@ -15,15 +16,21 @@ import { GitActionsMenu } from "./GitActionsMenu.js";
 
 export function SessionActionsMenu({
   isLogOpen,
+  isWorkspaceCardEnabled = true,
   onBrowseFiles,
   onNewSession,
   onOpenCommitDialog,
   onToggleLog,
+  onToggleWorkspaceCard,
   session,
   setStatus,
   workspace
 }: {
   isLogOpen: boolean;
+  /** Preference state for the floating workspace card, so the checkbox reads
+      the user's choice rather than whether the card happens to be on screen. */
+  isWorkspaceCardEnabled?: boolean;
+  onToggleWorkspaceCard?: () => void;
   onBrowseFiles: () => void;
   /** Opens a launcher pane beside this one. Absent where the grid isn't the
       host surface (the single-pane preview), which hides the action. */
@@ -166,6 +173,22 @@ export function SessionActionsMenu({
                   <GitBranch size={14} aria-hidden="true" />
                   <span className="session-actions-submenu-label">Git actions</span>
                   <ChevronRight size={14} aria-hidden="true" className="session-actions-submenu-chevron" />
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  className="project-picker-item"
+                  aria-checked={isWorkspaceCardEnabled}
+                  disabled={!onToggleWorkspaceCard}
+                  onClick={() => {
+                    closeActions();
+                    onToggleWorkspaceCard?.();
+                  }}
+                >
+                  <PanelRightDashed size={14} aria-hidden="true" />
+                  Workspace card
                 </button>
               </li>
               <li role="none">

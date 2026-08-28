@@ -25,7 +25,8 @@ conversation-event filtering, raw transcript suppression checks, tool-call
 pairing, and last-significant-event selection. The prompt box, attachment flow,
 model/mode chips, queued follow-ups, stop/send controls, and focus behavior live in
 [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx).
-Header actions, PR refresh state, git actions, and debug-log toggling are handled in
+Header actions, PR refresh state, git actions, workspace-card and debug-log
+toggling are handled in
 [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx).
 
 ## Why cards exist
@@ -134,30 +135,59 @@ turn of a running session is treated as streaming. When a session stops before a
 history and snaps to the exact final text on reopen, so copy/paste stays
 faithful. Reduced-motion users skip the paced reveal.
 
-Reveal progress is remembered per block with a session-scoped key. Switching
-sessions remounts the pane, so without that memory a live block would type
-itself out again from nothing every time the reader returned. The bounded map
-keeps the 200 most recently revealed blocks. A block without a key still
-reveals, but it cannot resume.
+Reveal progress is remembered per block, keyed by the `revealKey` its caller
+passes (session/agent id + the group's `createdAt` + group id. Group ids alone
+only count within one turn). Switching sessions remounts the pane, so without
+that memory a live block would type itself out again from nothing every time
+the user came back to it. The map lives at module scope in `StreamingMarkdown`,
+capped at the 200 most recently revealed blocks. A block with no `revealKey`
+still reveals, it just cannot resume.
 
 ## Live auto-scroll
 
 The conversation list uses [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts)
-to follow live output. One retained spring owns every programmatic move. Stream
-growth, viewport changes, direct-child resizes, and the scroll-to-latest button
-update the same moving target. Rapid deltas do not restart native smooth-scroll
-animations, and a smaller target never makes the spring reverse upward.
+to follow live output. `.conversation-list` keeps a constant bottom padding
+(`--space-8`) in every state, idle and live alike. That gap is deliberately
+*not* toggled per turn: a reserve that only appeared while streaming would be
+reclaimed the instant the turn ended, jerking the view up as the last line
+settled. The steady gap keeps the latest rendered text clear of the bottom edge
+and above the composer without that wobble.
 
-Direct children are observed because smooth text reveal grows an existing turn
-without changing the event array. The viewport and composer textarea are also
-observed because a wrapping draft shortens the transcript without changing its
-scroll height. Whether to follow is decided from the reader's position before
-the resize, rather than a near-bottom flag that may be stale.
+One retained spring owns every programmatic move. Stream growth, viewport
+changes, direct-child resizes, and the scroll-to-latest button update the same
+moving target. Rapid deltas do not restart a native smooth-scroll animation, and
+a smaller target never makes the spring reverse upward. If the user scrolls up
+with real input, the spring stops, auto-follow pauses, and the scroll-to-latest
+FAB appears. Direct children are observed with `ResizeObserver` because smooth
+text reveal grows an existing assistant turn without changing the
+`conversationItems` array.
 
-The Thinking label keeps a reserved tail slot, and an open Thought block stays
-open through the answer. Tail content must not disappear while the reader is
-pinned because a shrinking bottom would pull the viewport upward. Real user
-scroll input stops the spring and exposes the scroll-to-latest button.
+**Nothing at the tail may leave the layout.** Following the bottom cannot undo
+a shrink: when a row below the fold disappears, the bottom moves up with it and
+the pinned view goes with it, so the correction has to be to not shrink. Two
+rows used to. The Thought block folding when the answer starts is handled by
+`holdOpen` (see below), and the pulsing Thinking line, which leaves at that
+same instant, now lives in `.conversation-tail`, a slot that holds the line's
+height whether the line is in it or not.
+
+A second `ResizeObserver` watches the scroll viewport **and the composer's
+textarea**. Everything below the list shares its column: the composer, the
+meta-cards row, and the approvals banner. A draft wrapping onto another line
+shortens the viewport without touching `scrollHeight` or any smart-follow dep.
+`scrollTop` stays put, which drops the reader below the fold: the transcript
+jumps while you type into a running session, or the newest line slides under the
+composer after the turn ends. The textarea is observed as well as the viewport
+because the textarea is the box that actually grows. Its notification lands
+whether or not the list's own does.
+
+Whether to follow is decided by where the reader sat *before* the resize, not by
+the hook's near-bottom flag. A shrinking viewport pushes the latest line down by
+exactly the height it took, so the pre-resize gap is `distance - shrink`. If that
+was inside `NEAR_BOTTOM_PX` the list re-pins. The flag only updates on scroll
+events, and a composer growing under a still list fires none, so it can be stale
+in either direction. The measurement cannot. When the reader was pinned, the
+resize updates the same spring used by streaming output. It no longer cancels
+the active follower and hard-snaps the transcript on each wrapped draft line.
 
 ## Type to filter a picker
 
@@ -178,6 +208,50 @@ query and returns focus to whatever held it before.
 
 Because an open picker holds focus, anything that refocuses the composer on its
 own has to stand down while one is open. See the launcher's auto-focus effect.
+
+## Scroll edge fades
+
+`.conversation-scroll` wraps the list and paints a `--conversation-edge-fade`
+(32px) gradient in `--bg` at its top and bottom, so scrolling content dissolves
+into the pane instead of being sliced mid-line under the header and above the
+composer. The fades sit on the wrapper, outside the scroller, for two reasons:
+they must hold still while content moves under them, and masking the list itself
+would fade the sticky scroll-to-latest button along with it (the button's
+`z-index: 2` clears the scrims' `1`). The list's head and tail padding both match
+the fade height, so at either end of the scroll the gradient covers empty space
+and never washes out a real line. The `max-height: 560px` layout reclaims that
+padding, so it sets the fade to `0px`.
+
+## Workspace card
+
+[WorkspaceCard.tsx](../src/renderer/components/WorkspaceCard.tsx) floats a
+summary of the session's worktree in the conversation's right gutter: the branch
+and its base, the diff stat, and one row each for Changes, Files, Terminal,
+Commit, and the pull request. Every row hands off to a surface that already
+exists: `review.toggleChangesPanel`, `review.openPanelInFilesMode`, the
+terminal toggle, the commit dialog, and `git.viewOrCreatePr`. The card is an
+index into the pane, never a second place the same state is computed. A clean
+worktree disables the Changes row rather than opening an empty panel.
+
+**It yields to whatever docks on the right.** `showWorkspaceCard` in
+`SessionConversation.tsx` is `workspaceCardEnabled && !review.isPanelOpen &&
+!isLogOpen`: the card is the ambient stand-in for exactly the panel the user just
+opened, so the two never share the gutter. Toggling the panel back off brings the
+card straight back, because only the user preference persists
+(`argmax.workspaceCard.visible`, default on). That preference has three entry
+points: Settings → Appearance, the `Workspace card` checkbox in the session
+actions menu, and the card's own dismiss. All three write the same
+app-level state, so the menu checkbox reports the preference rather than whether
+the card happens to be on screen.
+
+**It never covers the transcript.** The card is absolutely positioned inside
+`.conversation-scroll`, and `chat-workspace-card.css` keeps it hidden until the
+pane is wide enough to hold it beside the measure. The transcript is centered, so
+both gutters grow together and the threshold is `--chat-content-width` plus a
+card column on each side, with one `@container` rule per `data-chat-width` level,
+measured against `.session-multigrid-cell`. Narrow panes (and every cell of a
+multi-pane grid) simply have no card. Widen the card and those five thresholds
+move with it.
 
 ## Extended-thinking (Thought block)
 
@@ -211,19 +285,28 @@ Two layers cooperate to keep it visible and out of the way:
   title-case label and keeps the expanded reasoning body aligned to the same
   turn content edge.
 
-**Expand while live, settle on the next turn.** The Thought block takes a `live`
+**Expand while live, setting when done.** The Thought block takes a `live`
 prop, computed per turn in `SessionConversationTurn` as *latest turn + session
 running + not paused on a card + no answer text yet*. While `live`, the block is
 **expanded** and labeled "Thinking". The reasoning streams in token-by-token,
 in place of the generic Thinking indicator (the pulsing label still covers the
-gap before any assistant content arrives).
+gap before any assistant content arrives). The instant the first answer token lands
+(or the turn stops being the active one, or it pauses for input), `live` flips
+off and the label settles to "Thought". A manual toggle overrides the auto
+behavior (same `userToggle ?? auto` pattern as the turn chip and tool groups)
+and survives until the automatic answer itself changes.
 
-When the answer starts, the block stays open for the rest of that turn. Folding
-it at that boundary would remove its height while a reader is pinned to the
-streaming answer. It settles to the saved `argmax.thinking.expanded` preference
-when a newer turn begins, and it opens with that preference on the next visit.
-A manual toggle still wins. Subagent panes hold the block open for the mounted
-visit because they have no later turn boundary.
+**But the body does not fold in place.** `holdOpen` keeps a block that opened
+itself while live open for as long as it is the newest turn. Folding it when
+`live` ends would take the whole reasoning out of the transcript at the exact
+moment the agent starts writing, and a reader pinned to the bottom is pulled up
+by that much mid-stream. The scroll never recovers it because the bottom
+itself moved. It folds instead when a newer turn starts, where the fold sits
+above a viewport already full of the answer, and it opens collapsed on the
+session's next visit, per the saved `argmax.thinking.expanded` default from
+Settings → Agents → Thinking blocks. An explicit fold from the turn chip still
+wins over the hold. The subagent activity pane passes `holdOpen` unconditionally:
+it has no turn boundary, so its blocks simply never fold in place.
 
 ## Context compaction
 
@@ -462,6 +545,13 @@ Search for the relevant `it(...)` titles:
 - "hides assistant text emitted AFTER an ExitPlanMode card so the plan isn't duplicated as a chat bubble"
 - "hides hallucinated assistant prose emitted AFTER an AskUserQuestion card"
 - "terminates the in-flight probe before sending the QuestionCard answer (no queue wait)"
+
+Drafts are locked in by
+[src/renderer/components/SessionComposer.draft.test.tsx](../src/renderer/components/SessionComposer.draft.test.tsx),
+[src/renderer/lib/composerDrafts.test.ts](../src/renderer/lib/composerDrafts.test.ts),
+and, for the launcher, "brings an unsent launcher prompt and its screenshot
+back after a restart" and "clears the launcher draft once the agent starts" in
+[src/renderer/App.test.tsx](../src/renderer/App.test.tsx).
 
 Mid-turn send now is locked in by
 [src/renderer/components/SessionComposer.sendNow.test.tsx](../src/renderer/components/SessionComposer.sendNow.test.tsx):

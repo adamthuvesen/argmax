@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
+import { attachmentProtocolUrl } from "../shared/attachmentProtocol.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
   archiveWorkspace,
@@ -20,9 +21,26 @@ import {
   providersDiscover,
   secondProject,
   sessionEventsSince,
+  setWorkspaceIcon,
   setupAppTestMocks,
   snapshot
 } from "../test/appTestHarness.js";
+
+/** Paste of a screenshot: a clipboard carrying one path-less image file. */
+function pasteScreenshot(target: HTMLElement): void {
+  const file = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" });
+  fireEvent.paste(target, {
+    clipboardData: {
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+    }
+  });
+}
+
+function attachedScreenshots(): string[] {
+  const region = screen.queryByLabelText("Attached images");
+  if (!region) return [];
+  return Array.from(region.querySelectorAll("img")).map((image) => image.getAttribute("src") ?? "");
+}
 
 describe("App", () => {
   afterEach(() => {
@@ -421,10 +439,72 @@ describe("App", () => {
     expect(createCurrentWorkspace.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
       launchProvider.mock.invocationCallOrder[0] ?? 0
     );
+    expect(setWorkspaceIcon).not.toHaveBeenCalled();
     expect(launchProvider.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
       autotitleWorkspace.mock.invocationCallOrder[0] ?? 0
     );
     expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+  });
+
+  it("assigns a random icon and color before launching when enabled", async () => {
+    window.localStorage.setItem("argmax.sessionIcon.random.enabled", "true");
+    const random = vi.spyOn(Math, "random")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.999);
+
+    try {
+      render(<App />);
+      fireEvent.change(await screen.findByLabelText("Task prompt"), {
+        target: { value: "Implement PTY launch" }
+      });
+      fireEvent.click(screen.getByTitle("Start agent"));
+
+      await waitFor(() =>
+        expect(setWorkspaceIcon).toHaveBeenCalledWith({
+          workspaceId: "workspace-1",
+          icon: "Activity",
+          iconColor: "pink"
+        })
+      );
+      expect(setWorkspaceIcon.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+        launchProvider.mock.invocationCallOrder[0] ?? 0
+      );
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it("brings an unsent launcher prompt and its screenshot back after a restart", async () => {
+    const { unmount } = render(<App />);
+
+    const promptBox = await screen.findByLabelText("Task prompt");
+    fireEvent.change(promptBox, { target: { value: "why is this misaligned" } });
+    pasteScreenshot(promptBox);
+    await screen.findByLabelText("Attached images");
+    unmount();
+
+    render(<App />);
+    expect(await screen.findByLabelText("Task prompt")).toHaveValue("why is this misaligned");
+    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl("/tmp/fake.png")]);
+  });
+
+  it("clears the launcher draft once the agent starts", async () => {
+    const { unmount } = render(<App />);
+
+    const promptBox = await screen.findByLabelText("Task prompt");
+    fireEvent.change(promptBox, { target: { value: "Implement PTY launch" } });
+    pasteScreenshot(promptBox);
+    await screen.findByLabelText("Attached images");
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() => expect(launchProvider).toHaveBeenCalled());
+    // The app moves to the new session, taking the launcher with it.
+    await screen.findByRole("heading", { name: "Argmax" });
+    unmount();
+
+    render(<App />);
+    expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
+    expect(attachedScreenshots()).toEqual([]);
   });
 
   it("launches into an isolated worktree when the worktree toggle is enabled", async () => {

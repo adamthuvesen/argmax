@@ -89,6 +89,8 @@ export function SessionPane({
   terminalToggleSignal,
   session,
   showCostPanel = true,
+  workspaceCardVisible = true,
+  onWorkspaceCardVisibleChange,
   workspace
 }: {
   approvals: ApprovalRequest[];
@@ -129,6 +131,10 @@ export function SessionPane({
   terminalToggleSignal?: number;
   session: SessionSummary | null;
   showCostPanel?: boolean;
+  /** User preference for the floating workspace card. The pane still hides it
+      whenever a right-hand panel is docked. */
+  workspaceCardVisible?: boolean;
+  onWorkspaceCardVisibleChange?: (visible: boolean) => void;
   workspace: WorkspaceSummary | null;
   /** When this pane is focused, it registers its workspace file source +
       review-pane file-pick handler with the command palette so its Files
@@ -189,6 +195,17 @@ export function SessionPane({
     setIsTerminalOpen(false);
     setTerminalOnceOpened(false);
   }, [workspace?.id]);
+  const toggleTerminal = useCallback(() => setIsTerminalOpen((open) => !open), []);
+  // The card's own dismiss and the session menu's checkbox write the same
+  // app-level preference, so hiding it here keeps it hidden everywhere.
+  const handleHideWorkspaceCard = useCallback(
+    () => onWorkspaceCardVisibleChange?.(false),
+    [onWorkspaceCardVisibleChange]
+  );
+  const handleToggleWorkspaceCard = useCallback(
+    () => onWorkspaceCardVisibleChange?.(!workspaceCardVisible),
+    [onWorkspaceCardVisibleChange, workspaceCardVisible]
+  );
   const handleTerminalCollapse = useCallback(() => {
     setIsTerminalOpen(false);
   }, []);
@@ -498,6 +515,11 @@ export function SessionPane({
           onOpenFile={handleOpenFile}
           onOpenAgent={onOpenAgent}
           onToggleLog={toggleLog}
+          isTerminalOpen={terminalOpen}
+          onToggleTerminal={toggleTerminal}
+          workspaceCardEnabled={workspaceCardVisible}
+          onHideWorkspaceCard={handleHideWorkspaceCard}
+          onToggleWorkspaceCard={handleToggleWorkspaceCard}
           pendingApprovalCount={visibleApprovals.filter((a) => a.status === "pending").length}
           project={project}
           rawOutputs={rawOutputs}

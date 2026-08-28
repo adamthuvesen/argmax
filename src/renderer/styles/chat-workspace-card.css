@@ -1,0 +1,224 @@
+/* Workspace card, the floating worktree summary parked in the conversation's
+   right gutter (see WorkspaceCard.tsx). It is chrome, not transcript: quiet
+   panel fill, hairline border, one shadow step so it reads as sitting above
+   the text scrolling under it. */
+
+.workspace-card {
+  --workspace-card-width: 184px;
+  position: absolute;
+  top: 2px;
+  /* Same inset as the header's action cluster (`.section-heading` runs a 20px
+     right pad), so the card's edge lines up with the … and × above it. */
+  right: 20px;
+  /* Above the scroll box's top fade (z-index 1) and the scroll-to-latest
+     button (2), which both belong to the transcript underneath. */
+  z-index: 3;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  width: var(--workspace-card-width);
+  padding: var(--space-2) 5px 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  animation: surface-in var(--motion-base) var(--ease-out) both;
+}
+
+/* The card lives in the gutter beside the transcript, never on top of it, so
+   it only appears once that gutter can hold it. The transcript is centered, so
+   both gutters grow together: the pane has to be the measure plus a card
+   column on each side (184px card + 20px inset + 14px clearance ≈ 220px). One
+   threshold per chat width, because the measure is what moves. The container
+   is `.session-multigrid-cell`. The card is hidden whenever a right-hand panel
+   is docked, so cell width and transcript column width agree here. */
+@container (min-width: 960px) {
+  .app-shell[data-chat-width="1"] .workspace-card {
+    display: flex;
+  }
+}
+
+@container (min-width: 1080px) {
+  .app-shell[data-chat-width="2"] .workspace-card {
+    display: flex;
+  }
+}
+
+@container (min-width: 1220px) {
+  .app-shell[data-chat-width="3"] .workspace-card {
+    display: flex;
+  }
+}
+
+@container (min-width: 1380px) {
+  .app-shell[data-chat-width="4"] .workspace-card {
+    display: flex;
+  }
+}
+
+@container (min-width: 1540px) {
+  .app-shell[data-chat-width="5"] .workspace-card {
+    display: flex;
+  }
+}
+
+.workspace-card-branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 5px 2px;
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+}
+
+.workspace-card-branch > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.workspace-card-branch-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-code);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The dismiss control keeps its slot at rest so revealing it never reflows the
+   branch line. It fades in with the card, not into it. */
+.workspace-card-hide {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  color: var(--muted);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+
+.workspace-card:hover .workspace-card-hide,
+.workspace-card:focus-within .workspace-card-hide {
+  opacity: 1;
+}
+
+.workspace-card-hide:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+.workspace-card-base {
+  margin: 0 0 var(--space-1);
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Two groups: where the work is (changes / files / terminal) and what happens
+   to it next (commit / PR). The rule between them carries the split. */
+.workspace-card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.workspace-card-rows + .workspace-card-rows {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.workspace-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 5px 6px;
+  color: var(--text-soft);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+
+.workspace-card-row:hover,
+.workspace-card-row[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
+.workspace-card-row:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.workspace-card-row:disabled {
+  cursor: default;
+}
+
+.workspace-card-row:disabled:hover {
+  color: var(--text-soft);
+  background: transparent;
+}
+
+.workspace-card-row-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--muted);
+}
+
+.workspace-card-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card-row-meta {
+  flex: none;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace-card-row-meta .change-count {
+  gap: 4px;
+  font-weight: 400;
+}
+
+.workspace-card-quiet {
+  color: var(--muted);
+}
+
+.workspace-card-pr-state[data-pr-state="OPEN"] {
+  color: var(--pr-open);
+}
+
+.workspace-card-pr-state[data-pr-state="MERGED"] {
+  color: var(--pr-merged);
+}
+
+.workspace-card-pr-state[data-pr-state="CLOSED"] {
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-card {
+    animation: none;
+  }
+}

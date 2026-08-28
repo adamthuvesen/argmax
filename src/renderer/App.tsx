@@ -75,14 +75,17 @@ import {
   CHAT_COST_KEY,
   COMPOSER_PIXEL_FIELD_KEY,
   FAST_MODE_KEY,
+  RANDOM_SESSION_ICON_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SIDEBAR_PRIORITY_KEY,
   SIDEBAR_TOKENS_KEY,
   THINKING_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
   TOOL_CALLS_EXPANDED_KEY,
+  WORKSPACE_CARD_KEY,
   useBooleanUiPreference
 } from "./lib/uiPreferences.js";
+import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
@@ -134,9 +137,14 @@ export function App(): JSX.Element {
     setSidebarCollapsed(!sidebarCollapsed);
   }, [sidebarCollapsed, setSidebarCollapsed]);
   const [chatCostVisible, setChatCostVisible] = useBooleanUiPreference(CHAT_COST_KEY, false);
+  const [workspaceCardVisible, setWorkspaceCardVisible] = useBooleanUiPreference(WORKSPACE_CARD_KEY, true);
   const [thinkingExpanded, setThinkingExpanded] = useBooleanUiPreference(THINKING_EXPANDED_KEY, false);
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const [pixelFieldEnabled, setPixelFieldEnabled] = useBooleanUiPreference(COMPOSER_PIXEL_FIELD_KEY, false);
+  const [randomSessionIconEnabled, setRandomSessionIconEnabled] = useBooleanUiPreference(
+    RANDOM_SESSION_ICON_KEY,
+    false
+  );
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
@@ -477,7 +485,7 @@ export function App(): JSX.Element {
 
   usePersistedSetting(PERMISSION_MODE_KEY, permissionMode);
   usePersistedSetting(NEW_SESSION_MODE_KEY, newSessionMode);
-  usePersistedSetting(CHAT_WIDTH_KEY, chatWidth);
+  usePersistedSetting(CHAT_WIDTH_KEY, String(chatWidth));
 
   // Esc closes the standalone full launcher (only meaningful when the grid
   // has active panes — when the grid is empty, the LaunchSurface is the only
@@ -839,7 +847,7 @@ export function App(): JSX.Element {
       // differs from `selectedProject`, so resolve the base branch by id.
       const launchingProject =
         snapshot.projects.find((p) => p.id === projectId) ?? selectedProject ?? null;
-      const workspace =
+      let workspace =
         workspaceMode === "worktree"
           ? await window.argmax.workspaces.createIsolated({
               projectId,
@@ -847,6 +855,13 @@ export function App(): JSX.Element {
               baseRef: launchingProject?.currentBranch ?? null
             })
           : await window.argmax.workspaces.createCurrent({ projectId, taskLabel });
+
+      if (randomSessionIconEnabled) {
+        workspace = await window.argmax.workspaces.setIcon({
+          workspaceId: workspace.id,
+          ...randomSessionIcon()
+        });
+      }
 
       const launchedSession = await window.argmax.providers.launch({
         workspaceId: workspace.id,
@@ -909,6 +924,7 @@ export function App(): JSX.Element {
       pendingSelectionRef,
       permissionMode,
       fastModeEnabled,
+      randomSessionIconEnabled,
       setGrid,
       setIsFullLauncherOpen,
       setSnapshot
@@ -1208,6 +1224,8 @@ export function App(): JSX.Element {
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
                 chatCostVisible={chatCostVisible}
                 onChatCostVisibleChange={setChatCostVisible}
+                workspaceCardVisible={workspaceCardVisible}
+                onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
                 pixelFieldEnabled={pixelFieldEnabled}
                 onPixelFieldEnabledChange={setPixelFieldEnabled}
                 chatWidth={chatWidth}
@@ -1239,6 +1257,8 @@ export function App(): JSX.Element {
                 onPermissionModeChange={setPermissionMode}
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={setNewSessionMode}
+                randomSessionIconEnabled={randomSessionIconEnabled}
+                onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
                 projects={snapshot.projects}
                 navigationTarget={settingsNavigationTarget}
               />
@@ -1261,6 +1281,8 @@ export function App(): JSX.Element {
               defaultThinkingExpanded={thinkingExpanded}
               fastModeEnabled={fastModeEnabled}
               showCostPanel={chatCostVisible}
+              workspaceCardVisible={workspaceCardVisible}
+              onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
               rightPanelToggleSignal={rightPanelToggleSignal}
               debugLogToggleSignal={debugLogToggleSignal}
               terminalToggleSignal={terminalToggleSignal}

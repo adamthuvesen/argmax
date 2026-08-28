@@ -12,6 +12,26 @@ import {
   workspaceStatusSnapshot
 } from "./fixtures/dashboardSnapshot.js";
 
+// Resolve the panels App.tsx mounts through `React.lazy` before any test runs.
+//
+// In the app these warm on an idle callback after first paint
+// (useLazyOverlayPrefetch), so a real user's first Settings open hits a cached
+// module. jsdom has no `requestIdleCallback`, so the hook falls back to a
+// 400/600 ms timer chain and a test clicks Settings long before it fires.
+// paying the module's full first-load inside the assertion. That load is ~700 ms
+// for SettingsPanel alone on an idle machine and more under the full suite's
+// parallel workers, which overruns Testing Library's 1 s `findBy` ceiling
+// nondeterministically. Warming here moves the cost outside every assertion
+// window instead of widening the window and losing the ceiling's value.
+//
+// Top-level await, so it happens once per worker at import time. Only files
+// that render <App /> import this harness, so lib-only tests never pay it.
+await Promise.all([
+  import("../renderer/components/SettingsPanel.js"),
+  import("../renderer/components/CommandPalette.js"),
+  import("../renderer/components/ReviewPanel.js")
+]);
+
 export const snapshot = defaultDashboardSnapshot;
 
 export {

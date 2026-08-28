@@ -10,7 +10,7 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
-import type { FontSizeId } from "../lib/fonts.js";
+import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type {
   AgentMode,
@@ -61,7 +61,7 @@ interface SessionMultiGridProps {
   grid: GridState;
   /** Agent-window type scale. Set as `data-font-size` on the grid root so the
       chat subtree resolves the type tokens independently of app chrome. */
-  chatFontSize?: FontSizeId;
+  chatFontSize?: FontSize;
   approvals: ApprovalRequest[];
   events: TimelineEvent[];
   rawOutputs: RawProviderOutput[];
@@ -74,6 +74,8 @@ interface SessionMultiGridProps {
   defaultThinkingExpanded?: boolean;
   fastModeEnabled?: boolean;
   showCostPanel?: boolean;
+  workspaceCardVisible?: boolean;
+  onWorkspaceCardVisibleChange?: (visible: boolean) => void;
   maxColumnsPerRow?: number;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
@@ -132,6 +134,8 @@ export function SessionMultiGrid({
   defaultThinkingExpanded,
   fastModeEnabled,
   showCostPanel = true,
+  workspaceCardVisible = true,
+  onWorkspaceCardVisibleChange,
   maxColumnsPerRow = MAX_COLS,
   rightPanelToggleSignal,
   debugLogToggleSignal,
@@ -311,7 +315,7 @@ export function SessionMultiGrid({
       className="session-multigrid"
       role="group"
       aria-label="Session panes"
-      data-font-size={chatFontSize}
+      data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
       data-resizing={isResizing ? "true" : undefined}
       style={
         {
@@ -406,6 +410,8 @@ export function SessionMultiGrid({
                         events={events}
                         fastModeEnabled={fastModeEnabled}
                         showCostPanel={showCostPanel}
+                        workspaceCardVisible={workspaceCardVisible}
+                        onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
                         isFocused={focused}
                         onClose={() => onClosePane({ row: r, col: c })}
                         onFastModeEnabledChange={onFastModeEnabledChange}

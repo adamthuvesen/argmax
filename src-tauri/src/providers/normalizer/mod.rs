@@ -158,6 +158,11 @@ pub struct NormalizerSessionContext {
     /// Set when Claude emits a `message.completed` for the current turn so a
     /// trailing `result` line does not synthesize a duplicate bubble.
     pub claude_turn_answer_emitted: bool,
+    /// Set once OpenCode's `sessionID` has been reported for this launch.
+    /// Every OpenCode envelope carries it, and each report costs a session
+    /// UPDATE plus a re-read that ships a session row in the dashboard delta —
+    /// pure churn after the first, since the id never changes mid-launch.
+    pub opencode_conversation_id_emitted: bool,
 }
 
 impl NormalizerSessionContext {
@@ -303,7 +308,14 @@ pub fn normalize_provider_event(
         && !result.permission_blocked
         && !event.message.trim().is_empty()
     {
-        return normalize_line(provider, event, event.message.trim(), context);
+        let mut retried = normalize_line(provider, event, event.message.trim(), context);
+        // The first pass may already have consumed a one-shot conversation id
+        // (OpenCode reports its `sessionID` once per launch), so the retry
+        // would come back empty-handed. Keep what the first pass found.
+        if retried.provider_conversation_id.is_none() {
+            retried.provider_conversation_id = result.provider_conversation_id;
+        }
+        return retried;
     }
     result
 }
@@ -325,7 +337,6 @@ fn normalize_line(
                     JSON_PARSE_LINE_CAP
                 ),
                 json!({
-                    "raw": true,
                     "stream": event.stream.as_str(),
                     "truncated": true,
                     "droppedBytes": line.len(),
@@ -339,7 +350,10 @@ fn normalize_line(
 
     match serde_json::from_str::<Value>(line) {
         Ok(Value::Object(payload)) => normalize_json_payload(provider, event, payload, context),
-        Ok(_) | Err(_) => normalize_raw_line(event, line),
+        // Parsed, but not an object: leftover protocol output (an array or a
+        // bare scalar), not something a human wrote.
+        Ok(_) => normalize_raw_line(event, line, true),
+        Err(_) => normalize_raw_line(event, line, false),
     }
 }
 
@@ -389,7 +403,11 @@ fn normalize_json_payload(
         {
             string_value(payload.get("session_id")).map(str::to_string)
         }
-        ProviderId::Opencode => extract_opencode_session_id(&payload),
+        ProviderId::Opencode if !context.opencode_conversation_id_emitted => {
+            let session_id = extract_opencode_session_id(&payload);
+            context.opencode_conversation_id_emitted = session_id.is_some();
+            session_id
+        }
         _ => None,
     };
 
@@ -715,7 +733,16 @@ fn normalize_json_payload(
     }
 }
 
-fn normalize_raw_line(event: &ProviderOutputEvent, line: &str) -> NormalizedProviderResult {
+/// `is_protocol_json` marks a line that parsed as JSON but not as an object —
+/// protocol leftovers rather than human-readable output. Only those carry
+/// `raw: true`, because that flag is the chat's hide gate (`isConversationVisible`
+/// drops any row with `payload.raw === true`). Stamping it on genuinely
+/// non-JSON text is what kept provider auth errors out of the chat entirely.
+fn normalize_raw_line(
+    event: &ProviderOutputEvent,
+    line: &str,
+    is_protocol_json: bool,
+) -> NormalizedProviderResult {
     let cleaned = strip_terminal_controls(line).trim().to_string();
     if cleaned.is_empty() {
         return NormalizedProviderResult::default();
@@ -731,13 +758,13 @@ fn normalize_raw_line(event: &ProviderOutputEvent, line: &str) -> NormalizedProv
     } else {
         "message.delta"
     };
+    let payload = if is_protocol_json {
+        json!({ "raw": true, "stream": event.stream.as_str() })
+    } else {
+        json!({ "stream": event.stream.as_str() })
+    };
     NormalizedProviderResult {
-        events: vec![timeline_event(
-            event,
-            event_type,
-            cleaned,
-            json!({ "raw": true, "stream": event.stream.as_str() }),
-        )],
+        events: vec![timeline_event(event, event_type, cleaned, payload)],
         usages: Vec::new(),
         provider_conversation_id: None,
         ..NormalizedProviderResult::default()
@@ -946,6 +973,18 @@ mod tests {
             result.events[0].message,
             "could not authenticate; run `claude login`"
         );
+        // `raw: true` is the chat's hide gate, so human-readable text must not
+        // carry it — otherwise the row lands in SQLite and renders nowhere.
+        assert_eq!(result.events[0].payload.get("raw"), None);
+    }
+
+    #[test]
+    fn non_object_json_line_stays_flagged_as_protocol_noise() {
+        let mut context = NormalizerSessionContext::default();
+        let result =
+            normalize_provider_event(ProviderId::Claude, &output_event("[1, 2, 3]\n"), &mut context);
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].payload["raw"], json!(true));
     }
 
     #[test]
@@ -958,6 +997,30 @@ mod tests {
         );
         assert_eq!(result.events[0].r#type, "error");
         assert!(result.events[0].message.contains("too large to parse"));
+        assert_eq!(result.events[0].payload.get("raw"), None);
+    }
+
+    #[test]
+    fn opencode_reports_conversation_id_once_per_launch() {
+        // Every OpenCode envelope carries `sessionID`; re-reporting it would
+        // rewrite the same session row (and ship it in a delta) per chunk.
+        let mut context = NormalizerSessionContext::default();
+        let envelope = |kind: &str| {
+            format!("{{\"type\":\"{kind}\",\"sessionID\":\"ses_1\",\"part\":{{\"text\":\"hi\"}}}}\n")
+        };
+        let first = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(&envelope("text")),
+            &mut context,
+        );
+        assert_eq!(first.provider_conversation_id.as_deref(), Some("ses_1"));
+
+        let second = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(&envelope("step_start")),
+            &mut context,
+        );
+        assert_eq!(second.provider_conversation_id, None);
     }
 
     pub(crate) fn output_event(message: &str) -> ProviderOutputEvent {

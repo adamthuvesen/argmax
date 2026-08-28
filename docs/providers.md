@@ -124,8 +124,9 @@ normalized to a `command.started`/`command.completed` pair, and each
 envelope carries the `sessionID` resume id; follow-ups resume with `run -s
 <id>`. Auto-approve maps to `--auto`, and plan mode maps to the CLI's built-in
 read-only `plan` agent (`--agent plan`). The catalog ships the OpenCode Zen
-free-tier models, all priced at $0; OpenCode has no fast mode and its Zen free
-models expose no reasoning-effort control.
+free-tier models (all priced at $0) plus 7 OpenCode Go (`opencode-go/*`)
+models that are billed per-token and expose reasoning-effort variants via
+`--variant` (low/high/max levels, model-dependent). OpenCode has no fast mode.
 
 ## Subagent Activity
 

@@ -281,9 +281,9 @@ fn cursor_structured_resume_args(
 
 // OpenCode's `run --format json` streams typed part events (step_start, text,
 // reasoning, tool_use, step_finish, error) and exits when the turn ends.
-// `--thinking` surfaces reasoning parts for models that emit them. Reasoning
-// effort and fast mode have no CLI surface for the Zen free models, so neither
-// is folded in here.
+// `--thinking` surfaces reasoning parts for models that emit them. Some
+// opencode-go models expose reasoning-effort `--variant` (low/high/max),
+// folded in by opencode_variant_args. Fast mode has no CLI surface.
 fn opencode_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
@@ -293,6 +293,7 @@ fn opencode_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     ];
     args.extend(opencode_agent_mode_args(input));
     args.extend(opencode_permission_args(input));
+    args.extend(opencode_variant_args(&input.model_id, input.reasoning_effort));
     args.extend([
         "-m".to_string(),
         input.model_id.clone(),
@@ -316,6 +317,7 @@ fn opencode_structured_resume_args(
     ];
     args.extend(opencode_agent_mode_args(input));
     args.extend(opencode_permission_args(input));
+    args.extend(opencode_variant_args(&input.model_id, input.reasoning_effort));
     args.extend([
         "-m".to_string(),
         input.model_id.clone(),
@@ -323,6 +325,34 @@ fn opencode_structured_resume_args(
         input.prompt.clone(),
     ]);
     args
+}
+
+// Reasoning-effort `--variant` for opencode-go models. Mirrors the variant map
+// in reasoningEffortsForModel (providerModels.ts). Clamps unsupported efforts
+// DOWN to the highest supported ≤ incoming; falls back to the lowest supported.
+fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec<String> {
+    let effort = match effort {
+        Some(e) => e,
+        None => return Vec::new(),
+    };
+    let supported = match model_id {
+        "opencode-go/glm-5.3-flash"
+        | "opencode-go/glm-5.3"
+        | "opencode-go/deepseek-v4-flash" => &[ReasoningEffort::Low, ReasoningEffort::High, ReasoningEffort::Max][..],
+        "opencode-go/qwen3.8-flash" | "opencode-go/deepseek-v4-pro" => &[ReasoningEffort::High, ReasoningEffort::Max][..],
+        "opencode-go/kimi-k3" => &[ReasoningEffort::Max][..],
+        _ => return Vec::new(),
+    };
+    if supported.contains(&effort) {
+        return vec!["--variant".to_string(), effort.as_str().to_string()];
+    }
+    // Clamp down: highest supported whose rank ≤ incoming, else lowest.
+    let incoming_rank = effort as u8;
+    if let Some(&best) = supported.iter().filter(|e| (**e as u8) <= incoming_rank).last() {
+        vec!["--variant".to_string(), best.as_str().to_string()]
+    } else {
+        vec!["--variant".to_string(), supported[0].as_str().to_string()]
+    }
 }
 
 fn claude_permission_args(input: &ProviderLaunchInput) -> Vec<String> {

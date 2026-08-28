@@ -695,7 +695,9 @@ fn startup_reconciles_stranded_archives_without_retrying_removal() {
     );
     let connection = database.connection();
     let recovered = find_workspace_by_id(&connection, &workspace.id).expect("find workspace");
-    assert_eq!(recovered.state, "archive-failed");
+    // A shared-checkout archive has no destructive step, so an interrupted
+    // one completes as archived instead of demanding explicit recovery.
+    assert_eq!(recovered.state, "archived");
     assert!(
         repo.path().exists(),
         "startup recovery must not remove the path"

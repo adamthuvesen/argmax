@@ -538,11 +538,27 @@ export function App(): JSX.Element {
       setToast({ kind: "error", message: error instanceof Error ? error.message : "Workspace archive failed." });
       return;
     }
+    // Without force a dirty worktree comes back as "kept" — the backend's
+    // fresh status check found changes our cached snapshot missed, so the
+    // confirm dialog above never showed. Re-prompt once with the real count
+    // and retry with force; declining leaves the row kept, as intended.
+    if (result.state === "kept" && !force && !result.sharedWorkspace) {
+      const fileLabel = result.changedFiles === 1 ? "1 uncommitted change" : `${result.changedFiles} uncommitted changes`;
+      const confirmed = window.confirm(
+        `${result.taskLabel} has ${fileLabel}. Archiving will delete the worktree and discard these changes (the branch is preserved). Continue?`
+      );
+      if (!confirmed) {
+        setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
+        return;
+      }
+      try {
+        result = await window.argmax.workspaces.archive({ workspaceId, force: true });
+      } catch (error) {
+        setToast({ kind: "error", message: error instanceof Error ? error.message : "Workspace archive failed." });
+        return;
+      }
+    }
     setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result] }));
-    // Without force a dirty worktree comes back as "kept" — the row stays
-    // in the sidebar (filter only hides "archived"). With force, that
-    // branch is unreachable. Either way, fall through to inform the user
-    // when the workspace did not actually archive.
     if (result.state !== "archived") {
       setToast({
         kind: "info",

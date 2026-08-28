@@ -1,4 +1,6 @@
+pub mod acp;
 pub mod adapters;
+pub mod cursor_acp;
 pub mod discovery;
 pub mod environment;
 pub mod flush_queue;

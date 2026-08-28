@@ -114,6 +114,44 @@ where a variant exists.
 Cursor's provider conversation id is the `session_id` from its `system/init`
 JSON row; persist it so follow-ups can resume with `cursor-agent --resume`.
 
+## Cursor Warm ACP Runtime
+
+One-shot `cursor-agent agent -p` pays ~5.5 s of client-side startup before the
+API turn begins — on the first turn and on every `--resume` follow-up. Eligible
+Cursor launches instead run over the Agent Client Protocol on a warm
+`cursor-agent acp` process, one per workspace, pooled in
+[cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs) on top of the minimal
+JSON-RPC client in [acp.rs](../src-tauri/src/providers/acp.rs). Measured:
+session creation on a warm process ~1.2–1.4 s; a trivial follow-up turn
+completes in ~2 s end to end versus ~10 s one-shot.
+
+- **Eligibility**: `composer-2.5` only. Other Cursor models encode reasoning
+  effort / fast serving in the one-shot `--model` id, and ACP's
+  `session/set_model` accepts only the ids Cursor lists verbatim, so routing
+  them would silently drop the chosen variant. Any ACP failure (spawn,
+  handshake, load, model) logs a warning and falls back to the one-shot PTY
+  path — behavior degrades to today's, never breaks.
+- **Turn lifecycle**: ACP `session/update` notifications are translated into
+  the same cursor stream-json lines the normalizer already parses
+  (`system/init` with the ACP session id as the resume id, cumulative
+  `assistant` text, `thinking` deltas, `tool_call` rows, `result/success`), so
+  the flush queue, chat cards, and `complete_cursor_turn_after_result` are
+  unchanged. Stop sends `session/cancel`; the warm process survives the turn.
+  Follow-ups reuse the live session, or `session/load` it after an app restart
+  (the replayed history is discarded — the timeline already has it).
+- **Permissions**: `session/request_permission` is auto-answered with the
+  allow option, matching the one-shot `--force --trust` semantics. ACP launches
+  only occur in auto-approve mode (Cursor rejects ask-each-time at launch).
+- **Trade-offs**: Cursor's ACP stream reports no token usage, so ACP turns
+  record no usage/cost row. Composer runs Cursor's configured
+  `composer-2.5[fast=true]` variant. Hosted-agent session-launch credentials
+  are per-process env vars a shared warm process cannot carry, so ACP turns do
+  not receive the `$ARGMAX_BIN` session-launch surface.
+- **Lifecycle**: pool processes die with the app (`RunEvent::Exit` kills the
+  pool; `kill_on_drop` is the backstop). Boot orphan recovery cannot match
+  `cursor-agent acp` argv — it carries no session id — which is why the exit
+  hook exists; a hard crash can still leak one until logout.
+
 OpenCode structured launches use `opencode run --format json --thinking` with
 the model in `provider/model` form (`-m opencode/big-pickle`). The stream is
 typed part envelopes: `text` and `reasoning` parts arrive whole (no token

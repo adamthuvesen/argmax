@@ -307,10 +307,16 @@ pub fn run() {
                             // Share the boot-warmed discovery cache so the first
                             // launch per provider skips the version/auth probe
                             // (`cursor-agent status` alone runs ~800 ms).
+                            let cursor_acp =
+                                Arc::new(providers::cursor_acp::CursorAcpSessions::new());
+                            if state.cursor_acp.set(Arc::clone(&cursor_acp)).is_err() {
+                                tracing::warn!("cursor ACP pool state was already initialized");
+                            }
                             let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> =
                                 Arc::new(providers::runtime::RealProviderProcessLauncher::with_discovery(
                                     (*state.provider_discovery).clone(),
                                     session_launch_registry,
+                                    cursor_acp,
                                 ));
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
@@ -494,8 +500,21 @@ pub fn run() {
             );
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Warm cursor ACP processes must not outlive the app: boot
+                // orphan recovery cannot match `cursor-agent acp` argv (no
+                // session id), so a leak here would linger until logout. This
+                // callback runs on the main thread, not a tokio worker, so
+                // the blocking pool lock is safe.
+                let state = tauri::Manager::state::<state::AppState>(app_handle);
+                if let Some(pool) = state.cursor_acp.get() {
+                    pool.kill_all_blocking();
+                }
+            }
+        });
 }
 
 async fn handle_gh_check_failure(

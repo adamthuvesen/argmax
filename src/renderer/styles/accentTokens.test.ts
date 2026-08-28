@@ -434,7 +434,7 @@ describe("accent CSS contract", () => {
     );
     const tightRule = cssRuleBody(chatConversation, ".session-grid.review-open.log-open .session-main-column");
 
-    expect(appSource).toContain('data-chat-width={chatWidth}');
+    expect(appSource).toContain('data-chat-width={String(chatWidth)}');
     expect(narrowRule).toContain("--chat-content-width: 640px;");
     expect(narrowRule).toContain("--chat-content-width-docked: 600px;");
     expect(narrowRule).toContain("--chat-content-width-tight: 560px;");

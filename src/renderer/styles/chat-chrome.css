@@ -880,6 +880,65 @@
   margin: 3px 6px;
 }
 
+/* Type-to-filter (see useTypeToFilter). An open picker holds focus so plain
+   characters narrow it; the list itself never shows a focus ring, since the
+   highlighted row is the cursor. */
+.project-picker-popover:focus,
+.project-picker-popover:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-2);
+}
+
+/* Echo of what has been typed. Only rendered once there is a query, so a
+   picker at rest carries no search chrome. Sticky: the query has to stay
+   readable while the matches scroll. */
+.picker-filter {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -5px -5px 3px;
+  padding: 7px 9px 5px;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  background: var(--panel);
+  border-bottom: 1px solid var(--line-soft);
+  list-style: none;
+}
+
+.picker-filter-query {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-filter-count {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The row Enter would pick. Matches the hover fill so keyboard and pointer
+   land on the same affordance. */
+.project-picker-popover li[data-active="true"] > .project-picker-item,
+.project-picker-popover li[data-active="true"].model-picker-row {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.project-picker-empty {
+  padding: 6px 9px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
 /* Sidebar "sort projects" menu — opens downward from the `.rail-actions`
    trigger and anchors to the trigger's right edge so it stays inside the
    sidebar column. */

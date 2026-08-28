@@ -31,8 +31,10 @@ import type {
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
+import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
+import { useComposerDraft } from "../hooks/useComposerDraft.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
@@ -44,6 +46,7 @@ import {
   AGENT_MODE_LABELS,
   toggleAgentMode
 } from "../lib/agentMode.js";
+import { clearDraft } from "../lib/composerDrafts.js";
 import { leadingSlashCommand } from "../lib/slashHighlight.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
@@ -114,14 +117,16 @@ export function SessionComposer({
   status: string | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
-  const [input, setInput] = useState("");
+  const sessionId = session?.id ?? null;
+  // Unsent text belongs to the session, not to this component: it survives
+  // switching to another session and comes back when this one does.
+  const [input, setInput] = useComposerDraft(sessionId);
   const [isSending, setIsSending] = useState(false);
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const inputFormRef = useRef<HTMLFormElement | null>(null);
   const workspaceDetailsRef = useRef<HTMLDivElement | null>(null);
-  const sessionId = session?.id ?? null;
   const {
     pendingAttachments,
     attachmentInputRef,
@@ -133,7 +138,7 @@ export function SessionComposer({
     openFilePicker,
     clearAttachments
   } = useComposerAttachments({
-    sessionId,
+    draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
     setStatus
@@ -240,21 +245,13 @@ export function SessionComposer({
 
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const prompt = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
-    const attachmentsForPersist: ComposerAttachment[] = pendingAttachments.map((a) => ({
-      filePath: a.filePath,
-      mimeType: a.mimeType,
-      sizeBytes: a.sizeBytes
-    }));
 
     setIsSending(true);
     setStatus(null);
     shouldRefocusInput.current = true;
     try {
-      await deliver(
-        session.id,
-        prompt,
-        attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
-      );
+      await deliver(session.id, prompt, pendingAttachments.length > 0 ? pendingAttachments : undefined);
+      clearDraft(session.id);
       setInput("");
       clearAttachments();
     } catch (error) {
@@ -304,22 +301,22 @@ export function SessionComposer({
       {pendingAttachments.length > 0 ? (
         <div className="composer-attachments" aria-label="Attached images">
           {pendingAttachments.map((attachment) => (
-            <div key={attachment.id} className="composer-attachment-chip">
+            <div key={attachment.filePath} className="composer-attachment-chip">
               <button
                 type="button"
                 className="attachment-open-button"
                 aria-label="View attachment"
                 title="View attachment"
-                onClick={() => setLightboxSrc(attachment.thumbnailDataUrl)}
+                onClick={() => setLightboxSrc(attachmentProtocolUrl(attachment.filePath))}
               >
-                <img src={attachment.thumbnailDataUrl} alt="" />
+                <img src={attachmentProtocolUrl(attachment.filePath)} alt="" />
               </button>
               <button
                 type="button"
                 className="composer-attachment-remove"
                 aria-label="Remove attachment"
                 title="Remove attachment"
-                onClick={() => removePendingAttachment(attachment.id)}
+                onClick={() => removePendingAttachment(attachment.filePath)}
               >
                 <X size={12} />
               </button>

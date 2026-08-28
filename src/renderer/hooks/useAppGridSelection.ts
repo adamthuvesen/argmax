@@ -22,6 +22,7 @@ import {
   closeCell,
   dropWorkspaceInGrid,
   findAgentCellForParent,
+  findLauncherCell,
   findSessionCell,
   focusedCell,
   isAgentCell,
@@ -32,6 +33,7 @@ import {
   openWorkspaceInGrid,
   setActiveAgentTab,
   setFocus,
+  setLauncherProject,
   type AgentPaneRequest,
   type GridCell,
   type GridCoord,
@@ -86,6 +88,7 @@ export interface UseAppGridSelectionResult {
   handleWorkspaceDragStart: (workspaceId: string) => void;
   handleWorkspaceDragEnd: () => void;
   openLauncherPaneInGrid: () => void;
+  setLauncherPaneProject: (projectId: string) => void;
 }
 
 export function useAppGridSelection({
@@ -381,15 +384,30 @@ export function useAppGridSelection({
         projectId = focused.projectId;
       }
       if (!projectId) return current;
-      return openLauncherInGrid(current, { kind: "launcher", projectId }, { maxColumns: maxColumnsPerRow });
+      const next = openLauncherInGrid(
+        current,
+        { kind: "launcher", projectId },
+        { maxColumns: maxColumnsPerRow }
+      );
+      // A full grid silently swallows the request otherwise, which reads as a
+      // dead button rather than as a limit the user can act on.
+      if (next === current && findLauncherCell(current) === null) {
+        showErrorToast("The grid is full. Close a pane to start a new session here.");
+      }
+      return next;
     });
   }, [
     maxColumnsPerRow,
     selectedProject?.id,
     selectedWorkspace?.projectId,
+    showErrorToast,
     snapshot.projects,
     workspacesById
   ]);
+
+  const setLauncherPaneProject = useCallback((projectId: string): void => {
+    setGrid((current) => setLauncherProject(current, projectId));
+  }, []);
 
   return {
     grid,
@@ -410,6 +428,7 @@ export function useAppGridSelection({
     handleDropWorkspace,
     handleWorkspaceDragStart,
     handleWorkspaceDragEnd,
-    openLauncherPaneInGrid
+    openLauncherPaneInGrid,
+    setLauncherPaneProject
   };
 }

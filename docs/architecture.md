@@ -55,6 +55,19 @@ primary sessions. They point back to a parent session and parent tool use id, an
 the grid helpers drop them when the parent session pane is closed or replaced.
 That keeps subagent activity tied to the chat that launched it.
 
+A launcher cell owns its own `projectId`, separate from the app's selected
+project. Switching repositories inside a grid launcher calls
+`setLauncherProject` ([gridState.ts](../src/renderer/lib/gridState.ts)) and
+retargets that one cell. Only the standalone full launcher moves the app's
+selection. That is what makes "launch a task in any repository from inside a
+session" possible without taking the sessions being watched off screen.
+
+The session pane's actions menu offers "New session here", which always opens a
+launcher cell beside the current pane regardless of the `argmax.newSessionMode`
+preference. The preference decides what ⌘N does from the shell, but an action
+invoked from *inside* a session must not swap the grid out from under it. A
+full grid reports the limit as a toast rather than silently doing nothing.
+
 ## Shared: `src/shared`
 
 - [bindings.d.ts](../src/shared/bindings.d.ts): generated Rust types.

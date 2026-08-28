@@ -1,3 +1,4 @@
+import { afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import "./codemirrorMock.js";
 
@@ -66,6 +67,13 @@ if (typeof window !== "undefined") {
   }
 }
 
+// jsdom ships no layout engine, so it has no scrollIntoView. Components that
+// keep a highlighted row on screen call it; a no-op keeps that out of product
+// code as an environment check.
+if (typeof Element !== "undefined" && typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+}
+
 if (typeof HTMLCanvasElement !== "undefined") {
   Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
     configurable: true,
@@ -75,3 +83,9 @@ if (typeof HTMLCanvasElement !== "undefined") {
     }
   });
 }
+
+// Persisted UI state (panel widths, composer drafts, …) is per-test state: a
+// value one test writes must not decide what the next test renders.
+afterEach(() => {
+  if (typeof window !== "undefined") window.localStorage.clear();
+});

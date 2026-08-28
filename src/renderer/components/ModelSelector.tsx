@@ -11,8 +11,10 @@ import {
 } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { EffortPixelField } from "./EffortPixelField.js";
 import { Mascot } from "./Mascot.js";
+import { PickerFilterRow } from "./PickerFilterRow.js";
 import {
   allModelOptions,
   effortLabel,
@@ -421,6 +423,15 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     return { ...option.value, reasoningEffort: carried ?? DEFAULT_REASONING_EFFORT };
   };
 
+  // Typing into the open picker filters the model list through useTypeToFilter.
+  const modelFilter = useTypeToFilter({
+    open,
+    items: options,
+    toLabel: (option: ChipModelOption<T>) => option.label,
+    listRef: primaryListRef,
+    onPick: (option: ChipModelOption<T>) => selectModel(option)
+  });
+
   const selectModel = (option: ChipModelOption<T>): void => {
     // A disabled row (provider CLI not installed) can't be chosen — the button
     // is also disabled, this is just belt-and-suspenders.
@@ -495,10 +506,17 @@ function ChipModelPicker<T extends ProviderModelSelection>({
             role="listbox"
             aria-label={ariaLabel}
             ref={primaryListRef}
+            tabIndex={-1}
+            onKeyDown={modelFilter.onKeyDown}
           >
-            {options.map((option, index) => {
+            <PickerFilterRow
+              query={modelFilter.query}
+              matchCount={modelFilter.matches.length}
+              totalCount={options.length}
+            />
+            {modelFilter.matches.map((option, index) => {
               const selected = isSelected(option.value);
-              const previousGroup = index > 0 ? options[index - 1]?.group : null;
+              const previousGroup = index > 0 ? modelFilter.matches[index - 1]?.group : null;
               return (
                 <Fragment key={option.key}>
                   {option.group && index > 0 && option.group !== previousGroup ? (
@@ -510,6 +528,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                     aria-disabled={option.disabled || undefined}
                     className="model-picker-row"
                     data-disabled={option.disabled || undefined}
+                    data-active={index === modelFilter.activeIndex ? "true" : undefined}
                   >
                     <button
                       type="button"
@@ -528,6 +547,11 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                 </Fragment>
               );
             })}
+            {modelFilter.matches.length === 0 ? (
+              <li className="project-picker-empty" role="presentation">
+                No models match
+              </li>
+            ) : null}
             {canChangeFastMode ? (
               <>
                 <li className="model-picker-divider" role="separator" />

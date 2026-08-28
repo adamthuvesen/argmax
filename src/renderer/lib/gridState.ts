@@ -471,6 +471,23 @@ export function closeCell(grid: GridState, row: number, col: number): GridState 
   return focusNear(rows, { row, col });
 }
 
+/**
+ * Point the grid's launcher cell at another project.
+ *
+ * A launcher cell owns its own project, separate from the app's selected
+ * project: the whole point of composing a task beside a running session is to
+ * launch it wherever it belongs without moving the rest of the UI off the work
+ * being watched. No-op when no launcher is open or it already targets that
+ * project.
+ */
+export function setLauncherProject(grid: GridState, projectId: string): GridState {
+  const coord = findLauncherCell(grid);
+  if (!coord) return grid;
+  const cell = grid.rows[coord.row]?.[coord.col];
+  if (!cell || cell.kind !== "launcher" || cell.projectId === projectId) return grid;
+  return { ...grid, rows: replaceCell(grid.rows, coord, { kind: "launcher", projectId }) };
+}
+
 export function setFocus(grid: GridState, coord: GridCoord): GridState {
   if (grid.focused && grid.focused.row === coord.row && grid.focused.col === coord.col) return grid;
   const row = grid.rows[coord.row];

@@ -4,7 +4,8 @@ import {
   ChevronRight,
   Folder,
   GitBranch,
-  MoreHorizontal
+  MoreHorizontal,
+  SquarePen
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
@@ -15,6 +16,7 @@ import { GitActionsMenu } from "./GitActionsMenu.js";
 export function SessionActionsMenu({
   isLogOpen,
   onBrowseFiles,
+  onNewSession,
   onOpenCommitDialog,
   onToggleLog,
   session,
@@ -23,6 +25,9 @@ export function SessionActionsMenu({
 }: {
   isLogOpen: boolean;
   onBrowseFiles: () => void;
+  /** Opens a launcher pane beside this one. Absent where the grid isn't the
+      host surface (the single-pane preview), which hides the action. */
+  onNewSession?: () => void;
   onOpenCommitDialog?: () => void;
   onToggleLog: () => void;
   session: SessionSummary | null;
@@ -117,6 +122,23 @@ export function SessionActionsMenu({
         >
           {actionsMode === "main" && (
             <ul className="session-actions-list">
+              {onNewSession ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    title="Compose a task for any repository beside this session (⌘N)"
+                    onClick={() => {
+                      closeActions();
+                      onNewSession();
+                    }}
+                  >
+                    <SquarePen size={14} aria-hidden="true" />
+                    New session here
+                  </button>
+                </li>
+              ) : null}
               <li role="none">
                 <button
                   type="button"

@@ -5,5 +5,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    if let Some(exit_code) =
+        argmax_lib::session_control::try_run_session_launch_cli(std::env::args_os())
+    {
+        std::process::exit(exit_code);
+    }
     argmax_lib::run();
 }

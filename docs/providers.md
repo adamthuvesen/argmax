@@ -149,6 +149,39 @@ malformed files are skipped, and the pane falls back to safe launch metadata.
 Provider-private async launch receipts are filtered out before the renderer
 shows a subagent result.
 
+## Agent-Launched Sessions
+
+A hosted agent can launch a separate top-level Argmax session when the user
+explicitly asks for one. This is different from a provider subagent. The new
+session gets its own workspace and session rows, and the existing delta
+publishers make it appear in the sidebar immediately.
+
+Real provider launches receive a short hidden instruction plus three private
+environment variables. The instruction teaches this command:
+
+```bash
+"$ARGMAX_BIN" session launch --project <registered-name-or-repo-path> --prompt '<task>'
+```
+
+`--project` is optional and only resolves registered projects by exact id,
+exact repo path, or case-insensitive exact name. Omitting it uses the parent
+session's project. The default creates a new workspace row for the registered
+project's current checkout. `--worktree` creates an isolated worktree from the
+project's current branch. `--prompt-stdin` is available for long or multiline
+prompts.
+
+The child session inherits the parent launch's provider, model, reasoning
+effort, fast mode, permission mode, and agent mode. The request goes through
+`WorkspaceService` and `ProviderSessionService`, so it never writes SQLite
+directly or invents a second lifecycle path.
+
+[session_control.rs](../src-tauri/src/session_control.rs) owns the private Unix
+socket, in-memory per-session bearer credentials, bounded versioned protocol,
+CLI client, and project resolution. The socket lives under a mode-0700 temp
+directory and is mode 0600. Credentials are only injected into real hosted
+provider processes. Title generation and other helper subprocesses do not
+receive them.
+
 Session titles are not exposed by Claude/Codex/Cursor protocol streams. New
 sessions first show the renderer's `titleFromPrompt` label, then the renderer
 fires `workspaces:autotitle` after `providers:launch` succeeds. The generated

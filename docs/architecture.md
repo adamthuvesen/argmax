@@ -30,6 +30,7 @@ Key folders:
 - `ipc/`: request/response commands grouped by namespace.
 - `persistence/`: SQLite connection, migrations, and table-family repositories.
 - `providers/`: Claude/Codex/Cursor adapters, PTY process runtime, normalizers, and event flush queue.
+- `session_control.rs`: private agent-to-app transport for launching a separate top-level session through the live workspace and provider services.
 - `sessions/`: session orchestration between `ipc/` and `providers/`.
 - `workspaces/`, `review/`, `files/`, `git/`: worktree lifecycle, diffs, file previews/writes, and branch/PR actions.
 - `approvals/`, `checks/`, `gh/`, `memory/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. `notifications.rs` and `updater.rs` are top-level modules. Skill discovery roots are documented in [skills.md](skills.md).

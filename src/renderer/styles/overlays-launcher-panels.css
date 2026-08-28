@@ -261,7 +261,7 @@
   font-size: var(--text-xs);
   border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--panel-soft);
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease);

@@ -603,6 +603,32 @@
   background: transparent;
 }
 
+/* Ink hierarchy: real project entries are content, not chrome — they sit a
+   tier above the muted section labels so clickable rows and headers stop
+   reading as one gray. Section headers (date buckets, Priority, Projects)
+   carry .session-date-label and keep --muted below. */
+.project-name:not(.session-date-label) {
+  color: var(--text-soft);
+}
+
+.project-name:not(.session-date-label):hover {
+  color: var(--text);
+}
+
+.project-name.active:not(.session-date-label) {
+  color: var(--text);
+}
+
+/* Section headers become genuine labels: smaller, tracked-out small caps in
+   the register of the main pane's "Checks" heading, so the rail reads as
+   labeled groups of bright rows instead of a uniform gray column. */
+.project-name.session-date-label .project-name-text {
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .project-name-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -610,7 +636,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-transform: none;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 400;
   letter-spacing: 0.01em;
 }

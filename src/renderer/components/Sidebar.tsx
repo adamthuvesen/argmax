@@ -624,7 +624,7 @@ export function Sidebar({
     ? "Booting..."
     : loadState === "error"
       ? "Needs attention"
-      : null;
+      : APP_VERSION_LABEL;
   const runIdentityAction = useCallback((action: () => void): void => {
     setIdentityMenuOpen(false);
     action();
@@ -1205,12 +1205,9 @@ export function Sidebar({
               <Mascot size={24} className="identity-avatar-mascot" />
             </span>
             <span className="identity-meta">
-              <span className="identity-name">argmax@local</span>
+              <span className="identity-name">Argmax</span>
               {identitySubLabel ? (
-                <span className="identity-sub">
-                  <span className="identity-sub-dot" aria-hidden="true" />
-                  {identitySubLabel}
-                </span>
+                <span className="identity-sub">{identitySubLabel}</span>
               ) : null}
             </span>
             <ChevronDown className="identity-menu-chevron" size={14} aria-hidden="true" />
@@ -1218,7 +1215,7 @@ export function Sidebar({
           {identityMenuOpen ? (
             <ul className="project-picker-popover identity-menu-popover" role="menu" aria-label="Argmax menu">
               <li className="identity-menu-header" role="presentation">
-                <span className="identity-menu-title">argmax@local</span>
+                <span className="identity-menu-title">Argmax</span>
                 <span className="identity-menu-subtitle">Local workspace · {APP_VERSION_LABEL}</span>
               </li>
               <li className="project-picker-divider" role="separator" />

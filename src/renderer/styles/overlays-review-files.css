@@ -708,6 +708,12 @@
   line-height: 1.65;
 }
 
+/* Diff code in the review panel reads one notch below the panel's scale;
+   chat file-change cards keep the base size. */
+.review-panel .diff-blocks {
+  font-size: var(--text-xs);
+}
+
 .diff-hunk {
   overflow: hidden;
   border: 1px solid var(--line-soft);
@@ -843,9 +849,9 @@
   inset: 0;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.55) 50%,
-    rgba(255, 255, 255, 0) 100%
+    transparent 0%,
+    var(--overlay-med) 50%,
+    transparent 100%
   );
   transform: translateX(-100%);
   animation: skeleton-shimmer 1.4s ease-in-out infinite;

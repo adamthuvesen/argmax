@@ -79,7 +79,7 @@
   padding: 18px var(--session-inline-padding, 64px) 22px;
   border-top: 1px solid var(--line);
   background: var(--panel-soft);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  background-image: linear-gradient(180deg, var(--paper-highlight-strong), transparent);
 }
 
 .approval-surface .section-heading h2 {
@@ -109,7 +109,7 @@
 }
 
 .approval-row:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--row-hover);
 }
 
 .approval-risk {

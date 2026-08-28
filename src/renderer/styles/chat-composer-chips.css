@@ -728,15 +728,17 @@ button.composer-compact-context-row:hover,
   right: -12px;
 }
 
+/* Command-menu rows: one line each — mono command name, muted description
+   trailing on the same baseline. Dense on purpose; this is a picker the user
+   scans dozens of times a day, not content. */
 .skill-option {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 9px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: var(--text-base);
-  line-height: 1.35;
+  line-height: 1.5;
 }
 
 .skill-option.is-selected,
@@ -745,13 +747,18 @@ button.composer-compact-context-row:hover,
 }
 
 .skill-option-name {
+  flex: 0 0 auto;
+  font-family: var(--font-code);
+  font-size: var(--text-xs-plus);
   font-weight: 500;
   color: var(--text);
 }
 
 .skill-option-description {
-  color: var(--text-soft, #6a6a6a);
-  font-size: var(--text-sm);
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -778,12 +785,12 @@ button.composer-compact-context-row:hover,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 5px 9px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: var(--text-sm-plus);
-  line-height: 1.35;
+  font-size: var(--text-sm);
+  line-height: 1.5;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -807,8 +814,8 @@ button.composer-compact-context-row:hover,
 }
 
 .file-popover-empty {
-  padding: 8px 10px;
-  font-size: var(--text-sm-plus);
+  padding: 6px 9px;
+  font-size: var(--text-sm);
   color: var(--text-soft, #6a6a6a);
   font-style: italic;
 }

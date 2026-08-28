@@ -11,14 +11,16 @@
 //     to close the TOCTOU window, closes the fs watcher before remove so
 //     teardown doesn't ENOENT-spam. Shared workspaces only archive the app
 //     row and leave the checkout untouched.
-//   - `refresh_status` reads `git branch --show-current` and
-//     `git status --porcelain`, persists branch-change events.
+//   - `refresh_status` reads branch and dirty state with a single
+//     `git status --porcelain --branch`, persists branch-change events.
+//     `refresh_checkout` does the same for every workspace sharing one
+//     checkout, from one git read.
 //   - `open_in_ide` invokes `open -a <app> <path>` for the picked IDE.
 //
-// The fs watcher lives in `watcher.rs` and is owned per-workspace by
-// this service; `watch` and `close_watcher` are this module's public surface.
+// The fs watcher lives in `watcher.rs`. Watches are keyed by checkout path
+// and shared by every workspace pointing at it; `watch` and `close_watcher`
+// are this module's public surface and stay workspace-scoped.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -28,7 +30,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::lifecycle::{ArchiveOutcome, WorkspaceLifecycle};
-use super::watcher::WatcherEntry;
+use super::watcher::WatcherRegistry;
 use crate::approvals::service::ApprovalService;
 use crate::checks::service::CheckService;
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -98,7 +100,7 @@ impl From<WorkspaceServiceError> for ArgmaxError {
 pub struct WorkspaceService {
     database: Arc<Database>,
     publish_delta: DeltaPublisher,
-    pub(super) watchers: Mutex<HashMap<String, WatcherEntry>>,
+    pub(super) watchers: Mutex<WatcherRegistry>,
     lifecycle: Arc<WorkspaceLifecycle>,
     providers: Option<Arc<ProviderSessionService>>,
     checks: Option<Arc<CheckService>>,
@@ -141,7 +143,7 @@ impl WorkspaceService {
         Arc::new(Self {
             database,
             publish_delta: Arc::new(publisher),
-            watchers: Mutex::new(HashMap::new()),
+            watchers: Mutex::new(WatcherRegistry::default()),
             lifecycle,
             providers,
             checks,
@@ -259,8 +261,17 @@ impl WorkspaceService {
         Ok(recovered)
     }
 
+    /// Workspaces currently watched. Several sharing one checkout cost a
+    /// single OS watch between them — see `watched_checkout_count`.
     pub fn open_watcher_count(&self) -> usize {
-        self.watchers.lock_or_recover("watchers").len()
+        self.watchers
+            .lock_or_recover("watchers")
+            .subscription_count()
+    }
+
+    /// Distinct OS-level filesystem watches held across all workspaces.
+    pub fn watched_checkout_count(&self) -> usize {
+        self.watchers.lock_or_recover("watchers").checkout_count()
     }
 
     pub(super) fn database(&self) -> &Arc<Database> {
@@ -756,57 +767,94 @@ impl WorkspaceService {
             let connection = self.database.connection();
             find_workspace_by_id(&connection, workspace_id)?
         };
+        let status = read_checkout_status(Path::new(&workspace.path)).await;
+        let unchanged = workspace.clone();
+        match self.persist_checkout_status(workspace, status.as_ref())? {
+            Some(summary) => {
+                self.publish(DashboardDelta {
+                    workspaces: vec![summary.clone()],
+                    ..DashboardDelta::default()
+                });
+                Ok(summary)
+            }
+            None => Ok(unchanged),
+        }
+    }
 
-        let branch = match run_git_text(
-            Path::new(&workspace.path),
-            &["branch", "--show-current"],
-            Duration::from_millis(GIT_TIMEOUT_MS),
-        )
-        .await
-        {
-            // Empty output is a valid detached-HEAD state, not a failure —
-            // keep the cached branch in that case.
-            Ok(output) if output.trim().is_empty() => workspace.branch.clone(),
-            Ok(output) => output.trim().to_string(),
-            Err(error) => {
-                // Don't silently fall back to "": surface the failure and keep
-                // the cached branch (mirrors the porcelain handling below).
-                tracing::debug!(
-                    workspace_id = %workspace_id,
-                    ?error,
-                    "branch detection failed; keeping cached branch"
-                );
-                workspace.branch.clone()
+    /// Refresh every workspace pointing at one checkout from a single git read.
+    ///
+    /// Sessions created on the current checkout all share one path, so a repo
+    /// with N open workspaces used to run N status reads against byte-identical
+    /// state on every filesystem event. The read belongs to the path; only the
+    /// persist/publish step is per workspace.
+    ///
+    /// Returns how many workspace rows were still present, so a caller can
+    /// retire a watcher whose subjects have all been deleted.
+    pub async fn refresh_checkout(
+        self: &Arc<Self>,
+        path: &Path,
+        workspace_ids: &[String],
+    ) -> usize {
+        let status = read_checkout_status(path).await;
+        let mut refreshed = 0;
+        let mut changed = Vec::new();
+        for workspace_id in workspace_ids {
+            let workspace = {
+                let connection = self.database.connection();
+                find_workspace_by_id(&connection, workspace_id)
+            };
+            let Ok(workspace) = workspace else {
+                continue;
+            };
+            refreshed += 1;
+            match self.persist_checkout_status(workspace, status.as_ref()) {
+                Ok(Some(summary)) => changed.push(summary),
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::debug!(%workspace_id, ?error, "watcher: status apply failed")
+                }
             }
-        };
+        }
+        // Every workspace on a shared checkout flips together, so publish them
+        // as one delta rather than waking the renderer once per subscriber.
+        if !changed.is_empty() {
+            self.publish(DashboardDelta {
+                workspaces: changed,
+                ..DashboardDelta::default()
+            });
+        }
+        refreshed
+    }
 
-        // If `git status` fails (transient lock, partially-removed
-        // worktree, ENOENT during teardown), the prior dirty/changed
-        // values stay authoritative. Falling back to "" would mark a
-        // genuinely dirty workspace as clean and the dashboard delta
-        // would silently misrepresent reality.
-        let porcelain_result = run_git_text(
-            Path::new(&workspace.path),
-            &["status", "--porcelain"],
-            Duration::from_millis(GIT_TIMEOUT_MS),
-        )
-        .await;
-        let (changed_files, dirty) = match porcelain_result {
-            Ok(porcelain) => {
-                let count = porcelain
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .count() as i64;
-                (count, count > 0)
-            }
-            Err(error) => {
-                tracing::debug!(
-                    workspace_id,
-                    error = %error,
-                    "refresh_status: git status failed; preserving prior dirty/changed_files",
-                );
-                (workspace.changed_files, workspace.dirty)
-            }
+    /// Persist one workspace's status, returning the new summary only when the
+    /// visible status actually moved. Publishing is left to the caller so a
+    /// shared checkout can batch its subscribers into one delta.
+    ///
+    /// `status` is `None` when the git read failed (transient lock,
+    /// partially-removed worktree, ENOENT during teardown); the prior values
+    /// stay authoritative rather than reporting a dirty workspace as clean.
+    fn persist_checkout_status(
+        self: &Arc<Self>,
+        workspace: WorkspaceSummary,
+        status: Option<&CheckoutStatus>,
+    ) -> ArgmaxResult<Option<WorkspaceSummary>> {
+        let workspace_id = workspace.id.clone();
+        let workspace_id = workspace_id.as_str();
+        let (branch, changed_files, dirty) = match status {
+            // A detached HEAD reports no branch name; keep the cached one.
+            Some(status) => (
+                status
+                    .branch
+                    .clone()
+                    .unwrap_or_else(|| workspace.branch.clone()),
+                status.changed_files,
+                status.dirty,
+            ),
+            None => (
+                workspace.branch.clone(),
+                workspace.changed_files,
+                workspace.dirty,
+            ),
         };
 
         // Filesystem churn is a status observation, not user or agent
@@ -817,7 +865,7 @@ impl WorkspaceService {
             && dirty == workspace.dirty
             && changed_files == workspace.changed_files
         {
-            return Ok(workspace);
+            return Ok(None);
         }
 
         if branch != workspace.branch {
@@ -855,11 +903,7 @@ impl WorkspaceService {
                 },
             )?
         };
-        self.publish(DashboardDelta {
-            workspaces: vec![summary.clone()],
-            ..DashboardDelta::default()
-        });
-        Ok(summary)
+        Ok(Some(summary))
     }
 
     pub fn open_in_ide(self: &Arc<Self>, input: WorkspacesOpenInIdeInput) -> ArgmaxResult<()> {
@@ -1034,6 +1078,87 @@ impl WorkspaceService {
 }
 
 // ----- free functions ---------------------------------------------------
+
+/// Branch and dirty state for one checkout, from a single git invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CheckoutStatus {
+    /// `None` on a detached HEAD, where there is no branch name to report and
+    /// the caller keeps whatever it had cached.
+    pub branch: Option<String>,
+    pub changed_files: i64,
+    pub dirty: bool,
+}
+
+/// Read a checkout's branch and dirty state.
+///
+/// `git status --porcelain --branch` carries both, replacing the former
+/// `branch --show-current` + `status --porcelain` pair: same information, half
+/// the process spawns. `None` means the read failed and callers should keep
+/// their cached values.
+async fn read_checkout_status(path: &Path) -> Option<CheckoutStatus> {
+    match run_git_text(
+        path,
+        &["status", "--porcelain", "--branch"],
+        Duration::from_millis(GIT_TIMEOUT_MS),
+    )
+    .await
+    {
+        Ok(output) => Some(parse_checkout_status(&output)),
+        Err(error) => {
+            tracing::debug!(
+                path = %path.display(),
+                %error,
+                "checkout status read failed; preserving prior branch/dirty state"
+            );
+            None
+        }
+    }
+}
+
+fn parse_checkout_status(output: &str) -> CheckoutStatus {
+    // With `--branch`, git emits the `## ` header as the first line. Only the
+    // first line is treated as the header so a pathological filename can't be
+    // mistaken for one — and, more importantly, so the header is never counted
+    // as a changed file.
+    let mut lines = output.lines().peekable();
+    let branch = match lines.peek().and_then(|line| line.strip_prefix("## ")) {
+        Some(header) => {
+            let branch = parse_branch_header(header);
+            lines.next();
+            branch
+        }
+        None => None,
+    };
+    let changed_files = lines.filter(|line| !line.trim().is_empty()).count() as i64;
+    CheckoutStatus {
+        branch,
+        changed_files,
+        dirty: changed_files > 0,
+    }
+}
+
+fn parse_branch_header(header: &str) -> Option<String> {
+    // Detached HEAD — no branch to report.
+    if header.starts_with("HEAD (no branch)") {
+        return None;
+    }
+    // Before the first commit git prefixes the name instead of omitting it.
+    let header = header
+        .strip_prefix("No commits yet on ")
+        .unwrap_or(header)
+        .trim();
+    // `main...origin/main [ahead 1, behind 2]` — the local name is everything
+    // before the upstream separator. Refs can contain neither ".." nor spaces,
+    // so neither split can cut into a branch name.
+    let name = header
+        .split("...")
+        .next()
+        .unwrap_or(header)
+        .split_whitespace()
+        .next()
+        .unwrap_or("");
+    (!name.is_empty()).then(|| name.to_owned())
+}
 
 fn ide_app_name(choice: OpenIdeChoice) -> &'static str {
     match choice {
@@ -1253,6 +1378,53 @@ fn slugify(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn branch_header_yields_the_local_branch_name() {
+        assert_eq!(parse_branch_header("main"), Some("main".to_owned()));
+        assert_eq!(
+            parse_branch_header("main...origin/main"),
+            Some("main".to_owned())
+        );
+        assert_eq!(
+            parse_branch_header("feat/x...origin/feat/x [ahead 1, behind 2]"),
+            Some("feat/x".to_owned())
+        );
+        assert_eq!(
+            parse_branch_header("No commits yet on main"),
+            Some("main".to_owned())
+        );
+    }
+
+    #[test]
+    fn detached_head_reports_no_branch() {
+        assert_eq!(parse_branch_header("HEAD (no branch)"), None);
+    }
+
+    #[test]
+    fn the_branch_header_is_not_counted_as_a_changed_file() {
+        let status = parse_checkout_status("## main...origin/main\n M src/a.rs\n?? b.txt\n");
+        assert_eq!(status.branch, Some("main".to_owned()));
+        assert_eq!(status.changed_files, 2);
+        assert!(status.dirty);
+    }
+
+    #[test]
+    fn a_clean_checkout_reports_no_changes() {
+        let status = parse_checkout_status("## main...origin/main\n");
+        assert_eq!(status.branch, Some("main".to_owned()));
+        assert_eq!(status.changed_files, 0);
+        assert!(!status.dirty);
+    }
+
+    #[test]
+    fn a_filename_starting_with_hashes_still_counts() {
+        // Only the first line is the header, so a `## ...` path can't shadow it
+        // or vanish from the count.
+        let status = parse_checkout_status("## main\n?? ## odd name.txt\n");
+        assert_eq!(status.branch, Some("main".to_owned()));
+        assert_eq!(status.changed_files, 1);
+    }
 
     #[test]
     fn slugify_collapses_runs_and_lowercases() {

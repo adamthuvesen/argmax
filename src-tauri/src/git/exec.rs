@@ -210,10 +210,23 @@ async fn run_git_command(
     command
         .arg("-C")
         .arg(workspace_path)
+        // `core.fsmonitor=true` in a user's global config makes every git
+        // invocation start (and then keep alive) a `git fsmonitor--daemon` for
+        // the worktree. Argmax drives git across many worktrees, so honouring
+        // it accumulates a fleet of daemons that each hold their own FSEvents
+        // stream. Argmax already watches these paths itself.
+        .arg("-c")
+        .arg("core.fsmonitor=false")
         .args(args)
         .env("LC_ALL", "C")
         .env("LANG", "C")
         .env("LANGUAGE", "")
+        // Read-only commands like `status` opportunistically take `index.lock`
+        // to write back a refreshed index. Argmax's reads are frequent and
+        // concurrent with the user's own git, where that lock causes contention and
+        // spurious failures for no benefit. Commands that genuinely need the
+        // lock still take it.
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);

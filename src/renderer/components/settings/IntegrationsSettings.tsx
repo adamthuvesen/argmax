@@ -1,29 +1,9 @@
+import { Check, Copy } from "lucide-react";
 import type { JSX } from "react";
 import type { DetectedIde, IdeId } from "../../../shared/types.js";
+import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
+import { PROVIDER_SETUP, PROVIDER_SETUP_ORDER } from "../../lib/providerSetup.js";
 import { SectionHeader, SettingsListPicker } from "./settingsPrimitives.js";
-
-const MCP_SETUP = [
-  {
-    name: "Claude Code",
-    command: "claude mcp add <name> -- <command>",
-    detail: "Servers are managed with the Claude CLI or ~/.claude.json. Authentication is opened with /mcp inside Claude."
-  },
-  {
-    name: "Codex",
-    command: "codex mcp add <name> -- <command>",
-    detail: "Servers are managed with the Codex CLI or ~/.codex/config.toml."
-  },
-  {
-    name: "Cursor",
-    command: "Settings → Tools & MCP",
-    detail: "Servers are managed in Cursor settings or ~/.cursor/mcp.json."
-  },
-  {
-    name: "OpenCode",
-    command: "opencode mcp add",
-    detail: "Servers are managed with the OpenCode CLI or ~/.config/opencode/opencode.json."
-  }
-] as const;
 
 export function IntegrationsSettings({
   detectedIdes,
@@ -76,19 +56,38 @@ export function IntegrationsSettings({
           description="Each agent loads its own MCP configuration when launched by Argmax. Servers are added and authenticated with the provider's CLI or settings."
         />
         <div className="settings-mcp-body">
-          {MCP_SETUP.map((provider) => (
-            <div key={provider.name} className="settings-mcp-client">
-              <div className="settings-mcp-client-header">
-                <div className="settings-mcp-client-heading">
-                  <span className="settings-mcp-client-name">{provider.name}</span>
-                  <code>{provider.command}</code>
+          {PROVIDER_SETUP_ORDER.map((providerId) => {
+            const setup = PROVIDER_SETUP[providerId];
+            return (
+              <div key={providerId} className="settings-mcp-client">
+                <div className="settings-mcp-client-header">
+                  <div className="settings-mcp-client-heading">
+                    <span className="settings-mcp-client-name">{setup.displayName}</span>
+                    <code>{setup.mcpCommand ?? "Settings → Tools & MCP"}</code>
+                  </div>
+                  {setup.mcpCommand ? <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} /> : null}
                 </div>
+                <p className="settings-hint">{setup.mcpHint}</p>
               </div>
-              <p className="settings-hint">{provider.detail}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
     </>
+  );
+}
+
+function CopyCommandButton({ command, name }: { command: string; name: string }): JSX.Element {
+  const [copied, copy] = useCopyToClipboard();
+  return (
+    <button
+      type="button"
+      className="settings-refresh"
+      onClick={() => void copy(command)}
+      aria-label={`Copy ${name} MCP command`}
+    >
+      {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+      <span>{copied ? "Copied" : "Copy"}</span>
+    </button>
   );
 }

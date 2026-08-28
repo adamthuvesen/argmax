@@ -55,8 +55,8 @@ describe("WelcomePane — provider discovery", () => {
 
     render(<WelcomePane onAddProject={vi.fn()} />);
 
-    const row = await screen.findByText("Claude Code");
-    const li = row.closest("li");
+    const list = await screen.findByRole("list", { name: "Detected providers" });
+    const li = within(list).getByText("Claude Code").closest("li");
     expect(li).toHaveAttribute("data-installed", "needs-login");
     expect(li && within(li).getByText(/not authenticated/i)).toBeInTheDocument();
   });
@@ -79,5 +79,70 @@ describe("WelcomePane — provider discovery", () => {
 
     await screen.findByText("Claude Code");
     expect(screen.getByRole("button", { name: /Add Project/ })).toBeDisabled();
+  });
+
+  it("shows a copyable install command for a provider that is not installed", async () => {
+    const discover = vi.fn().mockResolvedValue([
+      provider({ installed: false, binaryPath: null, version: null, authenticated: null })
+    ]);
+    installDiscoverStub(discover);
+
+    render(<WelcomePane onAddProject={vi.fn()} />);
+
+    await screen.findByText("Claude Code");
+    expect(screen.getByText("curl -fsSL https://claude.ai/install.sh | bash")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy Claude Code install command" })
+    ).toBeInTheDocument();
+  });
+
+  it("shows a copyable login command for an installed-but-unauthenticated provider", async () => {
+    const discover = vi.fn().mockResolvedValue([provider({ authenticated: false })]);
+    installDiscoverStub(discover);
+
+    render(<WelcomePane onAddProject={vi.fn()} />);
+
+    await screen.findByText("Claude Code");
+    expect(screen.getByText("claude auth login")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Claude Code login command" })).toBeInTheDocument();
+  });
+
+  it("re-probes discovery when the window regains focus while setup is incomplete", async () => {
+    const discover = vi.fn().mockResolvedValue([provider({ authenticated: false })]);
+    installDiscoverStub(discover);
+
+    render(<WelcomePane onAddProject={vi.fn()} />);
+
+    // Wait for the discovery result to render — the focus listener only
+    // attaches once providers are known and setup is incomplete.
+    await screen.findByText("Needs login");
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(discover).toHaveBeenCalledTimes(2));
+    expect(discover).toHaveBeenLastCalledWith(true);
+  });
+
+  it("does not re-probe on focus once every provider is ready", async () => {
+    const discover = vi.fn().mockResolvedValue([provider({})]);
+    installDiscoverStub(discover);
+
+    render(<WelcomePane onAddProject={vi.fn()} />);
+
+    await waitFor(() => expect(discover).toHaveBeenCalledTimes(1));
+    fireEvent(window, new Event("focus"));
+    // Give a queued refresh a chance to fire before asserting it didn't.
+    await waitFor(() => expect(screen.getByText("Ready")).toBeInTheDocument());
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists per-provider MCP setup commands in the optional step", async () => {
+    const discover = vi.fn().mockResolvedValue([provider({})]);
+    installDiscoverStub(discover);
+
+    render(<WelcomePane onAddProject={vi.fn()} />);
+
+    await screen.findByText("Claude Code");
+    expect(screen.getByText("claude mcp add <name> -- <command>")).toBeInTheDocument();
+    expect(screen.getByText("codex mcp add <name> -- <command>")).toBeInTheDocument();
+    expect(screen.getByText("opencode mcp add")).toBeInTheDocument();
   });
 });

@@ -27,9 +27,9 @@ afterEach(() => {
 });
 
 describe("fonts", () => {
-  it("defaults to Inter when nothing is stored", () => {
+  it("defaults to Geist Sans when nothing is stored", () => {
     expect(readStoredFont()).toBe(DEFAULT_FONT_ID);
-    expect(DEFAULT_FONT_ID).toBe("inter");
+    expect(DEFAULT_FONT_ID).toBe("geist-sans");
   });
 
   it("reads a previously stored font id", () => {

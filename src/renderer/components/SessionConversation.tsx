@@ -196,10 +196,7 @@ export function SessionConversation({
     () => buildSessionToolCalls(events, sessionRunning),
     [events, sessionRunning]
   );
-  const agentCodenames = useMemo(
-    () => assignAgentCodenames(events, sessionRunning),
-    [events, sessionRunning]
-  );
+  const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),

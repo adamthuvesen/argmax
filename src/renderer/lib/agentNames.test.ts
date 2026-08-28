@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
+import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import {
   MOON_NAMES,
   assignAgentCodenames,
@@ -45,14 +46,14 @@ describe("fallbackCodename", () => {
 describe("assignAgentCodenames", () => {
   it("is deterministic — the same events produce the same map", () => {
     const events = spawnEvents(["a", "b", "c"]);
-    const first = assignAgentCodenames(events, false);
-    const second = assignAgentCodenames(events, false);
+    const first = assignAgentCodenames(buildSessionToolCalls(events, false));
+    const second = assignAgentCodenames(buildSessionToolCalls(events, false));
     expect([...first.entries()]).toEqual([...second.entries()]);
   });
 
   it("assigns a distinct name to every spawn in a session", () => {
     const events = spawnEvents(["a", "b", "c", "d", "e", "f"]);
-    const map = assignAgentCodenames(events, false);
+    const map = assignAgentCodenames(buildSessionToolCalls(events, false));
     const names = [...map.values()];
     expect(map.size).toBe(6);
     expect(new Set(names).size).toBe(6);
@@ -60,8 +61,8 @@ describe("assignAgentCodenames", () => {
   });
 
   it("keeps earlier agents' names stable when a later spawn is appended", () => {
-    const before = assignAgentCodenames(spawnEvents(["a", "b", "c"]), false);
-    const after = assignAgentCodenames(spawnEvents(["a", "b", "c", "d"]), false);
+    const before = assignAgentCodenames(buildSessionToolCalls(spawnEvents(["a", "b", "c"]), false));
+    const after = assignAgentCodenames(buildSessionToolCalls(spawnEvents(["a", "b", "c", "d"]), false));
     for (const id of ["a", "b", "c"]) {
       expect(after.get(id)).toBe(before.get(id));
     }
@@ -80,7 +81,7 @@ describe("assignAgentCodenames", () => {
         createdAt: "2026-05-12T15:00:01.000Z"
       }
     ];
-    const map = assignAgentCodenames(events, false);
+    const map = assignAgentCodenames(buildSessionToolCalls(events, false));
     expect([...map.keys()]).toEqual(["task"]);
   });
 });

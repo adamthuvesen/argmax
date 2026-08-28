@@ -19,7 +19,7 @@ use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
 
 const LIGHT_BG: tauri::utils::config::Color = tauri::utils::config::Color(251, 251, 250, 255);
-const DARK_BG: tauri::utils::config::Color = tauri::utils::config::Color(23, 23, 20, 255);
+const DARK_BG: tauri::utils::config::Color = tauri::utils::config::Color(19, 19, 18, 255);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

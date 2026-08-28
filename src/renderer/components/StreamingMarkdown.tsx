@@ -127,16 +127,27 @@ function useSmoothStreamingText(
 // instead of once per typewriter frame. react-markdown adds no wrapper element,
 // so the two halves render as flat sibling blocks with normal margin collapse.
 function splitStreamingMarkdown(text: string): { committed: string; tail: string } {
-  let idx = text.lastIndexOf("\n\n");
-  while (idx >= 0) {
-    const head = text.slice(0, idx + 2);
-    const fences = head.match(/^```/gm);
-    if (!fences || fences.length % 2 === 0) {
-      return { committed: head, tail: text.slice(idx + 2) };
+  // One forward pass. Walking back from the end instead re-counted the fences
+  // over the whole prefix per candidate boundary, and an open fence — the state
+  // an agent is in for as long as it is emitting a code block — rejects every
+  // boundary inside it, so the cost grew with the square of the block.
+  let insideFence = false;
+  let cut = -1;
+  let lineStart = 0;
+  for (let i = 0; i <= text.length; i += 1) {
+    if (i !== text.length && text.charCodeAt(i) !== 10) continue;
+    if (i === lineStart) {
+      // A blank line: the second "\n" of a paragraph break. End of text is not
+      // one, only an unterminated last line, so it can never commit the tail.
+      if (i !== text.length && lineStart > 0 && !insideFence) cut = lineStart + 1;
+    } else if (text.startsWith("```", lineStart)) {
+      insideFence = !insideFence;
     }
-    idx = text.lastIndexOf("\n\n", idx - 1);
+    lineStart = i + 1;
   }
-  return { committed: "", tail: text };
+  return cut < 0
+    ? { committed: "", tail: text }
+    : { committed: text.slice(0, cut), tail: text.slice(cut) };
 }
 
 // One markdown render root. Memoized on its props so a stable `text` (the

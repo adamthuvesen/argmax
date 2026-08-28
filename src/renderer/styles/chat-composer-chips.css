@@ -123,6 +123,7 @@
   display: grid;
   width: 28px;
   height: 28px;
+  padding: 0;
   place-items: center;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -822,6 +823,7 @@ button.composer-compact-context-row:hover,
   display: grid;
   width: 28px;
   height: 28px;
+  padding: 0;
   flex: 0 0 auto;
   place-items: center;
   color: var(--bubble-on-ink);

@@ -34,15 +34,15 @@ export const LIGHT_XTERM_THEME = {
 } as const;
 
 export const DARK_XTERM_THEME = {
-  background: "#171714",
-  // Mirrors the dark theme's --text / --text-soft: paper-white bloomed on warm
+  background: "#131312",
+  // Mirrors the dark theme's --text / --text-soft: paper-white bloomed on
   // charcoal, and the terminal shouldn't be the one surface still shouting.
   foreground: "#e3e0d8",
   cursor: "#e3e0d8",
-  cursorAccent: "#171714",
+  cursorAccent: "#131312",
   selectionBackground: "rgba(127, 180, 148, 0.32)",
   selectionForeground: "#e3e0d8",
-  // ANSI 0-7: tuned for warm charcoal — lifted lightness, slightly reduced chroma.
+  // ANSI 0-7: tuned for charcoal — lifted lightness, slightly reduced chroma.
   black: "#34342e",
   red: "#e08591",
   green: "#7fb494",

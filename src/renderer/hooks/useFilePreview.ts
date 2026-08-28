@@ -94,7 +94,8 @@ export function useFilePreview(args: {
     canEdit: false,
     workspaceFileTabs: [] as WorkspaceFileTabState[],
     workspaceActiveFilePath: null as string | null,
-    workspaceActiveDiskMtimeMs: null as number | null
+    workspaceActiveDiskMtimeMs: null as number | null,
+    workspaceActiveExternalChange: false
   });
   listenerStateRef.current = {
     sourceId,
@@ -102,8 +103,18 @@ export function useFilePreview(args: {
     canEdit,
     workspaceFileTabs: tabs,
     workspaceActiveFilePath: activeTabPath,
-    workspaceActiveDiskMtimeMs: activeTab?.diskMtimeMs ?? null
+    workspaceActiveDiskMtimeMs: activeTab?.diskMtimeMs ?? null,
+    workspaceActiveExternalChange: activeTab?.externalChange ?? false
   };
+
+  // `workspace:stat-file` is a Rust command that takes the same DB mutex as
+  // event ingestion, and `dashboard:delta` fires once per streamed chunk, so
+  // the delta-driven check is throttled the way useDashboardSession throttles
+  // its mid-turn status pull. The trailing timer is what keeps a write from the
+  // last delta of a turn detectable without waiting for a window focus.
+  const EXTERNAL_CHECK_MIN_INTERVAL_MS = 2000;
+  const lastExternalCheckAtRef = useRef(0);
+  const externalCheckTimerRef = useRef<number | null>(null);
 
   const resetForSourceChange = useCallback((): void => {
     setTabs([]);
@@ -381,6 +392,10 @@ export function useFilePreview(args: {
     const filePath = listenerStateRef.current.workspaceActiveFilePath;
     const baseline = listenerStateRef.current.workspaceActiveDiskMtimeMs;
     if (!id || !kind || !filePath || baseline === null) return;
+    // The banner is already up and the baseline only advances on reload, save,
+    // or dismiss — another stat can learn nothing, and every resolved stat
+    // re-allocates the tab array and re-renders the pane.
+    if (listenerStateRef.current.workspaceActiveExternalChange) return;
     const ipc = dispatchRef.current;
     const statPromise = ipc?.statFile(filePath);
     if (!statPromise) return;
@@ -397,21 +412,41 @@ export function useFilePreview(args: {
   }, [updateTab]);
 
   useEffect(() => {
-    if (mode !== "files") return;
-    if (!canEdit) return;
-    const handleFocus = (): void => checkActiveFileExternalChange();
-    window.addEventListener("focus", handleFocus);
-    const offDelta = window.argmax?.dashboard?.onDelta?.(() => checkActiveFileExternalChange());
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      offDelta?.();
+    if (mode !== "files" || !canEdit || !isPanelOpen) return;
+    const runCheck = (): void => {
+      lastExternalCheckAtRef.current = Date.now();
+      checkActiveFileExternalChange();
     };
-  }, [mode, canEdit, checkActiveFileExternalChange]);
+    window.addEventListener("focus", runCheck);
+    const offDelta = window.argmax?.dashboard?.onDelta?.(() => {
+      if (externalCheckTimerRef.current !== null) return;
+      const elapsed = Date.now() - lastExternalCheckAtRef.current;
+      if (elapsed >= EXTERNAL_CHECK_MIN_INTERVAL_MS) {
+        runCheck();
+        return;
+      }
+      externalCheckTimerRef.current = window.setTimeout(() => {
+        externalCheckTimerRef.current = null;
+        runCheck();
+      }, EXTERNAL_CHECK_MIN_INTERVAL_MS - elapsed);
+    });
+    return () => {
+      window.removeEventListener("focus", runCheck);
+      offDelta?.();
+      if (externalCheckTimerRef.current !== null) {
+        window.clearTimeout(externalCheckTimerRef.current);
+        externalCheckTimerRef.current = null;
+      }
+    };
+  }, [mode, canEdit, isPanelOpen, checkActiveFileExternalChange]);
 
+  // Also revalidates on reopen, so a file edited on disk while the panel was
+  // closed is flagged instead of shown stale.
   useEffect(() => {
-    if (mode !== "files" || !canEdit) return;
+    if (mode !== "files" || !canEdit || !isPanelOpen) return;
+    lastExternalCheckAtRef.current = Date.now();
     checkActiveFileExternalChange();
-  }, [mode, canEdit, activeTabPath, checkActiveFileExternalChange]);
+  }, [mode, canEdit, isPanelOpen, activeTabPath, checkActiveFileExternalChange]);
 
   const tabSummaries: WorkspaceFileTab[] = tabs.map((tab) => ({
     path: tab.path,

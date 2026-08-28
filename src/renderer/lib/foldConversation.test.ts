@@ -118,6 +118,11 @@ describe("foldRenderItems", () => {
     const out = foldRenderItems(items, null, keepToolItems);
 
     expect(out.map((item) => item.kind)).toEqual(["user-message", "turn", "compaction", "turn"]);
+    // Every render item needs its own React key: before the seam re-anchored the
+    // turn id, both turns came back as `turn-user-1`, so streaming deltas landed
+    // in the wrong subtree and the post-compaction turn lost its local state.
+    const ids = out.map((item) => (item.kind === "user-message" ? item.event.id : item.id));
+    expect(new Set(ids).size).toBe(ids.length);
     const notice = out.find((item) => item.kind === "compaction");
     expect(notice?.kind === "compaction" ? notice.notice : null).toEqual({
       running: false,

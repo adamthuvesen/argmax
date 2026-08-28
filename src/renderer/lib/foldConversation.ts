@@ -113,19 +113,25 @@ export function foldRenderItems(
   // and the work that follows opens a fresh one. The provider emits a start and
   // an end row. They collapse into one item so the marker settles in place
   // instead of stacking two dividers.
-  const pushCompaction = (event: TimelineEvent): void => {
+  const pushCompaction = (event: TimelineEvent): string => {
     const notice = compactionNoticeFor(event);
     const last = out[out.length - 1];
     if (!notice.running && last?.kind === "compaction" && last.notice.running) {
       out[out.length - 1] = { ...last, notice };
-      return;
+      return last.id;
     }
-    out.push({ kind: "compaction", id: `compaction-${event.id}`, notice });
+    const id = `compaction-${event.id}`;
+    out.push({ kind: "compaction", id, notice });
+    return id;
   };
   for (const item of conversationItems) {
     if (item.kind === "message" && isCompactionEvent(item.event)) {
       flush();
-      pushCompaction(item.event);
+      // Re-anchor to the seam: the work after a compaction is a new turn, and
+      // leaving the previous user message as the anchor would hand both turns
+      // the same React key. The collapsed marker keeps the start event's id, so
+      // this stays stable across the start/end pair and across delta eviction.
+      activeTurnId = `turn-after-${pushCompaction(item.event)}`;
       continue;
     }
     if (item.kind === "message" && item.event.type === "user.message") {

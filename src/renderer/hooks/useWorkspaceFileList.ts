@@ -26,6 +26,11 @@ export function useWorkspaceFileList(args: {
   const [listState, setListState] = useState<AsyncState>("idle");
   const [listError, setListError] = useState<string | null>(null);
   const workspaceListToken = useRef(0);
+  // Identifies which source the current list belongs to. A re-fetch within the
+  // same source — the workspace's changed-files signature moving as the agent
+  // edits mid-turn — keeps the tree on screen instead of unmounting it behind
+  // "Loading files…". Only a new source (or the first load) shows loading.
+  const listContextRef = useRef<string | null>(null);
 
   const resetForSourceChange = useCallback((): void => {
     setEntries([]);
@@ -37,12 +42,22 @@ export function useWorkspaceFileList(args: {
     if (mode !== "files" || !isPanelOpen) return;
     const token = ++workspaceListToken.current;
     if (!sourceId || !sourceKind || !dispatch || !window.argmax) {
+      listContextRef.current = null;
       setEntries([]);
       setListState("idle");
       setListError(null);
       return;
     }
-    setListState("loading");
+    // The context deliberately omits the comparison: listFiles() returns the
+    // whole worktree, not a comparison-scoped set.
+    const context = `${sourceKind}:${sourceId}`;
+    const isNewContext = listContextRef.current !== context;
+    listContextRef.current = context;
+    if (isNewContext) {
+      setListState("loading");
+    } else {
+      setListState((prev) => (prev === "ready" ? prev : "loading"));
+    }
     setListError(null);
     void dispatch.listFiles()
       .then((loaded) => {

@@ -256,7 +256,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ]
     };
     // 600 in-flight answer deltas (no completion yet → not prunable). Naive
-    // newest-500 capping would push u1/c1/c2 (oldest) out and flicker them.
+    // newest-N capping would push u1/c1/c2 (oldest) out and flicker them.
     const deltas: TimelineEvent[] = Array.from({ length: 600 }, (_, i) =>
       event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
     );
@@ -265,9 +265,27 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(ids.has("u1")).toBe(true);
     expect(ids.has("c1")).toBe(true);
     expect(ids.has("c2")).toBe(true);
-    // The newest 500 answer deltas survive; the oldest 100 are evicted.
+    // Every delta of the live block survives: evicting the oldest ones would
+    // delete the BEGINNING of the answer from a bubble that is still streaming.
     expect(ids.has("d599")).toBe(true);
-    expect(ids.has("d0")).toBe(false);
+    expect(ids.has("d0")).toBe(true);
+  });
+
+  it("gives each session its own answer-delta budget so parallel streams cannot evict each other", () => {
+    const streamFor = (sessionId: string): TimelineEvent[] =>
+      Array.from({ length: 600 }, (_, i) => ({
+        ...event(`${sessionId}-d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i),
+        sessionId
+      }));
+    const merged = mergeDashboardDelta(emptySnapshot, {
+      events: [...streamFor("session-1"), ...streamFor("session-2")]
+    });
+    const ids = new Set(merged.events.map((e) => e.id));
+    // Both panes keep the opening of their own answer.
+    expect(ids.has("session-1-d0")).toBe(true);
+    expect(ids.has("session-2-d0")).toBe(true);
+    expect(ids.has("session-1-d599")).toBe(true);
+    expect(ids.has("session-2-d599")).toBe(true);
   });
 
   it("prunes the answer deltas once the turn completes, keeping tool rows", () => {

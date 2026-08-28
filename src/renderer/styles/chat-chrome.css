@@ -236,6 +236,7 @@
   display: grid;
   width: 28px;
   height: 28px;
+  padding: 0;
   flex: 0 0 auto;
   place-items: center;
   color: var(--bubble-on-ink);

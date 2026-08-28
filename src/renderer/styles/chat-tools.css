@@ -435,6 +435,7 @@
 .checks-row-expand {
   width: 22px;
   height: 22px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel);

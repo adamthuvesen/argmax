@@ -1,9 +1,9 @@
 :root {
   color-scheme: light;
-  --font-ui: "Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-prose: "Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
-  --font-code: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
 
   --bg: #fdfdfd;
   --sidebar: #fafbfb;
@@ -25,11 +25,13 @@
   --muted: #8a857b;
   --muted-strong: #5d594f;
 
-  /* Text weight. Inter Variable exposes a `wght` axis, so these are real
-     values rather than rounded steps. Chrome (sidebar, palette, settings,
-     titlebar, tabs) inherits --weight-ui from :root; chat prose opts back up
-     to --weight-prose so messages stay a touch more present than chrome.
-     Dark mode lowers both, because light-on-dark strokes bloom. */
+  /* Text weight. The default Geist Sans ships static weights (the browser
+     clamps to the nearest), while Inter Variable exposes a `wght` axis, so
+     the under-regular shave below is a real render for variable picks.
+     Chrome (sidebar, palette, settings, titlebar, tabs) inherits --weight-ui
+     from :root; chat prose opts back up to --weight-prose so messages stay
+     a touch more present than chrome. Dark mode lowers both, because
+     light-on-dark strokes bloom. */
   --weight-ui: 400;
   --weight-prose: 400;
 
@@ -233,29 +235,29 @@
   color-scheme: dark;
 
   /* Main view is the well. Sidebar sits a half step above it and cards stay on
-     --panel so they still lift. The well sits at warm charcoal (oklch ~20%),
-     not near-black: going darker crushes the grain, flattens the shadows, and
-     makes long reading sessions harsh. The bg-to-sidebar gap is deliberately
+     --panel so they still lift. The well sits at deep neutral charcoal (~#131312),
+     only a whisper warm — Cursor-dark, not brown-dark: the old yellow-leaning
+     charcoal read lighter than its hex. The bg-to-sidebar gap is deliberately
      tight — the chrome seam is carried by the sidebar's 1px --line border, so
      the fills only need to differ enough to hint at depth. Any change here has
      to move the first-paint mirrors with it — Tauri's window backgroundColor,
      DARK_BG in ipc/system.rs, the xterm theme, and the theme-picker swatch — or
      the app flashes a different black on cold start. */
 
-  --bg: #171714;
-  --sidebar: #1b1b18;
-  --panel: #232320;
-  --panel-soft: #292925;
-  --panel-sunken: #121210;
+  --bg: #131312;
+  --sidebar: #171716;
+  --panel: #1e1e1c;
+  --panel-soft: #242422;
+  --panel-sunken: #0e0e0d;
   --code-surface: var(--panel-sunken);
 
-  --line: #34342e;
-  --line-soft: #292924;
-  --line-strong: #44443c;
+  --line: #2b2b29;
+  --line-soft: #212120;
+  --line-strong: #3a3a37;
   --scrollbar-thumb: var(--line-strong);
   --scrollbar-thumb-hover: var(--muted);
 
-  /* Ink pulled back off paper-white: #f4f2ec bloomed on warm charcoal and read
+  /* Ink pulled back off paper-white: #f4f2ec bloomed on dark charcoal and read
      as bold at regular weight. Chrome labels sit on --text-soft, so the gap
      between the two stays the selection signal. */
   --text: #e3e0d8;
@@ -280,7 +282,7 @@
   --syntax-constant: #d99b62;
   --syntax-variable: #d99b62;
   --syntax-comment: #a29c92;
-  /* Icon palette lifted for warm charcoal: same hues, more light, less chroma. */
+  /* Icon palette lifted for charcoal: same hues, more light, less chroma. */
   --session-icon-green: #7fb494;
   --session-icon-teal: #63b3aa;
   --session-icon-blue: #8aaef2;
@@ -289,7 +291,7 @@
   --session-icon-clay: #dd9a76;
   --session-icon-amber: #d9a566;
   --session-icon-pink: #ec8bad;
-  /* Lifted violet so the merged glyph glows on warm charcoal; open reuses sage. */
+  /* Lifted violet so the merged glyph glows on charcoal; open reuses sage. */
   --pr-merged: #b392f0;
   --pr-open: var(--sage);
   --stop: #c85850;
@@ -300,7 +302,7 @@
      softer dark-mode tokens below so they don't become bright slabs. */
   --ink: #f4f2ec;
   --ink-soft: #e5e1d7;
-  --bubble-on-ink: #171714;
+  --bubble-on-ink: #131312;
   --user-bubble-bg: #2d2c27;
   --user-bubble-fg: #f4f2ec;
   --user-message-bg: color-mix(in oklab, var(--panel-soft) 82%, var(--panel) 18%);
@@ -326,7 +328,7 @@
   --selection-bg: color-mix(in oklab, var(--accent) 30%, transparent);
   --selection-bg-on-ink: rgba(127, 180, 148, 0.34);
 
-  /* Diff palette tuned for warm charcoal: low-alpha sage/rose washes so the
+  /* Diff palette tuned for charcoal: low-alpha sage/rose washes so the
      code stays the focal point, not the background. The gutter values are
      slightly stronger so the line numbers still register at a glance. */
   --diff-add-bg: rgba(127, 180, 148, 0.12);
@@ -343,7 +345,7 @@
 
   /* Low-alpha warm white for hover surfaces in dark — present enough to
      register, far below the glaring light-gray that rgba(255,255,255,0.6)
-     resolves to against warm charcoal. */
+     resolves to against dark charcoal. */
   --row-hover: rgba(255, 250, 235, 0.06);
 }
 
@@ -494,7 +496,8 @@
 :root[data-font="geist-sans"] {
   --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-prose: var(--font-ui);
-  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
 }
 
 :root[data-font="ibm-plex-sans"] {

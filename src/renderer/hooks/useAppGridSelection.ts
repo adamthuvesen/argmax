@@ -15,7 +15,6 @@ import type {
   WorkspaceSummary
 } from "../../shared/types.js";
 import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js";
-import { buildAgentActivity } from "../lib/agentActivity.js";
 import {
   EMPTY_GRID,
   closeAgentTab as closeAgentTabInGrid,
@@ -40,6 +39,7 @@ import {
   type GridState,
   type SplitPosition
 } from "../lib/gridState.js";
+import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 
 /** When some subagent tabs are pruned, keep the active tab if it survived,
     else fall to the nearest surviving neighbour (right first, then left). */
@@ -166,15 +166,12 @@ export function useAppGridSelection({
               const sessionEvents = eventsBySessionId.get(cell.parentSessionId) ?? [];
               const sessionRunning = parentSession.state === "running";
               // Prune subagent tabs whose launch tool is no longer in the
-              // timeline (dropped completion); keep the cell as long as one
-              // tab survives.
-              const liveIds = cell.parentToolUseIds.filter(
-                (id) =>
-                  buildAgentActivity({
-                    parentToolUseId: id,
-                    events: sessionEvents,
-                    sessionRunning
-                  }).parentTool !== null
+              // timeline (dropped completion, folded or superseded launch);
+              // keep the cell as long as one tab survives. Build the tool-call
+              // model once per cell rather than once per tab.
+              const sessionTools = buildSessionToolCalls(sessionEvents, sessionRunning);
+              const liveIds = cell.parentToolUseIds.filter((id) =>
+                sessionTools.some((tool) => tool.toolUseId === id)
               );
               if (liveIds.length === 0) {
                 mutated = true;

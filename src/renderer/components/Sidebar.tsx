@@ -11,7 +11,9 @@ import {
   Plus,
   Search,
   Settings,
-  Trash2
+  Settings2,
+  Trash2,
+  X
 } from "lucide-react";
 import {
   useCallback,
@@ -723,9 +725,6 @@ export function Sidebar({
       onMouseLeave={collapsed ? onPeekLeave : undefined}
     >
       <div className="window-controls" data-window-drag />
-      <div className="sidebar-nameplate" aria-hidden="true">
-        <span className="sidebar-nameplate-mark">argmax</span>
-      </div>
       <nav className="rail-nav" aria-label="Primary">
         <button
           className="rail-nav-item rail-nav-cta"
@@ -752,6 +751,19 @@ export function Sidebar({
           </span>
           <span className="rail-nav-label">Search</span>
           <kbd aria-hidden="true">⌘K</kbd>
+        </button>
+        <button
+          className="rail-nav-item"
+          type="button"
+          title="Customize"
+          aria-label="Customize"
+          onClick={onOpenSettings}
+        >
+          <span className="rail-nav-glyph" aria-hidden="true">
+            <Settings2 size={14} />
+          </span>
+          <span className="rail-nav-label">Customize</span>
+          <kbd aria-hidden="true">⌘,</kbd>
         </button>
       </nav>
 
@@ -825,7 +837,7 @@ export function Sidebar({
                     onClearPriority(priorityEntries.map((entry) => entry.workspace.id));
                   }}
                 >
-                  Clear
+                  <X size={14} aria-hidden="true" />
                 </button>
               ) : (
                 <span aria-hidden="true" />

@@ -10,7 +10,9 @@
 //     `force`, re-checks porcelain immediately before `worktree remove`
 //     to close the TOCTOU window, closes the fs watcher before remove so
 //     teardown doesn't ENOENT-spam. Shared workspaces only archive the app
-//     row and leave the checkout untouched.
+//     row and leave the checkout untouched: the state flips to "archived"
+//     immediately and process teardown runs in the background, so the row
+//     can never bounce back into the sidebar.
 //   - `refresh_status` reads branch and dirty state with a single
 //     `git status --porcelain --branch`, persists branch-change events.
 //     `refresh_checkout` does the same for every workspace sharing one
@@ -214,9 +216,11 @@ impl WorkspaceService {
         let mut recovered = 0;
         for workspace in workspaces {
             if workspace.state == "archiving" {
-                let next_state = if workspace.shared_workspace
-                    || Path::new(&workspace.path).exists()
-                {
+                // A shared-checkout archive has no destructive step, so an
+                // interrupted one can always complete: honor the archive.
+                let next_state = if workspace.shared_workspace {
+                    "archived"
+                } else if Path::new(&workspace.path).exists() {
                     "archive-failed"
                 } else {
                     let registration = {
@@ -526,6 +530,9 @@ impl WorkspaceService {
             return Ok(prior);
         }
         let lease = self.lifecycle.begin_archive(&workspace_id)?;
+        if prior.shared_workspace {
+            return self.archive_shared(workspace_id, lease);
+        }
         let archiving = {
             let connection = self.database.connection();
             update_workspace_state(&connection, &workspace_id, "archiving")?
@@ -583,28 +590,37 @@ impl WorkspaceService {
             }
         };
 
-        if !workspace.shared_workspace {
-            if workspace.dirty && !force {
-                let kept = {
-                    let connection = self.database.connection();
-                    update_workspace_state(&connection, &workspace_id, "kept")?
-                };
-                self.publish(DashboardDelta {
-                    workspaces: vec![kept.clone()],
-                    ..DashboardDelta::default()
-                });
-                lease.finish(ArchiveOutcome::Reopened);
-                return Ok(kept);
-            }
+        if workspace.dirty && !force {
+            let kept = {
+                let connection = self.database.connection();
+                update_workspace_state(&connection, &workspace_id, "kept")?
+            };
+            self.publish(DashboardDelta {
+                workspaces: vec![kept.clone()],
+                ..DashboardDelta::default()
+            });
+            lease.finish(ArchiveOutcome::Reopened);
+            return Ok(kept);
         }
 
         let timeout = Duration::from_millis(ARCHIVE_QUIESCE_TIMEOUT_MS);
-        // Cancel every process-owning subsystem at once under one wall-clock
-        // bound. Each service owns its cancellation job, so cancelling this
-        // coordinator's wait cannot strand a child after archive-failed.
+        // Cancel every process-owning subsystem at once. Each future carries
+        // its own wall-clock bound and error code, so a hang names the
+        // subsystem that caused it instead of collapsing into one generic
+        // quiescence timeout. Each service owns its cancellation job, so
+        // cancelling this coordinator's wait cannot strand a child after
+        // archive-failed.
         let provider_future = async {
             if let Some(providers) = self.providers.as_ref() {
-                providers.terminate_workspace(&workspace_id).await
+                match tokio::time::timeout(timeout, providers.terminate_workspace(&workspace_id))
+                    .await
+                {
+                    Ok(result) => result,
+                    Err(_) => Err(ArgmaxError::service(
+                        "WORKSPACE_PROVIDER_TIMEOUT",
+                        "Timed out waiting for agent sessions to terminate.",
+                    )),
+                }
             } else {
                 Ok(())
             }
@@ -773,6 +789,71 @@ impl WorkspaceService {
         });
         lease.finish(ArchiveOutcome::Archived);
         Ok(archived)
+    }
+
+    /// Archive a shared-checkout workspace. Nothing destructive follows the
+    /// state flip — no worktree removal, no branch change — so the row is
+    /// hidden immediately and process teardown runs in the background. A
+    /// teardown failure is logged rather than resurrecting the row: the
+    /// user's intent (hide this card) has already been honored durably.
+    fn archive_shared(
+        self: &Arc<Self>,
+        workspace_id: String,
+        lease: WorkspaceArchiveLease,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let archived = {
+            let connection = self.database.connection();
+            update_workspace_state(&connection, &workspace_id, "archived")?
+        };
+        self.publish(DashboardDelta {
+            workspaces: vec![archived.clone()],
+            ..DashboardDelta::default()
+        });
+        self.close_watcher(&workspace_id);
+        // Archived closes admissions for good; new processes can no longer
+        // attach while the background teardown drains the existing ones.
+        lease.finish(ArchiveOutcome::Archived);
+        let service = Arc::clone(self);
+        tokio::spawn(async move {
+            service.teardown_workspace_processes(&workspace_id).await;
+        });
+        Ok(archived)
+    }
+
+    /// Best-effort drain of every process-owning subsystem for an
+    /// already-archived shared workspace. Failures are logged per subsystem;
+    /// there is no state to roll back.
+    async fn teardown_workspace_processes(self: &Arc<Self>, workspace_id: &str) {
+        let timeout = Duration::from_millis(ARCHIVE_QUIESCE_TIMEOUT_MS);
+        if !self.lifecycle.wait_for_admissions(workspace_id, timeout).await {
+            tracing::warn!(workspace_id, "shared archive: admission wait timed out before teardown");
+        }
+        if let Some(providers) = self.providers.as_ref() {
+            match tokio::time::timeout(timeout, providers.terminate_workspace(workspace_id)).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(?error, workspace_id, "shared archive: agent session teardown failed");
+                }
+                Err(_) => {
+                    tracing::warn!(workspace_id, "shared archive: agent session teardown timed out");
+                }
+            }
+        }
+        if let Some(checks) = self.checks.as_ref() {
+            if !checks.cancel_workspace_checks_and_wait(workspace_id, timeout).await {
+                tracing::warn!(workspace_id, "shared archive: check teardown timed out");
+            }
+        }
+        if let Some(terminals) = self.terminals.as_ref() {
+            if !terminals.terminate_workspace(workspace_id, timeout).await {
+                tracing::warn!(workspace_id, "shared archive: terminal teardown timed out");
+            }
+        }
+        if let Some(approvals) = self.approvals.as_ref() {
+            if let Err(error) = approvals.cancel_workspace_pending(workspace_id) {
+                tracing::warn!(?error, workspace_id, "shared archive: approval cancel failed");
+            }
+        }
     }
 
     fn restore_archive_state(self: &Arc<Self>, prior: &WorkspaceSummary) -> ArgmaxResult<()> {

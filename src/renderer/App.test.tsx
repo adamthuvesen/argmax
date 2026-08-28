@@ -176,6 +176,38 @@ describe("App", () => {
     }
   });
 
+  it("re-prompts and retries with force when the backend finds changes the snapshot missed", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const cleanIsolatedSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) => ({
+        ...workspace,
+        state: "complete",
+        sharedWorkspace: false,
+        dirty: false,
+        changedFiles: 0
+      })),
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+    };
+    mockDashboardSnapshot(cleanIsolatedSnapshot);
+    const workspace = cleanIsolatedSnapshot.workspaces[0] ?? snapshot.workspaces[0];
+    archiveWorkspace
+      .mockResolvedValueOnce({ ...workspace, state: "kept", dirty: true, changedFiles: 2 })
+      .mockResolvedValueOnce({ ...workspace, state: "archived" });
+
+    try {
+      render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "Archive session" }));
+
+      await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledTimes(2));
+      expect(archiveWorkspace).toHaveBeenNthCalledWith(1, { workspaceId: "workspace-1", force: false });
+      expect(archiveWorkspace).toHaveBeenNthCalledWith(2, { workspaceId: "workspace-1", force: true });
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
   it("renders normalized tool calls in the conversation timeline", async () => {
     const toolStarted: DashboardSnapshot["events"][number] = {
       id: "event-tool-started",

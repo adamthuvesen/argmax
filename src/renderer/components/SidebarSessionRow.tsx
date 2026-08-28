@@ -169,7 +169,9 @@ function statusOverlayFor({
   if (state === "running") return "working";
   if (prState === "MERGED") return "pr-merged";
   if (prState === "OPEN") return "pr-open";
-  return state === "failed" ? "failed" : null;
+  // "archive-failed" borrows the failed cross: the row survived an archive
+  // attempt (a process refused to terminate) and needs a retry.
+  return state === "failed" || state === "archive-failed" ? "failed" : null;
 }
 
 /**

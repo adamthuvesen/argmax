@@ -1,7 +1,10 @@
 // Records named instants from process boot onward so `system:diagnostics`
-// can surface the cold-start phase breakdown. Today's TS impl exposes the
-// same set of phase names: boot, db.open, services.construct,
-// ipc.register, window.create, window.ready-to-show.
+// can surface the cold-start phase breakdown. Current phases, in boot order:
+// boot, specta.builder, bindings.export (debug only), setup.enter,
+// tracing.init, db.open, sessions.recover, archives.recover,
+// services.construct, ipc.register, window.create, window.ready-to-show.
+// `setup.enter` absorbs Tauri builder/plugin init plus config-window webview
+// creation, which Tauri runs immediately before the setup hook.
 
 use crate::util::sync::LockOrRecover;
 use std::collections::HashMap;
@@ -27,6 +30,18 @@ impl StartupTimer {
         self.marks
             .lock_or_recover("startup timer")
             .insert(name, Instant::now());
+    }
+
+    /// Records `name` only if it has not been marked yet — for phases that can
+    /// re-fire after boot (e.g. a page reload re-triggering page-load).
+    /// Returns true when this call recorded the mark.
+    pub fn mark_once(&self, name: &'static str) -> bool {
+        let mut marks = self.marks.lock_or_recover("startup timer");
+        if marks.contains_key(name) {
+            return false;
+        }
+        marks.insert(name, Instant::now());
+        true
     }
 
     /// Returns the ordered (mark, milliseconds-from-boot) list.

@@ -45,6 +45,7 @@ pub fn run() {
     timer.mark("boot");
 
     let specta_builder = ipc::specta_builder();
+    timer.mark("specta.builder");
 
     // Codegen: emit `src/shared/bindings.d.ts` on every debug startup so
     // the renderer's TS surface stays in lockstep with the Rust command
@@ -55,6 +56,8 @@ pub fn run() {
     if let Err(e) = export_bindings("../src/shared/bindings.d.ts") {
         eprintln!("argmax: tauri-specta export failed: {e}");
     }
+    #[cfg(debug_assertions)]
+    timer.mark("bindings.export");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -128,10 +131,24 @@ pub fn run() {
             },
         )
         .manage(state::AppState::with_startup_timer(timer.clone()))
+        // `window.ready-to-show`: the budgeted end of cold start (see
+        // docs/performance.md). Marked once — a later reload must not restamp.
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                let state = tauri::Manager::state::<state::AppState>(webview.app_handle());
+                if state.startup_timer.mark_once("window.ready-to-show") {
+                    tracing::info!(
+                        ready_to_show_ms = state.startup_timer.boot_to_now_ms() as u64,
+                        "window ready-to-show"
+                    );
+                }
+            }
+        })
         .invoke_handler(specta_builder.invoke_handler())
         .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))
         .on_window_event(dock::clear_badge_on_focus)
         .setup(move |app| {
+            timer.mark("setup.enter");
             // Tracing init is deferred to setup() because `app.path()` is
             // only valid here — that's how we resolve the user_data_dir
             // the release-mode rolling-file appender writes into.
@@ -139,11 +156,22 @@ pub fn run() {
             if let Err(e) = util::tracing_init::init(user_data.as_deref()) {
                 eprintln!("argmax: tracing init failed: {e}");
             }
+            timer.mark("tracing.init");
             // Keep macOS App Nap from suspending the webview while the window is
             // backgrounded — otherwise emitted `dashboard:delta` events don't
             // reach the renderer until the user refocuses, so finished turns
             // look stuck on the thinking bubble.
             util::app_nap::prevent_app_nap();
+            // Warm provider discovery in the background so the first surface
+            // that needs it (WelcomePane, settings, launcher availability)
+            // reads cached reports instead of paying the cold probe cost
+            // (`cursor-agent --version` alone runs ~350ms).
+            let provider_discovery = Arc::clone(
+                &tauri::Manager::state::<state::AppState>(app).provider_discovery,
+            );
+            tauri::async_runtime::spawn(async move {
+                provider_discovery.discover_all().await;
+            });
             if let Some(user_data) = user_data.as_ref() {
                 let data_dir = user_data.join("local-state");
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
@@ -151,6 +179,7 @@ pub fn run() {
                 } else {
                     match persistence::Database::open(data_dir.join("argmax.sqlite")) {
                         Ok(database) => {
+                            timer.mark("db.open");
                             let database = Arc::new(database);
                             let state = tauri::Manager::state::<state::AppState>(app);
                             if state.db.set(Arc::clone(&database)).is_err() {
@@ -275,17 +304,14 @@ pub fn run() {
                                     }
                                 };
                             let lifecycle = workspaces::lifecycle::WorkspaceLifecycle::new();
+                            // Share the boot-warmed discovery cache so the first
+                            // launch per provider skips the version/auth probe
+                            // (`cursor-agent status` alone runs ~800 ms).
                             let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> =
-                                match session_launch_registry {
-                                    Some(registry) => Arc::new(
-                                        providers::runtime::RealProviderProcessLauncher::with_session_launch_registry(
-                                            registry,
-                                        ),
-                                    ),
-                                    None => Arc::new(
-                                        providers::runtime::RealProviderProcessLauncher::new(),
-                                    ),
-                                };
+                                Arc::new(providers::runtime::RealProviderProcessLauncher::with_discovery(
+                                    (*state.provider_discovery).clone(),
+                                    session_launch_registry,
+                                ));
                             let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
                                 Arc::clone(&database),
                                 provider_launcher,
@@ -296,6 +322,7 @@ pub fn run() {
                             if let Err(error) = providers.recover_orphaned_sessions() {
                                 tracing::warn!(?error, "failed to recover orphaned sessions");
                             }
+                            timer.mark("sessions.recover");
                             if state.providers.set(Arc::clone(&providers)).is_err() {
                                 tracing::warn!("provider service state was already initialized");
                             }
@@ -401,6 +428,7 @@ pub fn run() {
                             if let Err(error) = workspaces.recover_interrupted_archives() {
                                 tracing::warn!(?error, "failed to recover interrupted workspace archives");
                             }
+                            timer.mark("archives.recover");
                             let workspaces_for_watchers = Arc::clone(&workspaces);
                             if state.workspaces.set(workspaces).is_err() {
                                 tracing::warn!("workspace service state was already initialized");
@@ -442,7 +470,6 @@ pub fn run() {
                                     }
                                 }
                             });
-                            state.startup_timer.mark("db.open");
                             // Mark services as constructed only on the success
                             // path — otherwise a failed DB open still reported a
                             // healthy boot while every handler returned
@@ -460,7 +487,11 @@ pub fn run() {
             if app.get_webview_window("main").is_some() {
                 timer.mark("window.create");
             }
-            tracing::info!(boot_ms = timer.boot_to_now_ms() as u64, "tracing online");
+            tracing::info!(
+                boot_ms = timer.boot_to_now_ms() as u64,
+                phases = ?timer.snapshot(),
+                "tracing online"
+            );
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -335,14 +335,17 @@ fn pragma_string(connection: &rusqlite::Connection, name: &str) -> String {
 }
 
 fn startup_phases(state: &State<'_, AppState>) -> Vec<StartupPhaseRecord> {
-    let mut marks = vec![("boot".to_string(), 0.0)];
-    marks.extend(
-        state
-            .startup_timer
-            .snapshot()
-            .into_iter()
-            .map(|(phase, elapsed)| (phase.to_string(), elapsed as f64)),
-    );
+    let mut marks: Vec<(String, f64)> = state
+        .startup_timer
+        .snapshot()
+        .into_iter()
+        .map(|(phase, elapsed)| (phase.to_string(), elapsed as f64))
+        .collect();
+    // The timer marks "boot" itself; only seed the origin row when it is
+    // missing (e.g. a test-constructed timer with no marks).
+    if !marks.iter().any(|(phase, _)| phase == "boot") {
+        marks.insert(0, ("boot".to_string(), 0.0));
+    }
     marks.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut previous = 0.0;

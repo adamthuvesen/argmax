@@ -6,6 +6,13 @@ Budgets cover cold start, IPC latency, and renderer hot paths.
 
 [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_timer.rs) records app boot phases and `system:diagnostics` exposes them. Target `boot → window.ready-to-show` is ≤ 800 ms for the Tauri build.
 
+Phase notes:
+
+- `setup.enter` absorbs Tauri builder/plugin init and config-window webview creation (~200 ms on macOS, mostly WKWebView) — Tauri creates config windows right before the setup hook.
+- `sessions.recover` must stay O(sessions): the orphan probe on `events` relies on the partial index `idx_events_restart_recovery` (migration v13). Without it the probe walked every event row per session (~670 ms on a 166 MB database) and dominated cold start.
+- The `ps` orphan-process scan runs on a background thread; nothing on the setup path may shell out or sleep.
+- `window.ready-to-show` is marked once on the first page-load `Finished` event; reloads never restamp it.
+
 ## Renderer Perf
 
 Run:

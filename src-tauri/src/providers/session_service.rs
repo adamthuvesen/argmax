@@ -1067,7 +1067,14 @@ impl ProviderSessionService {
                 cleanup_sessions.push(row.map_err(sqlite_error)?);
             }
         }
-        terminate_orphaned_provider_processes(&cleanup_sessions);
+        // Off the boot path: the scan shells out to `ps` (~50 ms) and sleeps
+        // 250 ms between TERM and KILL when it finds orphans. It only signals
+        // provider CLIs already reparented to init (ppid == 1), so nothing it
+        // kills can belong to this or any live Argmax instance — deferring it
+        // past setup() is safe.
+        if !cleanup_sessions.is_empty() {
+            std::thread::spawn(move || terminate_orphaned_provider_processes(&cleanup_sessions));
+        }
         for recovered_session in &recovered {
             let session_id = &recovered_session.id;
             let connection = self.database.connection();

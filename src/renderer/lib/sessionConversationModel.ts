@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
 import {
   detectToolError,
   extractCompletionCorrelationId,
@@ -19,7 +20,14 @@ import {
 } from "./turnBoundaries.js";
 
 function isConversationEventType(type: string): boolean {
-  return type === "user.message" || type === "message.delta" || type === "message.completed" || type === "error";
+  return (
+    type === "user.message" ||
+    type === "message.delta" ||
+    type === "message.completed" ||
+    type === "error" ||
+    type === COMPACTION_STARTED ||
+    type === COMPACTION_FINISHED
+  );
 }
 
 function isPayloadTruncationMarker(event: TimelineEvent): boolean {

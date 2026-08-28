@@ -79,6 +79,8 @@ export type EventType =
   | "error"
   | "session.completed"
   | "session.cancelled"
+  | "session.compacting"
+  | "session.compacted"
   | "session.recovered-from-crash";
 
 export interface ProjectSettings {

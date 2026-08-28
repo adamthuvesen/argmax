@@ -9,7 +9,7 @@ use super::{
     normalizer::{
         normalize_provider_event, synthesize_message_completed_from_exit,
         NormalizedApprovalRequest, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
-        ProviderOutputStream,
+        ProviderOutputStream, JSON_PARSE_LINE_CAP,
     },
     ProviderId,
 };
@@ -318,6 +318,10 @@ impl ProviderEventFlushQueue {
             if fragment.trim().is_empty() {
                 continue;
             }
+            if is_incomplete_json_line(&fragment) {
+                session.stream_buffers.insert(stream, fragment);
+                continue;
+            }
             let event = ProviderOutputEvent {
                 session_id: session_id.to_string(),
                 stream,
@@ -351,6 +355,21 @@ impl ProviderEventFlushQueue {
         let delta = flush_session_buffer(connection, session_id, &mut session.buffer)?;
         Ok((!delta.is_empty()).then_some(delta))
     }
+}
+
+/// True when a newline-less fragment opens a JSON object but does not parse.
+/// a provider JSONL line split across PTY reads, not human-readable output.
+/// The idle flush fires ~16 ms after the last chunk, which is well inside the
+/// time a long line takes to arrive: Claude's compaction summary is a single
+/// ~22 KB line that lands as two dozen 1 KB reads, and flushing its fragments
+/// dumps raw protocol JSON into the timeline. Keep buffering until the newline.
+/// Past the parse cap the line is unrecoverable anyway, so let it through and
+/// let `normalize_line` report the oversized line.
+fn is_incomplete_json_line(fragment: &str) -> bool {
+    let trimmed = fragment.trim_start();
+    trimmed.starts_with('{')
+        && fragment.len() <= JSON_PARSE_LINE_CAP
+        && serde_json::from_str::<Value>(fragment.trim()).is_err()
 }
 
 impl Default for ProviderEventFlushQueue {

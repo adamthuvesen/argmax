@@ -1,4 +1,5 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
+import { compactionNoticeFor, isCompactionEvent, type CompactionNotice } from "./compaction.js";
 import type { TurnToolItem } from "./toolCalls.js";
 import {
   buildToolCallGroup,
@@ -9,6 +10,7 @@ import {
 
 export type RenderItem =
   | { kind: "user-message"; event: TimelineEvent }
+  | { kind: "compaction"; id: string; notice: CompactionNotice }
   | {
       kind: "turn";
       id: string;
@@ -107,7 +109,25 @@ export function foldRenderItems(
     });
     pending = null;
   };
+  // Compaction is a seam in the conversation, so it ends the turn it lands in
+  // and the work that follows opens a fresh one. The provider emits a start and
+  // an end row. They collapse into one item so the marker settles in place
+  // instead of stacking two dividers.
+  const pushCompaction = (event: TimelineEvent): void => {
+    const notice = compactionNoticeFor(event);
+    const last = out[out.length - 1];
+    if (!notice.running && last?.kind === "compaction" && last.notice.running) {
+      out[out.length - 1] = { ...last, notice };
+      return;
+    }
+    out.push({ kind: "compaction", id: `compaction-${event.id}`, notice });
+  };
   for (const item of conversationItems) {
+    if (item.kind === "message" && isCompactionEvent(item.event)) {
+      flush();
+      pushCompaction(item.event);
+      continue;
+    }
     if (item.kind === "message" && item.event.type === "user.message") {
       flush();
       out.push({ kind: "user-message", event: item.event });

@@ -326,6 +326,58 @@
   font-style: italic;
 }
 
+/* Conversation seam with a centered caption, currently only used by
+   the compaction marker. It sits between turns, so it reads as punctuation in
+   the transcript rather than as another message. */
+.conversation-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+  animation: msg-in 200ms var(--ease) both;
+}
+
+.conversation-notice-rule {
+  flex: 1 1 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.conversation-notice-text {
+  flex: 0 0 auto;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.conversation-notice-detail {
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, var(--muted) 78%, transparent);
+}
+
+/* Compaction runs for minutes in complete silence, so the live marker is the
+   pane's only progress cue (SessionConversation suppresses Thinking while it
+   runs). Reuse the Thinking pulse rather than inventing a second idiom. */
+.conversation-notice[data-running="true"] .conversation-notice-text {
+  color: var(--muted-strong);
+  animation: conversation-notice-pulse 1800ms var(--ease) infinite;
+}
+
+@keyframes conversation-notice-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-notice[data-running="true"] .conversation-notice-text {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
 .tool-call-item {
   display: flex;
   flex-direction: column;

@@ -12,7 +12,7 @@ Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [s
 - [follow_up.rs](../src-tauri/src/providers/follow_up.rs) builds the capped visible transcript used when resuming a completed session.
 - [orphan_cleanup.rs](../src-tauri/src/providers/orphan_cleanup.rs) matches and terminates detached provider CLIs during startup recovery.
 - [normalizer](../src-tauri/src/providers/normalizer) maps provider JSONL/stdout into timeline events.
-- [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs) micro-batches event writes and publishes `dashboard:delta` after commit. Complete JSONL lines flush immediately; any trailing fragment without a newline is debounced-flushed (~16 ms after the last stdout chunk) so interactive sessions that stay alive after answering still surface chat rows before Stop.
+- [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs) micro-batches event writes and publishes `dashboard:delta` after commit. Complete JSONL lines flush immediately. A trailing fragment without a newline is debounced for about 16 ms after the last stdout chunk so interactive sessions that stay alive after answering still surface chat rows before Stop. A fragment that opens a JSON object but does not parse is held back instead because it is a protocol line split across PTY reads, not human-readable output. Claude's compaction summary is one roughly 22 KB line delivered as two dozen 1 KB reads, so flushing its fragments would write raw protocol JSON into the timeline.
 - [pricing.rs](../src-tauri/src/providers/pricing.rs) mirrors renderer pricing defaults.
 - [title.rs](../src-tauri/src/providers/title.rs) runs a best-effort, locked-down one-shot CLI call to replace the provisional first-line sidebar label with a short generated title.
 
@@ -88,7 +88,14 @@ Claude structured launches use `--output-format stream-json`, `--verbose`,
 live and Claude can send explicit user-facing messages through `SendUserMessage`.
 The normalizer unwraps `stream_event` rows, maps `SendUserMessage` tool calls to
 `message.completed`, and maps a successful `result` row's `result` field to
-`message.completed`.
+`message.completed`. Context compaction becomes a
+`session.compacting`/`session.compacted` pair and its replacement summary is
+dropped. See [chat-cards.md](chat-cards.md#context-compaction).
+
+A chunk whose lines were all deliberately dropped stays dropped: only a message
+with no complete line is retried whole as raw text. Retrying a multi-line chunk
+turned Claude's `system` hook/status/token rows back into raw protocol JSON in
+the transcript.
 
 Fast mode is an Argmax launch preference, not a persisted provider edit:
 Claude receives it via `--settings {"fastMode":true|false}` and Codex receives

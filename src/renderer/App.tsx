@@ -882,6 +882,15 @@ export function App(): JSX.Element {
       // differs from `selectedProject`, so resolve the base branch by id.
       const launchingProject =
         snapshot.projects.find((p) => p.id === projectId) ?? selectedProject ?? null;
+      // Worktree creation blocks on the project's setup command (installed
+      // once per fresh worktree, before the agent starts). Say so, or a slow
+      // `npm install` reads as a hung launch.
+      if (workspaceMode === "worktree" && launchingProject?.settings.setupCommand.trim()) {
+        setToast({
+          kind: "info",
+          message: `Running setup command in the new worktree: ${launchingProject.settings.setupCommand}`
+        });
+      }
       let workspace =
         workspaceMode === "worktree"
           ? await window.argmax.workspaces.createIsolated({

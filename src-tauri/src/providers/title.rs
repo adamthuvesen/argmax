@@ -130,6 +130,23 @@ fn title_command(provider: ProviderId, model_id: &str, instruction: &str) -> Tit
             ],
             stdin: Some(instruction.to_string()),
         },
+        // OpenCode has no no-tools switch; the built-in `plan` agent is
+        // read-only, which is the closest lockdown. `--format json` gives a
+        // parseable event stream and the last `text` part carries the answer.
+        ProviderId::Opencode => TitleCommand {
+            args: vec![
+                "run".into(),
+                "--format".into(),
+                "json".into(),
+                "--agent".into(),
+                "plan".into(),
+                "-m".into(),
+                model_id.into(),
+                "--".into(),
+                instruction.into(),
+            ],
+            stdin: None,
+        },
     }
 }
 
@@ -190,6 +207,7 @@ fn extract_title(provider: ProviderId, raw: &str) -> Option<String> {
         // `--output-format text` is already the bare answer.
         ProviderId::Claude | ProviderId::Cursor => Some(raw.to_string()),
         ProviderId::Codex => extract_codex_agent_message(raw),
+        ProviderId::Opencode => extract_opencode_text(raw),
     }
 }
 
@@ -241,6 +259,34 @@ fn codex_message_text(value: &serde_json::Value) -> Option<String> {
         }
     }
     None
+}
+
+/// Pulls the final assistant text out of an OpenCode `run --format json`
+/// stream: the last `text` event's `part.text`.
+fn extract_opencode_text(raw: &str) -> Option<String> {
+    let mut last: Option<String> = None;
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if value.get("type").and_then(|t| t.as_str()) != Some("text") {
+            continue;
+        }
+        if let Some(text) = value
+            .get("part")
+            .and_then(|part| part.get("text"))
+            .and_then(|text| text.as_str())
+        {
+            if !text.trim().is_empty() {
+                last = Some(text.to_string());
+            }
+        }
+    }
+    last
 }
 
 /// Normalizes raw model output into a sidebar label: first non-empty line,
@@ -329,6 +375,38 @@ mod tests {
             .args
             .iter()
             .any(|a| a == "--dangerously-bypass-approvals-and-sandbox"));
+    }
+
+    #[test]
+    fn opencode_command_uses_read_only_plan_agent() {
+        let command = title_command(ProviderId::Opencode, "opencode/big-pickle", "META");
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--agent" && args[1] == "plan"));
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--format" && args[1] == "json"));
+        assert_eq!(command.args.last().unwrap(), "META");
+        assert!(command.stdin.is_none());
+        // Never hand the title call the auto-approve bypass.
+        assert!(!command.args.iter().any(|a| a == "--auto"));
+    }
+
+    #[test]
+    fn opencode_extraction_takes_last_text_part() {
+        let stream = concat!(
+            "{\"type\":\"step_start\",\"part\":{\"type\":\"step-start\"}}\n",
+            "{\"type\":\"reasoning\",\"part\":{\"type\":\"reasoning\",\"text\":\"thinking\"}}\n",
+            "{\"type\":\"text\",\"part\":{\"type\":\"text\",\"text\":\"Fix Mobile Login Button\"}}\n",
+            "{\"type\":\"step_finish\",\"part\":{\"type\":\"step-finish\"}}\n",
+        );
+        assert_eq!(
+            extract_opencode_text(stream).as_deref(),
+            Some("Fix Mobile Login Button")
+        );
+        assert_eq!(extract_opencode_text("not json\n\n"), None);
     }
 
     #[test]

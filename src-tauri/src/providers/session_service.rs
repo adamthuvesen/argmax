@@ -1975,7 +1975,12 @@ mod tests {
 
     #[test]
     fn ask_each_time_is_rejected_without_a_live_provider_responder() {
-        for provider in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
+        for provider in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Opencode,
+        ] {
             let error = ensure_permission_mode_supported(provider, PermissionMode::AskEachTime)
                 .expect_err("unsupported provider approval mode must fail closed");
             assert!(matches!(

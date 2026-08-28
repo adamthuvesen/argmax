@@ -612,7 +612,7 @@ authenticated: boolean | null; setupGuidance: string | null;
  * has no Cursor gate detector, so the UI must not imply live approval.
  */
 approvalSupport: ApprovalSupport }
-export type ProviderId = "claude" | "codex" | "cursor"
+export type ProviderId = "claude" | "codex" | "cursor" | "opencode"
 export type ProvidersCancelQueuedMessageInput = { sessionId: SessionId; messageId: NonEmptyString }
 export type ProvidersDiscoverInput = { 
 /**

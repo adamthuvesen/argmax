@@ -1,6 +1,6 @@
 # Providers
 
-Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [src-tauri/src/providers](../src-tauri/src/providers).
+Argmax launches Claude Code, Codex, Cursor Agent, and OpenCode through Rust services in [src-tauri/src/providers](../src-tauri/src/providers).
 
 ## Shape
 
@@ -18,7 +18,7 @@ Argmax launches Claude Code, Codex, and Cursor Agent through Rust services in [s
 
 Provider protocol output is persisted for debugging but must not render as chat. Visible chat is normalized timeline events.
 
-Native permission gates are reported through `ProviderCapabilityReport.approvalSupport`. The current structured PTY runtime is observation-only for Claude and Codex, and unsupported for Cursor. Approval rows retain provider correlation data as opaque timeline payload fields. Resolution never silently changes a launch to bypass mode or claims to have answered a provider request that the runtime cannot address.
+Native permission gates are reported through `ProviderCapabilityReport.approvalSupport`. The current structured PTY runtime is observation-only for Claude and Codex, and unsupported for Cursor and OpenCode. Approval rows retain provider correlation data as opaque timeline payload fields. Resolution never silently changes a launch to bypass mode or claims to have answered a provider request that the runtime cannot address.
 
 ## MCP Configuration
 
@@ -32,6 +32,8 @@ Argmax launches it. Argmax does not discover or authenticate MCP servers.
   in `~/.codex/config.toml`.
 - Cursor servers are configured under Settings > Tools & MCP or in
   `~/.cursor/mcp.json`.
+- OpenCode servers are added with `opencode mcp add` or configured in
+  `~/.config/opencode/opencode.json`.
 
 An Argmax session gets exactly the MCP surface the same CLI gets in a terminal.
 [environment.rs](../src-tauri/src/providers/environment.rs) hydrates the user's
@@ -61,7 +63,7 @@ On startup, orphan recovery marks sessions left in `running`, `waiting`, or
 `blocked` as failed and terminates any detached provider CLI whose argv still
 references the Argmax session id or stored provider conversation id. Pending
 approvals for those sessions are cancelled. Without that cleanup, an
-unobserved Claude/Codex/Cursor process can keep working on the same resume id
+unobserved provider process can keep working on the same resume id
 while the user tries to continue the session again.
 
 Follow-up launches still use the provider resume id when available, but the
@@ -75,7 +77,7 @@ contextualized.
 An idle follow-up can also switch provider. When `providers:send-input` carries
 a `provider` that differs from the session's current one, `send_input` repoints
 the session to the new provider + model, clears the provider-specific
-`provider_conversation_id`, and relaunches fresh. Claude/Codex/Cursor resume ids
+`provider_conversation_id`, and relaunches fresh. Provider resume ids
 do not translate, so the new agent rebuilds context from the same visible
 transcript instead of using a native resume. Switching is gated to idle sessions:
 the composer locks the picker to the session's provider while a turn is running.
@@ -111,6 +113,19 @@ where a variant exists.
 
 Cursor's provider conversation id is the `session_id` from its `system/init`
 JSON row; persist it so follow-ups can resume with `cursor-agent --resume`.
+
+OpenCode structured launches use `opencode run --format json --thinking` with
+the model in `provider/model` form (`-m opencode/big-pickle`). The stream is
+typed part envelopes: `text` and `reasoning` parts arrive whole (no token
+streaming), a `tool_use` part carries input and output in one event and is
+normalized to a `command.started`/`command.completed` pair, and each
+`step_finish` reports token usage (per step, matching how the API bills). A
+`step_finish` with `reason: "stop"` ends the turn as `session.completed`. Every
+envelope carries the `sessionID` resume id; follow-ups resume with `run -s
+<id>`. Auto-approve maps to `--auto`, and plan mode maps to the CLI's built-in
+read-only `plan` agent (`--agent plan`). The catalog ships the OpenCode Zen
+free-tier models, all priced at $0; OpenCode has no fast mode and its Zen free
+models expose no reasoning-effort control.
 
 ## Subagent Activity
 

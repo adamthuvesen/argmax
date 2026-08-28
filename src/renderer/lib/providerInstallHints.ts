@@ -12,5 +12,9 @@ export const PROVIDER_INSTALL_HINTS: Record<ProviderId, { label: string; url: st
   cursor: {
     label: "Install Cursor CLI",
     url: "https://cursor.com/cli"
+  },
+  opencode: {
+    label: "Install OpenCode",
+    url: "https://opencode.ai/docs"
   }
 };

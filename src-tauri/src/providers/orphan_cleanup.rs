@@ -110,6 +110,13 @@ fn provider_command_matches_session(command: &str, session: &RecoveredProviderSe
             .provider_conversation_id
             .as_deref()
             .is_some_and(|id| has_flag_value(&args, "--resume", id)),
+        // OpenCode resumes with `run -s <sessionID>` (long form `--session`).
+        "opencode" => session
+            .provider_conversation_id
+            .as_deref()
+            .is_some_and(|id| {
+                has_flag_value(&args, "-s", id) || has_flag_value(&args, "--session", id)
+            }),
         "codex" => session
             .provider_conversation_id
             .as_deref()
@@ -132,6 +139,7 @@ fn provider_binary_name(binary: &str) -> Option<&'static str> {
         "claude" => Some("claude"),
         "codex" => Some("codex"),
         "cursor-agent" => Some("cursor"),
+        "opencode" => Some("opencode"),
         _ => None,
     }
 }
@@ -200,6 +208,28 @@ mod tests {
         assert!(!provider_command_matches_session(
             "/opt/bin/codex exec --json --model gpt-5 -",
             &codex,
+        ));
+    }
+
+    #[test]
+    fn recovery_process_matcher_finds_opencode_resume_commands() {
+        let session = RecoveredProviderSession {
+            id: "argmax-session".to_owned(),
+            provider: "opencode".to_owned(),
+            provider_conversation_id: Some("ses_abc".to_owned()),
+        };
+
+        assert!(provider_command_matches_session(
+            "/Users/me/.opencode/bin/opencode run --format json --thinking -s ses_abc --auto -m opencode/big-pickle -- prompt",
+            &session,
+        ));
+        assert!(provider_command_matches_session(
+            "/Users/me/.opencode/bin/opencode run --format json --session ses_abc -m opencode/big-pickle -- prompt",
+            &session,
+        ));
+        assert!(!provider_command_matches_session(
+            "/Users/me/.opencode/bin/opencode run --format json -m opencode/big-pickle -- prompt",
+            &session,
         ));
     }
 

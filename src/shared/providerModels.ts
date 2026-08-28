@@ -141,6 +141,16 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsReasoningEffort: true,
       contextWindow: 1_000_000
     }
+  ],
+  // OpenCode Zen free tier. Ids keep the `provider/model` format the OpenCode
+  // CLI's `-m` flag expects. None expose a reasoning-effort or fast-mode
+  // control (the CLI's `--variant` doesn't apply to the Zen free models).
+  opencode: [
+    { label: "Big Pickle", modelId: "opencode/big-pickle", contextWindow: 200_000 },
+    { label: "Hy3 Free", modelId: "opencode/hy3-free", contextWindow: 190_000 },
+    { label: "MiMo V2.5 Free", modelId: "opencode/mimo-v2.5-free", contextWindow: 200_000 },
+    { label: "Nemotron 3.5 Lightning Free", modelId: "opencode/nemotron-3.5-lightning-free", contextWindow: 262_144 },
+    { label: "Nemotron 3 Ultra Free", modelId: "opencode/nemotron-3-ultra-free", contextWindow: 1_000_000 }
   ]
 };
 
@@ -151,7 +161,8 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
 export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   claude: "claude-haiku-4-5",
   codex: "gpt-5.6-luna",
-  cursor: "composer-2.5"
+  cursor: "composer-2.5",
+  opencode: "opencode/big-pickle"
 };
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
@@ -168,6 +179,10 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
   cursor: {
     label: "Composer 2.5 (Cursor)",
     modelId: "composer-2.5"
+  },
+  opencode: {
+    label: "Big Pickle",
+    modelId: "opencode/big-pickle"
   }
 };
 
@@ -204,7 +219,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-sol-medium":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+
+  // OpenCode Zen free tier — $0 across the board. Keep in sync with the Rust
+  // pricing mirror.
+  "opencode/big-pickle":                   { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/hy3-free":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/mimo-v2.5-free":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/nemotron-3.5-lightning-free":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "opencode/nemotron-3-ultra-free":        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {

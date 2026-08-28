@@ -167,6 +167,23 @@ impl SkillRegistry {
                     SkillSource::Plugin,
                 ));
             }
+            ProviderId::Opencode => {
+                if let Some(workspace) = workspace_cwd {
+                    sources.push(SourceDescriptor::skill_dir(
+                        workspace.join(".opencode/skills"),
+                        SkillSource::Workspace,
+                    ));
+                    sources.push(Self::workspace_agents_skills(workspace));
+                }
+                sources.push(
+                    SourceDescriptor::skill_dir(
+                        self.home_dir.join(".config/opencode/skills"),
+                        SkillSource::User,
+                    )
+                    .exclude_dot_dirs(),
+                );
+                sources.push(self.user_agents_skills());
+            }
         }
         sources
     }

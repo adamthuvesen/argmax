@@ -44,14 +44,15 @@ impl ProviderDiscovery {
     pub async fn discover_all(&self) -> Vec<ProviderCapabilityReport> {
         // `cursor-agent --version` alone runs ~350ms on macOS, so sequential
         // discovery serialized the settings open behind that floor. Fan the
-        // three providers out in parallel; the cache (held in AppState)
+        // providers out in parallel; the cache (held in AppState)
         // persists across calls — a fresh boot pays the cold cost once.
-        let (claude, codex, cursor) = tokio::join!(
+        let (claude, codex, cursor, opencode) = tokio::join!(
             self.discover(ProviderId::Claude),
             self.discover(ProviderId::Codex),
             self.discover(ProviderId::Cursor),
+            self.discover(ProviderId::Opencode),
         );
-        vec![claude, codex, cursor]
+        vec![claude, codex, cursor, opencode]
     }
 
     /// Drop every cached capability report so the next `discover` re-probes the
@@ -175,6 +176,9 @@ fn setup_guidance(provider_id: ProviderId) -> &'static str {
         ProviderId::Cursor => {
             "Install the Cursor CLI and run `cursor-agent login` (or set CURSOR_API_KEY). Argmax will launch the local `cursor-agent` CLI from the selected workspace."
         }
+        ProviderId::Opencode => {
+            "Install OpenCode locally and authenticate a provider with `opencode auth login`. Argmax will launch the local `opencode` CLI from the selected workspace."
+        }
     }
 }
 
@@ -190,6 +194,9 @@ fn login_guidance(provider_id: ProviderId) -> &'static str {
         }
         ProviderId::Cursor => {
             "Cursor is installed but not authenticated. Run `cursor-agent login` (or set CURSOR_API_KEY), then refresh."
+        }
+        ProviderId::Opencode => {
+            "OpenCode is installed but not authenticated. Run `opencode auth login` in your terminal, then refresh."
         }
     }
 }
@@ -219,6 +226,10 @@ mod tests {
             get_provider_definition(ProviderId::Cursor).status_args,
             &["status"]
         );
+        assert_eq!(
+            get_provider_definition(ProviderId::Opencode).status_args,
+            &["providers", "list"]
+        );
     }
 
     #[test]
@@ -236,6 +247,10 @@ mod tests {
             get_provider_definition(ProviderId::Cursor).approval_support,
             ApprovalSupport::Unsupported
         );
+        assert_eq!(
+            get_provider_definition(ProviderId::Opencode).approval_support,
+            ApprovalSupport::Unsupported
+        );
     }
 
     #[test]
@@ -243,5 +258,6 @@ mod tests {
         assert!(login_guidance(ProviderId::Claude).contains("claude auth login"));
         assert!(login_guidance(ProviderId::Codex).contains("codex login"));
         assert!(login_guidance(ProviderId::Cursor).contains("cursor-agent login"));
+        assert!(login_guidance(ProviderId::Opencode).contains("opencode auth login"));
     }
 }

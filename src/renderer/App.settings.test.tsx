@@ -103,7 +103,7 @@ describe("App settings", () => {
     menu = await openArgmaxMenu();
     fireEvent.click(within(menu).getByRole("menuitem", { name: /About Argmax/ }));
     expect(await screen.findByRole("heading", { name: "About" })).toBeInTheDocument();
-    expect(screen.getByText("Claude Code · Codex · Cursor")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code · Codex · Cursor · OpenCode")).toBeInTheDocument();
   });
 
   it("resets the reused workspace scroller when opening settings", async () => {

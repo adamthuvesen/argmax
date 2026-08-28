@@ -1,0 +1,71 @@
+[
+  {
+    "sessionId": "session-1",
+    "type": "command.started",
+    "message": "read",
+    "payload": {
+      "name": "read",
+      "input": { "filePath": "/repo/src" },
+      "call_id": "call_1",
+      "raw": {
+        "type": "tool",
+        "tool": "read",
+        "callID": "call_1",
+        "state": {
+          "status": "completed",
+          "input": { "filePath": "/repo/src" },
+          "output": "<entries>index.ts</entries>"
+        }
+      }
+    },
+    "createdAt": "2026-05-24T12:00:00.000Z"
+  },
+  {
+    "sessionId": "session-1",
+    "type": "command.completed",
+    "message": "read",
+    "payload": {
+      "name": "read",
+      "input": { "filePath": "/repo/src" },
+      "call_id": "call_1",
+      "result": "<entries>index.ts</entries>",
+      "raw": {
+        "type": "tool",
+        "tool": "read",
+        "callID": "call_1",
+        "state": {
+          "status": "completed",
+          "input": { "filePath": "/repo/src" },
+          "output": "<entries>index.ts</entries>"
+        }
+      }
+    },
+    "createdAt": "2026-05-24T12:00:00.000Z"
+  },
+  {
+    "sessionId": "session-1",
+    "type": "message.completed",
+    "message": "There is 1 file.",
+    "payload": {
+      "type": "text",
+      "timestamp": 1787920768389,
+      "sessionID": "ses_fixture",
+      "part": {
+        "id": "prt_4",
+        "messageID": "msg_2",
+        "sessionID": "ses_fixture",
+        "type": "text",
+        "text": "There is 1 file.",
+        "time": { "start": 1787920768336, "end": 1787920768381 }
+      }
+    },
+    "createdAt": "2026-05-24T12:00:00.000Z"
+  },
+  {
+    "sessionId": "session-1",
+    "type": "session.completed",
+    "message": "",
+    "payload": { "opencodeStepFinish": true },
+    "createdAt": "2026-05-24T12:00:00.000Z"
+  }
+]

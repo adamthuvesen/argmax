@@ -29,7 +29,7 @@ Key folders:
 
 - `ipc/`: request/response commands grouped by namespace.
 - `persistence/`: SQLite connection, migrations, and table-family repositories.
-- `providers/`: Claude/Codex/Cursor adapters, PTY process runtime, normalizers, and event flush queue.
+- `providers/`: Claude/Codex/Cursor/OpenCode adapters, PTY process runtime, normalizers, and event flush queue.
 - `session_control.rs`: private agent-to-app transport for launching a separate top-level session through the live workspace and provider services.
 - `sessions/`: session orchestration between `ipc/` and `providers/`.
 - `workspaces/`, `review/`, `files/`, `git/`: worktree lifecycle, diffs, file previews/writes, and branch/PR actions.

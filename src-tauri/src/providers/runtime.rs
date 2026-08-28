@@ -582,6 +582,7 @@ pub(super) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
         "claude" => Ok(ProviderId::Claude),
         "codex" => Ok(ProviderId::Codex),
         "cursor" => Ok(ProviderId::Cursor),
+        "opencode" => Ok(ProviderId::Opencode),
         _ => Err(ArgmaxError::service(
             "PROVIDER_UNKNOWN",
             format!("unknown provider {value}"),

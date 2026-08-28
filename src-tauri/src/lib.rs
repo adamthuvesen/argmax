@@ -554,6 +554,11 @@ fn provider_defaults(provider: &str) -> ProviderDefaults {
             model_id: "composer-2.5",
             reasoning_effort: None,
         },
+        "opencode" => ProviderDefaults {
+            model_label: "Big Pickle",
+            model_id: "opencode/big-pickle",
+            reasoning_effort: None,
+        },
         _ => ProviderDefaults {
             model_label: "Opus 5",
             model_id: "claude-opus-5",

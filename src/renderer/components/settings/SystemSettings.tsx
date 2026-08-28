@@ -274,7 +274,7 @@ export function SystemSettings({
               { dt: "App", dd: "Argmax" },
               { dt: "Version", dd: APP_VERSION_LABEL },
               { dt: "Runtime", dd: "Tauri · single-user local" },
-              { dt: "Providers", dd: "Claude Code · Codex · Cursor" }
+              { dt: "Providers", dd: "Claude Code · Codex · Cursor · OpenCode" }
             ]}
           />
         </div>

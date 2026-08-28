@@ -17,6 +17,11 @@ const MCP_SETUP = [
     name: "Cursor",
     command: "Settings → Tools & MCP",
     detail: "Servers are managed in Cursor settings or ~/.cursor/mcp.json."
+  },
+  {
+    name: "OpenCode",
+    command: "opencode mcp add",
+    detail: "Servers are managed with the OpenCode CLI or ~/.config/opencode/opencode.json."
   }
 ] as const;
 

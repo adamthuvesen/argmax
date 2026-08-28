@@ -1,6 +1,7 @@
 mod claude;
 mod codex;
 mod cursor;
+mod opencode;
 
 pub use cursor::synthesize_message_completed_from_exit;
 
@@ -39,6 +40,10 @@ use self::{
         normalize_result_success as normalize_cursor_result_success,
         normalize_thinking_delta as normalize_cursor_thinking_delta,
         normalize_tool_call as normalize_cursor_tool_call,
+    },
+    opencode::{
+        extract_session_id as extract_opencode_session_id,
+        extract_usage as extract_opencode_usage, normalize_event as normalize_opencode_event,
     },
 };
 use super::{adapters::get_provider_definition, ApprovalSupport, ProviderId};
@@ -143,6 +148,9 @@ pub struct NormalizedApprovalRequest {
 pub struct NormalizerSessionContext {
     pub codex_current_model: Option<String>,
     pub cursor_current_model: Option<String>,
+    /// OpenCode usage rows carry no model id; seeded from the launched model
+    /// so `step_finish` billing resolves against the pricing table.
+    pub opencode_current_model: Option<String>,
     pub cursor_assistant_text: Option<String>,
     /// Set when Cursor emits `result/success` or we synthesize a turn-ending
     /// `message.completed` on process exit.
@@ -166,6 +174,10 @@ impl NormalizerSessionContext {
     pub fn for_provider(provider: ProviderId, model_id: impl Into<String>) -> Self {
         match provider {
             ProviderId::Cursor => Self::with_cursor_model(model_id),
+            ProviderId::Opencode => Self {
+                opencode_current_model: Some(model_id.into()),
+                ..Self::default()
+            },
             ProviderId::Claude | ProviderId::Codex => Self::default(),
         }
     }
@@ -377,8 +389,18 @@ fn normalize_json_payload(
         {
             string_value(payload.get("session_id")).map(str::to_string)
         }
+        ProviderId::Opencode => extract_opencode_session_id(&payload),
         _ => None,
     };
+
+    if provider == ProviderId::Opencode {
+        return NormalizedProviderResult {
+            events: normalize_opencode_event(event, &payload, provider_type.as_deref()),
+            usages,
+            provider_conversation_id,
+            ..NormalizedProviderResult::default()
+        };
+    }
 
     if is_lifecycle_event(provider_type.as_deref(), item_type.as_deref()) {
         return NormalizedProviderResult {
@@ -735,6 +757,9 @@ fn map_provider_type(
     match provider {
         ProviderId::Claude => claude_event_type(provider_type),
         ProviderId::Codex => codex_event_type(provider_type),
+        // OpenCode payloads never reach here — normalize_json_payload returns
+        // early with the opencode-specific mapping.
+        ProviderId::Opencode => None,
         ProviderId::Cursor => {
             if provider_type == "assistant" {
                 if payload
@@ -771,7 +796,7 @@ fn detect_permission_gate(
     match provider {
         ProviderId::Claude => detect_claude_permission_gate(payload),
         ProviderId::Codex => detect_codex_permission_gate(payload),
-        ProviderId::Cursor => None,
+        ProviderId::Cursor | ProviderId::Opencode => None,
     }
 }
 
@@ -785,6 +810,7 @@ fn extract_usage_from_payload(
         ProviderId::Claude => extract_claude_usage(payload, provider_type),
         ProviderId::Codex => extract_codex_usage(payload, provider_type, context),
         ProviderId::Cursor => extract_cursor_usage(payload, provider_type, context),
+        ProviderId::Opencode => extract_opencode_usage(payload, provider_type, context),
     }
 }
 

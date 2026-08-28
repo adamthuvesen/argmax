@@ -27,7 +27,8 @@ import {
 const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   claude: "Claude",
   codex: "Codex",
-  cursor: "Cursor"
+  cursor: "Cursor",
+  opencode: "OpenCode"
 };
 
 /** Per-provider install/auth state for picker gating. */

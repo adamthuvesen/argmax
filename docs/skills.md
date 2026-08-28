@@ -13,6 +13,7 @@ Personal skills installed by `npx skills add -g` (dotfiles `agents/skills/`) liv
 | Claude | `.claude/skills`, `.agents/skills` | `~/.claude/skills`, `~/.agents/skills` | `~/.claude/plugins/cache` |
 | Codex | `.codex/skills`, `.agents/skills` | `~/.codex/skills`, `~/.agents/skills` | `~/.codex/prompts`, `~/.codex/skills/.system`, plugins |
 | Cursor | `.cursor/skills`, `.agents/skills` | `~/.cursor/skills`, `~/.agents/skills` | `~/.cursor/plugins/cache` |
+| OpenCode | `.opencode/skills`, `.agents/skills` | `~/.config/opencode/skills`, `~/.agents/skills` | — |
 
 Dot-directories under the user skill folders are skipped so Codex's `~/.codex/skills/.system` is not double-counted as user skills.
 

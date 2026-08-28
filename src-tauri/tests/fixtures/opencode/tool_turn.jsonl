@@ -1,0 +1,6 @@
+{"type":"step_start","timestamp":1787920763864,"sessionID":"ses_fixture","part":{"id":"prt_1","messageID":"msg_1","sessionID":"ses_fixture","type":"step-start"}}
+{"type":"tool_use","timestamp":1787920764923,"sessionID":"ses_fixture","part":{"type":"tool","tool":"read","callID":"call_1","state":{"status":"completed","input":{"filePath":"/repo/src"},"output":"<entries>index.ts</entries>"}}}
+{"type":"step_finish","timestamp":1787920764986,"sessionID":"ses_fixture","part":{"id":"prt_2","reason":"tool-calls","messageID":"msg_1","sessionID":"ses_fixture","type":"step-finish","tokens":{"total":78592,"input":72330,"output":118,"reasoning":0,"cache":{"write":0,"read":6144}},"cost":0}}
+{"type":"step_start","timestamp":1787920768115,"sessionID":"ses_fixture","part":{"id":"prt_3","messageID":"msg_2","sessionID":"ses_fixture","type":"step-start"}}
+{"type":"text","timestamp":1787920768389,"sessionID":"ses_fixture","part":{"id":"prt_4","messageID":"msg_2","sessionID":"ses_fixture","type":"text","text":"There is 1 file.","time":{"start":1787920768336,"end":1787920768381}}}
+{"type":"step_finish","timestamp":1787920768389,"sessionID":"ses_fixture","part":{"id":"prt_5","reason":"stop","messageID":"msg_2","sessionID":"ses_fixture","type":"step-finish","tokens":{"total":78818,"input":252,"output":102,"reasoning":0,"cache":{"write":0,"read":78464}},"cost":0}}

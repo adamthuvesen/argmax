@@ -5,6 +5,7 @@ use super::{
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];
 const CURSOR_BYPASS_PERMISSION_ARGS: &[&str] = &["--force", "--trust"];
+const OPENCODE_BYPASS_PERMISSION_ARGS: &[&str] = &["--auto"];
 
 pub const PLAN_MODE_PROMPT_PREFIX: &str =
     "Plan mode: analyze the request and propose a plan only. Do not edit files, run mutating commands, or make changes.";
@@ -34,7 +35,7 @@ pub fn get_provider_definition(provider_id: ProviderId) -> &'static ProviderLaun
         .expect("all ProviderId variants have a launch definition")
 }
 
-static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
+static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 4] = [
     ProviderLaunchDefinition {
         id: ProviderId::Claude,
         display_name: "Claude Code",
@@ -62,6 +63,16 @@ static PROVIDER_DEFINITIONS: [ProviderLaunchDefinition; 3] = [
         status_args: &["status"],
         structured_args: cursor_structured_args,
         structured_resume_args: cursor_structured_resume_args,
+        structured_stdin: |_| None,
+        approval_support: ApprovalSupport::Unsupported,
+    },
+    ProviderLaunchDefinition {
+        id: ProviderId::Opencode,
+        display_name: "OpenCode",
+        binary_name: "opencode",
+        status_args: &["providers", "list"],
+        structured_args: opencode_structured_args,
+        structured_resume_args: opencode_structured_resume_args,
         structured_stdin: |_| None,
         approval_support: ApprovalSupport::Unsupported,
     },
@@ -268,6 +279,52 @@ fn cursor_structured_resume_args(
     args
 }
 
+// OpenCode's `run --format json` streams typed part events (step_start, text,
+// reasoning, tool_use, step_finish, error) and exits when the turn ends.
+// `--thinking` surfaces reasoning parts for models that emit them. Reasoning
+// effort and fast mode have no CLI surface for the Zen free models, so neither
+// is folded in here.
+fn opencode_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let mut args = vec![
+        "run".to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--thinking".to_string(),
+    ];
+    args.extend(opencode_agent_mode_args(input));
+    args.extend(opencode_permission_args(input));
+    args.extend([
+        "-m".to_string(),
+        input.model_id.clone(),
+        "--".to_string(),
+        input.prompt.clone(),
+    ]);
+    args
+}
+
+fn opencode_structured_resume_args(
+    input: &ProviderLaunchInput,
+    resume_conversation_id: &str,
+) -> Vec<String> {
+    let mut args = vec![
+        "run".to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--thinking".to_string(),
+        "-s".to_string(),
+        resume_conversation_id.to_string(),
+    ];
+    args.extend(opencode_agent_mode_args(input));
+    args.extend(opencode_permission_args(input));
+    args.extend([
+        "-m".to_string(),
+        input.model_id.clone(),
+        "--".to_string(),
+        input.prompt.clone(),
+    ]);
+    args
+}
+
 fn claude_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
     if input.agent_mode == AgentMode::Plan {
         return vec!["--permission-mode".to_string(), "plan".to_string()];
@@ -307,6 +364,29 @@ fn cursor_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
 fn cursor_agent_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
     if input.agent_mode == AgentMode::Plan {
         vec!["--plan".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+// OpenCode's built-in `plan` agent is read-only (edits denied), so plan mode
+// maps to it natively instead of a prompt prefix.
+fn opencode_agent_mode_args(input: &ProviderLaunchInput) -> Vec<String> {
+    if input.agent_mode == AgentMode::Plan {
+        vec!["--agent".to_string(), "plan".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn opencode_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
+    // Plan mode rides the read-only plan agent; never add the auto-approve
+    // bypass on top of it.
+    if input.agent_mode == AgentMode::Plan {
+        return Vec::new();
+    }
+    if input.permission_mode == PermissionMode::AutoApprove {
+        owned(OPENCODE_BYPASS_PERMISSION_ARGS)
     } else {
         Vec::new()
     }
@@ -817,8 +897,71 @@ mod tests {
     }
 
     #[test]
+    fn opencode_structured_args_match_runtime_contract() {
+        let input = launch_input(ProviderId::Opencode);
+        let definition = get_provider_definition(ProviderId::Opencode);
+
+        assert_eq!(
+            (definition.structured_args)(&input),
+            vec![
+                "run",
+                "--format",
+                "json",
+                "--thinking",
+                "--auto",
+                "-m",
+                "opencode/big-pickle",
+                "--",
+                "Implement the task",
+            ]
+        );
+        assert_eq!((definition.structured_stdin)(&input), None);
+    }
+
+    #[test]
+    fn opencode_resume_args_continue_the_session() {
+        let input = launch_input(ProviderId::Opencode);
+        let definition = get_provider_definition(ProviderId::Opencode);
+
+        assert_eq!(
+            (definition.structured_resume_args)(&input, "ses_123"),
+            vec![
+                "run",
+                "--format",
+                "json",
+                "--thinking",
+                "-s",
+                "ses_123",
+                "--auto",
+                "-m",
+                "opencode/big-pickle",
+                "--",
+                "Implement the task",
+            ]
+        );
+    }
+
+    #[test]
+    fn opencode_plan_mode_uses_read_only_plan_agent() {
+        let input = ProviderLaunchInput {
+            agent_mode: AgentMode::Plan,
+            ..launch_input(ProviderId::Opencode)
+        };
+        let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&input);
+        assert!(args
+            .windows(2)
+            .any(|window| window == ["--agent", "plan"]));
+        assert!(!args.iter().any(|arg| arg == "--auto"));
+    }
+
+    #[test]
     fn multiline_and_dash_prefixed_prompts_are_kept_safe() {
-        for provider_id in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
+        for provider_id in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Opencode,
+        ] {
             let input = ProviderLaunchInput {
                 prompt: "- read this\nthen implement".to_string(),
                 ..launch_input(provider_id)
@@ -833,7 +976,7 @@ mod tests {
                         Some("- read this\nthen implement".to_string())
                     );
                 }
-                ProviderId::Claude | ProviderId::Cursor => {
+                ProviderId::Claude | ProviderId::Cursor | ProviderId::Opencode => {
                     let prompt_index = args
                         .iter()
                         .position(|arg| arg == &input.prompt)
@@ -846,7 +989,12 @@ mod tests {
 
     #[test]
     fn ask_each_time_drops_provider_bypass_flags() {
-        for provider_id in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
+        for provider_id in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Opencode,
+        ] {
             let input = ProviderLaunchInput {
                 permission_mode: PermissionMode::AskEachTime,
                 ..launch_input(provider_id)
@@ -859,6 +1007,7 @@ mod tests {
                         | "--dangerously-bypass-approvals-and-sandbox"
                         | "--force"
                         | "--trust"
+                        | "--auto"
                 )
             }));
         }
@@ -868,7 +1017,12 @@ mod tests {
     fn plan_mode_never_bypasses_for_any_provider() {
         // Plan mode is read-only; no provider should receive an approvals/sandbox
         // bypass flag even when permission mode is AutoApprove.
-        for provider_id in [ProviderId::Claude, ProviderId::Codex, ProviderId::Cursor] {
+        for provider_id in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Opencode,
+        ] {
             let input = ProviderLaunchInput {
                 permission_mode: PermissionMode::AutoApprove,
                 agent_mode: AgentMode::Plan,
@@ -883,6 +1037,7 @@ mod tests {
                             | "--dangerously-bypass-approvals-and-sandbox"
                             | "--force"
                             | "--trust"
+                            | "--auto"
                     )
                 }),
                 "{provider_id:?} leaked a bypass flag in plan mode: {args:?}"
@@ -895,6 +1050,7 @@ mod tests {
             ProviderId::Claude => ("Claude Haiku", "haiku", None),
             ProviderId::Codex => ("GPT-5.6 Sol Low", "gpt-5.6-sol", Some(ReasoningEffort::Low)),
             ProviderId::Cursor => ("Composer 2.5 (Cursor)", "composer-2.5", None),
+            ProviderId::Opencode => ("Big Pickle", "opencode/big-pickle", None),
         };
 
         ProviderLaunchInput {

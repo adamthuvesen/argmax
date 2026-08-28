@@ -53,6 +53,7 @@ impl ProviderId {
             ProviderId::Claude => "claude",
             ProviderId::Codex => "codex",
             ProviderId::Cursor => "cursor",
+            ProviderId::Opencode => "opencode",
         }
     }
 }

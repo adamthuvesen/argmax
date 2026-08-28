@@ -1,6 +1,7 @@
 import { ArrowDown, Bot, ChevronDown, Loader2, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { coalesceAssistantGroups, type AssistantGroup } from "../lib/sessionTurnView.js";
@@ -69,11 +70,14 @@ function renderActivityChildren(children: ActivityRenderChild[]): ReactNode {
 function renderAssistantGroup({
   group,
   thinkingLive,
+  agentKey,
   workspace,
   onOpenFile
 }: {
   group: AssistantGroup;
   thinkingLive: boolean;
+  /** Namespaces this pane's group ids, which only count within one agent run. */
+  agentKey: string | null;
   workspace: WorkspaceSummary | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
@@ -83,6 +87,10 @@ function renderAssistantGroup({
         key={group.id}
         defaultExpanded={thinkingLive}
         live={thinkingLive}
+        // Never fold in place: the pane follows its own scroll to the bottom,
+        // so losing the reasoning's height the moment the answer starts would
+        // yank the view up. It opens collapsed again on the pane's next visit.
+        holdOpen
         durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
       >
         <StreamingMarkdown
@@ -99,6 +107,7 @@ function renderAssistantGroup({
       <StreamingMarkdown
         text={group.text}
         streaming={group.streaming}
+        revealKey={agentKey ? `${agentKey}:${group.createdAt}:${group.id}` : null}
         workspace={workspace}
         onOpenFile={onOpenFile}
       />
@@ -203,6 +212,7 @@ export function AgentActivityPane({
       node: renderAssistantGroup({
         group,
         thinkingLive,
+        agentKey,
         workspace,
         onOpenFile
       })
@@ -230,7 +240,9 @@ export function AgentActivityPane({
         return (a.kind === "assistant" ? -1 : 0) - (b.kind === "assistant" ? -1 : 0);
       })
       .map(({ kind, id, node }) => ({ kind, id, node }));
-  }, [activity.items, onOpenAgent, onOpenFile, streaming, workspace]);
+  }, [activity.items, agentKey, onOpenAgent, onOpenFile, streaming, workspace]);
+  // Restored turns must not replay their entrance animation on every reopen.
+  const restoringTranscript = useRestoreWithoutMotion();
   const {
     conversationListRef,
     showScrollToBottom,
@@ -324,6 +336,7 @@ export function AgentActivityPane({
 
       <div
         className="agent-activity-scroll"
+        data-restoring={restoringTranscript ? "true" : undefined}
         ref={conversationListRef}
         onScroll={handleScroll}
         onWheel={handleUserScrollIntent}

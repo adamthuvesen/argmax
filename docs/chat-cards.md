@@ -134,22 +134,30 @@ turn of a running session is treated as streaming. When a session stops before a
 history and snaps to the exact final text on reopen, so copy/paste stays
 faithful. Reduced-motion users skip the paced reveal.
 
+Reveal progress is remembered per block with a session-scoped key. Switching
+sessions remounts the pane, so without that memory a live block would type
+itself out again from nothing every time the reader returned. The bounded map
+keeps the 200 most recently revealed blocks. A block without a key still
+reveals, but it cannot resume.
+
 ## Live auto-scroll
 
 The conversation list uses [useSmartFollowScroll.ts](../src/renderer/hooks/useSmartFollowScroll.ts)
-to follow live output. `.conversation-list` keeps a constant bottom padding
-(`--space-8`) in every state — idle and live alike. That gap is deliberately
-*not* toggled per turn: a reserve that only appeared while streaming would be
-reclaimed the instant the turn ended, jerking the view up as the last line
-settled. The steady gap keeps the latest rendered text clear of the bottom edge
-and above the composer without that wobble. While a session is running, any text
-growth eases the viewport to the physical bottom via one `requestAnimationFrame`
-follower that reads the latest bottom each frame, so rapid growth updates a
-moving target instead of restarting native smooth-scroll animations. If the user
-scrolls up with real input, auto-follow pauses and the scroll-to-latest FAB
-appears as before. The hook also observes direct conversation-list children with
-`ResizeObserver`, because smooth text reveal grows an existing assistant turn
-without changing the `conversationItems` array.
+to follow live output. One retained spring owns every programmatic move. Stream
+growth, viewport changes, direct-child resizes, and the scroll-to-latest button
+update the same moving target. Rapid deltas do not restart native smooth-scroll
+animations, and a smaller target never makes the spring reverse upward.
+
+Direct children are observed because smooth text reveal grows an existing turn
+without changing the event array. The viewport and composer textarea are also
+observed because a wrapping draft shortens the transcript without changing its
+scroll height. Whether to follow is decided from the reader's position before
+the resize, rather than a near-bottom flag that may be stale.
+
+The Thinking label keeps a reserved tail slot, and an open Thought block stays
+open through the answer. Tail content must not disappear while the reader is
+pinned because a shrinking bottom would pull the viewport upward. Real user
+scroll input stops the spring and exposes the scroll-to-latest button.
 
 ## Extended-thinking (Thought block)
 
@@ -183,16 +191,19 @@ Two layers cooperate to keep it visible and out of the way:
   title-case label and keeps the expanded reasoning body aligned to the same
   turn content edge.
 
-**Expand while live, setting when done.** The Thought block takes a `live`
+**Expand while live, settle on the next turn.** The Thought block takes a `live`
 prop, computed per turn in `SessionConversationTurn` as *latest turn + session
 running + not paused on a card + no answer text yet*. While `live`, the block is
 **expanded** and labeled "Thinking". The reasoning streams in token-by-token,
 in place of the generic Thinking indicator (the pulsing label still covers the
-gap before any assistant content arrives). The instant the first answer token lands
-(or the turn stops being the active one, or it pauses for input), `live` flips
-off and the block follows the saved `argmax.thinking.expanded` default from
-Settings → Agents → Thinking blocks. A manual toggle overrides the auto behavior
-(same `userToggle ?? auto` pattern as the turn chip and tool groups).
+gap before any assistant content arrives).
+
+When the answer starts, the block stays open for the rest of that turn. Folding
+it at that boundary would remove its height while a reader is pinned to the
+streaming answer. It settles to the saved `argmax.thinking.expanded` preference
+when a newer turn begins, and it opens with that preference on the next visit.
+A manual toggle still wins. Subagent panes hold the block open for the mounted
+visit because they have no later turn boundary.
 
 ## Context compaction
 

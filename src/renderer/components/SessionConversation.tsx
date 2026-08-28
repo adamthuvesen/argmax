@@ -22,6 +22,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useSmartFollowScroll } from "../hooks/useSmartFollowScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
@@ -415,15 +416,16 @@ export function SessionConversation({
     };
   }, []);
 
+  // Restored turns must not replay their entrance animation on every reopen.
+  const restoringTranscript = useRestoreWithoutMotion();
   const {
     conversationListRef,
-    metaCardsRef,
     showScrollToBottom,
     newBelowCount,
     scrollToBottom: scrollConversationToBottom,
     handleUserScrollIntent: handleConversationScrollIntent,
     handleScroll: handleConversationScroll
-  } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, sessionRunning);
+  } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, sessionRunning, inputRef);
   const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
   // Depend on session.id rather than the session object: the parent rebuilds
@@ -470,6 +472,7 @@ export function SessionConversation({
           ) : null}
         </div>
       </div>
+      <div className="conversation-scroll" data-restoring={restoringTranscript ? "true" : undefined}>
       <div
         className="conversation-list"
         ref={conversationListRef}
@@ -548,12 +551,14 @@ export function SessionConversation({
             <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
           </button>
         ) : null}
-        {isThinkingVisible ? <ThinkingLabel /> : null}
+        <div className="conversation-tail">
+          {isThinkingVisible ? <ThinkingLabel /> : null}
+        </div>
+      </div>
       </div>
       <div
         className="session-meta-cards"
         data-cost-visible={session && showCostPanel ? "true" : "false"}
-        ref={metaCardsRef}
       >
         <ChangedFilesCard
           workspaceId={workspace?.id}

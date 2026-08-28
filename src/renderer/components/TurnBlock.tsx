@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
@@ -187,7 +187,12 @@ export function TurnBlock({
 
   const liveStartMs = running && startedAtMs > 0 ? startedAtMs : null;
   const liveRef = useRef<HTMLSpanElement | null>(null);
-  useEffect(() => {
+  // Layout effect, not a passive one: the ticker's span renders empty and the
+  // timer fills it. After a passive effect the browser has already painted the
+  // empty span once, so the chip and its adjacent header hairline visibly
+  // jump sideways every time the pane
+  // mounts. Writing it in the commit phase means the first paint is correct.
+  useLayoutEffect(() => {
     const node = liveRef.current;
     if (!node || liveStartMs === null) return;
     return registerLiveTimer(node, () => Date.now() - liveStartMs, formatElapsedSeconds);
@@ -198,7 +203,10 @@ export function TurnBlock({
   // for 280ms so the first child animates "landing" instead of popping in.
   // Subsequent additions stream normally — the animation is reserved for the
   // moment the indeterminate "Thinking" state becomes determinate.
-  const wasEmptyRef = useRef<boolean>(true);
+  // Seeded from the body this turn mounts with: a reopened session remounts
+  // every turn with its content already in place, and that is a restore, not
+  // the thinking → answered moment this animation marks.
+  const wasEmptyRef = useRef<boolean>(body.length === 0);
   const [justRevealed, setJustRevealed] = useState(false);
   useEffect(() => {
     if (!wasEmptyRef.current) return;
@@ -231,7 +239,7 @@ export function TurnBlock({
           >
             {liveStartMs !== null ? (
               <span>
-                Working for <span ref={liveRef} />
+                Working for <span className="turn-block-elapsed" ref={liveRef} />
               </span>
             ) : (
               <span>{staticChipLabel}</span>

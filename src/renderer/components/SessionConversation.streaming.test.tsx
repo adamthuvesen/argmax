@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
@@ -19,6 +20,17 @@ describe("SessionConversation — streaming & composer", () => {
     vi.useRealTimers();
     cleanup();
   });
+  it("hangs the restore flag on the scroller so a reopened transcript does not replay its entrance animations", async () => {
+    // The class and the attribute are the CSS contract itself
+    // (chat-conversation.css zeroes the entrance animations under
+    // `[data-restoring="true"]`), so this asserts them directly.
+    const { container } = renderConversation(baseSession());
+    const scroller = container.querySelector(".conversation-scroll");
+
+    expect(scroller?.getAttribute("data-restoring")).toBe("true");
+    await waitFor(() => expect(scroller?.getAttribute("data-restoring")).toBeNull());
+  });
+
   it("does not reset the model picker when the session prop reference changes but id stays the same", () => {
     const v1 = baseSession({
       modelLabel: "GPT-5.3 Codex",
@@ -337,13 +349,14 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 
-  it("collapses the Thought block to 'Thought' once the first answer token arrives", () => {
+  it("renders a Thought block collapsed when the answer is already there on mount", () => {
     renderConversation(
       baseSession({ state: "running" }),
       [
         event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
         event("t1", "message.delta", "Reasoning about it.", "2026-05-12T15:00:01.000Z", { thinking: true }),
-        // First streamed answer token → thinking is no longer live → collapses.
+        // Answer text already present → the block never opened itself here, so
+        // there is nothing to hold open: it follows the saved default.
         event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z")
       ]
     );
@@ -352,6 +365,51 @@ describe("SessionConversation — streaming & composer", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle.textContent).toContain("Thought");
     expect(screen.getByText("Here we go")).toBeTruthy();
+  });
+
+  it("holds an open Thought block open when the answer starts, and folds it on the next turn", () => {
+    const thinking = "Weighing both designs before I answer.";
+    const session = baseSession({ state: "running" });
+    const events = [
+      event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
+      event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
+    ];
+    const renderWith = (timeline: TimelineEvent[]): ReactElement => (
+      <SessionConversation
+        events={timeline}
+        isLogOpen={false}
+        onSendSessionInput={vi.fn().mockResolvedValue(undefined)}
+        onTerminateSession={vi.fn().mockResolvedValue(undefined)}
+        onToggleLog={vi.fn()}
+        project={project}
+        rawOutputs={[]}
+        review={reviewStub()}
+        session={session}
+        workspace={workspace}
+      />
+    );
+    const { rerender } = renderConversation(session, events);
+    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+
+    // The answer starts arriving. The label settles to "Thought", but folding
+    // the body away here would take its whole height out of the transcript at
+    // the exact moment the agent starts writing. A reader pinned to the
+    // bottom gets pulled up by that much.
+    const answering = [...events, event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z")];
+    rerender(renderWith(answering));
+
+    const settled = screen.getByRole("button", { name: "Thought" });
+    expect(settled).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(thinking)).toBeTruthy();
+
+    // A newer turn takes over: now the reasoning folds, above a viewport full
+    // of the answer it belongs to.
+    rerender(
+      renderWith([...answering, event("u2", "user.message", "now ship it", "2026-05-12T15:00:03.000Z")])
+    );
+
+    expect(screen.getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(thinking)).toBeNull();
   });
 
   it("collapses the Thought block when the turn chip collapses the turn", () => {
@@ -686,6 +744,29 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByLabelText("Thinking")).toHaveTextContent("Thinking");
     expect(screen.getByTestId("thinking-label")).toHaveTextContent("Thinking");
     expect(container.querySelector(".thinking-label")).not.toBeNull();
+  });
+
+  it("keeps the Thinking line's slot in the list whether or not the line is in it", () => {
+    // The slot is the CSS contract itself (chat-conversation.css reserves
+    // `.conversation-tail`'s height): the Thinking line is the list's last row
+    // and it leaves the moment the answer starts, so the row has to hold its
+    // space or a transcript pinned to the bottom jumps by its height.
+    const live = renderConversation(
+      baseSession({ provider: "codex", state: "running" }),
+      [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")]
+    );
+    expect(screen.getByLabelText("Thinking").closest(".conversation-tail")).not.toBeNull();
+    live.unmount();
+
+    const settled = renderConversation(
+      baseSession({ provider: "codex", state: "complete" }),
+      [
+        event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z")
+      ]
+    );
+    expect(screen.queryByLabelText("Thinking")).toBeNull();
+    expect(settled.container.querySelector(".conversation-tail")).not.toBeNull();
   });
 
   it("hides Thinking for Codex once a visible tool starts running", () => {

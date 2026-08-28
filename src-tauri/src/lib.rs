@@ -427,8 +427,19 @@ pub fn run() {
                             // during the synchronous macOS launch callback, so
                             // defer restoration until Tauri's runtime is alive.
                             tauri::async_runtime::spawn(async move {
-                                if let Err(error) = workspaces_for_watchers.start_open_watchers() {
-                                    tracing::warn!(?error, "failed to start workspace watchers");
+                                match workspaces_for_watchers.start_open_watchers() {
+                                    // Workspaces sharing a checkout share its
+                                    // watch, so the two counts diverge sharply
+                                    // once a repo has many sessions.
+                                    Ok(watched) => tracing::info!(
+                                        watched,
+                                        os_watches =
+                                            workspaces_for_watchers.watched_checkout_count(),
+                                        "restored workspace watchers"
+                                    ),
+                                    Err(error) => {
+                                        tracing::warn!(?error, "failed to start workspace watchers")
+                                    }
                                 }
                             });
                             state.startup_timer.mark("db.open");

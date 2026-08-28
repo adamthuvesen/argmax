@@ -22,6 +22,7 @@ import {
   type SettingsGroupId,
   settingsGroupById
 } from "./settings/settingsMeta.js";
+import { ProjectsSettings } from "./settings/ProjectsSettings.js";
 import { SettingsGroupIntro, SettingsNav } from "./settings/settingsPrimitives.js";
 import { SystemSettings } from "./settings/SystemSettings.js";
 
@@ -74,6 +75,7 @@ export function SettingsPanel({
   randomSessionIconEnabled,
   onRandomSessionIconEnabledChange,
   projects,
+  onProjectUpdated,
   navigationTarget
 }: {
   defaultModel: ModelPickerSelection;
@@ -118,6 +120,7 @@ export function SettingsPanel({
   randomSessionIconEnabled: boolean;
   onRandomSessionIconEnabledChange: (v: boolean) => void;
   projects: ProjectSummary[];
+  onProjectUpdated: (updated: ProjectSummary) => void;
   navigationTarget?: SettingsNavigationTarget | null;
 }): JSX.Element {
   // First load reuses the cached reports; every explicit "Refresh" (retry)
@@ -309,6 +312,10 @@ export function SettingsPanel({
                 void refreshProviders();
               }}
             />
+          ) : null}
+
+          {activeGroup === "projects" ? (
+            <ProjectsSettings projects={projects} onProjectUpdated={onProjectUpdated} />
           ) : null}
 
           {activeGroup === "integrations" ? (

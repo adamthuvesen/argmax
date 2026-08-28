@@ -175,6 +175,7 @@ mod tests {
                     settings: ProjectSettings {
                         default_provider: "codex".to_string(),
                         default_model_label: "GPT-5.5".to_string(),
+                        default_model_id: String::new(),
                         worktree_location: repo_path
                             .join(".argmax")
                             .join("worktrees")

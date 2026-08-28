@@ -487,3 +487,60 @@
 .settings-refresh svg.is-spinning {
   animation: spin 900ms linear infinite;
 }
+
+/* ---- Per-project settings form (Settings → Projects) ---- */
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-field-label {
+  font-size: var(--text-sm);
+  font-weight: 550;
+  color: var(--text);
+}
+
+/* Hint that explains the picker row directly above it — pull it toward the
+   row it annotates rather than the next card divider. */
+.settings-field-hint {
+  margin-top: -8px;
+}
+
+.settings-text-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  outline: 0;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+
+.settings-text-input:focus {
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--line-strong));
+}
+
+.settings-textarea {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.6;
+}
+
+.settings-form-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.settings-form-status[data-status="error"] {
+  color: var(--amber);
+}
+
+.settings-form-status[data-status="saved"] {
+  color: var(--sage-deep);
+}

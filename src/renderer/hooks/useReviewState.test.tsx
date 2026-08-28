@@ -41,6 +41,7 @@ function makeProject(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     settings: {
       defaultProvider: "codex",
       defaultModelLabel: "GPT-5.3 Codex",
+      defaultModelId: "",
       worktreeLocation: "/tmp/wt",
       setupCommand: "",
       checkCommands: []

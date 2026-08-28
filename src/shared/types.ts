@@ -86,6 +86,8 @@ export type EventType =
 export interface ProjectSettings {
   defaultProvider: ProviderId;
   defaultModelLabel: string;
+  /** "" means "not chosen yet" — launch paths fall back to the provider default. */
+  defaultModelId: string;
   worktreeLocation: string;
   setupCommand: string;
   checkCommands: string[];

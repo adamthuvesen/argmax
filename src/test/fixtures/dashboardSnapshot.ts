@@ -12,6 +12,7 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       settings: {
         defaultProvider: "codex",
         defaultModelLabel: "GPT-5.3 Codex",
+        defaultModelId: "",
         worktreeLocation: "/tmp/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm test"]
@@ -115,6 +116,7 @@ export function secondProject(): DashboardSnapshot["projects"][number] {
     settings: {
       defaultProvider: "codex",
       defaultModelLabel: "GPT-5.3 Codex",
+      defaultModelId: "",
       worktreeLocation: "/tmp/dotfiles-worktrees",
       setupCommand: "",
       checkCommands: []

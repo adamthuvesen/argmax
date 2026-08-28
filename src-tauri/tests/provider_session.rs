@@ -390,6 +390,7 @@ fn seed_project_and_workspace(db: &Database) {
             settings: ProjectSettings {
                 default_provider: "claude".to_owned(),
                 default_model_label: "Sonnet 5".to_owned(),
+                default_model_id: String::new(),
                 worktree_location: "/tmp/worktrees".to_owned(),
                 setup_command: String::new(),
                 check_commands: vec!["npm test".to_owned()],

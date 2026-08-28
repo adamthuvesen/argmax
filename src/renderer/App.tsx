@@ -54,6 +54,7 @@ import { isBrowserPreview } from "./lib/env.js";
 import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
+import { persistLaunchModel, readStoredLaunchModel } from "./lib/launchModelPreference.js";
 import { modelDefaultForProvider, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
@@ -103,10 +104,13 @@ function widestGridRowColumnCount(rows: unknown[][]): number {
 }
 
 export function App(): JSX.Element {
-  const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(() => ({
-    provider: "codex",
-    ...modelDefaultForProvider("codex")
-  }));
+  const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(
+    () =>
+      readStoredLaunchModel() ?? {
+        provider: "codex",
+        ...modelDefaultForProvider("codex")
+      }
+  );
   const {
     isSettingsOpen,
     setIsSettingsOpen,
@@ -148,6 +152,7 @@ export function App(): JSX.Element {
   const handleLaunchModelChange = useCallback(
     (model: ModelPickerSelection): void => {
       setLaunchModel(model);
+      persistLaunchModel(model);
     },
     []
   );
@@ -1037,7 +1042,9 @@ export function App(): JSX.Element {
     [paletteFileContext?.source]
   );
 
-  const handleBranchSwitch = useCallback(
+  // Merge a fresh ProjectSummary (branch switch, settings save) into the
+  // snapshot without disturbing anything else.
+  const handleProjectUpdated = useCallback(
     (updated: ProjectSummary): void => {
       setSnapshot((s) => {
         // Skip reallocation when nothing actually changed; `git switch` to the
@@ -1067,7 +1074,7 @@ export function App(): JSX.Element {
         fastModeEnabled={fastModeEnabled}
         pixelFieldEnabled={pixelFieldEnabled}
         onAddProject={() => void addProject()}
-        onBranchSwitch={handleBranchSwitch}
+        onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
         onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments)}
         model={launchModel}
@@ -1083,7 +1090,7 @@ export function App(): JSX.Element {
     [
       addProject,
       fastModeEnabled,
-      handleBranchSwitch,
+      handleProjectUpdated,
       handleLaunchModelChange,
       launcherResetSignal,
       launchModel,
@@ -1291,6 +1298,7 @@ export function App(): JSX.Element {
                 randomSessionIconEnabled={randomSessionIconEnabled}
                 onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
                 projects={snapshot.projects}
+                onProjectUpdated={handleProjectUpdated}
                 navigationTarget={settingsNavigationTarget}
               />
             </Suspense>

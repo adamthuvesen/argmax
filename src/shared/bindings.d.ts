@@ -585,8 +585,17 @@ export type PermissionMode = "auto-approve" | "ask-each-time"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
-export type ProjectSettings = { defaultProvider: string; defaultModelLabel: string; worktreeLocation: string; setupCommand: string; checkCommands: string[] }
-export type ProjectSettingsInput = { defaultProvider: ProviderId; defaultModelLabel: NonEmptyString; worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[] }
+export type ProjectSettings = { defaultProvider: string; defaultModelLabel: string; 
+/**
+ * '' means "not chosen yet": launch paths fall back to the built-in
+ * per-provider default model.
+ */
+defaultModelId: string; worktreeLocation: string; setupCommand: string; checkCommands: string[] }
+export type ProjectSettingsInput = { defaultProvider: ProviderId; defaultModelLabel: NonEmptyString; 
+/**
+ * '' keeps "no model chosen": launch paths use the provider default.
+ */
+defaultModelId: string; worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[] }
 export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>

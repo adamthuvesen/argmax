@@ -61,9 +61,6 @@ pub fn list_projects(connection: &Connection) -> ArgmaxResult<Vec<ProjectSummary
           COALESCE(ws.workspace_blocked,    0) AS workspace_blocked,
           COALESCE(ws.workspace_failed,     0) AS workspace_failed,
           COALESCE(ws.workspace_complete,   0) AS workspace_complete,
-          COALESCE(ss.session_blocked,      0) AS session_blocked,
-          COALESCE(ss.session_failed,       0) AS session_failed,
-          COALESCE(ss.session_review_ready, 0) AS session_review_ready,
           ws.workspace_latest               AS workspace_latest,
           ss.session_latest                 AS session_latest,
           COALESCE(
@@ -86,9 +83,6 @@ pub fn list_projects(connection: &Connection) -> ArgmaxResult<Vec<ProjectSummary
         LEFT JOIN (
           SELECT
             w.project_id AS project_id,
-            SUM(CASE WHEN s.attention = 'blocked'      THEN 1 ELSE 0 END) AS session_blocked,
-            SUM(CASE WHEN s.attention = 'failed'       THEN 1 ELSE 0 END) AS session_failed,
-            SUM(CASE WHEN s.attention = 'review-ready' THEN 1 ELSE 0 END) AS session_review_ready,
             MAX(s.last_activity_at) AS session_latest
           FROM sessions s
           JOIN workspaces w ON w.id = s.workspace_id
@@ -288,21 +282,19 @@ pub fn get_project_remote(
 }
 
 fn project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
-    let workspace_blocked: i64 = row.get("workspace_blocked")?;
-    let session_blocked: i64 = row.get("session_blocked")?;
-    let workspace_failed: i64 = row.get("workspace_failed")?;
-    let session_failed: i64 = row.get("session_failed")?;
-    let workspace_complete: i64 = row.get("workspace_complete")?;
-    let session_review_ready: i64 = row.get("session_review_ready")?;
     let workspace_latest: Option<String> = row.get("workspace_latest")?;
     let session_latest: Option<String> = row.get("session_latest")?;
     let updated_at: Option<String> = row.get("updated_at")?;
 
+    // Counted at the workspace grain, like `active`. A session's terminal state
+    // is mirrored onto its workspace, so adding the session tally on top would
+    // count the same agent twice — and session `attention` is never cleared,
+    // so it also keeps counting archived work.
     let counts = ProjectCounts {
         active: row.get("active_count")?,
-        blocked: workspace_blocked + session_blocked,
-        failed: workspace_failed + session_failed,
-        review_ready: workspace_complete + session_review_ready,
+        blocked: row.get("workspace_blocked")?,
+        failed: row.get("workspace_failed")?,
+        review_ready: row.get("workspace_complete")?,
     };
     let latest_activity_at = max_nullable_iso(workspace_latest, session_latest).or(updated_at);
     project_summary_from_row(row, counts, latest_activity_at)

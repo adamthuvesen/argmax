@@ -4,6 +4,8 @@ use std::{
     io::{BufRead, BufReader},
     path::Component,
     path::{Path, PathBuf},
+    sync::{LazyLock, Mutex, MutexGuard},
+    time::SystemTime,
 };
 
 use chrono::{DateTime, Datelike, Duration, Utc};
@@ -23,6 +25,7 @@ use crate::{
         sessions::find_session_by_id,
         workspaces::find_workspace_by_id,
     },
+    util::sync::LockOrRecover,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +55,16 @@ struct AgentTraceContext {
     child_ids: Vec<String>,
 }
 
+impl AgentTraceContext {
+    fn trace_file_key(&self, path: PathBuf) -> TraceFileKey {
+        TraceFileKey {
+            session_id: self.session_id.clone(),
+            parent_tool_use_id: self.parent_tool_use_id.clone(),
+            path,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct CursorTraceFile {
     child_id: String,
@@ -62,6 +75,80 @@ struct CursorTraceFile {
 struct TraceLine {
     value: Value,
     timestamp: Option<String>,
+}
+
+/// Size and modified time of a child trace file when it was last imported.
+type TraceFileStamp = (u64, SystemTime);
+
+/// Identity of one imported child trace file. The resolved path is part of the
+/// key so a transcript Codex rotates into `archived_sessions` re-imports under
+/// its new path, and so two sessions reading the same file never skip each
+/// other's import.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TraceFileKey {
+    session_id: String,
+    parent_tool_use_id: String,
+    path: PathBuf,
+}
+
+/// What one poll has to do with a resolved trace file.
+enum TraceFileStep {
+    /// The last import already covered exactly these bytes.
+    UpToDate,
+    /// Read and parse it, then remember `stamp` once the rows persist.
+    Read(Option<TraceFileStamp>),
+}
+
+/// Trace files already imported. `session:agent-events` imports before every
+/// read and the renderer polls it every 1.5 s per open agent tab, so without
+/// this each poll re-read and re-parsed every multi-MB child transcript and ran
+/// an insert-if-absent statement per row against the shared connection.
+///
+/// Dropped wholesale past the cap instead of growing for the process lifetime;
+/// the cost is one extra re-import round.
+static IMPORTED_TRACE_FILES: LazyLock<Mutex<HashMap<TraceFileKey, TraceFileStamp>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+const MAX_REMEMBERED_TRACE_FILES: usize = 512;
+
+fn imported_trace_files() -> MutexGuard<'static, HashMap<TraceFileKey, TraceFileStamp>> {
+    IMPORTED_TRACE_FILES.lock_or_recover("imported trace files")
+}
+
+fn trace_file_step(key: &TraceFileKey) -> TraceFileStep {
+    let stamp = fs::metadata(&key.path)
+        .and_then(|metadata| Ok((metadata.len(), metadata.modified()?)))
+        .ok();
+    let mut remembered = imported_trace_files();
+    let Some(stamp) = stamp else {
+        // Unreadable now (rotated away, deleted): forget it so the next
+        // resolved path imports from scratch instead of matching a frozen entry.
+        remembered.remove(key);
+        return TraceFileStep::Read(None);
+    };
+    if remembered.get(key) == Some(&stamp) {
+        return TraceFileStep::UpToDate;
+    }
+    TraceFileStep::Read(Some(stamp))
+}
+
+/// Recorded only after the parsed rows persist, so a failed write re-imports on
+/// the next poll instead of being skipped as up to date.
+fn remember_imported_trace_files(stamps: Vec<(TraceFileKey, TraceFileStamp)>) {
+    if stamps.is_empty() {
+        return;
+    }
+    let mut remembered = imported_trace_files();
+    if remembered.len() + stamps.len() > MAX_REMEMBERED_TRACE_FILES {
+        remembered.clear();
+    }
+    remembered.extend(stamps);
+}
+
+/// Rows parsed out of the child transcripts, plus the freshness stamps their
+/// import earns once the rows are written.
+struct TraceImport {
+    events: Vec<PersistTimelineEventInput>,
+    stamps: Vec<(TraceFileKey, TraceFileStamp)>,
 }
 
 pub fn import_subagent_trace_events(
@@ -88,9 +175,13 @@ fn import_subagent_trace_events_from_home_database(
         return Ok(0);
     };
 
-    let events = trace_events_from_home(home, &context);
-    let connection = database.connection();
-    persist_trace_events(&connection, events)
+    let import = trace_events_from_home(home, &context);
+    let inserted = {
+        let connection = database.connection();
+        persist_trace_events(&connection, import.events)?
+    };
+    remember_imported_trace_files(import.stamps);
+    Ok(inserted)
 }
 
 #[cfg(test)]
@@ -103,14 +194,13 @@ fn import_subagent_trace_events_from_home(
     let Some(context) = agent_trace_context(connection, session_id, parent_tool_use_id)? else {
         return Ok(0);
     };
-    let events = trace_events_from_home(home, &context);
-    persist_trace_events(connection, events)
+    let import = trace_events_from_home(home, &context);
+    let inserted = persist_trace_events(connection, import.events)?;
+    remember_imported_trace_files(import.stamps);
+    Ok(inserted)
 }
 
-fn trace_events_from_home(
-    home: &Path,
-    context: &AgentTraceContext,
-) -> Vec<PersistTimelineEventInput> {
+fn trace_events_from_home(home: &Path, context: &AgentTraceContext) -> TraceImport {
     match context.provider {
         TraceProvider::Codex => codex_trace_events(home, context),
         TraceProvider::Cursor => cursor_trace_events(home, context),
@@ -198,8 +288,9 @@ fn agent_trace_context(
     }))
 }
 
-fn codex_trace_events(home: &Path, context: &AgentTraceContext) -> Vec<PersistTimelineEventInput> {
+fn codex_trace_events(home: &Path, context: &AgentTraceContext) -> TraceImport {
     let mut events = Vec::new();
+    let mut stamps = Vec::new();
     for child_id in &context.child_ids {
         let Some(path) = find_codex_trace_file(
             home,
@@ -209,8 +300,13 @@ fn codex_trace_events(home: &Path, context: &AgentTraceContext) -> Vec<PersistTi
         ) else {
             continue;
         };
-        let source = path.to_string_lossy().into_owned();
-        let lines = read_trace_lines(&path);
+        let key = context.trace_file_key(path);
+        let stamp = match trace_file_step(&key) {
+            TraceFileStep::UpToDate => continue,
+            TraceFileStep::Read(stamp) => stamp,
+        };
+        let source = key.path.to_string_lossy().into_owned();
+        let lines = read_trace_lines(&key.path);
         let mut seen_messages = HashSet::new();
         let mut seen_thinking = HashSet::new();
         // Event IDs include the child id, so the sequence must be per child.
@@ -242,17 +338,25 @@ fn codex_trace_events(home: &Path, context: &AgentTraceContext) -> Vec<PersistTi
                 line.timestamp,
             ));
         }
+        if let Some(stamp) = stamp {
+            stamps.push((key, stamp));
+        }
     }
-    events
+    TraceImport { events, stamps }
 }
 
-fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> Vec<PersistTimelineEventInput> {
+fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> TraceImport {
     let mut events = Vec::new();
+    let mut stamps = Vec::new();
     for trace_file in find_cursor_trace_files(home, context) {
         let child_id = trace_file.child_id.as_str();
-        let path = trace_file.path;
-        let source = path.to_string_lossy().into_owned();
-        let lines = read_trace_lines(&path);
+        let key = context.trace_file_key(trace_file.path);
+        let stamp = match trace_file_step(&key) {
+            TraceFileStep::UpToDate => continue,
+            TraceFileStep::Read(stamp) => stamp,
+        };
+        let source = key.path.to_string_lossy().into_owned();
+        let lines = read_trace_lines(&key.path);
         let real_result_ids = cursor_real_result_ids(&lines);
         let mut seen_messages = HashSet::new();
         // Keep imported IDs stable when another child transcript grows.
@@ -450,8 +554,11 @@ fn cursor_trace_events(home: &Path, context: &AgentTraceContext) -> Vec<PersistT
                 }
             }
         }
+        if let Some(stamp) = stamp {
+            stamps.push((key, stamp));
+        }
     }
-    events
+    TraceImport { events, stamps }
 }
 
 fn codex_trace_event_payload(
@@ -1575,6 +1682,35 @@ mod tests {
         assert!(events.iter().any(|event| event.r#type == "command.started"
             && event.message == "Read"
             && event.payload["parent_tool_use_id"] == "call-task"));
+    }
+
+    #[test]
+    fn unchanged_trace_file_is_skipped_until_it_changes() {
+        let dir = TempDir::new().expect("dir");
+        let path = dir.path().join("child-thread.jsonl");
+        fs::write(&path, "one\n").expect("write trace");
+        let key = TraceFileKey {
+            session_id: "s1".to_string(),
+            parent_tool_use_id: "spawn-1".to_string(),
+            path: path.clone(),
+        };
+
+        let TraceFileStep::Read(Some(stamp)) = trace_file_step(&key) else {
+            panic!("first poll must read the trace");
+        };
+        remember_imported_trace_files(vec![(key.clone(), stamp)]);
+        assert!(matches!(trace_file_step(&key), TraceFileStep::UpToDate));
+
+        fs::write(&path, "one\ntwo\n").expect("grow trace");
+        assert!(matches!(
+            trace_file_step(&key),
+            TraceFileStep::Read(Some(_))
+        ));
+
+        // A rotated or deleted transcript forgets its stamp instead of freezing.
+        fs::remove_file(&path).expect("remove trace");
+        assert!(matches!(trace_file_step(&key), TraceFileStep::Read(None)));
+        assert!(!imported_trace_files().contains_key(&key));
     }
 
     fn seed_session(connection: &Connection, provider: &str, session_id: &str) {

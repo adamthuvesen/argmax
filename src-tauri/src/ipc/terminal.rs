@@ -23,7 +23,10 @@ pub fn terminal_spawn(
     })
 }
 
-#[tauri::command(rename = "terminal:write")]
+// `async` moves the call off the main thread: the PTY write blocks once the
+// child stops draining its tty input queue, and a sync command body resolves
+// inline on the macOS main thread, freezing the whole window.
+#[tauri::command(rename = "terminal:write", async)]
 #[specta::specta]
 pub fn terminal_write(
     state: State<'_, AppState>,

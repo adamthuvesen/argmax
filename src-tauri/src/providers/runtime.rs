@@ -121,6 +121,7 @@ pub trait ProviderProcessLauncher: Send + Sync {
 pub struct RealProviderProcessLauncher {
     discovery: ProviderDiscovery,
     session_launch_registry: Option<Arc<SessionLaunchRegistry>>,
+    cursor_acp: Arc<super::cursor_acp::CursorAcpSessions>,
 }
 
 impl RealProviderProcessLauncher {
@@ -128,6 +129,7 @@ impl RealProviderProcessLauncher {
         Self {
             discovery: ProviderDiscovery::new(),
             session_launch_registry: None,
+            cursor_acp: Arc::new(super::cursor_acp::CursorAcpSessions::new()),
         }
     }
 
@@ -139,10 +141,12 @@ impl RealProviderProcessLauncher {
     pub fn with_discovery(
         discovery: ProviderDiscovery,
         session_launch_registry: Option<Arc<SessionLaunchRegistry>>,
+        cursor_acp: Arc<super::cursor_acp::CursorAcpSessions>,
     ) -> Self {
         Self {
             discovery,
             session_launch_registry,
+            cursor_acp,
         }
     }
 
@@ -150,6 +154,7 @@ impl RealProviderProcessLauncher {
         Self {
             discovery: ProviderDiscovery::new(),
             session_launch_registry: Some(registry),
+            cursor_acp: Arc::new(super::cursor_acp::CursorAcpSessions::new()),
         }
     }
 }
@@ -167,13 +172,6 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
         Box::pin(async move {
-            let session_launch = self
-                .session_launch_registry
-                .as_ref()
-                .map(|registry| registry.issue(&input));
-            if let Some(config) = session_launch.as_ref() {
-                input.prompt = config.prepend_instruction(&input.prompt);
-            }
             let definition = get_provider_definition(input.provider);
             let capability = self.discovery.discover(input.provider).await;
             let Some(binary_path) = capability.binary_path else {
@@ -184,6 +182,36 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         .unwrap_or_else(|| format!("{} is not installed", capability.display_name)),
                 ));
             };
+
+            // Warm-process fast path: eligible Cursor launches run as ACP
+            // prompts on a per-workspace `cursor-agent acp` process instead of
+            // paying the ~5.5 s one-shot client boot per turn. ACP turns skip
+            // the hosted-agent session-launch injection — its credentials are
+            // per-process env vars a shared warm process cannot carry — so the
+            // prompt stays unmodified here. Any ACP failure falls through to
+            // the proven one-shot path below.
+            if super::cursor_acp::is_acp_eligible(&input) {
+                match self
+                    .cursor_acp
+                    .launch_turn(binary_path.as_str(), &input, Arc::clone(&on_event))
+                    .await
+                {
+                    Ok(handle) => return Ok(handle),
+                    Err(error) => tracing::warn!(
+                        ?error,
+                        session_id = %input.session_id,
+                        "cursor ACP launch failed; falling back to one-shot"
+                    ),
+                }
+            }
+
+            let session_launch = self
+                .session_launch_registry
+                .as_ref()
+                .map(|registry| registry.issue(&input));
+            if let Some(config) = session_launch.as_ref() {
+                input.prompt = config.prepend_instruction(&input.prompt);
+            }
 
             let args = match input.resume_conversation_id.as_deref() {
                 Some(resume_id) => (definition.structured_resume_args)(&input, resume_id),

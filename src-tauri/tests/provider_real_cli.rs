@@ -72,6 +72,99 @@ fn wait_for<F: Fn(&[ProviderRuntimeEvent]) -> bool>(
     }
 }
 
+// Warm-pool ACP smoke: the first composer launch must route through
+// `cursor-agent acp` (init line tagged `"transport":"acp"`), complete with a
+// `result/success` line and Exit(0), and a follow-up resume on the same
+// launcher must reuse the warm process (no second ~5.5 s client boot).
+// Multi-thread runtime is required: the ACP reader/turn tasks are tokio
+// tasks, and `wait_for`'s thread::sleep would starve the single-thread flavor.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires installed, logged-in `cursor-agent`; run manually"]
+async fn real_cursor_acp_turn_and_warm_follow_up() {
+    let launcher = RealProviderProcessLauncher::new();
+
+    let input = ProviderLaunchInput {
+        provider: ProviderId::Cursor,
+        session_id: uuid::Uuid::new_v4().to_string(),
+        workspace_path: workspace_root(),
+        prompt: "Reply with exactly the word: pong".to_string(),
+        model_label: "Composer 2.5 (Cursor)".to_string(),
+        model_id: "composer-2.5".to_string(),
+        reasoning_effort: None,
+        fast_mode: false,
+        resume_conversation_id: None,
+        permission_mode: PermissionMode::AutoApprove,
+        agent_mode: AgentMode::Auto,
+        cols: 120,
+        rows: 32,
+    };
+
+    let run_turn = |input: ProviderLaunchInput, label: &'static str| {
+        let launcher = launcher.clone();
+        async move {
+            let (events, callback) = collect_events();
+            let started = Instant::now();
+            let _handle = launcher
+                .launch(input, callback)
+                .await
+                .expect("ACP launcher returns a handle");
+            let snapshot = wait_for(
+                &events,
+                |events| {
+                    events
+                        .iter()
+                        .any(|event| event.r#type == ProviderRuntimeEventType::Exit)
+                },
+                Duration::from_secs(120),
+                "Exit lifecycle event",
+            );
+            println!("{label}: turn finished in {:?}", started.elapsed());
+            snapshot
+        }
+    };
+
+    let first = run_turn(input.clone(), "cold (process spawn + session/new)").await;
+
+    let init_line = first
+        .iter()
+        .filter(|event| event.r#type == ProviderRuntimeEventType::Output)
+        .flat_map(|event| event.message.lines())
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line.trim()).ok())
+        .find(|value| value["type"] == "system" && value["subtype"] == "init")
+        .expect("ACP turn emits a system/init line");
+    assert_eq!(
+        init_line["transport"], "acp",
+        "composer launch did not route through ACP: {init_line}"
+    );
+    let acp_session_id = init_line["session_id"]
+        .as_str()
+        .expect("init carries the ACP session id")
+        .to_string();
+
+    let saw_result = first
+        .iter()
+        .filter(|event| event.r#type == ProviderRuntimeEventType::Output)
+        .flat_map(|event| event.message.lines())
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line.trim()).ok())
+        .any(|value| value["type"] == "result" && value["subtype"] == "success");
+    assert!(saw_result, "no result/success line; events: {first:?}");
+
+    // Follow-up on the warm process: same launcher, resume id set.
+    let mut follow_up = input;
+    follow_up.session_id = uuid::Uuid::new_v4().to_string();
+    follow_up.prompt = "Reply with exactly the word: pong2".to_string();
+    follow_up.resume_conversation_id = Some(acp_session_id);
+    let second = run_turn(follow_up, "warm follow-up (session/prompt only)").await;
+    let second_init = second
+        .iter()
+        .filter(|event| event.r#type == ProviderRuntimeEventType::Output)
+        .flat_map(|event| event.message.lines())
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line.trim()).ok())
+        .find(|value| value["type"] == "system" && value["subtype"] == "init")
+        .expect("follow-up emits a system/init line");
+    assert_eq!(second_init["transport"], "acp");
+}
+
 #[tokio::test]
 #[ignore = "requires installed `claude` CLI + API credit; run manually"]
 async fn real_claude_launcher_streams_json_and_exits_cleanly() {

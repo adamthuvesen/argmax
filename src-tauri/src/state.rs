@@ -12,6 +12,7 @@ use crate::approvals::service::ApprovalService;
 use crate::checks::service::CheckService;
 use crate::gh::poller::GhPoller;
 use crate::persistence::Database;
+use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::SessionLaunchServer;
@@ -27,6 +28,9 @@ pub struct AppState {
     pub providers: OnceCell<Arc<ProviderSessionService>>,
     pub session_launch_server: OnceCell<SessionLaunchServer>,
     pub provider_discovery: Arc<ProviderDiscovery>,
+    /// Warm `cursor-agent acp` process pool; the `RunEvent::Exit` callback
+    /// kills it because boot orphan recovery cannot match acp argv.
+    pub cursor_acp: OnceCell<Arc<CursorAcpSessions>>,
     pub terminals: OnceCell<Arc<TerminalService>>,
     pub checks: OnceCell<Arc<CheckService>>,
     pub workspaces: OnceCell<Arc<WorkspaceService>>,

@@ -55,6 +55,16 @@
   color: var(--muted-strong);
 }
 
+/* The header's hairline starts where the chip ends, so anything that changes
+   the chip's width drags the line sideways. Tabular figures hold the seconds
+   steady digit-for-digit, and the slot is wide enough for the whole 0s–59s
+   range so the count can gain a digit without moving the line. */
+.turn-block-elapsed {
+  display: inline-block;
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+}
+
 .turn-block-chip-static {
   cursor: default;
   pointer-events: none;
@@ -257,13 +267,6 @@
   border-radius: 0;
   overflow: visible;
   animation: thinking-fade-in 220ms var(--ease) both;
-}
-
-/* The conversation list has a 32px gap between bubbles. When the thinking
-   indicator follows a tool group / message, that's too much air — pull it
-   up so it visually anchors to the activity above. */
-.conversation-list .thinking-indicator:not(:first-child) {
-  margin-top: -16px;
 }
 
 @keyframes thinking-fade-in {

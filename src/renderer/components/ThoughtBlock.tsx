@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { useState, type JSX, type ReactNode } from "react";
+import { useEffect, useState, type JSX, type ReactNode } from "react";
 import { formatThoughtLabel } from "../formatElapsed.js";
 
 /**
@@ -17,33 +17,44 @@ import { formatThoughtLabel } from "../formatElapsed.js";
  * While the turn is actively working and hasn't produced its answer yet the
  * parent passes `live`, and the block shows the reasoning expanded (labelled
  * "Thinking") in place of the generic Thinking indicator. Once the answer
- * lands (or the turn ends) `live` flips off and the block follows the saved
+ * lands (or the turn ends) `live` flips off: the label settles to "Thought",
+ * and `holdOpen` decides whether the body stays open or follows the saved
  * expanded-by-default setting. A manual toggle overrides the auto behavior
- * (same pattern as the turn chip).
+ * (same pattern as the turn chip) and survives until that auto answer itself
+ * changes.
  */
 type UserToggle = {
   value: boolean;
-  defaultExpanded: boolean;
-  live: boolean;
+  autoExpanded: boolean;
 };
 
 export function ThoughtBlock({
   children,
   defaultExpanded = false,
   live = false,
+  holdOpen = false,
   durationMs
 }: {
   children: ReactNode;
   defaultExpanded?: boolean;
   live?: boolean;
+  /** Keep a block that opened itself while live open after `live` ends. */
+  holdOpen?: boolean;
   durationMs?: number;
 }): JSX.Element {
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
-  const localExpanded =
-    userToggle && userToggle.defaultExpanded === defaultExpanded && userToggle.live === live
-      ? userToggle.value
-      : null;
-  const expanded = localExpanded ?? (live || defaultExpanded);
+  // A block that opened itself while the reasoning was live must not fold back
+  // in place. Its whole height would leave the transcript at the instant the
+  // first answer token lands, and a reader pinned to the bottom is pulled up by
+  // exactly that much, mid-stream. `holdOpen` keeps it open until the caller
+  // says the moment has passed. For a turn, hold it until it stops being the newest
+  // one, where the fold sits above a viewport full of the answer.
+  const [openedLive, setOpenedLive] = useState(live);
+  useEffect(() => {
+    if (live) setOpenedLive(true);
+  }, [live]);
+  const autoExpanded = live || (holdOpen && openedLive) || defaultExpanded;
+  const expanded = userToggle?.autoExpanded === autoExpanded ? userToggle.value : autoExpanded;
   const label = formatThoughtLabel(live, durationMs);
   const titleVerb = live ? "thinking" : "thought";
   return (
@@ -58,7 +69,7 @@ export function ThoughtBlock({
         aria-expanded={expanded}
         aria-label={label}
         title={expanded ? `Hide ${titleVerb}` : `Show ${titleVerb}`}
-        onClick={() => setUserToggle({ value: !expanded, defaultExpanded, live })}
+        onClick={() => setUserToggle({ value: !expanded, autoExpanded })}
       >
         <span className="thought-block-eyebrow">
           <span className="thought-block-eyebrow-label">{label}</span>

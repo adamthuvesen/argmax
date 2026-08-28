@@ -10,6 +10,27 @@ import { StreamingCodeContext } from "./streamingCodeContext.js";
 const SMOOTH_STREAM_TICK_MS = 32;
 const SMOOTH_STREAM_CHARS_PER_TICK = 5;
 const SMOOTH_STREAM_MIN_CHARS = 80;
+/** Blocks to remember reveal progress for. Bounded so a long-running app can't
+    accumulate an entry per streamed block for the rest of the process. */
+const MAX_REMEMBERED_BLOCKS = 200;
+
+/**
+ * How much of each block the reader has already watched appear, kept outside
+ * React because the component doesn't survive what it has to survive: switching
+ * sessions remounts the whole pane, and a live block would otherwise type
+ * itself out again from nothing every time the user came back to it.
+ */
+const revealedLengths = new Map<string, number>();
+
+function rememberRevealed(key: string, length: number): void {
+  // Re-insert so the map stays in least-recently-revealed order for trimming.
+  revealedLengths.delete(key);
+  revealedLengths.set(key, length);
+  if (revealedLengths.size > MAX_REMEMBERED_BLOCKS) {
+    const oldest = revealedLengths.keys().next();
+    if (!oldest.done) revealedLengths.delete(oldest.value);
+  }
+}
 
 function readPrefersReducedMotion(): boolean {
   return typeof window !== "undefined" &&
@@ -34,17 +55,34 @@ function usePrefersReducedMotion(): boolean {
   return prefersReducedMotion;
 }
 
-function initialVisibleLength(text: string, streaming: boolean): number {
+function initialVisibleLength(
+  text: string,
+  streaming: boolean,
+  revealKey: string | null | undefined
+): number {
   const length = Array.from(text).length;
-  return streaming && length > SMOOTH_STREAM_MIN_CHARS ? 0 : length;
+  if (!streaming || length <= SMOOTH_STREAM_MIN_CHARS) return length;
+  // Text already revealed once is history, so resume there instead of retyping it.
+  const revealed = revealKey ? revealedLengths.get(revealKey) : undefined;
+  return revealed === undefined ? 0 : Math.min(revealed, length);
 }
 
-function useSmoothStreamingText(text: string, streaming: boolean): string {
+function useSmoothStreamingText(
+  text: string,
+  streaming: boolean,
+  revealKey: string | null | undefined
+): string {
   const prefersReducedMotion = usePrefersReducedMotion();
   const textCharacters = useMemo(() => Array.from(text), [text]);
   const targetLength = textCharacters.length;
   const targetLengthRef = useRef(targetLength);
-  const [visibleLength, setVisibleLength] = useState(() => initialVisibleLength(text, streaming));
+  const [visibleLength, setVisibleLength] = useState(() =>
+    initialVisibleLength(text, streaming, revealKey)
+  );
+
+  useEffect(() => {
+    if (revealKey && streaming) rememberRevealed(revealKey, visibleLength);
+  }, [revealKey, streaming, visibleLength]);
 
   useEffect(() => {
     targetLengthRef.current = targetLength;
@@ -189,15 +227,19 @@ const MarkdownBody = memo(function MarkdownBody({
 export function StreamingMarkdown({
   text,
   streaming,
+  revealKey,
   workspace,
   onOpenFile
 }: {
   text: string;
   streaming: boolean;
+  /** Stable identity for this block of text, unique across sessions and turns.
+      Without one, a streaming block restarts its reveal on every remount. */
+  revealKey?: string | null;
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element {
-  const visibleText = useSmoothStreamingText(text, streaming);
+  const visibleText = useSmoothStreamingText(text, streaming, revealKey);
   // Only split while actively revealing. A completed message (or reduced-motion)
   // renders as a single root — byte-identical to the non-streaming path.
   const split = useMemo(

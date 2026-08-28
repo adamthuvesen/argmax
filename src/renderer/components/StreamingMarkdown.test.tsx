@@ -51,6 +51,33 @@ describe("<StreamingMarkdown />", () => {
     expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
   });
 
+  it("resumes where it left off when the pane remounts mid-stream", () => {
+    vi.useFakeTimers();
+    const text = "C".repeat(120);
+
+    const first = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
+    act(() => {
+      vi.advanceTimersByTime(32 * 4);
+    });
+    expect(first.container.querySelector(".markdown")?.textContent).toBe("C".repeat(20));
+    // Switching to another session unmounts the pane; coming back mounts a new one.
+    first.unmount();
+
+    const second = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
+    expect(second.container.querySelector(".markdown")?.textContent).toBe("C".repeat(20));
+  });
+
+  it("types out a block it has never revealed before", () => {
+    vi.useFakeTimers();
+    const text = "D".repeat(120);
+
+    const { container } = render(
+      <StreamingMarkdown text={text} streaming revealKey="session-a:t0:unseen" />
+    );
+
+    expect(container.querySelector(".markdown")?.textContent).toBe("");
+  });
+
   it("renders completed text immediately", () => {
     const text = "Completed answers should not be delayed.";
 

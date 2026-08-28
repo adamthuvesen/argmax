@@ -87,11 +87,15 @@ function SessionConversationTurnInner({
     turnStartedAtMs,
     isPausedOnUserInput
   } = turnView;
-  // A Thought block is "live" (shown expanded, in place of the generic indicator)
-  // while this turn is actively working and hasn't produced its answer yet.
-  // Once any answer text lands — or the turn stops being the active one, or it
-  // pauses for user input — it falls back to the saved expanded-by-default
-  // setting for quiet, persistent "Thought" history.
+  // A Thought block is "live" (shown expanded, labelled "Thinking", in place of
+  // the generic indicator) while this turn is actively working and hasn't
+  // produced its answer yet. Once any answer text lands the label settles, but
+  // the body stays open (`holdOpen`) for as long as this is the newest turn:
+  // folding it right then would drop the whole reasoning out of a transcript
+  // pinned to the bottom at the exact moment the answer starts arriving. An
+  // explicit fold from the turn chip still wins, and the turn falls back to the
+  // saved expanded-by-default setting for quiet, persistent "Thought" history
+  // as soon as a newer turn starts.
   const turnHasAnswerText = visibleAssistantGroups.some(
     (group) => !group.thinking && group.text.trim().length > 0
   );
@@ -201,6 +205,7 @@ function SessionConversationTurnInner({
           key={group.id}
           defaultExpanded={toolsExpandOverride ?? defaultThinkingExpanded}
           live={thinkingLive}
+          holdOpen={isLatestTurn && toolsExpandOverride !== false}
           durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
         >
           <StreamingMarkdown
@@ -226,6 +231,7 @@ function SessionConversationTurnInner({
         <StreamingMarkdown
           text={group.text}
           streaming={group.streaming}
+          revealKey={session ? `${session.id}:${group.createdAt}:${group.id}` : null}
           workspace={workspace}
           onOpenFile={onOpenFile}
         />

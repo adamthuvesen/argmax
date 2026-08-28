@@ -114,6 +114,13 @@ export function useFileAutocomplete({
   // Lazy fetch: only load the file list once the user actually opens an `@`
   // mention. Cached by source key so re-opening the popover is instant; a
   // failed fetch clears the inflight marker so the next activation retries.
+  //
+  // The result is applied unconditionally — no cancellation on cleanup. `trigger`
+  // and `source` are fresh objects on every keystroke and every parent re-render,
+  // so a cancelling cleanup would discard the in-flight response while the
+  // re-run bailed on the inflight marker, and the popover would never open. The
+  // response is keyed, and `cacheRef` is a per-instance keyed superset, so a late
+  // response is always safe to store.
   useEffect(() => {
     if (!trigger || !source || !key) return;
     if (cacheRef.current.has(key)) return;
@@ -121,11 +128,9 @@ export function useFileAutocomplete({
     const api = window.argmax?.workspace;
     if (!api) return;
     inflightRef.current = key;
-    let cancelled = false;
-    const fetcher = api.listFiles(source);
-    void fetcher
+    void api
+      .listFiles(source)
       .then((fetched) => {
-        if (cancelled) return;
         const paths = fetched.map((entry) => entry.path);
         const built = buildEntries(paths);
         cacheRef.current.set(key, built);
@@ -137,9 +142,6 @@ export function useFileAutocomplete({
       .finally(() => {
         if (inflightRef.current === key) inflightRef.current = null;
       });
-    return () => {
-      cancelled = true;
-    };
   }, [trigger, source, key]);
 
   const allEntries = key ? entriesBySource.get(key) ?? null : null;

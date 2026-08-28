@@ -7,13 +7,17 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import { useStableFilter } from "../hooks/useStableFilter.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { assignAgentCodenames, fallbackCodename } from "../lib/agentNames.js";
 import type { AgentGridCell } from "../lib/gridState.js";
+import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivityPane } from "./AgentActivityPane.js";
 import { WorkingNest } from "./WorkingNest.js";
+
+const EMPTY_EVENTS: TimelineEvent[] = [];
 
 /**
  * All subagents of one parent session share a single grid cell, shown as a
@@ -51,12 +55,22 @@ export function AgentTabsPane({
   const showTabBar = parentToolUseIds.length >= 2;
   const parentSessionId = parentSession?.id ?? null;
 
+  // A `dashboard:delta` for any session reallocates the global `events` array.
+  // Narrowing through the stable filter keeps this slice identity-equal when the
+  // delta touched another session, so neither the tab model below nor the
+  // mounted panes rebuild their tool models on unrelated traffic.
+  const scopedEvents = useStableFilter(
+    events,
+    parentSessionId,
+    (event) => event.sessionId === parentSessionId
+  );
+  // `useStableFilter` passes the *unfiltered* array through when the key is
+  // falsy, so a parentless cell must fall back to an empty slice explicitly.
+  const sessionEvents = parentSessionId ? scopedEvents : EMPTY_EVENTS;
+
   const tabs = useMemo(() => {
-    const sessionEvents = parentSessionId
-      ? events.filter((event) => event.sessionId === parentSessionId)
-      : [];
     const sessionRunning = parentSession?.state === "running";
-    const codenames = assignAgentCodenames(sessionEvents, sessionRunning);
+    const codenames = assignAgentCodenames(buildSessionToolCalls(sessionEvents, sessionRunning));
     return parentToolUseIds.map((id) => {
       const activity = buildAgentActivity({ parentToolUseId: id, events: sessionEvents, sessionRunning });
       return {
@@ -66,7 +80,7 @@ export function AgentTabsPane({
         codename: codenames.get(id) ?? fallbackCodename(id)
       };
     });
-  }, [events, parentSessionId, parentSession?.state, parentToolUseIds]);
+  }, [sessionEvents, parentSession?.state, parentToolUseIds]);
 
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const setTabButtonRef = useCallback(
@@ -203,7 +217,7 @@ export function AgentTabsPane({
               aria-hidden={showTabBar && !isActive ? true : undefined}
             >
               <AgentActivityPane
-                events={events}
+                events={sessionEvents}
                 codename={codename}
                 isFocused={isFocused && isActive}
                 onClose={onCloseCell}

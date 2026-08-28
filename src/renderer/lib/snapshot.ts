@@ -89,11 +89,18 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
 //   - protected/durable rows (user/assistant messages, tool started/completed,
 //     approvals, errors, completions): EVENT_PROTECTED_LIMIT, sized to hold a
 //     large multi-agent turn (hundreds of tool calls) without eviction
-// The current turn's rows are always the newest of their kind, so they survive.
+// The answer-delta budget is per session: `snapshot.events` is one array shared
+// by every open pane, so a single global budget let parallel streams evict each
+// other. Within a session that budget is also the ceiling on one live block —
+// the cap drops the OLDEST surviving deltas, and the chat rebuilds the bubble by
+// concatenating what is left, so a block longer than EVENT_DELTA_LIMIT renders
+// without the beginning of the answer until its completion lands. That is why the
+// budget must comfortably exceed one live block's delta count (longest observed
+// un-superseded run: ~1500), not just a typical one.
 //
 // Separate buckets keep answer streaming, extended thinking, trace imports,
 // and durable rows from evicting one another under bursty provider output.
-const EVENT_DELTA_LIMIT = 500;
+const EVENT_DELTA_LIMIT = 4000;
 const EVENT_THINKING_LIMIT = 1000;
 const EVENT_TRACE_IMPORT_LIMIT = 1000;
 const EVENT_PROTECTED_LIMIT = 2000;
@@ -123,7 +130,7 @@ function mergeEventsBounded(
   }
   // Newest-first, same ordering mergeSlice used.
   const sorted = sortByTimestamp(merged, (event) => event.createdAt, (event) => event.rowCursor);
-  let deltaKept = 0;
+  const deltaKeptBySession = new Map<string, number>();
   let thinkingKept = 0;
   let traceKept = 0;
   let protectedKept = 0;
@@ -137,8 +144,9 @@ function mergeEventsBounded(
       return thinkingKept <= EVENT_THINKING_LIMIT;
     }
     if (isEvictableDelta(event)) {
-      deltaKept += 1;
-      return deltaKept <= EVENT_DELTA_LIMIT;
+      const kept = (deltaKeptBySession.get(event.sessionId) ?? 0) + 1;
+      deltaKeptBySession.set(event.sessionId, kept);
+      return kept <= EVENT_DELTA_LIMIT;
     }
     protectedKept += 1;
     return protectedKept <= EVENT_PROTECTED_LIMIT;

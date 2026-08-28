@@ -1,8 +1,42 @@
-import { useMemo, type JSX } from "react";
+import { memo, useMemo, useSyncExternalStore, type JSX } from "react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
 import { highlightLine, langFromPath, useHighlighterReady } from "../lib/highlighter.js";
+import { themeAppearance } from "../lib/theme.js";
 
-export function DiffBlocks({
+function subscribeToThemeAttribute(onChange: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"]
+  });
+  return () => observer.disconnect();
+}
+
+function readThemeAppearance(): "light" | "dark" {
+  if (typeof document === "undefined") return "light";
+  return themeAppearance(document.documentElement.getAttribute("data-theme"));
+}
+
+/**
+ * `highlightLine` resolves the shiki theme from the live `data-theme`
+ * attribute, not from props, so the memo below would otherwise freeze token
+ * colors across a theme switch. Subscribing makes the appearance part of this
+ * component's render identity: a flip re-renders past the memo and re-tokenizes.
+ */
+function useHighlightThemeAppearance(): "light" | "dark" {
+  return useSyncExternalStore(subscribeToThemeAttribute, readThemeAppearance, () => "light");
+}
+
+/**
+ * Memoized: every `dashboard:delta` re-renders the review panel with a fresh
+ * events array, and each render re-runs shiki's tokenizer over every diff line
+ * (tens of ms synchronously for a large file). Props are stable at both call
+ * sites — `ReviewPanel` memoizes `diffBlocks`, `FileChangeCard` memoizes
+ * `change.hunks` — so the memo blocks the per-delta storm while the two real
+ * invalidation signals (highlighter readiness, theme) stay component state.
+ */
+export const DiffBlocks = memo(function DiffBlocks({
   blocks,
   filePath
 }: {
@@ -13,6 +47,7 @@ export function DiffBlocks({
   // shiki bundle finishes loading, swapping in highlighted tokens without
   // blocking the initial paint.
   const ready = useHighlighterReady();
+  useHighlightThemeAppearance();
   const lang = useMemo(() => langFromPath(filePath ?? null), [filePath]);
   const effectiveLang = ready ? lang : null;
   return (
@@ -24,7 +59,7 @@ export function DiffBlocks({
       )}
     </div>
   );
-}
+});
 
 function UnifiedHunk({
   block,

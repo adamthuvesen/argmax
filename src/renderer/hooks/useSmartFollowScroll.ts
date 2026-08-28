@@ -79,6 +79,7 @@ export function useSmartFollowScroll(
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const wasNearBottomRef = useRef<boolean>(true);
   const lastViewportHeightRef = useRef<number | null>(null);
+  const lastScrollTopRef = useRef<number>(0);
   const userScrollIntentRef = useRef<boolean>(false);
   const userScrollIntentTimerRef = useRef<number | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -174,6 +175,7 @@ export function useSmartFollowScroll(
     } else {
       cancelFollowAnimation();
       el.scrollTop = top;
+      lastScrollTopRef.current = el.scrollTop;
     }
   }, [animateFollowToBottom, cancelFollowAnimation, prefersReducedMotion]);
 
@@ -200,6 +202,8 @@ export function useSmartFollowScroll(
   const handleScroll = useCallback((): void => {
     const el = conversationListRef.current;
     if (!el) return;
+    const previousTop = lastScrollTopRef.current;
+    lastScrollTopRef.current = el.scrollTop;
     const decision = decideSmartFollow(el.scrollHeight, el.scrollTop, el.clientHeight);
 
     if (decision.pinToBottom) {
@@ -210,7 +214,12 @@ export function useSmartFollowScroll(
       return;
     }
 
-    if (userScrollIntentRef.current) {
+    // Following only ever moves scrollTop toward the bottom, so an upward move
+    // is the reader's — a drag-select autoscroll, a keyboard page, or the
+    // approvals banner's scrollIntoView — even when no intent event fired.
+    // The 1px slack absorbs fractional-scrollTop jitter.
+    const movedUp = el.scrollTop < previousTop - 1;
+    if (userScrollIntentRef.current || movedUp) {
       wasNearBottomRef.current = false;
       setShowScrollToBottom(decision.showFab);
       return;

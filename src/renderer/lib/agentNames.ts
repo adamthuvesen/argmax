@@ -1,5 +1,3 @@
-import type { TimelineEvent } from "../../shared/types.js";
-import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
 
 /**
@@ -44,20 +42,21 @@ export function fallbackCodename(toolUseId: string): string {
 }
 
 /**
- * Assign a distinct moon name to every agent spawn in `events`, keyed by
- * toolUseId. Spawns are processed in timeline order (via buildSessionToolCalls),
- * so an earlier agent's name never shifts when a later one spawns — the probe
- * only ever steps over names already claimed by earlier ids. Once all 100 names
- * are taken, later spawns reuse `MOON_NAMES[hash % 100]`.
+ * Assign a distinct moon name to every agent spawn in `tools`, keyed by
+ * toolUseId. `tools` must be in timeline order (which `buildSessionToolCalls`
+ * already guarantees), so an earlier agent's name never shifts when a later one
+ * spawns — the probe only ever steps over names already claimed by earlier ids.
+ * Once all 100 names are taken, later spawns reuse `MOON_NAMES[hash % 100]`.
+ *
+ * Takes the already-built tool list rather than raw events: every caller has one
+ * to hand, and rebuilding it here repeated the whole tool-call reconstruction
+ * once more per render.
  */
-export function assignAgentCodenames(
-  events: TimelineEvent[],
-  sessionRunning: boolean
-): Map<string, string> {
+export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, string> {
   const assignments = new Map<string, string>();
   const taken = new Set<string>();
-  const agentToolUseIds = buildSessionToolCalls(events, sessionRunning)
-    .filter((tool: ToolCall) => getToolTypeBucket(tool.name) === "agent")
+  const agentToolUseIds = tools
+    .filter((tool) => getToolTypeBucket(tool.name) === "agent")
     .map((tool) => tool.toolUseId);
 
   for (const toolUseId of agentToolUseIds) {

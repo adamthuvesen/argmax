@@ -208,14 +208,20 @@ export function TurnBlock({
   // the thinking → answered moment this animation marks.
   const wasEmptyRef = useRef<boolean>(body.length === 0);
   const [justRevealed, setJustRevealed] = useState(false);
+  // Keyed on `hasBody`, not `body.length`: a second child arriving inside the
+  // 280ms window would re-run the effect, clear the pending reset timer, and
+  // then bail on the ref guard — leaving `data-just-revealed` stuck on for the
+  // rest of the turn and replaying the fade every time the first child is
+  // replaced. `hasBody` flips false → true exactly once.
+  const hasBody = body.length > 0;
   useEffect(() => {
     if (!wasEmptyRef.current) return;
-    if (body.length === 0) return;
+    if (!hasBody) return;
     wasEmptyRef.current = false;
     setJustRevealed(true);
     const id = setTimeout(() => setJustRevealed(false), 280);
     return () => clearTimeout(id);
-  }, [body.length]);
+  }, [hasBody]);
 
   return (
     <div className="turn-block" data-running={running ? "true" : undefined}>

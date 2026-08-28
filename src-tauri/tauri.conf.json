@@ -17,7 +17,7 @@
         "height": 900,
         "minWidth": 1024,
         "minHeight": 640,
-        "backgroundColor": "#171714",
+        "backgroundColor": "#131312",
         "backgroundThrottling": "disabled",
         "dragDropEnabled": false,
         "titleBarStyle": "Overlay",

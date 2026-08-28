@@ -413,7 +413,7 @@
 }
 
 .commit-dialog-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
@@ -457,7 +457,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--muted-strong);
 }
 
@@ -484,9 +484,9 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 8px 12px;
+  padding: 7px 12px;
   cursor: pointer;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
 }
 
 .commit-dialog-file-path {
@@ -494,13 +494,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-soft);
   font-family: var(--font-mono);
 }
 
 .commit-dialog-file-counts {
   display: inline-flex;
   gap: 6px;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -513,22 +514,30 @@
 }
 
 .commit-dialog-message-label {
-  font-size: var(--text-sm);
-  color: var(--muted-strong);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.16em;
   margin-top: 6px;
 }
 
 .commit-dialog-message {
   width: 100%;
-  resize: vertical;
-  padding: 8px 10px;
+  resize: none;
+  padding: 9px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  font: inherit;
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+  color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--text-base);
+  font-weight: 400;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.commit-dialog-message::placeholder {
+  color: var(--muted);
 }
 
 .commit-dialog-empty {
@@ -568,12 +577,12 @@
 }
 
 .commit-dialog-actions button {
-  height: 32px;
+  height: 30px;
   padding: 0 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--panel);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 

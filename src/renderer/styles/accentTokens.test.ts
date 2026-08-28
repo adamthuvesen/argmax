@@ -585,13 +585,13 @@ describe("accent CSS contract", () => {
       ".markdown > :where(p, ul, ol, blockquote, h1, h2, h3, h4)"
     );
 
-    expect(tokens).toContain("--font-prose: \"Inter Variable\", Inter, ui-sans-serif");
+    expect(tokens).toContain("--font-prose: \"Geist Sans\", ui-sans-serif");
     expect(tokens).toContain(':root[data-font="lilex"]');
     // One scale shifted by --type-step across five levels. 3 is the shipped size.
     expect(tokens).toContain('[data-font-size="1"]');
     expect(tokens).toContain('[data-font-size="5"]');
     expect(tokens).toContain("--text-terminal: calc(13px + var(--type-step));");
-    expect(tokens).toContain("--font-ui: \"Inter Variable\", Inter, ui-sans-serif");
+    expect(tokens).toContain("--font-ui: \"Geist Sans\", ui-sans-serif");
     expect(bubbleParagraphRule).toContain("font-family: var(--font-prose);");
     expect(bubbleParagraphRule).toContain("font-size: var(--text-base);");
     expect(bubbleParagraphRule).toContain("line-height: 1.68;");

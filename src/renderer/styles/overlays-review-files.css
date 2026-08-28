@@ -147,6 +147,7 @@
   flex: 0 0 24px;
   width: 24px;
   height: 24px;
+  padding: 0;
   margin-right: 4px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -921,6 +922,7 @@
 .project-knowledge-delete {
   width: 28px;
   height: 28px;
+  padding: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--panel);

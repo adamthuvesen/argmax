@@ -84,7 +84,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
   {
     id: "geist-sans",
     label: "Geist Sans",
-    hint: "Vercel's modern UI sans — clean, slightly geometric, neutral. Code blocks stay mono.",
+    hint: "Vercel's modern UI sans, paired with Geist Mono for code. Clean, slightly geometric, neutral.",
     stack: `"Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   },
   {
@@ -101,7 +101,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
   }
 ] as const;
 
-export const DEFAULT_FONT_ID: FontFamilyId = "inter";
+export const DEFAULT_FONT_ID: FontFamilyId = "geist-sans";
 export const FONT_STORAGE_KEY = "argmax.font.family";
 export const DEFAULT_FONT_SIZE: FontSize = DEFAULT_SCALE_LEVEL;
 /** App-chrome size: sidebar, titlebar, settings, global overlays. */
@@ -189,7 +189,8 @@ export function resolveTerminalFontSize(): number {
 // Per-font CSS loaders. Lilex + system fonts (system-mono, menlo, monaco)
 // need no JS-loaded assets; the rest pull in @fontsource bundles only when
 // actually applied (ralph B6 — defers CSS-embedded font URLs from cold
-// launch). Inter is the default, so its bundle loads on cold launch.
+// launch). Geist Sans is the default, so its bundle loads on cold launch;
+// it pairs with Geist Mono, so both load together.
 const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = {
   "jetbrains-mono": () => import("@fontsource-variable/jetbrains-mono/wght.css"),
   "fira-code": () => import("@fontsource-variable/fira-code/wght.css"),
@@ -205,7 +206,8 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
     Promise.all([
       import("@fontsource/geist-sans/latin-400.css"),
       import("@fontsource/geist-sans/latin-500.css"),
-      import("@fontsource/geist-sans/latin-700.css")
+      import("@fontsource/geist-sans/latin-700.css"),
+      import("@fontsource-variable/geist-mono/wght.css")
     ]),
   "ibm-plex-sans": () =>
     Promise.all([

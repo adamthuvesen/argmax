@@ -1,4 +1,4 @@
-import { ArrowDown, Bot, ChevronDown, Loader2, X } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
@@ -13,6 +13,7 @@ import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { ThoughtBlock } from "./ThoughtBlock.js";
 import { ToolCallRow } from "./ToolCallRow.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 function statusLabel(status: "running" | "done" | "error" | "missing"): string {
   switch (status) {
@@ -323,7 +324,7 @@ export function AgentActivityPane({
         </div>
         <div className="agent-activity-actions">
           <span className="agent-activity-status" data-status={activity.status}>
-            {activity.status === "running" ? <Loader2 size={12} className="tool-call-spinner" aria-hidden="true" /> : null}
+            {activity.status === "running" ? <WorkingNest active size={12} /> : null}
             {statusLabel(activity.status)}
           </span>
           {onClose ? (

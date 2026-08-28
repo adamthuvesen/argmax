@@ -324,7 +324,9 @@ describe("Sidebar — project sort menu", () => {
     // Start in default "recent" order: Zebra, Argmax, Mango.
     expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax", "Mango"]);
 
-    const groups = document.querySelectorAll<HTMLElement>(".project-group");
+    // Only project groups are draggable. The "Projects" header and the
+    // Pinned / Priority sections share the class but never reorder.
+    const groups = document.querySelectorAll<HTMLElement>('.project-group[draggable="true"]');
     expect(groups).toHaveLength(3);
     const zebra = groups[0];
     const mango = groups[2];
@@ -797,6 +799,17 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(within(older).queryByRole("button", { name: "Sidebar view options" })).toBeNull();
   });
 
+  it("hosts the same actions on the Projects header in projects view", () => {
+    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
+
+    // Projects view gets a real list header instead of a label-less strip, so
+    // the … / + cluster sits on the same line the recency header uses.
+    const header = headerRowFor("Projects");
+    expect(within(header).getByRole("button", { name: "Add Project" })).toBeInTheDocument();
+    expect(within(header).getByRole("button", { name: "Sidebar view options" })).toBeInTheDocument();
+    expect(document.querySelector(".rail-heading")).toBeNull();
+  });
+
   it("keeps every recency header's collapse chevron inside the label cluster", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 
@@ -973,6 +986,33 @@ describe("Sidebar — Priority section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax sessions" }));
     expect(screen.getAllByRole("button", { name: /Blocked task/ })).toHaveLength(1);
     expect(screen.getByRole("button", { name: /Calm task/ })).toBeInTheDocument();
+  });
+
+  it("clears the whole section from the header", () => {
+    const onClearPriority = vi.fn();
+    const mixedSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        workspace("w-blocked", "Blocked task"),
+        { ...workspace("w-calm", "Calm task"), priorityAddedAt: MINUTES_AGO_15 }
+      ]
+    };
+
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onClearPriority={onClearPriority}
+        snapshot={mixedSnapshot}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear priority" }));
+
+    // Both flavors of entry go: the attention row and the manually added one.
+    expect(onClearPriority).toHaveBeenCalledWith(["w-blocked", "w-calm"]);
+    // The click belongs to the button, not the header's collapse toggle.
+    expect(screen.getByRole("button", { name: "Hide Priority sessions" })).toBeInTheDocument();
   });
 
   it("shows a project subtitle on priority rows but not under project groups", () => {

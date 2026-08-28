@@ -144,8 +144,8 @@ describe("AgentTabsPane", () => {
     expect(running.textContent).not.toBe(done.textContent);
     expect(running).toHaveAttribute("title", "Map renderer");
     expect(done).toHaveAttribute("title", "Write tests");
-    // task-1 is still running → spinner; task-2 finished → static dot.
-    expect(running.querySelector(".tool-call-spinner")).not.toBeNull();
+    // task-1 is still running and uses the working nest. task-2 finished and uses a static dot.
+    expect(running.querySelector('.working-nest[data-active="true"]')).not.toBeNull();
     expect(done.querySelector(".agent-tab-status-dot")).not.toBeNull();
   });
 

@@ -38,6 +38,7 @@ import {
   SESSION_ICON_PICKER_WIDTH,
   SessionIconPicker
 } from "./SessionIconPicker.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 // Human phrasing appended to the row title when the row sits in the sidebar's
 // Priority section, so screen readers (and tests) hear why it floated up.
@@ -135,27 +136,9 @@ function StatusMarker({
     return <CircleEllipsis size={14} aria-hidden className="status-marker" data-attention={priorityAttention} />;
   }
   if (state === "running") {
-    // A four-dot nest in a 2x2, same mark as the agent-launch row, sized to the
-    // 14px marker box. Each dot swells and fades a quarter-cycle behind the one
-    // before it, so the cluster reads as rearranging rather than blinking. The
-    // sequence lives in CSS (.status-marker-working-dot) so
-    // prefers-reduced-motion can pin it to a still nest.
-    return (
-      <svg
-        className="status-marker"
-        data-working="true"
-        width={14}
-        height={14}
-        viewBox="0 0 14 14"
-        fill="currentColor"
-        aria-hidden="true"
-      >
-        <circle className="status-marker-working-dot" data-dot="1" cx="4.6" cy="4.6" r="1.8" />
-        <circle className="status-marker-working-dot" data-dot="2" cx="9.4" cy="4.6" r="1.8" />
-        <circle className="status-marker-working-dot" data-dot="3" cx="9.4" cy="9.4" r="1.8" />
-        <circle className="status-marker-working-dot" data-dot="4" cx="4.6" cy="9.4" r="1.8" />
-      </svg>
-    );
+    // The shared working nest, sized to the 14px marker box. It is the same mark and
+    // motion an agent tab and a sub-agent launch row show while they run.
+    return <WorkingNest active className="status-marker" size={14} />;
   }
   if (prState === "MERGED") {
     return <GitMerge size={14} aria-hidden className="status-marker" data-pr="merged" />;
@@ -192,7 +175,9 @@ function statusOverlayFor({
 /**
  * A user-chosen icon replaces the status marker as the row's leading glyph, so
  * live state moves to a small corner dot on the icon. Nothing is lost: the dot
- * carries the same running / awaiting / failed / PR signal in the same colors.
+ * carries the same awaiting / failed / PR signal in the same colors. A turn in
+ * flight is the exception. The row hands the cell back to StatusMarker's
+ * working nest rather than stacking a pulsing dot on the glyph.
  */
 function CustomIconMarker({
   icon,
@@ -201,7 +186,7 @@ function CustomIconMarker({
 }: {
   icon: string;
   iconColor: string | null | undefined;
-  overlay: StatusOverlay | null;
+  overlay: Exclude<StatusOverlay, "working"> | null;
 }): JSX.Element | null {
   const Glyph = resolveSessionIcon(icon);
   if (!Glyph) return null;
@@ -517,8 +502,10 @@ function SidebarSessionRowInner({
     allLinks[nextIndex]?.focus();
   };
 
-  // A custom icon replaces the status marker; live state moves to its overlay
-  // dot. Without one, a calm row stays text-only and only a live signal
+  // A custom icon replaces the status marker. The remaining live state moves to
+  // its overlay dot. While the turn runs the working nest takes the cell back,
+  // so the animation stands alone and the icon returns the moment it ends.
+  // Without a custom icon, a calm row stays text-only and only a live signal
   // (running, awaiting input, failed, open or merged PR) earns a glyph. The
   // marker column stays reserved either way so every title lines up.
   const statusOverlay = statusOverlayFor({
@@ -526,19 +513,20 @@ function SidebarSessionRowInner({
     prState: workspace.prState,
     priorityAttention
   });
-  const leadingGlyph = workspace.icon ? (
-    <CustomIconMarker
-      icon={workspace.icon}
-      iconColor={workspace.iconColor}
-      overlay={statusOverlay}
-    />
-  ) : statusOverlay ? (
-    <StatusMarker
-      state={workspace.state}
-      prState={workspace.prState}
-      priorityAttention={priorityAttention}
-    />
-  ) : null;
+  const leadingGlyph =
+    workspace.icon && statusOverlay !== "working" ? (
+      <CustomIconMarker
+        icon={workspace.icon}
+        iconColor={workspace.iconColor}
+        overlay={statusOverlay}
+      />
+    ) : statusOverlay ? (
+      <StatusMarker
+        state={workspace.state}
+        prState={workspace.prState}
+        priorityAttention={priorityAttention}
+      />
+    ) : null;
 
   return (
     <div className="session-row">

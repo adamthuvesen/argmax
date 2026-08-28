@@ -142,6 +142,7 @@ export function Sidebar({
   onToggleWorkspacePinned,
   onRemoveFromPriority,
   onAddToPriority,
+  onClearPriority,
   onSetWorkspaceIcon,
   showPriority,
   onWorkspaceDragStart,
@@ -178,6 +179,8 @@ export function Sidebar({
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Right-click "Add to priority" on any other row — floats it manually. */
   onAddToPriority?: (workspaceId: string) => void;
+  /** "Clear" on the Priority header dismisses every row the section holds. */
+  onClearPriority?: (workspaceIds: string[]) => void;
   /** Right-click "Edit Icon" on any row — both values null clears the glyph. */
   onSetWorkspaceIcon?: (
     workspaceId: string,
@@ -625,10 +628,11 @@ export function Sidebar({
     action();
   }, []);
 
-  // The recency labels (Today / Last 7 Days / …) already name the list, so
-  // there is no separate section title. The "…" / "+" cluster rides the newest
-  // recency header instead, and falls back to a quiet label-less strip in
-  // projects view or when the sessions view has no bucket to host it.
+  // The group labels already name the list, so there is no separate section
+  // title. The "…" / "+" cluster rides the first list header instead: the
+  // newest recency bucket in sessions view, the "Projects" header in projects
+  // view. It falls back to a quiet label-less strip only when sessions view
+  // has no bucket to host it.
   const leadDateGroupKey = viewMode === "sessions" ? dateGroups[0]?.key ?? null : null;
   const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
   const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
@@ -752,7 +756,9 @@ export function Sidebar({
       </nav>
 
       <div className="project-list">
-        {leadDateGroupKey === null ? <div className="rail-heading">{sidebarActions}</div> : null}
+        {viewMode === "sessions" && leadDateGroupKey === null ? (
+          <div className="rail-heading">{sidebarActions}</div>
+        ) : null}
         {/* Pinned sits at the very top, above Priority: a pin is a standing
             user choice, while Priority is transient triage. */}
         {pinnedWorkspaces.length > 0 ? (
@@ -808,7 +814,22 @@ export function Sidebar({
                 <span className="project-name-text">Priority</span>
                 {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
               </span>
-              <span aria-hidden="true" />
+              {onClearPriority ? (
+                <button
+                  className="session-priority-clear"
+                  type="button"
+                  title="Clear priority"
+                  aria-label="Clear priority"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onClearPriority(priorityEntries.map((entry) => entry.workspace.id));
+                  }}
+                >
+                  Clear
+                </button>
+              ) : (
+                <span aria-hidden="true" />
+              )}
             </div>
             {priorityCollapsed ? null : priorityEntries.map((entry) => (
               <div key={entry.workspace.id} className="session-row-wrap">
@@ -835,6 +856,19 @@ export function Sidebar({
                 />
               </div>
             ))}
+          </div>
+        ) : null}
+        {/* Projects view's counterpart to the newest recency header: it names
+            the grouping and hosts the … / + cluster on the same line, so
+            switching views doesn't shift the list down. */}
+        {viewMode === "projects" ? (
+          <div className="project-group session-projects-group">
+            <div className="project-row session-date-row session-projects-row">
+              <span className="project-name session-date-label">
+                <span className="project-name-text">Projects</span>
+              </span>
+              {sidebarActions}
+            </div>
           </div>
         ) : null}
         {viewMode === "sessions"

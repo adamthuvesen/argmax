@@ -1,0 +1,58 @@
+/* The working nest is the app's single "this is running right now" mark, shared
+   by the sidebar's session rows, sub-agent launch rows in the transcript, agent
+   tabs, and the agent pane header (components/WorkingNest.tsx).
+
+   A live nest wears the configurable accent, the same tint as the mascot, so
+   running work reads in the app's own color instead of a fixed green. A settled
+   nest stays muted and still. That is what "done" should look like. */
+.working-nest {
+  flex: 0 0 auto;
+  color: color-mix(in oklab, var(--muted) 60%, transparent);
+  fill: currentColor;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.working-nest[data-active="true"] {
+  color: var(--accent);
+}
+
+/* Delays are an exact quarter of the cycle, so the swell travels clockwise
+   without a dead beat and the nest looks like it is rearranging itself. */
+.working-nest[data-active="true"] .working-nest-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: working-nest-pulse var(--working-nest-cycle) var(--ease) infinite;
+}
+
+.working-nest[data-active="true"] .working-nest-dot[data-dot="2"] {
+  animation-delay: calc(var(--working-nest-cycle) / 4);
+}
+
+.working-nest[data-active="true"] .working-nest-dot[data-dot="3"] {
+  animation-delay: calc(var(--working-nest-cycle) / 2);
+}
+
+.working-nest[data-active="true"] .working-nest-dot[data-dot="4"] {
+  animation-delay: calc(var(--working-nest-cycle) * 0.75);
+}
+
+@keyframes working-nest-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.35;
+    transform: scale(0.6);
+  }
+}
+
+/* Reduced motion pins the dots. The filled 2x2 still reads as "working" at
+   rest, and the accent color carries the signal on its own. */
+@media (prefers-reduced-motion: reduce) {
+  .working-nest[data-active="true"] .working-nest-dot {
+    animation: none;
+  }
+}

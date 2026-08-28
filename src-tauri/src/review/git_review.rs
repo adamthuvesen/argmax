@@ -28,37 +28,65 @@ const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// `WorkingTree` is the historical behavior: working tree vs `HEAD` (whatever is
 /// uncommitted). `Branch` shows the whole delta from the base branch — committed
 /// *and* uncommitted *and* untracked — computed from `merge-base(base_ref, HEAD)`
-/// to the working tree, i.e. "everything different from main".
+/// to the working tree, i.e. "everything different from main". `Committed` is
+/// `Branch` minus the working tree: merge-base to `HEAD`, so it answers "what
+/// has actually landed as commits on this branch".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum ReviewComparison {
     #[default]
     WorkingTree,
     Branch,
+    Committed,
 }
 
-/// The diff baseline resolved for a single request. `diff_base` is the git
-/// revision the per-file `git diff` runs against (`HEAD` for working-tree mode,
-/// the merge-base sha for branch mode); `branch_mode` selects how the file list
-/// is gathered.
+/// Diff endpoints for one review request, with the base branch already resolved
+/// by the caller. `Branch`/`Committed` carry the ref to take the merge-base
+/// against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewBaseline<'a> {
+    WorkingTree,
+    Branch(&'a str),
+    Committed(&'a str),
+}
+
+/// The diff baseline resolved for a single request. `diff_base` is the revision
+/// argument the per-file `git diff` runs against: `HEAD` for working-tree mode,
+/// the merge-base sha for branch mode, and a `<merge-base>..HEAD` range for
+/// committed mode. `branch_mode` selects how the file list is gathered.
 struct ResolvedComparison {
     diff_base: String,
     branch_mode: bool,
+    /// Committed mode excludes the working tree, so untracked files never
+    /// belong in the list and a dirty file must not be read as an untracked add.
+    committed_only: bool,
 }
 
 async fn resolve_comparison(
     repo_path: &Path,
-    base_ref: Option<&str>,
+    baseline: ReviewBaseline<'_>,
 ) -> ArgmaxResult<ResolvedComparison> {
-    match base_ref {
-        None => Ok(ResolvedComparison {
+    match baseline {
+        ReviewBaseline::WorkingTree => Ok(ResolvedComparison {
             diff_base: "HEAD".to_owned(),
             branch_mode: false,
+            committed_only: false,
         }),
-        Some(base_ref) => Ok(ResolvedComparison {
+        ReviewBaseline::Branch(base_ref) => Ok(ResolvedComparison {
             diff_base: compute_merge_base(repo_path, base_ref).await?,
             branch_mode: true,
+            committed_only: false,
         }),
+        ReviewBaseline::Committed(base_ref) => {
+            let merge_base = compute_merge_base(repo_path, base_ref).await?;
+            Ok(ResolvedComparison {
+                // `git diff A..HEAD` is `git diff A HEAD`, so every existing
+                // `["diff", diff_base, ...]` call site keeps working unchanged.
+                diff_base: format!("{merge_base}..HEAD"),
+                branch_mode: true,
+                committed_only: true,
+            })
+        }
     }
 }
 
@@ -124,7 +152,11 @@ pub async fn list_changed_files(
         default_branch.as_deref(),
     )
     .await;
-    list_changed_files_at_path(&workspace.path, base_ref.as_deref()).await
+    list_changed_files_at_path(
+        &workspace.path,
+        baseline_for(comparison, base_ref.as_deref()),
+    )
+    .await
 }
 
 pub async fn load_diff(
@@ -150,7 +182,7 @@ pub async fn load_diff(
         workspace.path,
         workspace_id.to_owned(),
         file_path,
-        base_ref.as_deref(),
+        baseline_for(comparison, base_ref.as_deref()),
     )
     .await
 }
@@ -165,8 +197,11 @@ async fn list_changed_files_for_project(
         require_project(&connection, project_id)?
     };
     let project_base = project_base_ref(&project.default_branch, &project.current_branch);
-    let base_ref = comparison_base_ref(comparison, project_base);
-    list_changed_files_at_path(project.repo_path, base_ref).await
+    list_changed_files_at_path(
+        project.repo_path,
+        baseline_for(comparison, Some(project_base)),
+    )
+    .await
 }
 
 async fn load_diff_for_project(
@@ -180,7 +215,6 @@ async fn load_diff_for_project(
         require_project(&connection, project_id)?
     };
     let project_base = project_base_ref(&project.default_branch, &project.current_branch);
-    let base_ref = comparison_base_ref(comparison, project_base);
     // The WorkspaceDiff response shape still uses `workspaceId` as the key —
     // we reuse it for the project's repoPath-rooted view; renderer never
     // round-trips this id back, so keeping the type unchanged is safer than
@@ -189,17 +223,19 @@ async fn load_diff_for_project(
         project.repo_path,
         project_id.to_owned(),
         file_path,
-        base_ref,
+        baseline_for(comparison, Some(project_base)),
     )
     .await
 }
 
-/// `None` ⇒ working-tree mode (diff vs HEAD); `Some(base_ref)` ⇒ branch mode
-/// (diff vs the merge-base with `base_ref`).
-fn comparison_base_ref(comparison: ReviewComparison, base_ref: &str) -> Option<&str> {
-    match comparison {
-        ReviewComparison::WorkingTree => None,
-        ReviewComparison::Branch => Some(base_ref),
+/// Pair the requested comparison with the base ref that survived resolution.
+/// `base_ref: None` means no usable base branch, so every mode downgrades to
+/// the working tree rather than failing on a ref that no longer exists.
+fn baseline_for(comparison: ReviewComparison, base_ref: Option<&str>) -> ReviewBaseline<'_> {
+    match (comparison, base_ref) {
+        (ReviewComparison::WorkingTree, _) | (_, None) => ReviewBaseline::WorkingTree,
+        (ReviewComparison::Branch, Some(base_ref)) => ReviewBaseline::Branch(base_ref),
+        (ReviewComparison::Committed, Some(base_ref)) => ReviewBaseline::Committed(base_ref),
     }
 }
 
@@ -269,10 +305,10 @@ async fn ref_exists(repo_path: &Path, reference: &str) -> bool {
 
 pub async fn list_changed_files_at_path(
     repo_path: impl AsRef<Path>,
-    base_ref: Option<&str>,
+    baseline: ReviewBaseline<'_>,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
     let repo_path = validate_repo_path(repo_path.as_ref())?;
-    let comparison = resolve_comparison(&repo_path, base_ref).await?;
+    let comparison = resolve_comparison(&repo_path, baseline).await?;
     let files = collect_changed_files(&repo_path, &comparison).await?;
     load_file_summaries(repo_path, files, comparison.diff_base).await
 }
@@ -281,10 +317,10 @@ pub async fn load_diff_at_path(
     repo_path: impl AsRef<Path>,
     diff_workspace_id: impl Into<String>,
     file_path: Option<&str>,
-    base_ref: Option<&str>,
+    baseline: ReviewBaseline<'_>,
 ) -> ArgmaxResult<WorkspaceDiff> {
     let repo_path = validate_repo_path(repo_path.as_ref())?;
-    let comparison = resolve_comparison(&repo_path, base_ref).await?;
+    let comparison = resolve_comparison(&repo_path, baseline).await?;
     let diff_workspace_id = diff_workspace_id.into();
     let content = match file_path {
         Some(path) => {
@@ -292,16 +328,23 @@ pub async fn load_diff_at_path(
             // The working-tree status still tells us whether the file is
             // untracked (so we synthesize) versus a regular diff target; in
             // branch mode a committed-but-clean file simply won't appear here
-            // and falls through to a plain `git diff <base> -- path`.
-            let porcelain = run_git_text(
-                &repo_path,
-                ["status", "--porcelain=v1", "-z", "--", path],
-                GIT_TIMEOUT,
-            )
-            .await?;
-            let file = parse_porcelain_z(&porcelain)
-                .into_iter()
-                .find(|item| item.path == path);
+            // and falls through to a plain `git diff <base> -- path`. Committed
+            // mode skips the probe entirely: a file that is committed AND dirty
+            // would come back `??`/`M` from the working tree and get diffed
+            // against the wrong side.
+            let file = if comparison.committed_only {
+                None
+            } else {
+                let porcelain = run_git_text(
+                    &repo_path,
+                    ["status", "--porcelain=v1", "-z", "--", path],
+                    GIT_TIMEOUT,
+                )
+                .await?;
+                parse_porcelain_z(&porcelain)
+                    .into_iter()
+                    .find(|item| item.path == path)
+            };
             // In branch mode a committed-but-clean file isn't in working-tree
             // status. Recover its change entry from the branch-vs-base list,
             // which carries `old_path` for committed renames, so the opened
@@ -371,13 +414,17 @@ async fn collect_changed_files(
     )
     .await?;
     let mut files = parse_name_status_z(&name_status);
-    let seen: HashSet<String> = files.iter().map(|file| file.path.clone()).collect();
 
-    let porcelain =
-        run_git_text(repo_path, ["status", "--porcelain=v1", "-z"], GIT_TIMEOUT).await?;
-    for file in parse_porcelain_z(&porcelain) {
-        if file.status == "??" && !file.path.ends_with('/') && !seen.contains(&file.path) {
-            files.push(file);
+    // Untracked files are working-tree state, so they belong to every mode that
+    // includes the working tree, and to none that doesn't.
+    if !comparison.committed_only {
+        let seen: HashSet<String> = files.iter().map(|file| file.path.clone()).collect();
+        let porcelain =
+            run_git_text(repo_path, ["status", "--porcelain=v1", "-z"], GIT_TIMEOUT).await?;
+        for file in parse_porcelain_z(&porcelain) {
+            if file.status == "??" && !file.path.ends_with('/') && !seen.contains(&file.path) {
+                files.push(file);
+            }
         }
     }
 

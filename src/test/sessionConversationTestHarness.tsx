@@ -23,8 +23,9 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     isPanelOpen: false,
     mode: "changes",
     setMode: () => {},
-    changesComparison: "local",
-    setChangesComparison: () => {},
+    changesScope: "branch",
+    setChangesScope: () => {},
+    availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
     comparisonBaseLabel: "main",
     workspaceFiles: {
       entries: [],

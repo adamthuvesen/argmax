@@ -1,6 +1,20 @@
-import { Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
-import type { ReviewState, WorkspaceFilesState } from "../hooks/useReviewState.js";
+import { ChevronDown, Folder, FolderOpen, GitBranch, PanelRightClose, X } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent as ReactMouseEvent
+} from "react";
+import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import {
+  REVIEW_SCOPE_LABELS,
+  type ReviewChangesScope,
+  type ReviewState,
+  type WorkspaceFilesState
+} from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
@@ -81,6 +95,65 @@ function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | 
             </button>
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+function scopeDescription(scope: ReviewChangesScope, baseLabel: string | null): string {
+  const base = baseLabel ?? "the base branch";
+  switch (scope) {
+    case "branch":
+      return `Everything different from ${base}: committed, uncommitted, and untracked`;
+    case "committed":
+      return `Only what has been committed on this branch since ${base}`;
+    case "uncommitted":
+      return "Only the working tree: uncommitted, vs HEAD";
+    case "lastTurn":
+      return "Only the files the agent wrote in its most recent turn";
+  }
+}
+
+/** Which slice of the branch's work the Changes list covers. */
+function ReviewScopePicker({ review }: { review: ReviewState }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissOnOutsideOrEscape(anchorRef, open, close);
+
+  return (
+    <div className="review-scope-anchor" ref={anchorRef}>
+      <button
+        type="button"
+        className="review-comparison-toggle"
+        aria-label={`Changes shown: ${REVIEW_SCOPE_LABELS[review.changesScope]}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={scopeDescription(review.changesScope, review.comparisonBaseLabel)}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {REVIEW_SCOPE_LABELS[review.changesScope]}
+        <ChevronDown size={11} aria-hidden="true" />
+      </button>
+      {open ? (
+        <ul className="project-picker-popover review-scope-popover" role="listbox" aria-label="Changes shown">
+          {review.availableScopes.map((scope) => (
+            <li key={scope} role="option" aria-selected={scope === review.changesScope}>
+              <button
+                type="button"
+                className="project-picker-item"
+                aria-pressed={scope === review.changesScope}
+                title={scopeDescription(scope, review.comparisonBaseLabel)}
+                onClick={() => {
+                  review.setChangesScope(scope);
+                  close();
+                }}
+              >
+                {REVIEW_SCOPE_LABELS[scope]}
+              </button>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );
@@ -197,14 +270,6 @@ export function ReviewPanel({
   };
 
   const isChanges = review.mode === "changes";
-  const branchComparison = review.changesComparison === "branch";
-  const comparisonLabel = branchComparison ? "Branch" : "Local";
-  const nextComparison = branchComparison ? "local" : "branch";
-  const nextComparisonTitle = branchComparison
-    ? "Switch to working-tree changes (uncommitted, vs HEAD)"
-    : review.comparisonBaseLabel
-      ? `Switch to all changes vs ${review.comparisonBaseLabel}`
-      : "Switch to all changes vs base branch";
   const subtitle = isChanges
     ? `${review.files.length} ${review.files.length === 1 ? "file" : "files"} changed`
     : "Files";
@@ -261,20 +326,7 @@ export function ReviewPanel({
           </h2>
         </div>
         <div className="review-toolbar-actions">
-          {isChanges ? (
-            <div className="review-comparison-toggle-wrap">
-              <button
-                type="button"
-                className="review-comparison-toggle"
-                aria-label={`Diff baseline: ${comparisonLabel}`}
-                aria-pressed={branchComparison}
-                title={nextComparisonTitle}
-                onClick={() => review.setChangesComparison(nextComparison)}
-              >
-                {comparisonLabel}
-              </button>
-            </div>
-          ) : null}
+          {isChanges ? <ReviewScopePicker review={review} /> : null}
           <button className="small-icon" type="button" title="Close review" aria-label="Close review" onClick={review.closePanel}>
             <PanelRightClose size={16} strokeWidth={1.75} />
           </button>

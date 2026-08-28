@@ -391,7 +391,7 @@ describe("App sidebar", () => {
     const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
     expect(reviewPanel).toBeInTheDocument();
     expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "workingTree"
+      { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch"
     );
     // Omitted (unmodified) context blocks are not rendered — only changed hunks.
     expect(screen.queryByText("16 unmodified lines")).not.toBeInTheDocument();

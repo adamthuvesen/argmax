@@ -171,25 +171,54 @@ describe("useReviewState — IPC fan-out resistance", () => {
     rerender({ ws: makeWorkspace({ id: "workspace-2" }) });
 
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-2" }, "workingTree");
+    expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-2" }, "branch");
   });
 
-  it("refetches changed files against the base branch when the comparison toggles", async () => {
+  it("defaults to the whole branch and refetches when the scope changes", async () => {
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
 
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(1, { kind: "workspace", id: "workspace-1" }, "workingTree");
+    expect(result.current.changesScope).toBe("branch");
+    expect(listChangedFiles).toHaveBeenNthCalledWith(1, { kind: "workspace", id: "workspace-1" }, "branch");
     expect(result.current.comparisonBaseLabel).toBe("main");
 
     act(() => {
-      result.current.setChangesComparison("branch");
+      result.current.setChangesScope("committed");
     });
-
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-1" }, "branch");
+    expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-1" }, "committed");
+
+    act(() => {
+      result.current.setChangesScope("uncommitted");
+    });
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(3));
+    expect(listChangedFiles).toHaveBeenNthCalledWith(3, { kind: "workspace", id: "workspace-1" }, "workingTree");
   });
 
-  it("reloads the diff under the new baseline when the comparison toggles (cache busted)", async () => {
+  it("offers Last turn only with a transcript, and narrows the branch list to it", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 },
+      { path: "src/b.ts", status: "M", additions: 2, deletions: 0 }
+    ]);
+
+    const withoutTranscript = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    expect(withoutTranscript.result.current.availableScopes).not.toContain("lastTurn");
+    withoutTranscript.unmount();
+
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), ["/abs/repo/src/b.ts"]));
+    await waitFor(() => expect(result.current.files).toHaveLength(2));
+    expect(result.current.availableScopes).toContain("lastTurn");
+
+    act(() => {
+      result.current.setChangesScope("lastTurn");
+    });
+
+    // Same git query as "branch", narrowed client-side, so no refetch.
+    expect(result.current.files.map((file) => file.path)).toEqual(["src/b.ts"]);
+    expect(listChangedFiles).toHaveBeenLastCalledWith({ kind: "workspace", id: "workspace-1" }, "branch");
+  });
+
+  it("reloads the diff under the new baseline when the scope changes (cache busted)", async () => {
     listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0 }]);
     const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
     loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
@@ -201,16 +230,16 @@ describe("useReviewState — IPC fan-out resistance", () => {
       result.current.openFile("src/a.ts");
     });
     await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "workingTree"
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch"
     ));
 
     act(() => {
-      result.current.setChangesComparison("branch");
+      result.current.setChangesScope("uncommitted");
     });
 
-    // The cached working-tree diff must not be served for the branch baseline.
+    // The cached branch diff must not be served for the working-tree baseline.
     await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch"
+      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "workingTree"
     ));
   });
 

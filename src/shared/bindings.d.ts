@@ -647,9 +647,11 @@ export type RepoPath = string
  * `WorkingTree` is the historical behavior: working tree vs `HEAD` (whatever is
  * uncommitted). `Branch` shows the whole delta from the base branch — committed
  * *and* uncommitted *and* untracked — computed from `merge-base(base_ref, HEAD)`
- * to the working tree, i.e. "everything different from main".
+ * to the working tree, i.e. "everything different from main". `Committed` is
+ * `Branch` minus the working tree: merge-base to `HEAD`, so it answers "what
+ * has actually landed as commits on this branch".
  */
-export type ReviewComparison = "workingTree" | "branch"
+export type ReviewComparison = "workingTree" | "branch" | "committed"
 export type ReviewListChangedFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; comparison?: ReviewComparison }
 export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath | null; comparison?: ReviewComparison }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }

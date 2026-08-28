@@ -422,9 +422,11 @@ describe("accent CSS contract", () => {
     const chatConversation = readSource("src/renderer/styles/chat-conversation.css");
     const shellSessions = readSource("src/renderer/styles/shell-sessions.css");
     const appSource = readSource("src/renderer/App.tsx");
-    const narrowRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="narrow"]');
-    const standardRule = cssRuleBody(chatConversation, ".app-shell,\n.app-shell[data-chat-width=\"standard\"]");
-    const wideRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="wide"]');
+    const narrowestRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="1"]');
+    const narrowRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="2"]');
+    const standardRule = cssRuleBody(chatConversation, ".app-shell,\n.app-shell[data-chat-width=\"3\"]");
+    const wideRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="4"]');
+    const widestRule = cssRuleBody(chatConversation, '.app-shell[data-chat-width="5"]');
     const mainColumnRule = cssRuleBody(chatConversation, ".session-main-column");
     const launcherShellRule = cssRuleBody(shellSessions, ".launcher-shell");
     const launcherSurfaceRule = cssRuleBody(chatConversation, ".session-multigrid-cell .launcher-surface");
@@ -435,6 +437,9 @@ describe("accent CSS contract", () => {
     const tightRule = cssRuleBody(chatConversation, ".session-grid.review-open.log-open .session-main-column");
 
     expect(appSource).toContain('data-chat-width={String(chatWidth)}');
+    // Levels 2–4 keep the widths the old narrow/default/wide setting shipped.
+    expect(narrowestRule).toContain("--chat-content-width: 520px;");
+    expect(widestRule).toContain("--chat-content-width: 1100px;");
     expect(narrowRule).toContain("--chat-content-width: 640px;");
     expect(narrowRule).toContain("--chat-content-width-docked: 600px;");
     expect(narrowRule).toContain("--chat-content-width-tight: 560px;");
@@ -582,9 +587,10 @@ describe("accent CSS contract", () => {
 
     expect(tokens).toContain("--font-prose: \"Inter Variable\", Inter, ui-sans-serif");
     expect(tokens).toContain(':root[data-font="lilex"]');
-    expect(tokens).toContain('[data-font-size="small"]');
-    expect(tokens).toContain('[data-font-size="large"]');
-    expect(tokens).toContain("--text-terminal: 13px;");
+    // One scale shifted by --type-step across five levels. 3 is the shipped size.
+    expect(tokens).toContain('[data-font-size="1"]');
+    expect(tokens).toContain('[data-font-size="5"]');
+    expect(tokens).toContain("--text-terminal: calc(13px + var(--type-step));");
     expect(tokens).toContain("--font-ui: \"Inter Variable\", Inter, ui-sans-serif");
     expect(bubbleParagraphRule).toContain("font-family: var(--font-prose);");
     expect(bubbleParagraphRule).toContain("font-size: var(--text-base);");
@@ -846,5 +852,23 @@ describe("accent CSS contract", () => {
     expect(appSource).toContain("Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth)");
     expect(appSource).toContain("appWindow.setMinSize");
     expect(sidebarResize).toContain("workspaceMinWidth");
+  });
+
+  it("opens the review scope menu downward instead of collapsing it to a strip", () => {
+    // `.project-picker-popover` is a composer menu: it opens UPWARD off
+    // `bottom`. The review chip reuses its chrome but sits at the panel's top
+    // edge, so it has to open downward. Setting `top` without clearing the
+    // inherited `bottom` pins both edges of an auto-height absolute box, which
+    // renders as an empty collapsed strip. The menu looks broken, not moved.
+    const base = cssRuleBody(readSource("src/renderer/styles/chat-chrome.css"), ".project-picker-popover");
+    const scopeRule = cssRuleBody(
+      readSource("src/renderer/styles/overlays-review.css"),
+      ".review-scope-popover"
+    );
+
+    expect(base).toContain("bottom: calc(100% + 6px);");
+    expect(scopeRule).toContain("top: calc(100% + 4px);");
+    expect(scopeRule).toContain("bottom: auto;");
+    expect(scopeRule).toContain("left: auto;");
   });
 });

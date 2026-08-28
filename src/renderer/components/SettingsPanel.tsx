@@ -6,7 +6,7 @@ import type {
   IdeId,
   ProjectSummary
 } from "../../shared/types.js";
-import type { FontFamilyId, FontSizeId } from "../lib/fonts.js";
+import type { FontFamilyId, FontSize } from "../lib/fonts.js";
 import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
@@ -44,6 +44,8 @@ export function SettingsPanel({
   onSidebarPriorityVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  workspaceCardVisible,
+  onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
   chatWidth,
@@ -69,6 +71,8 @@ export function SettingsPanel({
   onPermissionModeChange,
   newSessionMode,
   onNewSessionModeChange,
+  randomSessionIconEnabled,
+  onRandomSessionIconEnabledChange,
   projects,
   navigationTarget
 }: {
@@ -84,6 +88,8 @@ export function SettingsPanel({
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  workspaceCardVisible: boolean;
+  onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
@@ -94,10 +100,10 @@ export function SettingsPanel({
   onFastModeEnabledChange: (v: boolean) => void;
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
-  fontSize: FontSizeId;
-  onFontSizeChange: (id: FontSizeId) => void;
-  chatFontSize: FontSizeId;
-  onChatFontSizeChange: (id: FontSizeId) => void;
+  fontSize: FontSize;
+  onFontSizeChange: (id: FontSize) => void;
+  chatFontSize: FontSize;
+  onChatFontSizeChange: (id: FontSize) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -109,6 +115,8 @@ export function SettingsPanel({
   onPermissionModeChange: (mode: PermissionMode) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
+  randomSessionIconEnabled: boolean;
+  onRandomSessionIconEnabledChange: (v: boolean) => void;
   projects: ProjectSummary[];
   navigationTarget?: SettingsNavigationTarget | null;
 }): JSX.Element {
@@ -267,12 +275,16 @@ export function SettingsPanel({
               onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
               chatCostVisible={chatCostVisible}
               onChatCostVisibleChange={onChatCostVisibleChange}
+              workspaceCardVisible={workspaceCardVisible}
+              onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
               pixelFieldEnabled={pixelFieldEnabled}
               onPixelFieldEnabledChange={onPixelFieldEnabledChange}
               chatWidth={chatWidth}
               onChatWidthChange={onChatWidthChange}
               newSessionMode={newSessionMode}
               onNewSessionModeChange={onNewSessionModeChange}
+              randomSessionIconEnabled={randomSessionIconEnabled}
+              onRandomSessionIconEnabledChange={onRandomSessionIconEnabledChange}
             />
           ) : null}
 

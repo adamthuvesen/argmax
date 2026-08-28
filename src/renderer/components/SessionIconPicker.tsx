@@ -20,7 +20,7 @@ type SessionIconPickerProps = {
   onClose: () => void;
 };
 
-export const SESSION_ICON_PICKER_WIDTH = 288;
+export const SESSION_ICON_PICKER_WIDTH = 336;
 export const SESSION_ICON_PICKER_HEIGHT = 360;
 
 /**

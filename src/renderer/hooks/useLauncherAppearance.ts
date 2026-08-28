@@ -9,7 +9,7 @@ import {
   readStoredChatFontSize,
   readStoredFontSize,
   readStoredFont,
-  type FontSizeId,
+  type FontSize,
   type FontFamilyId
 } from "../lib/fonts.js";
 import {
@@ -38,10 +38,10 @@ export function useLauncherAppearance(): {
   setAccentId: (accentId: AccentId) => void;
   fontFamily: FontFamilyId;
   setFontFamily: (font: FontFamilyId) => void;
-  fontSize: FontSizeId;
-  setFontSize: (fontSize: FontSizeId) => void;
-  chatFontSize: FontSizeId;
-  setChatFontSize: (fontSize: FontSizeId) => void;
+  fontSize: FontSize;
+  setFontSize: (fontSize: FontSize) => void;
+  chatFontSize: FontSize;
+  setChatFontSize: (fontSize: FontSize) => void;
   defaultIde: IdeId | null;
   setDefaultIde: (ide: IdeId | null) => void;
   detectedIdes: DetectedIde[];
@@ -49,8 +49,8 @@ export function useLauncherAppearance(): {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
-  const [fontSize, setFontSize] = useState<FontSizeId>(() => readStoredFontSize());
-  const [chatFontSize, setChatFontSize] = useState<FontSizeId>(() => readStoredChatFontSize());
+  const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
+  const [chatFontSize, setChatFontSize] = useState<FontSize>(() => readStoredChatFontSize());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const ideListLoadedRef = useRef(false);
@@ -64,13 +64,13 @@ export function useLauncherAppearance(): {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, fontSize);
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(fontSize));
     applyFontSizeToDocument(fontSize);
   }, [fontSize]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, chatFontSize);
+    window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, String(chatFontSize));
   }, [chatFontSize]);
 
   useEffect(() => {

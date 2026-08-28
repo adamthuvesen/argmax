@@ -100,6 +100,10 @@
   --motion-slow: 240ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* One full swell of the four-dot working nest. The sidebar's live session
+     marker and the agent-launch row are the same mark, so they run the same
+     cycle with the dots staggered an exact quarter of it apart. */
+  --working-nest-cycle: 1.8s;
 
   /* Spacing tokens. Prefer these over raw pixel values. docs/styling.md
      documents the full scale. */
@@ -165,33 +169,59 @@
   color: var(--text);
 }
 
-/* Type-size tokens. The three scales below are plain attribute selectors, not
-   `:root`-anchored, so any container can host its own scale: `<html>` carries
-   the app-chrome size while the session grid carries the chat size. Custom
-   properties inherit, so a nested [data-font-size] re-scales its whole subtree.
-   See docs/styling.md. */
+/* Type-size tokens. One scale, shifted whole pixels by `--type-step`: level 3
+   is what Argmax ships, 1 is two steps down, 5 two steps up. The sizes are
+   declared on `[data-font-size]` as well as `:root`, not `:root` alone, so any
+   container can host its own scale. `<html>` carries the app-chrome size while
+   the session grid carries the agent-window size, and each recomputes the
+   tokens from its own step. Custom properties inherit, so a nested
+   [data-font-size] re-scales its whole subtree. See docs/styling.md. */
+:root {
+  --type-step: 0px;
+}
+
+[data-font-size="1"] {
+  --type-step: -2px;
+}
+
+[data-font-size="2"] {
+  --type-step: -1px;
+}
+
+[data-font-size="3"] {
+  --type-step: 0px;
+}
+
+[data-font-size="4"] {
+  --type-step: 1px;
+}
+
+[data-font-size="5"] {
+  --type-step: 2px;
+}
+
 :root,
-[data-font-size="default"] {
-  --text-4xs: 9px;
-  --text-3xs: 9.5px;
-  --text-2xs: 10px;
-  --text-2xs-plus: 10.5px;
-  --text-xs: 11px;
-  --text-xs-plus: 11.5px;
-  --text-sm: 12px;
-  --text-sm-plus: 12.5px;
-  --text-base: 13px;
-  --text-base-plus: 14px;
-  --text-md-tight: 14.5px;
-  --text-md: 15px;
-  --text-md-plus: 16px;
-  --text-lg-tight: 17px;
-  --text-lg: 18px;
-  --text-lg-plus: 19px;
-  --text-xl: 20px;
-  --text-2xl: 22px;
-  --text-display: 23px;
-  --text-terminal: 13px;
+[data-font-size] {
+  --text-4xs: calc(9px + var(--type-step));
+  --text-3xs: calc(9.5px + var(--type-step));
+  --text-2xs: calc(10px + var(--type-step));
+  --text-2xs-plus: calc(10.5px + var(--type-step));
+  --text-xs: calc(11px + var(--type-step));
+  --text-xs-plus: calc(11.5px + var(--type-step));
+  --text-sm: calc(12px + var(--type-step));
+  --text-sm-plus: calc(12.5px + var(--type-step));
+  --text-base: calc(13px + var(--type-step));
+  --text-base-plus: calc(14px + var(--type-step));
+  --text-md-tight: calc(14.5px + var(--type-step));
+  --text-md: calc(15px + var(--type-step));
+  --text-md-plus: calc(16px + var(--type-step));
+  --text-lg-tight: calc(17px + var(--type-step));
+  --text-lg: calc(18px + var(--type-step));
+  --text-lg-plus: calc(19px + var(--type-step));
+  --text-xl: calc(20px + var(--type-step));
+  --text-2xl: calc(22px + var(--type-step));
+  --text-display: calc(23px + var(--type-step));
+  --text-terminal: calc(13px + var(--type-step));
 }
 
 /* Dark theme — "Warm Charcoal Editorial".
@@ -319,8 +349,10 @@
 
 /* Configurable chrome accent. These tokens are for brand/decorative tint:
    focus rings, selection, picker states, command palette affordances, launcher
-   ornament, and transcript metadata. Semantic status colors stay on --sage,
-   --amber, --rose, and the diff tokens so code additions remain green. */
+   ornament, transcript metadata, and the live-work marks (mascot, sidebar
+   working nest, running sub-agent nest). The remaining semantic status colors
+   stay on --sage, --amber, --rose, and the diff tokens so code additions
+   remain green. */
 :root[data-accent="purple"] {
   --accent: #8f63d9;
   --accent-soft: #eee7fb;
@@ -411,52 +443,6 @@
     --duration-fast: 0ms;
     --duration-base: 0ms;
   }
-}
-
-[data-font-size="small"] {
-  --text-4xs: 8px;
-  --text-3xs: 8.5px;
-  --text-2xs: 9px;
-  --text-2xs-plus: 9.5px;
-  --text-xs: 10px;
-  --text-xs-plus: 10.5px;
-  --text-sm: 11px;
-  --text-sm-plus: 11.5px;
-  --text-base: 12px;
-  --text-base-plus: 13px;
-  --text-md-tight: 13.5px;
-  --text-md: 14px;
-  --text-md-plus: 15px;
-  --text-lg-tight: 16px;
-  --text-lg: 17px;
-  --text-lg-plus: 18px;
-  --text-xl: 19px;
-  --text-2xl: 21px;
-  --text-display: 22px;
-  --text-terminal: 12px;
-}
-
-[data-font-size="large"] {
-  --text-4xs: 10px;
-  --text-3xs: 10.5px;
-  --text-2xs: 11px;
-  --text-2xs-plus: 11.5px;
-  --text-xs: 12px;
-  --text-xs-plus: 12.5px;
-  --text-sm: 13px;
-  --text-sm-plus: 13.5px;
-  --text-base: 14px;
-  --text-base-plus: 15px;
-  --text-md-tight: 15.5px;
-  --text-md: 16px;
-  --text-md-plus: 17px;
-  --text-lg-tight: 18px;
-  --text-lg: 19px;
-  --text-lg-plus: 20px;
-  --text-xl: 21px;
-  --text-2xl: 24px;
-  --text-display: 25px;
-  --text-terminal: 14px;
 }
 
 :root[data-font="lilex"] {

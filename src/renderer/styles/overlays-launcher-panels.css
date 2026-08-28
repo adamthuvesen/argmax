@@ -348,6 +348,9 @@
     grid-template-rows: auto minmax(0, 1fr) minmax(0, 68px) auto;
     padding-top: 12px;
     padding-bottom: 8px;
+    /* This layout reclaims the list's end padding, and the edge fades are only
+       honest while they have that padding to land on. */
+    --conversation-edge-fade: 0px;
   }
 
   .section-heading {

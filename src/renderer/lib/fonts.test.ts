@@ -4,8 +4,8 @@ import {
   applyFontToDocument,
   CHAT_FONT_SIZE_STORAGE_KEY,
   DEFAULT_FONT_ID,
-  DEFAULT_FONT_SIZE_ID,
-  FONT_SIZE_OPTIONS,
+  DEFAULT_FONT_SIZE,
+  FONT_SIZE_HINTS,
   FONT_SIZE_STORAGE_KEY,
   FONT_OPTIONS,
   FONT_STORAGE_KEY,
@@ -55,50 +55,64 @@ describe("fonts", () => {
     expect(document.documentElement.getAttribute("data-font")).toBe("geist-mono");
   });
 
-  it("defaults font size to default when nothing is stored", () => {
-    expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE_ID);
-    expect(DEFAULT_FONT_SIZE_ID).toBe("default");
+  it("defaults font size to level 3 when nothing is stored", () => {
+    expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE);
+    expect(DEFAULT_FONT_SIZE).toBe(3);
   });
 
-  it("reads a previously stored font size id", () => {
+  it("reads a previously stored level", () => {
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "5");
+    expect(readStoredFontSize()).toBe(5);
+  });
+
+  it("migrates the sizes the old three-way setting stored", () => {
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "small");
+    expect(readStoredFontSize()).toBe(2);
+
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "default");
+    expect(readStoredFontSize()).toBe(3);
+
     window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "large");
-    expect(readStoredFontSize()).toBe("large");
+    expect(readStoredFontSize()).toBe(4);
   });
 
-  it("falls back to default when storage holds an unknown font size id", () => {
+  it("falls back to the default for a level off the scale", () => {
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "9");
+    expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE);
+
     window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "gigantic");
-    expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE_ID);
+    expect(readStoredFontSize()).toBe(DEFAULT_FONT_SIZE);
   });
 
   it("starts the agent-window size equal to the app size", () => {
-    expect(readStoredChatFontSize()).toBe(DEFAULT_FONT_SIZE_ID);
+    expect(readStoredChatFontSize()).toBe(DEFAULT_FONT_SIZE);
 
-    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "large");
-    expect(readStoredChatFontSize()).toBe("large");
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "4");
+    expect(readStoredChatFontSize()).toBe(4);
   });
 
   it("keeps the agent-window size independent once it is stored", () => {
-    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "large");
-    window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, "small");
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "4");
+    window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, "1");
 
-    expect(readStoredChatFontSize()).toBe("small");
-    expect(readStoredFontSize()).toBe("large");
+    expect(readStoredChatFontSize()).toBe(1);
+    expect(readStoredFontSize()).toBe(4);
   });
 
   it("falls back to the app size when the stored agent-window size is unknown", () => {
-    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "small");
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, "2");
     window.localStorage.setItem(CHAT_FONT_SIZE_STORAGE_KEY, "gigantic");
 
-    expect(readStoredChatFontSize()).toBe("small");
+    expect(readStoredChatFontSize()).toBe(2);
   });
 
-  it("exposes the hidden whole-app font size options", () => {
-    expect(FONT_SIZE_OPTIONS.map((option) => option.id)).toEqual(["small", "default", "large"]);
+  it("captions every level of the scale", () => {
+    expect(Object.keys(FONT_SIZE_HINTS)).toEqual(["1", "2", "3", "4", "5"]);
   });
 
   it("applyFontSizeToDocument sets the data-font-size attribute on <html>", () => {
-    applyFontSizeToDocument("large");
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("large");
+    applyFontSizeToDocument(4);
+    expect(document.documentElement.getAttribute("data-font-size")).toBe("4");
   });
 
   it("resolves px CSS variables for non-CSS renderers", () => {

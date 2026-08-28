@@ -58,6 +58,7 @@ import { foldTurnToolItems } from "../lib/turnToolItems.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { SessionComposer } from "./SessionComposer.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
+import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { parseUserMessageAttachments } from "./sessionConversationHelpers.js";
 import {
@@ -87,8 +88,10 @@ export function SessionConversation({
   events,
   fastModeEnabled = false,
   isLogOpen,
+  isTerminalOpen,
   onClose,
   onFastModeEnabledChange,
+  onHideWorkspaceCard,
   onNewSession,
   onOpenCommitDialog,
   onSendSessionInput,
@@ -98,6 +101,8 @@ export function SessionConversation({
   onTerminateSession,
   onRunCheck,
   onToggleLog,
+  onToggleTerminal,
+  onToggleWorkspaceCard,
   onOpenFile,
   onOpenAgent,
   pendingApprovalCount = 0,
@@ -106,6 +111,7 @@ export function SessionConversation({
   review,
   session,
   showCostPanel = true,
+  workspaceCardEnabled = true,
   workspace
 }: {
   checks?: CheckRun[];
@@ -115,7 +121,14 @@ export function SessionConversation({
   events: TimelineEvent[];
   fastModeEnabled?: boolean;
   isLogOpen: boolean;
+  isTerminalOpen?: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
+  onHideWorkspaceCard?: () => void;
+  onToggleTerminal?: () => void;
+  onToggleWorkspaceCard?: () => void;
+  /** User preference for the workspace card. A docked right-hand panel still
+      wins over it. The card is the stand-in for exactly that panel. */
+  workspaceCardEnabled?: boolean;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
   /** Opens a launcher pane beside this one, for a task in any repository. */
@@ -197,6 +210,9 @@ export function SessionConversation({
     (): RenderItem[] => foldRenderItems(conversationItems, session, foldTurnToolItems),
     [conversationItems, session]
   );
+  // The card is the ambient stand-in for a docked right-hand panel, so an open
+  // review or debug-log panel takes its place rather than sitting beside it.
+  const showWorkspaceCard = workspaceCardEnabled && !review.isPanelOpen && !isLogOpen;
   const changeSummary = useMemo(() => {
     if (review.filesState !== "ready" || review.files.length === 0) {
       return null;
@@ -329,7 +345,7 @@ export function SessionConversation({
     !hasOutstandingCardAsk &&
     !isStreamingText;
   // Compaction is minutes of provider-side silence with its own live marker in
-  // the transcript. A second Thinking line under it would add noise.
+  // the transcript. A second "Thinking" line under it would say less, not more.
   const compacting = useMemo(() => isCompacting(events), [events]);
   // Show the generic indicator for any silent gap in a running turn. It stays
   // hidden while text is actively streaming, a visible tool row is running, or
@@ -455,10 +471,12 @@ export function SessionConversation({
         <div className="conversation-header-actions">
           <SessionActionsMenu
             isLogOpen={isLogOpen}
+            isWorkspaceCardEnabled={workspaceCardEnabled}
             onBrowseFiles={review.openPanelInFilesMode}
             onNewSession={onNewSession}
             onOpenCommitDialog={onOpenCommitDialog}
             onToggleLog={onToggleLog}
+            onToggleWorkspaceCard={onToggleWorkspaceCard}
             session={session}
             setStatus={setStatus}
             workspace={workspace}
@@ -476,89 +494,111 @@ export function SessionConversation({
           ) : null}
         </div>
       </div>
+      {/* Wrapper for the scroll edges: the fade scrims below sit on this
+          box, outside the scroller, so the sticky scroll-to-latest button
+          inside the list never fades with the content passing under it. */}
       <div className="conversation-scroll" data-restoring={restoringTranscript ? "true" : undefined}>
-      <div
-        className="conversation-list"
-        ref={conversationListRef}
-        onScroll={handleConversationScroll}
-        onWheel={handleConversationScrollIntent}
-        onTouchMove={handleConversationScrollIntent}
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget) {
-            handleConversationScrollIntent();
-          }
-        }}
-        onKeyDown={(event) => {
-          if (event.target === event.currentTarget && SCROLL_INTENT_KEYS.has(event.key)) {
-            handleConversationScrollIntent();
-          }
-        }}
-      >
-        {renderItems.length > 0 ? (
-          renderItems.map((item, index) => {
-            if (item.kind === "user-message") {
+        {showWorkspaceCard && workspace ? (
+          <WorkspaceCard
+            changeSummary={changeSummary}
+            isTerminalOpen={isTerminalOpen ?? false}
+            onBrowseFiles={review.openPanelInFilesMode}
+            onHide={() => onHideWorkspaceCard?.()}
+            onOpenChanges={review.toggleChangesPanel}
+            onOpenCommitDialog={onOpenCommitDialog}
+            onToggleTerminal={() => onToggleTerminal?.()}
+            session={session}
+            setStatus={setStatus}
+            workspace={workspace}
+          />
+        ) : null}
+        <div
+          className="conversation-list"
+          ref={conversationListRef}
+          onScroll={handleConversationScroll}
+          onWheel={handleConversationScrollIntent}
+          onTouchMove={handleConversationScrollIntent}
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) {
+              handleConversationScrollIntent();
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.target === event.currentTarget && SCROLL_INTENT_KEYS.has(event.key)) {
+              handleConversationScrollIntent();
+            }
+          }}
+        >
+          {renderItems.length > 0 ? (
+            renderItems.map((item, index) => {
+              if (item.kind === "user-message") {
+                return (
+                  <SessionConversationUserMessage
+                    key={item.event.id}
+                    event={item.event}
+                    attachments={parseUserMessageAttachments(item)}
+                  />
+                );
+              }
+              if (item.kind === "compaction") {
+                return <CompactionNotice key={item.id} notice={item.notice} />;
+              }
               return (
-                <SessionConversationUserMessage
-                  key={item.event.id}
-                  event={item.event}
-                  attachments={parseUserMessageAttachments(item)}
+                <SessionConversationTurn
+                  key={item.id}
+                  item={item}
+                  priorItem={index > 0 ? renderItems[index - 1] ?? null : null}
+                  isLatestTurn={index === renderItems.length - 1}
+                  session={session}
+                  selectedModel={selectedModel}
+                  workspace={workspace}
+                  agentCodenames={agentCodenames}
+                  onOpenFile={onOpenFile}
+                  onOpenAgent={onOpenAgent}
+                  onTerminateSession={onTerminateSession}
+                  onSendSessionInput={sendSessionInput}
+                  inputRef={inputRef}
+                  shouldRefocusInput={shouldRefocusInput}
+                  setStatus={setStatus}
+                  setAgentMode={setAgentMode}
+                  defaultToolCallsExpanded={defaultToolCallsExpanded}
+                  defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                  defaultThinkingExpanded={defaultThinkingExpanded}
                 />
               );
-            }
-            if (item.kind === "compaction") {
-              return <CompactionNotice key={item.id} notice={item.notice} />;
-            }
-            return (
-              <SessionConversationTurn
-                key={item.id}
-                item={item}
-                priorItem={index > 0 ? renderItems[index - 1] ?? null : null}
-                isLatestTurn={index === renderItems.length - 1}
-                session={session}
-                selectedModel={selectedModel}
-                workspace={workspace}
-                agentCodenames={agentCodenames}
-                onOpenFile={onOpenFile}
-                onOpenAgent={onOpenAgent}
-                onTerminateSession={onTerminateSession}
-                onSendSessionInput={sendSessionInput}
-                inputRef={inputRef}
-                shouldRefocusInput={shouldRefocusInput}
-                setStatus={setStatus}
-                setAgentMode={setAgentMode}
-                defaultToolCallsExpanded={defaultToolCallsExpanded}
-                defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                defaultThinkingExpanded={defaultThinkingExpanded}
-              />
-            );
-          })
-        ) : terminalTranscript ? (
-          <article className="chat-bubble assistant terminal-transcript">
-            <pre>{terminalTranscript}</pre>
-          </article>
-        ) : isThinking ? null : (
-          <p className="conversation-empty">Agent replies will appear here.</p>
-        )}
-        {terminalTranscript && !hasRenderableContent && conversationItems.length > 0 ? (
-          <article className="chat-bubble assistant terminal-transcript">
-            <pre>{terminalTranscript}</pre>
-          </article>
-        ) : null}
-        {showScrollToBottom ? (
-          <button
-            type="button"
-            className="scroll-to-bottom-fab"
-            aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-            title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
-            onClick={scrollConversationToBottom}
-          >
-            <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        ) : null}
-        <div className="conversation-tail">
-          {isThinkingVisible ? <ThinkingLabel /> : null}
+            })
+          ) : terminalTranscript ? (
+            <article className="chat-bubble assistant terminal-transcript">
+              <pre>{terminalTranscript}</pre>
+            </article>
+          ) : isThinking ? null : (
+            <p className="conversation-empty">Agent replies will appear here.</p>
+          )}
+          {terminalTranscript && !hasRenderableContent && conversationItems.length > 0 ? (
+            <article className="chat-bubble assistant terminal-transcript">
+              <pre>{terminalTranscript}</pre>
+            </article>
+          ) : null}
+          {showScrollToBottom ? (
+            <button
+              type="button"
+              className="scroll-to-bottom-fab"
+              aria-label={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
+              title={newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest"}
+              onClick={scrollConversationToBottom}
+            >
+              <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          ) : null}
+          {/* The Thinking line's slot stays in the layout whether the line is
+              in it or not. It is the list's last row, and it leaves at the
+              moment the first answer token lands. Unmounting the row there
+              would shorten the transcript under a reader pinned to the bottom
+              and pull the view up by its height. */}
+          <div className="conversation-tail">
+            {isThinkingVisible ? <ThinkingLabel /> : null}
+          </div>
         </div>
-      </div>
       </div>
       <div
         className="session-meta-cards"

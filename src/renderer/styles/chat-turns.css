@@ -995,50 +995,13 @@
   box-shadow: none;
 }
 
+/* A sub-agent launch shows the shared working nest (styles/working-nest.css):
+   the same mark, motion and accent the sidebar gives its parent session, so a
+   running sub-agent reads the same in the transcript as the session does in the
+   list. Only the row's position is local. */
 .agent-launch-nest {
-  flex: 0 0 auto;
-  margin-top: 5px;
+  margin-top: 3px;
   margin-right: 4px;
-  color: color-mix(in oklab, var(--muted) 60%, transparent);
-  fill: currentColor;
-}
-
-/* A launch in flight walks the four dots clockwise, one brightening at a time
-   against a dimmed rest of the mark. Only `data-status="running"` animates:
-   a completed or failed row keeps the mark still, which is what "settled"
-   should look like. Reduced motion drops back to the same static mark. */
-.agent-launch-row[data-status="running"] .agent-launch-nest-dot {
-  animation: agent-launch-nest-orbit 1.6s var(--ease) infinite;
-}
-
-.agent-launch-row[data-status="running"] .agent-launch-nest-dot[data-dot="2"] {
-  animation-delay: 0.2s;
-}
-
-.agent-launch-row[data-status="running"] .agent-launch-nest-dot[data-dot="3"] {
-  animation-delay: 0.4s;
-}
-
-.agent-launch-row[data-status="running"] .agent-launch-nest-dot[data-dot="4"] {
-  animation-delay: 0.6s;
-}
-
-@keyframes agent-launch-nest-orbit {
-  0%,
-  55%,
-  100% {
-    opacity: 0.4;
-  }
-
-  18% {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-launch-row[data-status="running"] .agent-launch-nest-dot {
-    animation: none;
-  }
 }
 
 .agent-launch-headline {

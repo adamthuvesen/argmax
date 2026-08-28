@@ -1,7 +1,8 @@
 import type { JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
-import type { ChatWidth } from "../../lib/chatWidth.js";
-import { FONT_OPTIONS, FONT_SIZE_OPTIONS, type FontFamilyId, type FontSizeId } from "../../lib/fonts.js";
+import { CHAT_WIDTH_HINTS, type ChatWidth } from "../../lib/chatWidth.js";
+import { FONT_OPTIONS, FONT_SIZE_HINTS, type FontFamilyId, type FontSize } from "../../lib/fonts.js";
+import { SCALE_LEVEL_CHOICES, toScaleLevel, type ScaleLevel } from "../../lib/scaleLevel.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import {
@@ -28,12 +29,16 @@ export function GeneralSettings({
   onSidebarPriorityVisibleChange,
   chatCostVisible,
   onChatCostVisibleChange,
+  workspaceCardVisible,
+  onWorkspaceCardVisibleChange,
   pixelFieldEnabled,
   onPixelFieldEnabledChange,
   chatWidth,
   onChatWidthChange,
   newSessionMode,
   onNewSessionModeChange,
+  randomSessionIconEnabled,
+  onRandomSessionIconEnabledChange,
   fontSize,
   onFontSizeChange,
   chatFontSize,
@@ -41,10 +46,10 @@ export function GeneralSettings({
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
-  fontSize: FontSizeId;
-  onFontSizeChange: (id: FontSizeId) => void;
-  chatFontSize: FontSizeId;
-  onChatFontSizeChange: (id: FontSizeId) => void;
+  fontSize: FontSize;
+  onFontSizeChange: (size: FontSize) => void;
+  chatFontSize: FontSize;
+  onChatFontSizeChange: (size: FontSize) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   accentId: AccentId;
@@ -55,20 +60,23 @@ export function GeneralSettings({
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   chatCostVisible: boolean;
   onChatCostVisibleChange: (v: boolean) => void;
+  workspaceCardVisible: boolean;
+  onWorkspaceCardVisibleChange: (v: boolean) => void;
   pixelFieldEnabled: boolean;
   onPixelFieldEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
+  randomSessionIconEnabled: boolean;
+  onRandomSessionIconEnabledChange: (v: boolean) => void;
 }): JSX.Element {
-  const fontSizeChoices = FONT_SIZE_OPTIONS.map((option) => ({
-    value: option.id,
-    label: option.label
-  }));
-  const selectedFontSize = FONT_SIZE_OPTIONS.find((o) => o.id === fontSize) ?? FONT_SIZE_OPTIONS[1];
-  const selectedChatFontSize =
-    FONT_SIZE_OPTIONS.find((o) => o.id === chatFontSize) ?? FONT_SIZE_OPTIONS[1];
+  // The size controls share one 1–5 scale: 1 smallest, 3 what Argmax ships,
+  // 5 largest. `Segmented` speaks strings, the settings speak levels.
+  const pickLevel = (raw: string, apply: (level: ScaleLevel) => void): void => {
+    const level = toScaleLevel(raw);
+    if (level) apply(level);
+  };
 
   return (
     <>
@@ -164,27 +172,29 @@ export function GeneralSettings({
 
           <Segmented
             legend="App font size"
+            hint="1 smallest · 3 default · 5 largest"
             name="font-size"
-            value={fontSize}
-            onChange={(v) => onFontSizeChange(v as FontSizeId)}
-            options={fontSizeChoices}
+            value={String(fontSize)}
+            onChange={(v) => pickLevel(v, onFontSizeChange)}
+            options={SCALE_LEVEL_CHOICES}
           />
           <div className="settings-card-sub">
             <p className="settings-font-caption">
-              Sidebar, titlebar, settings, and search. {selectedFontSize.hint}
+              Sidebar, titlebar, settings, and search. {FONT_SIZE_HINTS[fontSize]}
             </p>
           </div>
 
           <Segmented
             legend="Agent window font size"
+            hint="1 smallest · 3 default · 5 largest"
             name="chat-font-size"
-            value={chatFontSize}
-            onChange={(v) => onChatFontSizeChange(v as FontSizeId)}
-            options={fontSizeChoices}
+            value={String(chatFontSize)}
+            onChange={(v) => pickLevel(v, onChatFontSizeChange)}
+            options={SCALE_LEVEL_CHOICES}
           />
           <div className="settings-card-sub">
             <p className="settings-font-caption">
-              Conversations, composers, and agent activity panes. {selectedChatFontSize.hint}
+              Conversations, composers, and agent activity panes. {FONT_SIZE_HINTS[chatFontSize]}
             </p>
           </div>
 
@@ -210,6 +220,13 @@ export function GeneralSettings({
           />
 
           <ToggleRow
+            label="Workspace card in agent view"
+            description="A summary of the session's worktree in the top-right of the agent view: branch, changed lines, and one click into changes, files, terminal, commit, and the pull request. It yields to the review and debug panels, and needs a pane wide enough to sit beside the conversation."
+            checked={workspaceCardVisible}
+            onChange={onWorkspaceCardVisibleChange}
+          />
+
+          <ToggleRow
             label="Pixel field in composer"
             description="As you type a new session, ripple an animated pixel field across the input."
             checked={pixelFieldEnabled}
@@ -218,15 +235,17 @@ export function GeneralSettings({
 
           <Segmented
             legend="Chat width"
+            hint="1 narrowest · 3 default · 5 widest"
             name="chat-width"
-            value={chatWidth}
-            onChange={(v) => onChatWidthChange(v as ChatWidth)}
-            options={[
-              { value: "narrow", label: "Narrow" },
-              { value: "standard", label: "Default" },
-              { value: "wide", label: "Wide" }
-            ]}
+            value={String(chatWidth)}
+            onChange={(v) => pickLevel(v, onChatWidthChange)}
+            options={SCALE_LEVEL_CHOICES}
           />
+          <div className="settings-card-sub">
+            <p className="settings-font-caption">
+              How wide a conversation runs before it stops growing. {CHAT_WIDTH_HINTS[chatWidth]}
+            </p>
+          </div>
 
           <KeyValueList
             rows={[
@@ -253,6 +272,12 @@ export function GeneralSettings({
               { value: "embedded", label: "Open in grid" },
               { value: "full", label: "Open full view" }
             ]}
+          />
+          <ToggleRow
+            label="Random icon for new sessions"
+            description="Give each new session a random icon and color."
+            checked={randomSessionIconEnabled}
+            onChange={onRandomSessionIconEnabledChange}
           />
           <KeyValueList
             rows={[

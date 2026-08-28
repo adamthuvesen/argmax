@@ -4,11 +4,13 @@ export const SIDEBAR_TOKENS_KEY = "argmax.sidebar.tokens.visible";
 export const SIDEBAR_PRIORITY_KEY = "argmax.sidebar.priority.visible";
 export const SIDEBAR_COLLAPSED_KEY = "argmax.sidebar.collapsed";
 export const CHAT_COST_KEY = "argmax.chat.cost.visible";
+export const WORKSPACE_CARD_KEY = "argmax.workspaceCard.visible";
 export const THINKING_EXPANDED_KEY = "argmax.thinking.expanded";
 export const TOOL_CALLS_EXPANDED_KEY = "argmax.toolCalls.expanded";
 export const TOOL_CALL_GROUPS_EXPANDED_KEY = "argmax.toolCalls.groups.expanded";
 export const FAST_MODE_KEY = "argmax.fastMode.enabled";
 export const COMPOSER_PIXEL_FIELD_KEY = "argmax.composer.pixelField.enabled";
+export const RANDOM_SESSION_ICON_KEY = "argmax.sessionIcon.random.enabled";
 
 function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;

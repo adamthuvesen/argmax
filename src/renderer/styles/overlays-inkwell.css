@@ -9,10 +9,14 @@
   position: fixed;
   inset: 0;
   display: grid;
-  /* Centered in the window, not pinned near the top like VS Code. The padding
-     keeps the dialog off the window edges when the result list is at its cap. */
+  /* Centered on the work area, not pinned near the top like VS Code and not
+     centered on the window. The sidebar is a fixed left column, so a
+     window-centered dialog reads as shifted left of the conversation and the
+     composer it covers. Padding rather than `inset` keeps the backdrop over
+     the whole window, and keeps the dialog off the edges when the result list
+     is at its cap. */
   place-items: center;
-  padding: 6vh 16px;
+  padding: 6vh 16px 6vh calc(16px + var(--work-area-left-inset, 0px));
   background: var(--modal-backdrop);
   background-image: var(--modal-backdrop-gradient);
   /* Sits above the launcher's review panel (z 120) so ⌘K / search stay the
@@ -27,7 +31,9 @@
 }
 
 .command-palette {
-  width: min(680px, 92vw);
+  /* Never wider than the work area it centers on, so a narrow window with a
+     wide sidebar shrinks the dialog instead of pushing it off the right edge. */
+  width: min(680px, calc(100vw - var(--work-area-left-inset, 0px) - 32px));
   max-height: 70vh;
   display: flex;
   flex-direction: column;

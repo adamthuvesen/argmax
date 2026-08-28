@@ -22,12 +22,13 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 
 describe("AgentLaunchList", () => {
   it("names a running launch so the animated nest mark is never the only signal", () => {
-    render(<AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} />);
+    const { container } = render(<AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} />);
     expect(
       screen.getByRole("button", { name: startedAgentName("Map the renderer") })
     ).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
     expect(screen.getByText(/^Launched /)).toBeInTheDocument();
+    expect(container.querySelector(".working-nest[data-active='true']")).not.toBeNull();
   });
 
   it("shows the codename instead of the launch prompt", () => {
@@ -50,8 +51,9 @@ describe("AgentLaunchList", () => {
   });
 
   it("leaves a completed launch without a status hint", () => {
-    render(<AgentLaunchList tools={[tool()]} />);
+    const { container } = render(<AgentLaunchList tools={[tool()]} />);
     expect(screen.queryByText("Running")).not.toBeInTheDocument();
     expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+    expect(container.querySelector(".working-nest[data-active='true']")).toBeNull();
   });
 });

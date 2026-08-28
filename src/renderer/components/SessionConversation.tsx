@@ -210,6 +210,26 @@ export function SessionConversation({
   // The card is the ambient stand-in for a docked right-hand panel, so an open
   // review or debug-log panel takes its place rather than sitting beside it.
   const showWorkspaceCard = workspaceCardEnabled && !review.isPanelOpen && !isLogOpen;
+  const conversationScrollRef = useRef<HTMLDivElement | null>(null);
+  // The width gate lives in CSS (chat-workspace-card.css keeps the card
+  // `display: none` until the pane can hold it beside the transcript), so
+  // enabling it in a narrow pane changes nothing on screen. Asking the DOM
+  // whether the card actually appeared keeps CSS the single source of truth
+  // while turning the silent no-op into an explained one.
+  const handleToggleWorkspaceCard = useMemo(() => {
+    if (!onToggleWorkspaceCard) return undefined;
+    return (): void => {
+      const enabling = !workspaceCardEnabled;
+      onToggleWorkspaceCard();
+      if (!enabling || review.isPanelOpen || isLogOpen || !workspace) return;
+      requestAnimationFrame(() => {
+        const card = conversationScrollRef.current?.querySelector('aside[aria-label="Workspace"]');
+        if (card instanceof HTMLElement && getComputedStyle(card).display === "none") {
+          setStatus("Workspace card is on, but this pane is too narrow to show it. Widen the pane or pick a narrower chat width in Settings.");
+        }
+      });
+    };
+  }, [onToggleWorkspaceCard, workspaceCardEnabled, review.isPanelOpen, isLogOpen, workspace]);
   const changeSummary = useMemo(() => {
     if (review.filesState !== "ready" || review.files.length === 0) {
       return null;
@@ -473,7 +493,7 @@ export function SessionConversation({
             onNewSession={onNewSession}
             onOpenCommitDialog={onOpenCommitDialog}
             onToggleLog={onToggleLog}
-            onToggleWorkspaceCard={onToggleWorkspaceCard}
+            onToggleWorkspaceCard={handleToggleWorkspaceCard}
             session={session}
             setStatus={setStatus}
             workspace={workspace}
@@ -494,7 +514,7 @@ export function SessionConversation({
       {/* Wrapper for the scroll edges: the fade scrims below sit on this
           box, outside the scroller, so the sticky scroll-to-latest button
           inside the list never fades with the content passing under it. */}
-      <div className="conversation-scroll" data-restoring={restoringTranscript ? "true" : undefined}>
+      <div className="conversation-scroll" ref={conversationScrollRef} data-restoring={restoringTranscript ? "true" : undefined}>
         {showWorkspaceCard && workspace ? (
           <WorkspaceCard
             changeSummary={changeSummary}

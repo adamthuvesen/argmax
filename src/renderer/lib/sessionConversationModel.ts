@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { COMPACTION_FINISHED, COMPACTION_STARTED } from "./compaction.js";
 import {
   detectToolError,
@@ -244,8 +245,21 @@ function foldCodexAgentControlTools(tools: readonly ToolCall[]): ToolCall[] {
     .map((tool) => replacements.get(tool.id) ?? tool);
 }
 
-function isSuccessfulCodexSpawnLaunch(name: string, completion: TimelineEvent | undefined): boolean {
-  return name.toLowerCase() === "spawn_agent" && completion !== undefined;
+function isStillRunningAgentLaunch(
+  name: string,
+  input: Record<string, unknown>,
+  output: string | null,
+  completion: TimelineEvent | undefined
+): boolean {
+  if (getToolTypeBucket(name) !== "agent") return false;
+  if (!completion || detectToolError(completion.payload)) return false;
+  if (name.toLowerCase() === "spawn_agent") return true;
+  const status = stringValue(completion.payload.status);
+  if (status === "in_progress" || status === "running" || status === "started") return true;
+  if (output && isInternalAgentLaunchMetadata(output)) return true;
+  const runInBackground = input.run_in_background ?? input.runInBackground;
+  if (runInBackground === true || runInBackground === "true") return true;
+  return false;
 }
 
 /**
@@ -318,6 +332,7 @@ export function buildSessionToolCalls(
       const input = Object.keys(completionInput).length > 0
         ? { ...startInput, ...completionInput }
         : startInput;
+      const output = completion ? extractToolOutput(completion.payload) : null;
       const isError = completion ? detectToolError(completion.payload) : false;
       const hasLaterVisibleProgress = visibleProgressEvents.some((progress) => eventIsAfter(progress, event));
       // A started tool with no matching `command.completed` is normally still
@@ -341,7 +356,7 @@ export function buildSessionToolCalls(
           ? "done"
           : "running";
       const renderedStatus: ToolCall["status"] =
-        status === "done" && sessionRunning && isSuccessfulCodexSpawnLaunch(name, completion)
+        status === "done" && sessionRunning && isStillRunningAgentLaunch(name, input, output, completion)
           ? "running"
           : status;
       const rawParent = event.payload.parent_tool_use_id;
@@ -352,7 +367,7 @@ export function buildSessionToolCalls(
         name,
         inputPreview: extractToolInputPreview(name, input),
         inputFull: input,
-        output: completion ? extractToolOutput(completion.payload) : null,
+        output,
         status: renderedStatus,
         createdAt: event.createdAt,
         // No real completion timestamp exists for a dropped completion; anchor

@@ -4,7 +4,8 @@ import {
   agentLaunchStatusHint,
   agentLaunchTitle,
   agentRoleLabel,
-  agentStatusLabel
+  agentStatusLabel,
+  isInternalAgentLaunchMetadata
 } from "./agentLaunch.js";
 import type { ToolCall } from "./toolCalls.js";
 
@@ -63,5 +64,19 @@ describe("agentStatusLabel", () => {
 describe("agentLaunchAriaLabel", () => {
   it("keeps the Started agent <codename> — <preview> contract", () => {
     expect(agentLaunchAriaLabel(tool(), "Triton")).toBe("Started agent Triton — Map the renderer");
+  });
+});
+
+describe("isInternalAgentLaunchMetadata", () => {
+  it("detects async launch confirmation phrases", () => {
+    expect(isInternalAgentLaunchMetadata("Async agent launched successfully. output_file: /tmp/out")).toBe(true);
+    expect(isInternalAgentLaunchMetadata("This tool result is internal metadata. Use SendMessage with to: ...")).toBe(true);
+    expect(isInternalAgentLaunchMetadata("Background task launched.")).toBe(true);
+    expect(isInternalAgentLaunchMetadata("Subagent launched successfully.")).toBe(true);
+  });
+
+  it("returns false for real subagent completion text", () => {
+    expect(isInternalAgentLaunchMetadata("Checked the repository layout. Found 12 components.")).toBe(false);
+    expect(isInternalAgentLaunchMetadata("README is updated.")).toBe(false);
   });
 });

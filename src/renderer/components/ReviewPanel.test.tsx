@@ -27,8 +27,9 @@ function reviewStub(): ReviewState {
     isPanelOpen: true,
     mode: "changes",
     setMode: vi.fn(),
-    changesComparison: "local",
-    setChangesComparison: vi.fn(),
+    changesScope: "branch",
+    setChangesScope: vi.fn(),
+    availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
     comparisonBaseLabel: "main",
     workspaceFiles: {
       entries: [],
@@ -126,26 +127,38 @@ describe("ReviewPanel changes layout", () => {
     expect(openFile).toHaveBeenCalledWith("src/deep/b.ts");
   });
 
-  it("toggles the diff baseline with one Local/Branch chip", () => {
+  it("picks the changes scope from a chip that defaults to the whole branch", () => {
     const review = reviewStub();
-    const setChangesComparison = vi.fn();
-    review.setChangesComparison = setChangesComparison;
+    const setChangesScope = vi.fn();
+    review.setChangesScope = setChangesScope;
 
-    const { rerender } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
-    const localChip = screen.getByRole("button", { name: "Diff baseline: Local" });
-    expect(localChip).toHaveTextContent("Local");
-    expect(localChip).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(localChip);
-    expect(setChangesComparison).toHaveBeenCalledWith("branch");
+    const chip = screen.getByRole("button", { name: "Changes shown: All on branch" });
+    fireEvent.click(chip);
 
-    rerender(<ReviewPanel review={{ ...review, changesComparison: "branch" }} />);
+    const options = screen.getByRole("listbox", { name: "Changes shown" });
+    expect(within(options).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "All on branch",
+      "Committed",
+      "Uncommitted",
+      "Last turn"
+    ]);
 
-    const branchChip = screen.getByRole("button", { name: "Diff baseline: Branch" });
-    expect(branchChip).toHaveTextContent("Branch");
-    expect(branchChip).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(branchChip);
-    expect(setChangesComparison).toHaveBeenCalledWith("local");
+    fireEvent.click(within(options).getByRole("button", { name: "Committed" }));
+    expect(setChangesScope).toHaveBeenCalledWith("committed");
+    expect(screen.queryByRole("listbox", { name: "Changes shown" })).toBeNull();
+  });
+
+  it("hides Last turn when the source has no transcript", () => {
+    const review = reviewStub();
+    review.availableScopes = ["branch", "committed", "uncommitted"];
+
+    render(<ReviewPanel review={review} />);
+    fireEvent.click(screen.getByRole("button", { name: "Changes shown: All on branch" }));
+
+    const options = screen.getByRole("listbox", { name: "Changes shown" });
+    expect(within(options).queryByRole("button", { name: "Last turn" })).toBeNull();
   });
 
   it("collapses the expanded changed file row without changing Files mode state", () => {

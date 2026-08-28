@@ -8,6 +8,7 @@ import type {
   WorkspaceFilePreview,
   WorkspaceSummary
 } from "../../shared/types.js";
+import { filterToLastTurn } from "../lib/lastTurnFiles.js";
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
 import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
@@ -16,17 +17,51 @@ import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
 export type ReviewPanelMode = "changes" | "files";
-/** Which baseline the Changes view diffs against. "local" → working tree vs
- *  HEAD; "branch" → everything different from the base branch. */
-export type ReviewChangesComparison = "local" | "branch";
+
+/**
+ * Which slice of the work the Changes view shows.
+ *
+ * - `branch`: everything different from the base branch: committed,
+ *   uncommitted, and untracked. The default, because it answers "what did this
+ *   task change" without the reader having to know what was committed when.
+ * - `committed`: only what has landed as commits on the branch.
+ * - `uncommitted`: only the working tree, vs `HEAD`.
+ * - `lastTurn`: `branch`, filtered to the files the agent wrote in the newest
+ *   turn (see lastTurnFiles.ts). Only offered where a session transcript
+ *   exists, so it is absent on the launcher.
+ */
+export type ReviewChangesScope = "branch" | "committed" | "uncommitted" | "lastTurn";
+
+export const REVIEW_SCOPE_LABELS: Record<ReviewChangesScope, string> = {
+  branch: "All on branch",
+  committed: "Committed",
+  uncommitted: "Uncommitted",
+  lastTurn: "Last turn"
+};
+
 export type WorkspaceFileSaveState = "idle" | "saving" | "error";
 
-const COMPARISON_KEY = "argmax.reviewPanel.changesComparison";
+const SCOPE_KEY = "argmax.reviewPanel.changesScope";
 
-function readStoredComparison(): ReviewChangesComparison {
-  if (typeof window === "undefined") return "local";
-  return window.localStorage.getItem(COMPARISON_KEY) === "branch" ? "branch" : "local";
+function isReviewChangesScope(value: unknown): value is ReviewChangesScope {
+  return value === "branch" || value === "committed" || value === "uncommitted" || value === "lastTurn";
 }
+
+function readStoredScope(): ReviewChangesScope {
+  if (typeof window === "undefined") return "branch";
+  const stored = window.localStorage.getItem(SCOPE_KEY);
+  return isReviewChangesScope(stored) ? stored : "branch";
+}
+
+const ALL_SCOPES: ReviewChangesScope[] = ["branch", "committed", "uncommitted", "lastTurn"];
+
+const SCOPE_COMPARISONS: Record<ReviewChangesScope, ReviewComparison> = {
+  branch: "branch",
+  committed: "committed",
+  uncommitted: "workingTree",
+  // Last turn narrows the branch list client-side; the git query is the same.
+  lastTurn: "branch"
+};
 
 /**
  * Either a workspace (worktree-backed) or the project's main checkout
@@ -100,11 +135,13 @@ export interface ReviewState {
   isPanelOpen: boolean;
   mode: ReviewPanelMode;
   setMode: (mode: ReviewPanelMode) => void;
-  /** Changes-view baseline: working tree ("local") vs base branch ("branch"). */
-  changesComparison: ReviewChangesComparison;
-  setChangesComparison: (comparison: ReviewChangesComparison) => void;
-  /** Base branch label for the Branch toggle title (e.g. "main"); null when no
-   *  source is active. */
+  /** Which slice of the work the Changes view shows. */
+  changesScope: ReviewChangesScope;
+  setChangesScope: (scope: ReviewChangesScope) => void;
+  /** Scopes this source can offer. "lastTurn" needs a session transcript. */
+  availableScopes: ReviewChangesScope[];
+  /** Base branch label for the scope picker (e.g. "main"); null when no source
+   *  is active. */
   comparisonBaseLabel: string | null;
   workspaceFiles: WorkspaceFilesState;
   openFile: (filePath: string) => void;
@@ -115,7 +152,12 @@ export interface ReviewState {
   toggleChangesPanel: () => void;
 }
 
-export function useReviewState(source: ReviewSource | null): ReviewState {
+export function useReviewState(
+  source: ReviewSource | null,
+  /** Repo-relative paths the newest turn wrote. `null` where no transcript
+   *  exists (the launcher), which also hides the "Last turn" scope. */
+  lastTurnPaths: readonly string[] | null = null
+): ReviewState {
   const sourceKind = source?.kind ?? null;
   const sourceId: string | null = source
     ? source.kind === "workspace"
@@ -133,11 +175,20 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [mode, setMode] = useState<ReviewPanelMode>("changes");
-  const [changesComparison, setChangesComparison] = useState<ReviewChangesComparison>(readStoredComparison);
-  usePersistedSetting(COMPARISON_KEY, changesComparison);
+  const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
+  usePersistedSetting(SCOPE_KEY, storedScope);
   const previousSourceId = useRef<string | null>(null);
 
-  const comparison: ReviewComparison = changesComparison === "branch" ? "branch" : "workingTree";
+  const hasTranscript = lastTurnPaths !== null;
+  const availableScopes: ReviewChangesScope[] = useMemo(
+    () => (hasTranscript ? ALL_SCOPES : ALL_SCOPES.filter((scope) => scope !== "lastTurn")),
+    [hasTranscript]
+  );
+  // A stored "lastTurn" would strand the launcher on a scope it cannot offer.
+  const changesScope: ReviewChangesScope = availableScopes.includes(storedScope)
+    ? storedScope
+    : "branch";
+  const comparison: ReviewComparison = SCOPE_COMPARISONS[changesScope];
   const comparisonBaseLabel: string | null = source
     ? source.kind === "workspace"
       ? source.workspace.baseRef
@@ -225,8 +276,15 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     setIsPanelOpen(false);
   }, []);
 
-  const panelRef = useRef({ isPanelOpen, filesCount: 0, files: diffState.files, mode });
-  panelRef.current = { isPanelOpen, filesCount: diffState.files.length, files: diffState.files, mode };
+  // "Last turn" reuses the branch query and narrows it here, so switching
+  // scopes costs no git work and the diff already loaded for a file stays valid.
+  const visibleFiles =
+    changesScope === "lastTurn" && lastTurnPaths !== null
+      ? filterToLastTurn(diffState.files, lastTurnPaths)
+      : diffState.files;
+
+  const panelRef = useRef({ isPanelOpen, filesCount: 0, files: visibleFiles, mode });
+  panelRef.current = { isPanelOpen, filesCount: visibleFiles.length, files: visibleFiles, mode };
 
   const togglePanel = useCallback((): void => {
     const opening = !panelRef.current.isPanelOpen;
@@ -282,7 +340,7 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
   };
 
   return {
-    files: diffState.files,
+    files: visibleFiles,
     filesState: diffState.filesState,
     filesError: diffState.filesError,
     selectedFilePath: diffState.selectedFilePath,
@@ -292,8 +350,9 @@ export function useReviewState(source: ReviewSource | null): ReviewState {
     isPanelOpen,
     mode,
     setMode,
-    changesComparison,
-    setChangesComparison,
+    changesScope,
+    setChangesScope,
+    availableScopes,
     comparisonBaseLabel,
     workspaceFiles,
     openFile: diffState.openFile,

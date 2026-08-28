@@ -10,7 +10,8 @@ use argmax_lib::persistence::{
     workspaces::{persist_workspace, PersistWorkspaceInput},
 };
 use argmax_lib::review::git_review::{
-    list_changed_files, list_changed_files_at_path, load_diff_at_path, ReviewComparison,
+    list_changed_files, list_changed_files_at_path, load_diff_at_path, ReviewBaseline,
+    ReviewComparison,
 };
 use argmax_lib::workspaces::WorkspaceTargetKind;
 use support::git_repo::{run_git, seed_git_repo};
@@ -88,20 +89,41 @@ async fn lists_changed_files_and_loads_diffs() {
     run_git(repo.path(), &["add", "src/staged.ts"]);
     std::fs::remove_file(repo.path().join("src/delete-me.ts")).unwrap();
 
-    let files = list_changed_files_at_path(repo.path(), None).await.unwrap();
-    let diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/index.ts"), None)
+    let files = list_changed_files_at_path(repo.path(), ReviewBaseline::WorkingTree)
         .await
         .unwrap();
-    let staged_diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/staged.ts"), None)
-        .await
-        .unwrap();
-    let untracked_diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/new.ts"), None)
-        .await
-        .unwrap();
-    let deleted_diff =
-        load_diff_at_path(repo.path(), "workspace-1", Some("src/delete-me.ts"), None)
-            .await
-            .unwrap();
+    let diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/index.ts"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
+    let staged_diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/staged.ts"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
+    let untracked_diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/new.ts"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
+    let deleted_diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/delete-me.ts"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         files
@@ -134,10 +156,17 @@ async fn loads_diff_for_leading_dash_file_name() {
     let repo = seed_git_repo(&[("-notes.md", "before\n")]);
     std::fs::write(repo.path().join("-notes.md"), "after\n").unwrap();
 
-    let files = list_changed_files_at_path(repo.path(), None).await.unwrap();
-    let diff = load_diff_at_path(repo.path(), "workspace-1", Some("-notes.md"), None)
+    let files = list_changed_files_at_path(repo.path(), ReviewBaseline::WorkingTree)
         .await
         .unwrap();
+    let diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("-notes.md"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
 
     assert!(files.iter().any(|file| file.path == "-notes.md"));
     assert_eq!(diff.file_path.as_deref(), Some("-notes.md"));
@@ -160,7 +189,7 @@ async fn branch_mode_single_file_diff_renders_committed_rename() {
     run_git(repo.path(), &["mv", "src/old-name.ts", "src/new-name.ts"]);
     run_git(repo.path(), &["commit", "-m", "rename"]);
 
-    let files = list_changed_files_at_path(repo.path(), Some("base"))
+    let files = list_changed_files_at_path(repo.path(), ReviewBaseline::Branch("base"))
         .await
         .unwrap();
     let renamed = files
@@ -173,7 +202,7 @@ async fn branch_mode_single_file_diff_renders_committed_rename() {
         repo.path(),
         "workspace-1",
         Some("src/new-name.ts"),
-        Some("base"),
+        ReviewBaseline::Branch("base"),
     )
     .await
     .unwrap();
@@ -192,10 +221,17 @@ async fn skips_untracked_directories_without_crashing() {
     std::fs::create_dir(repo.path().join("src/untracked-dir")).unwrap();
     std::fs::write(repo.path().join("src/untracked-dir/inside.txt"), "hi\n").unwrap();
 
-    let files = list_changed_files_at_path(repo.path(), None).await.unwrap();
-    let diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/untracked-dir/"), None)
+    let files = list_changed_files_at_path(repo.path(), ReviewBaseline::WorkingTree)
         .await
         .unwrap();
+    let diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/untracked-dir/"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
 
     assert!(!files.iter().any(|file| file.path.ends_with('/')));
     assert_eq!(diff.content, "");
@@ -206,9 +242,14 @@ async fn skips_oversized_untracked_file_content() {
     let repo = seed_git_repo(&[("src/index.ts", "export const ok = true;\n")]);
     std::fs::write(repo.path().join("src/huge.txt"), "x".repeat(1_048_577)).unwrap();
 
-    let diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/huge.txt"), None)
-        .await
-        .unwrap();
+    let diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/huge.txt"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
 
     assert!(diff.content.contains("untracked file not loaded"));
     assert!(diff.content.contains("file exceeds diff preview cap"));
@@ -223,9 +264,14 @@ async fn untracked_symlink_diff_shows_target_not_contents() {
     std::fs::write(&outside_path, "do not show me\n").unwrap();
     symlink(&outside_path, repo.path().join("src/link.txt")).unwrap();
 
-    let diff = load_diff_at_path(repo.path(), "workspace-1", Some("src/link.txt"), None)
-        .await
-        .unwrap();
+    let diff = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("src/link.txt"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap();
 
     assert!(diff.content.contains("new file mode 120000"));
     assert!(diff
@@ -239,9 +285,14 @@ async fn untracked_symlink_diff_shows_target_not_contents() {
 async fn rejects_paths_that_escape_repo() {
     let repo = seed_git_repo(&[("src/index.ts", "export const ok = true;\n")]);
 
-    let err = load_diff_at_path(repo.path(), "workspace-1", Some("../escape.txt"), None)
-        .await
-        .unwrap_err();
+    let err = load_diff_at_path(
+        repo.path(),
+        "workspace-1",
+        Some("../escape.txt"),
+        ReviewBaseline::WorkingTree,
+    )
+    .await
+    .unwrap_err();
     let json = serde_json::to_value(&err).unwrap();
 
     assert_eq!(json["sub_code"], "WORKSPACE_PATH_INVALID");

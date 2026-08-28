@@ -121,6 +121,42 @@ mod tests {
         let mut branch_paths: Vec<_> = branch.iter().map(|file| file.path.as_str()).collect();
         branch_paths.sort_unstable();
         assert_eq!(branch_paths, vec!["README.md", "app.txt", "notes.txt"]);
+
+        let committed = git_review::list_changed_files(
+            database.as_ref(),
+            WorkspaceTargetKind::Project,
+            "p1",
+            ReviewComparison::Committed,
+        )
+        .await
+        .expect("committed files");
+        // Commits only: the README change landed, the app edit and the
+        // untracked scratch file did not.
+        let committed_paths: Vec<_> = committed.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(committed_paths, vec!["README.md"]);
+
+        // A file that is BOTH committed on the branch and dirty in the working
+        // tree must diff against HEAD, not against its working-tree state.
+        std::fs::write(
+            repo.path().join("README.md"),
+            "hello\nfrom feature\nand more\n",
+        )
+        .expect("dirty readme");
+        let committed_diff = git_review::load_diff(
+            database.as_ref(),
+            WorkspaceTargetKind::Project,
+            "p1",
+            Some("README.md"),
+            ReviewComparison::Committed,
+        )
+        .await
+        .expect("committed diff");
+        assert!(committed_diff.content.contains("+from feature"));
+        assert!(
+            !committed_diff.content.contains("+and more"),
+            "committed diff leaked the uncommitted edit: {}",
+            committed_diff.content
+        );
     }
 
     fn state_with_project(repo_path: &Path) -> AppState {

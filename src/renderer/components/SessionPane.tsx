@@ -27,6 +27,7 @@ import type {
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
+import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
@@ -143,7 +144,17 @@ export function SessionPane({
     () => (workspace ? { kind: "workspace", workspace } : null),
     [workspace]
   );
-  const reviewState = useReviewState(reviewSource);
+  // Stable per-session slices: a delta for another session leaves these
+  // identity-equal, so the conversation's derived memos and memoized turns skip
+  // work instead of re-deriving on every unrelated delta (matters most in the
+  // multi-pane grid).
+  const visibleApprovals = useStableFilter(approvals, sessionId, (approval) => approval.sessionId === sessionId);
+  const visibleEvents = useStableFilter(events, sessionId, (event) => event.sessionId === sessionId);
+  const visibleRawOutputs = useStableFilter(rawOutputs, sessionId, (output) => output.sessionId === sessionId);
+  // Which files the agent wrote in its newest turn, for the review panel's
+  // "Last turn" scope. Null without a session: there is no turn to scope to.
+  const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
+  const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null);
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
@@ -185,13 +196,6 @@ export function SessionPane({
     setIsTerminalOpen(false);
     setTerminalOnceOpened(false);
   }, []);
-  // Stable per-session slices: a delta for another session leaves these
-  // identity-equal, so the conversation's derived memos and memoized turns skip
-  // work instead of re-deriving on every unrelated delta (matters most in the
-  // multi-pane grid).
-  const visibleApprovals = useStableFilter(approvals, sessionId, (approval) => approval.sessionId === sessionId);
-  const visibleEvents = useStableFilter(events, sessionId, (event) => event.sessionId === sessionId);
-  const visibleRawOutputs = useStableFilter(rawOutputs, sessionId, (output) => output.sessionId === sessionId);
   const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
     try {
       await onResolveApproval(approvalId, status);

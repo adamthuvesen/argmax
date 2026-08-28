@@ -32,6 +32,35 @@ Changed files are listed and diffs are loaded for workspace or project targets
 through one command surface in
 [src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs).
 
+### Changes scope
+
+The Changes view's scope chip picks which slice of the work to show. It
+defaults to the whole branch, so a reader sees what the task changed without
+having to know what was committed when.
+
+| Scope | `ReviewComparison` | Git range |
+|---|---|---|
+| All on branch (default) | `branch` | `merge-base(base_ref, HEAD)` → working tree, plus untracked |
+| Committed | `committed` | `merge-base(base_ref, HEAD)..HEAD` |
+| Uncommitted | `workingTree` | `HEAD` → working tree, plus untracked |
+| Last turn | `branch`, narrowed client-side | not applicable |
+
+`ReviewBaseline` carries the resolved base ref into `resolve_comparison`.
+Committed mode phrases its base as a `<merge-base>..HEAD` range so every
+`git diff <base> -- <path>` call site works unchanged. It also skips the
+working-tree probes, because a file that is both committed and dirty would
+otherwise be read as an untracked add and diffed against the wrong side. A base
+branch that no longer resolves downgrades every scope to the working tree
+rather than failing the request.
+
+"Last turn" has no git equivalent because git does not know what a turn is, so it
+comes from the transcript: [lastTurnFiles.ts](../src/renderer/lib/lastTurnFiles.ts)
+collects the paths of every file-writing tool call after the newest
+`user.message` and narrows the branch list to them. It reuses the branch query,
+so switching into it costs no git work, and it matches by path suffix because
+Claude reports absolute tool paths while Codex reports relative ones. The scope
+is only offered where a transcript exists, so the launcher's panel omits it.
+
 ## Files
 
 [src-tauri/src/files/workspace_files.rs](../src-tauri/src/files/workspace_files.rs) powers file tree, preview, mtime-checked writes, stats, and content grep. Every path resolves through [workspace_paths.rs](../src-tauri/src/util/workspace_paths.rs) to prevent traversal outside the workspace/project root.

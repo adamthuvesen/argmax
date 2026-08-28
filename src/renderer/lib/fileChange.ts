@@ -15,6 +15,59 @@ export type FileChange =
 
 const MAX_INLINE_CHARS = 200_000;
 
+/** Which single-file edit family a tool name belongs to, or `null` for a tool
+ *  that does not write files. Cursor uses camelCase like `writeToolCall`, so
+ *  recognition is by substring and catches all three providers. */
+function classifySingleFileTool(lower: string): {
+  isMultiEdit: boolean;
+  isWrite: boolean;
+  isEdit: boolean;
+  isDelete: boolean;
+} | null {
+  const isMultiEdit = /multi[_-]?edit/.test(lower);
+  const isWrite =
+    !isMultiEdit && (lower.includes("write") || lower.includes("create_file") || lower.includes("createfile"));
+  const isEdit =
+    !isMultiEdit && (lower.includes("edit") || lower.includes("patch") || lower.includes("update_file"));
+  const isDelete =
+    lower.includes("delete") || lower.includes("remove_file") || lower.includes("removefile");
+  if (!isWrite && !isEdit && !isMultiEdit && !isDelete) return null;
+  return { isMultiEdit, isWrite, isEdit, isDelete };
+}
+
+const SINGLE_FILE_PATH_KEYS = [
+  "file_path",
+  "filepath",
+  "path",
+  "relative_path",
+  "absolute_path"
+];
+
+function isCodexFileChangeTool(lower: string): boolean {
+  return lower === "file_change" || lower === "file-change" || lower === "filechange";
+}
+
+/**
+ * Every file path a tool call wrote to, or `[]` for a tool that writes none.
+ * Shares `interpretFileChange`'s tool recognition so the "last turn" review
+ * scope and the inline diff card agree on what counts as an edit. Notebook
+ * edits count here. `interpretFileChange` skips them only because they don't
+ * fit its line-diff rendering, not because they aren't file writes.
+ */
+export function editedFilePaths(name: string, input: Record<string, unknown>): string[] {
+  const lower = name.toLowerCase();
+  if (isCodexFileChangeTool(lower)) {
+    return unique((interpretCodexFileChange(input) ?? []).map((change) => change.path));
+  }
+  if (classifySingleFileTool(lower) === null) return [];
+  const path = pickString(input, SINGLE_FILE_PATH_KEYS);
+  return path ? [path] : [];
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
 export function interpretFileChange(
   name: string,
   input: Record<string, unknown>
@@ -26,23 +79,15 @@ export function interpretFileChange(
   if (lower.includes("notebook")) return null;
 
   // Codex bundles multiple files under a single tool call.
-  if (lower === "file_change" || lower === "file-change" || lower === "filechange") {
+  if (isCodexFileChangeTool(lower)) {
     return interpretCodexFileChange(input);
   }
 
-  // Single-file family — recognise by substring. Cursor uses camelCase like
-  // `writeToolCall`, so a substring match catches both Claude and Cursor.
-  const isMultiEdit = /multi[_-]?edit/.test(lower);
-  const isWrite =
-    !isMultiEdit && (lower.includes("write") || lower.includes("create_file") || lower.includes("createfile"));
-  const isEdit =
-    !isMultiEdit && (lower.includes("edit") || lower.includes("patch") || lower.includes("update_file"));
-  const isDelete =
-    lower.includes("delete") || lower.includes("remove_file") || lower.includes("removefile");
+  const shape = classifySingleFileTool(lower);
+  if (shape === null) return null;
+  const { isMultiEdit, isWrite, isEdit, isDelete } = shape;
 
-  if (!isWrite && !isEdit && !isMultiEdit && !isDelete) return null;
-
-  const path = pickString(input, ["file_path", "filepath", "path", "relative_path", "absolute_path"]);
+  const path = pickString(input, SINGLE_FILE_PATH_KEYS);
   if (!path) return null;
 
   if (isDelete && !isWrite && !isEdit) {

@@ -1,9 +1,18 @@
 #!/usr/bin/env node
-// Fails when `src/shared/bindings.d.ts` is older than any input the
-// tauri-specta codegen reads (Cargo.toml or any file under src-tauri/src/).
-// Runs in CI so an out-of-date binding file blocks merge.
+// Fails when `src/shared/bindings.d.ts` does not match what the tauri-specta
+// codegen would emit for the current `src-tauri` sources. Runs in CI so an
+// out-of-date binding file blocks merge.
+//
+// mtime is the cheap pre-filter, not the verdict. A rebase, a `git checkout`,
+// a `touch`, or another agent editing this checkout all move input mtimes
+// without changing a single exported type, and failing on that trains people
+// to regenerate reflexively. That stamps someone else's in-flight Rust into
+// their diff. When mtime trips, regenerate to a temp file and compare bytes:
+// only a real difference fails.
 
-import { statSync, existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join, resolve, relative } from "node:path";
 
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
@@ -43,22 +52,82 @@ const stale = inputs.filter((path) => {
     return statSync(path).mtimeMs > bindingsMtime;
 });
 
-if (stale.length > 0) {
-    console.error(
-        `error: ${relative(ROOT, BINDINGS)} is older than ${stale.length} input file(s).`,
-    );
-    console.error(
-        "       Run `npm run generate:bindings` to regenerate the bindings before committing.",
-    );
-    for (const path of stale.slice(0, 10)) {
-        console.error(`       - ${relative(ROOT, path)}`);
+/**
+ * Re-run the exporter into a scratch file and compare it byte-for-byte with the
+ * checked-in bindings.
+ *
+ * Returns `"match"`, `"differ"`, or `"unavailable"` when the exporter could not
+ * run at all (no cargo, compile error). An unavailable exporter is not a pass:
+ * the caller falls back to the mtime verdict rather than waving the check
+ * through on a toolchain problem.
+ */
+function compareGeneratedBindings() {
+    const scratch = mkdtempSync(join(tmpdir(), "argmax-bindings-"));
+    const generated = join(scratch, "bindings.d.ts");
+    try {
+        const run = spawnSync(
+            "cargo",
+            [
+                "run",
+                "--quiet",
+                "--manifest-path",
+                join(ROOT, "src-tauri/Cargo.toml"),
+                "--bin",
+                "export-bindings",
+                "--",
+                generated,
+            ],
+            { cwd: ROOT, stdio: ["ignore", "ignore", "pipe"], encoding: "utf8" },
+        );
+        if (run.status !== 0 || !existsSync(generated)) {
+            return { verdict: "unavailable", detail: (run.stderr ?? "").trim() };
+        }
+        return {
+            verdict:
+                readFileSync(generated, "utf8") === readFileSync(BINDINGS, "utf8")
+                    ? "match"
+                    : "differ",
+        };
+    } catch (error) {
+        return { verdict: "unavailable", detail: String(error) };
+    } finally {
+        rmSync(scratch, { recursive: true, force: true });
     }
-    if (stale.length > 10) {
-        console.error(`       ... and ${stale.length - 10} more`);
-    }
-    process.exit(1);
 }
 
-console.log(
-    `ok: ${relative(ROOT, BINDINGS)} is at least as new as all ${inputs.length} backend input(s).`,
+if (stale.length === 0) {
+    console.log(
+        `ok: ${relative(ROOT, BINDINGS)} is at least as new as all ${inputs.length} backend input(s).`,
+    );
+    process.exit(0);
+}
+
+const { verdict, detail } = compareGeneratedBindings();
+
+if (verdict === "match") {
+    console.log(
+        `ok: ${relative(ROOT, BINDINGS)} matches the current backend types ` +
+            `(${stale.length} input file(s) are newer, but no exported type changed).`,
+    );
+    process.exit(0);
+}
+
+console.error(
+    verdict === "differ"
+        ? `error: ${relative(ROOT, BINDINGS)} does not match the current backend types.`
+        : `error: could not verify ${relative(ROOT, BINDINGS)} because the exporter did not run, ` +
+              `and ${stale.length} input file(s) are newer.`,
 );
+console.error(
+    "       Run `npm run generate:bindings` to regenerate the bindings before committing.",
+);
+if (detail) {
+    console.error(`       exporter: ${detail.split("\n").slice(-3).join(" / ")}`);
+}
+for (const path of stale.slice(0, 10)) {
+    console.error(`       - ${relative(ROOT, path)}`);
+}
+if (stale.length > 10) {
+    console.error(`       ... and ${stale.length - 10} more`);
+}
+process.exit(1);

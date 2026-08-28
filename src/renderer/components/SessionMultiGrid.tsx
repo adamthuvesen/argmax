@@ -91,6 +91,8 @@ interface SessionMultiGridProps {
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
   onLoadAgentEvents: (sessionId: string, parentToolUseId: string) => Promise<void>;
   onOpenAgentPane: (request: AgentPaneRequest) => void;
+  /** Opens a launcher cell beside the focused pane. */
+  onNewSession: () => void;
   onActivateAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   onCloseAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   onWorkspaceMinWidthChange?: (width: number) => void;
@@ -143,6 +145,7 @@ export function SessionMultiGrid({
   onLoadSessionEvents,
   onLoadAgentEvents,
   onOpenAgentPane,
+  onNewSession,
   onActivateAgentTab,
   onCloseAgentTab,
   onWorkspaceMinWidthChange,
@@ -407,6 +410,7 @@ export function SessionMultiGrid({
                         onClose={() => onClosePane({ row: r, col: c })}
                         onFastModeEnabledChange={onFastModeEnabledChange}
                         onLoadSessionEvents={onLoadSessionEvents}
+                        onNewSession={onNewSession}
                         onOpenAgent={openChildAgent}
                         onRightPanelWidthChange={(width) => setCellRightPanelWidth(cellKey, width)}
                         onResolveApproval={onResolveApproval}

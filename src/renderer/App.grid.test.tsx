@@ -205,6 +205,45 @@ describe("App grid", () => {
     expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
   });
 
+  it("opens a launcher beside the session from the session actions menu, whatever the new-session mode", async () => {
+    // Default mode is "full", which swaps the whole grid out. Launching from
+    // *inside* a session must not take the session off screen.
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New session here" }));
+
+    expect(await screen.findByRole("region", { name: "New session for Argmax" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
+  });
+
+  it("retargets the grid launcher at another repository without moving the session panes", async () => {
+    const secondProject: DashboardSnapshot["projects"][number] = {
+      ...snapshot.projects[0],
+      id: "project-2",
+      name: "Sidecar",
+      repoPath: "/tmp/sidecar"
+    };
+    mockDashboardSnapshot({ ...snapshot, projects: [snapshot.projects[0], secondProject] });
+    window.localStorage.setItem("argmax.newSessionMode", "embedded");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("heading", { name: "Argmax" });
+    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+
+    const launcher = await screen.findByRole("region", { name: "New session for Argmax" });
+    fireEvent.click(within(launcher).getByRole("button", { name: "Switch project" }));
+    fireEvent.click(await within(launcher).findByRole("button", { name: "Sidecar" }));
+
+    // The launcher cell follows the pick; the session pane beside it stays put.
+    expect(await screen.findByRole("region", { name: "New session for Sidecar" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
+  });
+
   it("opens an agent activity pane from an agent row without showing child prose in the parent chat", async () => {
     const promptText = "Find the renderer entry points and note the important files before reporting back. ".repeat(9).trim();
     const data: DashboardSnapshot = {

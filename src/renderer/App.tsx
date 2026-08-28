@@ -259,6 +259,7 @@ export function App(): JSX.Element {
     handleWorkspaceDragStart,
     handleWorkspaceDragEnd,
     openLauncherPaneInGrid,
+    setLauncherPaneProject,
     openAgentPane,
     activateAgentTab,
     closeAgentTab
@@ -1012,8 +1013,10 @@ export function App(): JSX.Element {
 
   const renderLaunchSurface = useCallback(
     // `project` is allowed to differ from `selectedProject` because the
-    // grid renders launcher cells with explicit project arguments.
-    (project: ProjectSummary | null): JSX.Element => (
+    // grid renders launcher cells with explicit project arguments. A grid
+    // launcher owns its project: switching repos there retargets that cell
+    // instead of moving the app's selection off the sessions being watched.
+    (project: ProjectSummary | null, options: { embedded?: boolean } = {}): JSX.Element => (
       <LaunchSurface
         fastModeEnabled={fastModeEnabled}
         pixelFieldEnabled={pixelFieldEnabled}
@@ -1023,7 +1026,7 @@ export function App(): JSX.Element {
         onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments)}
         model={launchModel}
         onModelChange={handleLaunchModelChange}
-        onSelectProject={openProjectLauncher}
+        onSelectProject={options.embedded ? setLauncherPaneProject : openProjectLauncher}
         project={project ?? selectedProject}
         projects={snapshot.projects}
         resetSignal={launcherResetSignal}
@@ -1045,8 +1048,14 @@ export function App(): JSX.Element {
       rightPanelToggleSignal,
       selectedProject,
       setFastModeEnabled,
+      setLauncherPaneProject,
       snapshot.projects
     ]
+  );
+
+  const renderEmbeddedLaunchSurface = useCallback(
+    (project: ProjectSummary | null): JSX.Element => renderLaunchSurface(project, { embedded: true }),
+    [renderLaunchSurface]
   );
 
   const handleWorkspaceSurfaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
@@ -1079,7 +1088,7 @@ export function App(): JSX.Element {
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
       data-resizing={isResizing ? "true" : undefined}
-      data-chat-width={chatWidth}
+      data-chat-width={String(chatWidth)}
       data-sidebar-collapsed={sidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
@@ -1256,7 +1265,7 @@ export function App(): JSX.Element {
               debugLogToggleSignal={debugLogToggleSignal}
               terminalToggleSignal={terminalToggleSignal}
               maxColumnsPerRow={maxGridColumnsPerRow}
-              renderLauncher={renderLaunchSurface}
+              renderLauncher={renderEmbeddedLaunchSurface}
               dragSourceWorkspaceId={draggingWorkspaceId}
               onFocusPane={focusPane}
               onClosePane={closePane}
@@ -1264,6 +1273,7 @@ export function App(): JSX.Element {
               onFastModeEnabledChange={setFastModeEnabled}
               onLoadSessionEvents={loadSessionEvents}
               onLoadAgentEvents={loadAgentEvents}
+              onNewSession={openLauncherPaneInGrid}
               onOpenAgentPane={openAgentPane}
               onActivateAgentTab={activateAgentTab}
               onCloseAgentTab={closeAgentTab}

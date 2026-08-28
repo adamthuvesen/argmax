@@ -49,6 +49,63 @@ describe("ModelSelector — one row per model", () => {
   });
 });
 
+describe("ModelSelector type to filter", () => {
+  it("takes focus on open so typing narrows the list instead of the input behind it", () => {
+    openClaudePicker();
+    const list = screen.getByRole("listbox", { name: "Session model" });
+    expect(document.activeElement).toBe(list);
+
+    fireEvent.keyDown(list, { key: "h" });
+
+    expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
+    expect(within(list).queryByText("Opus 5")).not.toBeInTheDocument();
+    // The query is echoed with a match count. A list that silently shrank
+    // would leave the user guessing.
+    expect(within(list).getByText("h")).toBeInTheDocument();
+    expect(within(list).getByText("1 of 4")).toBeInTheDocument();
+  });
+
+  it("picks the highlighted match on Enter", () => {
+    const onChange = openClaudePicker();
+    const list = screen.getByRole("listbox", { name: "Session model" });
+
+    fireEvent.keyDown(list, { key: "o" });
+    fireEvent.keyDown(list, { key: "p" });
+    fireEvent.keyDown(list, { key: "Enter" });
+
+    expect(onChange).toHaveBeenCalledWith({
+      label: "Opus 5",
+      modelId: "claude-opus-5",
+      reasoningEffort: "medium"
+    });
+  });
+
+  it("backspaces out of a query that matches nothing", () => {
+    openClaudePicker();
+    const list = screen.getByRole("listbox", { name: "Session model" });
+
+    fireEvent.keyDown(list, { key: "z" });
+    expect(within(list).getByText("No models match")).toBeInTheDocument();
+
+    fireEvent.keyDown(list, { key: "Backspace" });
+    expect(within(list).getAllByRole("option")).toHaveLength(4);
+    expect(within(list).queryByText("No models match")).not.toBeInTheDocument();
+  });
+
+  it("forgets the query when the picker closes", () => {
+    openClaudePicker();
+    const list = screen.getByRole("listbox", { name: "Session model" });
+    fireEvent.keyDown(list, { key: "h" });
+    expect(within(list).getAllByRole("option")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session model" }));
+
+    const reopened = screen.getByRole("listbox", { name: "Session model" });
+    expect(within(reopened).getAllByRole("option")).toHaveLength(4);
+  });
+});
+
 describe("LaunchModelSelector — all providers", () => {
   it("groups models by provider and keeps Cursor model ids intact", () => {
     const value: ModelPickerSelection = {

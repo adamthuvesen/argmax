@@ -7,6 +7,7 @@ import {
   dropWorkspaceInGrid,
   focusedCell,
   openLauncherInGrid,
+  setLauncherProject,
   openAgentInGrid,
   openWorkspaceInGrid,
   setActiveAgentTab,
@@ -134,6 +135,25 @@ describe("openWorkspaceInGrid", () => {
     let total2 = 0;
     for (const row of g.rows) total2 += row.length;
     expect(total2).toBe(MAX_CELLS);
+  });
+});
+
+describe("setLauncherProject", () => {
+  it("retargets the launcher cell and leaves session panes untouched", () => {
+    const start: GridState = { rows: [[cell(1), launcher(1)]], focused: { row: 0, col: 1 } };
+
+    const next = setLauncherProject(start, "p2");
+
+    expect(next.rows).toEqual([[cell(1), launcher(2)]]);
+    expect(next.focused).toEqual({ row: 0, col: 1 });
+  });
+
+  it("is referentially stable with no launcher, or when already on that project", () => {
+    const noLauncher: GridState = { rows: [[cell(1)]], focused: { row: 0, col: 0 } };
+    expect(setLauncherProject(noLauncher, "p2")).toBe(noLauncher);
+
+    const sameProject: GridState = { rows: [[launcher(1)]], focused: { row: 0, col: 0 } };
+    expect(setLauncherProject(sameProject, "p1")).toBe(sameProject);
   });
 });
 

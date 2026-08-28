@@ -70,6 +70,7 @@ export function SessionPane({
   onClose,
   onFastModeEnabledChange,
   onLoadSessionEvents,
+  onNewSession,
   onRightPanelWidthChange,
   onResolveApproval,
   onRunCheck,
@@ -103,6 +104,8 @@ export function SessionPane({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
+  /** Opens a launcher pane beside this one. Absent outside the grid. */
+  onNewSession?: () => void;
   onRightPanelWidthChange?: (width: number | null) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
@@ -480,6 +483,7 @@ export function SessionPane({
           isLogOpen={isLogOpen}
           onClose={onClose}
           onFastModeEnabledChange={onFastModeEnabledChange}
+          onNewSession={onNewSession}
           onOpenCommitDialog={handleOpenCommitDialog}
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}

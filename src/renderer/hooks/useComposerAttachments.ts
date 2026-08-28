@@ -14,17 +14,13 @@ import {
   isSupportedImageMime,
   readBlobAsBase64
 } from "../lib/composerAttachments.js";
+import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
 import type { AttachmentMimeType, ComposerAttachment } from "../../shared/types.js";
 
-export type PendingAttachment = ComposerAttachment & {
-  id: string;
-  thumbnailDataUrl: string;
-};
-
 export interface ComposerAttachmentsApi {
-  pendingAttachments: PendingAttachment[];
+  pendingAttachments: ComposerAttachment[];
   attachmentInputRef: RefObject<HTMLInputElement | null>;
-  removePendingAttachment: (id: string) => void;
+  removePendingAttachment: (filePath: string) => void;
   /** Bind to the composer `<form>`'s `onDragOver`. */
   onComposerDragOver: (event: ReactDragEvent<HTMLFormElement>) => void;
   /** Bind to the composer `<form>`'s `onDrop`. */
@@ -40,7 +36,12 @@ export interface ComposerAttachmentsApi {
 }
 
 export interface ComposerAttachmentsDeps {
-  sessionId: string | null | undefined;
+  /**
+   * Identifies the draft these attachments belong to, either a session id in the
+   * session composer, `launcherDraftKey(projectId)` in the launcher. Doubles
+   * as the `AttachmentStore` folder the images are written to.
+   */
+  draftKey: string | null | undefined;
   workspacePath: string | null | undefined;
   /** Append `@-mentions` to the live composer text. */
   setInput: (updater: (prev: string) => string) => void;
@@ -58,18 +59,29 @@ export interface ComposerAttachmentsDeps {
  *   are persisted to the `AttachmentStore` so the agent can read them back
  *   via the `argmax-attachment://` scheme.
  *
- * Pending attachments reset when the session changes; the caller is also
- * expected to call `clearAttachments()` after a successful submit.
+ * Pending images are part of the unsent draft, not of the mounted composer:
+ * they are restored when the draft key comes back, such as a reopened session or
+ * relaunched app. They only leave on removal or a successful submit, so a
+ * screenshot never has to be taken twice.
  */
 export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerAttachmentsApi {
-  const { sessionId, workspacePath, setInput, setStatus } = deps;
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const { draftKey, workspacePath, setInput, setStatus } = deps;
+  const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
+    () => readDraft(draftKey ?? null).attachments
+  );
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Reset on session change so the new session starts empty.
+  // A pane that swaps drafts without remounting starts from the new draft's
+  // own images, never the previous one's.
+  const loadedKey = useRef(draftKey);
+  if (loadedKey.current !== draftKey) {
+    loadedKey.current = draftKey;
+    setPendingAttachments(readDraft(draftKey ?? null).attachments);
+  }
+
   useEffect(() => {
-    setPendingAttachments([]);
-  }, [sessionId]);
+    if (draftKey) writeDraftAttachments(draftKey, pendingAttachments);
+  }, [draftKey, pendingAttachments]);
 
   const attachFiles = useCallback(
     (files: Iterable<File> | Iterable<{ path?: string }>): void => {
@@ -82,7 +94,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
 
   const attachImageBlobs = useCallback(
     async (blobs: Blob[]): Promise<void> => {
-      if (!sessionId || blobs.length === 0) return;
+      if (!draftKey || blobs.length === 0) return;
       const api = window.argmax;
       if (!api) {
         setStatus("Open the Tauri app window to attach images.");
@@ -93,19 +105,16 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
           if (!isSupportedImageMime(blob.type)) continue;
           const dataBase64 = await readBlobAsBase64(blob);
           const saved = await api.attachments.saveImage({
-            sessionId,
+            sessionId: draftKey,
             mimeType: blob.type,
             dataBase64
           });
-          const thumbnailDataUrl = `data:${blob.type};base64,${dataBase64}`;
           setPendingAttachments((prev) => [
             ...prev,
             {
-              id: `${saved.filePath}-${prev.length}`,
               filePath: saved.filePath,
               mimeType: blob.type as AttachmentMimeType,
-              sizeBytes: saved.sizeBytes,
-              thumbnailDataUrl
+              sizeBytes: saved.sizeBytes
             }
           ]);
         }
@@ -113,11 +122,11 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         setStatus(error instanceof Error ? error.message : "Could not attach image.");
       }
     },
-    [sessionId, setStatus]
+    [draftKey, setStatus]
   );
 
-  const removePendingAttachment = useCallback((id: string): void => {
-    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  const removePendingAttachment = useCallback((filePath: string): void => {
+    setPendingAttachments((prev) => prev.filter((a) => a.filePath !== filePath));
   }, []);
 
   const onComposerDragOver = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {

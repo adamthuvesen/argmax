@@ -7,9 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
-  type ClipboardEvent as ReactClipboardEvent,
-  type DragEvent as ReactDragEvent,
   type FormEvent,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
@@ -17,24 +14,25 @@ import {
 import { createPortal } from "react-dom";
 import type {
   AgentMode,
-  AttachmentMimeType,
   ComposerAttachment,
   DiscoveredProvider,
   ProjectSummary
 } from "../../shared/types.js";
+import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import {
   appendReferencesToPrompt,
-  buildAttachmentReferences,
-  imageAttachmentReference,
-  isSupportedImageMime,
-  readBlobAsBase64
+  imageAttachmentReference
 } from "../lib/composerAttachments.js";
+import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
+import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
+import { useComposerDraft } from "../hooks/useComposerDraft.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
+import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { modelDefaultForProvider, preferredLaunchProvider, type ModelPickerSelection } from "../lib/models.js";
 import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
@@ -45,6 +43,7 @@ import {
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
 import { ComposerPixelField } from "./ComposerPixelField.js";
+import { PickerFilterRow } from "./PickerFilterRow.js";
 import { LaunchModelSelector, type ProviderAvailability } from "./ModelSelector.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
@@ -107,16 +106,29 @@ export function LaunchSurface({
     context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
   ) => void;
 }): JSX.Element {
-  const [prompt, setPrompt] = useState("");
+  // The unsent prompt and its screenshots belong to the project they will be
+  // launched in, not to the mounted launcher: a grid cell that retargets its
+  // repo remounts, and the full launcher outlives an app restart.
+  const draftKey = project ? launcherDraftKey(project.id) : null;
+  const [prompt, setPrompt] = useComposerDraft(draftKey);
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingAttachments, setPendingAttachments] = useState<
-    Array<ComposerAttachment & { id: string; thumbnailDataUrl: string }>
-  >([]);
-  // Stable per-mount namespace for pre-launch attachments — sessionId doesn't
-  // exist yet, and the AttachmentStore only uses this string as a folder name.
-  const launchAttachmentNamespaceRef = useRef<string>(`launch-${crypto.randomUUID()}`);
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const {
+    pendingAttachments,
+    attachmentInputRef,
+    removePendingAttachment,
+    onComposerDragOver,
+    onComposerDrop,
+    onComposerPaste,
+    onAttachmentInputChange,
+    openFilePicker,
+    clearAttachments
+  } = useComposerAttachments({
+    draftKey,
+    workspacePath: project?.repoPath ?? null,
+    setInput: setPrompt,
+    setStatus
+  });
   const [agentMode, setAgentMode] = useState<AgentMode>("auto");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
@@ -325,16 +337,51 @@ export function LaunchSurface({
       setStatus(error instanceof Error ? error.message : "Could not switch branch.");
     }
   }, [project, onBranchSwitch]);
+  // Typing into an open picker filters it through useTypeToFilter. The lists take
+  // focus while open, so characters land here instead of in the prompt behind.
+  const projectListRef = useRef<HTMLUListElement | null>(null);
+  const branchListRef = useRef<HTMLUListElement | null>(null);
+  const pickProject = useCallback(
+    (candidate: ProjectSummary): void => {
+      onSelectProject(candidate.id);
+      setProjectPickerOpen(false);
+      setCompactContextOpen(false);
+    },
+    [onSelectProject]
+  );
+  const projectFilter = useTypeToFilter({
+    open: projectPickerOpen,
+    items: projects,
+    toLabel: (candidate: ProjectSummary) => candidate.name,
+    listRef: projectListRef,
+    onPick: pickProject
+  });
+  const branchFilter = useTypeToFilter({
+    open: branchPickerOpen,
+    items: branches,
+    toLabel: (branch: string) => branch,
+    listRef: branchListRef,
+    onPick: (branch: string) => void switchBranch(branch)
+  });
+
   const placeholderText = "Ask your agent to inspect, build, or fix something";
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);
+
+  // Read inside the auto-focus effect without widening its deps: whether a
+  // picker is open decides nothing about *when* to refocus, only whether to.
+  const contextPickerOpenRef = useRef(false);
+  contextPickerOpenRef.current = anyContextPickerOpen;
 
   // Auto-focus the prompt when the launcher is the active surface — on
   // first visit, on project switch, and again whenever the right-side
   // review panel closes, so the user can keep typing without clicking.
   useEffect(() => {
     if (!project || reviewIsPanelOpen || isSubmitting) return;
+    // An open picker holds focus to filter keystrokes; a re-render behind it
+    // (a dashboard delta re-identifying the project) must not yank that away.
+    if (contextPickerOpenRef.current) return;
     promptInputRef.current?.focus();
   }, [project, reviewIsPanelOpen, isSubmitting]);
   const slashAutocomplete = useSlashAutocomplete({
@@ -367,117 +414,6 @@ export function LaunchSurface({
     }
   };
 
-  const attachFiles = useCallback(
-    (files: Iterable<File> | Iterable<{ path?: string }>): void => {
-      const refs = buildAttachmentReferences(files, project?.repoPath ?? null);
-      if (refs.length === 0) return;
-      setPrompt((prev) => appendReferencesToPrompt(prev, refs));
-    },
-    [project?.repoPath]
-  );
-
-  const attachImageBlobs = useCallback(async (blobs: Blob[]): Promise<void> => {
-    if (blobs.length === 0) return;
-    const api = window.argmax;
-    if (!api) {
-      setStatus("Open the Tauri app window to attach images.");
-      return;
-    }
-    try {
-      for (const blob of blobs) {
-        if (!isSupportedImageMime(blob.type)) continue;
-        const dataBase64 = await readBlobAsBase64(blob);
-        const saved = await api.attachments.saveImage({
-          sessionId: launchAttachmentNamespaceRef.current,
-          mimeType: blob.type,
-          dataBase64
-        });
-        const thumbnailDataUrl = `data:${blob.type};base64,${dataBase64}`;
-        setPendingAttachments((prev) => [
-          ...prev,
-          {
-            id: `${saved.filePath}-${prev.length}`,
-            filePath: saved.filePath,
-            mimeType: blob.type as AttachmentMimeType,
-            sizeBytes: saved.sizeBytes,
-            thumbnailDataUrl
-          }
-        ]);
-      }
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not attach image.");
-    }
-  }, []);
-
-  const removePendingAttachment = useCallback((id: string): void => {
-    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
-  }, []);
-
-  const onComposerDragOver = (event: ReactDragEvent<HTMLFormElement>): void => {
-    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
-    event.preventDefault();
-  };
-
-  const onComposerDrop = (event: ReactDragEvent<HTMLFormElement>): void => {
-    if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
-    event.preventDefault();
-    const withPath: File[] = [];
-    const imageBlobs: Blob[] = [];
-    for (const file of Array.from(event.dataTransfer.files)) {
-      const path = (file as { path?: string }).path;
-      if (typeof path === "string" && path.length > 0) {
-        withPath.push(file);
-      } else if (isSupportedImageMime(file.type)) {
-        imageBlobs.push(file);
-      }
-    }
-    if (withPath.length > 0) attachFiles(withPath);
-    if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
-    if (withPath.length === 0 && imageBlobs.length === 0) {
-      setStatus("Only files with a disk path or images can be attached.");
-    }
-  };
-
-  const onComposerPaste = (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
-    const items = event.clipboardData?.items;
-    if (!items || items.length === 0) return;
-    const images: Blob[] = [];
-    for (const item of Array.from(items)) {
-      if (item.kind !== "file") continue;
-      if (!isSupportedImageMime(item.type)) continue;
-      const file = item.getAsFile();
-      if (file) images.push(file);
-    }
-    if (images.length === 0) return;
-    event.preventDefault();
-    void attachImageBlobs(images);
-  };
-
-  const onAttachmentInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    if (event.target.files && event.target.files.length > 0) {
-      const withPath: File[] = [];
-      const imageBlobs: Blob[] = [];
-      for (const file of Array.from(event.target.files)) {
-        const path = (file as { path?: string }).path;
-        if (typeof path === "string" && path.length > 0) {
-          withPath.push(file);
-        } else if (isSupportedImageMime(file.type)) {
-          imageBlobs.push(file);
-        }
-      }
-      if (withPath.length > 0) attachFiles(withPath);
-      if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
-      if (withPath.length === 0 && imageBlobs.length === 0) {
-        setStatus("Only files with a disk path or images can be attached.");
-      }
-    }
-    event.target.value = "";
-  };
-
-  const openFilePicker = (): void => {
-    attachmentInputRef.current?.click();
-  };
-
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedPrompt = prompt.trim();
@@ -487,11 +423,6 @@ export function LaunchSurface({
 
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(trimmedPrompt, refs) : trimmedPrompt;
-    const attachmentsForPersist: ComposerAttachment[] = pendingAttachments.map((a) => ({
-      filePath: a.filePath,
-      mimeType: a.mimeType,
-      sizeBytes: a.sizeBytes
-    }));
 
     setIsSubmitting(true);
     setStatus(null);
@@ -501,10 +432,11 @@ export function LaunchSurface({
         model,
         agentMode,
         workspaceMode,
-        attachmentsForPersist.length > 0 ? attachmentsForPersist : undefined
+        pendingAttachments.length > 0 ? pendingAttachments : undefined
       );
+      if (draftKey) clearDraft(draftKey);
       setPrompt("");
-      setPendingAttachments([]);
+      clearAttachments();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not start agent.");
     } finally {
@@ -566,14 +498,14 @@ export function LaunchSurface({
         {pendingAttachments.length > 0 ? (
           <div className="composer-attachments" aria-label="Attached images">
             {pendingAttachments.map((attachment) => (
-              <div key={attachment.id} className="composer-attachment-chip">
-                <img src={attachment.thumbnailDataUrl} alt="" />
+              <div key={attachment.filePath} className="composer-attachment-chip">
+                <img src={attachmentProtocolUrl(attachment.filePath)} alt="" />
                 <button
                   type="button"
                   className="composer-attachment-remove"
                   aria-label="Remove attachment"
                   title="Remove attachment"
-                  onClick={() => removePendingAttachment(attachment.id)}
+                  onClick={() => removePendingAttachment(attachment.filePath)}
                 >
                   <X size={12} />
                 </button>
@@ -680,29 +612,43 @@ export function LaunchSurface({
                 className="project-picker-popover"
                 role="listbox"
                 aria-label="Select project"
+                ref={projectListRef}
+                tabIndex={-1}
+                onKeyDown={projectFilter.onKeyDown}
                 onClick={(event) => {
                   if (!isOptionButtonTarget(event.target)) {
                     setProjectPickerOpen(false);
                   }
                 }}
               >
-                {projects.map((p) => (
-                  <li key={p.id} role="option" aria-selected={p.id === project.id}>
+                <PickerFilterRow
+                  query={projectFilter.query}
+                  matchCount={projectFilter.matches.length}
+                  totalCount={projects.length}
+                />
+                {projectFilter.matches.map((p, index) => (
+                  <li
+                    key={p.id}
+                    role="option"
+                    aria-selected={p.id === project.id}
+                    data-active={index === projectFilter.activeIndex ? "true" : undefined}
+                  >
                     <button
                       type="button"
                       className="project-picker-item"
                       aria-pressed={p.id === project.id}
-                      onClick={() => {
-                        onSelectProject(p.id);
-                        setProjectPickerOpen(false);
-                        setCompactContextOpen(false);
-                      }}
+                      onClick={() => pickProject(p)}
                     >
                       <Folder size={13} aria-hidden="true" />
                       {p.name}
                     </button>
                   </li>
                 ))}
+                {projectFilter.matches.length === 0 ? (
+                  <li className="project-picker-empty" role="presentation">
+                    No projects match
+                  </li>
+                ) : null}
                 <li className="project-picker-divider" role="separator" />
                 <li role="option" aria-selected={false}>
                   <button
@@ -740,15 +686,28 @@ export function LaunchSurface({
                 className="project-picker-popover"
                 role="listbox"
                 aria-label="Select branch"
+                ref={branchListRef}
+                tabIndex={-1}
+                onKeyDown={branchFilter.onKeyDown}
                 onClick={(event) => {
                   if (!isOptionButtonTarget(event.target)) {
                     setBranchPickerOpen(false);
                   }
                 }}
               >
-                {branches.length > 0 ? (
-                  branches.map((b) => (
-                    <li key={b} role="option" aria-selected={b === project.currentBranch}>
+                <PickerFilterRow
+                  query={branchFilter.query}
+                  matchCount={branchFilter.matches.length}
+                  totalCount={branches.length}
+                />
+                {branchFilter.matches.length > 0 ? (
+                  branchFilter.matches.map((b, index) => (
+                    <li
+                      key={b}
+                      role="option"
+                      aria-selected={b === project.currentBranch}
+                      data-active={index === branchFilter.activeIndex ? "true" : undefined}
+                    >
                       <button
                         type="button"
                         className="project-picker-item"
@@ -763,7 +722,7 @@ export function LaunchSurface({
                 ) : (
                   <li role="option" aria-selected={false} aria-disabled="true">
                     <button type="button" className="project-picker-item" disabled>
-                      No other branches
+                      {branchFilter.query ? "No branches match" : "No other branches"}
                     </button>
                   </li>
                 )}

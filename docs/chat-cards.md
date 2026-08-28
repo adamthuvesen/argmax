@@ -159,6 +159,26 @@ open through the answer. Tail content must not disappear while the reader is
 pinned because a shrinking bottom would pull the viewport upward. Real user
 scroll input stops the spring and exposes the scroll-to-latest button.
 
+## Type to filter a picker
+
+Composer pickers for projects, branches, and models filter as you type, with no search
+box to aim at. [useTypeToFilter.ts](../src/renderer/hooks/useTypeToFilter.ts)
+owns it: the list takes focus while open, so plain characters narrow it instead
+of landing in the prompt behind it, arrow keys walk the matches, and Enter picks
+the highlighted one. Matching runs through `searchFilePaths`, the same
+typo-tolerant, left-boundary-strict matcher the command palette uses on paths.
+
+Filtering silently would be the confusing version, so
+[PickerFilterRow.tsx](../src/renderer/components/PickerFilterRow.tsx) echoes the
+query and a match count at the top of the list. It renders nothing until there
+is a query, so a picker at rest carries no search chrome. Escape stays
+dismissal rather than "clear the query". `useDismissOnOutsideOrEscape` owns it
+on the document, and one key with one meaning beats a stack. Closing resets the
+query and returns focus to whatever held it before.
+
+Because an open picker holds focus, anything that refocuses the composer on its
+own has to stand down while one is open. See the launcher's auto-focus effect.
+
 ## Extended-thinking (Thought block)
 
 Distinct from the pre-answer "Thinking" indicator above: provider-visible
@@ -346,6 +366,33 @@ draft, Stop is not. The draft is cleared only after the send resolves, so a
 failed interrupt leaves the text in place with the error in the composer status
 line. Terminating drops any messages still queued for that session, which is
 the existing Stop behavior, not something send now adds.
+
+## Unsent drafts
+
+A draft belongs to what it will be sent to, not to the mounted composer.
+Switching a pane to another session remounts `SessionComposer`, and a grid
+launcher cell remounts when it is retargeted at another repo, so
+[composerDrafts.ts](../src/renderer/lib/composerDrafts.ts) keeps drafts in
+`localStorage` under `argmax.composer.drafts`. It is a `key → { text, attachments }`
+map capped at the 50 most recently edited, restored when the target comes back,
+across an app restart too. The key is the session id in `SessionComposer` and
+`launcherDraftKey(projectId)` (`launch-<projectId>`) in the new-session
+launcher, so each repo keeps its own pending task.
+[useComposerDraft.ts](../src/renderer/hooks/useComposerDraft.ts) owns the text
+half and [useComposerAttachments.ts](../src/renderer/hooks/useComposerAttachments.ts)
+the screenshots.
+
+Screenshots are part of the draft because they are the expensive half: a pasted
+or dropped image is already written to the `AttachmentStore`, so the draft only
+carries its `{ filePath, mimeType, sizeBytes }` and the chips re-render from
+`argmax-attachment://`, with no image bytes in `localStorage`. A draft with only a
+screenshot and no text is still remembered.
+
+Clearing the box and removing the last screenshot drops the entry, and so does
+a successful send: the send path calls `clearDraft` directly rather than relying
+on the state reset, because launching a task unmounts the launcher as the app
+moves to the new session. A failed send keeps the draft, matching the retry
+behavior above.
 
 ## QuestionCard answer format
 

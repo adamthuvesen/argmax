@@ -89,6 +89,7 @@ export function SessionConversation({
   isLogOpen,
   onClose,
   onFastModeEnabledChange,
+  onNewSession,
   onOpenCommitDialog,
   onSendSessionInput,
   onCancelQueuedMessage,
@@ -117,6 +118,8 @@ export function SessionConversation({
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** When provided, a close (×) button is rendered in the header — used by the multi-pane grid. */
   onClose?: () => void;
+  /** Opens a launcher pane beside this one, for a task in any repository. */
+  onNewSession?: () => void;
   onOpenCommitDialog?: () => void;
   onSendSessionInput: (
     sessionId: string,
@@ -453,6 +456,7 @@ export function SessionConversation({
           <SessionActionsMenu
             isLogOpen={isLogOpen}
             onBrowseFiles={review.openPanelInFilesMode}
+            onNewSession={onNewSession}
             onOpenCommitDialog={onOpenCommitDialog}
             onToggleLog={onToggleLog}
             session={session}

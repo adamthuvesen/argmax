@@ -735,6 +735,27 @@ describe("App", () => {
     expect(screen.queryByRole("dialog", { name: "Project and branch" })).not.toBeInTheDocument();
   });
 
+  it("filters an open branch picker as the user types", async () => {
+    listBranches.mockResolvedValue(["main", "feature/tidy", "adam/fix-thing"]);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
+    await waitFor(() => expect(listBranches).toHaveBeenCalledWith("project-1"));
+
+    const list = screen.getByRole("listbox", { name: "Select branch" });
+    // The list holds focus while open, so typing lands here and not in the
+    // prompt behind it.
+    await waitFor(() => expect(document.activeElement).toBe(list));
+
+    fireEvent.keyDown(list, { key: "f" });
+    fireEvent.keyDown(list, { key: "i" });
+    fireEvent.keyDown(list, { key: "x" });
+
+    expect(within(list).getByRole("button", { name: "adam/fix-thing" })).toBeInTheDocument();
+    expect(within(list).queryByRole("button", { name: "feature/tidy" })).not.toBeInTheDocument();
+    expect(within(list).getByText("1 of 2")).toBeInTheDocument();
+  });
+
   it("dismisses open pickers via the global dismiss layer", async () => {
     render(<App />);
 

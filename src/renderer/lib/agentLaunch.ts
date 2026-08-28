@@ -16,6 +16,25 @@ function trimmedString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Detect provider-internal launch confirmations (e.g. Claude's async task
+ * launch receipt) that indicate the subagent was dispatched into the
+ * background rather than returning its final completed result.
+ */
+export function isInternalAgentLaunchMetadata(output: string): boolean {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("this tool result is internal metadata") ||
+    normalized.includes("async agent launched successfully") ||
+    normalized.includes("use sendmessage with to:") ||
+    normalized.includes("do not read or tail this file") ||
+    normalized.includes("background agent launched") ||
+    normalized.includes("background task launched") ||
+    normalized.includes("subagent launched") ||
+    normalized.includes("agent launched successfully")
+  );
+}
+
 function rawSubagentType(tool: ToolCall): string | null {
   return trimmedString(tool.inputFull.subagent_type) ?? trimmedString(tool.inputFull.subagentType);
 }

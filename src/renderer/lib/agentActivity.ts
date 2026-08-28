@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "../../shared/types.js";
+import { isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import { type ToolCall } from "./toolCalls.js";
 
@@ -72,16 +73,6 @@ function itemTime(item: AgentActivityItem): string {
 
 function normalizedPromptEcho(value: string): string {
   return value.trim().replace(/\s+/g, " ");
-}
-
-function isInternalAgentLaunchMetadata(output: string): boolean {
-  const normalized = output.toLowerCase();
-  return (
-    normalized.includes("this tool result is internal metadata") ||
-    normalized.includes("async agent launched successfully") ||
-    normalized.includes("use sendmessage with to:") ||
-    normalized.includes("do not read or tail this file")
-  );
 }
 
 function activityTitle(tool: ToolCall | null, parentToolUseId: string): string {

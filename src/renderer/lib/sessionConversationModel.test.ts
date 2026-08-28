@@ -299,6 +299,84 @@ describe("buildSessionToolCalls", () => {
     });
   });
 
+  it("keeps a Claude Task row running when it completed with async launch metadata and the session is running", () => {
+    const tools = buildSessionToolCalls([
+      event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+        tool_use_id: "task-1",
+        content: "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
+      }),
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+        id: "task-1",
+        name: "Task",
+        input: {
+          description: "Map renderer",
+          prompt: "Explore the repo.",
+          subagent_type: "explorer"
+        }
+      })
+    ], true);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "task-1",
+      name: "Task",
+      status: "running",
+      completedAt: null
+    });
+  });
+
+  it("marks an async subagent launch done when the session stops", () => {
+    const tools = buildSessionToolCalls([
+      event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+        tool_use_id: "task-1",
+        content: "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
+      }),
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+        id: "task-1",
+        name: "Task",
+        input: {
+          description: "Map renderer",
+          prompt: "Explore the repo.",
+          subagent_type: "explorer"
+        }
+      })
+    ], false);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "task-1",
+      name: "Task",
+      status: "done",
+      completedAt: "2026-05-12T15:00:02.000Z"
+    });
+  });
+
+  it("keeps a subagent launch with run_in_background running while the session is running", () => {
+    const tools = buildSessionToolCalls([
+      event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+        tool_use_id: "task-bg",
+        content: "Agent dispatched."
+      }),
+      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+        id: "task-bg",
+        name: "Task",
+        input: {
+          description: "Background worker",
+          prompt: "Run tests.",
+          run_in_background: true
+        }
+      })
+    ], true);
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      toolUseId: "task-bg",
+      name: "Task",
+      status: "running",
+      completedAt: null
+    });
+  });
+
   it("hides Codex no-op duplicate spawn_agent rows", () => {
     const tools = buildSessionToolCalls([
       event("real-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {

@@ -251,7 +251,11 @@ both gutters grow together and the threshold is `--chat-content-width` plus a
 card column on each side, with one `@container` rule per `data-chat-width` level,
 measured against `.session-multigrid-cell`. Narrow panes (and every cell of a
 multi-pane grid) simply have no card. Widen the card and those five thresholds
-move with it.
+move with it. Because the gate is pure CSS, enabling the card from the session
+actions menu in a too-narrow pane would otherwise be a silent no-op:
+`SessionConversation` checks the mounted card's computed display after the
+toggle and reports through the composer status line when the pane can't show
+it.
 
 ## Extended-thinking (Thought block)
 

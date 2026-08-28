@@ -81,8 +81,11 @@ export function WorkspaceCard({
   return (
     <aside className="workspace-card" aria-label="Workspace">
       <div className="workspace-card-branch" title={`Branch ${workspace.branch} · from ${workspace.baseRef}`}>
-        <GitBranch size={12} aria-hidden="true" />
-        <span className="workspace-card-branch-name">{workspace.branch}</span>
+        <GitBranch size={13} aria-hidden="true" />
+        <div className="workspace-card-branch-text">
+          <span className="workspace-card-branch-name">{workspace.branch}</span>
+          <span className="workspace-card-base">from {workspace.baseRef}</span>
+        </div>
         <button
           type="button"
           className="workspace-card-hide"
@@ -93,7 +96,6 @@ export function WorkspaceCard({
           <X size={12} aria-hidden="true" />
         </button>
       </div>
-      <p className="workspace-card-base">from {workspace.baseRef}</p>
 
       <div className="workspace-card-rows">
         <WorkspaceCardRow

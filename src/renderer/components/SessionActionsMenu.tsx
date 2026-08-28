@@ -182,6 +182,7 @@ export function SessionActionsMenu({
                   className="project-picker-item"
                   aria-checked={isWorkspaceCardEnabled}
                   disabled={!onToggleWorkspaceCard}
+                  title="Float a worktree summary beside the chat. Appears once the pane is wide enough to hold it."
                   onClick={() => {
                     closeActions();
                     onToggleWorkspaceCard?.();

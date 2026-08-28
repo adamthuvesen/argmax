@@ -5,6 +5,9 @@
 
 .workspace-card {
   --workspace-card-width: 184px;
+  /* One inset shared by the frame padding and the full-bleed rules below,
+     so rows, header, and dividers all agree on the same edge. */
+  --workspace-card-inset: 6px;
   position: absolute;
   top: 2px;
   /* Same inset as the header's action cluster (`.section-heading` runs a 20px
@@ -15,9 +18,8 @@
   z-index: 3;
   display: none;
   flex-direction: column;
-  gap: 2px;
   width: var(--workspace-card-width);
-  padding: var(--space-2) 5px 5px;
+  padding: var(--workspace-card-inset);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -62,25 +64,42 @@
   }
 }
 
+/* Header: branch identity. The icon sits on the first line; the base ref
+   tucks under the branch name (not under the icon), so the two lines read
+   as one left-aligned block. The hairline below runs edge to edge, which
+   is what frames the header as a header rather than a first row. */
 .workspace-card-branch {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 5px 2px;
-  color: var(--text-soft);
+  align-items: flex-start;
+  /* Same gap and inline inset as the rows below (6px card inset + 8px row
+     padding), and a 13px icon to match theirs, so the branch name and the
+     row labels start on the same x. */
+  gap: var(--space-2);
+  margin: 0 calc(-1 * var(--workspace-card-inset)) var(--workspace-card-inset);
+  padding: 2px calc(var(--workspace-card-inset) + var(--space-2)) var(--space-2);
+  color: var(--text);
+  border-bottom: 1px solid var(--line-soft);
   font-size: var(--text-xs);
 }
 
 .workspace-card-branch > svg {
   flex: none;
+  margin-top: 2px;
   color: var(--muted);
 }
 
-.workspace-card-branch-name {
+.workspace-card-branch-text {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
+}
+
+.workspace-card-branch-name {
   overflow: hidden;
   font-family: var(--font-code);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -115,8 +134,6 @@
 }
 
 .workspace-card-base {
-  margin: 0 0 var(--space-1);
-  padding: 0 5px;
   color: var(--muted);
   font-size: var(--text-2xs);
   overflow: hidden;
@@ -125,7 +142,8 @@
 }
 
 /* Two groups: where the work is (changes / files / terminal) and what happens
-   to it next (commit / PR). The rule between them carries the split. */
+   to it next (commit / PR). The rule between them runs edge to edge, matching
+   the header's, so the card reads as three framed sections. */
 .workspace-card-rows {
   display: flex;
   flex-direction: column;
@@ -133,9 +151,11 @@
 }
 
 .workspace-card-rows + .workspace-card-rows {
-  margin-top: 5px;
-  padding-top: 5px;
+  margin-top: var(--workspace-card-inset);
+  padding-top: var(--workspace-card-inset);
   border-top: 1px solid var(--line-soft);
+  margin-inline: calc(-1 * var(--workspace-card-inset));
+  padding-inline: var(--workspace-card-inset);
 }
 
 .workspace-card-row {
@@ -143,7 +163,8 @@
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: 5px 6px;
+  min-height: 26px;
+  padding: 4px var(--space-2);
   color: var(--text-soft);
   border: 0;
   border-radius: var(--radius-md);
@@ -155,10 +176,17 @@
   transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
 }
 
+/* Same hover surface as the app's menus (.project-picker-item): the row
+   lifts toward --panel-soft rather than sinking, and its icon wakes with it. */
 .workspace-card-row:hover,
 .workspace-card-row[aria-pressed="true"] {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: var(--panel-soft);
+}
+
+.workspace-card-row:hover .workspace-card-row-icon,
+.workspace-card-row[aria-pressed="true"] .workspace-card-row-icon {
+  color: var(--text-soft);
 }
 
 .workspace-card-row:focus-visible {
@@ -175,11 +203,16 @@
   background: transparent;
 }
 
+.workspace-card-row:disabled:hover .workspace-card-row-icon {
+  color: var(--muted);
+}
+
 .workspace-card-row-icon {
   display: grid;
   flex: none;
   place-items: center;
   color: var(--muted);
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .workspace-card-row-label {

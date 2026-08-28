@@ -390,30 +390,41 @@ describe("SidebarSessionRow", () => {
     expect(screen.queryByRole("button", { name: "Rocket" })).toBeNull();
   });
 
-  it("a custom icon replaces the status marker and keeps live status as an overlay", () => {
-    render(
+  it("a running turn hides the custom icon and restores it when the turn ends", () => {
+    const props = {
+      workspaceTokens: null,
+      isSelected: false,
+      isOpenInGrid: false,
+      canDragToGrid: true,
+      onOpenWorkspaceChat: vi.fn(),
+      onArchiveWorkspace: vi.fn(),
+      onOpenInIde: vi.fn(),
+      onSetIcon: vi.fn(),
+      detectedIdes,
+      defaultIde: "vscode" as const,
+      showTokens: false
+    };
+    const { rerender } = render(
       <SidebarSessionRow
+        {...props}
         workspace={{ ...workspaceBase, state: "running", icon: "Brain", iconColor: "violet" }}
-        workspaceTokens={null}
-        isSelected={false}
-        isOpenInGrid={false}
-        canDragToGrid={true}
-        onOpenWorkspaceChat={vi.fn()}
-        onArchiveWorkspace={vi.fn()}
-        onOpenInIde={vi.fn()}
-        onSetIcon={vi.fn()}
-        detectedIdes={detectedIdes}
-        defaultIde="vscode"
-        showTokens={false}
       />
     );
 
-    const row = screen.getByTitle(/Build the dashboard — running/);
-    expect(row.querySelector('[data-icon-color="violet"]')).not.toBeNull();
-    // The status marker is gone, but the running signal is not: it moves to the
-    // overlay dot on the custom glyph.
-    expect(row.querySelector('[data-working="true"]')).toBeNull();
-    expect(row.querySelector('[data-overlay="working"]')).not.toBeNull();
+    // The working nest owns the cell alone, with no glyph behind it.
+    const running = screen.getByTitle(/Build the dashboard — running/);
+    expect(running.querySelector('[data-working="true"]')).not.toBeNull();
+    expect(running.querySelector('[data-icon-color="violet"]')).toBeNull();
+
+    rerender(
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, state: "complete", icon: "Brain", iconColor: "violet" }}
+      />
+    );
+    const done = screen.getByTitle(/Build the dashboard — complete/);
+    expect(done.querySelector('[data-working="true"]')).toBeNull();
+    expect(done.querySelector('[data-icon-color="violet"]')).not.toBeNull();
   });
 
   it.each([
@@ -489,7 +500,7 @@ describe("SidebarSessionRow", () => {
     const { rerender } = render(
       <SidebarSessionRow
         {...props}
-        workspace={{ ...workspaceBase, state: "running", icon: "Brain", iconColor: "violet" }}
+        workspace={{ ...workspaceBase, state: "failed", icon: "Brain", iconColor: "violet" }}
       />
     );
     expect(document.querySelector("[data-icon-color]")).not.toBeNull();
@@ -497,11 +508,11 @@ describe("SidebarSessionRow", () => {
     rerender(
       <SidebarSessionRow
         {...props}
-        workspace={{ ...workspaceBase, state: "running", icon: null, iconColor: null }}
+        workspace={{ ...workspaceBase, state: "failed", icon: null, iconColor: null }}
       />
     );
     expect(document.querySelector("[data-icon-color]")).toBeNull();
-    expect(document.querySelector('[data-working="true"]')).not.toBeNull();
+    expect(document.querySelector(".status-marker")).not.toBeNull();
   });
 
   it("recoloring while an icon is set applies immediately without closing the picker", async () => {
@@ -865,17 +876,17 @@ describe("SidebarSessionRow", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);
 
-    // The running marker is colored with the semantic running token...
-    const colorRule = /\.status-marker\[data-working="true"\]\s*\{[^}]*color:\s*var\(--sage\)/i.exec(css);
-    expect(colorRule, "expected sage color rule for the working marker").not.toBeNull();
+    // The running marker wears the configurable accent, like the mascot...
+    const colorRule = /\.status-marker\[data-working="true"\]\s*\{[^}]*color:\s*var\(--accent\)/i.exec(css);
+    expect(colorRule, "expected accent color rule for the working marker").not.toBeNull();
 
     // ...its dot animates with a dedicated keyframe...
-    const dotRule = /\.status-marker-working-dot\s*\{[^}]*animation:\s*status-marker-working-pulse/i.exec(css);
+    const dotRule = /\.working-nest\[data-active="true"\]\s\.working-nest-dot\s*\{[^}]*animation:\s*working-nest-pulse/i.exec(css);
     expect(dotRule, "expected pulse animation on the working dot").not.toBeNull();
-    expect(css).toContain("@keyframes status-marker-working-pulse");
+    expect(css).toContain("@keyframes working-nest-pulse");
 
     // ...and reduced-motion users get a static dot.
-    const reduceBlock = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.status-marker-working-dot\s*\{[^}]*animation:\s*none/i.exec(css);
+    const reduceBlock = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.working-nest\[data-active="true"\]\s\.working-nest-dot\s*\{[^}]*animation:\s*none/i.exec(css);
     expect(reduceBlock, "expected reduced-motion override for the working dot").not.toBeNull();
   });
 

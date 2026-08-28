@@ -6,6 +6,17 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
+  /* Left edge of the work area, which is the shell minus the sidebar column. Overlays
+     that float over a session center on this instead of the window, otherwise
+     they sit half a sidebar left of the conversation they opened over. The
+     shell sets `--sidebar-width` inline from the drag-resize state. */
+  --work-area-left-inset: var(--sidebar-width, 272px);
+}
+
+/* Collapsed, the sidebar leaves the grid and floats on peek, so the work area
+   is the whole window again. */
+.app-shell[data-sidebar-collapsed="true"] {
+  --work-area-left-inset: 0px;
 }
 
 .sidebar {
@@ -26,7 +37,11 @@
   opacity: 0.62;
 }
 
+/* Traffic-light clearance. `flex: none` is load-bearing: the sidebar is a flex
+   column, so without it a long session list makes this empty strip absorb part
+   of the overflow and collapse, dragging the wordmark up under the buttons. */
 .window-controls {
+  flex: 0 0 auto;
   height: 36px;
   margin-bottom: 2px;
 }
@@ -101,6 +116,7 @@
 /* ---- Margin Notes: nameplate ---- */
 
 .sidebar-nameplate {
+  flex: 0 0 auto;
   /* 8px sidebar pad + 10px inset lands the wordmark on the same 18px axis as
      the rail glyphs below it. */
   margin: 0 10px var(--space-3);
@@ -118,6 +134,7 @@
 /* ---- Margin Notes: CTA + rail nav ---- */
 
 .rail-nav {
+  flex: 0 0 auto;
   display: grid;
   gap: 1px;
   /* The cluster is its own block: whitespace, not a rule, separates it from
@@ -272,9 +289,11 @@
   margin-right: -12px;
 }
 
-/* Label-less fallback strip for the sidebar's … / + cluster. In sessions view
-   the cluster rides the newest recency header instead; this only renders in
-   projects view or when there is no recency bucket to host it. */
+/* Label-less fallback strip for the sidebar's … / + cluster. Both views
+   normally hang the cluster off a list header: the newest recency bucket in
+   sessions view or the "Projects" header in projects view. This only shows
+   when sessions view has no recency bucket at all. It keeps a header row's
+   footprint so the list below starts on the same line either way. */
 .rail-heading {
   position: sticky;
   top: 0;
@@ -283,8 +302,8 @@
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  min-height: 24px;
-  margin: 22px 0 8px 12px;
+  min-height: 30px;
+  margin: 22px 0 3px 12px;
   /* Same right inset as the rows below so the header … / + sit in the same
      right-edge columns as each project row's … / chevron (which carry this
      inset via `.project-row` padding / the session-row action offset). */
@@ -375,6 +394,47 @@
   cursor: pointer;
 }
 
+/* Bulk "mark the whole section done", in the header's second column where the
+   recency buckets keep their … / + cluster. Hover-only like the chevron: the
+   section is triage, so emptying it shouldn't be a click away at rest. */
+.session-priority-clear {
+  padding: 2px 6px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition: color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease);
+}
+
+.session-priority-row:hover .session-priority-clear,
+.session-priority-row:focus-within .session-priority-clear {
+  opacity: 1;
+}
+
+.session-priority-clear:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+/* Projects view's list header. It sits where the newest recency bucket sits in
+   sessions view and hosts the same … / + cluster, so the two views share one
+   vertical rhythm. It only names the grouping. Nothing collapses from here,
+   so it drops the row's drag and hover affordances. */
+.project-group.session-projects-group {
+  margin-bottom: 0;
+}
+
+.project-row.session-projects-row,
+.project-row.session-projects-row:hover {
+  cursor: default;
+  background: transparent;
+}
+
 .project-group.dragging {
   opacity: 0.4;
 }
@@ -433,6 +493,7 @@
 .project-actions-trigger {
   width: var(--sidebar-action-size);
   height: var(--sidebar-action-size);
+  padding: 0;
   opacity: 0;
   color: var(--muted);
   transition: opacity var(--duration-fast) var(--ease);

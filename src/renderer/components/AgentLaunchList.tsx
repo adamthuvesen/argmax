@@ -9,34 +9,12 @@ import {
 import type { ToolCall } from "../lib/toolCalls.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ToolCallDetail } from "./ToolCallDetail.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 type UserToggle = {
   value: boolean;
   defaultExpanded?: boolean;
 };
-
-/**
- * The nest marker: four dots in a 2x2. Hand-rolled as SVG rather than a "::"
- * text glyph so each dot can carry its own opacity while the launch is
- * running. The clockwise sequence lives in CSS (.agent-launch-nest-dot) so
- * prefers-reduced-motion can pin it and a settled row rests unanimated.
- */
-function AgentLaunchNest(): JSX.Element {
-  return (
-    <svg
-      className="agent-launch-nest"
-      width={10}
-      height={10}
-      viewBox="0 0 10 10"
-      aria-hidden="true"
-    >
-      <circle className="agent-launch-nest-dot" data-dot="1" cx="3" cy="3" r="1.3" />
-      <circle className="agent-launch-nest-dot" data-dot="2" cx="7" cy="3" r="1.3" />
-      <circle className="agent-launch-nest-dot" data-dot="3" cx="7" cy="7" r="1.3" />
-      <circle className="agent-launch-nest-dot" data-dot="4" cx="3" cy="7" r="1.3" />
-    </svg>
-  );
-}
 
 function AgentLaunchRow({
   tool,
@@ -68,7 +46,7 @@ function AgentLaunchRow({
   return (
     <div className="agent-launch-row" data-status={tool.status}>
       <div className="agent-launch-row-main">
-        <AgentLaunchNest />
+        <WorkingNest active={tool.status === "running"} className="agent-launch-nest" size={14} />
         <button
           type="button"
           className="agent-launch-row-button"

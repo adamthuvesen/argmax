@@ -3,7 +3,8 @@
    overrides the default status marker rules in that file. */
 
 /* A user-chosen icon takes the marker's grid cell. The row's live state moves
-   to a small corner dot so running / awaiting / failed / PR never goes missing.
+   to a small corner dot so awaiting / failed / PR never goes missing. A running
+   turn keeps the marker's working nest instead of this glyph.
    The dot sits outside the glyph box so it reads against the row background. */
 .session-custom-icon {
   position: relative;
@@ -59,11 +60,6 @@
   background: var(--muted);
 }
 
-.session-custom-icon-overlay[data-overlay="working"] {
-  background: var(--sage);
-  animation: status-marker-working-pulse 1.8s var(--ease) infinite;
-}
-
 .session-custom-icon-overlay[data-overlay="awaiting"] {
   background: var(--amber);
 }
@@ -80,19 +76,13 @@
   background: var(--pr-open);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .session-custom-icon-overlay[data-overlay="working"] {
-    animation: none;
-  }
-}
-
 /* Edit Icon popover — same panel/line/shadow chrome as the picker popovers,
    with a swatch row, a search field, and a scrollable grid. */
 .session-icon-picker {
   z-index: 40;
   display: grid;
   gap: var(--space-2);
-  width: 288px;
+  width: 336px;
   padding: var(--space-2);
   background: var(--panel);
   border: 1px solid var(--line);
@@ -214,6 +204,8 @@
   gap: 2px;
   max-height: 232px;
   overflow-y: auto;
+  /* Reserve the scrollbar so it never eats the tenth column. */
+  scrollbar-gutter: stable;
 }
 
 .session-icon-option {
@@ -221,6 +213,9 @@
   align-items: center;
   justify-content: center;
   aspect-ratio: 1;
+  /* Without this the aspect ratio inflates the automatic minimum width and the
+     10-column grid overflows sideways instead of shrinking to fit. */
+  min-width: 0;
   color: var(--muted-strong);
   background: transparent;
   border: 0;

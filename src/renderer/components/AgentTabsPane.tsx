@@ -1,4 +1,3 @@
-import { Loader2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -14,6 +13,7 @@ import type { AgentGridCell } from "../lib/gridState.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { AgentActivityPane } from "./AgentActivityPane.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 /**
  * All subagents of one parent session share a single grid cell, shown as a
@@ -164,7 +164,7 @@ export function AgentTabsPane({
                 >
                   <span className="agent-tab-status" data-status={status} aria-hidden="true">
                     {status === "running" ? (
-                      <Loader2 size={11} className="tool-call-spinner" aria-hidden="true" />
+                      <WorkingNest active size={11} />
                     ) : (
                       <span className="agent-tab-status-dot" />
                     )}

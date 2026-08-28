@@ -674,6 +674,30 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
+  // Bulk "Clear" on the Priority header. Dismissing also clears a manual add
+  // backend-side, so one call per row empties both flavors of entry. The rows
+  // drop back into their date bucket or project group.
+  const clearPriority = useCallback(
+    async (workspaceIds: string[]): Promise<void> => {
+      if (!window.argmax) {
+        setToast({ kind: "error", message: "Open the Tauri app window to change priority." });
+        return;
+      }
+      const ok = await withToast(
+        () =>
+          Promise.all(
+            workspaceIds.map((workspaceId) =>
+              window.argmax!.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
+            )
+          ),
+        setToast,
+        "Could not clear priority."
+      );
+      if (ok) await refreshDashboardStatus();
+    },
+    [refreshDashboardStatus]
+  );
+
   const addToPriority = useCallback(
     async (workspaceId: string): Promise<void> => {
       if (!window.argmax) {
@@ -749,6 +773,12 @@ export function App(): JSX.Element {
       void addToPriority(workspaceId);
     },
     [addToPriority]
+  );
+  const onClearPrioritySection = useCallback(
+    (workspaceIds: string[]): void => {
+      void clearPriority(workspaceIds);
+    },
+    [clearPriority]
   );
   const onSetWorkspaceIconRow = useCallback(
     (workspaceId: string, icon: string | null, iconColor: string | null): void => {
@@ -1167,6 +1197,7 @@ export function App(): JSX.Element {
         onRenameWorkspace={onRenameWorkspaceRow}
         onRemoveFromPriority={onRemoveFromPriorityRow}
         onAddToPriority={onAddToPriorityRow}
+        onClearPriority={onClearPrioritySection}
         onSetWorkspaceIcon={onSetWorkspaceIconRow}
         showPriority={sidebarPriorityVisible}
         onOpenLauncher={onOpenLauncherRow}

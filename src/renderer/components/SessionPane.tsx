@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type JSX,
   type MouseEvent as ReactMouseEvent
@@ -31,6 +32,12 @@ import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
+import {
+  getWorkspaceTerminalState,
+  setTerminalPanelOpen,
+  subscribeTerminalTabs,
+  toggleTerminalPanel
+} from "../lib/terminalTabs.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { DebugLogPanel } from "./DebugLogPanel.js";
@@ -172,12 +179,13 @@ export function SessionPane({
     })
   );
   const toggleLog = useCallback(() => setIsLogOpen((v) => !v), []);
-  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
-  // True once the user has opened the terminal in the current workspace.
-  // Lets the panel stay mounted (PTYs alive) across ⌘J collapses while
-  // still keeping the heavy xterm bundle off the initial render. Resets on
-  // workspace change so stale PTYs are torn down with the leaf components.
-  const [terminalOnceOpened, setTerminalOnceOpened] = useState(false);
+  // Terminal panel state lives in the workspace-keyed store (terminalTabs.ts)
+  // so it survives this pane unmounting on session/workspace switches — the
+  // xterm instances and PTYs persist in terminalRuntime.ts and reattach here.
+  const terminalWorkspaceId = workspace?.id ?? null;
+  const terminalState = useSyncExternalStore(subscribeTerminalTabs, () =>
+    getWorkspaceTerminalState(terminalWorkspaceId)
+  );
   const [isTerminalResizing, setIsTerminalResizing] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState<number>(() =>
     readBoundedNumberPreference(TERMINAL_HEIGHT_KEY, {
@@ -186,16 +194,9 @@ export function SessionPane({
       fallback: TERMINAL_DEFAULT_HEIGHT
     })
   );
-  useEffect(() => {
-    if (isTerminalOpen) setTerminalOnceOpened(true);
-  }, [isTerminalOpen]);
-  // Reset the terminal panel whenever the session/workspace context changes
-  // or clears — the leaf components unmount and their PTYs are terminated.
-  useEffect(() => {
-    setIsTerminalOpen(false);
-    setTerminalOnceOpened(false);
-  }, [workspace?.id]);
-  const toggleTerminal = useCallback(() => setIsTerminalOpen((open) => !open), []);
+  const toggleTerminal = useCallback(() => {
+    if (terminalWorkspaceId) toggleTerminalPanel(terminalWorkspaceId);
+  }, [terminalWorkspaceId]);
   // The card's own dismiss and the session menu's checkbox write the same
   // app-level preference, so hiding it here keeps it hidden everywhere.
   const handleHideWorkspaceCard = useCallback(
@@ -207,12 +208,11 @@ export function SessionPane({
     [onWorkspaceCardVisibleChange, workspaceCardVisible]
   );
   const handleTerminalCollapse = useCallback(() => {
-    setIsTerminalOpen(false);
-  }, []);
-  const handleTerminalRequestClose = useCallback(() => {
-    setIsTerminalOpen(false);
-    setTerminalOnceOpened(false);
-  }, []);
+    if (terminalWorkspaceId) setTerminalPanelOpen(terminalWorkspaceId, false);
+  }, [terminalWorkspaceId]);
+  // Last tab closed: the store has no tabs left, so closing the panel also
+  // prunes the workspace entry.
+  const handleTerminalRequestClose = handleTerminalCollapse;
   const handleResolveApproval = async (approvalId: string, status: "approved" | "rejected"): Promise<void> => {
     try {
       await onResolveApproval(approvalId, status);
@@ -230,7 +230,10 @@ export function SessionPane({
     .join(" ");
   const reviewColumnWidth = `${rightPanelWidth}px`;
   const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : `${rightPanelWidth}px`;
-  const terminalOpen = isTerminalOpen && workspace !== null;
+  const terminalOpen = terminalState.panelOpen && workspace !== null;
+  // Keep the panel mounted while collapsed so xterm stays attached and
+  // re-expanding is instant; the runtimes survive unmounts regardless.
+  const terminalMounted = workspace !== null && (terminalOpen || terminalState.tabs.length > 0);
   const gridStyle = {
     "--session-main-column-min-width": `${CHAT_PANE_MIN_WIDTH_PX}px`,
     "--session-review-panel-width": reviewColumnWidth,
@@ -358,7 +361,7 @@ export function SessionPane({
     if (!terminalToggleSignal || terminalToggleSignal === lastTerminalToggleSignal.current) return;
     lastTerminalToggleSignal.current = terminalToggleSignal;
     if (!isFocused || !workspace) return;
-    setIsTerminalOpen((open) => !open);
+    toggleTerminalPanel(workspace.id);
   }, [isFocused, terminalToggleSignal, workspace]);
 
   useEffect(() => {
@@ -574,7 +577,7 @@ export function SessionPane({
             ))}
           </section>
         ) : null}
-        {terminalOnceOpened && workspace ? (
+        {terminalMounted && workspace ? (
           <div
             className="terminal-panel"
             data-argmax-terminal="true"

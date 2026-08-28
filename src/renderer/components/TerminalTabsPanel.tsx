@@ -3,16 +3,20 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useSyncExternalStore,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { TerminalInstance } from "./TerminalPanel.js";
-
-interface TerminalTab {
-  id: string;
-  label: string;
-}
+import {
+  addTerminalTab,
+  closeTerminalTab,
+  getWorkspaceTerminalState,
+  markTerminalWorkspaceAttached,
+  setActiveTerminalTab,
+  subscribeTerminalTabs,
+  type TerminalTabMeta
+} from "../lib/terminalTabs.js";
 
 /**
  * Cosmetic label only — actual shell selection happens in the main process.
@@ -29,7 +33,7 @@ function defaultShellLabel(): string {
  * Pick the lowest free label of form `${base}` / `${base} 2` / `${base} 3`
  * so closing a middle tab and opening a new one fills the gap.
  */
-function nextLabel(existing: TerminalTab[], base: string): string {
+function nextLabel(existing: readonly TerminalTabMeta[], base: string): string {
   const taken = new Set(existing.map((t) => t.label));
   if (!taken.has(base)) return base;
   for (let i = 2; i < 1000; i += 1) {
@@ -39,24 +43,16 @@ function nextLabel(existing: TerminalTab[], base: string): string {
   return `${base} ${existing.length + 1}`;
 }
 
-let nextTabIdSeq = 0;
-function freshTabId(): string {
-  nextTabIdSeq += 1;
-  return `tab-${nextTabIdSeq}-${Date.now().toString(36)}`;
-}
-
 /**
- * Multi-tab integrated terminal. Owns its own tab list + active tab; each
- * tab mounts one `TerminalInstance` that spawns its own PTY. Inactive tabs
- * stay mounted (`display: none`) so long-running processes survive switching
- * between tabs and ⌘J collapse.
- *
- * Tabs are per-workspace: the parent should `key={workspaceId}` this
- * component so changing workspaces remounts and tears down stale PTYs.
+ * Multi-tab integrated terminal. Tab state and the xterm/PTY runtimes live in
+ * `terminalTabs.ts` / `terminalRuntime.ts` keyed by workspace, so this
+ * component can unmount freely (tab switch, ⌘J collapse, session switch) and
+ * remount to the same terminals with scrollback and running processes intact.
+ * Inactive tabs stay mounted (`display: none`) so switching tabs is instant.
  *
  * Two close paths:
  * - `onCollapse` — header × (or any "hide panel" affordance). PTYs stay
- *   alive; the parent should hide the panel via CSS.
+ *   alive; the parent hides the panel.
  * - `onRequestClose` — last tab was closed via its inline ×. PTYs are gone;
  *   the parent should unmount the panel entirely.
  */
@@ -72,33 +68,51 @@ export function TerminalTabsPanel({
   onRequestClose: () => void;
 }): JSX.Element {
   const shellLabel = useMemo(() => defaultShellLabel(), []);
-  const [tabs, setTabs] = useState<TerminalTab[]>(() => [
-    { id: freshTabId(), label: shellLabel }
-  ]);
-  const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id ?? "");
+  const { tabs, activeTabId } = useSyncExternalStore(subscribeTerminalTabs, () =>
+    getWorkspaceTerminalState(workspaceId)
+  );
 
-  // Keep activeTabId valid; ask parent to fully close when the last tab goes.
+  // Protect this workspace's terminals from LRU eviction while its panel is
+  // mounted anywhere.
+  useEffect(() => markTerminalWorkspaceAttached(workspaceId), [workspaceId]);
+
+  // Seed one tab on first mount of an empty workspace; after that, an empty
+  // tab list means the user closed the last tab — hand control back to the
+  // parent so it unmounts the panel. Re-check the store before seeding or
+  // closing: StrictMode re-runs this effect with a stale empty-tabs closure
+  // right after the first run already seeded.
+  const seededRef = useRef(false);
   useEffect(() => {
-    if (tabs.length === 0) {
-      onRequestClose();
+    if (tabs.length > 0) {
+      seededRef.current = true;
       return;
     }
-    if (!tabs.some((t) => t.id === activeTabId)) {
-      setActiveTabId(tabs[tabs.length - 1].id);
+    if (getWorkspaceTerminalState(workspaceId).tabs.length > 0) return;
+    if (!seededRef.current) {
+      seededRef.current = true;
+      addTerminalTab(workspaceId, shellLabel);
+      return;
     }
-  }, [tabs, activeTabId, onRequestClose]);
+    onRequestClose();
+  }, [tabs, workspaceId, shellLabel, onRequestClose]);
 
   const addTab = useCallback(() => {
-    setTabs((prev) => {
-      const tab = { id: freshTabId(), label: nextLabel(prev, shellLabel) };
-      setActiveTabId(tab.id);
-      return [...prev, tab];
-    });
-  }, [shellLabel]);
+    addTerminalTab(workspaceId, nextLabel(getWorkspaceTerminalState(workspaceId).tabs, shellLabel));
+  }, [shellLabel, workspaceId]);
 
-  const closeTab = useCallback((tabId: string) => {
-    setTabs((prev) => prev.filter((t) => t.id !== tabId));
-  }, []);
+  const closeTab = useCallback(
+    (tabId: string) => {
+      closeTerminalTab(workspaceId, tabId);
+    },
+    [workspaceId]
+  );
+
+  const activateTab = useCallback(
+    (tabId: string) => {
+      setActiveTerminalTab(workspaceId, tabId);
+    },
+    [workspaceId]
+  );
 
   // Refs to each tab's label button so keyboard nav can move focus along with
   // the active tab. WAI-ARIA tabs pattern: ←/→ moves between tabs, Home/End
@@ -132,7 +146,7 @@ export function TerminalTabsPanel({
           const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
           const next = tabs[nextIndex];
           if (!next) return;
-          setActiveTabId(next.id);
+          activateTab(next.id);
           focusTab(next.id);
           return;
         }
@@ -140,7 +154,7 @@ export function TerminalTabsPanel({
           event.preventDefault();
           const first = tabs[0];
           if (!first) return;
-          setActiveTabId(first.id);
+          activateTab(first.id);
           focusTab(first.id);
           return;
         }
@@ -148,7 +162,7 @@ export function TerminalTabsPanel({
           event.preventDefault();
           const last = tabs[tabs.length - 1];
           if (!last) return;
-          setActiveTabId(last.id);
+          activateTab(last.id);
           focusTab(last.id);
           return;
         }
@@ -157,7 +171,7 @@ export function TerminalTabsPanel({
           closeTab(tabId);
         }
       },
-    [closeTab, focusTab, tabs]
+    [activateTab, closeTab, focusTab, tabs]
   );
 
   return (
@@ -186,7 +200,7 @@ export function TerminalTabsPanel({
                   aria-controls={`terminal-tabpanel-${tab.id}`}
                   id={`terminal-tab-${tab.id}`}
                   tabIndex={isActive ? 0 : -1}
-                  onClick={() => setActiveTabId(tab.id)}
+                  onClick={() => activateTab(tab.id)}
                   onKeyDown={handleTabKeyDown(tab.id)}
                   title={tab.label}
                 >
@@ -241,7 +255,7 @@ export function TerminalTabsPanel({
               aria-hidden={!isActive}
             >
               <TerminalInstance
-                instanceKey={tab.id}
+                tabId={tab.id}
                 workspaceId={workspaceId}
                 visible={visible && isActive}
               />

@@ -14,12 +14,24 @@ import {
   snapshot
 } from "../test/appTestHarness.js";
 import { startedAgentName } from "../test/agentRowName.js";
+import { resetTerminalTabsForTests } from "./lib/terminalTabs.js";
 
-vi.mock("./components/TerminalTabsPanel.js", () => ({
-  TerminalTabsPanel: ({ visible }: { visible: boolean }) => (
-    <div data-testid="terminal-tabs-panel" data-visible={String(visible)} />
-  )
-}));
+vi.mock("./components/TerminalTabsPanel.js", async () => {
+  const { useEffect } = await import("react");
+  const { addTerminalTab, getWorkspaceTerminalState } = await import("./lib/terminalTabs.js");
+  return {
+    TerminalTabsPanel: ({ workspaceId, visible }: { workspaceId: string; visible: boolean }) => {
+      // Mirror the real panel's mount contract: seed one tab so SessionPane
+      // keeps the collapsed panel mounted after a ⌘J toggle.
+      useEffect(() => {
+        if (getWorkspaceTerminalState(workspaceId).tabs.length === 0) {
+          addTerminalTab(workspaceId, "zsh");
+        }
+      }, [workspaceId]);
+      return <div data-testid="terminal-tabs-panel" data-visible={String(visible)} />;
+    }
+  };
+});
 
 describe("App grid", () => {
   afterEach(() => {
@@ -29,6 +41,7 @@ describe("App grid", () => {
 
   beforeEach(() => {
     setupAppTestMocks();
+    resetTerminalTabsForTests();
   });
 
   it("⌘-click on a sidebar session splits the focused pane to the right", async () => {

@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { TerminalTabsPanel } from "./TerminalTabsPanel.js";
+import { resetTerminalTabsForTests } from "../lib/terminalTabs.js";
+import { resetTerminalRuntimesForTests } from "../lib/terminalRuntime.js";
 
 const terminalMockState = vi.hoisted(() => ({
   instances: [] as Array<{
@@ -107,6 +109,10 @@ describe("TerminalTabsPanel", () => {
   let stub: ArgmaxStub;
 
   beforeEach(() => {
+    // Tab state and xterm runtimes are module-level so they persist across
+    // mounts by design; reset them so each test starts from a blank slate.
+    resetTerminalRuntimesForTests();
+    resetTerminalTabsForTests();
     terminalMockState.instances = [];
     terminalMockState.nextSize = null;
     document.documentElement.style.removeProperty("--font-mono");
@@ -494,5 +500,70 @@ describe("TerminalTabsPanel", () => {
 
     // Still rendering and responsive.
     expect(screen.getByRole("tab", { name: "zsh" })).toBeInTheDocument();
+  });
+
+  it("keeps tabs and PTYs alive across unmount/remount (session switch)", async () => {
+    const first = render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
+
+    first.unmount();
+    expect(stub.terminate).not.toHaveBeenCalled();
+
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+
+    expect(screen.getByRole("tab", { name: "zsh" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    // Reattached the existing runtimes — no new PTYs.
+    expect(stub.spawn).toHaveBeenCalledTimes(2);
+    expect(stub.terminate).not.toHaveBeenCalled();
+  });
+
+  it("keeps per-workspace tab lists independent when switching workspaces", async () => {
+    const first = render(
+      <TerminalTabsPanel
+        workspaceId="ws-1"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    render(
+      <TerminalTabsPanel
+        workspaceId="ws-2"
+        visible
+        onCollapse={noop}
+        onRequestClose={noop}
+      />
+    );
+
+    // The other workspace seeds its own tab and PTY; ws-1's stays alive.
+    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
+    expect(stub.spawn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ workspaceId: "ws-2" })
+    );
+    expect(stub.terminate).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
   });
 });

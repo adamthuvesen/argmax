@@ -36,7 +36,350 @@
   font-feature-settings: "tnum", "zero";
 }
 
+/* The one typographic moment: gives the empty canvas an anchor so the
+   composer reads as a composed opening page, not a floating input. */
+.launcher-hero-title {
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
 .empty-project-launcher {
   justify-items: center;
   gap: 22px;
+}
+
+/* ============================================================
+   Welcome pane — fresh-install onboarding checklist
+   (WelcomePane.tsx; shown while zero projects are registered)
+   ============================================================ */
+
+.welcome-pane {
+  max-width: 640px;
+  justify-self: center;
+  gap: 18px;
+}
+
+.welcome-header {
+  display: grid;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.welcome-pane h1 {
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.welcome-tagline {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--muted-strong);
+}
+
+.welcome-section {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+}
+
+.welcome-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.welcome-section-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.welcome-pane h2 {
+  margin: 0;
+  font-size: var(--text-md-tight);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text);
+}
+
+.welcome-step {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-soft);
+  font-size: var(--text-2xs-plus);
+  font-weight: 600;
+  font-feature-settings: "tnum";
+  color: var(--muted-strong);
+}
+
+.welcome-hint {
+  margin: 0;
+  font-size: var(--text-sm-plus);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.welcome-error {
+  margin: 0;
+  font-size: var(--text-sm-plus);
+  color: var(--amber);
+}
+
+.welcome-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs-plus);
+  color: var(--text-soft);
+  transition: color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.welcome-refresh:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--panel-sunken);
+}
+
+.welcome-refresh:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.welcome-refresh svg.is-spinning {
+  animation: spin 900ms linear infinite;
+}
+
+.welcome-providers {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.welcome-provider {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+
+.welcome-provider[data-installed="true"] {
+  background: var(--panel);
+}
+
+.welcome-provider-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.welcome-provider-icon {
+  flex: 0 0 auto;
+}
+
+.welcome-provider-icon.installed {
+  color: var(--sage);
+}
+
+.welcome-provider-icon.needs-login {
+  color: var(--amber);
+}
+
+.welcome-provider-icon.missing {
+  color: var(--muted);
+}
+
+.welcome-provider-name {
+  font-size: var(--text-base);
+  font-weight: 550;
+  color: var(--text);
+}
+
+.welcome-provider-version {
+  font-size: var(--text-xs);
+  font-feature-settings: "tnum";
+  color: var(--muted);
+}
+
+.welcome-provider-state {
+  margin-left: auto;
+  font-size: var(--text-2xs-plus);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.welcome-provider[data-installed="true"] .welcome-provider-state {
+  color: var(--sage-deep);
+}
+
+.welcome-provider[data-installed="needs-login"] .welcome-provider-state {
+  color: var(--amber);
+}
+
+.welcome-provider-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.welcome-provider-guidance {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted-strong);
+}
+
+.welcome-install-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: start;
+  font-size: var(--text-sm);
+  color: var(--accent-deep);
+  text-decoration: none;
+}
+
+.welcome-install-link:hover {
+  text-decoration: underline;
+}
+
+.welcome-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--panel-sunken);
+}
+
+.welcome-command code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+  color: var(--text-soft);
+}
+
+.welcome-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-2xs-plus);
+  color: var(--text-soft);
+  transition: color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.welcome-copy:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.welcome-mcp > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.welcome-mcp > summary::-webkit-details-marker {
+  display: none;
+}
+
+.welcome-mcp > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.welcome-mcp[open] > summary::after {
+  transform: rotate(225deg);
+}
+
+.welcome-mcp > summary h2 {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.welcome-optional {
+  font-size: var(--text-2xs-plus);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.welcome-mcp > .welcome-hint {
+  margin-top: 10px;
+}
+
+.welcome-mcp-list {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.welcome-mcp-row {
+  display: grid;
+  gap: 5px;
+}
+
+.welcome-mcp-name {
+  font-size: var(--text-sm-plus);
+  font-weight: 550;
+  color: var(--text);
+}
+
+.welcome-cta .primary-action {
+  justify-self: start;
 }

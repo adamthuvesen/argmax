@@ -477,6 +477,7 @@ export function LaunchSurface({
           <span className="launcher-hero-dot" aria-hidden="true" />
           <span className="launcher-hero-eyebrow">New session</span>
         </div>
+        <h1 className="launcher-hero-title">What are we building?</h1>
       </header>
       <form
         className="composer"

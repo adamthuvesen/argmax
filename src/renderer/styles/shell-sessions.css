@@ -544,28 +544,6 @@
   white-space: nowrap;
 }
 
-.identity-sub-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: var(--muted);
-  flex: 0 0 auto;
-  transition: background var(--duration-fast) var(--ease);
-}
-
-.identity-chip[data-state="ready"] .identity-sub-dot {
-  background: var(--muted);
-}
-
-.identity-chip[data-state="loading"] .identity-sub-dot {
-  background: var(--amber);
-  animation: status-pulse 1.2s var(--ease) infinite;
-}
-
-.identity-chip[data-state="error"] .identity-sub-dot {
-  background: var(--rose);
-}
-
 .identity-menu-chevron {
   margin-left: auto;
   flex: 0 0 auto;

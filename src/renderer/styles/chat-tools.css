@@ -221,7 +221,7 @@
 }
 
 .tool-call-item--nested:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--row-hover);
 }
 
 .tool-call-item--nested .tool-call-header {
@@ -291,7 +291,8 @@
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
 }
 
 /* Context-window ring — a compact gauge grouped with the model + effort it
@@ -431,18 +432,28 @@
   align-items: center;
 }
 
+/* Quiet ghost buttons: the card already draws the frame, so the per-row
+   controls drop their hairline and surface a fill only on hover — less
+   border soup, same hit target. */
 .checks-row-run,
 .checks-row-expand {
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-md);
-  background: var(--panel);
+  background: transparent;
   cursor: pointer;
-  color: var(--text);
+  color: var(--muted-strong);
   display: inline-grid;
   place-items: center;
+  transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.checks-row-run:not([disabled]):hover,
+.checks-row-expand:not([disabled]):hover {
+  color: var(--text);
+  background: var(--overlay-med);
 }
 
 .checks-row-run[disabled],

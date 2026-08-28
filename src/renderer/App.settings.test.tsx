@@ -5,6 +5,7 @@ import type { DashboardSnapshot } from "../shared/types.js";
 import { ACCENT_STORAGE_KEY } from "./lib/accent.js";
 import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { FAST_MODE_KEY, RANDOM_SESSION_ICON_KEY } from "./lib/uiPreferences.js";
+import { APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
   dashboardDeltaListener,
   launchProvider,
@@ -55,7 +56,8 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     const trigger = screen.getByRole("button", { name: "Argmax menu" });
-    expect(trigger).toHaveTextContent("argmax@local");
+    expect(trigger).toHaveTextContent("Argmax");
+    expect(trigger).toHaveTextContent(APP_VERSION_LABEL);
     expect(trigger).not.toHaveTextContent("Local workspace");
     expect(within(trigger).queryByText(/ready/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();

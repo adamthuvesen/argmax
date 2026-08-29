@@ -1,6 +1,6 @@
 {
   "name": "argmax",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Local desktop command center for Claude Code and Codex sessions.",
   "author": "Adam Thuvesen <a.thuvesen@gmail.com>",

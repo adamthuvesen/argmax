@@ -601,7 +601,7 @@ export function SessionConversation({
     scrollToBottom: scrollConversationToBottom,
     handleUserScrollIntent: handleConversationScrollIntent,
     handleScroll: handleConversationScroll
-  } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, sessionRunning, inputRef);
+  } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, inputRef);
   const repositoryName =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
@@ -698,6 +698,11 @@ export function SessionConversation({
           onTouchMove={handleConversationScrollIntent}
           onPointerDown={(event) => {
             if (event.target === event.currentTarget) {
+              handleConversationScrollIntent();
+            }
+          }}
+          onPointerMove={(event) => {
+            if (event.buttons !== 0) {
               handleConversationScrollIntent();
             }
           }}
@@ -813,6 +818,7 @@ export function SessionConversation({
               const root = conversationListRef.current;
               const el = root?.querySelector(".approval-surface");
               if (el instanceof HTMLElement) {
+                handleConversationScrollIntent();
                 el.scrollIntoView({ behavior: "smooth", block: "start" });
               }
             }}

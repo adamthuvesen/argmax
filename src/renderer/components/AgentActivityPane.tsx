@@ -254,8 +254,7 @@ export function AgentActivityPane({
   } = useSmartFollowScroll(
     parentSessionId ? `${parentSessionId}:${parentToolUseId}` : null,
     followItems,
-    false,
-    streaming
+    false
   );
   const loadAgentEventsGuarded = useCallback(async (): Promise<void> => {
     const loadKey = agentKey;
@@ -344,6 +343,11 @@ export function AgentActivityPane({
         onTouchMove={handleUserScrollIntent}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) {
+            handleUserScrollIntent();
+          }
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons !== 0) {
             handleUserScrollIntent();
           }
         }}

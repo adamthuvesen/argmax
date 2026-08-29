@@ -154,14 +154,21 @@ reclaimed the instant the turn ended, jerking the view up as the last line
 settled. The steady gap keeps the latest rendered text clear of the bottom edge
 and above the composer without that wobble.
 
-One retained spring owns every programmatic move. Stream growth, viewport
-changes, direct-child resizes, and the scroll-to-latest button update the same
-moving target. Rapid deltas do not restart a native smooth-scroll animation, and
-a smaller target never makes the spring reverse upward. If the user scrolls up
-with real input, the spring stops, auto-follow pauses, and the scroll-to-latest
-FAB appears. Direct children are observed with `ResizeObserver` because smooth
-text reveal grows an existing assistant turn without changing the
-`conversationItems` array.
+Auto-follow is an explicit two-state model. While attached, every item change
+and observed resize sets the exact physical bottom before the browser paints.
+The reader detaches as soon as a recorded wheel, touch, pointer, or keyboard
+gesture produces measurable upward movement, even inside the near-bottom
+tolerance. A
+downward wheel at the physical bottom produces no `scroll` event, so input by
+itself never disables following. Layout correction and browser scroll anchoring
+also cannot strand the viewport because movement without a user gesture is
+re-pinned.
+
+Once detached, new output does not move the reader. The scroll-to-latest FAB
+appears beyond its visibility threshold and returns the list to attached mode.
+Direct children are observed with `ResizeObserver` because smooth text reveal
+grows an existing assistant turn without changing the `conversationItems`
+array.
 
 **Nothing at the tail may leave the layout.** Following the bottom cannot undo
 a shrink: when a row below the fold disappears, the bottom moves up with it and
@@ -181,14 +188,10 @@ composer after the turn ends. The textarea is observed as well as the viewport
 because the textarea is the box that actually grows. Its notification lands
 whether or not the list's own does.
 
-Whether to follow is decided by where the reader sat *before* the resize, not by
-the hook's near-bottom flag. A shrinking viewport pushes the latest line down by
-exactly the height it took, so the pre-resize gap is `distance - shrink`. If that
-was inside `NEAR_BOTTOM_PX` the list re-pins. The flag only updates on scroll
-events, and a composer growing under a still list fires none, so it can be stale
-in either direction. The measurement cannot. When the reader was pinned, the
-resize updates the same spring used by streaming output. It no longer cancels
-the active follower and hard-snaps the transcript on each wrapped draft line.
+The observer preserves the same state across viewport changes. Attached readers
+stay at the exact bottom when the viewport shrinks. Detached readers keep their
+position unless layout clamps them to the exact physical bottom, which
+re-attaches the list.
 
 ## Type to filter a picker
 

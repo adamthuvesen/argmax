@@ -54,6 +54,7 @@ export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<
 export type AppTestMocks = {
   createCurrentWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createCurrent"]>;
   createIsolatedWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createIsolated"]>;
+  createScratchWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createScratch"]>;
   autotitleWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["autoTitle"]>;
   archiveWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["archive"]>;
   dashboardList: AppTestMockFn<ArgmaxApi["dashboard"]["list"]>;
@@ -88,6 +89,7 @@ export type AppTestMocks = {
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
 export let createIsolatedWorkspace: AppTestMocks["createIsolatedWorkspace"];
+export let createScratchWorkspace: AppTestMocks["createScratchWorkspace"];
 export let autotitleWorkspace: AppTestMocks["autotitleWorkspace"];
 export let archiveWorkspace: AppTestMocks["archiveWorkspace"];
 export let dashboardList: AppTestMocks["dashboardList"];
@@ -138,6 +140,9 @@ export function setupAppTestMocks(): void {
     snapshot.workspaces[0] ?? missingWorkspace()
   );
   createIsolatedWorkspace = vi.fn<ArgmaxApi["workspaces"]["createIsolated"]>().mockResolvedValue(
+    snapshot.workspaces[0] ?? missingWorkspace()
+  );
+  createScratchWorkspace = vi.fn<ArgmaxApi["workspaces"]["createScratch"]>().mockResolvedValue(
     snapshot.workspaces[0] ?? missingWorkspace()
   );
   autotitleWorkspace = vi.fn<ArgmaxApi["workspaces"]["autoTitle"]>().mockResolvedValue({ ok: true });
@@ -333,6 +338,7 @@ export function setupAppTestMocks(): void {
     workspaces: {
       createIsolated: createIsolatedWorkspace,
       createCurrent: createCurrentWorkspace,
+      createScratch: createScratchWorkspace,
       refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
       status: workspaceStatus,
       keep: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),

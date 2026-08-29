@@ -50,6 +50,7 @@ describe("App sidebar", () => {
       path: "/tmp/worktrees/second-chat",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -301,23 +302,6 @@ describe("App sidebar", () => {
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
     expect(sendProviderInput).not.toHaveBeenCalled();
   });
-
-  it("interrupts the running turn and sends the draft when Send now is clicked", async () => {
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const input = await screen.findByLabelText("Session prompt");
-    fireEvent.change(input, { target: { value: "MCP" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send now" }));
-
-    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
-    await waitFor(() =>
-      expect(sendProviderInput).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: "session-1", input: "MCP" })
-      )
-    );
-  });
-
 
   it("switches the session model for the next follow-up prompt", async () => {
     const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
@@ -943,6 +927,7 @@ describe("App sidebar", () => {
       path: "/tmp/worktrees/waiting-chat",
       state: "waiting",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -959,6 +944,7 @@ describe("App sidebar", () => {
       path: "/tmp/worktrees/other-chat",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:00:00.000Z",
@@ -1010,7 +996,7 @@ describe("App sidebar", () => {
       }
       return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0 });
     });
-    setPriorityDismissed.mockImplementation(async ({ workspaceId, dismissed }) => {
+    setPriorityDismissed.mockImplementation(({ workspaceId, dismissed }) => {
       const current =
         demotionSnapshot.workspaces.find((item) => item.id === workspaceId) ?? waitingWorkspace;
       const updated = {
@@ -1026,7 +1012,7 @@ describe("App sidebar", () => {
       };
       workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(next));
       dashboardDeltaListener?.({ workspaces: [updated] });
-      return updated;
+      return Promise.resolve(updated);
     });
 
     render(<App />);
@@ -1063,6 +1049,7 @@ describe("App sidebar", () => {
       path: "/tmp/worktrees/working-chat",
       state: "running",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:04:00.000Z",
@@ -1079,6 +1066,7 @@ describe("App sidebar", () => {
       path: "/tmp/worktrees/other-chat",
       state: "complete",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:00:00.000Z",

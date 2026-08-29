@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { DashboardSnapshot, ProjectSummary, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
 import {
@@ -363,7 +364,9 @@ export function useDashboardSession(
   const selectedProject = useMemo(
     () =>
       (selectedProjectId ? snapshot.projects.find((project) => project.id === selectedProjectId) : null) ??
-      snapshot.projects[0] ??
+      // Never fall back to the hidden "Side chats" scratch project: it is not
+      // a repository, so it must not become the launcher's implicit target.
+      snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID) ??
       null,
     [snapshot.projects, selectedProjectId]
   );
@@ -381,7 +384,9 @@ export function useDashboardSession(
       return;
     }
 
-    setSelectedProjectIdState(snapshot.projects[0]?.id ?? null);
+    setSelectedProjectIdState(
+      snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ?? null
+    );
   }, [snapshot.projects, selectedProjectId, selectedWorkspace]);
 
   // Live-streaming safety net (macOS/Tauri). The `dashboard:delta` push is the

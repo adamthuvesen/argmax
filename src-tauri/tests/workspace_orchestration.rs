@@ -15,9 +15,9 @@ use std::time::Duration;
 use argmax_lib::checks::service::{CheckService, RunWorkspaceCheckInput};
 use argmax_lib::error::ArgmaxError;
 use argmax_lib::ipc::inputs::{
-    OpenIdeChoice, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
-    WorkspacesCreateIsolatedInput, WorkspacesKeepInput, WorkspacesOpenInIdeInput,
-    WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
+    OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
+    WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput, WorkspacesKeepInput,
+    WorkspacesOpenInIdeInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::{
@@ -93,6 +93,7 @@ fn service_with_checks(
         argmax_lib::workspaces::lifecycle::WorkspaceLifecycle::new(),
         None,
         Some(CheckService::new(Arc::clone(database))),
+        None,
         None,
         None,
     )
@@ -268,6 +269,70 @@ async fn create_isolated_rejects_nonexistent_base_ref() {
     );
 }
 
+fn scratch_service(
+    database: &Arc<Database>,
+    scratch_root: std::path::PathBuf,
+) -> Arc<WorkspaceService> {
+    WorkspaceService::with_services(
+        Arc::clone(database),
+        |_| {},
+        argmax_lib::workspaces::lifecycle::WorkspaceLifecycle::new(),
+        None,
+        None,
+        None,
+        None,
+        Some(scratch_root),
+    )
+}
+
+#[tokio::test]
+async fn create_scratch_initializes_repoless_workspace() {
+    let scratch_root = tempfile::tempdir().expect("scratch root");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let service = scratch_service(&database, scratch_root.path().to_path_buf());
+
+    let summary = service
+        .create_scratch(WorkspacesCreateScratchInput {
+            task_label: TaskLabel::try_from("quick question".to_owned()).expect("task label"),
+            kind: None,
+        })
+        .await
+        .expect("create scratch");
+
+    assert_eq!(summary.kind, "scratch");
+    assert!(summary.shared_workspace);
+    assert_eq!(summary.branch, "main");
+    assert_eq!(summary.base_ref, "main");
+    assert_eq!(
+        summary.project_id,
+        argmax_lib::workspaces::SCRATCH_PROJECT_ID
+    );
+    let path = std::path::PathBuf::from(&summary.path);
+    assert!(path.starts_with(scratch_root.path()));
+    // The scratch dir is a real minimal repo: HEAD resolves (one empty commit
+    // on main), so provider CLIs with git-repo checks accept it.
+    let head = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&path)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .expect("git rev-parse");
+    assert!(head.status.success(), "scratch dir HEAD must resolve");
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+
+    // A second scratch chat reuses the singleton project.
+    let second = service
+        .create_scratch(WorkspacesCreateScratchInput {
+            task_label: TaskLabel::try_from("another".to_owned()).expect("task label"),
+            kind: Some(ScratchWorkspaceKind::Popup),
+        })
+        .await
+        .expect("create second scratch");
+    assert_eq!(second.kind, "popup");
+    assert_eq!(second.project_id, summary.project_id);
+    assert_ne!(second.path, summary.path);
+}
+
 #[tokio::test]
 async fn create_current_records_shared_workspace_pointing_at_repo() {
     let repo = seed_git_repo(&[("file.txt", "x")]);
@@ -374,6 +439,7 @@ async fn keep_flips_state_to_kept() {
             path: repo.path().display().to_string(),
             state: "created".to_owned(),
             shared_workspace: true,
+            kind: "git".to_string(),
             dirty: false,
             changed_files: 0,
         },
@@ -412,6 +478,7 @@ async fn refresh_status_picks_up_uncommitted_changes() {
                 path: repo.path().display().to_string(),
                 state: "created".to_owned(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -489,6 +556,7 @@ async fn set_pinned_toggles_persisted_bit() {
             path: repo.path().display().to_string(),
             state: "kept".to_owned(),
             shared_workspace: true,
+            kind: "git".to_string(),
             dirty: false,
             changed_files: 0,
         },
@@ -536,6 +604,7 @@ async fn set_label_persists_new_task_label() {
             path: repo.path().display().to_string(),
             state: "kept".to_owned(),
             shared_workspace: true,
+            kind: "git".to_string(),
             dirty: false,
             changed_files: 0,
         },
@@ -582,6 +651,7 @@ async fn archive_shared_workspace_when_dirty_and_not_forced() {
                 path: repo.path().display().to_string(),
                 state: "created".to_owned(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -633,6 +703,7 @@ async fn archive_waits_for_and_cancels_a_live_check() {
                 path: repo.path().display().to_string(),
                 state: "created".to_owned(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -649,6 +720,7 @@ async fn archive_waits_for_and_cancels_a_live_check() {
         lifecycle,
         None,
         Some(checks.clone()),
+        None,
         None,
         None,
     );
@@ -722,6 +794,7 @@ fn startup_reconciles_stranded_archives_without_retrying_removal() {
                 path: repo.path().display().to_string(),
                 state: "archiving".to_owned(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -777,6 +850,7 @@ fn startup_finalizes_an_isolated_archive_after_worktree_removal() {
                 path: worktree_arg.to_owned(),
                 state: "archiving".to_owned(),
                 shared_workspace: false,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -827,6 +901,7 @@ fn startup_keeps_archive_failed_when_git_still_registers_missing_worktree() {
                 path: worktree_arg.to_owned(),
                 state: "archiving".to_owned(),
                 shared_workspace: false,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -863,6 +938,7 @@ async fn startup_restores_watchers_for_kept_workspaces() {
             path: repo.path().display().to_string(),
             state: "kept".to_owned(),
             shared_workspace: true,
+            kind: "git".to_string(),
             dirty: true,
             changed_files: 1,
         },
@@ -898,6 +974,7 @@ async fn startup_skips_watchers_when_checkout_is_gone() {
             path: "/definitely/missing/argmax-watch-test".to_owned(),
             state: "kept".to_owned(),
             shared_workspace: true,
+            kind: "git".to_string(),
             dirty: false,
             changed_files: 0,
         },
@@ -939,6 +1016,7 @@ async fn startup_watcher_install_is_rejected_once_archive_begins() {
             path: repo.path().display().to_string(),
             state: "archiving".to_owned(),
             shared_workspace: true,
+            kind: "git".to_string(),
             dirty: false,
             changed_files: 0,
         },
@@ -1022,6 +1100,7 @@ async fn watcher_debounces_burst_into_single_refresh() {
                 path: repo.path().display().to_string(),
                 state: "created".to_owned(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -1107,6 +1186,7 @@ async fn dropping_watched_service_releases_the_service_arc() {
                 path: repo.path().display().to_string(),
                 state: "created".to_owned(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -1151,6 +1231,7 @@ fn open_in_ide_constructs_open_command() {
             path: repo.path().display().to_string(),
             state: "kept".to_owned(),
             shared_workspace: true,
+            kind: "git".to_string(),
             dirty: false,
             changed_files: 0,
         },
@@ -1271,6 +1352,7 @@ async fn one_shared_watch_refreshes_every_subscriber() {
                     path: repo.path().display().to_string(),
                     state: "created".to_owned(),
                     shared_workspace: true,
+                    kind: "git".to_string(),
                     dirty: false,
                     changed_files: 0,
                 },
@@ -1351,6 +1433,7 @@ async fn a_shared_checkout_publishes_one_delta_for_all_subscribers() {
                     path: repo.path().display().to_string(),
                     state: "created".to_owned(),
                     shared_workspace: true,
+                    kind: "git".to_string(),
                     dirty: false,
                     changed_files: 0,
                 },
@@ -1374,4 +1457,63 @@ async fn a_shared_checkout_publishes_one_delta_for_all_subscribers() {
     // A refresh that changes nothing publishes nothing at all.
     assert_eq!(service.refresh_checkout(repo.path(), &ids).await, 4);
     assert_eq!(sink.lock().expect("sink").len(), 1);
+}
+
+#[tokio::test]
+async fn archiving_a_popup_workspace_removes_its_scratch_dir() {
+    let scratch_root = tempfile::tempdir().expect("scratch root");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let service = scratch_service(&database, scratch_root.path().to_path_buf());
+
+    let popup = service
+        .create_scratch(WorkspacesCreateScratchInput {
+            task_label: TaskLabel::try_from("More details".to_owned()).expect("task label"),
+            kind: Some(ScratchWorkspaceKind::Popup),
+        })
+        .await
+        .expect("create popup");
+    let popup_path = std::path::PathBuf::from(&popup.path);
+    assert!(popup_path.exists(), "popup scratch dir should exist");
+
+    let archived = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(popup.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive popup");
+    assert_eq!(archived.state, "archived");
+
+    // Removal runs in the spawned teardown task; poll briefly.
+    let mut removed = false;
+    for _ in 0..100 {
+        if !popup_path.exists() {
+            removed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(removed, "popup scratch dir should be removed after archive");
+
+    // Visible side chats keep their directory: only popups are discard-on-close.
+    let side_chat = service
+        .create_scratch(WorkspacesCreateScratchInput {
+            task_label: TaskLabel::try_from("keep me".to_owned()).expect("task label"),
+            kind: Some(ScratchWorkspaceKind::Scratch),
+        })
+        .await
+        .expect("create side chat");
+    let side_chat_path = std::path::PathBuf::from(&side_chat.path);
+    service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(side_chat.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive side chat");
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(
+        side_chat_path.exists(),
+        "side-chat scratch dir must survive archive"
+    );
 }

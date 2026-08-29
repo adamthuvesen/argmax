@@ -164,6 +164,7 @@ describe("App", () => {
         ...workspace,
         state: "complete",
         sharedWorkspace: true,
+        kind: "git",
         path: "/tmp/argmax",
         dirty: true,
         changedFiles: 3
@@ -197,6 +198,7 @@ describe("App", () => {
         ...workspace,
         state: "complete",
         sharedWorkspace: false,
+        kind: "git",
         dirty: false,
         changedFiles: 0
       })),
@@ -634,6 +636,7 @@ describe("App", () => {
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",
@@ -707,6 +710,7 @@ describe("App", () => {
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-08T16:10:00.000Z",

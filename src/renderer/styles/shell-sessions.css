@@ -134,25 +134,31 @@
   padding-right: 46px;
 }
 
-/* Inline rename field — fills the row in place of the session link, matching
-   its height/inset so the row doesn't jump while editing. */
+/* Inline rename — the row keeps its .session-link shell (glyph, subtitle,
+   spacing); only the title text becomes editable. The input is unboxed and
+   typographically identical to the label, so entering rename mode reads as
+   "the title is now selected", not as a form field replacing the row. */
+.session-link-renaming {
+  cursor: default;
+}
+
 .session-rename-input {
-  flex: 1 1 auto;
   min-width: 0;
   width: 100%;
-  min-height: 28px;
-  padding: 0 10px 0 8px;
+  padding: 0;
+  margin: 0;
   color: var(--text);
-  font-size: var(--text-sm-plus);
-  font-weight: 400;
-  background: var(--panel);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius-md);
+  font: inherit;
+  background: transparent;
+  border: 0;
 }
 
 .session-rename-input:focus {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.session-rename-input::selection {
+  background: var(--accent-soft);
 }
 
 /* Right-click session menu — reuses the picker popover look, but anchors at

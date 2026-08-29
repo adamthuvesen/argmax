@@ -22,6 +22,7 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
     path: "/tmp/existing",
     state: "running",
     sharedWorkspace: false,
+    kind: "git",
     dirty: false,
     changedFiles: 0,
     lastActivityAt: "2026-05-12T15:00:00.000Z",

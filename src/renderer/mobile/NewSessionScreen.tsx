@@ -1,5 +1,5 @@
-import { ChevronLeft } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { ArrowUp, ChevronLeft, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
 import {
   DEFAULT_REASONING_EFFORT,
   PROVIDER_MODEL_DEFAULTS,
@@ -31,6 +31,30 @@ function projectLaunchModel(project: ProjectSummary): ModelPickerOption {
     supportsReasoningEffort: Boolean(fallback.supportsReasoningEffort),
     ...(fallback.supportsReasoningEffort ? { reasoningEffort: DEFAULT_REASONING_EFFORT } : {})
   };
+}
+
+/** A quiet Codex-style context row: icon + current value + up/down chevron,
+ *  with an invisible native `<select>` stretched over it so tapping anywhere
+ *  opens the platform picker. */
+function ContextRow({
+  icon,
+  value,
+  select
+}: {
+  icon: ReactNode;
+  value: string;
+  select: ReactNode;
+}): JSX.Element {
+  return (
+    <div className="mobile-new-row">
+      <span className="mobile-new-row-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="mobile-new-row-value">{value}</span>
+      <ChevronsUpDown size={14} className="mobile-new-row-caret" aria-hidden="true" />
+      {select}
+    </div>
+  );
 }
 
 export function NewSessionScreen({
@@ -117,6 +141,14 @@ export function NewSessionScreen({
     }
   }, [launching, model, onError, onLaunched, project, prompt, workspaceMode]);
 
+  const modelValue = model
+    ? `${PROVIDER_SETUP[model.provider].displayName} · ${model.label}`
+    : "No model";
+  const workspaceValue =
+    workspaceMode === "worktree"
+      ? "New worktree"
+      : `Current branch · ${project?.currentBranch ?? "main"}`;
+
   return (
     <div className="mobile-new-screen">
       <header className="mobile-session-header">
@@ -133,90 +165,95 @@ export function NewSessionScreen({
           <p className="mobile-empty-detail">Add a project in the desktop app first.</p>
         </div>
       ) : (
-        <div className="mobile-new-form">
-          <label className="mobile-new-label" htmlFor="mobile-new-project">
-            Project
-          </label>
-          <select
-            id="mobile-new-project"
-            className="mobile-new-select"
-            value={project?.id ?? ""}
-            onChange={(event) => setProjectId(event.target.value)}
-          >
-            {projects.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.name}
-              </option>
-            ))}
-          </select>
-
-          <label className="mobile-new-label" htmlFor="mobile-new-prompt">
-            Task
-          </label>
-          <textarea
-            id="mobile-new-prompt"
-            className="mobile-new-prompt"
-            placeholder="What are we building?"
-            value={prompt}
-            rows={5}
-            onChange={(event) => setPrompt(event.target.value)}
-          />
-
-          <div className="mobile-new-mode" role="radiogroup" aria-label="Workspace">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={workspaceMode === "current"}
-              className="mobile-new-mode-chip"
-              onClick={() => chooseWorkspaceMode("current")}
-            >
-              Current branch
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={workspaceMode === "worktree"}
-              className="mobile-new-mode-chip"
-              onClick={() => chooseWorkspaceMode("worktree")}
-            >
-              Worktree
-            </button>
+        <div className="mobile-new-body">
+          {/* Context rows sit directly above the composer, Codex-style: the
+              empty space above stays quiet and the thumb reaches everything. */}
+          <div className="mobile-new-context">
+            <ContextRow
+              icon={<Folder size={16} />}
+              value={project?.name ?? ""}
+              select={
+                <select
+                  className="mobile-new-row-select"
+                  aria-label="Project"
+                  value={project?.id ?? ""}
+                  onChange={(event) => setProjectId(event.target.value)}
+                >
+                  {projects.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+                </select>
+              }
+            />
+            <ContextRow
+              icon={<GitBranch size={16} />}
+              value={workspaceValue}
+              select={
+                <select
+                  className="mobile-new-row-select"
+                  aria-label="Workspace"
+                  value={workspaceMode}
+                  onChange={(event) => chooseWorkspaceMode(event.target.value as WorkspaceMode)}
+                >
+                  <option value="current">
+                    Current branch{project?.currentBranch ? ` (${project.currentBranch})` : ""}
+                  </option>
+                  <option value="worktree">New worktree</option>
+                </select>
+              }
+            />
+            <ContextRow
+              icon={<Zap size={16} />}
+              value={modelValue}
+              select={
+                model ? (
+                  <select
+                    className="mobile-new-row-select"
+                    aria-label="Model"
+                    value={providerModelKey(model)}
+                    onChange={(event) => setModelKey(event.target.value)}
+                  >
+                    {PROVIDER_SETUP_ORDER.map((provider: ProviderId) => (
+                      <optgroup key={provider} label={PROVIDER_SETUP[provider].displayName}>
+                        {allModelOptions
+                          .filter((option) => option.provider === provider)
+                          .map((option) => (
+                            <option key={providerModelKey(option)} value={providerModelKey(option)}>
+                              {option.label}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                ) : null
+              }
+            />
           </div>
 
-          {model ? (
-            <>
-              <label className="mobile-new-label" htmlFor="mobile-new-model">
-                Model
-              </label>
-              <select
-                id="mobile-new-model"
-                className="mobile-new-select"
-                value={providerModelKey(model)}
-                onChange={(event) => setModelKey(event.target.value)}
-              >
-                {PROVIDER_SETUP_ORDER.map((provider: ProviderId) => (
-                  <optgroup key={provider} label={PROVIDER_SETUP[provider].displayName}>
-                    {allModelOptions
-                      .filter((option) => option.provider === provider)
-                      .map((option) => (
-                        <option key={providerModelKey(option)} value={providerModelKey(option)}>
-                          {option.label}
-                        </option>
-                      ))}
-                  </optgroup>
-                ))}
-              </select>
-            </>
-          ) : null}
-
-          <button
-            type="button"
-            className="mobile-new-launch"
-            disabled={launching || prompt.trim().length === 0}
-            onClick={() => void launch()}
-          >
-            {launching ? "Launching…" : "Launch session"}
-          </button>
+          <div className="mobile-new-composer">
+            <textarea
+              className="mobile-new-prompt"
+              aria-label="Task"
+              placeholder="What are we building?"
+              value={prompt}
+              rows={2}
+              // The screen opens from a deliberate "+" tap, so raising the
+              // keyboard immediately is the expected next step, not a theft.
+              autoFocus
+              onChange={(event) => setPrompt(event.target.value)}
+            />
+            <button
+              type="button"
+              className="mobile-new-send"
+              aria-label="Launch session"
+              disabled={launching || prompt.trim().length === 0}
+              onClick={() => void launch()}
+            >
+              <ArrowUp size={18} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       )}
     </div>

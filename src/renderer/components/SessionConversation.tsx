@@ -1,6 +1,8 @@
 import {
   ArrowDown,
   GitBranch,
+  MessageSquarePlus,
+  MessagesSquare,
   X
 } from "lucide-react";
 import {
@@ -15,6 +17,8 @@ import type {
   AgentMode,
   CheckRun,
   ComposerAttachment,
+  DetectedIde,
+  IdeId,
   PendingMessage,
   ProjectSummary,
   RawProviderOutput,
@@ -56,7 +60,15 @@ import {
 } from "../lib/turnInteractiveCards.js";
 import { foldTurnToolItems } from "../lib/turnToolItems.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import { SessionComposer } from "./SessionComposer.js";
+import {
+  createAnnotation,
+  createReviewCommentAnnotation,
+  type ComposerAnnotation,
+  type ReviewCommentInput
+} from "../lib/composerAnnotations.js";
+import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
+import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
+import { SessionComposer, type ComposerStatus } from "./SessionComposer.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
@@ -93,6 +105,15 @@ export function SessionConversation({
   onFastModeEnabledChange,
   onHideWorkspaceCard,
   onNewSession,
+  onOpenSideChat,
+  onOpenDetails,
+  onAttachToChat,
+  headingLabel,
+  floating = false,
+  registerAnnotationSink,
+  defaultIde = null,
+  detectedIdes = [],
+  onOpenInIde,
   onOpenCommitDialog,
   onSendSessionInput,
   onCancelQueuedMessage,
@@ -133,6 +154,32 @@ export function SessionConversation({
   onClose?: () => void;
   /** Opens a launcher pane beside this one, for a task in any repository. */
   onNewSession?: () => void;
+  /** Launches a repo-less side chat with the given first message. Enables the
+      selection toolbar's "Ask in side chat" action when provided. */
+  onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  /** Opens the "More details" explainer popup with the given first message.
+      Enables the selection toolbar's "More details" action when provided. */
+  onOpenDetails?: (
+    seedPrompt: string,
+    context?: { attachToChat?: () => void }
+  ) => Promise<void>;
+  /** Floating popup only: "Add to chat" header button wired back to the
+   *  originating composer's annotation lane. */
+  onAttachToChat?: () => void;
+  /** Header title override — the popup labels itself instead of showing the
+      backing scratch workspace's name. */
+  headingLabel?: string;
+  /** The floating "More details" popup: no window-drag header (it would move
+      the whole app window), no session-actions menu (its actions are
+      pane-bound), and popup-flavored close labels. */
+  floating?: boolean;
+  /** Lets the parent pane feed review-panel line comments into this
+      conversation's annotation lane. Registered on mount, cleared on unmount. */
+  registerAnnotationSink?: (sink: ((input: ReviewCommentInput) => void) | null) => void;
+  defaultIde?: IdeId | null;
+  detectedIdes?: DetectedIde[];
+  /** Opens this pane's workspace in the given IDE (session actions menu). */
+  onOpenInIde?: (ide: IdeId) => void;
   onOpenCommitDialog?: () => void;
   onSendSessionInput: (
     sessionId: string,
@@ -162,7 +209,29 @@ export function SessionConversation({
   showCostPanel?: boolean;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatusState] = useState<ComposerStatus | null>(null);
+  const statusTimerRef = useRef<number | null>(null);
+  // Errors persist until the next action replaces them; info notes auto-clear
+  // like a toast. Every set clears the pending timer so a stale info timeout
+  // can never wipe an error that landed after it.
+  const setStatus = useCallback((next: ComposerStatus | null): void => {
+    if (statusTimerRef.current !== null) {
+      window.clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = null;
+    }
+    setStatusState(next);
+    if (next?.kind === "info") {
+      statusTimerRef.current = window.setTimeout(() => {
+        statusTimerRef.current = null;
+        setStatusState(null);
+      }, 4000);
+    }
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current !== null) window.clearTimeout(statusTimerRef.current);
+    };
+  }, []);
   const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => modelPickerSelectionFromSession(session));
   const [agentMode, setAgentMode] = useState<AgentMode>(() =>
     session ? readStoredAgentMode(sessionAgentModeKey(session.id), session.agentMode ?? "auto") : "auto"
@@ -170,9 +239,66 @@ export function SessionConversation({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldRefocusInput = useRef(false);
   const sessionId = session?.id ?? null;
+  // Excerpts attached from the transcript via the selection toolbar. Ephemeral
+  // by design (unlike the localStorage-backed draft text): they quote messages
+  // of the open transcript, so they don't outlive the pane or follow a session
+  // switch.
+  const [pendingAnnotations, setPendingAnnotations] = useState<ComposerAnnotation[]>([]);
+  useEffect(() => {
+    setPendingAnnotations([]);
+  }, [sessionId]);
+  const addAnnotation = useCallback(
+    (selection: ChatSelection): void => {
+      setPendingAnnotations((prev) => [...prev, createAnnotation(selection.text)]);
+      inputRef.current?.focus();
+    },
+    []
+  );
+  const removeAnnotation = useCallback((id: string): void => {
+    setPendingAnnotations((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+  const clearAnnotations = useCallback((): void => {
+    setPendingAnnotations([]);
+  }, []);
+  // Line comments authored in the sibling ReviewPanel arrive through this
+  // sink (registered with the pane) and join the same annotation lane.
+  useEffect(() => {
+    if (!registerAnnotationSink) return undefined;
+    registerAnnotationSink((input) => {
+      setPendingAnnotations((prev) => [...prev, createReviewCommentAnnotation(input)]);
+      inputRef.current?.focus();
+    });
+    return () => registerAnnotationSink(null);
+  }, [registerAnnotationSink]);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
   const conversationEvents = useMemo(() => buildConversationEvents(events), [events]);
+  const askSideChat = useMemo(() => {
+    if (!onOpenSideChat) return undefined;
+    return (selection: ChatSelection): void => {
+      void onOpenSideChat(buildSideChatSeed(selection.text, conversationEvents)).catch((error) => {
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not open a side chat."
+        });
+      });
+    };
+  }, [conversationEvents, onOpenSideChat, setStatus]);
+  const askDetails = useMemo(() => {
+    if (!onOpenDetails) return undefined;
+    return (selection: ChatSelection): void => {
+      void onOpenDetails(buildDetailsSeed(selection.text, conversationEvents), {
+        // The popup hides the seed excerpt; this closure lets its header
+        // button attach that excerpt to this composer instead.
+        attachToChat: () => addAnnotation(selection)
+      }).catch((error) => {
+        setStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not open the details popup."
+        });
+      });
+    };
+  }, [addAnnotation, conversationEvents, onOpenDetails, setStatus]);
   // Hide the raw-stdout fallback as soon as ANY renderable content exists —
   // a streamed message OR a tool call. Otherwise the agent's first beat (often
   // a tool_use before any text) flashes the raw provider JSONL through the
@@ -225,11 +351,15 @@ export function SessionConversation({
       requestAnimationFrame(() => {
         const card = conversationScrollRef.current?.querySelector('aside[aria-label="Workspace"]');
         if (card instanceof HTMLElement && getComputedStyle(card).display === "none") {
-          setStatus("Workspace card is on, but this pane is too narrow to show it. Widen the pane or pick a narrower chat width in Settings.");
+          setStatus({
+            kind: "info",
+            message:
+              "Workspace card is on, but this pane is too narrow to show it. Widen the pane or pick a narrower chat width in Settings."
+          });
         }
       });
     };
-  }, [onToggleWorkspaceCard, workspaceCardEnabled, review.isPanelOpen, isLogOpen, workspace]);
+  }, [onToggleWorkspaceCard, workspaceCardEnabled, review.isPanelOpen, isLogOpen, workspace, setStatus]);
   const changeSummary = useMemo(() => {
     if (review.filesState !== "ready" || review.files.length === 0) {
       return null;
@@ -462,7 +592,8 @@ export function SessionConversation({
     handleUserScrollIntent: handleConversationScrollIntent,
     handleScroll: handleConversationScroll
   } = useSmartFollowScroll(sessionId, conversationItems, isThinkingVisible, sessionRunning, inputRef);
-  const repositoryName = project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
+  const repositoryName =
+    headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
   // Depend on session.id rather than the session object: the parent rebuilds
   // SessionSummary references on every dashboard delta, which would otherwise
@@ -480,30 +611,50 @@ export function SessionConversation({
 
   return (
     <section className="conversation-surface" aria-label="Session conversation">
-      <div className="section-heading" data-window-drag>
+      <div className="section-heading" data-window-drag={floating ? undefined : true}>
         <div className="session-title">
-          <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
+          {workspace && workspace.kind !== "git" ? (
+            <MessagesSquare size={13} aria-hidden="true" className="session-title-icon" />
+          ) : (
+            <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
+          )}
           <h2>{repositoryName}</h2>
         </div>
         <div className="conversation-header-actions">
-          <SessionActionsMenu
-            isLogOpen={isLogOpen}
-            isWorkspaceCardEnabled={workspaceCardEnabled}
-            onBrowseFiles={review.openPanelInFilesMode}
-            onNewSession={onNewSession}
-            onOpenCommitDialog={onOpenCommitDialog}
-            onToggleLog={onToggleLog}
-            onToggleWorkspaceCard={handleToggleWorkspaceCard}
-            session={session}
-            setStatus={setStatus}
-            workspace={workspace}
-          />
+          {floating && onAttachToChat ? (
+            <button
+              className="details-attach-chat"
+              type="button"
+              title="Attach the explained excerpt to the chat composer"
+              onClick={onAttachToChat}
+            >
+              <MessageSquarePlus size={13} aria-hidden="true" />
+              <span>Add to chat</span>
+            </button>
+          ) : null}
+          {floating ? null : (
+            <SessionActionsMenu
+              defaultIde={defaultIde}
+              detectedIdes={detectedIdes}
+              onOpenInIde={onOpenInIde}
+              isLogOpen={isLogOpen}
+              isWorkspaceCardEnabled={workspaceCardEnabled}
+              onBrowseFiles={review.openPanelInFilesMode}
+              onNewSession={onNewSession}
+              onOpenCommitDialog={onOpenCommitDialog}
+              onToggleLog={onToggleLog}
+              onToggleWorkspaceCard={handleToggleWorkspaceCard}
+              session={session}
+              setStatus={setStatus}
+              workspace={workspace}
+            />
+          )}
           {onClose ? (
             <button
               className="small-icon session-pane-close"
               type="button"
-              title="Close pane (⌘W)"
-              aria-label="Close pane"
+              title={floating ? "Close popup" : "Close pane (⌘W)"}
+              aria-label={floating ? "Close popup" : "Close pane"}
               onClick={onClose}
             >
               <X size={16} />
@@ -515,7 +666,7 @@ export function SessionConversation({
           box, outside the scroller, so the sticky scroll-to-latest button
           inside the list never fades with the content passing under it. */}
       <div className="conversation-scroll" ref={conversationScrollRef} data-restoring={restoringTranscript ? "true" : undefined}>
-        {showWorkspaceCard && workspace ? (
+        {showWorkspaceCard && workspace && workspace.kind === "git" ? (
           <WorkspaceCard
             changeSummary={changeSummary}
             isTerminalOpen={isTerminalOpen ?? false}
@@ -617,6 +768,12 @@ export function SessionConversation({
           </div>
         </div>
       </div>
+      <SelectionToolbar
+        containerRef={conversationScrollRef}
+        onAddToChat={addAnnotation}
+        {...(askSideChat ? { onAskSideChat: askSideChat } : {})}
+        {...(askDetails ? { onMoreDetails: askDetails } : {})}
+      />
       <div
         className="session-meta-cards"
         data-cost-visible={session && showCostPanel ? "true" : "false"}
@@ -659,6 +816,7 @@ export function SessionConversation({
           canSend={canSend}
           changeSummary={changeSummary}
           fastModeEnabled={fastModeEnabled}
+          floating={floating}
           inputRef={inputRef}
           isQueueing={isQueueing}
           onFastModeEnabledChange={onFastModeEnabledChange}
@@ -666,6 +824,9 @@ export function SessionConversation({
           onSendQueuedMessageNow={onSendQueuedMessageNow}
           onSendSessionInput={sendSessionInput}
           onTerminateSession={onTerminateSession}
+          pendingAnnotations={pendingAnnotations}
+          onRemoveAnnotation={removeAnnotation}
+          onClearAnnotations={clearAnnotations}
           pendingMessages={pendingMessages}
         reviewPanelOpen={review.isPanelOpen}
         selectedModel={selectedModel}

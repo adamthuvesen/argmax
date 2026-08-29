@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardSnapshot } from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
 import {
   collapsedDateGroupsStorageKey,
   collapsedProjectsStorageKey,
@@ -43,6 +43,7 @@ const snapshot: DashboardSnapshot = {
       path: "/tmp/wt",
       state: "running",
       sharedWorkspace: false,
+      kind: "git",
       dirty: false,
       changedFiles: 0,
       lastActivityAt: "2026-05-12T15:54:00.000Z",
@@ -441,6 +442,7 @@ describe("Sidebar — workspaces without sessions", () => {
           path: "/tmp/orphan",
           state: "complete",
           sharedWorkspace: false,
+          kind: "git",
           dirty: false,
           changedFiles: 0,
           lastActivityAt: "2026-05-12T15:54:00.000Z",
@@ -522,6 +524,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     path: `/tmp/${id}`,
     state: "complete" as const,
     sharedWorkspace: false,
+    kind: "git" as const,
     dirty: false,
     changedFiles: 0,
     lastActivityAt,
@@ -714,7 +717,8 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     render(<Sidebar {...baseProps} selectedWorkspaceId="w-0" snapshot={overflowSnapshot} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Zebra sessions" }));
+    // The selected session auto-expands its project group at mount, so the
+    // capped five rows are visible without a manual "Show" click.
     expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(5);
     expect(screen.getByRole("button", { name: /Zebra task 0/ })).toBeInTheDocument();
 
@@ -724,6 +728,17 @@ describe("Sidebar — date (sessions) view mode", () => {
     fireEvent.click(screen.getByRole("button", { name: /Show fewer Zebra sessions/ }));
     expect(screen.getAllByRole("button", { name: /Zebra task/ })).toHaveLength(5);
     expect(screen.getByRole("button", { name: /Zebra task 0/ })).toBeInTheDocument();
+  });
+
+  it("auto-expands the collapsed bucket that hosts the selected session", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["today"]));
+
+    render(<Sidebar {...baseProps} selectedWorkspaceId="w-zebra" snapshot={viewSnapshot} />);
+
+    // A launch selects the new session; its bucket must not hide the row.
+    expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
 
   it("toggles a date bucket by clicking the row, not just the chevron", () => {
@@ -944,6 +959,7 @@ describe("Sidebar — Priority section", () => {
     path: `/tmp/${id}`,
     state: "running" as const,
     sharedWorkspace: false,
+    kind: "git" as const,
     dirty: false,
     changedFiles: 0,
     lastActivityAt: "2026-05-12T15:54:00.000Z",
@@ -1286,6 +1302,7 @@ describe("Sidebar — boot collapse defaults", () => {
     path: `/tmp/${id}`,
     state: "running" as const,
     sharedWorkspace: false,
+    kind: "git" as const,
     dirty: false,
     changedFiles: 0,
     lastActivityAt,
@@ -1368,5 +1385,122 @@ describe("Sidebar — boot collapse defaults", () => {
     cleanup();
     render(<Sidebar {...baseProps} showPriority snapshot={bootSnapshot} />);
     expect(screen.queryByRole("button", { name: /Ancient task/ })).toBeNull();
+  });
+});
+
+describe("Sidebar — Side chats section", () => {
+  const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
+
+  const session = (workspaceId: string) => ({
+    id: `session-${workspaceId}`,
+    workspaceId,
+    provider: "codex" as const,
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.5",
+    permissionMode: "auto-approve" as const,
+    agentMode: "auto" as const,
+    providerConversationId: null,
+    state: "complete" as const,
+    attention: "normal" as const,
+    startedAt: TODAY,
+    completedAt: TODAY,
+    lastActivityAt: TODAY,
+    prompt: "Do the thing"
+  });
+
+  const workspace = (
+    id: string,
+    projectId: string,
+    taskLabel: string,
+    kind: "git" | "scratch"
+  ) => ({
+    id,
+    projectId,
+    taskLabel,
+    branch: "main",
+    baseRef: "main",
+    path: `/tmp/${id}`,
+    state: "complete" as const,
+    sharedWorkspace: kind === "scratch",
+    kind,
+    dirty: false,
+    changedFiles: 0,
+    lastActivityAt: TODAY,
+    pinned: false,
+    priorityDismissedAt: null,
+    priorityAddedAt: null
+  });
+
+  const scratchProject = {
+    id: SCRATCH_PROJECT_ID,
+    name: "Side chats",
+    repoPath: "/tmp/side-chats",
+    currentBranch: "main",
+    defaultBranch: "main",
+    settings: projectSettings,
+    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
+    latestActivityAt: TODAY
+  };
+
+  const sideChatSnapshot: DashboardSnapshot = {
+    ...snapshot,
+    projects: [...snapshot.projects, scratchProject],
+    workspaces: [
+      workspace("w-repo", "project-1", "Repo task", "git"),
+      workspace("w-chat", SCRATCH_PROJECT_ID, "Explain quantization", "scratch")
+    ],
+    sessions: [session("w-repo"), session("w-chat")]
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 5, 12, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  it("lists side chats in their own bottom section, out of the project groups", () => {
+    render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} />);
+
+    // The hidden scratch project never renders as a project row.
+    expect(getProjectButtonOrder()).toEqual(["Argmax"]);
+
+    const header = screen.getByText("Side chats");
+    expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
+    // Bottom of the list: after the project group rows.
+    expect(
+      rendersAfter(screen.getByRole("button", { name: /Argmax sessions/ }), header)
+    ).toBe(true);
+  });
+
+  it("keeps side chats below the date buckets in sessions view", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} />);
+
+    expect(screen.getByRole("button", { name: /Repo task/ })).toBeInTheDocument();
+    expect(rendersAfter(screen.getByText("Today"), screen.getByText("Side chats"))).toBe(true);
+    // The side chat lives in its own section, not in a date bucket, so the
+    // date buckets hold exactly the repo session.
+    expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
+  });
+
+  it("opens the side-chat launcher from the section's new-chat button", () => {
+    const onNewSideChat = vi.fn();
+    render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} onNewSideChat={onNewSideChat} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
+    expect(onNewSideChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the section entirely without side chats or a launch handler", () => {
+    render(<Sidebar {...baseProps} snapshot={snapshot} />);
+    expect(screen.queryByText("Side chats")).toBeNull();
   });
 });

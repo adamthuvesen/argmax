@@ -428,31 +428,28 @@ so the terminated session resumes via `--resume <conversationId>` and sends a
 capped visible transcript plus the answer as the next user message. The UI
 timeline still stores only the raw answer text.
 
-## Mid-turn follow-ups: queue or send now
+## Mid-turn follow-ups: queue, then optionally send now
 
-While a turn is running the composer offers both paths, and the choice is the
-input method rather than a mode the user has to set:
+While a turn is running the composer shows a single control in the send slot —
+**Stop** — so a mid-turn reach for "make it stop" never turns into an
+unintended send:
 
 - **Enter** submits the form, which reaches `providers:send-input`. Main sees a
   live handle that is not accepting input and parks the message on the queue, so
   the chip appears in the pending lane and drains when the turn finishes.
-- **Send now** (the paper-plane button beside Stop) runs the same
-  terminate-then-send order as the card submits above: `providers:terminate`,
-  then `providers:send-input`, which relaunches on the saved transcript. One
-  click, no separate Stop press.
+- **Stop** calls `providers:terminate` without sending; the draft stays put.
 
 Queued follow-ups appear as full-width rows above the draft. Each row shows its
-queued state, a delete action, and **Send now**. Sending a queued follow-up now
-calls `providers:send-queued-message-now`. The backend removes that item,
-interrupts the current turn, and relaunches with the queued input. Other queued
-follow-ups keep their order and drain after the new turn completes.
+queued state, a delete action, and **Send now** — the one explicit interrupt
+path. Sending a queued follow-up now calls
+`providers:send-queued-message-now`. The backend removes that item, interrupts
+the current turn, and relaunches with the queued input. Other queued follow-ups
+keep their order and drain after the new turn completes. (An earlier design also
+put a paper-plane "send now" beside Stop in the composer; it read as two send
+buttons and was removed.)
 
-Stop keeps the far-right slot it has always had, so a mid-turn reach for "make
-it stop" never turns into an unintended send. Send now is disabled on an empty
-draft, Stop is not. The draft is cleared only after the send resolves, so a
-failed interrupt leaves the text in place with the error in the composer status
-line. Terminating drops any messages still queued for that session, which is
-the existing Stop behavior, not something send now adds.
+Terminating drops any messages still queued for that session, which is the
+existing Stop behavior.
 
 ## Unsent drafts
 
@@ -480,6 +477,54 @@ a successful send: the send path calls `clearDraft` directly rather than relying
 on the state reset, because launching a task unmounts the launcher as the app
 moves to the new session. A failed send keeps the draft, matching the retry
 behavior above.
+
+## Selection annotations (Add to chat)
+
+Selecting text in the transcript raises a floating toolbar
+([SelectionToolbar.tsx](../src/renderer/components/SelectionToolbar.tsx)),
+anchored to the selection rect the same way the file-preview popover anchors to
+its chip. It listens to `selectionchange` globally but claims only selections
+whose range endpoints sit inside its own pane's `.conversation-scroll`, so each
+pane in the multi-grid owns its own selections. The toolbar is desktop-only:
+coarse-pointer surfaces (the phone companion) drag native selection handles
+with no mouse events around them, so it doesn't mount there.
+
+"Add to chat" turns the selection into an annotation chip above the composer.
+Annotations are renderer state in `SessionConversation`
+([composerAnnotations.ts](../src/renderer/lib/composerAnnotations.ts)), not part
+of the persisted draft: they quote the open transcript, so they reset on session
+switch and clear on successful send. At send time
+`prependAnnotationsToPrompt` serializes them as `>`-quoted blocks ahead of the
+typed message — providers see plain prompt text, never a structured annotation.
+
+Review-panel line comments ride the same lane. In the Changes view every
+numbered diff line grows a hover "+" over its line-number gutter
+([DiffBlocks.tsx](../src/renderer/components/DiffBlocks.tsx)); it opens an
+inline form whose submitted comment becomes a `review-comment` annotation
+(`file:line — comment` chip). The state still lives in `SessionConversation`;
+the sibling `ReviewPanel` reaches it through an annotation sink the
+conversation registers with `SessionPane`, so nothing is lifted. At send time
+comments serialize as a "Please address this review comment…" block — the
+location, the `>`-quoted line, and the note — after any excerpt blocks. The
+chat-card diffs (`FileChangeCard`) pass no handler, so they stay read-only.
+
+"Ask in side chat" hands the selection to a fresh repo-less session instead of
+the composer: [sideChat.ts](../src/renderer/lib/sideChat.ts) builds the seed
+prompt (the newest exchanges from the source transcript, clipped, plus the
+`>`-quoted excerpt) and `App.launchSideChat` starts a scratch-workspace
+session with it (see [workspaces.md](workspaces.md)). The action renders only
+when the pane is given an `onOpenSideChat` handler, so surfaces without the
+launch path (the phone companion) simply don't offer it.
+
+"More details" rides the same seed pipeline (`buildDetailsSeed`, an
+explanation-flavored instruction) but lands in the
+[DetailsPopup](../src/renderer/components/DetailsPopup.tsx): a floating,
+corner-resizable panel pinned bottom-right that hosts a full
+`SessionConversation` against an ephemeral `popup`-kind scratch session — so
+the explanation streams and follow-up questions work like any chat. One popup
+exists at a time; opening another disposes the previous one, and closing it
+terminates the session and archives its workspace (plus a boot sweep for
+strays — see [workspaces.md](workspaces.md)).
 
 ## QuestionCard answer format
 
@@ -557,13 +602,12 @@ and, for the launcher, "brings an unsent launcher prompt and its screenshot
 back after a restart" and "clears the launcher draft once the agent starts" in
 [src/renderer/App.test.tsx](../src/renderer/App.test.tsx).
 
-Mid-turn send now is locked in by
-[src/renderer/components/SessionComposer.sendNow.test.tsx](../src/renderer/components/SessionComposer.sendNow.test.tsx):
+Mid-turn controls are locked in by
+[src/renderer/components/SessionComposer.runningControls.test.tsx](../src/renderer/components/SessionComposer.runningControls.test.tsx):
 
-- "cancels the live turn before sending the draft when Send now is clicked"
 - "queues on Enter instead of interrupting the running turn"
 - "stops without sending the draft when Stop is clicked"
-- "disables Send now on an empty draft while Stop stays available"
+- "shows Stop as the only send-slot control while running"
 
 ## When to revisit
 

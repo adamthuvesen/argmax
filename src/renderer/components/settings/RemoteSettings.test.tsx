@@ -102,6 +102,8 @@ describe("RemoteSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(setConfig).not.toHaveBeenCalled();
-    expect(screen.getByRole("status")).toHaveTextContent("Port must be between 1024 and 65535.");
+    // Validation failures surface as alerts (data-status="error"), matching
+    // the ProjectsSettings status convention.
+    expect(screen.getByRole("alert")).toHaveTextContent("Port must be between 1024 and 65535.");
   });
 });

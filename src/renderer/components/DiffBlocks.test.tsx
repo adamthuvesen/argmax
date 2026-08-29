@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const highlightLineMock = vi.hoisted(() =>
@@ -98,5 +98,43 @@ describe("DiffBlocks", () => {
     expect(document.querySelector("span.hl-token")).toBeNull();
     expect(screen.getByText("const x = 42;")).toBeInTheDocument();
     expect(highlightLineMock).not.toHaveBeenCalled();
+  });
+
+  it("offers no comment affordance without an onAddComment handler", () => {
+    render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
+    expect(screen.queryByRole("button", { name: /Comment on line/ })).toBeNull();
+  });
+
+  it("submits a line comment through the inline form", () => {
+    const onAddComment = vi.fn();
+    render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Comment on line 1 of src/x.ts" }));
+    const form = screen.getByRole("form", { name: "Comment on src/x.ts:1" });
+    expect(form).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Comment text"), {
+      target: { value: "use a named constant" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+
+    expect(onAddComment).toHaveBeenCalledWith({
+      filePath: "src/x.ts",
+      line: 1,
+      lineText: "const x = 42;",
+      comment: "use a named constant"
+    });
+    expect(screen.queryByRole("form", { name: "Comment on src/x.ts:1" })).toBeNull();
+  });
+
+  it("cancels the comment form with Escape without submitting", () => {
+    const onAddComment = vi.fn();
+    render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Comment on line 1 of src/x.ts" }));
+    fireEvent.keyDown(screen.getByLabelText("Comment text"), { key: "Escape" });
+
+    expect(screen.queryByRole("form", { name: "Comment on src/x.ts:1" })).toBeNull();
+    expect(onAddComment).not.toHaveBeenCalled();
   });
 });

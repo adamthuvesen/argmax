@@ -13,7 +13,7 @@ function renderCard(
     onOpenChanges?: () => void;
     onOpenCommitDialog?: () => void;
     onToggleTerminal?: () => void;
-    setStatus?: (message: string | null) => void;
+    setStatus?: (status: { kind: "error" | "info"; message: string } | null) => void;
     workspace?: WorkspaceSummary;
   } = {}
 ) {
@@ -106,7 +106,12 @@ describe("WorkspaceCard", () => {
     const { rerender } = renderCard({ setStatus });
     fireEvent.click(screen.getByRole("button", { name: "Create pull request" }));
     expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-a" });
-    await waitFor(() => expect(setStatus).toHaveBeenCalledWith("Created pull request. Opening https://x/1."));
+    await waitFor(() =>
+      expect(setStatus).toHaveBeenCalledWith({
+        kind: "info",
+        message: "Created pull request. Opening https://x/1."
+      })
+    );
 
     rerender(
       <WorkspaceCard
@@ -136,7 +141,9 @@ describe("WorkspaceCard", () => {
     renderCard({ setStatus });
     fireEvent.click(screen.getByRole("button", { name: "Create pull request" }));
 
-    await waitFor(() => expect(setStatus).toHaveBeenCalledWith("gh not authenticated"));
+    await waitFor(() =>
+      expect(setStatus).toHaveBeenCalledWith({ kind: "error", message: "gh not authenticated" })
+    );
   });
 
   it("hides itself from its own dismiss control", () => {

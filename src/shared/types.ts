@@ -99,6 +99,7 @@ export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
 export type UpdateProjectSettingsInput = Bindings.ProjectsUpdateSettingsInput;
 export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
 export type CreateCurrentWorkspaceInput = Bindings.WorkspacesCreateCurrentInput;
+export type CreateScratchWorkspaceInput = Bindings.WorkspacesCreateScratchInput;
 export type AutotitleWorkspaceInput = Bindings.WorkspacesAutotitleInput;
 type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
   [P in K]?: T[P];
@@ -276,6 +277,20 @@ export type ProjectFolderPickResult =
       project: ProjectSummary;
     };
 
+/**
+ * 'git' is a workspace on a real project checkout (worktree or shared);
+ * 'scratch' is a repo-less side chat backed by an app-owned directory;
+ * 'popup' is the ephemeral scratch behind the "More details" popup, excluded
+ * from the sidebar. Repo-coupled UI (review, gh, branch chips, grouping)
+ * gates on this field.
+ */
+export type WorkspaceKind = "git" | "scratch" | "popup";
+
+/** Stable id of the hidden singleton project owning every scratch workspace.
+ *  Mirrors `SCRATCH_PROJECT_ID` in src-tauri/src/workspaces/orchestration.rs.
+ *  Filter it out of repo pickers and per-project sidebar grouping. */
+export const SCRATCH_PROJECT_ID = "scratch-side-chats";
+
 export interface WorkspaceSummary {
   id: string;
   projectId: string;
@@ -285,6 +300,7 @@ export interface WorkspaceSummary {
   path: string;
   state: WorkspaceState;
   sharedWorkspace: boolean;
+  kind: WorkspaceKind;
   dirty: boolean;
   changedFiles: number;
   lastActivityAt: string;
@@ -466,6 +482,7 @@ export interface ArgmaxApi {
   workspaces: {
     createIsolated: (input: CreateWorkspaceInput) => Promise<WorkspaceSummary>;
     createCurrent: (input: CreateCurrentWorkspaceInput) => Promise<WorkspaceSummary>;
+    createScratch: (input: CreateScratchWorkspaceInput) => Promise<WorkspaceSummary>;
     refreshStatus: (workspaceId: string) => Promise<WorkspaceSummary>;
     status: (input?: WorkspaceStatusInput) => Promise<WorkspaceStatusSnapshot>;
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;

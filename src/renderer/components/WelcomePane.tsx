@@ -238,7 +238,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
 }
 
 function CommandSnippet({ command, copyLabel }: { command: string; copyLabel: string }): JSX.Element {
-  const [copied, copy] = useCopyToClipboard();
+  const [copyFlash, copy] = useCopyToClipboard();
   return (
     <div className="welcome-command">
       <code>{command}</code>
@@ -248,8 +248,8 @@ function CommandSnippet({ command, copyLabel }: { command: string; copyLabel: st
         onClick={() => void copy(command)}
         aria-label={copyLabel}
       >
-        {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
-        <span>{copied ? "Copied" : "Copy"}</span>
+        {copyFlash === "copied" ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+        <span>{copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}</span>
       </button>
     </div>
   );

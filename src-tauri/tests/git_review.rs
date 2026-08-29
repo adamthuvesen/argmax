@@ -57,6 +57,7 @@ fn seed_project_and_workspace(
                 path: repo_path.to_owned(),
                 state: "running".to_owned(),
                 shared_workspace: false,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },

@@ -533,16 +533,28 @@ function SidebarSessionRowInner({
   return (
     <div className="session-row">
       {isEditing ? (
-        <input
-          ref={renameInputRef}
-          className="session-rename-input"
-          value={draftLabel}
-          aria-label="Rename session"
-          maxLength={200}
-          onChange={(event) => setDraftLabel(event.target.value)}
-          onKeyDown={handleRenameKeyDown}
-          onBlur={commitRename}
-        />
+        // The row keeps its glyph, layout, and subtitle; only the title text
+        // swaps for an unboxed input, so renaming edits the label in place
+        // instead of replacing the row with a form field.
+        <div
+          className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}`}
+          data-status={workspace.state}
+        >
+          {leadingGlyph ?? <span className="session-link-lead-spacer" aria-hidden="true" />}
+          <span className={subtitle ? "session-link-text" : undefined}>
+            <input
+              ref={renameInputRef}
+              className="session-rename-input"
+              value={draftLabel}
+              aria-label="Rename session"
+              maxLength={200}
+              onChange={(event) => setDraftLabel(event.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              onBlur={commitRename}
+            />
+            {subtitle ? <span className="session-link-subtitle">{subtitle}</span> : null}
+          </span>
+        </div>
       ) : (
         <>
           <button

@@ -17,6 +17,9 @@ pub struct PersistWorkspaceInput {
     pub path: String,
     pub state: String,
     pub shared_workspace: bool,
+    /// 'git' for real project checkouts, 'scratch' for repo-less side chats,
+    /// 'popup' for the ephemeral "More details" mini-sessions.
+    pub kind: String,
     pub dirty: bool,
     pub changed_files: i64,
 }
@@ -40,6 +43,10 @@ pub struct WorkspaceSummary {
     pub path: String,
     pub state: String,
     pub shared_workspace: bool,
+    /// 'git' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
+    /// repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
+    /// on this rather than on which UI created the workspace.
+    pub kind: String,
     pub dirty: bool,
     pub changed_files: i64,
     pub last_activity_at: String,
@@ -142,9 +149,9 @@ pub fn persist_workspace(
             r#"
         INSERT INTO workspaces (
           id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
-          dirty, changed_files, last_activity_at, created_at, updated_at
+          kind, dirty, changed_files, last_activity_at, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         "#,
         )
@@ -159,6 +166,7 @@ pub fn persist_workspace(
             input.path.as_str(),
             input.state.as_str(),
             bool_to_i64(input.shared_workspace),
+            input.kind.as_str(),
             bool_to_i64(input.dirty),
             input.changed_files,
             timestamp.as_str(),
@@ -379,6 +387,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         path: row.get("path")?,
         state: row.get("state")?,
         shared_workspace: row.get::<_, i64>("shared_workspace")? == 1,
+        kind: row.get("kind")?,
         dirty: row.get::<_, i64>("dirty")? == 1,
         changed_files: row.get("changed_files")?,
         last_activity_at: row.get("last_activity_at")?,

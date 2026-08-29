@@ -470,6 +470,7 @@ mod tests {
                 path: "/tmp/argmax-gh-poller".to_string(),
                 state: "running".to_string(),
                 shared_workspace: false,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },

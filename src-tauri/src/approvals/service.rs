@@ -380,6 +380,7 @@ mod tests {
                     path: "/tmp/argmax-fixture-repo".to_string(),
                     state: "created".to_string(),
                     shared_workspace: true,
+                    kind: "git".to_string(),
                     dirty: false,
                     changed_files: 0,
                 },

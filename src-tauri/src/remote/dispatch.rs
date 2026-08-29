@@ -95,6 +95,10 @@ pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxRe
             let input: WorkspacesCreateCurrentInput = parse(channel, input)?;
             encode(workspaces::workspaces_create_current_impl(state, input)?)
         }
+        "workspaces:create-scratch" => {
+            let input: WorkspacesCreateScratchInput = parse(channel, input)?;
+            encode(workspaces::workspaces_create_scratch_impl(state, input).await?)
+        }
         "workspaces:refresh-status" => {
             let input: WorkspacesRefreshStatusInput = parse(channel, input)?;
             encode(workspaces::workspaces_refresh_status_impl(state, input).await?)

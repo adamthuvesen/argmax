@@ -17,6 +17,8 @@ import type {
   ApprovalRequest,
   CheckRun,
   ComposerAttachment,
+  DetectedIde,
+  IdeId,
   PendingMessage,
   ProjectSummary,
   RawProviderOutput,
@@ -79,7 +81,6 @@ interface SessionMultiGridProps {
   maxColumnsPerRow?: number;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
-  terminalToggleSignal?: number;
   renderLauncher: (project: ProjectSummary | null) => JSX.Element;
   /** Which workspace is currently being dragged from the sidebar. The drop
       handlers use this directly instead of round-tripping through
@@ -95,6 +96,15 @@ interface SessionMultiGridProps {
   onOpenAgentPane: (request: AgentPaneRequest) => void;
   /** Opens a launcher cell beside the focused pane. */
   onNewSession: () => void;
+  /** Launches a repo-less side chat seeded with the given first message. */
+  onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  onOpenDetails?: (
+    seedPrompt: string,
+    context?: { attachToChat?: () => void }
+  ) => Promise<void>;
+  defaultIde?: IdeId | null;
+  detectedIdes?: DetectedIde[];
+  onOpenWorkspaceInIde?: (workspaceId: string, ide: IdeId) => void;
   onActivateAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   onCloseAgentTab: (parentSessionId: string, parentToolUseId: string) => void;
   onWorkspaceMinWidthChange?: (width: number) => void;
@@ -139,7 +149,6 @@ export function SessionMultiGrid({
   maxColumnsPerRow = MAX_COLS,
   rightPanelToggleSignal,
   debugLogToggleSignal,
-  terminalToggleSignal,
   renderLauncher,
   dragSourceWorkspaceId,
   onFocusPane,
@@ -150,6 +159,11 @@ export function SessionMultiGrid({
   onLoadAgentEvents,
   onOpenAgentPane,
   onNewSession,
+  onOpenSideChat,
+  onOpenDetails,
+  defaultIde = null,
+  detectedIdes = [],
+  onOpenWorkspaceInIde,
   onActivateAgentTab,
   onCloseAgentTab,
   onWorkspaceMinWidthChange,
@@ -417,6 +431,11 @@ export function SessionMultiGrid({
                         onFastModeEnabledChange={onFastModeEnabledChange}
                         onLoadSessionEvents={onLoadSessionEvents}
                         onNewSession={onNewSession}
+                        onOpenSideChat={onOpenSideChat}
+                        onOpenDetails={onOpenDetails}
+                        defaultIde={defaultIde}
+                        detectedIdes={detectedIdes}
+                        onOpenWorkspaceInIde={onOpenWorkspaceInIde}
                         onOpenAgent={openChildAgent}
                         onRightPanelWidthChange={(width) => setCellRightPanelWidth(cellKey, width)}
                         onResolveApproval={onResolveApproval}
@@ -430,7 +449,6 @@ export function SessionMultiGrid({
                         rawOutputs={rawOutputs}
                         rightPanelToggleSignal={rightPanelToggleSignal}
                         debugLogToggleSignal={debugLogToggleSignal}
-                        terminalToggleSignal={terminalToggleSignal}
                         session={session}
                         workspace={workspace}
                         registerPaletteFileContext={registerPaletteFileContext}

@@ -28,6 +28,7 @@ import {
   type UserMessageAttachment
 } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
+import type { ComposerStatus } from "./SessionComposer.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
 
@@ -64,7 +65,7 @@ function SessionConversationTurnInner({
   onSendSessionInput: SessionConversationSendInput;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   shouldRefocusInput: MutableRefObject<boolean>;
-  setStatus: (message: string | null) => void;
+  setStatus: (status: ComposerStatus | null) => void;
   setAgentMode: (mode: AgentMode) => void;
   defaultToolCallsExpanded?: boolean;
   defaultToolCallGroupsExpanded?: boolean;
@@ -112,6 +113,7 @@ function SessionConversationTurnInner({
     : false;
   const [toolsExpandOverride, setToolsExpandOverride] = useState<boolean | null>(null);
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
+  const reportSendError = (message: string): void => setStatus({ kind: "error", message });
   const handlePlanAccept = (): Promise<boolean> => {
     if (!session) return Promise.resolve(false);
     setAgentMode("auto");
@@ -123,7 +125,7 @@ function SessionConversationTurnInner({
       session.state === "running",
       onTerminateSession,
       () => onSendSessionInput(sessionId, "Proceed with the plan above.", selectedModel, "auto"),
-      setStatus
+      reportSendError
     );
   };
   const handlePlanReject = (): void => {
@@ -139,7 +141,7 @@ function SessionConversationTurnInner({
       session.state === "running",
       onTerminateSession,
       () => onSendSessionInput(sessionId, answerMarkdown, selectedModel, nextAgentMode),
-      setStatus
+      reportSendError
     );
   };
   const questionCard: JSX.Element | null = askUserQuestionTool

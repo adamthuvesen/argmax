@@ -414,7 +414,9 @@ describe("App settings", () => {
       name: "Ask each time"
     }));
 
-    await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBeNull());
+    // "Ask each time" persists the explicit "none" sentinel — a missing key now
+    // means the factory default (Cursor), so removal would silently re-pin it.
+    await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("none"));
   });
 
   it("settings Permissions section persists the chosen mode and propagates it through the next launch", async () => {

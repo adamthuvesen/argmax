@@ -45,6 +45,7 @@ const workspace: WorkspaceSummary = {
   path: "/tmp/repo",
   state: "running",
   sharedWorkspace: false,
+  kind: "git",
   dirty: false,
   changedFiles: 0,
   lastActivityAt: "2026-05-12T15:00:02.000Z",

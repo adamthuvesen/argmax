@@ -212,6 +212,42 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Floating action bar over a transcript text selection. Fixed like the
+   file-preview popover (position computed in JS against the selection rect),
+   but interactive — it hosts buttons, so no pointer-events suppression. */
+.selection-toolbar {
+  position: fixed;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: 0 10px 28px rgba(31, 28, 24, 0.14), 0 1px 0 rgba(31, 28, 24, 0.04);
+  animation: file-preview-pop 140ms var(--ease) both;
+}
+
+.selection-toolbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.selection-toolbar-action:hover {
+  color: var(--text);
+  background: var(--panel-sunken);
+}
+
 .file-preview-popover-header {
   display: flex;
   align-items: center;

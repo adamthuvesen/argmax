@@ -18,7 +18,7 @@ import {
   writeStoredAccent,
   type AccentId
 } from "../lib/accent.js";
-import { DEFAULT_IDE_KEY, readStoredDefaultIde } from "../lib/ide.js";
+import { DEFAULT_IDE_KEY, NO_DEFAULT_IDE, readStoredDefaultIde } from "../lib/ide.js";
 import type { DetectedIde, IdeId } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
@@ -125,11 +125,9 @@ export function useLauncherAppearance(): {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (defaultIde === null) {
-      window.localStorage.removeItem(DEFAULT_IDE_KEY);
-    } else {
-      window.localStorage.setItem(DEFAULT_IDE_KEY, defaultIde);
-    }
+    // "Ask each time" persists as a sentinel: a removed key would fall back
+    // to the factory default (Cursor) on the next launch.
+    window.localStorage.setItem(DEFAULT_IDE_KEY, defaultIde ?? NO_DEFAULT_IDE);
   }, [defaultIde]);
 
   return {

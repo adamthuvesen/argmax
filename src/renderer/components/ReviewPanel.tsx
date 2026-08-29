@@ -20,6 +20,7 @@ import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { DiffBlocks } from "./DiffBlocks.js";
+import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
 import { FilePreview } from "./FilePreview.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
@@ -79,6 +80,9 @@ function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | 
           <span>
             Save changes to <strong>{promptName}</strong>?
           </span>
+          {state.dirtyClosePrompt?.saveError ? (
+            <span className="file-tab-close-prompt-error">{state.dirtyClosePrompt.saveError}</span>
+          ) : null}
           <div className="file-tab-close-prompt-actions">
             <button
               type="button"
@@ -182,9 +186,13 @@ function readStoredLeftColumnWidth(): number {
 }
 
 export function ReviewPanel({
+  onAddReviewComment,
   onResizePanelMouseDown,
   review
 }: {
+  /** When provided, diff lines grow a hover "+" for line comments; submitted
+   *  comments become composer annotations on the pane's session. */
+  onAddReviewComment?: (input: ReviewCommentInput) => void;
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
 }): JSX.Element {
@@ -406,7 +414,11 @@ export function ReviewPanel({
                               </p>
                             ) : null}
                             {review.diffState === "ready" && diffBlocks.length > 0 ? (
-                              <DiffBlocks blocks={diffBlocks} filePath={file.path} />
+                              <DiffBlocks
+                                blocks={diffBlocks}
+                                filePath={file.path}
+                                onAddComment={onAddReviewComment}
+                              />
                             ) : null}
                           </div>
                         ) : null}

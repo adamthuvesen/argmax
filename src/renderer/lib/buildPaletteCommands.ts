@@ -1,6 +1,6 @@
 import { Folder, MessageSquare, Plus, Search, Settings, SlidersHorizontal, Square } from "lucide-react";
 import type { PaletteCommand } from "../components/CommandPalette.js";
-import type { DashboardSnapshot, SessionSummary } from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID, type DashboardSnapshot, type SessionSummary } from "../../shared/types.js";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../components/settings/settingsMeta.js";
 import { titleFromPrompt } from "./projects.js";
 import { collapseHome } from "./pathDisplay.js";
@@ -81,7 +81,11 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   const workspaceById = new Map(snapshot.workspaces.map((workspace) => [workspace.id, workspace]));
   const projectById = new Map(snapshot.projects.map((project) => [project.id, project]));
 
-  const sessions: PaletteCommand[] = snapshot.sessions.slice(0, 40).map((session) => {
+  const sessions: PaletteCommand[] = snapshot.sessions
+    // Ephemeral "More details" popup sessions are not navigable surfaces.
+    .filter((session) => workspaceById.get(session.workspaceId)?.kind !== "popup")
+    .slice(0, 40)
+    .map((session) => {
     const workspace = workspaceById.get(session.workspaceId) ?? null;
     const project = workspace ? projectById.get(workspace.projectId) ?? null : null;
     const label = workspace?.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel;
@@ -116,7 +120,12 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     }))
   );
 
-  const projects: PaletteCommand[] = snapshot.projects.slice(0, 40).map((project) => ({
+  const projects: PaletteCommand[] = snapshot.projects
+    // The hidden scratch project backs repo-less side chats; it is not an
+    // openable repository.
+    .filter((project) => project.id !== SCRATCH_PROJECT_ID)
+    .slice(0, 40)
+    .map((project) => ({
     id: `project:${project.id}`,
     label: project.name,
     subtitle: [project.currentBranch, collapseHome(project.repoPath)].filter(Boolean).join(" · "),

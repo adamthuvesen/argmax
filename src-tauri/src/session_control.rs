@@ -537,6 +537,13 @@ fn resolve_project(
     selector: Option<&str>,
     parent_project_id: &str,
 ) -> Result<ProjectSummary, SessionLaunchProtocolError> {
+    // The hidden scratch project is not a repository: routing a launch at it
+    // would run `create_current` against the app-owned side-chats root.
+    let projects: Vec<ProjectSummary> = projects
+        .iter()
+        .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+        .cloned()
+        .collect();
     let Some(selector) = selector else {
         return projects
             .iter()

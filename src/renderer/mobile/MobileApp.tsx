@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import { ChevronLeft, Moon, Plus, Sun } from "lucide-react";
-import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { SessionPane } from "../components/SessionPane.js";
 import { NewSessionScreen } from "./NewSessionScreen.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
@@ -15,7 +15,11 @@ import {
   type ResolvedTheme
 } from "../lib/theme.js";
 import type { ToastMessage } from "../lib/withToast.js";
-import { subscribeRemoteConnection, type RemoteConnectionState } from "../lib/wsTransport.js";
+import {
+  REMOTE_CONNECTION_LOST_MESSAGE,
+  subscribeRemoteConnection,
+  type RemoteConnectionState
+} from "../lib/wsTransport.js";
 
 const ATTENTION_LABEL: Record<PriorityAttention, string> = {
   "approval-needed": "needs approval",
@@ -120,7 +124,13 @@ function SessionSection({
 
 export function MobileApp(): JSX.Element {
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const setToastCallback = useCallback((next: ToastMessage) => setToast(next), []);
+  // Backgrounding the phone kills the socket on every app switch, so requests
+  // caught mid-flight fail with the connection-lost message as a matter of
+  // routine. The "Reconnecting…" banner is the honest signal; the toast is not.
+  const showToast = useCallback((next: ToastMessage) => {
+    if (next.kind === "error" && next.message === REMOTE_CONNECTION_LOST_MESSAGE) return;
+    setToast(next);
+  }, []);
   const [theme, setTheme] = useState<ResolvedTheme>(() => resolveTheme(readStoredTheme()));
   useEffect(() => {
     applyThemeToDocument(theme);
@@ -148,12 +158,12 @@ export function MobileApp(): JSX.Element {
     loadSessionEvents,
     openWorkspaceChat,
     resolveApproval
-  } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: (message) => setToast({ kind: "error", message }) });
+  } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: (message) => showToast({ kind: "error", message }) });
 
   const commands = useSessionCommands({
     refreshDashboardStatus: refresh,
     loadSessionEvents,
-    setToast: setToastCallback,
+    setToast: showToast,
     fastMode: false
   });
 
@@ -198,7 +208,7 @@ export function MobileApp(): JSX.Element {
       ])
     );
     const rows: SessionListRow[] = snapshot.workspaces
-      .filter((workspace) => workspace.state !== "archived")
+      .filter((workspace) => workspace.state !== "archived" && workspace.kind !== "popup")
       .map((workspace) => ({
         workspace,
         session: sessionsByWorkspace.get(workspace.id) ?? null,
@@ -248,10 +258,10 @@ export function MobileApp(): JSX.Element {
     >
       {!sessionOpen && newSessionOpen ? (
         <NewSessionScreen
-          projects={snapshot.projects}
+          projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
           onClose={() => setNewSessionOpen(false)}
           onLaunched={handleLaunched}
-          onError={(message) => setToast({ kind: "error", message })}
+          onError={(message) => showToast({ kind: "error", message })}
         />
       ) : sessionOpen ? (
         <div className="mobile-session-screen">

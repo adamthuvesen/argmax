@@ -7,12 +7,13 @@ import {
   type MutableRefObject,
   type SetStateAction
 } from "react";
-import type {
-  DashboardSnapshot,
-  ProjectSummary,
-  SessionSummary,
-  TimelineEvent,
-  WorkspaceSummary
+import {
+  SCRATCH_PROJECT_ID,
+  type DashboardSnapshot,
+  type ProjectSummary,
+  type SessionSummary,
+  type TimelineEvent,
+  type WorkspaceSummary
 } from "../../shared/types.js";
 import type { WorkspaceClickModifiers } from "../components/SidebarSessionRow.js";
 import {
@@ -374,9 +375,18 @@ export function useAppGridSelection({
     setGrid((current) => {
       if (current.rows.length === 0) return EMPTY_GRID;
       const focused = focusedCell(current);
-      let projectId = selectedProject?.id ?? selectedWorkspace?.projectId ?? snapshot.projects[0]?.id ?? null;
+      // Never seed a launcher cell with the hidden scratch project — it owns
+      // repo-less side chats, and a launcher targeting it would offer branch
+      // and worktree chrome against the app-owned scratch root.
+      const repoProjectId = (id: string | null | undefined): string | null =>
+        id && id !== SCRATCH_PROJECT_ID ? id : null;
+      let projectId =
+        repoProjectId(selectedProject?.id) ??
+        repoProjectId(selectedWorkspace?.projectId) ??
+        snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ??
+        null;
       if (focused && isWorkspaceBackedCell(focused)) {
-        projectId = workspacesById.get(focused.workspaceId)?.projectId ?? projectId;
+        projectId = repoProjectId(workspacesById.get(focused.workspaceId)?.projectId) ?? projectId;
       } else if (focused?.kind === "launcher") {
         projectId = focused.projectId;
       }

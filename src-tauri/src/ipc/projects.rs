@@ -69,6 +69,14 @@ pub(crate) fn projects_remove_impl(
     state: &AppState,
     input: ProjectsRemoveInput,
 ) -> ArgmaxResult<()> {
+    // `workspaces.project_id` cascades on project delete: removing the hidden
+    // scratch project would silently take every side chat with it.
+    if input.project_id.as_str() == crate::workspaces::SCRATCH_PROJECT_ID {
+        return Err(ArgmaxError::service(
+            "PROJECT_NOT_REMOVABLE",
+            "The side-chats project is app-managed and cannot be removed.",
+        ));
+    }
     let database = live_database(state)?;
     let connection = database.connection();
     delete_project(&connection, input.project_id.as_str())

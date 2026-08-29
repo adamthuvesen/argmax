@@ -38,14 +38,18 @@ use crate::checks::service::{CheckService, RunWorkspaceCheckInput};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::run_git_text;
 use crate::ipc::inputs::{
-    OpenIdeChoice, WorkspacesArchiveInput, WorkspacesAutotitleInput, WorkspacesCreateCurrentInput,
-    WorkspacesCreateIsolatedInput, WorkspacesKeepInput, WorkspacesOpenInIdeInput,
-    WorkspacesSetIconInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
-    WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
+    OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
+    WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
+    WorkspacesKeepInput, WorkspacesOpenInIdeInput, WorkspacesSetIconInput,
+    WorkspacesSetLabelInput, WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput,
+    WorkspacesSetPriorityDismissedInput,
 };
 use crate::persistence::database::Database;
 use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
-use crate::persistence::projects::{list_projects, require_project};
+use crate::persistence::projects::{
+    find_project_by_id, list_projects, persist_project, require_project, PersistProjectInput,
+    ProjectSettings,
+};
 use crate::persistence::workspaces::{
     find_workspace_by_id, persist_workspace, set_workspace_icon, set_workspace_label,
     set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
@@ -69,6 +73,12 @@ const GIT_TIMEOUT_MS: u64 = 60_000;
 
 const BRANCH_SLUG_LEN: usize = 16;
 const SLUG_MAX_LEN: usize = 42;
+
+/// Stable id of the hidden singleton project that owns every scratch
+/// workspace (repo-less side chats and "More details" popups). Mirrored in
+/// `src/shared/types.ts` (`SCRATCH_PROJECT_ID`) so the renderer can exclude it
+/// from repo pickers and normal sidebar grouping.
+pub const SCRATCH_PROJECT_ID: &str = "scratch-side-chats";
 
 /// 200 ms settle after `cancelChecks` fires so SIGTERM has time to land
 /// before we recheck porcelain. See TS comment in `archiveWorkspace`.
@@ -108,6 +118,10 @@ pub struct WorkspaceService {
     checks: Option<Arc<CheckService>>,
     terminals: Option<Arc<TerminalService>>,
     approvals: Option<Arc<ApprovalService>>,
+    /// App-owned directory that holds one subdirectory per scratch workspace
+    /// (repo-less side chats). `None` when the app data dir could not be
+    /// resolved — `create_scratch` then fails with a clear error.
+    scratch_root: Option<PathBuf>,
 }
 
 impl WorkspaceService {
@@ -127,9 +141,11 @@ impl WorkspaceService {
             None,
             None,
             None,
+            None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn with_services<F>(
         database: Arc<Database>,
         publisher: F,
@@ -138,6 +154,7 @@ impl WorkspaceService {
         checks: Option<Arc<CheckService>>,
         terminals: Option<Arc<TerminalService>>,
         approvals: Option<Arc<ApprovalService>>,
+        scratch_root: Option<PathBuf>,
     ) -> Arc<Self>
     where
         F: Fn(DashboardDelta) + Send + Sync + 'static,
@@ -151,6 +168,7 @@ impl WorkspaceService {
             checks,
             terminals,
             approvals,
+            scratch_root,
         })
     }
 
@@ -397,6 +415,7 @@ impl WorkspaceService {
                     path: worktree_path.display().to_string(),
                     state: "created".to_string(),
                     shared_workspace: false,
+                    kind: "git".to_string(),
                     dirty: false,
                     changed_files: 0,
                 },
@@ -482,6 +501,7 @@ impl WorkspaceService {
                 path: project.repo_path.clone(),
                 state: "created".to_string(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: false,
                 changed_files: 0,
             },
@@ -492,6 +512,115 @@ impl WorkspaceService {
             ..DashboardDelta::default()
         });
         drop(connection);
+        if let Err(error) = self.watch(&workspace.id) {
+            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
+        }
+        Ok(workspace)
+    }
+
+    /// Create a repo-less scratch workspace: an app-owned directory under
+    /// `scratch_root`, initialized as a minimal git repo (one empty commit on
+    /// `main`) because provider CLIs assume a checkout — Codex outright
+    /// refuses to run outside one. Owned by the hidden singleton
+    /// `SCRATCH_PROJECT_ID` project. `shared_workspace: true` deliberately
+    /// routes archive through the state-flip-only path: there is no worktree
+    /// registration to tear down, and the directory is cheap to keep.
+    pub async fn create_scratch(
+        self: &Arc<Self>,
+        input: WorkspacesCreateScratchInput,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let kind = input.kind.unwrap_or(ScratchWorkspaceKind::Scratch).as_str();
+        let Some(scratch_root) = self.scratch_root.clone() else {
+            return Err(invalid_workspace(
+                "Scratch workspaces are unavailable: the app data directory could not be resolved.",
+                "Restart the app and retry.",
+            ));
+        };
+        let workspace_id = Uuid::new_v4().to_string();
+        let workspace_path = scratch_root.join(&workspace_id);
+        tokio::fs::create_dir_all(&workspace_path)
+            .await
+            .map_err(|error| {
+                invalid_workspace(
+                    format!(
+                        "Could not create scratch directory {}: {error}",
+                        workspace_path.display()
+                    ),
+                    "Check disk space and app data permissions, then retry.",
+                )
+            })?;
+        let init = async {
+            run_git_text(
+                &workspace_path,
+                &["init", "--initial-branch", "main"],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await?;
+            // Explicit identity and no signing: the empty commit must succeed
+            // on machines without a global git identity and must never block
+            // on a GPG prompt.
+            run_git_text(
+                &workspace_path,
+                &[
+                    "-c",
+                    "user.name=Argmax",
+                    "-c",
+                    "user.email=argmax@localhost",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "--allow-empty",
+                    "--no-verify",
+                    "-m",
+                    "Argmax scratch workspace",
+                ],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await
+        };
+        if let Err(error) = init.await {
+            let _ = tokio::fs::remove_dir_all(&workspace_path).await;
+            return Err(invalid_workspace(
+                format!("Could not initialize scratch workspace. {error}"),
+                "Verify git is installed and retry.",
+            ));
+        }
+
+        // Any failure past this point leaves an initialized directory behind;
+        // remove it so `side-chats/` never accumulates dirs with no row.
+        let persisted = (|| {
+            let connection = self.database.connection();
+            ensure_scratch_project(&connection, &scratch_root)?;
+            let workspace = persist_workspace(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: workspace_id,
+                    project_id: SCRATCH_PROJECT_ID.to_string(),
+                    task_label: input.task_label.as_str().to_string(),
+                    branch: "main".to_string(),
+                    base_ref: "main".to_string(),
+                    path: workspace_path.display().to_string(),
+                    state: "created".to_string(),
+                    shared_workspace: true,
+                    kind: kind.to_string(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+            )?;
+            self.publish(DashboardDelta {
+                projects: list_projects(&connection)?,
+                workspaces: vec![workspace.clone()],
+                ..DashboardDelta::default()
+            });
+            Ok(workspace)
+        })();
+        let workspace = match persisted {
+            Ok(workspace) => workspace,
+            Err(error) => {
+                let _ = tokio::fs::remove_dir_all(&workspace_path).await;
+                return Err(error);
+            }
+        };
         if let Err(error) = self.watch(&workspace.id) {
             tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
         }
@@ -816,9 +945,29 @@ impl WorkspaceService {
         // Archived closes admissions for good; new processes can no longer
         // attach while the background teardown drains the existing ones.
         lease.finish(ArchiveOutcome::Archived);
+        // Popup workspaces are discard-on-close: their app-owned scratch dir
+        // holds no user data and would otherwise accumulate one dir per
+        // "More details" popup. Confined to the scratch root as a guard
+        // against ever deleting a user path.
+        let popup_dir_to_remove = (archived.kind == "popup")
+            .then(|| PathBuf::from(&archived.path))
+            .filter(|path| {
+                self.scratch_root
+                    .as_ref()
+                    .is_some_and(|root| path.starts_with(root))
+            });
         let service = Arc::clone(self);
         tokio::spawn(async move {
             service.teardown_workspace_processes(&workspace_id).await;
+            if let Some(path) = popup_dir_to_remove {
+                if let Err(error) = tokio::fs::remove_dir_all(&path).await {
+                    tracing::warn!(
+                        ?error,
+                        path = %path.display(),
+                        "popup archive: scratch dir removal failed"
+                    );
+                }
+            }
         });
         Ok(archived)
     }
@@ -1327,6 +1476,38 @@ fn ide_app_name(choice: OpenIdeChoice) -> &'static str {
         OpenIdeChoice::Iterm => "iTerm",
         OpenIdeChoice::Default => "", // handled inline; never reached here
     }
+}
+
+/// Upsert the hidden singleton project that owns scratch workspaces. Keyed by
+/// the stable `SCRATCH_PROJECT_ID` so the renderer can filter it out of repo
+/// pickers; `repo_path` is the scratch root, which satisfies the schema's
+/// NOT NULL UNIQUE without pointing at a user repository.
+fn ensure_scratch_project(
+    connection: &rusqlite::Connection,
+    scratch_root: &Path,
+) -> ArgmaxResult<()> {
+    if find_project_by_id(connection, SCRATCH_PROJECT_ID)?.is_some() {
+        return Ok(());
+    }
+    persist_project(
+        connection,
+        &PersistProjectInput {
+            id: SCRATCH_PROJECT_ID.to_string(),
+            name: "Side chats".to_string(),
+            repo_path: scratch_root.display().to_string(),
+            current_branch: "main".to_string(),
+            default_branch: Some("main".to_string()),
+            settings: ProjectSettings {
+                default_provider: "claude".to_string(),
+                default_model_label: String::new(),
+                default_model_id: String::new(),
+                worktree_location: scratch_root.display().to_string(),
+                setup_command: String::new(),
+                check_commands: Vec::new(),
+            },
+        },
+    )?;
+    Ok(())
 }
 
 fn invalid_workspace(

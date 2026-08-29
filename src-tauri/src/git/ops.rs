@@ -424,6 +424,7 @@ mod tests {
                 path: repo_path.to_string_lossy().into_owned(),
                 state: "created".to_string(),
                 shared_workspace: true,
+                kind: "git".to_string(),
                 dirty: true,
                 changed_files: 1,
             },

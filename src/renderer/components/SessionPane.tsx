@@ -13,11 +13,14 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
 import type {
   AgentMode,
   ApprovalRequest,
   CheckRun,
   ComposerAttachment,
+  DetectedIde,
+  IdeId,
   PendingMessage,
   ProjectSummary,
   RawProviderOutput,
@@ -79,6 +82,11 @@ export function SessionPane({
   onFastModeEnabledChange,
   onLoadSessionEvents,
   onNewSession,
+  onOpenSideChat,
+  onOpenDetails,
+  defaultIde = null,
+  detectedIdes = [],
+  onOpenWorkspaceInIde,
   onRightPanelWidthChange,
   onResolveApproval,
   onRunCheck,
@@ -93,7 +101,6 @@ export function SessionPane({
   registerPaletteFileContext,
   rightPanelToggleSignal,
   debugLogToggleSignal,
-  terminalToggleSignal,
   session,
   showCostPanel = true,
   workspaceCardVisible = true,
@@ -116,6 +123,14 @@ export function SessionPane({
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: () => void;
+  onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  onOpenDetails?: (
+    seedPrompt: string,
+    context?: { attachToChat?: () => void }
+  ) => Promise<void>;
+  defaultIde?: IdeId | null;
+  detectedIdes?: DetectedIde[];
+  onOpenWorkspaceInIde?: (workspaceId: string, ide: IdeId) => void;
   onRightPanelWidthChange?: (width: number | null) => void;
   onResolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
@@ -135,7 +150,6 @@ export function SessionPane({
   rawOutputs: RawProviderOutput[];
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;
-  terminalToggleSignal?: number;
   session: SessionSummary | null;
   showCostPanel?: boolean;
   /** User preference for the floating workspace card. The pane still hides it
@@ -280,7 +294,26 @@ export function SessionPane({
 
   const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
   const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
+  // Review-panel line comments land on the conversation's composer as
+  // annotations. The conversation owns that state; it registers a sink here
+  // so its sibling ReviewPanel can feed it without lifting the state up.
+  const annotationSinkRef = useRef<((input: ReviewCommentInput) => void) | null>(null);
+  const registerAnnotationSink = useCallback(
+    (sink: ((input: ReviewCommentInput) => void) | null): void => {
+      annotationSinkRef.current = sink;
+    },
+    []
+  );
+  const handleAddReviewComment = useCallback((input: ReviewCommentInput): void => {
+    annotationSinkRef.current?.(input);
+  }, []);
   const workspaceId = workspace?.id ?? null;
+  const handleOpenInIde = useCallback(
+    (ide: IdeId): void => {
+      if (workspaceId) onOpenWorkspaceInIde?.(workspaceId, ide);
+    },
+    [onOpenWorkspaceInIde, workspaceId]
+  );
   // After a commit the staged/changed set has shifted; refresh the workspace
   // status so the Changes panel updates immediately (the refresh publishes a
   // dashboard delta that bumps changedFilesKey) rather than showing stale rows
@@ -325,7 +358,6 @@ export function SessionPane({
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
-  const lastTerminalToggleSignal = useRef(0);
 
   // Register this pane's file source + pick handler with the command
   // palette when focused. Only the focused pane registers so multiple
@@ -356,13 +388,6 @@ export function SessionPane({
     if (!isFocused) return;
     toggleLog();
   }, [debugLogToggleSignal, isFocused, toggleLog]);
-
-  useEffect(() => {
-    if (!terminalToggleSignal || terminalToggleSignal === lastTerminalToggleSignal.current) return;
-    lastTerminalToggleSignal.current = terminalToggleSignal;
-    if (!isFocused || !workspace) return;
-    toggleTerminalPanel(workspace.id);
-  }, [isFocused, terminalToggleSignal, workspace]);
 
   useEffect(() => {
     if (!isFocused) return undefined;
@@ -508,7 +533,13 @@ export function SessionPane({
           onClose={onClose}
           onFastModeEnabledChange={onFastModeEnabledChange}
           onNewSession={onNewSession}
+          onOpenSideChat={onOpenSideChat}
+          onOpenDetails={onOpenDetails}
+          defaultIde={defaultIde}
+          detectedIdes={detectedIdes}
+          onOpenInIde={handleOpenInIde}
           onOpenCommitDialog={handleOpenCommitDialog}
+          registerAnnotationSink={registerAnnotationSink}
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}
           onSendQueuedMessageNow={onSendQueuedMessageNow}
@@ -608,6 +639,7 @@ export function SessionPane({
         <Suspense fallback={null}>
           <ReviewPanel
             review={reviewState}
+            onAddReviewComment={session ? handleAddReviewComment : undefined}
             onResizePanelMouseDown={onRightPanelResizeMouseDown}
           />
         </Suspense>

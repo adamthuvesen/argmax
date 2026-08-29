@@ -6,26 +6,36 @@ import {
   GitBranch,
   MoreHorizontal,
   PanelRightDashed,
+  SquareArrowOutUpRight,
   SquarePen
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
-import type { GhPrRecord, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type { DetectedIde, GhPrRecord, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
+import type { ComposerStatus } from "./SessionComposer.js";
 
 export function SessionActionsMenu({
+  defaultIde = null,
+  detectedIdes = [],
   isLogOpen,
   isWorkspaceCardEnabled = true,
   onBrowseFiles,
   onNewSession,
   onOpenCommitDialog,
+  onOpenInIde,
   onToggleLog,
   onToggleWorkspaceCard,
   session,
   setStatus,
   workspace
 }: {
+  defaultIde?: IdeId | null;
+  detectedIdes?: DetectedIde[];
+  /** Opens the workspace in the given IDE. Absent where the host surface has
+      no IDE handoff (the phone companion), which hides the action. */
+  onOpenInIde?: (ide: IdeId) => void;
   isLogOpen: boolean;
   /** Preference state for the floating workspace card, so the checkbox reads
       the user's choice rather than whether the card happens to be on screen. */
@@ -38,7 +48,7 @@ export function SessionActionsMenu({
   onOpenCommitDialog?: () => void;
   onToggleLog: () => void;
   session: SessionSummary | null;
-  setStatus?: (message: string | null) => void;
+  setStatus?: (status: ComposerStatus | null) => void;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [prs, setPrs] = useState<GhPrRecord[]>([]);
@@ -82,12 +92,23 @@ export function SessionActionsMenu({
       .catch((error) => {
         if (cancelled) return;
         setPrs([]);
-        setStatus?.(error instanceof Error ? error.message : "Could not load pull requests.");
+        setStatus?.({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not load pull requests."
+        });
       });
     return () => {
       cancelled = true;
     };
   }, [session?.id, setStatus]);
+
+  // One item for the pinned default when detected. Without one, listing every
+  // GUI IDE *is* the "Ask each time" setting — guessing a favorite here would
+  // silently override an explicit choice.
+  const guiIdes = detectedIdes.filter((entry) => entry.id !== "terminal" && entry.id !== "iterm");
+  const pinnedIde =
+    defaultIde && detectedIdes.some((entry) => entry.id === defaultIde) ? defaultIde : null;
+  const ideChoices = pinnedIde ? detectedIdes.filter((entry) => entry.id === pinnedIde) : guiIdes;
 
   const refreshPrs = useCallback((): void => {
     if (!session?.id || !window.argmax) return;
@@ -96,7 +117,10 @@ export function SessionActionsMenu({
       .then(setPrs)
       .catch((error) => {
         setPrs([]);
-        setStatus?.(error instanceof Error ? error.message : "Could not refresh pull requests.");
+        setStatus?.({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Could not refresh pull requests."
+        });
       });
   }, [session?.id, setStatus]);
 
@@ -161,6 +185,44 @@ export function SessionActionsMenu({
                   Browse files
                 </button>
               </li>
+              {onOpenInIde && ideChoices.length === 0 ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    disabled
+                    title="No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
+                  >
+                    <SquareArrowOutUpRight size={14} aria-hidden="true" />
+                    Open in IDE
+                  </button>
+                </li>
+              ) : null}
+              {onOpenInIde
+                ? ideChoices.map((entry) => (
+                    <li role="none" key={entry.id}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item"
+                        disabled={!workspace}
+                        title={
+                          pinnedIde
+                            ? "Open this workspace in your default IDE (set in Settings → Integrations)"
+                            : "Open this workspace in this IDE (pin a default in Settings → Integrations)"
+                        }
+                        onClick={() => {
+                          closeActions();
+                          onOpenInIde(entry.id);
+                        }}
+                      >
+                        <SquareArrowOutUpRight size={14} aria-hidden="true" />
+                        {`Open in ${entry.label}`}
+                      </button>
+                    </li>
+                  ))
+                : null}
               <li role="none">
                 <button
                   type="button"

@@ -984,6 +984,9 @@
    cascading a second popover, so we widen min-width for the longer git
    labels (e.g. "Create pull request"). */
 .session-actions-popover {
+  /* Portaled to <body>: must clear the fixed "More details" popup (z 95)
+     when a pane's menu opens over it. Overlays start at 100+. */
+  z-index: 96;
   top: auto;
   bottom: auto;
   left: auto;
@@ -1218,9 +1221,90 @@
   flex: 0 0 auto;
 }
 
+.composer-status[data-status="error"] {
+  color: var(--rose);
+  border-color: color-mix(in oklab, var(--rose) 35%, var(--line));
+}
+
 .session-scroll {
   display: grid;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+/* ---- "More details" explainer popup ---- */
+
+/* Floating conversation pinned to the bottom-right corner, resizable from its
+   top-left corner. Hosts a full .conversation-surface, which brings its own
+   header, transcript, and composer. Above the panes (which top out around
+   z-index 62), below full-screen overlays (100+). */
+.details-popup {
+  position: fixed;
+  right: 16px;
+  /* Matches the conversation surface's 24px bottom padding, so the popup's
+     bottom edge sits on the same line as the session composer beside it. */
+  bottom: 24px;
+  z-index: 95;
+  display: grid;
+  /* Every chat gutter (heading, transcript, composer) reads this var; only
+     .session-main-column defines it, so the popup must supply its own or the
+     content runs edge to edge. */
+  --session-inline-padding: 22px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 40px);
+  padding-top: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+.details-popup .conversation-surface {
+  min-height: 0;
+  /* Compact frame: the popup header is chrome, not a pane hero. */
+  padding-top: 4px;
+}
+
+.details-popup .section-heading {
+  margin-bottom: 6px;
+}
+
+/* The popup composer drops the attach/context cluster (floating mode), so the
+   model chip is the only flexible item left — let it shrink and ellipsize
+   instead of overflowing the toolbar at the popup's minimum width. */
+.details-popup .session-input-toolbar .composer-chips-model {
+  flex-shrink: 1;
+}
+
+/* Header "Add to chat" — attaches the explained excerpt to the originating
+   composer, Codex-style. Quiet labeled chip beside the close button. */
+.details-attach-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs-plus);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.details-attach-chat:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.details-popup-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  z-index: 1;
+  cursor: nwse-resize;
 }

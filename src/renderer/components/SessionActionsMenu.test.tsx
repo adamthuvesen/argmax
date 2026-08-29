@@ -49,6 +49,7 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
     path: "/repo",
     state: "complete",
     sharedWorkspace: false,
+    kind: "git",
     dirty: false,
     changedFiles: 0,
     lastActivityAt: "2026-05-12T15:00:01.000Z",
@@ -123,5 +124,118 @@ describe("SessionActionsMenu", () => {
     await waitFor(() => {
       expect(listForSession).toHaveBeenCalledWith({ sessionId: "session-1" });
     });
+  });
+});
+
+describe("SessionActionsMenu — Open in IDE", () => {
+  let listForSession: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    listForSession = vi.fn().mockResolvedValue([]);
+    installArgmax(listForSession);
+  });
+
+  afterEach(() => {
+    cleanup();
+    delete (window as { argmax?: unknown }).argmax;
+  });
+
+  const IDES = [
+    { id: "vscode" as const, label: "VS Code", appPath: "/Applications/VS Code.app", hasCli: true },
+    { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true }
+  ];
+
+  it("opens the default IDE from the menu", () => {
+    const onOpenInIde = vi.fn();
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+        detectedIdes={IDES}
+        defaultIde="cursor"
+        onOpenInIde={onOpenInIde}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Cursor" }));
+
+    expect(onOpenInIde).toHaveBeenCalledWith("cursor");
+  });
+
+  it("falls back to the first GUI IDE when the default is not detected", () => {
+    const onOpenInIde = vi.fn();
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+        detectedIdes={[{ id: "zed", label: "Zed", appPath: "/Applications/Zed.app", hasCli: false }]}
+        defaultIde="cursor"
+        onOpenInIde={onOpenInIde}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Zed" }));
+
+    expect(onOpenInIde).toHaveBeenCalledWith("zed");
+  });
+
+  it("lists every GUI IDE when the user chose Ask each time", () => {
+    const onOpenInIde = vi.fn();
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+        detectedIdes={IDES}
+        defaultIde={null}
+        onOpenInIde={onOpenInIde}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    expect(screen.getByRole("menuitem", { name: "Open in VS Code" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Cursor" }));
+
+    expect(onOpenInIde).toHaveBeenCalledWith("cursor");
+  });
+
+  it("hides the action without a handler and disables it without IDEs", () => {
+    const { unmount } = render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    expect(screen.queryByRole("menuitem", { name: /Open in/ })).toBeNull();
+    unmount();
+
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+        detectedIdes={[]}
+        defaultIde={null}
+        onOpenInIde={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+    expect(screen.getByRole("menuitem", { name: "Open in IDE" })).toBeDisabled();
   });
 });

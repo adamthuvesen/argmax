@@ -450,9 +450,9 @@ describe("accent CSS contract", () => {
     expect(wideRule).toContain("--chat-content-width-docked: 900px;");
     expect(wideRule).toContain("--chat-content-width-tight: 840px;");
     expect(mainColumnRule).toContain("clamp(28px, calc((100% - var(--chat-content-width)) / 2), 2000px)");
-    expect(launcherShellRule).toContain(
-      "width: min(100%, calc(var(--chat-content-width) + 64px));"
-    );
+    // The launcher shell is deliberately decoupled from the chat width
+    // setting: the composer keeps one fixed comfortable measure.
+    expect(launcherShellRule).toContain("width: min(100%, 760px);");
     expect(launcherSurfaceRule).toContain("width: min(100%, var(--chat-content-width));");
     expect(dockedRule).toContain("clamp(22px, calc((100% - var(--chat-content-width-docked)) / 2), 2000px)");
     expect(tightRule).toContain("clamp(20px, calc((100% - var(--chat-content-width-tight)) / 2), 2000px)");
@@ -464,7 +464,7 @@ describe("accent CSS contract", () => {
     const contextChipRule = cssRuleBody(chatChrome, ".composer-context-chip");
     const contextChipHoverRule = cssRuleBody(chatChrome, ".composer-context-chip:hover");
 
-    expect(launchSurface).toContain('placeholderText = "Ask your agent to inspect, build, or fix something"');
+    expect(launchSurface).toContain('"Ask your agent to inspect, build, or fix something"');
     expect(launchSurface).not.toContain("Coffee and code time?");
     expect(launchSurface).not.toContain("Time to ship.");
     expect(launchSurface).not.toContain("What are we hacking on?");
@@ -518,9 +518,9 @@ describe("accent CSS contract", () => {
       ".launcher-surface .composer-context-group--model .model-picker-label"
     );
 
-    expect(launchSurface).toContain('title={project.name}');
+    expect(launchSurface).toContain('title={contextChipLabel}');
     expect(launchSurface).toContain(
-      '<span className="composer-context-chip-label">{project.name}</span>'
+      '<span className="composer-context-chip-label">{contextChipLabel}</span>'
     );
     expect(contextRule).toContain("flex-wrap: nowrap;");
     expect(workspaceGroupRule).toContain("flex: 0 1 auto;");

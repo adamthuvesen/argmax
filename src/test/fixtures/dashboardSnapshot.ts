@@ -36,6 +36,7 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       path: "/tmp/worktrees/dashboard",
       state: "running",
       sharedWorkspace: false,
+      kind: "git",
       dirty: true,
       changedFiles: 3,
       lastActivityAt: "2026-05-08T15:54:00.000Z",

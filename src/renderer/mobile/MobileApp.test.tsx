@@ -167,7 +167,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "All sessions" });
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
-    fireEvent.click(screen.getByRole("radio", { name: "Worktree" }));
+    fireEvent.change(screen.getByLabelText("Workspace"), { target: { value: "worktree" } });
     fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Try a risky refactor" } });
     fireEvent.click(screen.getByRole("button", { name: "Launch session" }));
 

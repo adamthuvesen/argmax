@@ -304,13 +304,13 @@ export function useFilePreview(args: {
   }, [updateTab]);
 
   const saveFilePath = useCallback(
-    async (filePath: string): Promise<boolean> => {
+    async (filePath: string): Promise<"saved" | "stale" | "aborted" | "error"> => {
       const id = listenerStateRef.current.sourceId;
       const kind = listenerStateRef.current.sourceKind;
       const tab =
         listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
-      if (!id || !kind || !tab || !listenerStateRef.current.canEdit) return false;
-      if (tab.buffer === null || tab.buffer === tab.original) return true;
+      if (!id || !kind || !tab || !listenerStateRef.current.canEdit) return "aborted";
+      if (tab.buffer === null || tab.buffer === tab.original) return "saved";
       const contentToSave = tab.buffer;
       const token = ++workspaceSaveSeq.current;
       workspaceSaveTokens.current.set(filePath, token);
@@ -324,17 +324,17 @@ export function useFilePreview(args: {
         const writePromise = ipc?.writeFile(filePath, contentToSave, tab.diskMtimeMs);
         if (!writePromise) {
           updateTab(filePath, (current) => ({ ...current, saveState: "idle" }));
-          return true;
+          return "saved";
         }
         const result = await writePromise;
-        if (workspaceSaveTokens.current.get(filePath) !== token) return false;
+        if (workspaceSaveTokens.current.get(filePath) !== token) return "aborted";
         if (!result.ok) {
           updateTab(filePath, (current) => ({
             ...current,
             saveState: "idle",
             externalChange: true
           }));
-          return false;
+          return "stale";
         }
         updateTab(filePath, (current) => ({
           ...current,
@@ -344,15 +344,15 @@ export function useFilePreview(args: {
           saveError: null,
           externalChange: false
         }));
-        return true;
+        return "saved";
       } catch (error) {
-        if (workspaceSaveTokens.current.get(filePath) !== token) return false;
+        if (workspaceSaveTokens.current.get(filePath) !== token) return "aborted";
         updateTab(filePath, (current) => ({
           ...current,
           saveState: "error",
           saveError: errorMessage(error) || "Could not save file."
         }));
-        return false;
+        return "error";
       }
     },
     [updateTab]
@@ -368,12 +368,16 @@ export function useFilePreview(args: {
     const filePath = dirtyClosePath;
     if (!filePath) return;
     setActiveTabPath(filePath);
-    const saved = await saveFilePath(filePath);
-    if (!saved) {
-      setDirtyClosePath(null);
+    const outcome = await saveFilePath(filePath);
+    if (outcome === "saved") {
+      forceCloseTab(filePath);
       return;
     }
-    forceCloseTab(filePath);
+    // A write error keeps the prompt open with the tab's saveError in it —
+    // dismissing would read as a silent success while the close never ran. A
+    // stale file hands the conflict to the on-disk banner instead: the prompt
+    // would only compete with it.
+    if (outcome !== "error") setDirtyClosePath(null);
   }, [forceCloseTab, saveFilePath, dirtyClosePath]);
 
   const discardDirtyTabAndClose = useCallback((): void => {
@@ -458,7 +462,9 @@ export function useFilePreview(args: {
   const dirtyCloseTab =
     dirtyClosePath !== null ? tabs.find((tab) => tab.path === dirtyClosePath) ?? null : null;
   const dirtyClosePrompt: WorkspaceFileDirtyClosePrompt | null =
-    dirtyCloseTab && isWorkspaceFileTabDirty(dirtyCloseTab, canEdit) ? { path: dirtyCloseTab.path } : null;
+    dirtyCloseTab && isWorkspaceFileTabDirty(dirtyCloseTab, canEdit)
+      ? { path: dirtyCloseTab.path, saveError: dirtyCloseTab.saveError }
+      : null;
 
   return {
     entries: [],

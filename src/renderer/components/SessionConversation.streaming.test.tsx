@@ -1161,7 +1161,9 @@ describe("SessionConversation — streaming & composer", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Workspace archive is in progress");
+    // Send failures are errors now: the composer status line carries
+    // role="alert" for them, not role="status".
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace archive is in progress");
     // The label honours its minimum visible window before it drops.
     await waitFor(() => expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument());
   });
@@ -1206,10 +1208,10 @@ describe("SessionConversation — streaming & composer", () => {
 
     const textarea = screen.getByLabelText("Session prompt");
     expect(textarea).toBeEnabled();
-    // Stop keeps the mascot's slot while running, with Send now beside it:
-    // Enter queues the follow-up, Send now interrupts the turn and delivers it.
+    // Stop is the only send-slot control while running: Enter queues the
+    // follow-up, and interrupting is the queued chip's explicit "Send now".
     expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send now" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send now" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
     ).not.toBeInTheDocument();

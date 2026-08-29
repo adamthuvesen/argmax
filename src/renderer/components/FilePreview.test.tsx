@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { readBundledCss } from "../styles/readBundledCss.js";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
@@ -80,11 +83,18 @@ describe("FilePreview", () => {
     expect(editor).toHaveAttribute("data-readonly", "true");
   });
 
-  it("calls saveFile from the header save button when the file is dirty", () => {
+  it("saves a dirty file on Cmd+S from anywhere in the preview", () => {
     const saveFile = vi.fn().mockResolvedValue(undefined);
     render(<FilePreview state={makeState({ isDirty: true, saveFile })} />);
-    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
+    fireEvent.keyDown(screen.getByLabelText("Editor for src/index.ts"), { key: "s", metaKey: true });
     expect(saveFile).toHaveBeenCalled();
+  });
+
+  it("ignores Cmd+S while the file is clean", () => {
+    const saveFile = vi.fn().mockResolvedValue(undefined);
+    render(<FilePreview state={makeState({ isDirty: false, saveFile })} />);
+    fireEvent.keyDown(screen.getByLabelText("Editor for src/index.ts"), { key: "s", metaKey: true });
+    expect(saveFile).not.toHaveBeenCalled();
   });
 
   it("surfaces the stale banner with both actions when dirty and externally changed", () => {
@@ -163,6 +173,21 @@ describe("FilePreview", () => {
     expect(src).toContain("repo");
     expect(src).toContain("docs");
     expect(src).toContain("logo.png");
+  });
+
+  it("caps every markdown preview block at one centered measure", () => {
+    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
+    const css = readBundledCss(cssPath);
+
+    const container = /\.file-preview-markdown\s*\{(?<body>[^}]+)\}/i.exec(css);
+    const measure = /--file-preview-measure:\s*(?<px>\d+)px/i.exec(container?.groups?.body ?? "");
+    expect(Number(measure?.groups?.px ?? 0)).toBeLessThanOrEqual(760);
+
+    // The cap lands on all top-level children, not just prose, so short fenced
+    // code and tables stop spanning the review pane.
+    const blocks = /\.file-preview-markdown\.markdown\s*>\s*\*\s*\{(?<body>[^}]+)\}/i.exec(css);
+    expect(blocks?.groups?.body).toMatch(/max-width:\s*var\(--file-preview-measure\)/i);
+    expect(blocks?.groups?.body).toMatch(/margin-inline:\s*auto/i);
   });
 });
 

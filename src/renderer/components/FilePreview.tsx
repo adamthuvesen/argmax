@@ -25,8 +25,8 @@ import {
 } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
-import { Code, Eye, RotateCcw, Save } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { ChevronRight, Code, Eye, RotateCcw } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type JSX, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
@@ -128,15 +128,33 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
   const buffer = state.buffer ?? preview.content;
   const dirtyMarker = state.isDirty ? "•" : "";
 
+  // The editor's own Mod-s keymap marks its event handled; this catches Cmd+S
+  // anywhere else in the preview, since there is no Save button.
+  const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key.toLowerCase() !== "s" || !(event.metaKey || event.ctrlKey) || event.defaultPrevented) return;
+    event.preventDefault();
+    if (state.canEdit && state.isDirty && state.saveState !== "saving") void state.saveFile();
+  };
+
   return (
     <div
       className="file-preview"
       data-mode={showRendered ? "rendered" : "source"}
       aria-label={`Preview of ${state.selectedPath}`}
+      onKeyDown={handlePreviewKeyDown}
     >
       <div className="file-preview-heading">
-        <strong>
-          {state.selectedPath}
+        <strong aria-label={state.selectedPath} title={state.selectedPath}>
+          {state.selectedPath.split("/").map((segment, index, segments) => (
+            <Fragment key={`${index}-${segment}`}>
+              {index > 0 ? (
+                <ChevronRight size={11} className="file-preview-path-sep" aria-hidden="true" />
+              ) : null}
+              <span className={index === segments.length - 1 ? "file-preview-path-leaf" : "file-preview-path-dir"}>
+                {segment}
+              </span>
+            </Fragment>
+          ))}
           {dirtyMarker ? (
             <span className="file-preview-dirty" aria-label="Unsaved changes" title="Unsaved changes">
               {" "}
@@ -145,18 +163,6 @@ export function FilePreview({ state }: { state: WorkspaceFilesState }): JSX.Elem
           ) : null}
         </strong>
         <div className="file-preview-heading-meta">
-          {state.canEdit ? (
-            <button
-              type="button"
-              className="small-icon"
-              disabled={!state.isDirty || state.saveState === "saving"}
-              aria-label={state.saveState === "saving" ? "Saving file" : "Save file"}
-              title="Save file"
-              onClick={() => void state.saveFile()}
-            >
-              <Save size={14} />
-            </button>
-          ) : null}
           {markdownFile ? (
             <button
               type="button"

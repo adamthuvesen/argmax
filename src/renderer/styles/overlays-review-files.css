@@ -42,10 +42,29 @@
   white-space: nowrap;
 }
 
-.workspace-tree-row > svg {
-  flex: 0 0 13px;
-  width: 13px;
-  min-width: 13px;
+.workspace-tree-icon {
+  flex: 0 0 14px;
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+}
+
+.workspace-tree-icon > svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+/* @react-symbols paints every folder glyph — closed, open, and the monochrome
+   parts of badged variants — in one slate (#64748B), and reserves saturated
+   hues for the marks that tell `src` from `assets`. Retinting only that slate
+   puts folders on the app accent in both themes while those marks survive. */
+.workspace-tree-dir .workspace-tree-icon [fill="#64748b" i] {
+  fill: var(--accent);
+}
+
+.workspace-tree-dir .workspace-tree-icon [stroke="#64748b" i] {
+  stroke: var(--accent);
 }
 
 .workspace-tree-file[aria-pressed="true"] {
@@ -75,43 +94,52 @@
 
 .file-tabs-shell {
   flex: 0 0 auto;
+  padding: 5px 6px;
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklab, var(--panel) 96%, transparent);
 }
 
 .file-tabs {
   display: flex;
+  gap: 3px;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-gutter: stable;
 }
 
+/* Tabs read as quiet labels: icon plus muted name, no surface. Only the active
+   tab lifts to a rounded, hairline-ringed pill, and the close ✕ stays invisible
+   (but in flow, so nothing shifts) until the tab is hovered or focused. */
 .file-tab {
   display: inline-flex;
   align-items: center;
-  min-width: 112px;
   max-width: 220px;
-  height: 34px;
+  height: 26px;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
-  border-right: 1px solid var(--line-soft);
-  color: var(--muted-strong);
-  background: color-mix(in oklab, var(--panel) 72%, var(--panel-sunken));
+  border-radius: var(--radius-lg);
+  color: var(--muted);
+  background: transparent;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .file-tab:hover {
   color: var(--text-soft);
-  background: color-mix(in oklab, var(--panel) 86%, var(--panel-sunken));
+  background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
 }
 
 .file-tab[data-active="true"] {
   color: var(--text);
-  background: var(--panel);
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--text) 34%, var(--line));
+  background: color-mix(in oklab, var(--panel) 88%, var(--text));
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 1px 2px rgba(31, 28, 24, 0.16);
 }
 
+/* Padding math keeps the pill visually symmetric: 10px from the left edge to
+   the icon, and the ✕ glyph (12px inside its 18px hit box, so 3px of inset)
+   plus its 7px margin lands 10px from the right edge too. */
 .file-tab > button[role="tab"] {
   display: inline-flex;
   align-items: center;
@@ -119,12 +147,18 @@
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
-  padding: 0 4px 0 10px;
+  padding: 0 2px 0 10px;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.file-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .file-tab-name {
@@ -144,16 +178,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
   padding: 0;
-  margin-right: 4px;
+  margin-right: 7px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.file-tab:hover .file-tab-close,
+.file-tab:focus-within .file-tab-close {
+  opacity: 1;
 }
 
 .file-tab-close:hover {
@@ -221,24 +262,51 @@
   overflow: hidden;
 }
 
+/* Slim breadcrumb bar: the tab already names the file, so the full path reads
+   as small mono metadata instead of a second heading. The min-height matches
+   the shrunk toggle button, so files without one get the same bar height. */
 .file-preview-heading {
   position: sticky;
   top: 0;
   z-index: 2;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px;
+  min-height: 32px;
+  padding: 4px 12px 4px 18px;
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklab, var(--panel) 94%, transparent);
   backdrop-filter: blur(10px);
 }
 
+.file-preview-heading .small-icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* Breadcrumb path: muted ancestor segments, chevron separators, bright leaf. */
 .file-preview-heading strong {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
   font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.file-preview-path-sep {
+  flex: 0 0 auto;
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.file-preview-path-leaf {
+  color: var(--text);
   font-weight: 500;
-  overflow-wrap: anywhere;
 }
 
 .file-preview-heading-meta {
@@ -675,11 +743,22 @@
 }
 
 .file-preview-markdown {
+  --file-preview-measure: 720px;
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
   padding: 18px 24px 32px;
   overflow-wrap: anywhere;
+}
+
+/* A whole file read end-to-end needs one column, not a pane-wide sheet: chat
+   caps prose only, so in the preview a two-line fenced block or a short table
+   spread to whatever the review pane happened to be. Every top-level block
+   shares the measure and centers, so code and prose keep the same edges. The
+   scroller stays full width so its scrollbar rides the panel edge. */
+.file-preview-markdown.markdown > * {
+  max-width: var(--file-preview-measure);
+  margin-inline: auto;
 }
 
 .file-preview-body {

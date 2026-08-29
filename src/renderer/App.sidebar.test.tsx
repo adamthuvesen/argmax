@@ -489,7 +489,7 @@ describe("App sidebar", () => {
     fireEvent.keyDown(input, { key: "g", metaKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
     expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" });
     expect(screen.queryByText("1 file")).not.toBeInTheDocument();
 
@@ -653,15 +653,14 @@ describe("App sidebar", () => {
     fireEvent.keyDown(prompt, { key: "b", metaKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
 
     fireEvent.click(screen.getByRole("treeitem", { name: "index.ts" }));
     const editor = await screen.findByLabelText("Editor for index.ts");
     fireEvent.change(editor, { target: { value: "export const ok = false;\n" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save file" })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
+    fireEvent.keyDown(editor, { key: "s", metaKey: true });
     await waitFor(() =>
       expect(writeProjectFile).toHaveBeenCalledWith(
         { kind: "project", id: "project-1" },
@@ -714,7 +713,7 @@ describe("App sidebar", () => {
     fireEvent.keyDown(prompt, { key: "b", metaKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
     expect(
       document.querySelector(
         '.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-toolbar'
@@ -737,7 +736,7 @@ describe("App sidebar", () => {
     });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
   });
 
@@ -754,7 +753,7 @@ describe("App sidebar", () => {
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });

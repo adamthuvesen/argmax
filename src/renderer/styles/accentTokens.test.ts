@@ -1,5 +1,8 @@
+import { FolderIcon } from "@react-symbols/icons/utils";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 function readSource(path: string): string {
@@ -251,7 +254,7 @@ describe("accent CSS contract", () => {
     const reviewFiles = readSource("src/renderer/styles/overlays-review-files.css");
     const treeRule = cssRuleBody(reviewFiles, ".workspace-tree");
     const treeLabelRule = cssRuleBody(reviewFiles, ".workspace-tree-label");
-    const treeIconRule = cssRuleBody(reviewFiles, ".workspace-tree-row > svg");
+    const treeIconRule = cssRuleBody(reviewFiles, ".workspace-tree-icon");
     const treeChevronRule = cssRuleBody(reviewFiles, ".workspace-tree-chevron");
     const treeChevronSpacerRule = cssRuleBody(reviewFiles, ".workspace-tree-chevron-spacer");
     const tabRule = cssRuleBody(reviewFiles, ".file-tab");
@@ -264,7 +267,7 @@ describe("accent CSS contract", () => {
     expect(treeRule).toContain("font-size: var(--text-sm);");
     expect(reviewFiles).not.toContain(".workspace-tree-row span");
     expect(treeLabelRule).toContain("flex: 1 1 auto;");
-    expect(treeIconRule).toContain("flex: 0 0 13px;");
+    expect(treeIconRule).toContain("flex: 0 0 14px;");
     expect(treeChevronRule).toContain("flex: 0 0 12px;");
     expect(treeChevronRule).toContain("min-width: 12px;");
     expect(treeChevronSpacerRule).toContain("flex: 0 0 12px;");
@@ -278,6 +281,27 @@ describe("accent CSS contract", () => {
     expect(diffRule).toContain("font-family: var(--font-code);");
     expect(diffRule).toContain("font-size: var(--text-sm);");
     expect(changedFileRule).toContain("font-size: var(--text-sm);");
+  });
+
+  it("puts review folder glyphs on the accent without recoloring type marks", () => {
+    const reviewFiles = readSource("src/renderer/styles/overlays-review-files.css");
+    const fillRule = cssRuleBody(
+      reviewFiles,
+      '.workspace-tree-dir .workspace-tree-icon [fill="#64748b" i]'
+    );
+    const strokeRule = cssRuleBody(
+      reviewFiles,
+      '.workspace-tree-dir .workspace-tree-icon [stroke="#64748b" i]'
+    );
+    // The retint keys off the one slate @react-symbols paints folder bodies in,
+    // so a library color change has to move the selectors with it. The badge
+    // hue (orange on `src`) is what must survive the retint.
+    const folderMarkup = renderToStaticMarkup(createElement(FolderIcon, { folderName: "src" }));
+
+    expect(folderMarkup).toContain("#64748B");
+    expect(folderMarkup).toContain("#EA580C");
+    expect(fillRule).toContain("fill: var(--accent);");
+    expect(strokeRule).toContain("stroke: var(--accent);");
   });
 
   it("keeps purple as an accent, not a theme", () => {
@@ -619,7 +643,7 @@ describe("accent CSS contract", () => {
       ".session-grid.review-open.log-open .session-main-column"
     );
 
-    expect(sessionGridRule).toContain("--session-main-column-min-width: 520px;");
+    expect(sessionGridRule).toContain("--session-main-column-min-width: 320px;");
     expect(sessionGridRule).toContain("position: relative;");
     expect(reviewOpenGridRule).toContain("minmax(var(--session-main-column-min-width), 1fr)");
     expect(logOpenGridRule).toContain("minmax(var(--session-main-column-min-width), 1fr)");
@@ -846,7 +870,7 @@ describe("accent CSS contract", () => {
     expect(cellRule).toContain("container-type: inline-size;");
     expect(sessionGridRule).toContain("min-width: 0;");
     expect(Number(cellMinWidth)).toBeLessThan(720);
-    expect(Number(chatMinWidth)).toBe(520);
+    expect(Number(chatMinWidth)).toBe(320);
     expect(chatComposerChips).toContain("@container (max-width: 720px)");
     expect(appSource).toContain("sessionGridRequiredWorkspaceMinWidth");
     expect(appSource).toContain("Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth)");

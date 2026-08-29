@@ -75,8 +75,12 @@ pairing happens at the machine, never from a remote client.
   [src/renderer/mobile](../src/renderer/mobile)): a second Vite entry that
   renders the triage loop — priority-ordered session list, then the full
   `SessionPane` (conversation, approvals, composer) in a single column — plus
-  a minimal new-session screen (project, prompt, current-branch/worktree,
-  model picker defaulting to the project's configured model), and a
+  a minimal new-session screen (project, current-branch/worktree, and model
+  pickers as bottom sheets — native selects clip near the bottom edge on
+  iOS — seeded like the desktop launcher: the stored global model preference,
+  else the factory pick; note the phone's localStorage is its own store),
+  an archive button in the session header (same dirty-worktree confirm rules
+  as the desktop sidebar), and a
   full-screen Files & changes view (`MobileReviewScreen`) reached from the
   session header — the desktop review panel's Changes/Files split as a
   drill-down, reusing the same data hooks and leaf components with a

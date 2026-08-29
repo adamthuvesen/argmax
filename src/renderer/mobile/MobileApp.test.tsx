@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
 import {
+  archiveWorkspace,
   createCurrentWorkspace,
   createIsolatedWorkspace,
   launchProvider,
@@ -294,6 +295,24 @@ describe("MobileApp", () => {
       );
     });
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("archives the open session from the header, confirming the dirty worktree", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Session conversation" });
+    fireEvent.click(screen.getByRole("button", { name: "Archive session" }));
+
+    // Workspace 0 is dirty and not shared, so the confirm runs and force goes out.
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: snapshot.workspaces[0].id, force: true })
+    );
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
+    confirmSpy.mockRestore();
   });
 
   it("toggles between dark and light themes and persists the choice", async () => {

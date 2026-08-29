@@ -287,7 +287,47 @@ async fn create_current_records_shared_workspace_pointing_at_repo() {
     let summary = service.create_current(input).expect("create current");
     assert!(summary.shared_workspace);
     assert_eq!(summary.branch, "main");
+    assert_eq!(summary.base_ref, "main");
     assert_eq!(summary.path, repo.path().display().to_string());
+}
+
+#[tokio::test]
+async fn create_current_records_project_default_as_base_ref() {
+    let repo = seed_git_repo(&[("file.txt", "x")]);
+    ensure_main_branch(repo.path());
+    run_git(repo.path(), &["checkout", "-b", "feature"]);
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    {
+        let connection = database.connection();
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: PROJECT_ID.to_owned(),
+                name: "ws-test".to_owned(),
+                repo_path: repo.path().display().to_string(),
+                current_branch: "feature".to_owned(),
+                default_branch: Some("main".to_owned()),
+                settings: ProjectSettings {
+                    default_provider: "claude".to_owned(),
+                    default_model_label: "Sonnet".to_owned(),
+                    default_model_id: String::new(),
+                    worktree_location: repo.path().join("worktrees").display().to_string(),
+                    setup_command: String::new(),
+                    check_commands: vec![],
+                },
+            },
+        )
+        .expect("persist project");
+    }
+    let service = WorkspaceService::new(database);
+
+    let input = WorkspacesCreateCurrentInput {
+        project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+        task_label: TaskLabel::try_from("explore".to_owned()).expect("task label"),
+    };
+    let summary = service.create_current(input).expect("create current");
+    assert_eq!(summary.branch, "feature");
+    assert_eq!(summary.base_ref, "main");
 }
 
 #[test]

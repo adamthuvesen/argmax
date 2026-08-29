@@ -51,9 +51,19 @@ having to know what was committed when.
 Committed mode phrases its base as a `<merge-base>..HEAD` range so every
 `git diff <base> -- <path>` call site works unchanged. It also skips the
 working-tree probes, because a file that is both committed and dirty would
-otherwise be read as an untracked add and diffed against the wrong side. A base
-branch that no longer resolves downgrades every scope to the working tree
-rather than failing the request.
+otherwise be read as an untracked add and diffed against the wrong side.
+
+The comparison base is the workspace's recorded `base_ref`, then the project's
+default branch, then `main` or `master`. For those integration names, review
+prefers `origin/<name>` when the remote-tracking ref exists and shares a
+merge-base with HEAD, so a stale local `main` does not count already-rebased
+upstream commits as this branch's work. Argmax does not fetch. A candidate that
+resolves to the same commit as HEAD is skipped, because that comparison is
+empty. Shared-checkout sessions (`create_current`) store the project default
+as `base_ref`. Isolated worktrees still store the fork point. After the agent
+commits there, that fork point is no longer HEAD and the review shows only this
+task's commits. A base that no longer resolves, and has no fallback, downgrades
+every scope to the working tree rather than failing the request.
 
 "Last turn" has no git equivalent because git does not know what a turn is, so it
 comes from the transcript: [lastTurnFiles.ts](../src/renderer/lib/lastTurnFiles.ts)

@@ -472,7 +472,13 @@ impl WorkspaceService {
                 project_id: project.id.clone(),
                 task_label: input.task_label.as_str().to_string(),
                 branch: project.current_branch.clone(),
-                base_ref: project.current_branch.clone(),
+                // Review compares against this, not HEAD. Using the current
+                // branch made All on branch and Committed empty on a clean
+                // shared checkout.
+                base_ref: project
+                    .default_branch
+                    .clone()
+                    .unwrap_or_else(|| project.current_branch.clone()),
                 path: project.repo_path.clone(),
                 state: "created".to_string(),
                 shared_workspace: true,

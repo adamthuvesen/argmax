@@ -47,6 +47,7 @@ if (duplicateFixtureChannels.length || missing.length || extra.length) {
 }
 
 const expectedPushChannels = [
+  "browser:state",
   "dashboard:delta",
   "menu:command",
   "terminal:data",

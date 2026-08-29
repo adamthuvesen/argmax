@@ -30,6 +30,7 @@ import type { SettingsNavigationTarget } from "./components/SettingsPanel.js";
 import type { SettingsGroupId } from "./components/settings/settingsMeta.js";
 import { parseFtsSnippet } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
+import { BrowserPanel } from "./components/BrowserPanel.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface } from "./components/LaunchSurface.js";
@@ -40,6 +41,7 @@ import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { EMPTY_GRID, MAX_COLS, openWorkspaceInGrid, terminalWorkspaceId } from "./lib/gridState.js";
 import { toggleTerminalPanel } from "./lib/terminalTabs.js";
+import { onBrowserPanelRequest } from "./lib/browserPanel.js";
 // demoSnapshot is dynamic-imported inside `loadDashboardSnapshot` so it stays
 // out of the production renderer bundle. Browser-preview mode (no Tauri
 // bridge) is the only consumer; packaged builds always have window.argmax.
@@ -129,6 +131,8 @@ export function App(): JSX.Element {
     setIsCheatSheetOpen
   } = useOverlays();
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [browserPanelUrl, setBrowserPanelUrl] = useState<string | null>(null);
+  useEffect(() => onBrowserPanelRequest(setBrowserPanelUrl), []);
   const [bridgeMissing] = useState<boolean>(() => typeof window !== "undefined" && !window.argmax);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const settingsNavigationRequestRef = useRef(0);
@@ -1523,7 +1527,9 @@ export function App(): JSX.Element {
       className="app-shell"
       tabIndex={-1}
       style={{
-        gridTemplateColumns: sidebarCollapsed ? "minmax(0, 1fr)" : `${sidebarWidth}px minmax(0, 1fr)`,
+        gridTemplateColumns:
+          (sidebarCollapsed ? "minmax(0, 1fr)" : `${sidebarWidth}px minmax(0, 1fr)`) +
+          (browserPanelUrl !== null ? " minmax(360px, 480px)" : ""),
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
       data-resizing={isResizing ? "true" : undefined}
@@ -1777,6 +1783,9 @@ export function App(): JSX.Element {
           </div>
         ) : null}
       </section>
+      {browserPanelUrl !== null ? (
+        <BrowserPanel url={browserPanelUrl} onClose={() => setBrowserPanelUrl(null)} />
+      ) : null}
     </main>
   );
 }

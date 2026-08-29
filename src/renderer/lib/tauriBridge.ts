@@ -5,6 +5,8 @@ import type { IpcChannel } from "../../shared/ipcSchemas.js";
 import type {
   ArgmaxApi,
   AttachmentSaveImageInput,
+  BrowserFillResult,
+  BrowserStateEvent,
   AttachmentSaveImageResult,
   ChangedFileSummary,
   CheckRun,
@@ -282,6 +284,18 @@ export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         subscribe<TerminalDataEvent>("terminal:data", listener),
       onExit: (listener: (event: TerminalExitEvent) => void) =>
         subscribe<TerminalExitEvent>("terminal:exit", listener)
+    },
+    browser: {
+      open: (input) => invokeCommand<{ ok: true }>("browser:open", input),
+      navigate: (url: string) => invokeCommand<{ ok: true }>("browser:navigate", { url }),
+      back: () => invokeCommand<{ ok: true }>("browser:back"),
+      forward: () => invokeCommand<{ ok: true }>("browser:forward"),
+      reload: () => invokeCommand<{ ok: true }>("browser:reload"),
+      setBounds: (input) => invokeCommand<{ ok: true }>("browser:set-bounds", input),
+      close: () => invokeCommand<{ ok: true }>("browser:close"),
+      fillCredentials: () => invokeCommand<BrowserFillResult>("browser:fill-credentials"),
+      onState: (listener: (event: BrowserStateEvent) => void) =>
+        subscribe<BrowserStateEvent>("browser:state", listener)
     }
   };
 }

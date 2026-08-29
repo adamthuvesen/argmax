@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceSummary } from "../../shared/types.js";
+import { openInBrowserPanel } from "../lib/browserPanel.js";
 import { matchFileChip } from "../lib/fileChipPath.js";
 import { CodeBlock } from "./CodeBlock.js";
 import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
@@ -202,7 +203,26 @@ const MarkdownBody = memo(function MarkdownBody({
               </a>
             );
           }
-          if (/^(?:https?:|mailto:)/.test(href)) {
+          if (/^https?:/.test(href)) {
+            // Plain click opens the in-app browser pane; ⌘-click keeps the
+            // system-browser behavior.
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey) return;
+                  event.preventDefault();
+                  openInBrowserPanel(href);
+                }}
+                {...rest}
+              >
+                {children}
+              </a>
+            );
+          }
+          if (/^mailto:/.test(href)) {
             return (
               <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
                 {children}

@@ -685,3 +685,88 @@
 .project-visibility[aria-expanded="false"] svg {
   transform: rotate(0deg);
 }
+
+/* --- Browser panel -------------------------------------------------------
+   Chrome for the native browser child webview. The webview itself is a
+   sibling native view glued onto `.browser-panel-surface`; the surface is a
+   spacer that just reserves layout room and reports its rect over IPC. */
+.browser-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.browser-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sidebar);
+}
+
+.browser-panel-toolbar > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+}
+
+.browser-panel-toolbar > button:hover {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.browser-panel-address {
+  flex: 1;
+  min-width: 0;
+}
+
+.browser-panel-address input {
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text-soft);
+  font: var(--text-sm) / 1 var(--font-ui);
+}
+
+.browser-panel-address input:focus {
+  outline: none;
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.browser-panel-notice {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browser-panel-surface {
+  flex: 1;
+  min-height: 0;
+}
+
+.browser-panel-fallback {
+  padding: 16px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}

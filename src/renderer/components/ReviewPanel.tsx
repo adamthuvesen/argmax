@@ -24,6 +24,8 @@ import type { ReviewCommentInput } from "../lib/composerAnnotations.js";
 import { FilePreview } from "./FilePreview.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
+import { FileIcon } from "@react-symbols/icons/utils";
+import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 
 function fileBasename(path: string): string {
   const slash = path.lastIndexOf("/");
@@ -52,6 +54,15 @@ function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | 
                 title={tab.path}
                 onClick={() => state.selectTab(tab.path)}
               >
+                <span className="file-tab-icon" aria-hidden="true">
+                  <FileIcon
+                    fileName={fileBasename(tab.path)}
+                    autoAssign
+                    editFileNameData={SPECIAL_FILE_ICONS}
+                    width={13}
+                    height={13}
+                  />
+                </span>
                 <span className="file-tab-name">{fileBasename(tab.path)}</span>
                 {tab.isDirty ? (
                   <span className="file-tab-dirty" aria-label="Unsaved changes" title="Unsaved changes">
@@ -278,10 +289,6 @@ export function ReviewPanel({
   };
 
   const isChanges = review.mode === "changes";
-  const subtitle = isChanges
-    ? `${review.files.length} ${review.files.length === 1 ? "file" : "files"} changed`
-    : "Files";
-  const eyebrow = isChanges ? "Review // Changes" : "Review // Files";
   const summaryStrip = isChanges && review.files.length > 0
     ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
     : null;
@@ -303,7 +310,6 @@ export function ReviewPanel({
       ) : null}
       <div className="review-toolbar">
         <div className="review-toolbar-titles">
-          <p className="review-eyebrow" aria-hidden="true">{eyebrow}</p>
           <div className="review-mode-tabs" role="tablist" aria-label="Review panel mode">
             <button
               role="tab"
@@ -326,12 +332,6 @@ export function ReviewPanel({
               <Folder size={14} aria-hidden="true" />
             </button>
           </div>
-          <h2>
-            <span className="review-title-text">{subtitle}</span>
-            {isChanges && review.files.length > 0 ? (
-              <ChangeCount additions={totals.additions} deletions={totals.deletions} />
-            ) : null}
-          </h2>
         </div>
         <div className="review-toolbar-actions">
           {isChanges ? <ReviewScopePicker review={review} /> : null}

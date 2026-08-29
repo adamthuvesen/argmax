@@ -6,7 +6,11 @@ import {
   createCurrentWorkspace,
   createIsolatedWorkspace,
   launchProvider,
+  listChangedFiles,
+  listWorkspaceFiles,
+  loadDiff,
   mockDashboardSnapshot,
+  readWorkspaceFile,
   setPriorityDismissed,
   setupAppTestMocks,
   snapshot,
@@ -148,6 +152,52 @@ describe("MobileApp", () => {
         dismissed: true
       })
     );
+  });
+
+  it("browses changed diffs and the file tree from the session screen", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0 }
+    ]);
+    loadDiff.mockResolvedValue({
+      workspaceId: "workspace-1",
+      filePath: "src/foo.ts",
+      content: [
+        "diff --git a/src/foo.ts b/src/foo.ts",
+        "--- a/src/foo.ts",
+        "+++ b/src/foo.ts",
+        "@@ -1,1 +1,2 @@",
+        " const a = 1;",
+        "+const b = 2;"
+      ].join("\n")
+    });
+    listWorkspaceFiles.mockResolvedValue([{ path: "src/foo.ts" }, { path: "README.md" }]);
+    readWorkspaceFile.mockResolvedValue({ kind: "text", content: "hello world", size: 11, mtimeMs: 1 });
+
+    render(<MobileApp />);
+    const section = await screen.findByRole("region", { name: "All sessions" });
+    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    await screen.findByRole("region", { name: "Session conversation" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
+
+    // Changes view: the changed file is listed with its diff expanded.
+    expect(await screen.findByText("src/foo.ts")).toBeInTheDocument();
+    expect(await screen.findByText(/const b = 2;/)).toBeInTheDocument();
+
+    // Files view: the tree renders; tapping a file opens the preview and back
+    // returns to the tree.
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    const tree = await screen.findByRole("tree", { name: "Workspace files" });
+    fireEvent.click(within(tree).getByRole("treeitem", { name: "README.md" }));
+    expect(await screen.findByLabelText("Preview of README.md")).toBeInTheDocument();
+    expect(screen.getByText("hello world")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to files" }));
+    expect(screen.getByRole("tree", { name: "Workspace files" })).toBeInTheDocument();
+
+    // Leaving the review screen lands back on the conversation.
+    fireEvent.click(screen.getByRole("button", { name: "Back to session" }));
+    expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
   });
 
   it("shows a reconnect banner while the remote bridge is down", async () => {

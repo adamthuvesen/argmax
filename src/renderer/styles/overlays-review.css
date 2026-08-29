@@ -29,53 +29,24 @@
   background: var(--panel);
 }
 
+/* Left-docked: the hairline moves to the edge that now faces the conversation. */
+.app-shell[data-review-panel-side="left"] .review-panel {
+  border-left: 0;
+  border-right: 1px solid var(--line);
+}
+
 .review-toolbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 18px 18px 14px;
+  padding: 8px 14px 8px 18px;
   border-bottom: 1px solid var(--line);
 }
 
 .app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-toolbar {
   padding-top: 52px;
   padding-bottom: 22px;
-}
-
-.review-eyebrow {
-  margin: 0 0 6px;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.review-toolbar h2 {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: baseline;
-  margin: 0;
-  font-size: var(--text-sm);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text);
-}
-
-.review-title-text {
-  font-feature-settings: "tnum", "zero";
-}
-
-/* Match the summary numbers to the per-file row treatment (mono, tabular,
-   slightly smaller) so the header reads as one consistent scale instead of
-   oversized green/red figures. */
-.review-toolbar h2 .change-count {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
-  font-weight: 500;
 }
 
 .review-body {
@@ -353,10 +324,12 @@
   }
 }
 
+/* One compact row: the mode tabs alone name the panel; counts live in the
+   footer strip, so there is no second line. */
 .review-toolbar-titles {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -602,7 +575,6 @@
 
 .review-mode-tabs {
   display: inline-flex;
-  align-self: flex-start;
   gap: 6px;
 }
 

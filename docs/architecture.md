@@ -33,7 +33,7 @@ Key folders:
 - `session_control.rs`: private agent-to-app transport for launching a separate top-level session through the live workspace and provider services.
 - `sessions/`: session orchestration between `ipc/` and `providers/`.
 - `workspaces/`, `review/`, `files/`, `git/`: worktree lifecycle, diffs, file previews/writes, and branch/PR actions.
-- `approvals/`, `checks/`, `gh/`, `memory/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. `notifications.rs` and `updater.rs` are top-level modules. Skill discovery roots are documented in [skills.md](skills.md).
+- `approvals/`, `checks/`, `gh/`, `terminal/`, `attachments/`, `ide/`, `skills/`: subsystem services. Project learnings live in [ipc/learnings.rs](../src-tauri/src/ipc/learnings.rs) and [persistence/learnings.rs](../src-tauri/src/persistence/learnings.rs) ([memory.md](memory.md)). `notifications.rs` and `updater.rs` are top-level modules. Skill discovery roots are documented in [skills.md](skills.md).
 
 Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:events-since`, `workspaces:status`) plus post-commit `dashboard:delta` pushes.
 
@@ -45,7 +45,7 @@ Dashboard freshness is SQLite-first: focused reads (`dashboard:list`, `session:e
 
 ## Renderer: `src/renderer`
 
-React 19 + Vite. [App.tsx](../src/renderer/App.tsx) composes the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) centralizes app command IPC through `window.argmax`. The overlay-titlebar helper [windowChrome.ts](../src/renderer/lib/windowChrome.ts) is the one direct renderer Tauri API exception: it uses the window API for drag/zoom chrome, not app IPC. Browser-preview mode detects missing Tauri internals and falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
+React 19 + Vite. [App.tsx](../src/renderer/App.tsx) composes the shell; [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) centralizes app command IPC through `window.argmax`. The only direct renderer Tauri API usage is the window API, not app IPC: [windowChrome.ts](../src/renderer/lib/windowChrome.ts) for drag/zoom chrome and [App.tsx](../src/renderer/App.tsx) for the window minimum-size enforcement. Browser-preview mode detects missing Tauri internals and falls back to [demoSnapshot.ts](../src/renderer/demoSnapshot.ts).
 
 Heavy panels are lazy-loaded. Renderer tests use [src/test/appTestHarness.ts](../src/test/appTestHarness.ts) and [src/test/fixtures/dashboardSnapshot.ts](../src/test/fixtures/dashboardSnapshot.ts).
 

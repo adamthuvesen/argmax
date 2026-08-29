@@ -77,6 +77,11 @@ import {
   type ChatWidth
 } from "./lib/chatWidth.js";
 import {
+  REVIEW_PANEL_SIDE_KEY,
+  readStoredReviewPanelSide,
+  type ReviewPanelSide
+} from "./lib/reviewPanelSide.js";
+import {
   CHAT_COST_KEY,
   COMPOSER_PIXEL_FIELD_KEY,
   FAST_MODE_KEY,
@@ -178,6 +183,7 @@ export function App(): JSX.Element {
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => readStoredPermissionMode());
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
+  const [reviewPanelSide, setReviewPanelSide] = useState<ReviewPanelSide>(() => readStoredReviewPanelSide());
   // `full` new-session mode hides the grid and renders LaunchSurface in its
   // place when ⌘N fires from inside an active grid. The flag is purely local
   // — it never persists; only the user's choice in Settings persists.
@@ -513,6 +519,7 @@ export function App(): JSX.Element {
   usePersistedSetting(PERMISSION_MODE_KEY, permissionMode);
   usePersistedSetting(NEW_SESSION_MODE_KEY, newSessionMode);
   usePersistedSetting(CHAT_WIDTH_KEY, String(chatWidth));
+  usePersistedSetting(REVIEW_PANEL_SIDE_KEY, reviewPanelSide);
 
   // Esc closes the standalone full launcher (only meaningful when the grid
   // has active panes — when the grid is empty, the LaunchSurface is the only
@@ -1521,6 +1528,7 @@ export function App(): JSX.Element {
       }}
       data-resizing={isResizing ? "true" : undefined}
       data-chat-width={String(chatWidth)}
+      data-review-panel-side={reviewPanelSide}
       data-sidebar-collapsed={sidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={sidebarCollapsed && sidebarPeek ? "true" : undefined}
     >
@@ -1665,6 +1673,8 @@ export function App(): JSX.Element {
                 onPixelFieldEnabledChange={setPixelFieldEnabled}
                 chatWidth={chatWidth}
                 onChatWidthChange={setChatWidth}
+                reviewPanelSide={reviewPanelSide}
+                onReviewPanelSideChange={setReviewPanelSide}
                 thinkingExpanded={thinkingExpanded}
                 onThinkingExpandedChange={setThinkingExpanded}
                 fastModeEnabled={fastModeEnabled}

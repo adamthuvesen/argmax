@@ -195,6 +195,12 @@ button.composer-compact-context-row:hover,
   opacity: 0.72;
 }
 
+/* Attach lives in the popover only once the toolbar is too tight for its own
+   "+" button (the narrowest tier below). */
+.composer-compact-context-row--attach {
+  display: none;
+}
+
 .composer-compact-context-branch {
   min-width: 0;
   overflow: hidden;
@@ -381,6 +387,23 @@ button.composer-compact-context-row:hover,
     grid-area: behavior;
     margin-left: 0;
     justify-self: end;
+  }
+}
+
+/* Tighter still: the attach "+" folds into the "…" popover too, giving its
+   column back to the model picker (mobile.css does the same for phones). */
+@container (max-width: 560px) {
+  .session-input-toolbar .composer-tool {
+    display: none;
+  }
+
+  .session-input-toolbar {
+    grid-template-columns: minmax(0, 1fr) 30px auto auto;
+    grid-template-areas: "model details mode send";
+  }
+
+  .composer-compact-context-row--attach {
+    display: flex;
   }
 }
 

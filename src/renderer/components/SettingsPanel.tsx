@@ -14,6 +14,7 @@ import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
 import type { PermissionMode } from "../lib/permissionMode.js";
 import type { ChatWidth } from "../lib/chatWidth.js";
+import type { ReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { AgentsSettings } from "./settings/AgentsSettings.js";
 import { GeneralSettings } from "./settings/GeneralSettings.js";
 import { IntegrationsSettings } from "./settings/IntegrationsSettings.js";
@@ -51,6 +52,8 @@ export function SettingsPanel({
   onPixelFieldEnabledChange,
   chatWidth,
   onChatWidthChange,
+  reviewPanelSide,
+  onReviewPanelSideChange,
   thinkingExpanded,
   onThinkingExpandedChange,
   fastModeEnabled,
@@ -96,6 +99,8 @@ export function SettingsPanel({
   onPixelFieldEnabledChange: (v: boolean) => void;
   chatWidth: ChatWidth;
   onChatWidthChange: (width: ChatWidth) => void;
+  reviewPanelSide: ReviewPanelSide;
+  onReviewPanelSideChange: (side: ReviewPanelSide) => void;
   thinkingExpanded: boolean;
   onThinkingExpandedChange: (v: boolean) => void;
   fastModeEnabled: boolean;
@@ -284,6 +289,8 @@ export function SettingsPanel({
               onPixelFieldEnabledChange={onPixelFieldEnabledChange}
               chatWidth={chatWidth}
               onChatWidthChange={onChatWidthChange}
+              reviewPanelSide={reviewPanelSide}
+              onReviewPanelSideChange={onReviewPanelSideChange}
               newSessionMode={newSessionMode}
               onNewSessionModeChange={onNewSessionModeChange}
               randomSessionIconEnabled={randomSessionIconEnabled}

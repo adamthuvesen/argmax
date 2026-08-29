@@ -1,6 +1,8 @@
-import { ChevronRight, FileText, Folder } from "lucide-react";
+import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
+import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 
 type VisibleRow = {
@@ -47,7 +49,30 @@ export function WorkspaceTree({
   // rows before the ResizeObserver fires (it yields 0 for one frame on mount).
   const [measuredHeight, setMeasuredHeight] = useState(400);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const pendingRevealPathRef = useRef<string | null>(null);
+
+  // Measuring rides on the ref callback, not an effect: the loading / error /
+  // empty branches below render a different element, so an effect keyed on props
+  // fires while the scroll container is still unmounted and then never re-runs,
+  // leaving the window frozen at the 400px seed (files below it never render).
+  const attachScroll = useCallback(
+    (node: HTMLDivElement | null): void => {
+      scrollRef.current = node;
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+      if (!node || height !== undefined) return;
+      if (node.clientHeight > 0) setMeasuredHeight(node.clientHeight);
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver((entries) => {
+        const next = entries[0]?.contentRect.height;
+        if (typeof next === "number" && next > 0) setMeasuredHeight(next);
+      });
+      observer.observe(node);
+      resizeObserverRef.current = observer;
+    },
+    [height]
+  );
 
   const toggleDir = useCallback((path: string): void => {
     setExpanded((current) => {
@@ -79,17 +104,7 @@ export function WorkspaceTree({
     });
   }, [state.selectedPath]);
 
-  useEffect(() => {
-    if (height !== undefined) return;
-    const node = scrollRef.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      const next = entries[0]?.contentRect.height;
-      if (typeof next === "number" && next > 0) setMeasuredHeight(next);
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [height]);
+  useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
 
   const effectiveHeight = height ?? measuredHeight;
   const visibleRows = useMemo(() => flattenVisible(tree, expanded), [tree, expanded]);
@@ -175,7 +190,7 @@ export function WorkspaceTree({
 
   return (
     <div
-      ref={scrollRef}
+      ref={attachScroll}
       className="workspace-tree"
       style={{ ...containerStyle, overflowY: "auto" }}
       aria-label="Workspace files"
@@ -230,7 +245,9 @@ function TreeRow({
         onClick={() => onToggle(node.path)}
       >
         <ChevronRight size={12} className={`workspace-tree-chevron${isOpen ? " expanded" : ""}`} />
-        <Folder size={13} />
+        <span className="workspace-tree-icon" title={`Folder icon for ${node.name}`} aria-hidden="true">
+          <FolderIcon folderName={node.name} width={14} height={14} />
+        </span>
         <span className="workspace-tree-label">{node.name}</span>
       </button>
     );
@@ -248,7 +265,15 @@ function TreeRow({
       onClick={() => onSelect(node.path)}
     >
       <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
-      <FileText size={13} />
+      <span className="workspace-tree-icon" title={`File icon for ${node.name}`} aria-hidden="true">
+        <FileIcon
+          fileName={node.name}
+          autoAssign
+          editFileNameData={SPECIAL_FILE_ICONS}
+          width={14}
+          height={14}
+        />
+      </span>
       <span className="workspace-tree-label">{node.name}</span>
     </button>
   );

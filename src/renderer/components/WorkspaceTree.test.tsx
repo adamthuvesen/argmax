@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
@@ -38,6 +38,12 @@ function makeState(entries: WorkspaceFileEntry[]): WorkspaceFilesState {
 }
 
 describe("WorkspaceTree virtualization", () => {
+  const nativeResizeObserver = globalThis.ResizeObserver;
+
+  afterEach(() => {
+    globalThis.ResizeObserver = nativeResizeObserver;
+  });
+
   it("renders only the visible window for a 10k-file workspace", () => {
     // Flat list of 10k files at the root so they're all visible without
     // expanding any directories — exercises the worst case for row count.
@@ -72,6 +78,26 @@ describe("WorkspaceTree virtualization", () => {
     // src directory + README.md visible (src not expanded by default).
     expect(screen.getByText("src")).toBeTruthy();
     expect(screen.getByText("README.md")).toBeTruthy();
+  });
+
+  it("maps filenames and extensions to distinct icons without changing row labels", () => {
+    const entries: WorkspaceFileEntry[] = [
+      { path: "app.ts" },
+      { path: "README.md" },
+      { path: "CLAUDE.md" }
+    ];
+
+    render(<WorkspaceTree state={makeState(entries)} height={400} />);
+
+    expect(screen.getByRole("treeitem", { name: "app.ts" })).toBeVisible();
+    expect(screen.getByRole("treeitem", { name: "README.md" })).toBeVisible();
+    expect(screen.getByRole("treeitem", { name: "CLAUDE.md" })).toBeVisible();
+
+    const typescriptIcon = screen.getByTitle("File icon for app.ts");
+    const markdownIcon = screen.getByTitle("File icon for README.md");
+    const claudeIcon = screen.getByTitle("File icon for CLAUDE.md");
+    expect(typescriptIcon.innerHTML).not.toBe(markdownIcon.innerHTML);
+    expect(claudeIcon.innerHTML).not.toBe(markdownIcon.innerHTML);
   });
 
   it("preserves scroll when entries refresh without shape change (audit M19)", () => {
@@ -110,6 +136,39 @@ describe("WorkspaceTree virtualization", () => {
     expect(screen.getByText("renderer")).toBeTruthy();
     expect(screen.getByText("components")).toBeTruthy();
     expect(screen.getByText("FilePreview.tsx")).toBeTruthy();
+  });
+
+  it("measures the container after the loading state resolves", () => {
+    // jsdom has no ResizeObserver; this stub reports a tall panel the moment the
+    // scroll container is observed.
+    const observed: Element[] = [];
+    class TallResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element): void {
+        observed.push(target);
+        this.callback(
+          [{ target, contentRect: { height: 1200 } } as unknown as ResizeObserverEntry],
+          this
+        );
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    globalThis.ResizeObserver = TallResizeObserver;
+
+    const loading: WorkspaceFilesState = { ...makeState([]), listState: "loading" };
+    const { rerender } = render(<WorkspaceTree state={loading} />);
+    expect(observed).toHaveLength(0);
+
+    const entries: WorkspaceFileEntry[] = Array.from({ length: 200 }, (_, i) => ({
+      path: `file-${String(i).padStart(3, "0")}.ts`
+    }));
+    rerender(<WorkspaceTree state={makeState(entries)} />);
+
+    expect(observed).toHaveLength(1);
+    // 1200px / 24px per row = 50 rows plus overscan. The 400px seed would cap
+    // this at 25, which is what left files cut off below the fold.
+    expect(screen.getAllByRole("treeitem").length).toBeGreaterThan(40);
   });
 
   it("does not recenter a selected file when the user expands a folder above it", () => {

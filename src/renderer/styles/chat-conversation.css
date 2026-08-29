@@ -154,7 +154,7 @@
 }
 
 .session-grid {
-  --session-main-column-min-width: 520px;
+  --session-main-column-min-width: 320px;
   --session-review-panel-width: clamp(320px, 34vw, 520px);
   --session-log-panel-width: clamp(300px, 32vw, 480px);
   position: relative;
@@ -167,16 +167,57 @@
   gap: 0;
 }
 
+/* Panel columns are capped to what the pane can spare so a stored width wider
+   than the pane can never push columns past the edge — the conversation's
+   minimum always wins. */
 .session-grid.review-open {
-  grid-template-columns: minmax(var(--session-main-column-min-width), 1fr) var(--session-review-panel-width);
+  grid-template-columns:
+    minmax(var(--session-main-column-min-width), 1fr)
+    min(var(--session-review-panel-width), max(0px, calc(100% - var(--session-main-column-min-width))));
 }
 
 .session-grid.log-open {
-  grid-template-columns: minmax(var(--session-main-column-min-width), 1fr) var(--session-log-panel-width);
+  grid-template-columns:
+    minmax(var(--session-main-column-min-width), 1fr)
+    min(var(--session-log-panel-width), max(0px, calc(100% - var(--session-main-column-min-width))));
 }
 
 .session-grid.review-open.log-open {
-  grid-template-columns: minmax(var(--session-main-column-min-width), 1fr) var(--session-review-panel-width) var(--session-log-panel-width);
+  grid-template-columns:
+    minmax(var(--session-main-column-min-width), 1fr)
+    min(
+      var(--session-review-panel-width),
+      max(0px, calc(100% - var(--session-main-column-min-width) - var(--session-log-panel-width)))
+    )
+    var(--session-log-panel-width);
+}
+
+/* Left-docked review: Review // Files takes the first column and the conversation
+   moves right. The debug log stays right-docked in both modes, so `.log-open` on
+   its own is unchanged. `order` alone re-columns the panel — auto-placement walks
+   order-modified document order — so the DOM stays as it is. */
+/* The panel column is capped to what the pane can spare: right-docked overflow
+   only clips the panel's own tail, but left-docked overflow would clip the
+   conversation, so a stored width wider than the pane loses to the
+   conversation's minimum. */
+.app-shell[data-review-panel-side="left"] .session-grid.review-open {
+  grid-template-columns:
+    min(var(--session-review-panel-width), max(0px, calc(100% - var(--session-main-column-min-width))))
+    minmax(var(--session-main-column-min-width), 1fr);
+}
+
+.app-shell[data-review-panel-side="left"] .session-grid.review-open.log-open {
+  grid-template-columns:
+    min(
+      var(--session-review-panel-width),
+      max(0px, calc(100% - var(--session-main-column-min-width) - var(--session-log-panel-width)))
+    )
+    minmax(var(--session-main-column-min-width), 1fr)
+    var(--session-log-panel-width);
+}
+
+.app-shell[data-review-panel-side="left"] .session-grid > .review-panel {
+  order: -1;
 }
 
 /* Conversation column width, 1 (narrowest) to 5 (widest). Levels 2, 3 and 4 are
@@ -329,6 +370,27 @@
   .session-multigrid-cell:first-child
   .conversation-surface
   .section-heading {
+  padding-left: 124px;
+}
+
+/* Left-docked review panel in the top-left cell: the review toolbar, not the
+   conversation heading, sits under the traffic lights, so the clearance moves
+   with it and the heading falls back to its 20px base indent. */
+.app-shell[data-sidebar-collapsed="true"][data-review-panel-side="left"]
+  .session-multigrid-row:first-child
+  .session-multigrid-cell:first-child
+  .session-grid.review-open
+  .conversation-surface
+  .section-heading {
+  padding-left: 20px;
+}
+
+.app-shell[data-sidebar-collapsed="true"][data-review-panel-side="left"]
+  .session-multigrid-row:first-child
+  .session-multigrid-cell:first-child
+  .session-grid.review-open
+  > .review-panel
+  .review-toolbar {
   padding-left: 124px;
 }
 

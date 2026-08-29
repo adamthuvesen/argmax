@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
-import { ChevronLeft, Moon, Plus, Sun } from "lucide-react";
+import { ChevronLeft, FolderGit2, Moon, Plus, Sun } from "lucide-react";
 import { SCRATCH_PROJECT_ID, type SessionSummary, type WorkspaceSummary } from "../../shared/types.js";
 import { SessionPane } from "../components/SessionPane.js";
+import { MobileReviewScreen } from "./MobileReviewScreen.js";
 import { NewSessionScreen } from "./NewSessionScreen.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { usePriorityDemotion } from "../hooks/usePriorityDemotion.js";
@@ -240,7 +241,11 @@ export function MobileApp(): JSX.Element {
     };
   }, [nowMs, snapshot.sessions, snapshot.workspaces]);
 
+  // Full-screen Changes/Files view for the open session.
+  const [reviewOpen, setReviewOpen] = useState(false);
+
   const closeSession = useCallback(() => {
+    setReviewOpen(false);
     setSelectedSessionId(null);
     setSelectedWorkspaceId(null);
   }, [setSelectedSessionId, setSelectedWorkspaceId]);
@@ -280,6 +285,8 @@ export function MobileApp(): JSX.Element {
           onLaunched={handleLaunched}
           onError={(message) => showToast({ kind: "error", message })}
         />
+      ) : sessionOpen && reviewOpen && selectedWorkspace ? (
+        <MobileReviewScreen workspace={selectedWorkspace} onClose={() => setReviewOpen(false)} />
       ) : sessionOpen ? (
         <div className="mobile-session-screen">
           <header className="mobile-session-header">
@@ -287,7 +294,27 @@ export function MobileApp(): JSX.Element {
               <ChevronLeft size={22} aria-hidden />
             </button>
             <span className="mobile-session-header-title">{selectedWorkspace?.taskLabel ?? ""}</span>
-            <span className="mobile-header-spacer" aria-hidden />
+            {selectedWorkspace ? (
+              <button
+                type="button"
+                className="mobile-icon-button"
+                onClick={() => setReviewOpen(true)}
+                aria-label={
+                  selectedWorkspace.changedFiles > 0
+                    ? `Files and changes, ${selectedWorkspace.changedFiles} changed`
+                    : "Files and changes"
+                }
+              >
+                <FolderGit2 size={18} aria-hidden />
+                {selectedWorkspace.changedFiles > 0 ? (
+                  <span className="mobile-header-badge" aria-hidden>
+                    {selectedWorkspace.changedFiles}
+                  </span>
+                ) : null}
+              </button>
+            ) : (
+              <span className="mobile-header-spacer" aria-hidden />
+            )}
           </header>
           {connectionBanner}
           <SessionPane

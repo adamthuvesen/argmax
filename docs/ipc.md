@@ -40,6 +40,7 @@ Push channels are emitted by Rust and subscribed in `tauriBridge.ts`:
 - `terminal:data`
 - `terminal:exit`
 - `menu:command`
+- `browser:state`
 
 Push channels do not belong in `channels.txt`.
 

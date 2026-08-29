@@ -178,6 +178,40 @@ pub fn run() {
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
                     tracing::warn!(error = ?e, path = %data_dir.display(), "failed to create data directory");
                 } else {
+                    // Refuse to run against local state another live instance
+                    // owns: the boot recovery below would mark that instance's
+                    // running sessions failed (they look orphaned from here).
+                    match util::instance_lock::acquire(&data_dir) {
+                        Ok(Some(lock)) => {
+                            // Held until process exit; nothing reads it back.
+                            std::mem::forget(lock);
+                        }
+                        Ok(None) => {
+                            tracing::error!(
+                                "another Argmax instance owns the local state; exiting"
+                            );
+                            // Tauri builds the config's `main` window before the
+                            // setup hook runs; hide it so the doomed instance
+                            // doesn't flash a dead UI behind the dialog.
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
+                            use tauri_plugin_dialog::DialogExt;
+                            app.dialog()
+                                .message("Argmax is already running. Use the existing window.")
+                                .title("Argmax is already running")
+                                .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                                .show(|_| std::process::exit(0));
+                            // The process idles (window hidden) until the
+                            // dialog's exit callback fires.
+                            return Ok(());
+                        }
+                        Err(error) => {
+                            // A missing lock only loses the double-launch
+                            // guard; the app itself still works.
+                            tracing::warn!(?error, "could not create the instance lock; continuing unlocked");
+                        }
+                    }
                     match persistence::Database::open(data_dir.join("argmax.sqlite")) {
                         Ok(database) => {
                             timer.mark("db.open");
@@ -449,6 +483,7 @@ pub fn run() {
                                 state.checks.get().cloned(),
                                 state.terminals.get().cloned(),
                                 Some(Arc::clone(&approvals)),
+                                Some(data_dir.join("side-chats")),
                             );
                             if let Err(error) = workspaces.recover_interrupted_archives() {
                                 tracing::warn!(?error, "failed to recover interrupted workspace archives");

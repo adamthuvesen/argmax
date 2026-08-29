@@ -19,7 +19,21 @@ npm run test:rust
 - [src-tauri/src/ipc](../src-tauri/src/ipc) contains Tauri commands.
 - [src-tauri/src/persistence](../src-tauri/src/persistence) owns SQLite and migrations.
 - [src-tauri/src/providers](../src-tauri/src/providers) owns provider launch, PTYs, event normalization, and flush queues.
-- [src-tauri/src/workspaces](../src-tauri/src/workspaces), [review](../src-tauri/src/review), [files](../src-tauri/src/files), [git](../src-tauri/src/git), [gh](../src-tauri/src/gh), [terminal](../src-tauri/src/terminal), [approvals](../src-tauri/src/approvals), [checks](../src-tauri/src/checks), [memory](../src-tauri/src/memory), and [skills](../src-tauri/src/skills) map to user-facing subsystems.
+- [src-tauri/src/workspaces](../src-tauri/src/workspaces), [review](../src-tauri/src/review), [files](../src-tauri/src/files), [git](../src-tauri/src/git), [gh](../src-tauri/src/gh), [terminal](../src-tauri/src/terminal), [approvals](../src-tauri/src/approvals), [checks](../src-tauri/src/checks), and [skills](../src-tauri/src/skills) map to user-facing subsystems.
+
+## Single instance
+
+Setup takes an exclusive advisory `flock` on `local-state/argmax.lock`
+([util/instance_lock.rs](../src-tauri/src/util/instance_lock.rs)) before opening
+the database. A second Argmax process (typically a freshly installed build
+opened while the old one still runs) finds the lock held, shows an
+"already running" dialog, and exits without touching the database. Without the
+lock, the second instance's boot recovery (`recover_orphaned_sessions`) marks
+the first instance's live sessions `failed` — they look orphaned from a process
+that holds no handles — which freezes their in-flight UI (agent launches render
+completed) even though the real provider processes keep streaming. The lock is
+advisory and dies with the process, so a crash never leaves it stale; if the
+lock file itself cannot be created, the app logs a warning and runs unlocked.
 
 ## Event delivery
 

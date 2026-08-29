@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
-  listen: vi.fn()
+  listen: vi.fn(),
+  remoteInvoke: vi.fn(),
+  remoteSubscribe: vi.fn(),
+  createWsTransport: vi.fn()
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -13,12 +16,24 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: mocks.listen
 }));
 
+vi.mock("./wsTransport.js", () => ({
+  createWsTransport: mocks.createWsTransport
+}));
+
 describe("tauriBridge", () => {
   beforeEach(() => {
     delete window.argmax;
     delete window.__TAURI_INTERNALS__;
     mocks.invoke.mockReset();
     mocks.listen.mockReset();
+    mocks.remoteInvoke.mockReset();
+    mocks.remoteSubscribe.mockReset();
+    mocks.createWsTransport.mockReset();
+    mocks.createWsTransport.mockReturnValue({
+      invoke: mocks.remoteInvoke,
+      subscribe: mocks.remoteSubscribe
+    });
+    window.history.replaceState(null, "", "/");
   });
 
   it("leaves browser preview without a bridge", async () => {
@@ -89,5 +104,44 @@ describe("tauriBridge", () => {
 
     await expect(off.ready).rejects.toThrow("event.listen not allowed");
     off();
+  });
+
+  it("installs the remote bridge when the browser asks for it", async () => {
+    window.history.replaceState(null, "", "/?remote");
+    mocks.remoteInvoke.mockResolvedValue({ ok: true, timestamp: "2026-08-28T00:00:00Z" });
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    const result = await window.argmax!.health.ping();
+
+    expect(mocks.createWsTransport).toHaveBeenCalledTimes(1);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.remoteInvoke).toHaveBeenCalledWith("health:ping", {});
+    expect(result).toEqual({ ok: true, timestamp: "2026-08-28T00:00:00Z" });
+    // Remembered so a reload without the query string stays remote.
+    expect(window.localStorage.getItem("argmax.remote")).toBe("1");
+  });
+
+  it("keeps the remote bridge across reloads once the flag is stored", async () => {
+    window.localStorage.setItem("argmax.remote", "1");
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+
+    expect(window.argmax).toBeDefined();
+    expect(mocks.createWsTransport).toHaveBeenCalledTimes(1);
+  });
+
+  it("prefers Tauri IPC over the remote bridge inside the desktop app", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    window.localStorage.setItem("argmax.remote", "1");
+    mocks.invoke.mockResolvedValue({ ok: true, timestamp: "2026-08-28T00:00:00Z" });
+    const { installTauriBridge } = await import("./tauriBridge.js");
+
+    installTauriBridge();
+    await window.argmax!.health.ping();
+
+    expect(mocks.createWsTransport).not.toHaveBeenCalled();
+    expect(mocks.invoke).toHaveBeenCalledWith("health:ping", { input: {} });
   });
 });

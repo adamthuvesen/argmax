@@ -34,6 +34,7 @@ import type {
   ProvidersCancelQueuedMessageInput,
   ProvidersSendQueuedMessageNowInput,
   RegisterProjectInput,
+  RemoteStatus,
   RemoveProjectInput,
   ResolveApprovalInput,
   ReviewComparison,
@@ -65,6 +66,7 @@ import type {
 } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
+import { createWsTransport } from "./wsTransport.js";
 
 declare global {
   interface Window {
@@ -83,11 +85,21 @@ export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
 }
 
-function invokeCommand<T>(channel: IpcChannel, input: unknown = {}): Promise<T> {
+/**
+ * The two primitives every `window.argmax` method is built from. Tauri IPC is
+ * one implementation; the remote WebSocket bridge in `wsTransport.ts` is the
+ * other, so the same renderer API object serves both runtimes.
+ */
+export interface BridgeTransport {
+  invoke<T>(channel: IpcChannel, input?: unknown): Promise<T>;
+  subscribe<T>(channel: string, listener: (payload: T) => void): EventSubscription;
+}
+
+function invokeThroughTauri<T>(channel: IpcChannel, input: unknown = {}): Promise<T> {
   return tauriInvoke<T>(channel, { input });
 }
 
-function subscribe<T>(channel: string, listener: (payload: T) => void): EventSubscription {
+function subscribeThroughTauri<T>(channel: string, listener: (payload: T) => void): EventSubscription {
   let unlisten: UnlistenFn | null = null;
   let disposed = false;
 
@@ -116,7 +128,17 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): EventSub
   return off;
 }
 
-function createTauriArgmaxApi(): ArgmaxApi {
+const tauriTransport: BridgeTransport = {
+  invoke: invokeThroughTauri,
+  subscribe: subscribeThroughTauri
+};
+
+export function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
+  const invokeCommand = <T>(channel: IpcChannel, input: unknown = {}): Promise<T> =>
+    transport.invoke<T>(channel, input);
+  const subscribe = <T>(channel: string, listener: (payload: T) => void): EventSubscription =>
+    transport.subscribe<T>(channel, listener);
+
   return {
     dashboard: {
       list: () => invokeCommand<DashboardListSnapshot>("dashboard:list"),
@@ -225,6 +247,11 @@ function createTauriArgmaxApi(): ArgmaxApi {
       vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
       setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode })
     },
+    remote: {
+      getStatus: () => invokeCommand<RemoteStatus>("remote:get-status"),
+      setConfig: (input) => invokeCommand<RemoteStatus>("remote:set-config", input),
+      testNotification: () => invokeCommand<{ ok: true }>("remote:test-notification")
+    },
     menu: {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)
     },
@@ -258,11 +285,39 @@ function createTauriArgmaxApi(): ArgmaxApi {
   };
 }
 
+/**
+ * Opt-in flag for the remote (browser) bridge. `?remote` in the URL turns it on
+ * and is remembered so later loads of the same origin skip the query string.
+ */
+const REMOTE_BRIDGE_KEY = "argmax.remote";
+
+function remoteBridgeRequested(): boolean {
+  // `?demo` forces the bridge-less browser preview even where the mobile
+  // entry's inline script has armed the remote flag — the only way to iterate
+  // on the mobile UI against the demo snapshot.
+  if (new URLSearchParams(window.location.search).has("demo")) {
+    return false;
+  }
+  if (new URLSearchParams(window.location.search).has("remote")) {
+    return true;
+  }
+  return window.localStorage.getItem(REMOTE_BRIDGE_KEY) === "1";
+}
+
 export function installTauriBridge(): void {
-  if (!isTauriRuntime() || window.argmax) {
+  if (typeof window === "undefined" || window.argmax) {
     return;
   }
-  window.argmax = createTauriArgmaxApi();
+  if (isTauriRuntime()) {
+    window.argmax = createArgmaxApi(tauriTransport);
+    return;
+  }
+  if (!remoteBridgeRequested()) {
+    // Browser preview and the demo snapshot depend on staying bridge-less.
+    return;
+  }
+  window.localStorage.setItem(REMOTE_BRIDGE_KEY, "1");
+  window.argmax = createArgmaxApi(createWsTransport());
 }
 
 installTauriBridge();

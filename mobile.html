@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#111113" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./assets/icon.png" />
+    <title>Argmax</title>
+    <script>
+      // The mobile entry always talks to the remote WS bridge; set the flag
+      // before the module graph loads so tauriBridge picks the WS transport.
+      try {
+        localStorage.setItem("argmax.remote", "1");
+      } catch {
+        /* private mode: transport falls back to prompting per load */
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer/mobile/main.tsx"></script>
+  </body>
+</html>

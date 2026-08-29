@@ -1,0 +1,496 @@
+/* Phone companion shell. Everything scopes under .mobile-shell so the desktop
+   renderer is untouched; the mobile entry is the only importer.
+
+   Scroll model: the shell is a fixed, non-scrolling frame sized to the small
+   viewport (100dvh tracks iOS Safari's collapsing toolbars). Exactly one
+   element scrolls per screen — .mobile-list-scroll on the list, the
+   conversation scroller inside SessionPane on a session — with overscroll
+   contained so momentum never chains to the document and rubber-bands the
+   whole app. */
+
+html:has(.mobile-shell),
+html:has(.mobile-shell) body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+}
+
+.mobile-shell {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- Headers (shared frame for list and session screens) ---- */
+
+.mobile-list-header,
+.mobile-session-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(6px + env(safe-area-inset-top)) 8px 6px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  z-index: 2;
+}
+
+.mobile-list-header h1 {
+  flex: 1;
+  font-size: var(--text-lg-tight);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.mobile-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--muted-strong);
+}
+
+.mobile-icon-button:active {
+  background: var(--panel-sunken);
+}
+
+/* Sits directly under either header, in flow, so it never covers a row or the
+   composer — a dropped socket is worth a line, not a blocker. */
+.mobile-connection-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  z-index: 1;
+}
+
+/* ---- Session list ---- */
+
+.mobile-list-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.mobile-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+.mobile-section {
+  margin-top: 14px;
+}
+
+.mobile-section-label {
+  margin: 0;
+  padding: 0 16px 6px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mobile-session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mobile-session-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  /* Hairline separator inset from the left edge, list idiom. */
+  box-shadow: inset 0 -1px 0 var(--line-soft);
+}
+
+.mobile-session-row:active {
+  background: var(--panel-sunken);
+}
+
+.mobile-session-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-session-title-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.mobile-session-title {
+  font-size: var(--text-md-tight);
+  font-weight: 550;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-session-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.mobile-session-project {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-session-chip {
+  flex: none;
+  padding: 1.5px 7px;
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mobile-session-chip[data-attention="approval-needed"],
+.mobile-session-chip[data-attention="blocked"] {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.mobile-session-chip[data-attention="failed"] {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+
+.mobile-session-chip[data-attention="review-ready"] {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.mobile-session-age {
+  flex: none;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.mobile-session-live {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: mobile-live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes mobile-live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-session-live {
+    animation: none;
+  }
+}
+
+/* ---- Session screen ---- */
+
+.mobile-session-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.mobile-session-header {
+  padding-left: 4px;
+  padding-right: 12px;
+}
+
+.mobile-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 40px;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  color: var(--accent-deep);
+}
+
+.mobile-back:active {
+  background: var(--panel-sunken);
+}
+
+.mobile-session-header-title {
+  flex: 1;
+  text-align: center;
+  font-size: var(--text-base-plus);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Balances the back button so the centered title stays centered. */
+.mobile-header-spacer {
+  flex: none;
+  width: 44px;
+}
+
+/* The reused SessionPane fills the remaining height. Its desktop grid
+   (conversation + optional review/log columns) collapses to one flex column;
+   desktop-only chrome — the actions menu (terminal, review, commit, IDE) and
+   the in-pane repo heading (the mobile header already names the session) —
+   is hidden rather than ported. */
+.mobile-session-screen .session-grid {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.mobile-session-screen .session-main-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.mobile-session-screen .conversation-surface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Only the transcript scrolls; heading, meta cards, banner, and composer are
+   fixed furniture. Momentum stays contained so a fast fling at either end
+   never rubber-bands the whole screen. */
+.mobile-session-screen .conversation-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-session-screen .conversation-list {
+  flex: 1;
+  min-height: 0;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Pending approvals pin under the composer instead of living in a side
+   column; a tall command list scrolls inside its own cap. */
+.mobile-session-screen .approval-surface {
+  flex: none;
+  max-height: 42dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Desktop affordances the phone loop does not need: header actions, the
+   terminal, the in-pane repo heading, the checks/changed-files cards, and
+   the approvals jump banner (approvals are always pinned on screen here). */
+.mobile-shell .conversation-header-actions,
+.mobile-shell .terminal-panel,
+.mobile-shell .conversation-surface > .section-heading,
+.mobile-shell .session-meta-cards,
+.mobile-shell .composer-approvals-banner {
+  display: none !important;
+}
+
+/* ---- New session ---- */
+
+.mobile-new-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.mobile-new-form {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+.mobile-new-label {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.mobile-new-select,
+.mobile-new-prompt {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  /* 16px+ keeps iOS Safari from zooming the page on focus. */
+  font-size: var(--text-md-plus);
+}
+
+.mobile-new-prompt {
+  resize: none;
+  line-height: 1.5;
+}
+
+.mobile-new-select:focus,
+.mobile-new-prompt:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.mobile-new-mode {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mobile-new-mode-chip {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: var(--text-base);
+}
+
+.mobile-new-mode-chip[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+.mobile-new-launch {
+  margin-top: 14px;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--bg);
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.mobile-new-launch:disabled {
+  opacity: 0.45;
+}
+
+.mobile-new-launch:active:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* ---- Shared chrome ---- */
+
+.mobile-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 64px 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.mobile-empty-detail {
+  font-size: var(--text-sm);
+}
+
+.mobile-retry {
+  padding: 8px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-base);
+}
+
+.mobile-retry:active {
+  background: var(--panel-sunken);
+}
+
+.mobile-toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--text-base);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  z-index: 3;
+}
+
+.mobile-toast-error {
+  border-color: var(--rose);
+}

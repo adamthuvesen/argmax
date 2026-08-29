@@ -19,6 +19,7 @@ pub mod learnings;
 pub mod projects;
 pub mod providers;
 pub mod prs;
+pub mod remote;
 pub mod review;
 pub mod session;
 pub mod skills;
@@ -92,6 +93,9 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "git:push",
     "git:create-branch",
     "git:view-or-create-pr",
+    "remote:get-status",
+    "remote:set-config",
+    "remote:test-notification",
 ];
 
 /// Resolve the live `Database` Arc from `AppState`. Shared across IPC
@@ -171,6 +175,9 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         git_ops::git_commit,
         git_ops::git_push,
         git_ops::git_create_branch,
-        git_ops::git_view_or_create_pr
+        git_ops::git_view_or_create_pr,
+        remote::remote_get_status,
+        remote::remote_set_config,
+        remote::remote_test_notification
     ])
 }

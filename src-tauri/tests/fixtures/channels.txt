@@ -62,3 +62,6 @@ git:commit
 git:push
 git:create-branch
 git:view-or-create-pr
+remote:get-status
+remote:set-config
+remote:test-notification

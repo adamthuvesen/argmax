@@ -26,6 +26,18 @@ empty_input!(ApprovalsPendingInput);
 empty_input!(SystemListDetectedIdesInput);
 empty_input!(SystemDiagnosticsInput);
 empty_input!(SystemVacuumDatabaseInput);
+empty_input!(RemoteGetStatusInput);
+empty_input!(RemoteTestNotificationInput);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemoteSetConfigInput {
+    pub enabled: bool,
+    pub port: u16,
+    /// Raw topic field from the Settings form: empty clears push, a full
+    /// http(s) URL is kept as-is, a bare topic name maps to ntfy.sh.
+    pub ntfy_topic: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

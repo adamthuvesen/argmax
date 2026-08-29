@@ -43,7 +43,10 @@ export const DARK_XTERM_THEME = {
   selectionBackground: "rgba(127, 180, 148, 0.32)",
   selectionForeground: "#e3e0d8",
   // ANSI 0-7: tuned for charcoal — lifted lightness, slightly reduced chroma.
-  black: "#34342e",
+  // ANSI black doubles as "dim text" in shell prompts (starship paths,
+  // autosuggestions), so it must stay readable against the charcoal bg —
+  // hence a mid gray rather than a true black.
+  black: "#4d4a42",
   red: "#e08591",
   green: "#7fb494",
   yellow: "#d9a566",
@@ -52,7 +55,7 @@ export const DARK_XTERM_THEME = {
   cyan: "#86c0c9",
   white: "#c5c1b8",
   // ANSI 8-15 (bright variants) — pushed ~10pp brighter than the base 8.
-  brightBlack: "#5d594f",
+  brightBlack: "#7d7970",
   brightRed: "#f0a3ad",
   brightGreen: "#9fc9af",
   brightYellow: "#e8be88",

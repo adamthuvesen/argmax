@@ -8,6 +8,10 @@
   --bg: #fdfdfd;
   --sidebar: #fafbfb;
   --panel: #ffffff;
+  /* Review panel (right sidebar): matches --panel in light; dark sits between
+     the main view and the left sidebar so the surface order reads
+     bg < review < sidebar instead of the review panel being the lightest. */
+  --review-panel: #ffffff;
   --panel-soft: #fafafa;
   --panel-sunken: #eef0f1;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
@@ -247,6 +251,7 @@
   --bg: #131312;
   --sidebar: #171716;
   --panel: #1e1e1c;
+  --review-panel: #151514;
   --panel-soft: #242422;
   --panel-sunken: #0e0e0d;
   --code-surface: var(--panel-sunken);

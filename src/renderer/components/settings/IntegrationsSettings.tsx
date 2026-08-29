@@ -3,6 +3,7 @@ import type { JSX } from "react";
 import type { DetectedIde, IdeId } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { PROVIDER_SETUP, PROVIDER_SETUP_ORDER } from "../../lib/providerSetup.js";
+import { RemoteSettings } from "./RemoteSettings.js";
 import { SectionHeader, SettingsListPicker } from "./settingsPrimitives.js";
 
 export function IntegrationsSettings({
@@ -73,6 +74,8 @@ export function IntegrationsSettings({
           })}
         </div>
       </section>
+
+      <RemoteSettings />
     </>
   );
 }

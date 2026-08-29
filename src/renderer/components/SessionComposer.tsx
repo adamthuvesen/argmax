@@ -207,6 +207,10 @@ export function SessionComposer({
 
   useEffect(() => {
     if (reviewPanelOpen || isSending || !canSend) return;
+    // Touch devices (the phone companion) get no programmatic focus: it pops
+    // the on-screen keyboard over half the viewport the moment a session
+    // opens. Phones focus the composer only on an explicit tap.
+    if (window.matchMedia?.("(pointer: coarse)").matches) return;
     inputRef.current?.focus();
   }, [reviewPanelOpen, canSend, inputRef, isSending]);
 

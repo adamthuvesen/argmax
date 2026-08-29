@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import { shouldDemoteWaitingOnLeave } from "../lib/priority.js";
+import { shouldDemoteOnLeave } from "../lib/priority.js";
 
 /**
- * After the user opens a waiting-for-input Priority session and then leaves
+ * After the user opens an attention-driven Priority session and then leaves
  * it (another session, launcher, settings, another project), stamp the same
  * dismissal as "Remove from priority". Working sessions are not demoted.
  */
@@ -38,7 +38,7 @@ export function usePriorityDemotion({
     if (!previousId || previousId === viewingId) return;
     const workspace = workspacesRef.current.find((item) => item.id === previousId);
     if (!workspace) return;
-    if (!shouldDemoteWaitingOnLeave(workspace, sessionsRef.current, Date.now())) return;
+    if (!shouldDemoteOnLeave(workspace, sessionsRef.current, Date.now())) return;
     onDemoteRef.current(previousId);
   }, [viewingId]);
 }

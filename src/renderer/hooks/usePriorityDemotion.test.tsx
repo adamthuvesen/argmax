@@ -13,6 +13,7 @@ function workspace(id: string, overrides: Partial<WorkspaceSummary> = {}): Works
     path: `/tmp/${id}`,
     state: "waiting",
     sharedWorkspace: false,
+    kind: "git",
     dirty: false,
     changedFiles: 0,
     lastActivityAt: "2026-05-12T15:54:00.000Z",
@@ -83,7 +84,7 @@ describe("usePriorityDemotion", () => {
           sessions: [session("w-wait", "blocked"), session("w-other", "review-ready")],
           onDemote
         }),
-      { initialProps: { selectedWorkspaceId: "w-wait" as string | null } }
+      { initialProps: { selectedWorkspaceId: "w-wait" } }
     );
 
     rerender({ selectedWorkspaceId: "w-other" });
@@ -134,6 +135,7 @@ describe("usePriorityDemotion", () => {
   it("demotes a waiting session when the user opens another project", () => {
     const onDemote = vi.fn();
     const waiting = workspace("w-wait");
+    const initialProps: { selectedWorkspaceId: string | null } = { selectedWorkspaceId: "w-wait" };
     const { rerender } = renderHook(
       (props: { selectedWorkspaceId: string | null }) =>
         usePriorityDemotion({
@@ -144,7 +146,7 @@ describe("usePriorityDemotion", () => {
           sessions: [session("w-wait", "blocked")],
           onDemote
         }),
-      { initialProps: { selectedWorkspaceId: "w-wait" as string | null } }
+      { initialProps }
     );
 
     rerender({ selectedWorkspaceId: null });
@@ -154,6 +156,7 @@ describe("usePriorityDemotion", () => {
   it("does not demote a working session after the user leaves", () => {
     const onDemote = vi.fn();
     const running = workspace("w-run", { state: "running" });
+    const initialProps: { selectedWorkspaceId: string | null } = { selectedWorkspaceId: "w-run" };
     const { rerender } = renderHook(
       (props: { selectedWorkspaceId: string | null }) =>
         usePriorityDemotion({
@@ -164,16 +167,17 @@ describe("usePriorityDemotion", () => {
           sessions: [session("w-run", "approval-needed", { state: "running" })],
           onDemote
         }),
-      { initialProps: { selectedWorkspaceId: "w-run" as string | null } }
+      { initialProps }
     );
 
     rerender({ selectedWorkspaceId: null });
     expect(onDemote).not.toHaveBeenCalled();
   });
 
-  it("does not demote review-ready attention after the user leaves", () => {
+  it("demotes review-ready attention after the user leaves", () => {
     const onDemote = vi.fn();
     const ready = workspace("w-ready", { state: "complete" });
+    const initialProps: { selectedWorkspaceId: string | null } = { selectedWorkspaceId: "w-ready" };
     const { rerender } = renderHook(
       (props: { selectedWorkspaceId: string | null }) =>
         usePriorityDemotion({
@@ -184,10 +188,10 @@ describe("usePriorityDemotion", () => {
           sessions: [session("w-ready", "review-ready")],
           onDemote
         }),
-      { initialProps: { selectedWorkspaceId: "w-ready" as string | null } }
+      { initialProps }
     );
 
     rerender({ selectedWorkspaceId: null });
-    expect(onDemote).not.toHaveBeenCalled();
+    expect(onDemote).toHaveBeenCalledWith("w-ready");
   });
 });

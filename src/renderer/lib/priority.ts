@@ -3,15 +3,6 @@ import type { AttentionState, SessionSummary, WorkspaceSummary } from "../../sha
 /** Attention values that earn a workspace a spot in the Priority section. */
 export type PriorityAttention = Exclude<AttentionState, "normal">;
 
-/** Attention that means the agent is stalled waiting for the user. */
-export type WaitingForInputAttention = Extract<PriorityAttention, "approval-needed" | "blocked">;
-
-export function isWaitingForInputAttention(
-  attention: AttentionState
-): attention is WaitingForInputAttention {
-  return attention === "approval-needed" || attention === "blocked";
-}
-
 /** True when any session on the workspace is mid-turn. */
 export function isWorkspaceWorking(sessions: SessionSummary[], workspaceId: string): boolean {
   return sessions.some((session) => session.workspaceId === workspaceId && session.state === "running");
@@ -139,17 +130,19 @@ export function computePriorityEntries(
 }
 
 /**
- * Waiting-for-input Priority rows demote after the user has opened them and
- * then left. Working sessions stay: a live turn is still a priority reason.
- * Uses the same inclusion/dismissal rules as `computePriorityEntries`, so a
- * later attention change re-promotes the row.
+ * Attention-driven Priority rows demote after the user has opened them and
+ * then left — Priority is an unread list, and opening the session is reading
+ * it. Working sessions stay: a live turn is still a priority reason. Purely
+ * manual entries (no attention) stay until explicitly removed. Uses the same
+ * inclusion/dismissal rules as `computePriorityEntries`, so a later attention
+ * change re-promotes the row.
  */
-export function shouldDemoteWaitingOnLeave(
+export function shouldDemoteOnLeave(
   workspace: WorkspaceSummary,
   sessions: SessionSummary[],
   nowMs: number
 ): boolean {
   if (isWorkspaceWorking(sessions, workspace.id)) return false;
   const entry = computePriorityEntries([workspace], sessions, nowMs)[0];
-  return entry !== undefined && entry.attention !== null && isWaitingForInputAttention(entry.attention);
+  return entry !== undefined && entry.attention !== null;
 }

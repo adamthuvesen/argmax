@@ -18,7 +18,7 @@ const million: UsageCounts = { input: 1_000_000, output: 0, cacheRead: 0, cacheW
 describe("PROVIDER_MODEL_DEFAULTS", () => {
   // Tripwire: launch defaults and the effort they seed. Effort comes from
   // DEFAULT_REASONING_EFFORT via modelDefaultForProvider when unset here.
-  it("matches the documented launch defaults (Opus 5 / GPT-5.6 Sol at medium)", () => {
+  it("matches the documented launch defaults", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
       modelId: "claude-opus-5",
       supportsReasoningEffort: true
@@ -29,6 +29,15 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
       supportsReasoningEffort: true
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort).toBeUndefined();
+    expect(PROVIDER_MODEL_DEFAULTS.cursor).toMatchObject({
+      modelId: "cursor-grok-4.6-medium",
+      supportsReasoningEffort: true
+    });
+    expect(PROVIDER_MODEL_DEFAULTS.opencode).toMatchObject({
+      modelId: "opencode-go/glm-5.3-flash",
+      supportsReasoningEffort: true,
+      reasoningEffort: "high"
+    });
   });
 });
 
@@ -194,6 +203,8 @@ describe("MODEL_PRICING coverage", () => {
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
     expect(MODEL_PRICING["gpt-5.6-sol"]).toBeDefined();
     expect(MODEL_PRICING["claude-opus-5"]).toBeDefined();
+    expect(MODEL_PRICING["cursor-grok-4.6-medium"]).toBeDefined();
+    expect(MODEL_PRICING["opencode-go/glm-5.3-flash"]).toBeDefined();
   });
 
   // Drift tripwire: every picker model must have a matching pricing entry so

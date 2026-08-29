@@ -290,9 +290,10 @@ export interface WorkspaceSummary {
   lastActivityAt: string;
   pinned: boolean;
   /**
-   * When the user marked this workspace done in the sidebar's Priority
-   * section (null when not dismissed). Spent (ignored) once the workspace's
-   * session attention changes again — compare against
+   * When this workspace left the sidebar Priority section (null when not
+   * dismissed). Set by "Remove from priority", header Clear, or opening a
+   * waiting-for-input row and then navigating away. Spent (ignored) once
+   * session attention changes again. Compare against
    * `SessionSummary.attentionChangedAt`. Required, matching the wire shape:
    * an optional marker would let a locally-built summary omit it and erase
    * the dismissal on whole-object delta merge.

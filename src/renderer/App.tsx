@@ -55,7 +55,7 @@ import { animateThemeChange } from "./lib/theme.js";
 import { titleFromPrompt } from "./lib/projects.js";
 import type { WorkspaceMode } from "./lib/workspaceMode.js";
 import { persistLaunchModel, readStoredLaunchModel } from "./lib/launchModelPreference.js";
-import { modelDefaultForProvider, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
+import { factoryLaunchModel, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
   PERMISSION_MODE_KEY,
@@ -90,6 +90,7 @@ import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
+import { usePriorityDemotion } from "./hooks/usePriorityDemotion.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isTauriRuntime } from "./lib/tauriBridge.js";
@@ -98,6 +99,9 @@ import { withToast, type ToastMessage } from "./lib/withToast.js";
 
 const APP_MIN_HEIGHT_PX = 640;
 const STATIC_APP_MIN_WIDTH_PX = 1024;
+// Full new-session view hides the grid. Reuse this empty set so the sidebar
+// does not paint the still-focused pane as current. Esc restores the highlight.
+const EMPTY_OPEN_WORKSPACE_IDS = new Set<string>();
 
 function widestGridRowColumnCount(rows: unknown[][]): number {
   return rows.reduce((max, row) => Math.max(max, row.length), 0);
@@ -105,11 +109,7 @@ function widestGridRowColumnCount(rows: unknown[][]): number {
 
 export function App(): JSX.Element {
   const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(
-    () =>
-      readStoredLaunchModel() ?? {
-        provider: "codex",
-        ...modelDefaultForProvider("codex")
-      }
+    () => readStoredLaunchModel() ?? factoryLaunchModel()
   );
   const {
     isSettingsOpen,
@@ -735,6 +735,17 @@ export function App(): JSX.Element {
     [refreshDashboardStatus]
   );
 
+  usePriorityDemotion({
+    selectedWorkspaceId,
+    isSettingsOpen,
+    isFullLauncherOpen,
+    workspaces: snapshot.workspaces,
+    sessions: snapshot.sessions,
+    onDemote: (workspaceId) => {
+      void removeFromPriority(workspaceId);
+    }
+  });
+
   const renameWorkspace = useCallback(
     async (workspaceId: string, taskLabel: string): Promise<void> => {
       if (!window.argmax) {
@@ -1249,8 +1260,8 @@ export function App(): JSX.Element {
         onWorkspaceDragEnd={handleWorkspaceDragEnd}
         onResizeMouseDown={onResizeMouseDown}
         selectedProjectId={selectedProject?.id ?? null}
-        selectedWorkspaceId={selectedWorkspace?.id ?? null}
-        openWorkspaceIds={openWorkspaceIds}
+        selectedWorkspaceId={isFullLauncherOpen ? null : (selectedWorkspace?.id ?? null)}
+        openWorkspaceIds={isFullLauncherOpen ? EMPTY_OPEN_WORKSPACE_IDS : openWorkspaceIds}
         canDragWorkspaceToGrid={canDragWorkspaceToGrid}
         snapshot={snapshot}
         detectedIdes={detectedIdes}

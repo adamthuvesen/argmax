@@ -59,25 +59,26 @@ import { computePriorityEntries } from "../lib/priority.js";
 import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
-// Marker stored in sessionStorage (cleared on app quit / window close in
-// Tauri) so the "collapse every project on launch" seed fires exactly
-// once per real app launch, not on every Sidebar mount. Tests can pre-set this
-// marker when they need to bypass boot seeding.
+// Markers stored in sessionStorage (cleared on app quit / window close in
+// Tauri) so each boot seed fires exactly once per real app launch, not on every
+// Sidebar mount. Tests can pre-set a marker when they need to bypass one seed
+// without bypassing the other.
 const BOOT_COLLAPSE_SEED_KEY = "argmax.sidebar.bootCollapseSeeded";
+const BOOT_GROUP_COLLAPSE_SEED_KEY = "argmax.sidebar.bootGroupCollapseSeeded";
 
-function readBootCollapseSeeded(): boolean {
+function readBootSeeded(key: string): boolean {
   if (typeof window === "undefined") return true;
   try {
-    return window.sessionStorage.getItem(BOOT_COLLAPSE_SEED_KEY) === "1";
+    return window.sessionStorage.getItem(key) === "1";
   } catch {
     return true;
   }
 }
 
-function markBootCollapseSeeded(): void {
+function markBootSeeded(key: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(BOOT_COLLAPSE_SEED_KEY, "1");
+    window.sessionStorage.setItem(key, "1");
   } catch {
     // SecurityError / QuotaExceeded — fall through; worst case we collapse
     // again on the next render, which is harmless.
@@ -89,6 +90,16 @@ function markBootCollapseSeeded(): void {
 // older, so these keys can't collide with a date bucket.
 const PINNED_GROUP_KEY = "pinned";
 const PRIORITY_GROUP_KEY = "priority";
+
+// Per-launch behavior: every session group except Pinned starts collapsed, so a
+// fresh window opens on the standing pins and nothing else.
+const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
+  PRIORITY_GROUP_KEY,
+  "today",
+  "last-7",
+  "last-30",
+  "older"
+];
 
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
   { value: "projects", label: "Projects", description: "Group sessions under their project" },
@@ -214,9 +225,9 @@ export function Sidebar({
   // process (e.g. hot-reload) respect the persisted state and don't
   // re-collapse projects the user has since expanded.
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() =>
-    readBootCollapseSeeded() ? loadCollapsedProjectIds() : new Set()
+    readBootSeeded(BOOT_COLLAPSE_SEED_KEY) ? loadCollapsedProjectIds() : new Set()
   );
-  const startupCollapseInitializedRef = useRef(readBootCollapseSeeded());
+  const startupCollapseInitializedRef = useRef(readBootSeeded(BOOT_COLLAPSE_SEED_KEY));
   if (!startupCollapseInitializedRef.current && snapshot.projects.length > 0) {
     startupCollapseInitializedRef.current = true;
     const allCollapsed = new Set(snapshot.projects.map((project) => project.id));
@@ -225,8 +236,8 @@ export function Sidebar({
   // Persist the boot seed and collapsed set as an effect so StrictMode's
   // double render doesn't double-write localStorage.
   useEffect(() => {
-    if (!readBootCollapseSeeded() && snapshot.projects.length > 0) {
-      markBootCollapseSeeded();
+    if (!readBootSeeded(BOOT_COLLAPSE_SEED_KEY) && snapshot.projects.length > 0) {
+      markBootSeeded(BOOT_COLLAPSE_SEED_KEY);
       saveCollapsedProjectIds(collapsedProjectIds);
     }
   }, [snapshot.projects.length, collapsedProjectIds]);
@@ -235,9 +246,20 @@ export function Sidebar({
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
   const [viewMode, setViewMode] = useState<SidebarViewMode>(() => loadSidebarViewMode());
+  // Pinned is the only group that survives a launch expanded. Mid-session
+  // toggles persist as usual, and the next launch collapses everything but
+  // Pinned again.
   const [collapsedDateGroups, setCollapsedDateGroups] = useState<Set<string>>(() =>
-    loadCollapsedDateGroupIds()
+    readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)
+      ? loadCollapsedDateGroupIds()
+      : new Set(BOOT_COLLAPSED_GROUP_KEYS)
   );
+  useEffect(() => {
+    if (!readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)) {
+      markBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY);
+      saveCollapsedDateGroupIds(collapsedDateGroups);
+    }
+  }, [collapsedDateGroups]);
   const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() =>
     loadExpandedDateGroupIds()
   );

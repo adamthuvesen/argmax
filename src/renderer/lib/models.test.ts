@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { SessionSummary } from "../../shared/types.js";
-import { modelPickerSelectionFromSession, modelSelectionFromSession } from "./models.js";
+import type { DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
+import {
+  FALLBACK_LAUNCH_MODEL,
+  factoryLaunchModel,
+  modelDefaultForProvider,
+  modelPickerSelectionFromSession,
+  modelSelectionFromSession,
+  preferredLaunchModel,
+  preferredLaunchProvider
+} from "./models.js";
 
 const BASE_SESSION: SessionSummary = {
   id: "session-1",
@@ -28,6 +36,97 @@ describe("modelSelectionFromSession", () => {
       provider: "codex",
       label: "GPT-5.6 Sol",
       modelId: "gpt-5.6-sol",
+    });
+  });
+});
+
+function discovered(
+  provider: ProviderId,
+  flags: { installed?: boolean; authenticated?: boolean | null } = {}
+): DiscoveredProvider {
+  const installed = flags.installed ?? true;
+  return {
+    provider,
+    displayName: provider,
+    binaryName: provider,
+    installed,
+    binaryPath: installed ? `/bin/${provider}` : null,
+    version: installed ? "1.0" : null,
+    authenticated: flags.authenticated === undefined ? true : flags.authenticated,
+    setupGuidance: null,
+    approvalSupport: "unsupported"
+  };
+}
+
+describe("preferredLaunchModel", () => {
+  it("seeds Claude Opus 5 as the factory default", () => {
+    expect(factoryLaunchModel()).toEqual({
+      provider: "claude",
+      label: "Opus 5",
+      modelId: "claude-opus-5",
+      reasoningEffort: "medium"
+    });
+  });
+
+  it("prefers Claude, then Codex, then Cursor, then OpenCode", () => {
+    const all = [
+      discovered("opencode"),
+      discovered("cursor"),
+      discovered("codex"),
+      discovered("claude")
+    ];
+    expect(preferredLaunchProvider(all)).toBe("claude");
+    expect(preferredLaunchModel(all)).toEqual({
+      provider: "claude",
+      ...modelDefaultForProvider("claude")
+    });
+
+    expect(preferredLaunchModel([discovered("codex"), discovered("cursor"), discovered("opencode")])).toEqual({
+      provider: "codex",
+      ...modelDefaultForProvider("codex")
+    });
+    expect(preferredLaunchModel([discovered("cursor"), discovered("opencode")])).toEqual({
+      provider: "cursor",
+      ...modelDefaultForProvider("cursor")
+    });
+    expect(preferredLaunchModel([discovered("opencode")])).toEqual({
+      provider: "opencode",
+      ...modelDefaultForProvider("opencode")
+    });
+  });
+
+  it("skips a provider that is installed but logged out", () => {
+    expect(
+      preferredLaunchProvider([
+        discovered("claude", { authenticated: false }),
+        discovered("codex")
+      ])
+    ).toBe("codex");
+  });
+
+  it("falls back to Big Pickle when no provider is usable", () => {
+    expect(preferredLaunchModel([])).toEqual(FALLBACK_LAUNCH_MODEL);
+    expect(
+      preferredLaunchModel([
+        discovered("claude", { installed: false, authenticated: null }),
+        discovered("codex", { installed: false, authenticated: null })
+      ])
+    ).toEqual(FALLBACK_LAUNCH_MODEL);
+  });
+
+  it("defaults OpenCode to GLM-5.3-Flash at high effort", () => {
+    expect(modelDefaultForProvider("opencode")).toEqual({
+      label: "GLM-5.3-Flash",
+      modelId: "opencode-go/glm-5.3-flash",
+      reasoningEffort: "high"
+    });
+  });
+
+  it("defaults Cursor to Grok 4.6 at medium effort", () => {
+    expect(modelDefaultForProvider("cursor")).toEqual({
+      label: "Grok 4.6 (Cursor)",
+      modelId: "cursor-grok-4.6-medium",
+      reasoningEffort: "medium"
     });
   });
 });

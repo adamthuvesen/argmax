@@ -166,6 +166,18 @@ free-tier models (all priced at $0) plus 7 OpenCode Go (`opencode-go/*`)
 models that are billed per-token and expose reasoning-effort variants via
 `--variant` (low/high/max levels, model-dependent). OpenCode has no fast mode.
 
+OpenCode keeps a process-global SQLite store at
+`~/.local/share/opencode/opencode.db` (or `$XDG_DATA_HOME/opencode`). Two CLI
+processes that share that file fail immediately with `database is locked`.
+`providers:launch` returns as soon as the session row is persisted, and the
+renderer then fires `workspaces:autotitle`, which would otherwise start a
+second `opencode run` against the same file while the session is still
+booting. Title generation and discovery probes (`--version`, `providers list`)
+therefore point `XDG_DATA_HOME` / `XDG_STATE_HOME` at a throwaway directory
+and copy `auth.json` and `mcp-auth.json` into it. Session launches keep the
+real store so `run -s` resume works. A second Argmax OpenCode session, or an
+OpenCode TUI already using that file, can still hit the same lock.
+
 ## Subagent Activity
 
 Subagent panes use normal timeline events. The parent chat stays clean by hiding
@@ -241,6 +253,25 @@ sessions first show the renderer's `titleFromPrompt` label, then the renderer
 fires `workspaces:autotitle` after `providers:launch` succeeds. The generated
 title only overwrites while the workspace label is still marked auto, so manual
 renames win over late title results.
+
+## Launch defaults
+
+The launcher pre-fills from Settings → Agents → Default model, stored in
+`localStorage` (`argmax.launch.model`) for the whole app, not per project.
+Per-project default agent (Settings → Projects) is separate: Argmax uses it
+when it starts a session on its own, such as a PR check-failure follow-up.
+
+With no stored preference, the factory pick is the highest-priority *usable*
+provider (installed, and not known-unauthenticated):
+
+1. Claude → Opus 5
+2. Codex → GPT-5.6 Sol
+3. Cursor → Grok 4.6
+4. OpenCode → GLM-5.3-Flash (OpenCode Go)
+5. otherwise Big Pickle
+
+A stored pick that is still launchable is never replaced. Steering only runs
+when the stored or factory pick's CLI is missing or logged out.
 
 ## Adding A Provider
 

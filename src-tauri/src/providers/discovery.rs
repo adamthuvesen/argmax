@@ -5,8 +5,8 @@ use specta::Type;
 use tokio::{process::Command, sync::Mutex};
 
 use super::{
-    adapters::get_provider_definition, environment::build_provider_environment, ApprovalSupport,
-    ProviderId,
+    adapters::get_provider_definition, environment::build_provider_environment,
+    opencode_isolation::IsolatedOpenCodeData, ApprovalSupport, ProviderId,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -84,10 +84,21 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
 
     // Version and auth are independent reads — run them together so the auth
     // probe doesn't serialize behind `--version`. Both are skipped when the
-    // binary is absent (nothing to probe).
+    // binary is absent (nothing to probe). OpenCode probes each get their own
+    // throwaway data dir so `--version` and `providers list` cannot lock the
+    // session store (or each other) while a launch is in flight.
     let (version, authenticated) = match binary_path.as_deref() {
         Some(path) => {
-            tokio::join!(read_version(path), probe_auth(path, definition.status_args))
+            let version_isolation = opencode_helper_isolation(provider_id);
+            let auth_isolation = opencode_helper_isolation(provider_id);
+            tokio::join!(
+                read_version(path, env_from_isolation(version_isolation.as_ref())),
+                probe_auth(
+                    path,
+                    definition.status_args,
+                    env_from_isolation(auth_isolation.as_ref()),
+                )
+            )
         }
         None => (None, None),
     };
@@ -111,22 +122,43 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
     }
 }
 
-async fn resolve_binary(binary_name: &str) -> Option<String> {
-    command_output("which", &[binary_name]).await
+fn opencode_helper_isolation(provider_id: ProviderId) -> Option<IsolatedOpenCodeData> {
+    if provider_id == ProviderId::Opencode {
+        IsolatedOpenCodeData::prepare()
+    } else {
+        None
+    }
 }
 
-async fn read_version(binary_path: &str) -> Option<String> {
-    tokio::time::timeout(PROBE_TIMEOUT, command_output(binary_path, &["--version"]))
-        .await
+fn env_from_isolation(isolation: Option<&IsolatedOpenCodeData>) -> Vec<(String, String)> {
+    isolation
+        .map(IsolatedOpenCodeData::env_overrides)
         .unwrap_or_default()
+}
+
+async fn resolve_binary(binary_name: &str) -> Option<String> {
+    command_output("which", &[binary_name], Vec::new()).await
+}
+
+async fn read_version(binary_path: &str, extra_env: Vec<(String, String)>) -> Option<String> {
+    tokio::time::timeout(
+        PROBE_TIMEOUT,
+        command_output(binary_path, &["--version"], extra_env),
+    )
+    .await
+    .unwrap_or_default()
 }
 
 /// Probe the provider's auth/login status command. Returns `Some(true)` on a
 /// clean exit, `Some(false)` on a non-zero exit (installed but not logged in),
 /// and `None` when the probe times out or can't be spawned (inconclusive — the
 /// UI then shows plain "Installed", never a false "needs login").
-async fn probe_auth(binary_path: &str, status_args: &[&str]) -> Option<bool> {
-    let env = build_provider_environment([]);
+async fn probe_auth(
+    binary_path: &str,
+    status_args: &[&str],
+    extra_env: Vec<(String, String)>,
+) -> Option<bool> {
+    let env = build_provider_environment(extra_env);
     let run = async {
         Command::new(binary_path)
             .args(status_args)
@@ -142,8 +174,12 @@ async fn probe_auth(binary_path: &str, status_args: &[&str]) -> Option<bool> {
     }
 }
 
-async fn command_output(command: &str, args: &[&str]) -> Option<String> {
-    let env = build_provider_environment([]);
+async fn command_output(
+    command: &str,
+    args: &[&str],
+    extra_env: Vec<(String, String)>,
+) -> Option<String> {
+    let env = build_provider_environment(extra_env);
     let output = Command::new(command)
         .args(args)
         .env_clear()
@@ -259,5 +295,13 @@ mod tests {
         assert!(login_guidance(ProviderId::Codex).contains("codex login"));
         assert!(login_guidance(ProviderId::Cursor).contains("cursor-agent login"));
         assert!(login_guidance(ProviderId::Opencode).contains("opencode auth login"));
+    }
+
+    #[test]
+    fn opencode_helper_isolation_is_opencode_only() {
+        assert!(opencode_helper_isolation(ProviderId::Claude).is_none());
+        assert!(opencode_helper_isolation(ProviderId::Codex).is_none());
+        assert!(opencode_helper_isolation(ProviderId::Cursor).is_none());
+        assert!(opencode_helper_isolation(ProviderId::Opencode).is_some());
     }
 }

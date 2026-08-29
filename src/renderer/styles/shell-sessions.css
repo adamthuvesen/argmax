@@ -672,7 +672,7 @@
 }
 
 .launcher-shell {
-  width: min(100%, calc(var(--chat-content-width) + 64px));
+  width: min(100%, 760px);
 }
 
 .launcher-surface {

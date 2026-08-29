@@ -207,6 +207,16 @@
   white-space: nowrap;
 }
 
+/* Opt-in upward menu for a picker that sits at the bottom edge of its section,
+   where a downward menu would cover the next section's copy. Qualified with
+   `.project-picker-popover` to outrank the downward default in
+   `chat-chrome.css`, which loads after this file. `top` must be reset: leaving
+   both edges set on an auto-height absolute box collapses it. */
+.project-picker-popover.settings-picker-popover[data-placement="above"] {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
 /* ---- Settings model picker ---- */
 
 .settings-model-picker {

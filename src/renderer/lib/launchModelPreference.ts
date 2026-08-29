@@ -3,9 +3,10 @@ import { allModelOptions, type ModelPickerSelection } from "./models.js";
 
 /**
  * Persisted launcher default model (Settings → Agents → "Default model" and
- * the composer picker). Stored as provider + modelId + effort; the label is
- * rebuilt from the catalog on read so a renamed model never shows a stale
- * label, and a model that left the catalog falls back to the built-in default.
+ * the composer picker). App-global, not per project. Stored as provider +
+ * modelId + effort; the label is rebuilt from the catalog on read so a renamed
+ * model never shows a stale label, and a model that left the catalog falls
+ * back to the built-in default.
  *
  * Reads tolerate missing/corrupt values by returning null.
  */

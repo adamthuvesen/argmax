@@ -96,6 +96,10 @@ const multiProjectSnapshot: DashboardSnapshot = {
   workspaces: []
 };
 
+// Per-launch seed marker for session-group collapse, mirrored from Sidebar.tsx.
+// Setting it opts a test out of the "collapse every group but Pinned" boot seed.
+const bootGroupCollapseSeedKey = "argmax.sidebar.bootGroupCollapseSeeded";
+
 const noop = (): void => {};
 
 const baseProps = {
@@ -542,6 +546,10 @@ describe("Sidebar — date (sessions) view mode", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    // These tests are about bucketing, ordering, and overflow, so they opt out
+    // of the per-launch "collapse every group but Pinned" seed. The seed itself
+    // is covered in "Sidebar — boot collapse defaults".
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 5, 12, 0, 0));
   });
@@ -955,7 +963,10 @@ describe("Sidebar — Priority section", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    // Projects still boot collapsed here, but Priority starts expanded so these
+    // tests can assert on its rows. The launch seed is covered separately.
     window.sessionStorage.clear();
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
   });
 
   afterEach(() => {
@@ -1259,5 +1270,103 @@ describe("Sidebar — Priority section", () => {
     };
     render(<Sidebar {...baseProps} showPriority snapshot={dismissedSnapshot} />);
     expect(screen.queryByText("Priority")).toBeNull();
+  });
+});
+
+describe("Sidebar — boot collapse defaults", () => {
+  const MINUTES_AGO_30 = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const LONG_AGO = new Date(2024, 0, 4, 9, 0, 0).toISOString();
+
+  const bootWorkspace = (id: string, taskLabel: string, lastActivityAt: string) => ({
+    id,
+    projectId: "project-1",
+    taskLabel,
+    branch: `argmax/${id}`,
+    baseRef: "main",
+    path: `/tmp/${id}`,
+    state: "running" as const,
+    sharedWorkspace: false,
+    dirty: false,
+    changedFiles: 0,
+    lastActivityAt,
+    pinned: false,
+    priorityDismissedAt: null,
+    priorityAddedAt: null
+  });
+
+  const bootSession = (workspaceId: string, attention: "normal" | "blocked") => ({
+    id: `session-${workspaceId}`,
+    workspaceId,
+    provider: "codex" as const,
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.5",
+    permissionMode: "auto-approve" as const,
+    agentMode: "auto" as const,
+    providerConversationId: null,
+    state: attention === "blocked" ? ("waiting" as const) : ("running" as const),
+    attention,
+    attentionChangedAt: MINUTES_AGO_30,
+    startedAt: "2026-05-12T15:00:00.000Z",
+    completedAt: null,
+    lastActivityAt: MINUTES_AGO_30,
+    prompt: "Do the thing"
+  });
+
+  const bootSnapshot: DashboardSnapshot = {
+    ...snapshot,
+    workspaces: [
+      { ...bootWorkspace("w-pinned", "Pinned task", MINUTES_AGO_30), pinned: true },
+      bootWorkspace("w-blocked", "Blocked task", MINUTES_AGO_30),
+      bootWorkspace("w-old", "Ancient task", LONG_AGO)
+    ],
+    sessions: [
+      bootSession("w-pinned", "normal"),
+      bootSession("w-blocked", "blocked"),
+      bootSession("w-old", "normal")
+    ]
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    // A previous session left every group expanded; a launch must ignore that.
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify([]));
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("opens with Pinned expanded and every other group collapsed", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={bootSnapshot} />);
+
+    expect(screen.getByRole("button", { name: "Hide Pinned sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Pinned task/ })).toBeInTheDocument();
+
+    for (const label of ["Priority", "Older"]) {
+      expect(screen.getByRole("button", { name: `Show ${label} sessions` })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: /Blocked task/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Ancient task/ })).toBeNull();
+  });
+
+  it("lets a group stay expanded for the rest of the session", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={bootSnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Older sessions" }));
+    expect(screen.getByRole("button", { name: /Ancient task/ })).toBeInTheDocument();
+
+    // A re-mount inside the same launch respects the toggle; only a new launch
+    // (a cleared sessionStorage marker) re-seeds the collapsed set.
+    cleanup();
+    render(<Sidebar {...baseProps} showPriority snapshot={bootSnapshot} />);
+    expect(screen.getByRole("button", { name: /Ancient task/ })).toBeInTheDocument();
+
+    window.sessionStorage.clear();
+    cleanup();
+    render(<Sidebar {...baseProps} showPriority snapshot={bootSnapshot} />);
+    expect(screen.queryByRole("button", { name: /Ancient task/ })).toBeNull();
   });
 });

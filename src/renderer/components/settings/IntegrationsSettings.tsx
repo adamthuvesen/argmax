@@ -35,6 +35,7 @@ export function IntegrationsSettings({
                 onDefaultIdeChange(next === "" ? null : next);
               }}
               disabled={detectedIdes.length === 0}
+              placement="above"
               options={[
                 { value: "", label: "Ask each time" },
                 ...detectedIdes.map((entry) => ({ value: entry.id, label: entry.label }))

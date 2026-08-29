@@ -634,6 +634,7 @@ struct ProviderDefaults {
 }
 
 fn provider_defaults(provider: &str) -> ProviderDefaults {
+    // Mirrors PROVIDER_MODEL_DEFAULTS in src/shared/providerModels.ts.
     match provider {
         "codex" => ProviderDefaults {
             model_label: "GPT-5.6 Sol",
@@ -641,14 +642,14 @@ fn provider_defaults(provider: &str) -> ProviderDefaults {
             reasoning_effort: Some("medium"),
         },
         "cursor" => ProviderDefaults {
-            model_label: "Composer 2.5 (Cursor)",
-            model_id: "composer-2.5",
-            reasoning_effort: None,
+            model_label: "Grok 4.6 (Cursor)",
+            model_id: "cursor-grok-4.6-medium",
+            reasoning_effort: Some("medium"),
         },
         "opencode" => ProviderDefaults {
-            model_label: "Big Pickle",
-            model_id: "opencode/big-pickle",
-            reasoning_effort: None,
+            model_label: "GLM-5.3-Flash",
+            model_id: "opencode-go/glm-5.3-flash",
+            reasoning_effort: Some("high"),
         },
         _ => ProviderDefaults {
             model_label: "Opus 5",

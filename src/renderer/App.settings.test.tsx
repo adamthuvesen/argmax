@@ -403,6 +403,8 @@ describe("App settings", () => {
     expect(trigger.tagName).toBe("BUTTON");
     fireEvent.click(trigger);
     const listbox = await screen.findByRole("listbox", { name: "Default IDE" });
+    // Opens upward so the menu does not cover the MCP servers section below it.
+    expect(listbox).toHaveAttribute("data-placement", "above");
     fireEvent.click(within(listbox).getByRole("button", { name: "Cursor" }));
 
     await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));

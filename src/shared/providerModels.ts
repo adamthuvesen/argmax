@@ -207,12 +207,17 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     supportsReasoningEffort: true
   },
   cursor: {
-    label: "Composer 2.5 (Cursor)",
-    modelId: "composer-2.5"
+    label: "Grok 4.6 (Cursor)",
+    modelId: "cursor-grok-4.6-medium",
+    supportsReasoningEffort: true
   },
+  // GLM-5.3-Flash is an OpenCode Go model. Its variant list is low/high/max
+  // (no medium), so seed High rather than DEFAULT_REASONING_EFFORT.
   opencode: {
-    label: "Big Pickle",
-    modelId: "opencode/big-pickle"
+    label: "GLM-5.3-Flash",
+    modelId: "opencode-go/glm-5.3-flash",
+    supportsReasoningEffort: true,
+    reasoningEffort: "high"
   }
 };
 

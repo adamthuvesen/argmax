@@ -1254,6 +1254,7 @@ describe("App grid", () => {
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
     fireEvent.keyDown(document, { key: ",", metaKey: true });
     await screen.findByRole("group", { name: "Session panes" });
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
@@ -1261,10 +1262,12 @@ describe("App grid", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Session panes" })).toBeNull();
     expect(screen.queryByRole("region", { name: "New session for Argmax" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Build dashboard" })).not.toHaveAttribute("aria-current");
 
     // Esc dismisses the full launcher and restores the grid view.
     fireEvent.keyDown(document, { key: "Escape" });
     expect(await screen.findByRole("group", { name: "Session panes" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
   });
 
   it("defaults the new-session toggle to 'Open full view' on first launch", async () => {

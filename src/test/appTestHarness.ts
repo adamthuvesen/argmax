@@ -83,6 +83,7 @@ export type AppTestMocks = {
   openInIde: AppTestMockFn<ArgmaxApi["workspaces"]["openInIde"]>;
   listDetectedIdes: AppTestMockFn<ArgmaxApi["system"]["listDetectedIdes"]>;
   setWorkspaceIcon: AppTestMockFn<ArgmaxApi["workspaces"]["setIcon"]>;
+  setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>;
 };
 
 export let createCurrentWorkspace: AppTestMocks["createCurrentWorkspace"];
@@ -117,14 +118,17 @@ export let skillsList: AppTestMocks["skillsList"];
 export let openInIde: AppTestMocks["openInIde"];
 export let listDetectedIdes: AppTestMocks["listDetectedIdes"];
 export let setWorkspaceIcon: AppTestMocks["setWorkspaceIcon"];
+export let setPriorityDismissed: AppTestMocks["setPriorityDismissed"];
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 
 export function setupAppTestMocks(): void {
   window.localStorage.clear();
-  // Pre-seed the boot-collapse marker so existing App tests render the
-  // sidebar with projects expanded (the pre-fix behavior). Sidebar tests
-  // that exercise the boot-collapse seed clear this marker themselves.
+  // Pre-seed the boot-collapse markers so existing App tests render the
+  // sidebar with projects and session groups expanded (the pre-fix behavior).
+  // Sidebar tests that exercise the boot-collapse seeds clear these markers
+  // themselves.
   window.sessionStorage.setItem("argmax.sidebar.bootCollapseSeeded", "1");
+  window.sessionStorage.setItem("argmax.sidebar.bootGroupCollapseSeeded", "1");
   // Disable the sidebar Priority section (default-on in the app): it renders
   // attention-worthy workspaces a second time above the project groups, which
   // would break the single-match role queries App tests rely on. Priority
@@ -295,6 +299,18 @@ export function setupAppTestMocks(): void {
         iconColor
       })
     );
+  setPriorityDismissed = vi
+    .fn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>()
+    .mockImplementation(({ workspaceId, dismissed }) =>
+      Promise.resolve({
+        ...(snapshot.workspaces.find((item) => item.id === workspaceId) ??
+          snapshot.workspaces[0] ??
+          missingWorkspace()),
+        id: workspaceId,
+        priorityDismissedAt: dismissed ? new Date().toISOString() : null,
+        priorityAddedAt: null
+      })
+    );
 
   window.argmax = {
     dashboard: {
@@ -329,13 +345,7 @@ export function setupAppTestMocks(): void {
           id: workspaceId,
           pinned
         }),
-      setPriorityDismissed: ({ workspaceId, dismissed }) =>
-        Promise.resolve({
-          ...(snapshot.workspaces[0] ?? missingWorkspace()),
-          id: workspaceId,
-          priorityDismissedAt: dismissed ? new Date().toISOString() : null,
-          priorityAddedAt: null
-        }),
+      setPriorityDismissed,
       setPriorityAdded: ({ workspaceId, added }) =>
         Promise.resolve({
           ...(snapshot.workspaces[0] ?? missingWorkspace()),

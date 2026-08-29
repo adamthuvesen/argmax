@@ -33,8 +33,9 @@ import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
+import { pickLauncherHeading } from "../lib/launcherHeadings.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
-import { modelDefaultForProvider, preferredLaunchProvider, type ModelPickerSelection } from "../lib/models.js";
+import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import { AGENT_MODE_LABELS, toggleAgentMode } from "../lib/agentMode.js";
 import {
   readStoredWorkspaceMode,
@@ -159,19 +160,23 @@ export function LaunchSurface({
 
   // If the pre-filled selection points at a provider that isn't usable — CLI
   // not installed, or installed but not logged in — steer to the highest-
-  // priority usable provider's default (Claude → Codex → Cursor → OpenCode
-  // fallback) so the composer isn't stuck on an unlaunchable pick. Runs once when discovery
-  // resolves; picks the user makes afterwards are never overridden.
+  // priority usable provider's default (Claude → Codex → Cursor → OpenCode,
+  // else Big Pickle) so the composer isn't stuck on an unlaunchable pick.
+  // Skip an empty discovery result: that is "we learned nothing", not "nothing
+  // is installed", and must not overwrite the factory seed. Runs once when
+  // discovery resolves; picks the user makes afterwards are never overridden.
   const providerSteeringDone = useRef(false);
   useEffect(() => {
-    if (!project || !discoveredProviders || providerSteeringDone.current) return;
+    if (!project || !discoveredProviders || discoveredProviders.length === 0 || providerSteeringDone.current) {
+      return;
+    }
     providerSteeringDone.current = true;
     const current = discoveredProviders.find((entry) => entry.provider === model.provider);
-    if (!current || (current.installed && current.authenticated !== false)) return;
-    const preferred = preferredLaunchProvider(discoveredProviders);
-    if (!preferred || preferred === model.provider) return;
-    onModelChange({ provider: preferred, ...modelDefaultForProvider(preferred) });
-  }, [project, discoveredProviders, model.provider, onModelChange]);
+    if (current?.installed && current.authenticated !== false) return;
+    const preferred = preferredLaunchModel(discoveredProviders);
+    if (preferred.provider === model.provider && preferred.modelId === model.modelId) return;
+    onModelChange(preferred);
+  }, [project, discoveredProviders, model.provider, model.modelId, onModelChange]);
 
   // Changes + Files panel against the selected project's main checkout. Lets
   // the user inspect and edit files before starting a session. Cmd/Ctrl+B
@@ -187,6 +192,9 @@ export function LaunchSurface({
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
   const reviewMode = reviewState.mode;
+  // Drawn once per visit to the surface, so the line stays put while the user
+  // types instead of changing on every render.
+  const [heading, setHeading] = useState(pickLauncherHeading);
   const lastResetSignal = useRef(resetSignal);
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
 
@@ -240,6 +248,7 @@ export function LaunchSurface({
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
     lastResetSignal.current = resetSignal;
+    setHeading(pickLauncherHeading());
     reviewClosePanel();
   }, [resetSignal, reviewClosePanel]);
 
@@ -477,7 +486,7 @@ export function LaunchSurface({
           <span className="launcher-hero-dot" aria-hidden="true" />
           <span className="launcher-hero-eyebrow">New session</span>
         </div>
-        <h1 className="launcher-hero-title">What are we building?</h1>
+        <h1 className="launcher-hero-title">{heading}</h1>
       </header>
       <form
         className="composer"

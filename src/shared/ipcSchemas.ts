@@ -66,7 +66,10 @@ export const IPC_CHANNELS = [
   "git:commit",
   "git:push",
   "git:create-branch",
-  "git:view-or-create-pr"
+  "git:view-or-create-pr",
+  "remote:get-status",
+  "remote:set-config",
+  "remote:test-notification"
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

@@ -23,6 +23,7 @@ export interface LogEntry {
 export type PermissionMode = Bindings.PermissionMode;
 export type ProviderId = Bindings.ProviderId;
 export type ReasoningEffort = Bindings.ReasoningEffort;
+export type RemoteStatus = Bindings.RemoteStatus;
 export type StartupPhaseRecord = Bindings.StartupPhaseRecord;
 
 export interface DiscoveredProvider {
@@ -544,6 +545,11 @@ export interface ArgmaxApi {
     diagnostics: () => Promise<DiagnosticsReport>;
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
+  };
+  remote: {
+    getStatus: () => Promise<RemoteStatus>;
+    setConfig: (input: { enabled: boolean; port: number; ntfyTopic: string }) => Promise<RemoteStatus>;
+    testNotification: () => Promise<{ ok: true }>;
   };
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;

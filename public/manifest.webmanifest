@@ -1,0 +1,8 @@
+{
+  "name": "Argmax",
+  "short_name": "Argmax",
+  "start_url": "./mobile.html",
+  "display": "standalone",
+  "background_color": "#111113",
+  "theme_color": "#111113"
+}

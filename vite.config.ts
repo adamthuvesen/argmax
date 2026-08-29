@@ -15,7 +15,10 @@ export default defineConfig({
     // fails on it.
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
-      input: resolve(__dirname, "index.html"),
+      input: {
+        index: resolve(__dirname, "index.html"),
+        mobile: resolve(__dirname, "mobile.html")
+      },
       output: {
         // Split a few specific heavyweight vendor packages into named chunks
         // so they cache independently of app code and the main `index-*.js`

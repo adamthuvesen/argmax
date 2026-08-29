@@ -402,6 +402,11 @@ export function setupAppTestMocks(): void {
       vacuumDatabase: vacuumDatabaseStub,
       setTheme: () => Promise.resolve({ ok: true })
     },
+    remote: {
+      getStatus: () => Promise.reject(new Error("remote status unavailable in tests")),
+      setConfig: () => Promise.reject(new Error("remote config unavailable in tests")),
+      testNotification: () => Promise.resolve({ ok: true })
+    },
     menu: {
       onCommand: (listener) => {
         menuCommandListener = listener;

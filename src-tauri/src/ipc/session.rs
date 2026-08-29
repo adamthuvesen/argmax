@@ -20,7 +20,14 @@ pub fn session_events_since(
     state: State<'_, AppState>,
     input: SessionEventsSinceInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    let database = live_database(&state)?;
+    session_events_since_impl(&state, input)
+}
+
+pub(crate) fn session_events_since_impl(
+    state: &AppState,
+    input: SessionEventsSinceInput,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    let database = live_database(state)?;
     let connection = database.connection();
     list_session_tail(
         &connection,
@@ -36,7 +43,14 @@ pub async fn session_agent_events(
     state: State<'_, AppState>,
     input: SessionAgentEventsInput,
 ) -> ArgmaxResult<SessionEventsSinceResult> {
-    let database = live_database(&state)?;
+    session_agent_events_impl(&state, input).await
+}
+
+pub(crate) async fn session_agent_events_impl(
+    state: &AppState,
+    input: SessionAgentEventsInput,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    let database = live_database(state)?;
     let session_id = input.session_id.into_string();
     let parent_tool_use_id = input.parent_tool_use_id.into_string();
     tauri::async_runtime::spawn_blocking(move || {
@@ -63,7 +77,14 @@ pub fn session_cost_summary(
     state: State<'_, AppState>,
     input: SessionCostSummaryInput,
 ) -> ArgmaxResult<SessionCostSummary> {
-    let database = live_database(&state)?;
+    session_cost_summary_impl(&state, input)
+}
+
+pub(crate) fn session_cost_summary_impl(
+    state: &AppState,
+    input: SessionCostSummaryInput,
+) -> ArgmaxResult<SessionCostSummary> {
+    let database = live_database(state)?;
     let connection = database.connection();
     get_session_cost_summary(&connection, input.session_id.as_str())
 }
@@ -74,7 +95,14 @@ pub fn session_search(
     state: State<'_, AppState>,
     input: SessionSearchInput,
 ) -> ArgmaxResult<Vec<EventSearchResult>> {
-    let database = live_database(&state)?;
+    session_search_impl(&state, input)
+}
+
+pub(crate) fn session_search_impl(
+    state: &AppState,
+    input: SessionSearchInput,
+) -> ArgmaxResult<Vec<EventSearchResult>> {
+    let database = live_database(state)?;
     let connection = database.connection();
     let limit = input
         .limit

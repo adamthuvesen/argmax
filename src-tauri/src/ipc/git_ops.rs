@@ -21,7 +21,14 @@ pub async fn git_commit(
     state: State<'_, AppState>,
     input: GitCommitInput,
 ) -> ArgmaxResult<GitCommitResult> {
-    let service = GitOpsService::new(live_database(&state)?);
+    git_commit_impl(&state, input).await
+}
+
+pub(crate) async fn git_commit_impl(
+    state: &AppState,
+    input: GitCommitInput,
+) -> ArgmaxResult<GitCommitResult> {
+    let service = GitOpsService::new(live_database(state)?);
     service
         .commit_all(GitCommitOpsInput {
             workspace_id: input.workspace_id.into_string(),
@@ -42,7 +49,14 @@ pub async fn git_push(
     state: State<'_, AppState>,
     input: GitPushInput,
 ) -> ArgmaxResult<GitPushResult> {
-    let service = GitOpsService::new(live_database(&state)?);
+    git_push_impl(&state, input).await
+}
+
+pub(crate) async fn git_push_impl(
+    state: &AppState,
+    input: GitPushInput,
+) -> ArgmaxResult<GitPushResult> {
+    let service = GitOpsService::new(live_database(state)?);
     service
         .push(GitPushOpsInput {
             workspace_id: input.workspace_id.into_string(),
@@ -56,7 +70,14 @@ pub async fn git_create_branch(
     state: State<'_, AppState>,
     input: GitCreateBranchInput,
 ) -> ArgmaxResult<GitCreateBranchResult> {
-    let service = GitOpsService::new(live_database(&state)?);
+    git_create_branch_impl(&state, input).await
+}
+
+pub(crate) async fn git_create_branch_impl(
+    state: &AppState,
+    input: GitCreateBranchInput,
+) -> ArgmaxResult<GitCreateBranchResult> {
+    let service = GitOpsService::new(live_database(state)?);
     service
         .create_branch(GitCreateBranchOpsInput {
             workspace_id: input.workspace_id.into_string(),
@@ -71,7 +92,14 @@ pub async fn git_view_or_create_pr(
     state: State<'_, AppState>,
     input: GitViewOrCreatePrInput,
 ) -> ArgmaxResult<GitViewOrCreatePrResult> {
-    let database = live_database(&state)?;
+    git_view_or_create_pr_impl(&state, input).await
+}
+
+pub(crate) async fn git_view_or_create_pr_impl(
+    state: &AppState,
+    input: GitViewOrCreatePrInput,
+) -> ArgmaxResult<GitViewOrCreatePrResult> {
+    let database = live_database(state)?;
     let refresh_database = Arc::clone(&database);
     let refresh_pr: RefreshPrFn = Arc::new(move |session_id| {
         let database = Arc::clone(&refresh_database);

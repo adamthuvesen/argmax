@@ -17,7 +17,14 @@ pub fn learnings_list(
     state: State<'_, AppState>,
     input: LearningsListInput,
 ) -> ArgmaxResult<Vec<Learning>> {
-    let database = live_database(&state)?;
+    learnings_list_impl(&state, input)
+}
+
+pub(crate) fn learnings_list_impl(
+    state: &AppState,
+    input: LearningsListInput,
+) -> ArgmaxResult<Vec<Learning>> {
+    let database = live_database(state)?;
     let connection = database.connection();
     let limit = input
         .limit
@@ -32,7 +39,14 @@ pub fn learnings_update(
     state: State<'_, AppState>,
     input: LearningsUpdateInput,
 ) -> ArgmaxResult<Learning> {
-    let database = live_database(&state)?;
+    learnings_update_impl(&state, input)
+}
+
+pub(crate) fn learnings_update_impl(
+    state: &AppState,
+    input: LearningsUpdateInput,
+) -> ArgmaxResult<Learning> {
+    let database = live_database(state)?;
     let connection = database.connection();
     update_learning(
         &connection,
@@ -50,7 +64,14 @@ pub fn learnings_delete(
     state: State<'_, AppState>,
     input: LearningsDeleteInput,
 ) -> ArgmaxResult<()> {
-    let database = live_database(&state)?;
+    learnings_delete_impl(&state, input)
+}
+
+pub(crate) fn learnings_delete_impl(
+    state: &AppState,
+    input: LearningsDeleteInput,
+) -> ArgmaxResult<()> {
+    let database = live_database(state)?;
     let connection = database.connection();
     delete_learning(&connection, input.id.as_str())
 }

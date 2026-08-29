@@ -14,7 +14,14 @@ pub fn approvals_resolve(
     state: State<'_, AppState>,
     input: ApprovalsResolveInput,
 ) -> ArgmaxResult<ApprovalRequest> {
-    live_approvals(&state)?.resolve(
+    approvals_resolve_impl(&state, input)
+}
+
+pub(crate) fn approvals_resolve_impl(
+    state: &AppState,
+    input: ApprovalsResolveInput,
+) -> ArgmaxResult<ApprovalRequest> {
+    live_approvals(state)?.resolve(
         input.approval_id.as_str(),
         match input.status {
             ApprovalResolution::Approved => ResolveStatus::Approved,
@@ -29,7 +36,11 @@ pub fn approvals_pending(
     state: State<'_, AppState>,
     _input: ApprovalsPendingInput,
 ) -> ArgmaxResult<Vec<ApprovalRequest>> {
-    live_approvals(&state)?.pending()
+    approvals_pending_impl(&state)
+}
+
+pub(crate) fn approvals_pending_impl(state: &AppState) -> ArgmaxResult<Vec<ApprovalRequest>> {
+    live_approvals(state)?.pending()
 }
 
 fn live_approvals(state: &AppState) -> ArgmaxResult<Arc<ApprovalService>> {

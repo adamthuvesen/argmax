@@ -15,7 +15,14 @@ pub async fn workspaces_create_isolated(
     state: State<'_, AppState>,
     input: WorkspacesCreateIsolatedInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.create_isolated(input).await
+    workspaces_create_isolated_impl(&state, input).await
+}
+
+pub(crate) async fn workspaces_create_isolated_impl(
+    state: &AppState,
+    input: WorkspacesCreateIsolatedInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.create_isolated(input).await
 }
 
 #[tauri::command(rename = "workspaces:create-current")]
@@ -24,7 +31,14 @@ pub fn workspaces_create_current(
     state: State<'_, AppState>,
     input: WorkspacesCreateCurrentInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.create_current(input)
+    workspaces_create_current_impl(&state, input)
+}
+
+pub(crate) fn workspaces_create_current_impl(
+    state: &AppState,
+    input: WorkspacesCreateCurrentInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.create_current(input)
 }
 
 #[tauri::command(rename = "workspaces:refresh-status")]
@@ -33,7 +47,14 @@ pub async fn workspaces_refresh_status(
     state: State<'_, AppState>,
     input: WorkspacesRefreshStatusInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?
+    workspaces_refresh_status_impl(&state, input).await
+}
+
+pub(crate) async fn workspaces_refresh_status_impl(
+    state: &AppState,
+    input: WorkspacesRefreshStatusInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?
         .refresh_status(input.workspace_id.as_str())
         .await
 }
@@ -44,7 +65,14 @@ pub fn workspaces_keep(
     state: State<'_, AppState>,
     input: WorkspacesKeepInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.keep(input)
+    workspaces_keep_impl(&state, input)
+}
+
+pub(crate) fn workspaces_keep_impl(
+    state: &AppState,
+    input: WorkspacesKeepInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.keep(input)
 }
 
 #[tauri::command(rename = "workspaces:archive")]
@@ -53,7 +81,14 @@ pub async fn workspaces_archive(
     state: State<'_, AppState>,
     input: WorkspacesArchiveInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.archive(input).await
+    workspaces_archive_impl(&state, input).await
+}
+
+pub(crate) async fn workspaces_archive_impl(
+    state: &AppState,
+    input: WorkspacesArchiveInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.archive(input).await
 }
 
 #[tauri::command(rename = "workspaces:open-in-ide")]
@@ -62,7 +97,14 @@ pub fn workspaces_open_in_ide(
     state: State<'_, AppState>,
     input: WorkspacesOpenInIdeInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_workspaces(&state)?.open_in_ide(input)?;
+    workspaces_open_in_ide_impl(&state, input)
+}
+
+pub(crate) fn workspaces_open_in_ide_impl(
+    state: &AppState,
+    input: WorkspacesOpenInIdeInput,
+) -> ArgmaxResult<SystemOk> {
+    live_workspaces(state)?.open_in_ide(input)?;
     Ok(SystemOk { ok: true })
 }
 
@@ -72,7 +114,14 @@ pub async fn workspaces_autotitle(
     state: State<'_, AppState>,
     input: WorkspacesAutotitleInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_workspaces(&state)?.autotitle(input).await?;
+    workspaces_autotitle_impl(&state, input).await
+}
+
+pub(crate) async fn workspaces_autotitle_impl(
+    state: &AppState,
+    input: WorkspacesAutotitleInput,
+) -> ArgmaxResult<SystemOk> {
+    live_workspaces(state)?.autotitle(input).await?;
     Ok(SystemOk { ok: true })
 }
 
@@ -82,7 +131,14 @@ pub fn workspaces_set_pinned(
     state: State<'_, AppState>,
     input: WorkspacesSetPinnedInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.set_pinned(input)
+    workspaces_set_pinned_impl(&state, input)
+}
+
+pub(crate) fn workspaces_set_pinned_impl(
+    state: &AppState,
+    input: WorkspacesSetPinnedInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.set_pinned(input)
 }
 
 #[tauri::command(rename = "workspaces:set-priority-added")]
@@ -91,7 +147,14 @@ pub fn workspaces_set_priority_added(
     state: State<'_, AppState>,
     input: WorkspacesSetPriorityAddedInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.set_priority_added(input)
+    workspaces_set_priority_added_impl(&state, input)
+}
+
+pub(crate) fn workspaces_set_priority_added_impl(
+    state: &AppState,
+    input: WorkspacesSetPriorityAddedInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.set_priority_added(input)
 }
 
 #[tauri::command(rename = "workspaces:set-priority-dismissed")]
@@ -100,7 +163,14 @@ pub fn workspaces_set_priority_dismissed(
     state: State<'_, AppState>,
     input: WorkspacesSetPriorityDismissedInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.set_priority_dismissed(input)
+    workspaces_set_priority_dismissed_impl(&state, input)
+}
+
+pub(crate) fn workspaces_set_priority_dismissed_impl(
+    state: &AppState,
+    input: WorkspacesSetPriorityDismissedInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.set_priority_dismissed(input)
 }
 
 #[tauri::command(rename = "workspaces:set-label")]
@@ -109,7 +179,14 @@ pub fn workspaces_set_label(
     state: State<'_, AppState>,
     input: WorkspacesSetLabelInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.set_label(input)
+    workspaces_set_label_impl(&state, input)
+}
+
+pub(crate) fn workspaces_set_label_impl(
+    state: &AppState,
+    input: WorkspacesSetLabelInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.set_label(input)
 }
 
 #[tauri::command(rename = "workspaces:set-icon")]
@@ -118,7 +195,14 @@ pub fn workspaces_set_icon(
     state: State<'_, AppState>,
     input: WorkspacesSetIconInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
-    live_workspaces(&state)?.set_icon(input)
+    workspaces_set_icon_impl(&state, input)
+}
+
+pub(crate) fn workspaces_set_icon_impl(
+    state: &AppState,
+    input: WorkspacesSetIconInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.set_icon(input)
 }
 
 fn live_workspaces(state: &AppState) -> ArgmaxResult<Arc<WorkspaceService>> {

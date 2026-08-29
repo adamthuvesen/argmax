@@ -16,7 +16,14 @@ pub fn terminal_spawn(
     state: State<'_, AppState>,
     input: TerminalSpawnInput,
 ) -> ArgmaxResult<TerminalSpawnResult> {
-    live_terminals(&state)?.spawn(ServiceTerminalSpawnInput {
+    terminal_spawn_impl(&state, input)
+}
+
+pub(crate) fn terminal_spawn_impl(
+    state: &AppState,
+    input: TerminalSpawnInput,
+) -> ArgmaxResult<TerminalSpawnResult> {
+    live_terminals(state)?.spawn(ServiceTerminalSpawnInput {
         workspace_id: input.workspace_id.into_string(),
         cols: input.cols.get(),
         rows: input.rows.get(),
@@ -32,7 +39,14 @@ pub fn terminal_write(
     state: State<'_, AppState>,
     input: TerminalWriteInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_terminals(&state)?.write(input.terminal_id.as_str(), input.data.as_str().as_bytes());
+    terminal_write_impl(&state, input)
+}
+
+pub(crate) fn terminal_write_impl(
+    state: &AppState,
+    input: TerminalWriteInput,
+) -> ArgmaxResult<SystemOk> {
+    live_terminals(state)?.write(input.terminal_id.as_str(), input.data.as_str().as_bytes());
     Ok(SystemOk { ok: true })
 }
 
@@ -42,7 +56,14 @@ pub fn terminal_resize(
     state: State<'_, AppState>,
     input: TerminalResizeInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_terminals(&state)?.resize(
+    terminal_resize_impl(&state, input)
+}
+
+pub(crate) fn terminal_resize_impl(
+    state: &AppState,
+    input: TerminalResizeInput,
+) -> ArgmaxResult<SystemOk> {
+    live_terminals(state)?.resize(
         input.terminal_id.as_str(),
         input.cols.get(),
         input.rows.get(),
@@ -56,7 +77,14 @@ pub async fn terminal_terminate(
     state: State<'_, AppState>,
     input: TerminalTerminateInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_terminals(&state)?
+    terminal_terminate_impl(&state, input).await
+}
+
+pub(crate) async fn terminal_terminate_impl(
+    state: &AppState,
+    input: TerminalTerminateInput,
+) -> ArgmaxResult<SystemOk> {
+    live_terminals(state)?
         .terminate(input.terminal_id.as_str())
         .await;
     Ok(SystemOk { ok: true })

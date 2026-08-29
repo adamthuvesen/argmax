@@ -14,7 +14,14 @@ pub async fn checks_run(
     state: State<'_, AppState>,
     input: ChecksRunInput,
 ) -> ArgmaxResult<CheckRun> {
-    live_checks(&state)?
+    checks_run_impl(&state, input).await
+}
+
+pub(crate) async fn checks_run_impl(
+    state: &AppState,
+    input: ChecksRunInput,
+) -> ArgmaxResult<CheckRun> {
+    live_checks(state)?
         .run_workspace_check(
             RunWorkspaceCheckInput {
                 workspace_id: input.workspace_id.into_string(),

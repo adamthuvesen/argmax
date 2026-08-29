@@ -152,8 +152,11 @@ completes in ~2 s end to end versus ~10 s one-shot.
   `cursor-agent acp` argv — it carries no session id — which is why the exit
   hook exists; a hard crash can still leak one until logout.
 
-OpenCode structured launches use `opencode run --format json --thinking` with
-the model in `provider/model` form (`-m opencode/big-pickle`). The stream is
+OpenCode structured launches use `opencode run --dir <workspace> --format json
+--thinking` with the model in `provider/model` form (`-m opencode/big-pickle`).
+`--dir` is mandatory: the session executes inside opencode's daemonized server,
+whose own cwd is `/`, so the spawn's `current_dir` never reaches the tools —
+without the flag every session runs at the filesystem root. The stream is
 typed part envelopes: `text` and `reasoning` parts arrive whole (no token
 streaming), a `tool_use` part carries input and output in one event and is
 normalized to a `command.started`/`command.completed` pair, and each

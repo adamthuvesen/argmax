@@ -287,6 +287,11 @@ fn cursor_structured_resume_args(
 fn opencode_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
+        // The session executes inside opencode's daemonized server, whose own
+        // cwd is `/` — the client's current_dir never reaches it. `--dir` is
+        // the only way to pin the session to the workspace checkout.
+        "--dir".to_string(),
+        input.workspace_path.to_string_lossy().into_owned(),
         "--format".to_string(),
         "json".to_string(),
         "--thinking".to_string(),
@@ -312,6 +317,9 @@ fn opencode_structured_resume_args(
 ) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
+        // Same server-side cwd pin as the fresh launch above.
+        "--dir".to_string(),
+        input.workspace_path.to_string_lossy().into_owned(),
         "--format".to_string(),
         "json".to_string(),
         "--thinking".to_string(),
@@ -949,6 +957,8 @@ mod tests {
             (definition.structured_args)(&input),
             vec![
                 "run",
+                "--dir",
+                "/repo/worktree",
                 "--format",
                 "json",
                 "--thinking",
@@ -971,6 +981,8 @@ mod tests {
             (definition.structured_resume_args)(&input, "ses_123"),
             vec![
                 "run",
+                "--dir",
+                "/repo/worktree",
                 "--format",
                 "json",
                 "--thinking",

@@ -95,6 +95,11 @@ export function attachTerminalTab(
     lineHeight: 1.2,
     cursorBlink: true,
     theme: readActiveXtermTheme(),
+    // Shell prompts often emit truecolor picked for another terminal's
+    // background (e.g. a starship palette synced to the OS theme, not ours),
+    // so the theme palette alone can't guarantee readable text. Let xterm
+    // lift any foreground that lands below WCAG-ish contrast.
+    minimumContrastRatio: 4.5,
     allowProposedApi: true,
     scrollback: 5000
   });

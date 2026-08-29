@@ -309,6 +309,14 @@ html:has(.mobile-shell) body {
   min-height: 0;
 }
 
+/* The composer's compact layout is container-query driven, and its container
+   root on desktop is the multigrid cell — absent here. Without a container
+   ancestor the ≤720px rules never match and the phone gets the full desktop
+   toolbar, which overflows on long model names. */
+.mobile-session-screen {
+  container-type: inline-size;
+}
+
 /* Only the transcript scrolls; heading, meta cards, banner, and composer are
    fixed furniture. Momentum stays contained so a fast fling at either end
    never rubber-bands the whole screen. */
@@ -344,8 +352,17 @@ html:has(.mobile-shell) body {
 .mobile-shell .terminal-panel,
 .mobile-shell .conversation-surface > .section-heading,
 .mobile-shell .session-meta-cards,
-.mobile-shell .composer-approvals-banner {
+.mobile-shell .composer-approvals-banner,
+.mobile-shell .session-input-toolbar .composer-tool,
+.mobile-shell .composer-compact-context-row--attach {
   display: none !important;
+}
+
+/* With the attach button gone, give its toolbar column back to the model
+   picker (the compact grid reserves a 30px "attach" track). */
+.mobile-shell .session-input-toolbar {
+  grid-template-columns: minmax(0, 1fr) 30px auto auto;
+  grid-template-areas: "model details mode send";
 }
 
 /* ---- New session ---- */
@@ -584,4 +601,134 @@ html:has(.mobile-shell) body {
 
 .mobile-toast-error {
   border-color: var(--rose);
+}
+
+/* ---- Files & changes screen ---- */
+
+.mobile-review-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Changed-file count riding the header's Files & changes button. */
+.mobile-icon-button {
+  position: relative;
+}
+
+.mobile-header-badge {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent-deep);
+  color: var(--panel);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+}
+
+.mobile-review-tabs {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mobile-review-tabs [role="tab"] {
+  border: none;
+  background: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.mobile-review-tabs [role="tab"][aria-selected="true"] {
+  background: var(--panel-sunken);
+  color: var(--text);
+}
+
+.mobile-review-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 16px 8px;
+}
+
+.mobile-review-scope {
+  appearance: none;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  padding: 4px 12px;
+}
+
+.mobile-review-totals {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mobile-review-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.mobile-review-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 10px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Reused desktop leaves, sized for thumbs: taller changed-file rows, diffs
+   scrolling sideways inside their section instead of stretching the page. */
+.mobile-review-scroll .review-changed-file-toggle {
+  min-height: 40px;
+}
+
+/* The desktop row grid reserves a third track for its "Open in Files view"
+   button, which mobile omits — reclaim it so the counts hug the right edge. */
+.mobile-review-scroll .review-changed-file-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.mobile-review-scroll .review-inline-diff {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The hunk box clips its overflow (rounded corners), so it must grow with its
+   longest line for the section scroller above to have anything to scroll. */
+.mobile-review-scroll .review-inline-diff .diff-blocks,
+.mobile-review-scroll .review-inline-diff .diff-hunk {
+  min-width: max-content;
+}
+
+.mobile-review-screen .workspace-tree {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 8px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-review-screen .file-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 12px calc(16px + env(safe-area-inset-bottom, 0px));
 }

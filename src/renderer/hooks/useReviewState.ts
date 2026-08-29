@@ -158,7 +158,13 @@ export function useReviewState(
   source: ReviewSource | null,
   /** Repo-relative paths the newest turn wrote. `null` where no transcript
    *  exists (the launcher), which also hides the "Last turn" scope. */
-  lastTurnPaths: readonly string[] | null = null
+  lastTurnPaths: readonly string[] | null = null,
+  options?: {
+    /** Read-only surfaces (mobile) keep the file preview but drop editing —
+     *  and with it the external-change polling that only matters for a live
+     *  editor buffer. Defaults to editable. */
+    editable?: boolean;
+  }
 ): ReviewState {
   const sourceKind = source?.kind ?? null;
   const sourceId: string | null = source
@@ -168,7 +174,7 @@ export function useReviewState(
     : null;
   const changedFilesKey: string | null =
     source?.kind === "workspace" ? `${source.workspace.changedFiles}:${source.workspace.state}` : null;
-  const canEdit = sourceKind !== null;
+  const canEdit = sourceKind !== null && (options?.editable ?? true);
 
   const dispatch = useMemo(
     () => (sourceKind && sourceId ? reviewIpcDispatch({ kind: sourceKind, id: sourceId }) : null),

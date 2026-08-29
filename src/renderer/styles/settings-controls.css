@@ -544,3 +544,80 @@
 .settings-form-status[data-status="saved"] {
   color: var(--sage-deep);
 }
+
+/* ---- Remote access (Settings → Integrations) ---- */
+
+.settings-remote-pairing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 6px 0 10px;
+}
+
+/* White ground regardless of theme: phone cameras want dark modules on a
+   light field, and the SVG's modules inherit currentColor. */
+.settings-remote-qr {
+  flex: none;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+  color: #000;
+  border: 1px solid var(--line);
+}
+
+.settings-remote-qr svg {
+  display: block;
+  width: 148px;
+  height: 148px;
+}
+
+/* Basis under the wrap point: beside the QR when the card is wide enough,
+   below it otherwise — never wider than the card. */
+.settings-remote-pairing-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* Grid, not flex: a nowrap flex row still propagates the URL's full width as
+   min-content up through the section grid, blowing the whole settings panel
+   past the window. minmax(0, 1fr) is the reliable way to cap it. */
+.settings-remote-copyrow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-xs);
+}
+
+.settings-remote-copyrow-label {
+  color: var(--muted);
+}
+
+.settings-remote-copyrow-value,
+.settings-remote-copyrow code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-soft);
+}
+
+.settings-remote-port {
+  max-width: 110px;
+}
+
+.settings-remote-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.settings-hint[data-tone="warn"] {
+  color: var(--amber);
+}

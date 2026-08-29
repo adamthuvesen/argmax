@@ -47,10 +47,12 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     label: "Integrations",
     title: "Connect local tools",
     eyebrow: "Handoffs",
-    description: "Editor handoff and setup guidance for provider-managed MCP servers.",
+    description:
+      "Editor handoff, setup guidance for provider-managed MCP servers, and the phone companion.",
     sections: [
       { id: "settings-tools", label: "Default IDE" },
-      { id: "settings-mcp", label: "MCP servers" }
+      { id: "settings-mcp", label: "MCP servers" },
+      { id: "settings-remote", label: "Remote access" }
     ]
   },
   {

@@ -70,7 +70,15 @@ export const IPC_CHANNELS = [
   "git:view-or-create-pr",
   "remote:get-status",
   "remote:set-config",
-  "remote:test-notification"
+  "remote:test-notification",
+  "browser:open",
+  "browser:navigate",
+  "browser:back",
+  "browser:forward",
+  "browser:reload",
+  "browser:set-bounds",
+  "browser:close",
+  "browser:fill-credentials"
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

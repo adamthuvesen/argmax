@@ -58,6 +58,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Worktrees, archive, review** → [workspaces.md](docs/workspaces.md)
 - **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)
 - **Integrated terminal panel** → [terminal.md](docs/terminal.md)
+- **In-app browser panel** → [browser.md](docs/browser.md)
 - **Mobile remote / WS bridge** → [remote.md](docs/remote.md)
 - **GitHub PR / CI feedback loop** → [gh.md](docs/gh.md)
 - **Learnings extraction / project memory** → [memory.md](docs/memory.md)

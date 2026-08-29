@@ -11,6 +11,7 @@ pub mod validation;
 
 pub mod approvals;
 pub mod attachments;
+pub mod browser;
 pub mod checks;
 pub mod dashboard;
 pub mod git_ops;
@@ -97,6 +98,14 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "remote:get-status",
     "remote:set-config",
     "remote:test-notification",
+    "browser:open",
+    "browser:navigate",
+    "browser:back",
+    "browser:forward",
+    "browser:reload",
+    "browser:set-bounds",
+    "browser:close",
+    "browser:fill-credentials",
 ];
 
 /// Resolve the live `Database` Arc from `AppState`. Shared across IPC
@@ -180,6 +189,14 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         git_ops::git_view_or_create_pr,
         remote::remote_get_status,
         remote::remote_set_config,
-        remote::remote_test_notification
+        remote::remote_test_notification,
+        browser::browser_open,
+        browser::browser_navigate,
+        browser::browser_back,
+        browser::browser_forward,
+        browser::browser_reload,
+        browser::browser_set_bounds,
+        browser::browser_close,
+        browser::browser_fill_credentials
     ])
 }

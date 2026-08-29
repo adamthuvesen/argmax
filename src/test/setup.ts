@@ -67,6 +67,16 @@ if (typeof window !== "undefined") {
   }
 }
 
+// jsdom has no ResizeObserver; components that glue native views to DOM rects
+// (BrowserPanel) observe elements but never need real measurements in tests.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
+}
+
 // jsdom ships no layout engine, so it has no scrollIntoView. Components that
 // keep a highlighted row on screen call it; a no-op keeps that out of product
 // code as an environment check.

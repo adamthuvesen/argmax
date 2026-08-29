@@ -465,6 +465,17 @@ export function setupAppTestMocks(): void {
       terminate: () => Promise.resolve({ ok: true }),
       onData: () => () => undefined,
       onExit: () => () => undefined
+    },
+    browser: {
+      open: () => Promise.resolve({ ok: true }),
+      navigate: () => Promise.resolve({ ok: true }),
+      back: () => Promise.resolve({ ok: true }),
+      forward: () => Promise.resolve({ ok: true }),
+      reload: () => Promise.resolve({ ok: true }),
+      setBounds: () => Promise.resolve({ ok: true }),
+      close: () => Promise.resolve({ ok: true }),
+      fillCredentials: () => Promise.resolve({ ok: true, itemTitle: "Test Login" }),
+      onState: () => () => undefined
     }
   };
 }

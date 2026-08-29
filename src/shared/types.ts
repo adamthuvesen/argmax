@@ -595,6 +595,36 @@ export interface ArgmaxApi {
     onData: (listener: (event: TerminalDataEvent) => void) => EventSubscription;
     onExit: (listener: (event: TerminalExitEvent) => void) => EventSubscription;
   };
+  browser: {
+    open: (input: { url: string; bounds: BrowserBounds }) => Promise<{ ok: true }>;
+    navigate: (url: string) => Promise<{ ok: true }>;
+    back: () => Promise<{ ok: true }>;
+    forward: () => Promise<{ ok: true }>;
+    reload: () => Promise<{ ok: true }>;
+    setBounds: (input: { bounds: BrowserBounds; visible: boolean }) => Promise<{ ok: true }>;
+    close: () => Promise<{ ok: true }>;
+    fillCredentials: () => Promise<BrowserFillResult>;
+    onState: (listener: (event: BrowserStateEvent) => void) => EventSubscription;
+  };
+}
+
+/** Logical (CSS-pixel) rect of the browser pane placeholder. */
+export interface BrowserBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface BrowserStateEvent {
+  url: string;
+  /** Present on page-load finish; absent on plain navigations. */
+  title: string | null;
+}
+
+export interface BrowserFillResult {
+  ok: boolean;
+  itemTitle: string;
 }
 
 export interface GhPrRecord {

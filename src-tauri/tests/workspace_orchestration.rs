@@ -169,7 +169,9 @@ async fn create_isolated_runs_setup_command_in_fresh_worktree() {
 
     // The command ran inside the new worktree, before create_isolated
     // returned — the agent launching next finds its dependencies in place.
-    assert!(std::path::Path::new(&summary.path).join("setup-ran.txt").exists());
+    assert!(std::path::Path::new(&summary.path)
+        .join("setup-ran.txt")
+        .exists());
     // And it left a persisted check row the review surface can show.
     let checks = {
         let connection = database.connection();

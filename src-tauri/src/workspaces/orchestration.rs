@@ -453,12 +453,9 @@ impl WorkspaceService {
                 status = %run.status,
                 "setup command did not pass"
             ),
-            Err(error) => tracing::warn!(
-                workspace_id,
-                command,
-                ?error,
-                "setup command could not run"
-            ),
+            Err(error) => {
+                tracing::warn!(workspace_id, command, ?error, "setup command could not run")
+            }
         }
     }
 
@@ -825,22 +822,39 @@ impl WorkspaceService {
     /// there is no state to roll back.
     async fn teardown_workspace_processes(self: &Arc<Self>, workspace_id: &str) {
         let timeout = Duration::from_millis(ARCHIVE_QUIESCE_TIMEOUT_MS);
-        if !self.lifecycle.wait_for_admissions(workspace_id, timeout).await {
-            tracing::warn!(workspace_id, "shared archive: admission wait timed out before teardown");
+        if !self
+            .lifecycle
+            .wait_for_admissions(workspace_id, timeout)
+            .await
+        {
+            tracing::warn!(
+                workspace_id,
+                "shared archive: admission wait timed out before teardown"
+            );
         }
         if let Some(providers) = self.providers.as_ref() {
             match tokio::time::timeout(timeout, providers.terminate_workspace(workspace_id)).await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
-                    tracing::warn!(?error, workspace_id, "shared archive: agent session teardown failed");
+                    tracing::warn!(
+                        ?error,
+                        workspace_id,
+                        "shared archive: agent session teardown failed"
+                    );
                 }
                 Err(_) => {
-                    tracing::warn!(workspace_id, "shared archive: agent session teardown timed out");
+                    tracing::warn!(
+                        workspace_id,
+                        "shared archive: agent session teardown timed out"
+                    );
                 }
             }
         }
         if let Some(checks) = self.checks.as_ref() {
-            if !checks.cancel_workspace_checks_and_wait(workspace_id, timeout).await {
+            if !checks
+                .cancel_workspace_checks_and_wait(workspace_id, timeout)
+                .await
+            {
                 tracing::warn!(workspace_id, "shared archive: check teardown timed out");
             }
         }
@@ -851,7 +865,11 @@ impl WorkspaceService {
         }
         if let Some(approvals) = self.approvals.as_ref() {
             if let Err(error) = approvals.cancel_workspace_pending(workspace_id) {
-                tracing::warn!(?error, workspace_id, "shared archive: approval cancel failed");
+                tracing::warn!(
+                    ?error,
+                    workspace_id,
+                    "shared archive: approval cancel failed"
+                );
             }
         }
     }

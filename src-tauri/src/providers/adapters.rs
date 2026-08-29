@@ -293,7 +293,10 @@ fn opencode_structured_args(input: &ProviderLaunchInput) -> Vec<String> {
     ];
     args.extend(opencode_agent_mode_args(input));
     args.extend(opencode_permission_args(input));
-    args.extend(opencode_variant_args(&input.model_id, input.reasoning_effort));
+    args.extend(opencode_variant_args(
+        &input.model_id,
+        input.reasoning_effort,
+    ));
     args.extend([
         "-m".to_string(),
         input.model_id.clone(),
@@ -317,7 +320,10 @@ fn opencode_structured_resume_args(
     ];
     args.extend(opencode_agent_mode_args(input));
     args.extend(opencode_permission_args(input));
-    args.extend(opencode_variant_args(&input.model_id, input.reasoning_effort));
+    args.extend(opencode_variant_args(
+        &input.model_id,
+        input.reasoning_effort,
+    ));
     args.extend([
         "-m".to_string(),
         input.model_id.clone(),
@@ -336,10 +342,14 @@ fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec
         None => return Vec::new(),
     };
     let supported = match model_id {
-        "opencode-go/glm-5.3-flash"
-        | "opencode-go/glm-5.3"
-        | "opencode-go/deepseek-v4-flash" => &[ReasoningEffort::Low, ReasoningEffort::High, ReasoningEffort::Max][..],
-        "opencode-go/qwen3.8-flash" | "opencode-go/deepseek-v4-pro" => &[ReasoningEffort::High, ReasoningEffort::Max][..],
+        "opencode-go/glm-5.3-flash" | "opencode-go/glm-5.3" | "opencode-go/deepseek-v4-flash" => &[
+            ReasoningEffort::Low,
+            ReasoningEffort::High,
+            ReasoningEffort::Max,
+        ][..],
+        "opencode-go/qwen3.8-flash" | "opencode-go/deepseek-v4-pro" => {
+            &[ReasoningEffort::High, ReasoningEffort::Max][..]
+        }
         "opencode-go/kimi-k3" => &[ReasoningEffort::Max][..],
         _ => return Vec::new(),
     };
@@ -348,7 +358,11 @@ fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec
     }
     // Clamp down: highest supported whose rank ≤ incoming, else lowest.
     let incoming_rank = effort as u8;
-    if let Some(&best) = supported.iter().filter(|e| (**e as u8) <= incoming_rank).last() {
+    if let Some(&best) = supported
+        .iter()
+        .filter(|e| (**e as u8) <= incoming_rank)
+        .last()
+    {
         vec!["--variant".to_string(), best.as_str().to_string()]
     } else {
         vec!["--variant".to_string(), supported[0].as_str().to_string()]
@@ -978,9 +992,7 @@ mod tests {
             ..launch_input(ProviderId::Opencode)
         };
         let args = (get_provider_definition(ProviderId::Opencode).structured_args)(&input);
-        assert!(args
-            .windows(2)
-            .any(|window| window == ["--agent", "plan"]));
+        assert!(args.windows(2).any(|window| window == ["--agent", "plan"]));
         assert!(!args.iter().any(|arg| arg == "--auto"));
     }
 

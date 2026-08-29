@@ -42,8 +42,8 @@ use self::{
         normalize_tool_call as normalize_cursor_tool_call,
     },
     opencode::{
-        extract_session_id as extract_opencode_session_id,
-        extract_usage as extract_opencode_usage, normalize_event as normalize_opencode_event,
+        extract_session_id as extract_opencode_session_id, extract_usage as extract_opencode_usage,
+        normalize_event as normalize_opencode_event,
     },
 };
 use super::{adapters::get_provider_definition, ApprovalSupport, ProviderId};
@@ -981,8 +981,11 @@ mod tests {
     #[test]
     fn non_object_json_line_stays_flagged_as_protocol_noise() {
         let mut context = NormalizerSessionContext::default();
-        let result =
-            normalize_provider_event(ProviderId::Claude, &output_event("[1, 2, 3]\n"), &mut context);
+        let result = normalize_provider_event(
+            ProviderId::Claude,
+            &output_event("[1, 2, 3]\n"),
+            &mut context,
+        );
         assert_eq!(result.events.len(), 1);
         assert_eq!(result.events[0].payload["raw"], json!(true));
     }
@@ -1006,7 +1009,9 @@ mod tests {
         // rewrite the same session row (and ship it in a delta) per chunk.
         let mut context = NormalizerSessionContext::default();
         let envelope = |kind: &str| {
-            format!("{{\"type\":\"{kind}\",\"sessionID\":\"ses_1\",\"part\":{{\"text\":\"hi\"}}}}\n")
+            format!(
+                "{{\"type\":\"{kind}\",\"sessionID\":\"ses_1\",\"part\":{{\"text\":\"hi\"}}}}\n"
+            )
         };
         let first = normalize_provider_event(
             ProviderId::Opencode,

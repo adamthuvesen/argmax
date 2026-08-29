@@ -33,6 +33,15 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     "remote:get-status",
     "remote:set-config",
     "remote:test-notification",
+    // The browser pane manipulates the desktop app's native child webview.
+    "browser:open",
+    "browser:navigate",
+    "browser:back",
+    "browser:forward",
+    "browser:reload",
+    "browser:set-bounds",
+    "browser:close",
+    "browser:fill-credentials",
 ];
 
 pub async fn dispatch(state: &AppState, channel: &str, input: Value) -> ArgmaxResult<Value> {

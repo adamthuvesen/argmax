@@ -66,3 +66,11 @@ git:view-or-create-pr
 remote:get-status
 remote:set-config
 remote:test-notification
+browser:open
+browser:navigate
+browser:back
+browser:forward
+browser:reload
+browser:set-bounds
+browser:close
+browser:fill-credentials

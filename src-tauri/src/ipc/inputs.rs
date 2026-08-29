@@ -19,6 +19,11 @@ macro_rules! empty_input {
 }
 
 empty_input!(HealthPingInput);
+empty_input!(BrowserBackInput);
+empty_input!(BrowserForwardInput);
+empty_input!(BrowserReloadInput);
+empty_input!(BrowserCloseInput);
+empty_input!(BrowserFillCredentialsInput);
 empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);
@@ -77,6 +82,40 @@ pub struct ProjectsRemoveInput {
 pub struct ProjectsUpdateSettingsInput {
     pub project_id: ProjectId,
     pub settings: ProjectSettingsInput,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserOpenInput {
+    pub url: String,
+    pub bounds: BrowserBounds,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserNavigateInput {
+    pub url: String,
+}
+
+/// Logical (CSS-pixel) rect of the renderer placeholder the browser webview
+/// is glued to. The main webview fills the whole window, so viewport
+/// coordinates map 1:1 onto window coordinates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserBounds {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserSetBoundsInput {
+    pub bounds: BrowserBounds,
+    /// False while a renderer overlay (dialog, palette) is open — the native
+    /// webview always paints above the DOM, so it must yield instead.
+    pub visible: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

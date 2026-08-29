@@ -538,6 +538,70 @@ async remoteTestNotification(input: RemoteTestNotificationInput) : Promise<Resul
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async browserOpen(input: BrowserOpenInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_open", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserNavigate(input: BrowserNavigateInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_navigate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserBack(input: BrowserBackInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_back", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserForward(input: BrowserForwardInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_forward", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserReload(input: BrowserReloadInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_reload", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserSetBounds(input: BrowserSetBoundsInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_set_bounds", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserClose(input: BrowserCloseInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_close", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async browserFillCredentials(input: BrowserFillCredentialsInput) : Promise<Result<BrowserFillResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("browser_fill_credentials", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -571,6 +635,30 @@ export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: Attach
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
+export type BrowserBackInput = Record<string, never>
+/**
+ * Logical (CSS-pixel) rect of the renderer placeholder the browser webview
+ * is glued to. The main webview fills the whole window, so viewport
+ * coordinates map 1:1 onto window coordinates.
+ */
+export type BrowserBounds = { x: number; y: number; width: number; height: number }
+export type BrowserCloseInput = Record<string, never>
+export type BrowserFillCredentialsInput = Record<string, never>
+export type BrowserFillResult = { ok: boolean; 
+/**
+ * Title of the 1Password item that was filled.
+ */
+itemTitle: string }
+export type BrowserForwardInput = Record<string, never>
+export type BrowserNavigateInput = { url: string }
+export type BrowserOpenInput = { url: string; bounds: BrowserBounds }
+export type BrowserReloadInput = Record<string, never>
+export type BrowserSetBoundsInput = { bounds: BrowserBounds; 
+/**
+ * False while a renderer overlay (dialog, palette) is open — the native
+ * webview always paints above the DOM, so it must yield instead.
+ */
+visible: boolean }
 export type ChangedFileSummary = { path: string; status: string; additions: number; deletions: number; oldPath?: string | null }
 export type CheckRun = { id: string; workspaceId: string; command: string; status: string; exitCode: number | null; summary: string | null; startedAt: string; completedAt: string | null }
 export type ChecksRunInput = { workspaceId: WorkspaceId; command: CommandText }

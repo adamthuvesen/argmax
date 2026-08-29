@@ -76,7 +76,11 @@ pairing happens at the machine, never from a remote client.
   renders the triage loop — priority-ordered session list, then the full
   `SessionPane` (conversation, approvals, composer) in a single column — plus
   a minimal new-session screen (project, prompt, current-branch/worktree,
-  model picker defaulting to the project's configured model).
+  model picker defaulting to the project's configured model), and a
+  full-screen Files & changes view (`MobileReviewScreen`) reached from the
+  session header — the desktop review panel's Changes/Files split as a
+  drill-down, reusing the same data hooks and leaf components with a
+  read-only file preview.
   Desktop-only chrome is hidden by `styles/mobile.css`, not ported.
 
 ## Push notifications (ntfy)

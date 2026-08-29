@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronLeft, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
+import { ArrowUp, Check, ChevronLeft, ChevronsUpDown, Folder, GitBranch, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
 import {
   DEFAULT_REASONING_EFFORT,
@@ -81,6 +81,7 @@ export function NewSessionScreen({
 
   // null = follow the project's default model; switching projects resets to it.
   const [modelKey, setModelKey] = useState<string | null>(null);
+  const [modelSheetOpen, setModelSheetOpen] = useState(false);
   useEffect(() => {
     setModelKey(null);
   }, [projectId]);
@@ -204,29 +205,22 @@ export function NewSessionScreen({
                 </select>
               }
             />
+            {/* The model list is too long for iOS's native select menu — it
+                anchors to the row near the bottom edge and clips off-screen —
+                so this row opens our own bottom sheet instead. */}
             <ContextRow
               icon={<Zap size={16} />}
               value={modelValue}
               select={
                 model ? (
-                  <select
+                  <button
+                    type="button"
                     className="mobile-new-row-select"
                     aria-label="Model"
-                    value={providerModelKey(model)}
-                    onChange={(event) => setModelKey(event.target.value)}
-                  >
-                    {PROVIDER_SETUP_ORDER.map((provider: ProviderId) => (
-                      <optgroup key={provider} label={PROVIDER_SETUP[provider].displayName}>
-                        {allModelOptions
-                          .filter((option) => option.provider === provider)
-                          .map((option) => (
-                            <option key={providerModelKey(option)} value={providerModelKey(option)}>
-                              {option.label}
-                            </option>
-                          ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                    aria-haspopup="dialog"
+                    aria-expanded={modelSheetOpen}
+                    onClick={() => setModelSheetOpen(true)}
+                  />
                 ) : null
               }
             />
@@ -256,6 +250,49 @@ export function NewSessionScreen({
           </div>
         </div>
       )}
+
+      {modelSheetOpen && model ? (
+        <div
+          className="mobile-sheet-backdrop"
+          role="presentation"
+          onClick={() => setModelSheetOpen(false)}
+        >
+          <div
+            className="mobile-sheet"
+            role="dialog"
+            aria-label="Choose model"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mobile-sheet-grabber" aria-hidden="true" />
+            {PROVIDER_SETUP_ORDER.map((provider: ProviderId) => (
+              <div key={provider} className="mobile-sheet-group">
+                <p className="mobile-sheet-group-label">{PROVIDER_SETUP[provider].displayName}</p>
+                {allModelOptions
+                  .filter((option) => option.provider === provider)
+                  .map((option) => {
+                    const key = providerModelKey(option);
+                    const selected = key === providerModelKey(model);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className="mobile-sheet-option"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setModelKey(key);
+                          setModelSheetOpen(false);
+                        }}
+                      >
+                        <span>{option.label}</span>
+                        {selected ? <Check size={16} aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

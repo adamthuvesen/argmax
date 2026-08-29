@@ -167,7 +167,11 @@ pub async fn system_vacuum_database(
     state: State<'_, AppState>,
     _input: SystemVacuumDatabaseInput,
 ) -> ArgmaxResult<SystemOk> {
-    let database = live_database(&state)?;
+    system_vacuum_database_impl(&state).await
+}
+
+pub(crate) async fn system_vacuum_database_impl(state: &AppState) -> ArgmaxResult<SystemOk> {
+    let database = live_database(state)?;
     vacuum_database(database).await?;
     Ok(SystemOk { ok: true })
 }

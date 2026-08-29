@@ -16,6 +16,13 @@ pub async fn providers_discover(
     state: State<'_, AppState>,
     input: ProvidersDiscoverInput,
 ) -> ArgmaxResult<Vec<ProviderCapabilityReport>> {
+    providers_discover_impl(&state, input).await
+}
+
+pub(crate) async fn providers_discover_impl(
+    state: &AppState,
+    input: ProvidersDiscoverInput,
+) -> ArgmaxResult<Vec<ProviderCapabilityReport>> {
     if input.refresh {
         state.provider_discovery.invalidate().await;
     }
@@ -28,7 +35,14 @@ pub async fn providers_launch(
     state: State<'_, AppState>,
     input: ProvidersLaunchInput,
 ) -> ArgmaxResult<SessionSummary> {
-    live_providers(&state)?.launch(input).await
+    providers_launch_impl(&state, input).await
+}
+
+pub(crate) async fn providers_launch_impl(
+    state: &AppState,
+    input: ProvidersLaunchInput,
+) -> ArgmaxResult<SessionSummary> {
+    live_providers(state)?.launch(input).await
 }
 
 #[tauri::command(rename = "providers:send-input")]
@@ -37,7 +51,14 @@ pub async fn providers_send_input(
     state: State<'_, AppState>,
     input: ProvidersSendInput,
 ) -> ArgmaxResult<SendInputResult> {
-    live_providers(&state)?.send_input(input).await
+    providers_send_input_impl(&state, input).await
+}
+
+pub(crate) async fn providers_send_input_impl(
+    state: &AppState,
+    input: ProvidersSendInput,
+) -> ArgmaxResult<SendInputResult> {
+    live_providers(state)?.send_input(input).await
 }
 
 #[tauri::command(rename = "providers:resize")]
@@ -46,7 +67,14 @@ pub fn providers_resize(
     state: State<'_, AppState>,
     input: ProvidersResizeInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_providers(&state)?.resize(input);
+    providers_resize_impl(&state, input)
+}
+
+pub(crate) fn providers_resize_impl(
+    state: &AppState,
+    input: ProvidersResizeInput,
+) -> ArgmaxResult<SystemOk> {
+    live_providers(state)?.resize(input);
     Ok(SystemOk { ok: true })
 }
 
@@ -56,7 +84,14 @@ pub async fn providers_terminate(
     state: State<'_, AppState>,
     input: ProvidersTerminateInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_providers(&state)?.terminate(input).await?;
+    providers_terminate_impl(&state, input).await
+}
+
+pub(crate) async fn providers_terminate_impl(
+    state: &AppState,
+    input: ProvidersTerminateInput,
+) -> ArgmaxResult<SystemOk> {
+    live_providers(state)?.terminate(input).await?;
     Ok(SystemOk { ok: true })
 }
 
@@ -66,7 +101,14 @@ pub fn providers_cancel_queued_message(
     state: State<'_, AppState>,
     input: ProvidersCancelQueuedMessageInput,
 ) -> ArgmaxResult<SystemOk> {
-    live_providers(&state)?.cancel_queued_message(input);
+    providers_cancel_queued_message_impl(&state, input)
+}
+
+pub(crate) fn providers_cancel_queued_message_impl(
+    state: &AppState,
+    input: ProvidersCancelQueuedMessageInput,
+) -> ArgmaxResult<SystemOk> {
+    live_providers(state)?.cancel_queued_message(input);
     Ok(SystemOk { ok: true })
 }
 
@@ -76,7 +118,14 @@ pub async fn providers_send_queued_message_now(
     state: State<'_, AppState>,
     input: ProvidersSendQueuedMessageNowInput,
 ) -> ArgmaxResult<SendInputResult> {
-    live_providers(&state)?.send_queued_message_now(input).await
+    providers_send_queued_message_now_impl(&state, input).await
+}
+
+pub(crate) async fn providers_send_queued_message_now_impl(
+    state: &AppState,
+    input: ProvidersSendQueuedMessageNowInput,
+) -> ArgmaxResult<SendInputResult> {
+    live_providers(state)?.send_queued_message_now(input).await
 }
 
 fn live_providers(state: &AppState) -> ArgmaxResult<Arc<ProviderSessionService>> {

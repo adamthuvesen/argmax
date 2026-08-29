@@ -23,7 +23,11 @@ pub fn projects_list(
     state: State<'_, AppState>,
     _input: ProjectsListInput,
 ) -> ArgmaxResult<Vec<ProjectSummary>> {
-    let database = live_database(&state)?;
+    projects_list_impl(&state)
+}
+
+pub(crate) fn projects_list_impl(state: &AppState) -> ArgmaxResult<Vec<ProjectSummary>> {
+    let database = live_database(state)?;
     let connection = database.connection();
     list_projects(&connection)
 }
@@ -58,7 +62,14 @@ pub async fn projects_register(
 #[tauri::command(rename = "projects:remove")]
 #[specta::specta]
 pub fn projects_remove(state: State<'_, AppState>, input: ProjectsRemoveInput) -> ArgmaxResult<()> {
-    let database = live_database(&state)?;
+    projects_remove_impl(&state, input)
+}
+
+pub(crate) fn projects_remove_impl(
+    state: &AppState,
+    input: ProjectsRemoveInput,
+) -> ArgmaxResult<()> {
+    let database = live_database(state)?;
     let connection = database.connection();
     delete_project(&connection, input.project_id.as_str())
 }
@@ -69,7 +80,14 @@ pub fn projects_update_settings(
     state: State<'_, AppState>,
     input: ProjectsUpdateSettingsInput,
 ) -> ArgmaxResult<ProjectSummary> {
-    let database = live_database(&state)?;
+    projects_update_settings_impl(&state, input)
+}
+
+pub(crate) fn projects_update_settings_impl(
+    state: &AppState,
+    input: ProjectsUpdateSettingsInput,
+) -> ArgmaxResult<ProjectSummary> {
+    let database = live_database(state)?;
     let connection = database.connection();
     let settings = ProjectSettings {
         default_provider: input.settings.default_provider.as_str().to_owned(),
@@ -88,8 +106,15 @@ pub async fn projects_list_branches(
     state: State<'_, AppState>,
     input: ProjectsListBranchesInput,
 ) -> ArgmaxResult<Vec<String>> {
+    projects_list_branches_impl(&state, input).await
+}
+
+pub(crate) async fn projects_list_branches_impl(
+    state: &AppState,
+    input: ProjectsListBranchesInput,
+) -> ArgmaxResult<Vec<String>> {
     let (repo_path, default_branch) = {
-        let database = live_database(&state)?;
+        let database = live_database(state)?;
         let connection = database.connection();
         let project = require_project(&connection, input.project_id.as_str())?;
         (project.repo_path, project.default_branch)
@@ -127,8 +152,15 @@ pub async fn projects_refresh_branch(
     state: State<'_, AppState>,
     input: ProjectsRefreshBranchInput,
 ) -> ArgmaxResult<ProjectSummary> {
+    projects_refresh_branch_impl(&state, input).await
+}
+
+pub(crate) async fn projects_refresh_branch_impl(
+    state: &AppState,
+    input: ProjectsRefreshBranchInput,
+) -> ArgmaxResult<ProjectSummary> {
     let repo_path = {
-        let database = live_database(&state)?;
+        let database = live_database(state)?;
         let connection = database.connection();
         require_project(&connection, input.project_id.as_str())?.repo_path
     };
@@ -148,7 +180,7 @@ pub async fn projects_refresh_branch(
     } else {
         current_branch
     };
-    let database = live_database(&state)?;
+    let database = live_database(state)?;
     let connection = database.connection();
     update_project_branch(&connection, input.project_id.as_str(), &current_branch)
 }
@@ -159,8 +191,15 @@ pub async fn projects_switch_branch(
     state: State<'_, AppState>,
     input: ProjectsSwitchBranchInput,
 ) -> ArgmaxResult<ProjectSummary> {
+    projects_switch_branch_impl(&state, input).await
+}
+
+pub(crate) async fn projects_switch_branch_impl(
+    state: &AppState,
+    input: ProjectsSwitchBranchInput,
+) -> ArgmaxResult<ProjectSummary> {
     let repo_path = {
-        let database = live_database(&state)?;
+        let database = live_database(state)?;
         let connection = database.connection();
         require_project(&connection, input.project_id.as_str())?.repo_path
     };
@@ -172,7 +211,7 @@ pub async fn projects_switch_branch(
         GIT_DEFAULT_TIMEOUT,
     )
     .await?;
-    let database = live_database(&state)?;
+    let database = live_database(state)?;
     let connection = database.connection();
     update_project_branch(
         &connection,
@@ -219,7 +258,7 @@ async fn pick_project_folder(app: AppHandle) -> ArgmaxResult<Option<PathBuf>> {
         .transpose()
 }
 
-async fn register_project_path(
+pub(crate) async fn register_project_path(
     state: &AppState,
     candidate_path: PathBuf,
 ) -> ArgmaxResult<ProjectSummary> {

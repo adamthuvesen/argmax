@@ -10,7 +10,14 @@ pub fn prs_list_for_session(
     state: State<'_, AppState>,
     input: PrsListForSessionInput,
 ) -> ArgmaxResult<Vec<GhPrRecord>> {
-    let service = GhService::new(live_database(&state)?);
+    prs_list_for_session_impl(&state, input)
+}
+
+pub(crate) fn prs_list_for_session_impl(
+    state: &AppState,
+    input: PrsListForSessionInput,
+) -> ArgmaxResult<Vec<GhPrRecord>> {
+    let service = GhService::new(live_database(state)?);
     service.list_for_session(input.session_id.as_str())
 }
 
@@ -20,6 +27,13 @@ pub async fn prs_refresh(
     state: State<'_, AppState>,
     input: PrsRefreshInput,
 ) -> ArgmaxResult<Vec<GhPrRecord>> {
-    let service = GhService::new(live_database(&state)?);
+    prs_refresh_impl(&state, input).await
+}
+
+pub(crate) async fn prs_refresh_impl(
+    state: &AppState,
+    input: PrsRefreshInput,
+) -> ArgmaxResult<Vec<GhPrRecord>> {
+    let service = GhService::new(live_database(state)?);
     service.refresh(input.session_id.as_str()).await
 }

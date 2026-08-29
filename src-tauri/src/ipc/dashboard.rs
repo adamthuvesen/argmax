@@ -12,10 +12,10 @@ pub fn dashboard_list(
     state: State<'_, AppState>,
     _input: DashboardListInput,
 ) -> ArgmaxResult<DashboardListSnapshot> {
-    read_dashboard_list(&state)
+    dashboard_list_impl(&state)
 }
 
-fn read_dashboard_list(state: &AppState) -> ArgmaxResult<DashboardListSnapshot> {
+pub(crate) fn dashboard_list_impl(state: &AppState) -> ArgmaxResult<DashboardListSnapshot> {
     let database = live_database(state)?;
     let connection = database.connection();
     list_dashboard(&connection)
@@ -31,7 +31,7 @@ mod tests {
     fn dashboard_list_reads_empty_live_database() {
         let state = state_with_database(Database::open_in_memory().expect("open database"));
 
-        let snapshot = read_dashboard_list(&state).expect("dashboard list");
+        let snapshot = dashboard_list_impl(&state).expect("dashboard list");
 
         assert!(snapshot.projects.is_empty());
         assert!(snapshot.workspaces.is_empty());

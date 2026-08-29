@@ -13,7 +13,14 @@ pub async fn review_list_changed_files(
     state: State<'_, AppState>,
     input: ReviewListChangedFilesInput,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
-    let database = live_database(&state)?;
+    review_list_changed_files_impl(&state, input).await
+}
+
+pub(crate) async fn review_list_changed_files_impl(
+    state: &AppState,
+    input: ReviewListChangedFilesInput,
+) -> ArgmaxResult<Vec<ChangedFileSummary>> {
+    let database = live_database(state)?;
     git_review::list_changed_files(
         database.as_ref(),
         input.kind,
@@ -29,7 +36,14 @@ pub async fn review_load_diff(
     state: State<'_, AppState>,
     input: ReviewLoadDiffInput,
 ) -> ArgmaxResult<WorkspaceDiff> {
-    let database = live_database(&state)?;
+    review_load_diff_impl(&state, input).await
+}
+
+pub(crate) async fn review_load_diff_impl(
+    state: &AppState,
+    input: ReviewLoadDiffInput,
+) -> ArgmaxResult<WorkspaceDiff> {
+    let database = live_database(state)?;
     git_review::load_diff(
         database.as_ref(),
         input.kind,

@@ -85,6 +85,8 @@ export function useSmartFollowScroll(
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [newBelowCount, setNewBelowCount] = useState(0);
   const lastSeenItemCountRef = useRef<number>(0);
+  /** Item count from the previous follow pass; 0→N marks the initial load. */
+  const renderedItemCountRef = useRef<number>(0);
   const liveFollowRef = useRef(liveFollow);
   const followAnimationRef = useRef<FollowAnimation>({
     frameId: null,
@@ -270,14 +272,24 @@ export function useSmartFollowScroll(
     clearUserScrollIntent();
     scrollToFollowTarget(el, { force: true });
     wasNearBottomRef.current = true;
+    renderedItemCountRef.current = 0;
   }, [clearUserScrollIntent, scrollToFollowTarget, sessionId]);
 
   // Follow output as items / thinking-state change, IF the user is already near
   // the bottom. A live turn retains the spring briefly so rapid deltas update a
-  // moving target without restarting the animation.
+  // moving target without restarting the animation. The FIRST batch of items
+  // for a session snaps hard instead: the mobile entry loads the transcript
+  // after the screen mounts, and springing from the top of a long history
+  // reads as "opened in the wrong place" (and any stray touch pauses it).
   useLayoutEffect(() => {
+    const previousCount = renderedItemCountRef.current;
+    renderedItemCountRef.current = conversationItems.length;
     const el = conversationListRef.current;
     if (!el || !wasNearBottomRef.current) return;
+    if (previousCount === 0 && conversationItems.length > 0) {
+      scrollToFollowTarget(el, { force: true });
+      return;
+    }
     scrollToFollowTarget(el, { smooth: true, retain: liveFollow });
   }, [conversationItems, isThinking, liveFollow, scrollToFollowTarget]);
 

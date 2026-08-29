@@ -7,6 +7,7 @@ import {
   createIsolatedWorkspace,
   launchProvider,
   mockDashboardSnapshot,
+  setPriorityDismissed,
   setupAppTestMocks,
   snapshot,
   workspaceStatus
@@ -116,6 +117,39 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "All sessions" })).toBeInTheDocument();
   });
 
+  it("dismisses an attention chip after the session was opened and left", async () => {
+    // Mirror of the desktop sidebar's read-clears-priority rule.
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.workspaceId === "workspace-1"
+          ? {
+              ...session,
+              state: "complete" as const,
+              attention: "review-ready" as const,
+              attentionChangedAt: new Date().toISOString()
+            }
+          : session
+      )
+    });
+    render(<MobileApp />);
+
+    const section = await screen.findByRole("region", { name: "All sessions" });
+    const row = within(section).getByRole("button", { name: /Build dashboard/ });
+    expect(row).toHaveTextContent("review ready");
+    fireEvent.click(row);
+    await screen.findByRole("region", { name: "Session conversation" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to sessions" }));
+
+    await waitFor(() =>
+      expect(setPriorityDismissed).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        dismissed: true
+      })
+    );
+  });
+
   it("shows a reconnect banner while the remote bridge is down", async () => {
     render(<MobileApp />);
 
@@ -160,6 +194,20 @@ describe("MobileApp", () => {
       })
     );
     expect(await screen.findByRole("region", { name: "Session conversation" })).toBeInTheDocument();
+  });
+
+  it("picks a model from the bottom sheet on the + screen", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "All sessions" });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Choose model" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Big Pickle" }));
+
+    expect(screen.queryByRole("dialog", { name: "Choose model" })).not.toBeInTheDocument();
+    expect(screen.getByText("OpenCode · Big Pickle")).toBeInTheDocument();
   });
 
   it("launches into a worktree when that mode is chosen", async () => {
